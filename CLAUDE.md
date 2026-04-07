@@ -1,0 +1,45 @@
+# RIDEMAP 项目规则书
+
+## 项目概述
+RIDEMAP 是公路骑行垂直平台的后端 API + 微信小程序前端。
+MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排行榜。
+团队：3 人大一学生，100 活跃用户量级。
+
+## 权威文档
+- **技术规格**：`docs/spec-v1.md` — 所有功能、接口、数据模型的唯一真相来源
+- **开发变更**：`docs/changelog.md` — 每次偏离 spec 或补充设计时记录
+- **规则**：发现 spec 有问题 → 先改文档再改代码，不允许代码和文档不一致
+
+## 技术栈（不可变更）
+- Python 3.11+ / FastAPI（**同步模式，禁止 async def**）
+- SQLAlchemy 2.0 同步 session / PostgreSQL 16 + PostGIS
+- Redis Queue (rq) 异步任务
+- 微信小程序前端
+
+## 开发原则
+1. **严格按 spec 任务顺序开发**，不跳步、不并行开发有依赖关系的任务
+2. **每完成一个任务，单独 commit**，提交信息格式：`feat(模块): 任务X.X 简要描述`
+3. **先写测试数据/fixture，再写实现**（对纯函数模块）
+4. **模块间单向依赖**：User ← Activity ← Segment，禁止反向 import
+5. **不做 spec 里没有的功能**，不做"顺手优化"
+
+## 命名规范
+- API 路径：RESTful 复数（`/api/activities`）
+- Python：snake_case（变量、函数、文件名）
+- 数据库表名：复数小写（`users`, `activities`, `segments`）
+- 分页参数：`page` + `page_size`（不用 `limit`）
+
+## 关键技术约定
+- **距离单位**：数据库存米，API 返回公里（km），转换在 service 层
+- **时区**：数据库存 UTC，"本周/本月"按北京时间 UTC+8 计算
+- **PostGIS 距离查询**：`ST_DWithin` 必须转 `::geography`，否则单位是度
+- **GPX 上传**：先跳过 BOM 再检查 XML 头
+- **JWT**：7 天有效期，前端收到 401 自动 wx.login() 静默续期
+
+## 当前进度
+- [x] 技术文档终版完成
+- [x] 项目初始化 + Git 仓库
+- [ ] 任务 1.1：项目骨架
+- [ ] 任务 1.2：数据库连接
+- [ ] 任务 1.3：文件存储抽象层
+- [ ] 任务 1.4：Redis + rq 配置
