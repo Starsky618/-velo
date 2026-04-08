@@ -13,3 +13,6 @@ rq
 redis
 gpxpy
 geoalchemy2
+
+# 测试依赖
+pytest
