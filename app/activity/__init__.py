@@ -10,7 +10,8 @@
 
 模块内部文件分工：
 - models.py：定义数据库表结构（Activity 主表 + Trackpoint 轨迹点表）
-- gpx_parser.py：GPX 文件解析器 + 功率区间计算（Task 3.2, 3.3）
+- gpx_parser.py：GPX 文件解析器（Task 3.2）
+- power_zones.py：功率区间计算（Task 3.3）
 - simplify.py：Douglas-Peucker 轨迹简化（Task 3.4）
 - schemas.py：请求/响应格式定义
 - service.py：业务逻辑（上传校验、队列入队等）

@@ -24,7 +24,8 @@ rq Worker（根目录的 worker.py）从队列中取出任务，调用这里的 
 - Segment 匹配（步骤 11）在 Task 4 中实现，当前留空跳过
 """
 
-from app.activity.gpx_parser import GPXParseError, calculate_power_zones, parse_gpx
+from app.activity.gpx_parser import GPXParseError, parse_gpx
+from app.activity.power_zones import calculate_power_zones
 from app.activity.models import Activity, Trackpoint
 from app.activity.simplify import simplify_track
 from app.database import SessionLocal
