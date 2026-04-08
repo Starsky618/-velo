@@ -92,3 +92,20 @@ def update_profile(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return user
+
+
+# ========== 任务 2.5：骑行统计 ==========
+
+@router.get("/stats", response_model=schemas.StatsResponse)
+def get_stats(
+    period: schemas.StatsPeriod = schemas.StatsPeriod.week,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    获取当前用户的骑行统计。
+
+    period 参数控制统计时间范围：week / month / year / all，默认 week。
+    需要登录（请求头带 JWT）。
+    """
+    return service.get_user_stats(db, user_id, period.value)

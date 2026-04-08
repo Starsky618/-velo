@@ -74,3 +74,38 @@ class UserProfileUpdate(BaseModel):
     weight: Optional[float] = Field(None, ge=30.0, le=200.0)
     bike_type: Optional[BikeType] = None
     weekly_goal: Optional[float] = Field(None, ge=10.0, le=2000.0)
+
+
+# ========== 任务 2.5：骑行统计 ==========
+
+class StatsPeriod(str, Enum):
+    """
+    统计时间范围枚举。
+    week = 本周（ISO 标准，周一为周首日）
+    month = 本月
+    year = 今年
+    all = 全部历史
+    传别的值直接 422。
+    """
+    week = "week"
+    month = "month"
+    year = "year"
+    all = "all"
+
+
+class StatsResponse(BaseModel):
+    """
+    骑行统计响应——"你这段时间骑了多少"的成绩单。
+
+    distance 单位是公里（数据库存米，service 层转换）。
+    duration 单位是秒。
+    goal_percent 是 distance / weekly_goal 的百分比（0-100+），
+    只在 period=week 时有实际意义，其他时段也照算不影响。
+    """
+    period: str
+    distance: float
+    rides: int
+    elevation_gain: float
+    duration: int
+    weekly_goal: float
+    goal_percent: int

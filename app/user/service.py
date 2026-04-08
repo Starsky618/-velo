@@ -17,10 +17,17 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from jose import jwt
+from sqlalchemy import text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.user.models import User
+
+# 北京时间偏移量（UTC+8）
+# 统计"本周""本月"等时间范围时，要用用户所在时区的零点做分界，
+# 而不是 UTC 零点。比如周一凌晨 0 点北京时间 = 周日下午 4 点 UTC。
+BEIJING_TZ = timezone(timedelta(hours=8))
 
 # JWT 配置
 # HS256 是一种对称加密算法——用同一把钥匙签名和验证
@@ -150,3 +157,110 @@ def update_user_profile(db: Session, user_id: int, update_data: dict) -> User:
     db.commit()
     db.refresh(user)
     return user
+
+
+# ========== 任务 2.5：骑行统计 ==========
+
+def _get_period_start(period: str) -> datetime | None:
+    """
+    根据统计范围，计算起始时间点（北京时间零点，转为 UTC）。
+
+    比如 period="week"：找到本周一的北京时间 00:00:00，再转成 UTC 存储时间。
+    period="all" 返回 None，表示不加时间条件。
+    """
+    # 先拿当前北京时间
+    now_bj = datetime.now(BEIJING_TZ)
+
+    if period == "week":
+        # weekday() 返回 0=周一, 6=周日
+        # 先把时分秒归零得到"今天零点"，再往前退 weekday 天得到本周一零点
+        # 例：北京时间 2026-04-08 周三 → weekday()=2 → 退2天 → 2026-04-06 周一 00:00 UTC+8
+        today_start = now_bj.replace(hour=0, minute=0, second=0, microsecond=0)
+        monday = today_start - timedelta(days=now_bj.weekday())
+        return monday.astimezone(timezone.utc)
+    elif period == "month":
+        first_day = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return first_day.astimezone(timezone.utc)
+    elif period == "year":
+        first_day = now_bj.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        return first_day.astimezone(timezone.utc)
+    else:
+        # period == "all"
+        return None
+
+
+def get_user_stats(db: Session, user_id: int, period: str) -> dict:
+    """
+    聚合用户的骑行统计数据。
+
+    直接用 SQL 查 activities 表，不 import Activity 模块的任何代码。
+    这样 User 模块保持独立，不依赖 Activity 模块的实现细节。
+
+    好比物业管理处直接看门禁刷卡记录统计出入次数，
+    不需要去问住户"你今天进出了几次"。
+    """
+    # 构建 SQL：从 activities 表聚合已完成的骑行记录
+    period_start = _get_period_start(period)
+
+    # activities 表在 Task 3.1 才会创建，在此之前查询会报 ProgrammingError。
+    # 捕获这个异常，返回全零数据，避免 500 错误。
+    try:
+        if period_start is not None:
+            sql = text("""
+                SELECT
+                    COALESCE(SUM(distance), 0)       AS distance,
+                    COUNT(*)                         AS rides,
+                    COALESCE(SUM(elevation_gain), 0) AS elevation_gain,
+                    COALESCE(SUM(duration), 0)       AS duration
+                FROM activities
+                WHERE user_id = :user_id
+                  AND status = 'completed'
+                  AND started_at >= :period_start
+            """)
+            row = db.execute(sql, {"user_id": user_id, "period_start": period_start}).fetchone()
+        else:
+            # period == "all"：不加时间条件
+            sql = text("""
+                SELECT
+                    COALESCE(SUM(distance), 0)       AS distance,
+                    COUNT(*)                         AS rides,
+                    COALESCE(SUM(elevation_gain), 0) AS elevation_gain,
+                    COALESCE(SUM(duration), 0)       AS duration
+                FROM activities
+                WHERE user_id = :user_id
+                  AND status = 'completed'
+            """)
+            row = db.execute(sql, {"user_id": user_id}).fetchone()
+
+        distance_m = float(row.distance)
+        rides = int(row.rides)
+        elevation_gain = float(row.elevation_gain)
+        duration = int(row.duration)
+    except ProgrammingError:
+        # activities 表尚未创建，回滚事务（ProgrammingError 会让当前事务失效），返回全零
+        db.rollback()
+        distance_m = 0.0
+        rides = 0
+        elevation_gain = 0.0
+        duration = 0
+
+    # 距离：米 → 公里，保留 1 位小数
+    distance_km = round(distance_m / 1000.0, 1)
+
+    # 获取用户的周目标
+    # 防御性处理：server_default 在 ORM 创建后 refresh 才生效，极端情况可能为 None
+    user = get_user_by_id(db, user_id)
+    weekly_goal = float(user.weekly_goal) if user.weekly_goal is not None else 200.0
+
+    # 完成百分比：distance_km / weekly_goal * 100，向下取整
+    goal_percent = int(distance_km / weekly_goal * 100) if weekly_goal > 0 else 0
+
+    return {
+        "period": period,
+        "distance": distance_km,
+        "rides": rides,
+        "elevation_gain": elevation_gain,  # 爬升单位是米，直接返回，不做转换
+        "duration": duration,
+        "weekly_goal": weekly_goal,
+        "goal_percent": goal_percent,
+    }
