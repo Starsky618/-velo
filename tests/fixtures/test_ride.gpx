@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RIDEMAP Test"
+     xmlns="http://www.topografix.com/GPX/1/1"
+     xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">
+  <trk>
+    <name>Test Ride With Power</name>
+    <trkseg>
+      <trkpt lat="37.8700" lon="112.5500">
+        <ele>800.0</ele>
+        <time>2026-04-07T06:00:00Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>140</gpxtpx:hr><gpxtpx:cad>85</gpxtpx:cad><gpxtpx:power>200</gpxtpx:power></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="37.8710" lon="112.5510">
+        <ele>802.5</ele>
+        <time>2026-04-07T06:00:10Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>142</gpxtpx:hr><gpxtpx:cad>86</gpxtpx:cad><gpxtpx:power>210</gpxtpx:power></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="37.8720" lon="112.5520">
+        <ele>805.0</ele>
+        <time>2026-04-07T06:00:20Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>145</gpxtpx:hr><gpxtpx:cad>88</gpxtpx:cad><gpxtpx:power>205</gpxtpx:power></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="37.8730" lon="112.5530">
+        <ele>803.0</ele>
+        <time>2026-04-07T06:00:30Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>148</gpxtpx:hr><gpxtpx:cad>90</gpxtpx:cad><gpxtpx:power>215</gpxtpx:power></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="37.8740" lon="112.5540">
+        <ele>806.0</ele>
+        <time>2026-04-07T06:00:40Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>150</gpxtpx:hr><gpxtpx:cad>92</gpxtpx:cad><gpxtpx:power>220</gpxtpx:power></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="37.8750" lon="112.5550">
+        <ele>810.0</ele>
+        <time>2026-04-07T06:00:50Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>152</gpxtpx:hr><gpxtpx:cad>88</gpxtpx:cad><gpxtpx:power>230</gpxtpx:power></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="37.8760" lon="112.5560">
+        <ele>812.0</ele>
+        <time>2026-04-07T06:01:00Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>155</gpxtpx:hr><gpxtpx:cad>90</gpxtpx:cad><gpxtpx:power>225</gpxtpx:power></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="37.8770" lon="112.5570">
+        <ele>815.0</ele>
+        <time>2026-04-07T06:01:10Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>158</gpxtpx:hr><gpxtpx:cad>91</gpxtpx:cad><gpxtpx:power>235</gpxtpx:power></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="37.8780" lon="112.5580">
+        <ele>818.0</ele>
+        <time>2026-04-07T06:01:20Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>160</gpxtpx:hr><gpxtpx:cad>93</gpxtpx:cad><gpxtpx:power>240</gpxtpx:power></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="37.8790" lon="112.5590">
+        <ele>820.0</ele>
+        <time>2026-04-07T06:01:30Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>162</gpxtpx:hr><gpxtpx:cad>94</gpxtpx:cad><gpxtpx:power>245</gpxtpx:power></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

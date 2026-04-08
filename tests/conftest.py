@@ -50,6 +50,11 @@ _TestSession = sessionmaker(bind=_test_engine, autocommit=False, autoflush=False
 from sqlalchemy import Table, MetaData
 
 _test_metadata = MetaData()
+
+# 完整版 activities 表（SQLite 兼容）
+# Activity 模型用了 JSONB 和 Geometry（PostgreSQL 专有），SQLite 不支持，
+# 所以这里用 Text 代替 JSONB、省略 Geometry 相关列。
+# 字段必须覆盖 Activity ORM 模型的所有列，否则 db.query(Activity) 会报错。
 _activities_table = Table(
     "activities",
     _test_metadata,
@@ -58,10 +63,25 @@ _activities_table = Table(
     Column("title", String(128)),
     Column("status", String(20), default="pending"),
     Column("file_url", Text, default=""),
+    Column("error_message", Text),
     Column("distance", Float),
     Column("duration", Integer),
     Column("elevation_gain", Float),
+    Column("avg_speed", Float),
+    Column("max_speed", Float),
+    Column("avg_power", Float),
+    Column("max_power", Float),
+    Column("avg_hr", Float),
+    Column("max_hr", Float),
+    Column("avg_cadence", Float),
+    Column("calories", Float),
     Column("started_at", DateTime),
+    Column("finished_at", DateTime),
+    Column("simplified_track", Text),   # 替代 JSONB
+    Column("splits", Text),             # 替代 JSONB
+    Column("power_zones", Text),        # 替代 JSONB
+    Column("created_at", DateTime),
+    Column("updated_at", DateTime),
 )
 
 

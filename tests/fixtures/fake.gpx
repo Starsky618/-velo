@@ -1,0 +1,1 @@
+%PDF-1.4 This is not a real GPX file. It starts with PDF header bytes to simulate a PDF file that was renamed to .gpx extension. The upload validator should catch this by checking the first 256 bytes for XML/GPX headers.

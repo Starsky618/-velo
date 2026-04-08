@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RIDEMAP Test"
+     xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Test Ride No Power</name>
+    <trkseg>
+      <trkpt lat="37.8700" lon="112.5500"><ele>800.0</ele><time>2026-04-07T06:00:00Z</time></trkpt>
+      <trkpt lat="37.8710" lon="112.5510"><ele>802.5</ele><time>2026-04-07T06:00:10Z</time></trkpt>
+      <trkpt lat="37.8720" lon="112.5520"><ele>805.0</ele><time>2026-04-07T06:00:20Z</time></trkpt>
+      <trkpt lat="37.8730" lon="112.5530"><ele>803.0</ele><time>2026-04-07T06:00:30Z</time></trkpt>
+      <trkpt lat="37.8740" lon="112.5540"><ele>806.0</ele><time>2026-04-07T06:00:40Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>
