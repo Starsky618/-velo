@@ -15,6 +15,7 @@ from rq import Queue
 from sqlalchemy.orm import Session
 
 from app.activity.models import Activity
+from app.activity.worker import parse_activity
 from app.config import settings
 from app.storage.local import LocalStorage
 
@@ -87,7 +88,6 @@ def upload_gpx(db: Session, user_id: int, filename: str, file_bytes: bytes) -> A
     db.refresh(activity)
 
     # 第三步：入队列，让 Worker 异步解析
-    # parse_activity 函数在 Task 3.6 中实现，这里先引用函数路径字符串
-    _queue.enqueue("app.activity.worker.parse_activity", activity.id)
+    _queue.enqueue(parse_activity, activity.id)
 
     return activity

@@ -15,6 +15,7 @@
 - schemas.py：请求/响应格式定义
 - service.py：业务逻辑（上传校验、队列入队等）
 - router.py：API 路由（/api/activities/...）
+- worker.py：异步任务函数（rq Worker 调用 parse_activity）
 
 注意事项：
 - 本模块依赖 User 模块（每条记录关联一个用户）
