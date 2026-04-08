@@ -91,3 +91,114 @@ def upload_gpx(db: Session, user_id: int, filename: str, file_bytes: bytes) -> A
     _queue.enqueue(parse_activity, activity.id)
 
     return activity
+
+
+# ========== 任务 3.7：活动查询 ==========
+
+def get_activity_list(db: Session, user_id: int, page: int, page_size: int) -> tuple[list[Activity], int]:
+    """
+    获取当前用户的活动列表（分页，按创建时间倒序）。
+
+    返回 (活动列表, 总条数)。
+    距离单位转换（米→公里）在这里做，router 层拿到的就是最终数据。
+    """
+    query = db.query(Activity).filter_by(user_id=user_id)
+    total = query.count()
+
+    items = (
+        query
+        .order_by(Activity.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    # 距离：米 → 公里，保留 1 位小数
+    # 先用 expunge 让对象脱离 Session，再改属性，
+    # 避免修改后的公里值被意外 commit 回数据库覆盖原始米值
+    for item in items:
+        db.expunge(item)
+        if item.distance is not None:
+            item.distance = round(item.distance / 1000.0, 1)
+
+    return items, total
+
+
+def get_activity_detail(db: Session, activity_id: int, user_id: int) -> Activity:
+    """
+    获取单个活动的完整详情。
+    只允许查看自己的活动，否则抛异常。
+    """
+    activity = db.query(Activity).filter_by(id=activity_id).first()
+    if activity is None:
+        raise ValueError("活动不存在")
+    if activity.user_id != user_id:
+        raise PermissionError("无权查看此活动")
+
+    # 脱离 Session 后再做单位转换，防止公里值被意外写回数据库
+    db.expunge(activity)
+    if activity.distance is not None:
+        activity.distance = round(activity.distance / 1000.0, 1)
+
+    return activity
+
+
+def update_activity(db: Session, activity_id: int, user_id: int, title: str) -> Activity:
+    """
+    编辑活动信息（目前只支持改标题）。
+    只允许编辑自己的活动。
+    """
+    activity = db.query(Activity).filter_by(id=activity_id).first()
+    if activity is None:
+        raise ValueError("活动不存在")
+    if activity.user_id != user_id:
+        raise PermissionError("无权编辑此活动")
+
+    activity.title = title
+    db.commit()
+    db.refresh(activity)
+
+    # 脱离 Session 后再做单位转换
+    db.expunge(activity)
+    if activity.distance is not None:
+        activity.distance = round(activity.distance / 1000.0, 1)
+
+    return activity
+
+
+def delete_activity(db: Session, activity_id: int, user_id: int) -> None:
+    """
+    删除活动：级联删除 trackpoints + 删除存储的 GPX 文件。
+    只允许删除自己的活动。
+    """
+    activity = db.query(Activity).filter_by(id=activity_id).first()
+    if activity is None:
+        raise ValueError("活动不存在")
+    if activity.user_id != user_id:
+        raise PermissionError("无权删除此活动")
+
+    # TODO(Task 4): segment_efforts 表创建后，需确认其外键设置了 ON DELETE CASCADE，
+    # 否则需要在这里手动删除关联的 segment_efforts 记录
+
+    # 删除存储的 GPX 文件（忽略删除失败，文件可能已被清理）
+    try:
+        _storage.delete(activity.file_url)
+    except Exception:
+        pass
+
+    # 删除数据库记录（trackpoints 通过外键 ON DELETE CASCADE 自动级联删除）
+    db.delete(activity)
+    db.commit()
+
+
+def get_activity_status(db: Session, activity_id: int, user_id: int) -> Activity:
+    """
+    获取活动的解析状态（供前端轮询）。
+    只允许查看自己的活动。
+    """
+    activity = db.query(Activity).filter_by(id=activity_id).first()
+    if activity is None:
+        raise ValueError("活动不存在")
+    if activity.user_id != user_id:
+        raise PermissionError("无权查看此活动")
+    return activity

@@ -10,7 +10,7 @@
 - 后续任务（3.7 查询接口）会在这里追加更多路由
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -54,4 +54,107 @@ def upload_gpx(
     return schemas.UploadResponse(
         activity_id=activity.id,
         status=activity.status,
+    )
+
+
+# ========== 任务 3.7：活动查询 ==========
+
+@router.get("", response_model=schemas.ActivityListResponse)
+def list_activities(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    获取当前用户的活动列表（分页）。
+    按创建时间倒序排列，不含轨迹等大数据。
+    """
+    items, total = service.get_activity_list(db, user_id, page, page_size)
+    return schemas.ActivityListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/{activity_id}", response_model=schemas.ActivityDetail)
+def get_activity(
+    activity_id: int,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    获取单个活动的完整详情。
+    包含简化轨迹、分段数据、功率区间。
+    只能查看自己的活动。
+    """
+    try:
+        activity = service.get_activity_detail(db, activity_id, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    return activity
+
+
+@router.patch("/{activity_id}", response_model=schemas.ActivitySummary)
+def update_activity(
+    activity_id: int,
+    req: schemas.ActivityUpdateRequest,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    编辑活动信息（目前只支持修改标题）。
+    只能编辑自己的活动。
+    """
+    try:
+        activity = service.update_activity(db, activity_id, user_id, req.title)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    return activity
+
+
+@router.delete("/{activity_id}", status_code=204)
+def delete_activity(
+    activity_id: int,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    删除活动。
+    级联删除轨迹点 + 删除存储的 GPX 文件。
+    只能删除自己的活动。
+    """
+    try:
+        service.delete_activity(db, activity_id, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@router.get("/{activity_id}/status", response_model=schemas.ActivityStatusResponse)
+def get_activity_status(
+    activity_id: int,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    轮询活动解析状态。
+    前端上传后每 2 秒调一次，直到 status 变为 completed 或 failed。
+    """
+    try:
+        activity = service.get_activity_status(db, activity_id, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    return schemas.ActivityStatusResponse(
+        status=activity.status,
+        error_message=activity.error_message,
     )
