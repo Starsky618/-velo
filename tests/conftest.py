@@ -74,8 +74,10 @@ def db():
     测试结束后：关 session → 删表
     这样每个测试都在"白纸"上跑，互不干扰。
     """
-    # 建表：把 User 模型和临时 activities 表都建出来
-    Base.metadata.create_all(bind=_test_engine)
+    # 建表：只建 users 表（Activity 模型用了 PostgreSQL 专有的 JSONB 和 Geometry，
+    # SQLite 不支持，所以 activities 表用下面的手动简化版 _activities_table 代替）
+    from app.user.models import User
+    User.__table__.create(bind=_test_engine, checkfirst=True)
     _test_metadata.create_all(bind=_test_engine)
 
     session = _TestSession()
@@ -85,7 +87,7 @@ def db():
         session.close()
         # 删表：测试结束后把所有表清掉，下次重建
         _test_metadata.drop_all(bind=_test_engine)
-        Base.metadata.drop_all(bind=_test_engine)
+        User.__table__.drop(bind=_test_engine, checkfirst=True)
 
 
 @pytest.fixture()

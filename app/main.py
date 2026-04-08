@@ -10,6 +10,7 @@ RIDEMAP 后端 API 入口
 
 from fastapi import FastAPI
 
+from app.activity.router import router as activity_router
 from app.user.router import router as user_router
 
 # 创建 FastAPI 应用实例
@@ -22,6 +23,7 @@ app = FastAPI(
 
 # 挂载各模块路由——每个模块的接口通过 include_router 注册到应用上
 app.include_router(user_router)
+app.include_router(activity_router)
 
 
 @app.get("/health")

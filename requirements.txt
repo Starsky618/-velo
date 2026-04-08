@@ -13,6 +13,7 @@ rq
 redis
 gpxpy
 geoalchemy2
+python-multipart
 
 # 测试依赖
 pytest
