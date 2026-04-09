@@ -457,6 +457,38 @@ body {
   color: var(--text-muted);
 }
 
+/* 起点/终点标签可点击选中，选中后用键盘左右微调 */
+.km-label {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.km-label:hover {
+  color: var(--text-secondary);
+}
+
+.km-label.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(252, 76, 2, 0.1);
+}
+
+.arrow-hint {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  opacity: 0;
+  margin-left: 8px;
+  transition: opacity 0.3s;
+}
+
+.arrow-hint.visible {
+  opacity: 1;
+}
+
 .km-input {
   width: 72px;
   padding: 5px 8px;
@@ -892,12 +924,13 @@ body {
     <!-- 选择控制条 -->
     <div class="selection-bar">
       <div class="km-inputs">
-        <label>起点</label>
-        <input type="text" class="km-input" id="startKmInput" value="0.00" />
+        <label class="km-label" id="labelStart" data-target="start" tabindex="0">起点</label>
+        <input type="text" class="km-input" id="startKmInput" value="0.00" data-target="start" />
         <span class="km-sep">—</span>
-        <label>终点</label>
-        <input type="text" class="km-input" id="endKmInput" value="0.00" />
+        <label class="km-label" id="labelEnd" data-target="end" tabindex="0">终点</label>
+        <input type="text" class="km-input" id="endKmInput" value="0.00" data-target="end" />
         <span style="font-size:0.72rem; color:var(--text-muted); margin-left:4px;">km</span>
+        <span class="arrow-hint" id="arrowHint">← → 微调 20m</span>
       </div>
       <div class="segment-stats">
         <div class="seg-stat">
@@ -1971,6 +2004,96 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('resultCard').classList.remove('visible');
     fileInput.value = '';
     fileInput.click();
+  });
+
+  // ==================== 键盘左右箭头微调 ====================
+  // 点击"起点"或"终点"标签选中它，然后用键盘 ← → 每次微调 20 米（0.02 km）。
+  // 长按自动连续调整：首次延迟 300ms，之后每 80ms 触发一次。
+  // 好比收音机旋钮的数字微调——粗调靠拖滑块，精调靠方向键。
+
+  let activeEndpoint = null;    // 当前选中的端点：'start' 或 'end'
+  let arrowInterval = null;     // 长按定时器
+  let arrowTimeout = null;      // 长按首次延迟
+
+  // 点击标签或输入框 → 选中对应端点
+  document.querySelectorAll('[data-target]').forEach(el => {
+    el.addEventListener('click', () => {
+      setActiveEndpoint(el.dataset.target);
+    });
+    el.addEventListener('focus', () => {
+      setActiveEndpoint(el.dataset.target);
+    });
+  });
+
+  function setActiveEndpoint(target) {
+    activeEndpoint = target;
+    // 更新标签高亮
+    document.getElementById('labelStart').classList.toggle('active', target === 'start');
+    document.getElementById('labelEnd').classList.toggle('active', target === 'end');
+    // 显示微调提示
+    document.getElementById('arrowHint').classList.add('visible');
+  }
+
+  // 微调核心：移动指定端点 ±0.02 km
+  function nudgeEndpoint(direction) {
+    if (!activeEndpoint || !state.chart) return;
+    const step = 0.02; // 20 米
+    const delta = direction === 'right' ? step : -step;
+
+    if (activeEndpoint === 'start') {
+      let newVal = state.startKm + delta;
+      newVal = Math.max(0, Math.min(newVal, state.endKm - 0.5));
+      state.startKm = parseFloat(newVal.toFixed(2));
+    } else {
+      let newVal = state.endKm + delta;
+      newVal = Math.max(state.startKm + 0.5, Math.min(newVal, state.totalDistKm));
+      state.endKm = parseFloat(newVal.toFixed(2));
+    }
+
+    updateSelectionUI();
+    state.chart.update('none');
+  }
+
+  // keydown：首次触发 + 长按连续调整
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    // 如果焦点在输入框（正在手动输入公里数），不拦截方向键
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+    if (!activeEndpoint) return;
+
+    e.preventDefault();
+    const dir = e.key === 'ArrowRight' ? 'right' : 'left';
+
+    // 防止 keydown 重复触发时重复启动定时器
+    if (arrowInterval || arrowTimeout) return;
+
+    // 立即执行一次
+    nudgeEndpoint(dir);
+
+    // 300ms 后开始连续调整（每 80ms 一次）
+    arrowTimeout = setTimeout(() => {
+      arrowInterval = setInterval(() => nudgeEndpoint(dir), 80);
+    }, 300);
+  });
+
+  // keyup：停止连续调整
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      clearTimeout(arrowTimeout);
+      clearInterval(arrowInterval);
+      arrowTimeout = null;
+      arrowInterval = null;
+    }
+  });
+
+  // 点击页面空白处取消选中
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.km-inputs') && !e.target.closest('.chart-container')) {
+      activeEndpoint = null;
+      document.getElementById('labelStart').classList.remove('active');
+      document.getElementById('labelEnd').classList.remove('active');
+      document.getElementById('arrowHint').classList.remove('visible');
+    }
   });
 
   // 公里数输入框：手动输入 → 更新选区
