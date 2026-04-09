@@ -1,0 +1,193 @@
+"""
+赛段模块的请求/响应数据格式定义——"赛道管理表格"。
+
+好比赛事组委会的各种表格模板：
+- 创建赛段时要填"赛道申报表"（SegmentCreateRequest）
+- 查看赛段列表像"赛道目录"（SegmentListItem）
+- 查看赛段详情像"赛道档案 + 成绩榜"（SegmentDetailResponse）
+
+注意事项：
+- reference_points 至少需要 2 个坐标点，才能连成一条线
+- 距离单位：API 层返回公里（数据库存米，service 层转换）
+- 排行榜按用时升序排列（用时越短排名越高）
+"""
+
+from datetime import datetime
+from typing import Literal, Optional
+
+from pydantic import BaseModel, Field
+
+
+# ========== 创建赛段 ==========
+
+class PointInput(BaseModel):
+    """
+    参考路线上的一个坐标点。
+
+    GPS 坐标规则：
+    - 纬度（lat）：-90 到 90，正值为北纬，负值为南纬
+    - 经度（lon）：-180 到 180，正值为东经，负值为西经
+    - 海拔（ele）：可选，单位米，用于计算爬升
+    """
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
+    ele: Optional[float] = None
+
+
+class SegmentCreateRequest(BaseModel):
+    """
+    创建赛段请求——管理员专用。
+
+    管理员在地图上画一条路线，提交坐标点数组，
+    后端自动计算距离、爬升，生成赛段。
+    match_tolerance 和 min_match_ratio 不传就用默认值（50米、80%）。
+    """
+    name: str = Field(..., min_length=1, max_length=128)
+    description: Optional[str] = None
+    reference_points: list[PointInput] = Field(..., min_length=2)
+    # 坐标系声明：管理员从腾讯/高德地图取的坐标是 GCJ-02（默认值），
+    # 从 GPX 文件或 GPS 设备直接拿的坐标是 WGS-84。
+    # 后端会根据这个字段决定是否做坐标转换，确保存入数据库的都是 WGS-84。
+    coordinate_system: Literal["gcj02", "wgs84"] = Field(
+        default="gcj02",
+        description="坐标系：gcj02（腾讯/高德地图）或 wgs84（GPS/GPX原始坐标）",
+    )
+    match_tolerance: Optional[float] = Field(None, gt=0)
+    min_match_ratio: Optional[float] = Field(None, gt=0, le=1.0)
+
+
+# ========== 赛段响应 ==========
+
+class SegmentResponse(BaseModel):
+    """赛段完整信息——创建成功后返回"""
+    id: int
+    name: str
+    description: Optional[str] = None
+    distance: float                                      # 公里
+    elevation_gain: Optional[float] = None               # 米
+    elevation_loss: Optional[float] = None               # 米，累计下降
+    avg_gradient: Optional[float] = None                 # %，平均坡度
+    elevation_profile: Optional[list[float]] = None      # 海拔采样数组（约80点）
+    start_lat: float
+    start_lon: float
+    end_lat: float
+    end_lon: float
+    match_tolerance: float
+    min_match_ratio: float
+    created_at: Optional[datetime] = None
+
+
+class SegmentListItem(BaseModel):
+    """
+    赛段列表项——"赛道目录"里的一行。
+
+    比完整信息更精简，多了 entries（成绩记录数）字段，
+    前端用它显示"已有 XX 人挑战"。
+    """
+    id: int
+    name: str
+    distance: float                          # 公里
+    elevation_gain: Optional[float] = None   # 米
+    start_lat: float
+    start_lon: float
+    end_lat: float
+    end_lon: float
+    entries: int
+
+
+class SegmentListResponse(BaseModel):
+    """赛段列表响应——带分页"""
+    items: list[SegmentListItem]
+    total: int
+    page: int
+    page_size: int
+
+
+# ========== 排行榜 ==========
+
+class LeaderboardEntry(BaseModel):
+    """
+    排行榜条目——某个用户在某赛段上的成绩。
+
+    好比马拉松成绩榜上的一行：
+    名次、姓名、用时、配速……
+    """
+    rank: int
+    user_id: int
+    nickname: Optional[str] = None
+    avatar_url: Optional[str] = None
+    elapsed_time: int                        # 秒
+    avg_speed: Optional[float] = None        # km/h
+    avg_power: Optional[float] = None        # W
+    bike_type: Optional[str] = None          # 车型（Task 4.5 新增）
+    created_at: Optional[datetime] = None
+
+
+class LeaderboardResponse(BaseModel):
+    """排行榜分页响应——Task 4.5 独立排行榜接口用"""
+    items: list[LeaderboardEntry]
+    total: int
+    page: int
+    page_size: int
+
+
+class SegmentDetailResponse(BaseModel):
+    """赛段详情——赛段信息 + 排行榜前 20 名"""
+    id: int
+    name: str
+    description: Optional[str] = None
+    distance: float                          # 公里
+    elevation_gain: Optional[float] = None   # 米
+    start_lat: float
+    start_lon: float
+    end_lat: float
+    end_lon: float
+    match_tolerance: float
+    min_match_ratio: float
+    created_at: Optional[datetime] = None
+    leaderboard: list[LeaderboardEntry]
+
+
+# ========== 用户赛段成绩（Task 4.5） ==========
+
+class UserEffortItem(BaseModel):
+    """
+    用户在某赛段的成绩——"我的成绩单"中的一行。
+
+    包含赛段名称和自己在该赛段的排名，
+    让用户一眼看到"我在哪条赛道排第几"。
+    """
+    segment_id: int
+    segment_name: str
+    elapsed_time: int                        # 秒
+    avg_speed: Optional[float] = None        # km/h
+    rank: int
+    created_at: Optional[datetime] = None
+
+
+class UserEffortsResponse(BaseModel):
+    """用户所有赛段成绩响应"""
+    items: list[UserEffortItem]
+
+
+# ========== 活动途经赛段（Task 4.6） ==========
+
+class ActivitySegmentItem(BaseModel):
+    """
+    某次骑行途经的一条赛段成绩。
+
+    好比跑完马拉松后查分段计时牌：
+    在哪个计时点用了多久、排第几、是不是个人最快。
+    """
+    segment_id: int
+    segment_name: str
+    elapsed_time: int                        # 秒
+    avg_speed: Optional[float] = None        # km/h
+    avg_power: Optional[float] = None        # W
+    rank: int
+    is_pr: bool                              # 是否个人最佳
+
+
+class ActivitySegmentsResponse(BaseModel):
+    """某次骑行途经的所有赛段成绩响应"""
+    items: list[ActivitySegmentItem]

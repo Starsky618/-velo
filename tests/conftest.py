@@ -52,12 +52,24 @@ _TestSession = sessionmaker(bind=_test_engine, autocommit=False, autoflush=False
 # 这些都是 PostgreSQL/PostGIS 专有函数，SQLite 没有。
 # 这里注册"假函数"：原样传递参数，不做任何转换。
 # 这样 geoalchemy2 生成的 SQL 能在 SQLite 上跑通，虽然不做真正的空间计算。
+#
+# 特别注意 ST_AsEWKB / AsEWKB：
+# geoalchemy2 在读取 Geometry 列时，会用 ST_AsEWKB() 包住字段，
+# 然后尝试把返回值当成十六进制 EWKB 字符串解析（binascii.unhexlify）。
+# 如果原样返回 WKT 字符串（如 "SRID=4326;LINESTRING(..."），
+# unhexlify 遇到非十六进制字符就会抛 "Non-hexadecimal digit found"。
+# 解决方案：返回一个固定的合法 EWKB 十六进制字符串（2 点 LINESTRING，SRID=4326）。
+# geoalchemy2 能解析它，不报错，测试中也不需要读取真实的几何坐标。
+_FAKE_EWKB = "0102000020E6100000020000003333333333235C408FC2F5285CEF42403333333333235C400000000000F04240"
+
+
 @event.listens_for(_test_engine, "connect")
 def _register_fake_postgis(dbapi_conn, connection_record):
     dbapi_conn.create_function("GeomFromEWKT", 1, lambda x: x)
     dbapi_conn.create_function("ST_GeomFromEWKT", 1, lambda x: x)
-    dbapi_conn.create_function("AsEWKB", 1, lambda x: x)
-    dbapi_conn.create_function("ST_AsEWKB", 1, lambda x: x)
+    # AsEWKB / ST_AsEWKB 必须返回合法十六进制 EWKB，不能原样返回 WKT
+    dbapi_conn.create_function("AsEWKB", 1, lambda x: _FAKE_EWKB)
+    dbapi_conn.create_function("ST_AsEWKB", 1, lambda x: _FAKE_EWKB)
     dbapi_conn.create_function("AsText", 1, lambda x: x)
     dbapi_conn.create_function("ST_AsText", 1, lambda x: x)
 
