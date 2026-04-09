@@ -46,6 +46,9 @@ class Segment(Base):
     # 赛段长度和爬升
     distance = Column(Float, nullable=False)          # 米
     elevation_gain = Column(Float, nullable=True)      # 米
+    elevation_loss = Column(Float, nullable=True)      # 累计海拔下降（米）
+    avg_gradient = Column(Float, nullable=True)        # 平均坡度（%）
+    elevation_profile = Column(Text, nullable=True)    # 海拔采样 JSON 数组（约 80 个数值）
 
     # 起终点坐标（冗余存储，方便快速查询和前端显示，无需每次解析 reference_line）
     start_lat = Column(Float, nullable=False)

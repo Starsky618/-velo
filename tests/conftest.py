@@ -24,6 +24,8 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from sqlalchemy import event
+
 from app.database import Base, get_db
 from app.main import app
 from app.user.models import User
@@ -43,6 +45,21 @@ _test_engine = create_engine(
     poolclass=StaticPool,
 )
 _TestSession = sessionmaker(bind=_test_engine, autocommit=False, autoflush=False)
+
+
+# 注册假的 PostGIS 函数——让 SQLite 能运行 geoalchemy2 生成的 SQL。
+# geoalchemy2 在 INSERT 时会调 GeomFromEWKT()，在 SELECT 时会调 ST_AsEWKB()。
+# 这些都是 PostgreSQL/PostGIS 专有函数，SQLite 没有。
+# 这里注册"假函数"：原样传递参数，不做任何转换。
+# 这样 geoalchemy2 生成的 SQL 能在 SQLite 上跑通，虽然不做真正的空间计算。
+@event.listens_for(_test_engine, "connect")
+def _register_fake_postgis(dbapi_conn, connection_record):
+    dbapi_conn.create_function("GeomFromEWKT", 1, lambda x: x)
+    dbapi_conn.create_function("ST_GeomFromEWKT", 1, lambda x: x)
+    dbapi_conn.create_function("AsEWKB", 1, lambda x: x)
+    dbapi_conn.create_function("ST_AsEWKB", 1, lambda x: x)
+    dbapi_conn.create_function("AsText", 1, lambda x: x)
+    dbapi_conn.create_function("ST_AsText", 1, lambda x: x)
 
 
 # 简化版 activities 表——只包含统计测试需要的字段
@@ -82,6 +99,48 @@ _activities_table = Table(
     Column("power_zones", Text),        # 替代 JSONB
     Column("created_at", DateTime),
     Column("updated_at", DateTime),
+)
+
+
+# 简化版 segments 表（SQLite 兼容）
+# Segment 模型用了 PostGIS Geometry（LINESTRING），SQLite 不支持，
+# 这里用 Text 代替，并设为 nullable 方便测试插入。
+_segments_table = Table(
+    "segments",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", String(128), nullable=False),
+    Column("description", Text),
+    Column("distance", Float, nullable=False),
+    Column("elevation_gain", Float),
+    Column("elevation_loss", Float),                   # 新增：累计海拔下降
+    Column("avg_gradient", Float),                     # 新增：平均坡度
+    Column("elevation_profile", Text),                 # 新增：海拔采样 JSON 数组
+    Column("start_lat", Float, nullable=False),
+    Column("start_lon", Float, nullable=False),
+    Column("end_lat", Float, nullable=False),
+    Column("end_lon", Float, nullable=False),
+    Column("reference_line", Text),          # 替代 Geometry
+    Column("match_tolerance", Float, default=50.0),
+    Column("min_match_ratio", Float, default=0.8),
+    Column("created_at", DateTime),
+    Column("updated_at", DateTime),
+)
+
+# segment_efforts 表
+_segment_efforts_table = Table(
+    "segment_efforts",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("segment_id", Integer, nullable=False),
+    Column("activity_id", Integer, nullable=False),
+    Column("user_id", Integer, nullable=False),
+    Column("elapsed_time", Integer, nullable=False),
+    Column("avg_speed", Float),
+    Column("avg_power", Float),
+    Column("start_index", Integer, nullable=False),
+    Column("end_index", Integer, nullable=False),
+    Column("created_at", DateTime),
 )
 
 
@@ -138,7 +197,7 @@ def test_user(db):
     创建一个测试用户并返回。
     大多数测试都需要一个已存在的用户，这个 fixture 省去重复创建。
     """
-    user = User(openid="test_openid_123")
+    user = User(openid="test_openid_123", is_admin=False)
     db.add(user)
     db.commit()
     db.refresh(user)
