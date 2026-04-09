@@ -213,7 +213,7 @@ def get_segment_list(
         items.append({
             "id": segment.id,
             "name": segment.name,
-            "distance": round(segment.distance / 1000.0, 1),
+            "distance": round(segment.distance / 1000.0, 2),
             "elevation_gain": segment.elevation_gain,
             "start_lat": segment.start_lat,
             "start_lon": segment.start_lon,
@@ -279,7 +279,7 @@ def get_segment_detail(db: Session, segment_id: int) -> dict:
         "id": segment.id,
         "name": segment.name,
         "description": segment.description,
-        "distance": round(segment.distance / 1000.0, 1),  # 米 → 公里
+        "distance": round(segment.distance / 1000.0, 2),  # 米 → 公里
         "elevation_gain": segment.elevation_gain,
         "start_lat": segment.start_lat,
         "start_lon": segment.start_lon,
