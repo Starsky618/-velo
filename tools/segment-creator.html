@@ -457,36 +457,44 @@ body {
   color: var(--text-muted);
 }
 
-/* 起点/终点标签可点击选中，选中后用键盘左右微调 */
+/* 起点/终点标签——可点击选中，选中后用键盘 ← → 微调 20m */
 .km-label {
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 4px 10px;
   border-radius: var(--radius-sm);
-  border: 1px solid transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.04);
+  font-size: 0.78rem !important;
+  color: var(--text-secondary) !important;
   transition: all 0.2s;
   user-select: none;
+  letter-spacing: 0.5px;
 }
 
 .km-label:hover {
-  color: var(--text-secondary);
+  color: var(--text-primary) !important;
+  border-color: rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.08);
 }
 
 .km-label.active {
-  color: var(--accent);
+  color: var(--accent) !important;
   border-color: var(--accent);
-  background: rgba(252, 76, 2, 0.1);
+  background: rgba(252, 76, 2, 0.15);
+  box-shadow: 0 0 8px rgba(252, 76, 2, 0.2);
 }
 
 .arrow-hint {
   font-size: 0.65rem;
-  color: var(--text-muted);
+  color: var(--accent);
   opacity: 0;
   margin-left: 8px;
   transition: opacity 0.3s;
+  font-family: var(--font-mono);
 }
 
 .arrow-hint.visible {
-  opacity: 1;
+  opacity: 0.8;
 }
 
 .km-input {
