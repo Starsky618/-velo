@@ -134,7 +134,7 @@ def match_segment(
     match_tolerance: float = 50.0,
     min_match_ratio: float = 0.8,
     endpoint_tolerance: float = 50.0,
-    auto_pause_threshold: float = 1.6,
+    auto_pause_threshold: float = 0.5,
 ) -> dict:
     """
     判断一条骑行轨迹是否经过了某条赛段。
@@ -216,21 +216,23 @@ def match_segment(
     if match_ratio < min_match_ratio:
         return {"matched": False}
 
-    # ========== 第 4 步：计算 Moving Time ==========
-    # 不是简单地用 end_time - start_time，而是逐段累加"在骑行的时间"。
-    # 好比 Strava 的 Moving Time：忘停码表时，停车等红灯的时间自动扣除。
+    # ========== 第 4 步：计算 Moving Time（速度 + 时间双条件） ==========
+    # 只有"连续低速超过 30 秒"才判定为停车并扣除，偶尔减速不扣。
     #
-    # 原理：遍历相邻轨迹点对，算瞬时速度。
-    # 速度 >= 阈值（默认 1.6 km/h）→ 这段时间在骑，计入用时
-    # 速度 < 阈值 → 停车/等红灯，不计入
-    moving_time = 0.0
-    valid_time_count = 0  # 有多少对相邻点有有效时间戳
+    # 好比裁判判罚标准：
+    # - 骑手在陡坡上蠕行（1~2 km/h 持续几秒然后加速）→ 不扣，人家在拼命骑
+    # - 骑手停在路边等红灯（0.5 km/h 持续 40 秒）→ 扣除，确实停了
+    #
+    # 算法：先给每个时间段标记"快/慢"，然后找出所有"连续慢速 ≥ 30 秒"的区间，
+    # 只扣除这些区间的时间。
+    PAUSE_DURATION = 30  # 连续低速超过 30 秒才算停车
 
+    # 第一遍：计算每个相邻点对的时间和速度
+    intervals = []  # [(dt, is_slow), ...]
     for i in range(start_idx, end_idx):
         t1 = trackpoints[i].get("time")
         t2 = trackpoints[i + 1].get("time")
 
-        # 跳过没有时间戳的点
         if not isinstance(t1, datetime) or not isinstance(t2, datetime):
             continue
 
@@ -238,21 +240,41 @@ def match_segment(
         if dt <= 0:
             continue
 
-        valid_time_count += 1
-
-        # 算这两个点之间的瞬时速度（km/h）
         dist = _haversine(
             trackpoints[i]["lat"], trackpoints[i]["lon"],
             trackpoints[i + 1]["lat"], trackpoints[i + 1]["lon"],
         )
-        speed_kmh = (dist / dt) * 3.6 if dt > 0 else 0
+        speed_kmh = (dist / dt) * 3.6
 
-        # 速度高于阈值 → 在骑行，计入用时
-        if speed_kmh >= auto_pause_threshold:
-            moving_time += dt
+        intervals.append((dt, speed_kmh < auto_pause_threshold))
 
-    # 没有任何有效时间段 → 不匹配
-    if valid_time_count == 0 or moving_time <= 0:
+    if not intervals:
+        return {"matched": False}
+
+    # 第二遍：找连续低速区间，只扣除累计 ≥ 30 秒的
+    # 从头扫描，遇到连续的 is_slow=True 段就累加时间，
+    # 直到遇到一个 is_slow=False 的段，检查累计是否 ≥ 30 秒。
+    total_time = 0.0    # 总时间
+    paused_time = 0.0   # 扣除的停车时间
+    slow_streak = 0.0   # 当前连续低速累计秒数
+
+    for dt, is_slow in intervals:
+        total_time += dt
+        if is_slow:
+            slow_streak += dt
+        else:
+            # 连续低速结束，检查是否够长
+            if slow_streak >= PAUSE_DURATION:
+                paused_time += slow_streak
+            slow_streak = 0.0
+
+    # 处理末尾的连续低速段
+    if slow_streak >= PAUSE_DURATION:
+        paused_time += slow_streak
+
+    moving_time = total_time - paused_time
+
+    if moving_time <= 0:
         return {"matched": False}
 
     elapsed_time = int(moving_time)
