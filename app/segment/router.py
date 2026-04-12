@@ -81,6 +81,25 @@ def create_segment(
     )
 
 
+@router.delete("/{segment_id}", status_code=204)
+def delete_segment(
+    segment_id: int,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    删除赛段——管理员专用。
+
+    删除赛段及其所有成绩记录。不可恢复。
+    """
+    try:
+        service.delete_segment(db, segment_id, user_id)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.get("", response_model=schemas.SegmentListResponse)
 def list_segments(
     page: int = Query(1, ge=1),

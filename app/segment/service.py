@@ -489,3 +489,26 @@ def get_activity_segments(db: Session, activity_id: int, user_id: int) -> list[d
         })
 
     return items
+
+
+# ==================== 删除赛段 ====================
+
+def delete_segment(db: Session, segment_id: int, user_id: int) -> None:
+    """
+    删除赛段——管理员专用。
+
+    删除赛段时，该赛段下的所有成绩记录一并删除。
+    好比拆掉一条赛道：赛道没了，上面的成绩自然作废。
+    """
+    user = db.query(User).filter_by(id=user_id).first()
+    if not user or not user.is_admin:
+        raise PermissionError("需要管理员权限")
+
+    segment = db.query(Segment).filter_by(id=segment_id).first()
+    if segment is None:
+        raise ValueError("赛段不存在")
+
+    # 先删成绩记录（外键无 CASCADE，需手动删）
+    db.query(SegmentEffort).filter_by(segment_id=segment_id).delete()
+    db.delete(segment)
+    db.commit()

@@ -9,8 +9,14 @@ RIDEMAP 后端 API 入口
 """
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.activity.router import router as activity_router
+from app.segment.router import (
+    activity_segment_router,
+    router as segment_router,
+    user_effort_router,
+)
 from app.user.router import router as user_router
 
 # 创建 FastAPI 应用实例
@@ -21,9 +27,22 @@ app = FastAPI(
     description="公路骑行垂直平台后端 API",
 )
 
+# 跨域配置——允许赛段创建工具（本地 HTML 文件）访问 API
+# 生产环境应限制为实际域名，本地开发允许所有来源
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # 挂载各模块路由——每个模块的接口通过 include_router 注册到应用上
+# 注册顺序无所谓，FastAPI 根据路径前缀分发请求
 app.include_router(user_router)
 app.include_router(activity_router)
+app.include_router(segment_router)
+app.include_router(user_effort_router)
+app.include_router(activity_segment_router)
 
 
 @app.get("/health")

@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     class Config:
         # 告诉 pydantic-settings 从项目根目录的 .env 文件读取配置
         env_file = ".env"
+        # 允许 .env 中有 Settings 未定义的变量（如 DB_PASSWORD），不报错
+        extra = "ignore"
 
 
 # 全局唯一的配置实例——整个应用都用这一个，不要重复创建
