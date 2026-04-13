@@ -38,6 +38,11 @@ _storage = LocalStorage()
 # 批量插入轨迹点的批次大小
 _BATCH_SIZE = 500
 
+# 轨迹点数量硬上限（与 service.py 的 _MAX_TRACKPOINTS 一致）
+# 这是格式无关的安全网——不管从 GPX/FIT/Strava 哪种来源解析出来，
+# 超过此上限都拒绝。第一层（上传时）按格式做轻量预检，这里是第二层兜底。
+_MAX_TRACKPOINTS = 50_000
+
 
 def parse_activity(activity_id: int) -> None:
     """
@@ -87,6 +92,15 @@ def _do_parse(db, activity_id: int) -> None:
     weight = float(user.weight) if user.weight else 70.0
     result = parse_gpx(gpx_content, weight=weight)
 
+    # ===== 步骤 5.5：轨迹点数量安全网 =====
+    # 第二层防御：解析后检查实际点数。
+    # 即使第一层（上传时的标签计数）漏掉了异常格式，这里也能拦住。
+    trackpoints = result["trackpoints"]
+    if len(trackpoints) > _MAX_TRACKPOINTS:
+        raise GPXParseError(
+            f"轨迹点过多（{len(trackpoints)} 个，上限 {_MAX_TRACKPOINTS}），请裁剪后重新上传"
+        )
+
     # ===== 步骤 6：将统计量写入 activity =====
     activity.title = activity.title or result["title"]  # 用户没起名则用 GPX 里的
     activity.distance = result["distance"]
@@ -116,7 +130,7 @@ def _do_parse(db, activity_id: int) -> None:
     # ===== 步骤 9：批量插入 trackpoints =====
     # parser 输出用缩写（lat/lon/ele/time/hr/cad），数据库列用全称
     # 这里做字段映射
-    trackpoints = result["trackpoints"]
+    # trackpoints 已在步骤 5.5 中定义
     for batch_start in range(0, len(trackpoints), _BATCH_SIZE):
         batch = trackpoints[batch_start:batch_start + _BATCH_SIZE]
         tp_objects = []
@@ -144,8 +158,15 @@ def _do_parse(db, activity_id: int) -> None:
     db.commit()
 
     # ===== 步骤 11：触发 Segment 匹配 =====
-    # Task 4 中实现，当前跳过
-    # segment.service.match_activity_against_segments(activity_id, db)
+    # 活动已标记 completed 并 commit，现在触发赛段自动匹配。
+    # 匹配是"尽力而为"：失败不影响活动状态（status 已经是 completed）。
+    # 单独 try/except 隔离，防止匹配异常被上层 _mark_failed 捕获而误改活动状态。
+    try:
+        from app.segment.auto_match import match_activity_against_segments
+        match_activity_against_segments(activity_id, db)
+    except Exception:
+        # 赛段匹配失败静默跳过，活动状态不受影响
+        db.rollback()
 
 
 def _mark_failed(db, activity_id: int, error_message: str) -> None:
