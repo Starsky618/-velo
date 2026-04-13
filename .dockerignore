@@ -1,0 +1,17 @@
+# 不需要进入 Docker 镜像的文件
+.env
+.env.example
+.git
+.gitignore
+.dockerignore
+__pycache__
+*.pyc
+tests/
+docs/
+uploads/
+venv/
+.venv/
+.DS_Store
+CLAUDE.md
+caddy_data/
+caddy_config/

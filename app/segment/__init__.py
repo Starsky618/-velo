@@ -13,9 +13,11 @@
 
 模块内部文件分工：
 - models.py：数据库表结构（Segment + SegmentEffort）
+- coord_convert.py：GCJ-02 → WGS-84 坐标系转换（纯函数，确保赛段和轨迹在同一坐标系）
 - matcher.py：GPS 精确匹配算法（纯函数，Task 4.3）
-- service.py：业务逻辑（创建赛段、自动匹配、排行榜查询）
-- router.py：API 路由（/api/segments/...）
+- auto_match.py：自动匹配引擎（Worker 调用，Task 4.4，从 service.py 拆出）
+- service.py：业务逻辑（创建赛段、查询列表/详情、排行榜、用户成绩）
+- router.py：API 路由（/api/segments/... + /api/user/efforts）
 - schemas.py：请求/响应格式
 
 注意事项：

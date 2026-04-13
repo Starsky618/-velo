@@ -25,3 +25,6 @@ Thumbs.db
 # Docker
 caddy_data/
 caddy_config/
+
+# Superpowers 工具内部文件
+.superpowers/
