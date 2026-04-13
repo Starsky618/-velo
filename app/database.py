@@ -19,7 +19,17 @@ from app.config import settings
 # 创建数据库引擎——相当于打通了程序到数据库的"管道"
 # pool_pre_ping=True：每次从连接池借连接前先"敲一下门"，
 # 确认连接还活着，避免用到已断开的死连接
-engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+# pool_size=8：常驻 8 个连接（注意：每个进程独立连接池，
+#   2 个 uvicorn worker + 1 个 rq worker = 实际 24 个基础连接）
+# max_overflow=12：峰值时临时扩展到 20 个/进程，用完归还
+# pool_recycle=3600：每小时回收连接，防止数据库重启后出现死连接
+engine = create_engine(
+    settings.DATABASE_URL,
+    pool_size=8,
+    max_overflow=12,
+    pool_recycle=3600,
+    pool_pre_ping=True,
+)
 
 # session 工厂——每次调用 SessionLocal() 就会生产一个新的数据库会话
 # 可以理解为"钥匙复制机"，需要操作数据库时复制一把钥匙，用完归还
