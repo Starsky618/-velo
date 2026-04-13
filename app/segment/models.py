@@ -119,4 +119,7 @@ class SegmentEffort(Base):
         Index("idx_efforts_segment_time", "segment_id", "elapsed_time"),
         # 用户成绩查询索引
         Index("idx_efforts_user", "user_id"),
+        # PR 检测索引：查"用户在某赛段的最佳成绩"，三列支持 index-only scan
+        # 好比在档案馆建立"赛段→用户→用时"的三级目录，直接翻到结果，无需全表扫描
+        Index("idx_efforts_segment_user_time", "segment_id", "user_id", "elapsed_time"),
     )

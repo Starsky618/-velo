@@ -10,7 +10,7 @@
 赛段匹配时用 trackpoints（全量逐点数据，需要时间戳和传感器数据）。
 
 注意事项：
-- activities 表有 4 种状态：pending → processing → completed → failed
+- activities 表有 4 种状态：pending → processing → completed / failed（后两者是并列终态，不可互相转换）
 - 解析完成前（pending/processing），统计字段（distance 等）都是 NULL
 - trackpoints 的 geom 字段使用 PostGIS 的 POINT 类型，用于空间查询
 - 删除 activity 时，对应的 trackpoints 会自动级联删除（ON DELETE CASCADE）
@@ -20,7 +20,7 @@
 from geoalchemy2 import Geometry
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Text,
-    ForeignKey, Index, func,
+    ForeignKey, Index, UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -56,6 +56,11 @@ class Activity(Base):
 
     # GPX 文件存储路径（由 StorageBackend 管理）
     file_url = Column(Text, nullable=False)
+
+    # 文件内容的 SHA-256 哈希值（64 位十六进制字符串）
+    # 用于去重：同一用户上传完全相同的文件时，秒级拦截返回已有记录
+    # nullable=True：历史记录没有哈希值，不影响 UNIQUE 约束（NULL != NULL）
+    file_hash = Column(String(64), nullable=True)
 
     # 解析失败时的错误信息，方便排查问题
     error_message = Column(Text, nullable=True)
@@ -103,6 +108,8 @@ class Activity(Base):
     __table_args__ = (
         Index("idx_activities_user_status", "user_id", "status"),
         Index("idx_activities_user_started", "user_id", "started_at"),
+        # 同一用户 + 同一文件哈希 = 重复上传，数据库层最后防线
+        UniqueConstraint("user_id", "file_hash", name="uq_user_file_hash"),
     )
 
 
