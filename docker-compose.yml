@@ -1,0 +1,110 @@
+# RIDEMAP 生产环境编排文件
+#
+# 五个服务各司其职：
+# - db: PostgreSQL + PostGIS（数据库，存用户/活动/赛段数据）
+# - redis: Redis（任务队列，GPX 异步解析用）
+# - api: FastAPI 应用（对外提供 API）
+# - worker: rq Worker（后台异步解析 GPX + 赛段匹配）
+# - caddy: 反向代理（自动 HTTPS，微信小程序硬性要求）
+#
+# 使用方法：
+# 1. 复制 .env.example 为 .env，填入实际密钥
+# 2. 修改 Caddyfile 中的域名
+# 3. docker-compose up -d
+# 4. docker-compose exec api alembic upgrade head（初始化数据库表）
+#
+# 日志查看：docker-compose logs -f api / worker
+
+version: "3.8"
+
+services:
+  # ===== 数据库：PostgreSQL 16 + PostGIS 3.4 =====
+  # PostGIS 提供空间查询能力（赛段匹配的 ST_DWithin 等函数依赖它）
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ridemap
+      POSTGRES_USER: ridemap
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"  # 只监听本机，不暴露到公网
+
+  # ===== Redis：任务队列后端 =====
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  # ===== API 服务：FastAPI =====
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+      WX_APPID: ${WX_APPID}
+      WX_SECRET: ${WX_SECRET}
+    expose:
+      - "8000"  # 只对 Caddy 可见，不暴露到公网
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - uploads:/app/uploads
+
+  # ===== Worker：异步任务处理 =====
+  # 和 API 用同一个镜像，只是启动命令不同
+  worker:
+    build: .
+    command: python worker.py
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - uploads:/app/uploads
+
+  # ===== Cleanup：定时僵尸回收 =====
+  # 每 5 分钟运行一次清理脚本，回收孤儿 activity + 孤儿文件
+  cleanup:
+    build: .
+    command: sh -c "cp /app/crontab /etc/crontabs/root && crond -f -l 2"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - uploads:/app/uploads
+
+  # ===== Caddy：反向代理 + 自动 HTTPS =====
+  # 微信小程序强制要求 HTTPS，Caddy 自动申请 Let's Encrypt 证书
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"    # HTTP（证书验证 + 自动跳转 HTTPS）
+      - "443:443"  # HTTPS
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+volumes:
+  pgdata:      # 数据库持久化
+  uploads:     # GPX 文件存储
+  caddy_data:  # SSL 证书存储
+  caddy_config:

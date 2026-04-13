@@ -1,0 +1,80 @@
+# 本地开发专用编排文件
+#
+# 和生产版的区别：
+# - 不启动 Caddy（本地不需要 HTTPS）
+# - API 端口直接暴露到 localhost:8000
+# - 微信凭证用占位符（本地不需要真实登录）
+#
+# 使用方法：
+# docker compose -f docker-compose.dev.yml up -d
+# docker compose -f docker-compose.dev.yml exec api alembic upgrade head
+# docker compose -f docker-compose.dev.yml logs -f api worker
+
+version: "3.8"
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ridemap
+      POSTGRES_USER: ridemap
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5434:5432"  # 映射到 5434 避免和本地 PostgreSQL 冲突
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+      WX_APPID: ${WX_APPID}
+      WX_SECRET: ${WX_SECRET}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - uploads:/app/uploads
+
+  worker:
+    build: .
+    command: python worker.py
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - uploads:/app/uploads
+
+  cleanup:
+    build: .
+    command: sh -c "cp /app/crontab /etc/crontabs/root && crond -f -l 2"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - uploads:/app/uploads
+
+volumes:
+  pgdata:
+  uploads:
