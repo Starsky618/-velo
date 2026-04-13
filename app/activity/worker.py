@@ -24,6 +24,8 @@ rq Worker（根目录的 worker.py）从队列中取出任务，调用这里的 
 - Segment 匹配（步骤 11）在 Task 4 中实现，当前留空跳过
 """
 
+from sqlalchemy import update, func
+
 from app.activity.gpx_parser import GPXParseError, parse_gpx
 from app.activity.power_zones import calculate_power_zones
 from app.activity.models import Activity, Trackpoint
@@ -69,12 +71,30 @@ def parse_activity(activity_id: int) -> None:
 
 def _do_parse(db, activity_id: int) -> None:
     """
-    解析的核心流程（12 步），拆成独立函数方便异常处理包裹。
+    解析的核心流程，拆成独立函数方便异常处理包裹。
     """
-    # ===== 步骤 1-2：取记录 =====
+    # ===== 步骤 1：原子抢锁 =====
+    # 一条 SQL 同时完成"检查状态是 pending + 改为 processing"，
+    # 由 PostgreSQL 保证原子性。如果另一个 Worker 已经抢到了这条任务，
+    # WHERE status='pending' 不匹配 → 返回空 → 当前 Worker 直接退出。
+    # 这就像自动售货机的"投币锁"：第一个硬币锁住商品，第二个硬币退回。
+    result = db.execute(
+        update(Activity)
+        .where(Activity.id == activity_id, Activity.status == "pending")
+        .values(status="processing", updated_at=func.now())
+        .returning(Activity.id)
+    )
+    locked_row = result.fetchone()
+    db.commit()  # 提交状态变更，让其他进程能看到
+
+    if locked_row is None:
+        # 任务已被其他 Worker 抢走，或状态不是 pending（已处理/已失败）
+        return
+
+    # ===== 步骤 2：取完整记录 =====
     activity = db.query(Activity).filter_by(id=activity_id).first()
     if activity is None:
-        raise ValueError(f"Activity {activity_id} 不存在")
+        return
 
     user = db.query(User).filter_by(id=activity.user_id).first()
     if user is None:
@@ -83,11 +103,7 @@ def _do_parse(db, activity_id: int) -> None:
     # ===== 步骤 3：下载 GPX 文件 =====
     gpx_content = _storage.download(activity.file_url)
 
-    # ===== 步骤 4：更新状态为 processing =====
-    activity.status = "processing"
-    db.commit()
-
-    # ===== 步骤 5：解析 GPX =====
+    # ===== 步骤 4：解析 GPX =====
     # weight 用于无功率时的卡路里估算，默认 70kg
     weight = float(user.weight) if user.weight else 70.0
     result = parse_gpx(gpx_content, weight=weight)
