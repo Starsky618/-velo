@@ -92,6 +92,7 @@ _activities_table = Table(
     Column("title", String(128)),
     Column("status", String(20), default="pending"),
     Column("file_url", Text, default=""),
+    Column("file_hash", String(64)),           # SHA-256 去重哈希
     Column("error_message", Text),
     Column("distance", Float),
     Column("duration", Integer),
