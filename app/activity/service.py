@@ -10,10 +10,12 @@ router 是前台接待员（接请求、回结果），service 是后台办事�
 - 队列操作通过 rq 完成，不直接碰 Redis
 """
 
+import hashlib
 from datetime import datetime, timezone
 
 from redis import Redis
 from rq import Queue
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.activity.models import Activity
@@ -84,30 +86,64 @@ def upload_gpx(db: Session, user_id: int, filename: str, file_bytes: bytes) -> A
     处理 GPX 文件上传的完整流程。
 
     步骤：
-    1. 存储文件 → 拿到 file_url
-    2. 创建 Activity 记录（status=pending）
-    3. 把解析任务扔进队列
+    1. 计算文件哈希 → 检查是否重复
+    2. 存储文件 → 拿到 file_url
+    3. 创建 Activity 记录（status=pending）
+    4. 把解析任务扔进队列
 
     返回新建的 Activity 对象（前端用 activity_id 查进度）。
+    如果是重复文件，直接返回已有记录，不重新创建。
     """
-    # 第一步：存储文件
+    # 第一步：计算文件 SHA-256 哈希（64 字符十六进制）
+    # SHA-256 好比给文件做"指纹"——只要文件内容完全相同，指纹就一定相同。
+    # 哪怕只改了一个字节，指纹就会完全不同，因此可以用来精准判断是否重复。
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+
+    # 第二步：检查是否已有同文件（同用户 + 同哈希 = 重复上传）
+    # 同一用户传了同样的 GPX 文件 → 直接返回已有记录，不重新创建，也不报错
+    existing = db.query(Activity).filter_by(
+        user_id=user_id, file_hash=file_hash
+    ).first()
+    if existing:
+        return existing  # 秒返已有记录，不报错、不创建新记录
+
+    # 第三步：存储文件
     try:
         file_url = _storage.upload(file_bytes, filename)
     except Exception:
         raise RuntimeError("文件上传失败")
 
-    # 第二步：创建数据库记录
+    # 第四步：创建数据库记录
     activity = Activity(
         user_id=user_id,
         file_url=file_url,
-        status="pending",  # 显式赋值，不依赖 server_default（SQLite 测试兼容）
+        file_hash=file_hash,
+        status="pending",
     )
     db.add(activity)
-    db.commit()
+
+    # 并发兜底：如果两个请求同时通过了应用层检查（都没查到已有记录），
+    # 数据库的 UNIQUE(user_id, file_hash) 约束会让第二个 INSERT 抛异常。
+    # 就像同时有两个人去领最后一张号码牌，第一个人拿到，第二个人就拿不到——
+    # 数据库层面确保了只有一条记录能被真正写进去，保证数据一致性。
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # 捕获到唯一约束冲突，说明另一个并发请求已经抢先写入了，
+        # 查出已有记录返回即可，不向上抛错（对用户来说这不是错误）
+        existing = db.query(Activity).filter_by(
+            user_id=user_id, file_hash=file_hash
+        ).first()
+        if existing:
+            return existing
+        raise  # 不是哈希冲突的 IntegrityError（如外键错误），重新抛出让上层处理
+
     db.refresh(activity)
 
-    # 第三步：入队列，让 Worker 异步解析
-    _queue.enqueue(parse_activity, activity.id)
+    # 第五步：入队列，让 Worker 异步解析
+    # job_timeout=120：Worker 最多允许跑 2 分钟，超时强制终止，防止 Worker 进程卡死
+    _queue.enqueue(parse_activity, activity.id, job_timeout=120)
 
     return activity
 
