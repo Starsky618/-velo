@@ -20,6 +20,7 @@ import pytest
 from app.activity.gpx_parser import GPXParseError, parse_gpx
 from app.activity.power_zones import calculate_power_zones
 from app.activity.simplify import simplify_track
+from app.activity import service
 
 # fixture 文件路径
 _FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -478,3 +479,28 @@ def test_29_update_title_too_long(client, auth_header, db, test_user):
         headers=auth_header,
     )
     assert resp.status_code == 422
+
+
+# ==================== 30-31：轨迹点数量校验 ====================
+
+def test_validate_gpx_rejects_too_many_trackpoints():
+    """轨迹点超过 50000 个的 GPX 应被拒绝"""
+    header = b'<?xml version="1.0"?><gpx><trk><trkseg>'
+    point = b'<trkpt lat="0" lon="0"></trkpt>'
+    body = point * 50001
+    footer = b'</trkseg></trk></gpx>'
+    big_gpx = header + body + footer
+
+    with pytest.raises(ValueError, match="轨迹点过多"):
+        service.validate_gpx_file("test.gpx", big_gpx)
+
+
+def test_validate_gpx_accepts_normal_trackpoints():
+    """正常数量的轨迹点应通过校验"""
+    header = b'<?xml version="1.0"?><gpx><trk><trkseg>'
+    point = b'<trkpt lat="0" lon="0"></trkpt>'
+    body = point * 100
+    footer = b'</trkseg></trk></gpx>'
+    normal_gpx = header + body + footer
+
+    service.validate_gpx_file("test.gpx", normal_gpx)

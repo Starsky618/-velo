@@ -10,6 +10,8 @@ router 是前台接待员（接请求、回结果），service 是后台办事�
 - 队列操作通过 rq 完成，不直接碰 Redis
 """
 
+from datetime import datetime, timezone
+
 from redis import Redis
 from rq import Queue
 from sqlalchemy.orm import Session
@@ -28,6 +30,14 @@ _queue = Queue("ridemap", connection=_redis_conn)
 
 # 文件大小上限：50MB
 _MAX_FILE_SIZE = 50 * 1024 * 1024
+
+# 轨迹点数量上限：50000 个点 ≈ 14 小时连续记录（1 秒/点）
+# 超大轨迹解析时内存峰值可达 400MB+，4G 服务器上会触发 OOM
+_MAX_TRACKPOINTS = 50_000
+
+# Worker 解析超时阈值：10 分钟（600 秒）
+# 超过这个时间还在 processing，说明 Worker 卡死了，标记为 failed
+_PROCESSING_TIMEOUT = 10 * 60
 
 
 def validate_gpx_file(filename: str, file_bytes: bytes) -> None:
@@ -58,6 +68,15 @@ def validate_gpx_file(filename: str, file_bytes: bytes) -> None:
 
     if not (header_str.startswith("<?xml") or header_str.startswith("<gpx")):
         raise ValueError("文件内容不是有效的GPX格式")
+
+    # 关卡 4：轨迹点数量预检（轻量字节扫描，不解析 XML）
+    # GPX 中每个轨迹点以 <trkpt 标签开头，数标签数 ≈ 数轨迹点数
+    # 纯字节扫描 50MB 耗时毫秒级，不建 DOM 树，不吃额外内存
+    trkpt_count = file_bytes.count(b"<trkpt")
+    if trkpt_count > _MAX_TRACKPOINTS:
+        raise ValueError(
+            f"轨迹点过多（{trkpt_count} 个，上限 {_MAX_TRACKPOINTS} 个，约 14 小时骑行）"
+        )
 
 
 def upload_gpx(db: Session, user_id: int, filename: str, file_bytes: bytes) -> Activity:
@@ -177,8 +196,8 @@ def delete_activity(db: Session, activity_id: int, user_id: int) -> None:
     if activity.user_id != user_id:
         raise PermissionError("无权删除此活动")
 
-    # TODO(Task 4): segment_efforts 表创建后，需确认其外键设置了 ON DELETE CASCADE，
-    # 否则需要在这里手动删除关联的 segment_efforts 记录
+    # segment_efforts 的 activity_id 外键已设置 ON DELETE CASCADE（见 segment/models.py），
+    # 删除活动时数据库会自动级联删除关联的赛段成绩记录，无需手动处理
 
     # 删除存储的 GPX 文件（忽略删除失败，文件可能已被清理）
     try:
@@ -195,10 +214,28 @@ def get_activity_status(db: Session, activity_id: int, user_id: int) -> Activity
     """
     获取活动的解析状态（供前端轮询）。
     只允许查看自己的活动。
+
+    超时保护（方案 A）：
+    如果活动卡在 processing 超过 10 分钟，自动标记为 failed。
+    这是轻量级方案——只在用户轮询时触发判断，不需要额外的定时任务。
+    未来流量大了可以叠加定时扫描方案，两者不冲突。
     """
     activity = db.query(Activity).filter_by(id=activity_id).first()
     if activity is None:
         raise ValueError("活动不存在")
     if activity.user_id != user_id:
         raise PermissionError("无权查看此活动")
+
+    # 超时保护：processing 超过 10 分钟视为失败
+    # updated_at 在 Worker 开始解析时会被更新为 processing 的时间戳，
+    # 如果距今超过 10 分钟还没完成，说明 Worker 卡死或崩溃了
+    # 用 datetime.now(timezone.utc) 替代已弃用的 datetime.utcnow()（Python 3.12+）
+    if activity.status == "processing" and activity.updated_at:
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        elapsed = now_utc - activity.updated_at
+        if elapsed.total_seconds() > _PROCESSING_TIMEOUT:
+            activity.status = "failed"
+            activity.error_message = "解析超时，请重新上传"
+            db.commit()
+
     return activity
