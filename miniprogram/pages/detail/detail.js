@@ -13,6 +13,7 @@
  */
 
 var api = require('../../utils/api')
+var bindchart = require('../../utils/bindchart')
 
 // ────── 纯工具函数（不依赖页面实例，可独立测试） ──────
 
@@ -141,6 +142,8 @@ Page({
     // 途经赛段（从 /api/activities/{id}/segments 获取）
     segments: [],             // 格式化后的赛段列表
     hasSegments: false,
+    // 时序数据（从 /api/activities/{id}/timeseries 获取，供绘制曲线图）
+    hasTimeseries: false,
   },
 
   // 海拔剖面原始数据 — 不放 data 里，因为不需要渲染到模板，
@@ -150,19 +153,24 @@ Page({
   onLoad: function (options) {
     if (options.id) {
       this.activityId = options.id
+      // 三个请求并行发起，互不依赖，谁先回来谁先渲染
       this.fetchDetail(options.id)
       this.fetchSegments(options.id)
+      this.fetchTimeseries(options.id)
     }
   },
 
-  // 页面重新显示时重绘 Canvas（某些低端机型切走再切回会回收 Canvas 导致白屏）
+  // 页面重新显示时重绘所有 Canvas（某些低端机型切走再切回会回收 Canvas 导致白屏）
   onShow: function () {
-    if (this.elevationData && this.elevationData.length > 0) {
-      var that = this
-      wx.nextTick(function () {
+    var that = this
+    wx.nextTick(function () {
+      if (that.elevationData && that.elevationData.length > 0) {
         that.drawElevationProfile()
-      })
-    }
+      }
+      if (that.timeseriesData) {
+        that.bindTimeseriesCharts()
+      }
+    })
   },
 
   fetchDetail: function (id) {
@@ -245,6 +253,51 @@ Page({
   },
 
   /**
+   * 获取时序数据（速度/功率/心率/踏频的逐点采样）
+   *
+   * 和 fetchDetail、fetchSegments 并行发起。
+   * 数据到达后触发曲线图绘制。
+   */
+  fetchTimeseries: function (id) {
+    var that = this
+    api.get('/api/activities/' + id + '/timeseries?points=500')
+      .then(function (data) {
+        if (!data || !data.distances || data.distances.length < 2) return
+        that.timeseriesData = data
+        that.setData({ hasTimeseries: true }, function () {
+          wx.nextTick(function () {
+            that.bindTimeseriesCharts()
+          })
+        })
+      })
+      .catch(function () {
+        // 时序数据加载失败不影响主页面，静默忽略
+      })
+  },
+
+  /**
+   * 绑制所有时序曲线图
+   *
+   * 使用通用绘图工具 bindchart.js，传入不同数据和颜色。
+   * 每个图表独立一个 canvas，互不干扰。
+   */
+  bindTimeseriesCharts: function () {
+    var data = this.timeseriesData
+    if (!data) return
+
+    // 速度曲线（蓝色，始终绘制）
+    if (data.speeds) {
+      bindchart.bindLineChart(this, '#speedCanvas', {
+        xData: data.distances,
+        yData: data.speeds,
+        color: '#5AC8FA',
+        yUnit: 'km/h',
+        fill: true,
+      })
+    }
+  },
+
+  /**
    * 在 Canvas 上绘制海拔剖面图 — Strava 风格灰色填充面积图
    *
    * 绘制步骤（按画家算法，先画底层再画上层）：
@@ -280,6 +333,9 @@ Page({
         canvas.width = width * dpr
         canvas.height = height * dpr
         ctx.scale(dpr, dpr)
+
+        // 清空画布（onShow 重绘时防止半透明填充叠加变深）
+        ctx.clearRect(0, 0, width, height)
 
         // ── 布局参数 ──
         // 为坐标轴标签留出空间：左侧放 Y 轴数字，底部放 X 轴数字

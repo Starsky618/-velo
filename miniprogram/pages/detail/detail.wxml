@@ -85,11 +85,14 @@
     </view>
   </view>
 
-  <!-- ====== 速度卡片 ====== -->
+  <!-- ====== 速度卡片（含曲线图） ====== -->
   <view class="section-card">
     <view class="section-header">
       <view class="section-dot speed"></view>
       <text class="section-title">速度</text>
+    </view>
+    <view class="chart-canvas-wrap" wx:if="{{hasTimeseries}}">
+      <canvas type="2d" id="speedCanvas" class="chart-canvas"></canvas>
     </view>
     <view class="metric-row">
       <view class="metric">
