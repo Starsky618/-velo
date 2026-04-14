@@ -1,10 +1,10 @@
 # RIDEMAP 反向代理配置
 #
-# Caddy 会自动为这个域名申请 Let's Encrypt SSL 证书。
-# 部署前把 api.ridemap.cn 替换为你的实际域名。
-# 前置条件：域名的 A 记录已指向服务器 IP，服务器开放 80/443 端口。
+# 当前无域名，监听 :80 接受所有请求。
+# 域名备案通过后改回 api.synexis.top（或其他域名），Caddy 会自动申请 HTTPS。
+# 前置条件：域名 A 记录指向服务器 IP，服务器开放 80/443 端口。
 
-api.ridemap.cn {
+:80 {
     # 赛段创建等管理工具（静态 HTML 文件）
     handle /tools/* {
         root * /app

@@ -12,7 +12,8 @@ WORKDIR /app
 # 先复制依赖清单，利用 Docker 缓存：
 # 只要 requirements.txt 没变，下次构建就跳过 pip install（省几分钟）
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 使用腾讯云 pip 镜像（服务器在腾讯云，走内网下载，速度从分钟级降到秒级）
+RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple --trusted-host mirrors.cloud.tencent.com
 
 # 再复制全部代码
 COPY . .
