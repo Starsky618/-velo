@@ -109,6 +109,61 @@
   background: rgba(255, 255, 255, 0.12);
 }
 
+/* ══════ 海拔剖面图 ══════ */
+
+/*
+ * 海拔区块的标题用 Strava 风格：大号加粗，没有彩色圆点。
+ * 和下面速度/功率/心率卡片的小圆点标题形成层级差异——
+ * 海拔是"大区块"（有图表），速度等是"数据卡片"（纯数字）。
+ */
+.elevation-header {
+  margin-bottom: 16rpx;
+}
+
+.elevation-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  letter-spacing: -0.5rpx;
+}
+
+/* Canvas 容器：固定高度，宽度撑满卡片 */
+.elevation-canvas-wrap {
+  width: 100%;
+  height: 300rpx;
+}
+
+.elevation-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* 海拔汇总数据（图表下方的"爬升海拔"/"最高海拔"） */
+.elevation-stats {
+  margin-top: 20rpx;
+  padding-top: 16rpx;
+  border-top: 2rpx solid var(--color-divider);
+}
+
+.elevation-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14rpx 0;
+}
+
+/* 和 Strava 保持一致：左侧标签偏灰，右侧数值加粗 */
+.elevation-stat-label {
+  font-size: 28rpx;
+  color: var(--color-text-2);
+}
+
+.elevation-stat-value {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+}
+
 /* ══════ 数据卡片通用 ══════ */
 .section-card {
   margin: 0 24rpx 20rpx;

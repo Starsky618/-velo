@@ -1,6 +1,7 @@
 <!--
   骑行详情页 — 一次骑行的完整报告
-  设计参考：ridemap.jsx 的 ActivityDetail + Apple Fitness 风格
+  设计参考：Strava 骑行详情 + Apple Fitness 卡片风格
+  布局顺序：hero → 海拔剖面 → 速度 → 功率 → 心率 → 分段表
 -->
 
 <!-- 加载中 -->
@@ -31,9 +32,29 @@
       </view>
       <view class="hero-sep"></view>
       <view class="hero-item">
-        <text class="hero-value">{{activity.elevation_gain || 0}}</text>
+        <text class="hero-value">{{elevationGainText}}</text>
         <text class="hero-unit">m</text>
         <text class="hero-label">爬升</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 海拔剖面图（Strava 风格灰色面积图） ====== -->
+  <view class="section-card" wx:if="{{hasElevation}}">
+    <view class="elevation-header">
+      <text class="elevation-title">海拔</text>
+    </view>
+    <view class="elevation-canvas-wrap">
+      <canvas type="2d" id="elevationCanvas" class="elevation-canvas"></canvas>
+    </view>
+    <view class="elevation-stats">
+      <view class="elevation-stat-row">
+        <text class="elevation-stat-label">爬升海拔</text>
+        <text class="elevation-stat-value">{{elevationGainText}} m</text>
+      </view>
+      <view class="elevation-stat-row">
+        <text class="elevation-stat-label">最高海拔</text>
+        <text class="elevation-stat-value">{{maxElevation}} m</text>
       </view>
     </view>
   </view>
