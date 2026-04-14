@@ -448,6 +448,7 @@ def get_activity_segments(db: Session, activity_id: int, user_id: int) -> list[d
         )
         .join(Segment, Segment.id == SegmentEffort.segment_id)
         .filter(SegmentEffort.activity_id == activity_id)
+        .order_by(SegmentEffort.start_index)
         .all()
     )
 
