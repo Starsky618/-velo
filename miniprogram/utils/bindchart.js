@@ -285,22 +285,24 @@ function bindLineChart(page, selector, opts) {
           ctx.lineTo(toX(seg[seg.length - 1].x), pad.top + chartH)
           ctx.lineTo(toX(seg[0].x), pad.top + chartH)
           ctx.closePath()
-          ctx.fillStyle = hexToRgba(color, 0.15)
+          ctx.fillStyle = hexToRgba(color, 0.5)
           ctx.fill()
         }
       }
 
-      // ── 6. 主数据线条 ──
-      for (var s = 0; s < segments.length; s++) {
-        var seg = segments[s]
-        ctx.beginPath()
-        ctx.moveTo(toX(seg[0].x), toY(seg[0].y))
-        for (var j = 1; j < seg.length; j++) {
-          ctx.lineTo(toX(seg[j].x), toY(seg[j].y))
+      // ── 6. 主数据线条（不填充时才画描边，填充模式下填充边缘就是视觉边界） ──
+      if (!fill) {
+        for (var s = 0; s < segments.length; s++) {
+          var seg = segments[s]
+          ctx.beginPath()
+          ctx.moveTo(toX(seg[0].x), toY(seg[0].y))
+          for (var j = 1; j < seg.length; j++) {
+            ctx.lineTo(toX(seg[j].x), toY(seg[j].y))
+          }
+          ctx.strokeStyle = color
+          ctx.lineWidth = 1.5
+          ctx.stroke()
         }
-        ctx.strokeStyle = color
-        ctx.lineWidth = 1.5
-        ctx.stroke()
       }
 
       // ── 7. 坐标轴标签（最上层） ──
