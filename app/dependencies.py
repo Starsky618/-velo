@@ -16,7 +16,7 @@ FastAPI 的依赖注入机制就像机场安检：
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, ExpiredSignatureError
+from jwt import InvalidTokenError as JWTError, ExpiredSignatureError
 
 from app.user.service import decode_token
 
