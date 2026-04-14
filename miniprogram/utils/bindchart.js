@@ -231,8 +231,12 @@ function bindLineChart(page, selector, opts) {
           eleRange = eleMax - eleMin
 
           // 海拔的 Y 坐标转换（独立于主数据的 Y 轴）
+          // 关键：海拔只占图表下方 60% 的高度，上方 40% 留给主数据曲线。
+          // 这样海拔山峰最高只到图表中部，主数据在上方穿行，
+          // 形成 Strava 那种"前景穿过地形"的视觉层次。
+          var eleTopOffset = chartH * 0.4 // 海拔区域从 40% 处开始
           function toEleY(ele) {
-            return pad.top + (1 - (ele - eleMin) / eleRange) * chartH
+            return pad.top + eleTopOffset + (1 - (ele - eleMin) / eleRange) * (chartH - eleTopOffset)
           }
 
           // 画灰色填充面积
