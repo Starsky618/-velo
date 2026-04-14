@@ -138,6 +138,28 @@ def delete_activity(
         raise HTTPException(status_code=403, detail=str(e))
 
 
+@router.get("/{activity_id}/timeseries", response_model=schemas.TimeseriesResponse)
+def get_activity_timeseries(
+    activity_id: int,
+    points: int = Query(500, ge=50, le=2000, description="采样点数"),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    获取骑行时序数据（供前端画速度/功率/心率曲线）。
+
+    从原始轨迹点中等间隔采样，返回等长数组。
+    points 参数控制采样密度，默认 500（手机屏幕够用）。
+    """
+    try:
+        data = service.get_activity_timeseries(db, activity_id, user_id, points)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    return data
+
+
 @router.get("/{activity_id}/status", response_model=schemas.ActivityStatusResponse)
 def get_activity_status(
     activity_id: int,

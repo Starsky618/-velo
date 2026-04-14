@@ -97,3 +97,23 @@ class ActivityStatusResponse(BaseModel):
     """解析状态轮询响应"""
     status: str
     error_message: Optional[str] = None
+
+
+# ========== 时序数据（供前端画速度/功率/心率曲线） ==========
+
+class TimeseriesResponse(BaseModel):
+    """
+    时序数据响应——"骑行过程的连续心电图"。
+
+    前端拿到这些等长数组后，以 distances 为 X 轴，
+    分别画出速度、功率、心率、海拔的连续曲线。
+
+    所有数组长度相同（采样后的点数）。
+    无传感器数据的字段整个数组为 null（不是数组里每个元素为 null）。
+    """
+    distances: list[float]                        # 累计公里数（X 轴）
+    elevations: list[Optional[float]]             # 海拔 m
+    speeds: list[Optional[float]]                 # 速度 km/h
+    powers: Optional[list[Optional[float]]] = None       # 功率 W（无功率计则整个为 null）
+    heart_rates: Optional[list[Optional[float]]] = None  # 心率 bpm（无心率带则整个为 null）
+    cadences: Optional[list[Optional[float]]] = None     # 踏频 rpm（无踏频传感器则整个为 null）

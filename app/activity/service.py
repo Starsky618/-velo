@@ -11,6 +11,7 @@ router 是前台接待员（接请求、回结果），service 是后台办事�
 """
 
 import hashlib
+import math
 from datetime import datetime, timezone
 
 from redis import Redis
@@ -18,7 +19,7 @@ from rq import Queue
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.activity.models import Activity
+from app.activity.models import Activity, Trackpoint
 from app.activity.worker import parse_activity
 from app.config import settings
 from app.storage.local import LocalStorage
@@ -275,3 +276,164 @@ def get_activity_status(db: Session, activity_id: int, user_id: int) -> Activity
             db.commit()
 
     return activity
+
+
+# ========== 时序数据（供前端画曲线图） ==========
+
+def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Haversine 公式——算两个 GPS 点之间的地表距离（米）。
+
+    和前端 detail.js 里的同名函数完全一致，只不过一个是 Python 一个是 JS。
+    这里用于计算轨迹点之间的累计距离，作为时序数据的 X 轴。
+    """
+    R = 6371000  # 地球平均半径（米）
+    to_rad = math.pi / 180
+    d_lat = (lat2 - lat1) * to_rad
+    d_lon = (lon2 - lon1) * to_rad
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(lat1 * to_rad) * math.cos(lat2 * to_rad)
+        * math.sin(d_lon / 2) ** 2
+    )
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _sample_indices(total: int, max_points: int) -> list[int]:
+    """
+    等间隔采样——从 total 个点中选出 max_points 个的索引。
+    确保首尾点都包含。点数不足时全部保留。
+    """
+    if total <= max_points:
+        return list(range(total))
+    return [round(i * (total - 1) / (max_points - 1)) for i in range(max_points)]
+
+
+def _cumulative_distances(rows) -> list[float]:
+    """
+    预计算所有轨迹点的累计距离（米），返回等长数组。
+
+    对全量点逐点累加（而非只算采样点之间的直线距离），
+    因为采样点之间可能隔了几十个原始点，直线会"抄近路"，
+    比实际骑行距离短。逐点累加才准确。
+
+    内存：50000 个 float ≈ 0.4MB，安全。
+    """
+    n = len(rows)
+    cum = [0.0] * n
+    for i in range(1, n):
+        cum[i] = cum[i - 1] + _haversine(
+            rows[i - 1].latitude, rows[i - 1].longitude,
+            rows[i].latitude, rows[i].longitude,
+        )
+    return cum
+
+
+# GPS 抖动过滤阈值：骑行不可能超过 120 km/h
+# 与 gpx_parser.py 中的漂移过滤保持一致
+_MAX_CYCLING_SPEED_KMH = 120
+
+
+def _build_timeseries_arrays(rows, sampled_indices, cum_distances) -> dict:
+    """
+    从采样点构建前端可直接画图的数组。
+
+    每个采样点提取：距离、海拔、速度、功率、心率、踏频。
+    速度由相邻采样点的 距离差/时间差 计算，天然平滑。
+    第一个点的速度为 None（没有"前一段"可参照）。
+    无传感器数据的字段整个数组返回 None（而非数组里填 None）。
+    """
+    distances, elevations, speeds = [], [], []
+    powers_list, hr_list, cadence_list = [], [], []
+    has_power = has_hr = has_cadence = False
+
+    for pos, idx in enumerate(sampled_indices):
+        row = rows[idx]
+        dist_m = cum_distances[idx]
+
+        # 速度：当前采样点和上一个采样点之间的 距离差/时间差
+        speed = None
+        if pos > 0:
+            prev_idx = sampled_indices[pos - 1]
+            prev_row = rows[prev_idx]
+            if row.timestamp and prev_row.timestamp:
+                dist_diff = dist_m - cum_distances[prev_idx]
+                time_diff = (row.timestamp - prev_row.timestamp).total_seconds()
+                if time_diff > 0:
+                    speed = round((dist_diff / time_diff) * 3.6, 1)
+                    if speed > _MAX_CYCLING_SPEED_KMH:
+                        speed = None
+
+        distances.append(round(dist_m / 1000, 3))
+        elevations.append(round(row.elevation, 1) if row.elevation is not None else None)
+        speeds.append(speed)
+
+        if row.power is not None:
+            has_power = True
+        powers_list.append(float(row.power) if row.power is not None else None)
+
+        if row.heart_rate is not None:
+            has_hr = True
+        hr_list.append(float(row.heart_rate) if row.heart_rate is not None else None)
+
+        if row.cadence is not None:
+            has_cadence = True
+        cadence_list.append(float(row.cadence) if row.cadence is not None else None)
+
+    return {
+        "distances": distances,
+        "elevations": elevations,
+        "speeds": speeds,
+        "powers": powers_list if has_power else None,
+        "heart_rates": hr_list if has_hr else None,
+        "cadences": cadence_list if has_cadence else None,
+    }
+
+
+def get_activity_timeseries(
+    db: Session, activity_id: int, user_id: int, max_points: int = 500
+) -> dict:
+    """
+    获取骑行的时序数据——从原始轨迹点中等间隔采样，返回前端可直接画图的数组。
+
+    类比：原始 trackpoints 好比一段 4K 视频（每帧都有），
+    而前端屏幕只有几百个像素宽——全量返回是浪费。
+    这个函数就是"降分辨率"：从几万个点中均匀抽出 500 个代表，
+    保留整体趋势，丢弃人眼分辨不出的细节。
+
+    内存预估：50000 行 x 7 列 ≈ 15MB，cum_distances ≈ 0.4MB，
+    输出列表 ≈ 2.4MB。峰值 ~18MB，受 _MAX_TRACKPOINTS 上限保护。
+    """
+    # ── 权限检查 ──
+    activity = db.query(Activity).filter_by(id=activity_id).first()
+    if activity is None:
+        raise ValueError("活动不存在")
+    if activity.user_id != user_id:
+        raise PermissionError("无权查看此活动")
+    if activity.status != "completed":
+        raise ValueError("活动尚未解析完成")
+
+    # ── 查询轨迹点（只取需要的列，不加载 geom 大字段，节省内存） ──
+    rows = (
+        db.query(
+            Trackpoint.latitude,
+            Trackpoint.longitude,
+            Trackpoint.elevation,
+            Trackpoint.timestamp,
+            Trackpoint.heart_rate,
+            Trackpoint.power,
+            Trackpoint.cadence,
+        )
+        .filter(Trackpoint.activity_id == activity_id)
+        .order_by(Trackpoint.seq)
+        .all()
+    )
+
+    total = len(rows)
+    if total < 2:
+        raise ValueError("轨迹点不足，无法生成时序数据")
+
+    # 三步流水线：采样 → 算距离 → 构建数组
+    indices = _sample_indices(total, max_points)
+    cum_dist = _cumulative_distances(rows)
+    return _build_timeseries_arrays(rows, indices, cum_dist)
