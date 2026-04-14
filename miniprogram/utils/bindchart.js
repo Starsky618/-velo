@@ -226,17 +226,16 @@ function bindLineChart(page, selector, opts) {
         if (eleMax > eleMin) {
           var eleRange = eleMax - eleMin
           if (eleRange < 20) eleRange = 20
-          eleMin = eleMin - eleRange * 0.05
-          eleMax = eleMax + eleRange * 0.1
+          // 海拔峰值尽量顶到图表上方（仅留 2% 余量），
+          // 底部也压缩，让山峰占据更多图表高度，
+          // 这样和前景数据（心率/功率等）产生更多交错区域
+          eleMin = eleMin - eleRange * 0.02
+          eleMax = eleMax + eleRange * 0.02
           eleRange = eleMax - eleMin
 
           // 海拔的 Y 坐标转换（独立于主数据的 Y 轴）
-          // 关键：海拔只占图表下方 60% 的高度，上方 40% 留给主数据曲线。
-          // 这样海拔山峰最高只到图表中部，主数据在上方穿行，
-          // 形成 Strava 那种"前景穿过地形"的视觉层次。
-          var eleTopOffset = chartH * 0.4 // 海拔区域从 40% 处开始
           function toEleY(ele) {
-            return pad.top + eleTopOffset + (1 - (ele - eleMin) / eleRange) * (chartH - eleTopOffset)
+            return pad.top + (1 - (ele - eleMin) / eleRange) * chartH
           }
 
           // 画灰色填充面积
@@ -259,7 +258,7 @@ function bindLineChart(page, selector, opts) {
           ctx.lineTo(lastValidX, pad.top + chartH)
           ctx.lineTo(toX(xData[0]), pad.top + chartH)
           ctx.closePath()
-          ctx.fillStyle = 'rgba(200, 200, 200, 0.35)'
+          ctx.fillStyle = 'rgba(180, 180, 180, 0.45)'
           ctx.fill()
         }
       }
