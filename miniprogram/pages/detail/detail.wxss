@@ -331,6 +331,7 @@
 .section-dot.speed { background: #5AC8FA; }
 .section-dot.power { background: #AF52DE; }
 .section-dot.hr { background: #FF2D55; }
+.section-dot.cadence { background: #FF6B9D; }
 .section-dot.split { background: #AF52DE; }
 
 .section-title {
@@ -365,6 +366,7 @@
 .metric-value.speed { color: #5AC8FA; }
 .metric-value.power { color: #AF52DE; }
 .metric-value.hr { color: #FF2D55; }
+.metric-value.cadence { color: #FF6B9D; }
 
 .metric-sub {
   font-size: 20rpx;

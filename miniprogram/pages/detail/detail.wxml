@@ -105,19 +105,17 @@
         <text class="metric-sub">km/h</text>
         <text class="metric-label">最高</text>
       </view>
-      <view class="metric" wx:if="{{activity.avg_cadence}}">
-        <text class="metric-value speed">{{activity.avg_cadence}}</text>
-        <text class="metric-sub">rpm</text>
-        <text class="metric-label">踏频</text>
-      </view>
     </view>
   </view>
 
-  <!-- ====== 功率卡片 ====== -->
+  <!-- ====== 功率卡片（含曲线图） ====== -->
   <view class="section-card" wx:if="{{activity.avg_power}}">
     <view class="section-header">
       <view class="section-dot power"></view>
       <text class="section-title">功率</text>
+    </view>
+    <view class="chart-canvas-wrap" wx:if="{{hasTimeseries && hasPowerChart}}">
+      <canvas type="2d" id="powerCanvas" class="chart-canvas"></canvas>
     </view>
     <view class="metric-row">
       <view class="metric">
@@ -151,11 +149,14 @@
     </view>
   </view>
 
-  <!-- ====== 心率卡片 ====== -->
+  <!-- ====== 心率卡片（含曲线图） ====== -->
   <view class="section-card" wx:if="{{activity.avg_hr}}">
     <view class="section-header">
       <view class="section-dot hr"></view>
       <text class="section-title">心率</text>
+    </view>
+    <view class="chart-canvas-wrap" wx:if="{{hasTimeseries && hasHrChart}}">
+      <canvas type="2d" id="hrCanvas" class="chart-canvas"></canvas>
     </view>
     <view class="metric-row">
       <view class="metric">
@@ -167,6 +168,24 @@
         <text class="metric-value hr">{{activity.max_hr || '-'}}</text>
         <text class="metric-sub">bpm</text>
         <text class="metric-label">最高</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 踏频卡片（含曲线图，仅有踏频数据时显示） ====== -->
+  <view class="section-card" wx:if="{{hasTimeseries && hasCadenceChart}}">
+    <view class="section-header">
+      <view class="section-dot cadence"></view>
+      <text class="section-title">踏频</text>
+    </view>
+    <view class="chart-canvas-wrap">
+      <canvas type="2d" id="cadenceCanvas" class="chart-canvas"></canvas>
+    </view>
+    <view class="metric-row">
+      <view class="metric" wx:if="{{activity.avg_cadence}}">
+        <text class="metric-value cadence">{{activity.avg_cadence}}</text>
+        <text class="metric-sub">rpm</text>
+        <text class="metric-label">平均</text>
       </view>
     </view>
   </view>

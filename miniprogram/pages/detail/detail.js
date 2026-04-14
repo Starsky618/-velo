@@ -79,53 +79,9 @@ function processElevationData(track) {
   return hasValidEle ? result : []
 }
 
-/**
- * 计算"好看的"坐标轴刻度值
- *
- * 类比：你画温度计不会标 17.3°、34.6°、51.9°，
- * 而是标 20°、40°、60° — 人眼喜欢整数。
- * 这个函数就是在给定范围内，找出适合标在坐标轴上的"好看整数"。
- *
- * 算法：先粗算步长，然后"四舍五入"到最近的 1/2/5 的倍数。
- *
- * @param {number} min 数据最小值
- * @param {number} max 数据最大值
- * @param {number} targetTicks 希望有几个刻度（实际数量可能略有偏差）
- * @returns {Array<number>} 刻度值数组
- */
-function niceScale(min, max, targetTicks) {
-  var range = max - min
-  if (range <= 0) return [min]
-  var roughStep = range / targetTicks
-  // 找到步长的数量级：比如 roughStep=370 → mag=100
-  var mag = Math.pow(10, Math.floor(Math.log10(roughStep)))
-  var norm = roughStep / mag // 归一化到 1~10 之间
-  // 就近取 1、2、5 中的一个（这三个数能让刻度最"整"）
-  var step
-  if (norm <= 1.5) step = 1
-  else if (norm <= 3.5) step = 2
-  else if (norm <= 7.5) step = 5
-  else step = 10
-  step *= mag
-
-  var ticks = []
-  var start = Math.ceil(min / step) * step
-  for (var v = start; v <= max + step * 0.01; v += step) {
-    if (ticks.length > 20) break // 安全阀：防止浮点累加导致无限循环
-    ticks.push(Math.round(v))
-  }
-  return ticks
-}
-
-/**
- * 格式化数字：千位加逗号
- * 例：1302 → "1,302"
- * 微信小程序 JS 环境的 toLocaleString() 行为不一致，手动实现更可靠。
- */
-function formatNum(n) {
-  var s = String(Math.round(n))
-  return s.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-}
+// niceScale / formatNum 已统一到 bindchart.js，通过 require 复用
+var niceScale = bindchart.niceScale
+var formatNum = bindchart.formatNum
 
 // ────── 页面逻辑 ──────
 
@@ -144,6 +100,9 @@ Page({
     hasSegments: false,
     // 时序数据（从 /api/activities/{id}/timeseries 获取，供绘制曲线图）
     hasTimeseries: false,
+    hasPowerChart: false,
+    hasHrChart: false,
+    hasCadenceChart: false,
   },
 
   // 海拔剖面原始数据 — 不放 data 里，因为不需要渲染到模板，
@@ -264,7 +223,12 @@ Page({
       .then(function (data) {
         if (!data || !data.distances || data.distances.length < 2) return
         that.timeseriesData = data
-        that.setData({ hasTimeseries: true }, function () {
+        that.setData({
+          hasTimeseries: true,
+          hasPowerChart: !!data.powers,
+          hasHrChart: !!data.heart_rates,
+          hasCadenceChart: !!data.cadences,
+        }, function () {
           wx.nextTick(function () {
             that.bindTimeseriesCharts()
           })
@@ -288,15 +252,54 @@ Page({
     // 所有曲线图共享海拔背景（灰色剪影，让你一眼看出"慢是因为爬坡"）
     var bgEle = data.elevations
 
-    // 速度曲线（蓝色，平滑窗口 7 消除停车骤降和 GPS 锯齿）
+    // 速度曲线（深蓝，平滑窗口 7 消除停车骤降和 GPS 锯齿）
     if (data.speeds) {
       bindchart.bindLineChart(this, '#speedCanvas', {
         xData: data.distances,
         yData: data.speeds,
-        color: '#5AC8FA',
+        color: '#1565C0',
         yUnit: 'km/h',
         fill: true,
         smooth: 7,
+        bgElevation: bgEle,
+      })
+    }
+
+    // 功率曲线（紫色）
+    if (data.powers) {
+      bindchart.bindLineChart(this, '#powerCanvas', {
+        xData: data.distances,
+        yData: data.powers,
+        color: '#AF52DE',
+        yUnit: 'W',
+        fill: true,
+        smooth: 5,
+        bgElevation: bgEle,
+      })
+    }
+
+    // 心率曲线（红色）
+    if (data.heart_rates) {
+      bindchart.bindLineChart(this, '#hrCanvas', {
+        xData: data.distances,
+        yData: data.heart_rates,
+        color: '#FF2D55',
+        yUnit: 'bpm',
+        fill: true,
+        smooth: 5,
+        bgElevation: bgEle,
+      })
+    }
+
+    // 踏频曲线（粉红）
+    if (data.cadences) {
+      bindchart.bindLineChart(this, '#cadenceCanvas', {
+        xData: data.distances,
+        yData: data.cadences,
+        color: '#FF6B9D',
+        yUnit: 'rpm',
+        fill: true,
+        smooth: 5,
         bgElevation: bgEle,
       })
     }

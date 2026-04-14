@@ -335,4 +335,8 @@ function bindLineChart(page, selector, opts) {
 module.exports = {
   bindLineChart: bindLineChart,
   smoothData: smoothData,
+  niceScale: niceScale,
+  formatNum: formatNum,
+  hexToRgba: hexToRgba,
+  getDpr: getDpr,
 }
