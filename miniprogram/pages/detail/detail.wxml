@@ -1,7 +1,7 @@
 <!--
   骑行详情页 — 一次骑行的完整报告
   设计参考：Strava 骑行详情 + Apple Fitness 卡片风格
-  布局顺序：hero → 海拔剖面 → 速度 → 功率 → 心率 → 分段表
+  布局顺序：hero → 途经赛段 → 海拔剖面 → 速度 → 功率 → 心率 → 分段表
 -->
 
 <!-- 加载中 -->
@@ -35,6 +35,32 @@
         <text class="hero-value">{{elevationGainText}}</text>
         <text class="hero-unit">m</text>
         <text class="hero-label">爬升</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 途经赛段（Strava Segment Efforts 风格） ====== -->
+  <view class="section-card" wx:if="{{hasSegments}}">
+    <view class="segment-header">
+      <text class="segment-title">途经赛段</text>
+      <text class="segment-count">{{segments.length}} 个</text>
+    </view>
+    <view class="segment-list">
+      <view class="segment-item {{item.isPr ? 'segment-pr' : ''}}" wx:for="{{segments}}" wx:key="segment_id">
+        <view class="segment-left">
+          <text class="segment-name">{{item.name}}</text>
+          <view class="segment-meta">
+            <text class="segment-time">{{item.timeText}}</text>
+            <text class="segment-speed" wx:if="{{item.avgSpeed}}">{{item.avgSpeed}} km/h</text>
+            <text class="segment-power" wx:if="{{item.avgPower}}">{{item.avgPower}} W</text>
+          </view>
+        </view>
+        <view class="segment-right">
+          <view class="segment-rank-badge {{item.rank <= 3 ? 'top3' : ''}}">
+            <text class="segment-rank-num">#{{item.rank}}</text>
+          </view>
+          <text class="segment-pr-tag" wx:if="{{item.isPr}}">PR</text>
+        </view>
       </view>
     </view>
   </view>

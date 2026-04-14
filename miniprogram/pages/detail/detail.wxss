@@ -109,6 +109,134 @@
   background: rgba(255, 255, 255, 0.12);
 }
 
+/* ══════ 途经赛段 ══════ */
+
+/*
+ * Strava 风格赛段列表：每行一个赛段，左侧名称+数据，右侧排名徽章。
+ * PR（个人纪录）行用金色左边框高亮，让用户一眼看到自己刷新了纪录。
+ */
+.segment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 16rpx;
+}
+
+.segment-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  letter-spacing: -0.5rpx;
+}
+
+.segment-count {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+}
+
+.segment-list {
+  /* 列表容器，子项之间用 border-bottom 分隔 */
+}
+
+.segment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 2rpx solid var(--color-divider);
+}
+
+.segment-item:last-child {
+  border-bottom: none;
+}
+
+/* PR 行：左侧加金色边框，背景微微发金 */
+.segment-item.segment-pr {
+  border-left: 6rpx solid #FFD700;
+  padding-left: 16rpx;
+  margin-left: -4rpx;
+  background: rgba(255, 215, 0, 0.04);
+  border-radius: 4rpx;
+}
+
+.segment-left {
+  flex: 1;
+  min-width: 0; /* 防止长名称撑破布局 */
+}
+
+.segment-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.segment-meta {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 6rpx;
+}
+
+.segment-time {
+  font-size: 24rpx;
+  color: var(--color-text-2);
+  font-weight: 500;
+}
+
+.segment-speed {
+  font-size: 24rpx;
+  color: #5AC8FA;
+}
+
+.segment-power {
+  font-size: 24rpx;
+  color: #FF9500;
+}
+
+.segment-right {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+
+/* 排名徽章：圆角灰底 */
+.segment-rank-badge {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 8rpx;
+  padding: 4rpx 14rpx;
+}
+
+/* 前三名用深色背景突出 */
+.segment-rank-badge.top3 {
+  background: var(--color-text-1);
+}
+
+.segment-rank-badge.top3 .segment-rank-num {
+  color: #ffffff;
+}
+
+.segment-rank-num {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--color-text-2);
+}
+
+/* PR 金色标签 */
+.segment-pr-tag {
+  font-size: 20rpx;
+  font-weight: 800;
+  color: #FFD700;
+  background: rgba(255, 215, 0, 0.12);
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  letter-spacing: 1rpx;
+}
+
 /* ══════ 海拔剖面图 ══════ */
 
 /*

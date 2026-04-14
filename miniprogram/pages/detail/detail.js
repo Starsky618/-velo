@@ -138,6 +138,9 @@ Page({
     hasElevation: false,
     maxElevation: '0',        // 格式化后的字符串（如 "1,491"）
     elevationGainText: '0',   // 格式化后的爬升（如 "1,302"）
+    // 途经赛段（从 /api/activities/{id}/segments 获取）
+    segments: [],             // 格式化后的赛段列表
+    hasSegments: false,
   },
 
   // 海拔剖面原始数据 — 不放 data 里，因为不需要渲染到模板，
@@ -146,7 +149,9 @@ Page({
 
   onLoad: function (options) {
     if (options.id) {
+      this.activityId = options.id
       this.fetchDetail(options.id)
+      this.fetchSegments(options.id)
     }
   },
 
@@ -199,6 +204,43 @@ Page({
           title: err.message || '加载失败',
           icon: 'none',
         })
+      })
+  },
+
+  /**
+   * 获取该活动匹配到的赛段成绩
+   *
+   * 和 fetchDetail 并行发起（在 onLoad 中同时调用），
+   * 两个请求互不依赖，谁先回来谁先渲染。
+   * 赛段数据来自后端自动匹配，用户无需手动操作。
+   */
+  fetchSegments: function (id) {
+    var that = this
+    api.get('/api/activities/' + id + '/segments')
+      .then(function (res) {
+        var items = (res && Array.isArray(res.items)) ? res.items : []
+        if (!items.length) return
+
+        // 预格式化：把秒数转为可读时长，避免在 wxml 模板里做计算
+        var formatted = items.map(function (seg) {
+          return {
+            segment_id: seg.segment_id,
+            name: seg.segment_name,
+            timeText: that.formatDuration(seg.elapsed_time),
+            avgSpeed: seg.avg_speed ? (Math.round(seg.avg_speed * 10) / 10) : null,
+            avgPower: seg.avg_power ? Math.round(seg.avg_power) : null,
+            rank: seg.rank,
+            isPr: seg.is_pr,
+          }
+        })
+
+        that.setData({
+          segments: formatted,
+          hasSegments: true,
+        })
+      })
+      .catch(function () {
+        // 赛段加载失败不影响主页面，静默忽略
       })
   },
 
