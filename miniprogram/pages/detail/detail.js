@@ -285,7 +285,10 @@ Page({
     var data = this.timeseriesData
     if (!data) return
 
-    // 速度曲线（蓝色，始终绘制）
+    // 所有曲线图共享海拔背景（灰色剪影，让你一眼看出"慢是因为爬坡"）
+    var bgEle = data.elevations
+
+    // 速度曲线（蓝色，平滑窗口 7 消除停车骤降和 GPS 锯齿）
     if (data.speeds) {
       bindchart.bindLineChart(this, '#speedCanvas', {
         xData: data.distances,
@@ -293,6 +296,8 @@ Page({
         color: '#5AC8FA',
         yUnit: 'km/h',
         fill: true,
+        smooth: 7,
+        bgElevation: bgEle,
       })
     }
   },
