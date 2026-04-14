@@ -1,0 +1,150 @@
+<!--
+  骑行详情页 — 一次骑行的完整报告
+  设计参考：ridemap.jsx 的 ActivityDetail + Apple Fitness 风格
+-->
+
+<!-- 加载中 -->
+<view class="loading" wx:if="{{loading}}">
+  <view class="spinner"></view>
+  <text class="loading-text">加载中...</text>
+</view>
+
+<view wx:if="{{!loading && activity}}">
+
+  <!-- ====== 深色头部卡片（距离/时长/爬升） ====== -->
+  <view class="hero-card">
+    <view class="hero-top">
+      <text class="hero-title">{{activity.title || '骑行记录'}}</text>
+      <text class="hero-date">{{dateText}}</text>
+    </view>
+    <view class="hero-stats">
+      <view class="hero-item">
+        <text class="hero-value">{{activity.distance || 0}}</text>
+        <text class="hero-unit">km</text>
+        <text class="hero-label">距离</text>
+      </view>
+      <view class="hero-sep"></view>
+      <view class="hero-item">
+        <text class="hero-value">{{durationText}}</text>
+        <text class="hero-unit"> </text>
+        <text class="hero-label">时长</text>
+      </view>
+      <view class="hero-sep"></view>
+      <view class="hero-item">
+        <text class="hero-value">{{activity.elevation_gain || 0}}</text>
+        <text class="hero-unit">m</text>
+        <text class="hero-label">爬升</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 速度卡片 ====== -->
+  <view class="section-card">
+    <view class="section-header">
+      <view class="section-dot speed"></view>
+      <text class="section-title">速度</text>
+    </view>
+    <view class="metric-row">
+      <view class="metric">
+        <text class="metric-value speed">{{activity.avg_speed || '-'}}</text>
+        <text class="metric-sub">km/h</text>
+        <text class="metric-label">平均</text>
+      </view>
+      <view class="metric">
+        <text class="metric-value speed">{{activity.max_speed || '-'}}</text>
+        <text class="metric-sub">km/h</text>
+        <text class="metric-label">最高</text>
+      </view>
+      <view class="metric" wx:if="{{activity.avg_cadence}}">
+        <text class="metric-value speed">{{activity.avg_cadence}}</text>
+        <text class="metric-sub">rpm</text>
+        <text class="metric-label">踏频</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 功率卡片 ====== -->
+  <view class="section-card" wx:if="{{activity.avg_power}}">
+    <view class="section-header">
+      <view class="section-dot power"></view>
+      <text class="section-title">功率</text>
+    </view>
+    <view class="metric-row">
+      <view class="metric">
+        <text class="metric-value power">{{activity.avg_power}}</text>
+        <text class="metric-sub">W</text>
+        <text class="metric-label">平均</text>
+      </view>
+      <view class="metric">
+        <text class="metric-value power">{{activity.max_power || '-'}}</text>
+        <text class="metric-sub">W</text>
+        <text class="metric-label">最大</text>
+      </view>
+      <view class="metric" wx:if="{{activity.calories}}">
+        <text class="metric-value power">{{activity.calories}}</text>
+        <text class="metric-sub">kcal</text>
+        <text class="metric-label">热量</text>
+      </view>
+    </view>
+
+    <!-- 功率区间可视化 -->
+    <view class="zones" wx:if="{{activity.power_zones.length}}">
+      <view class="zones-label">功率区间分布</view>
+      <view class="zone-row" wx:for="{{activity.power_zones}}" wx:key="zone">
+        <text class="zone-tag" style="background: {{item.color || '#FF9500'}};">Z{{item.zone}}</text>
+        <view class="zone-track">
+          <view class="zone-fill" style="width: {{item.percent > 0 ? item.percent : 0.5}}%; background: {{item.color || '#FF9500'}};"></view>
+        </view>
+        <text class="zone-pct">{{item.percent}}%</text>
+        <text class="zone-time">{{item.name || ''}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 心率卡片 ====== -->
+  <view class="section-card" wx:if="{{activity.avg_hr}}">
+    <view class="section-header">
+      <view class="section-dot hr"></view>
+      <text class="section-title">心率</text>
+    </view>
+    <view class="metric-row">
+      <view class="metric">
+        <text class="metric-value hr">{{activity.avg_hr}}</text>
+        <text class="metric-sub">bpm</text>
+        <text class="metric-label">平均</text>
+      </view>
+      <view class="metric">
+        <text class="metric-value hr">{{activity.max_hr || '-'}}</text>
+        <text class="metric-sub">bpm</text>
+        <text class="metric-label">最高</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 每公里分段 ====== -->
+  <view class="section-card" wx:if="{{activity.splits.length}}">
+    <view class="section-header">
+      <view class="section-dot split"></view>
+      <text class="section-title">每公里分段</text>
+    </view>
+    <view class="split-table">
+      <view class="split-head">
+        <text class="split-cell km">KM</text>
+        <text class="split-cell">均速</text>
+        <text class="split-cell" wx:if="{{activity.avg_power}}">功率</text>
+        <text class="split-cell" wx:if="{{activity.avg_hr}}">心率</text>
+        <text class="split-cell">爬升</text>
+      </view>
+      <view class="split-row" wx:for="{{activity.splits}}" wx:key="index">
+        <text class="split-cell km">{{index + 1}}</text>
+        <text class="split-cell">{{item.avg_speed || '-'}}</text>
+        <text class="split-cell" wx:if="{{activity.avg_power}}">{{item.avg_power || '-'}}</text>
+        <text class="split-cell" wx:if="{{activity.avg_hr}}">{{item.avg_hr || '-'}}</text>
+        <text class="split-cell">{{item.elevation_gain || '-'}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 底部留白（防止被 tabBar 遮挡） -->
+  <view style="height: 60rpx;"></view>
+</view>

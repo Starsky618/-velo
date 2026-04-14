@@ -1,0 +1,164 @@
+/* 个人中心页样式 */
+
+/* ── 登录卡片 ── */
+.login-card {
+  margin: 32rpx 24rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 64rpx 48rpx;
+}
+
+.login-icon {
+  font-size: 80rpx;
+  margin-bottom: 24rpx;
+}
+
+.login-title {
+  font-size: 28rpx;
+  color: var(--color-text-2);
+  margin-bottom: 32rpx;
+}
+
+.login-btn {
+  background: var(--color-primary);
+  border-radius: 48rpx;
+  padding: 24rpx 64rpx;
+}
+
+.login-btn-text {
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+/* ── 用户信息卡片 ── */
+.user-card {
+  margin: 32rpx 24rpx 24rpx;
+}
+
+.user-header {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 48rpx;
+  background: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.avatar-text {
+  color: #ffffff;
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.user-name {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+}
+
+.user-id {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+}
+
+/* 体能参数行 */
+.params-row {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 32rpx;
+  padding-top: 24rpx;
+  border-top: 2rpx solid var(--color-divider);
+}
+
+.param {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.param-value {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: var(--color-primary);
+  line-height: 1;
+}
+
+.param-label {
+  font-size: 22rpx;
+  color: var(--color-text-3);
+  margin-top: 8rpx;
+}
+
+/* ── 累计统计卡片 ── */
+.stats-card {
+  margin: 0 24rpx 24rpx;
+}
+
+.stats-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text-2);
+  display: block;
+  margin-bottom: 24rpx;
+}
+
+.stats-grid {
+  display: flex;
+  justify-content: space-around;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-value {
+  font-size: 48rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  line-height: 1;
+}
+
+.stat-unit {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+  margin-left: 4rpx;
+}
+
+.stat-label {
+  font-size: 22rpx;
+  color: var(--color-text-3);
+  margin-top: 8rpx;
+}
+
+/* ── 退出登录 ── */
+.logout-btn {
+  margin: 48rpx 24rpx;
+  padding: 24rpx;
+  text-align: center;
+  border-radius: var(--radius-md);
+  background: var(--color-card);
+}
+
+.logout-text {
+  font-size: 30rpx;
+  color: var(--color-primary);
+  font-weight: 500;
+}

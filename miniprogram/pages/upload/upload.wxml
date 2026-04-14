@@ -1,0 +1,165 @@
+<!--
+  上传页 — 状态机驱动的 UI
+  每个 step 对应一种界面，用 wx:if 切换展示
+-->
+
+<view class="page-header">
+  <text class="subtitle">RIDEMAP</text>
+  <text class="title">上传骑行</text>
+</view>
+
+<!-- ====== 1. 初始状态：选择文件 ====== -->
+<view wx:if="{{step === 'idle'}}">
+  <view class="upload-zone" bindtap="chooseFile">
+    <view class="upload-icon-wrap">
+      <text class="upload-icon">⬆️</text>
+    </view>
+    <text class="upload-title">选择 GPX 文件</text>
+    <text class="upload-hint">从码表 App 分享到微信，或直接选择文件</text>
+  </view>
+
+  <view class="brand-list">
+    <text class="brand-tag" wx:for="{{['iGPSport', '迈金', '高驰', '佳明', 'Wahoo']}}" wx:key="*this">{{item}}</text>
+  </view>
+
+  <view class="upload-note">
+    <text>支持所有标准 GPX 格式，自动解析功率、心率、踏频数据</text>
+  </view>
+</view>
+
+<!-- ====== 2. 确认状态：确认上传 ====== -->
+<view wx:if="{{step === 'confirming'}}" class="center-content">
+  <view class="confirm-card card">
+    <view class="file-info">
+      <view class="file-icon-wrap">
+        <text class="file-icon">📄</text>
+      </view>
+      <view class="file-detail">
+        <text class="file-name">{{fileName}}</text>
+        <text class="file-meta">GPX 文件 · {{fileSizeKB}} KB</text>
+      </view>
+    </view>
+
+    <view class="confirm-btns">
+      <view class="btn-cancel" bindtap="cancel">
+        <text>取消</text>
+      </view>
+      <view class="btn-upload" bindtap="startUpload">
+        <text>开始上传</text>
+      </view>
+    </view>
+  </view>
+</view>
+
+<!-- ====== 3. 上传中 / 解析中 ====== -->
+<view wx:if="{{step === 'uploading' || step === 'polling'}}" class="center-content">
+  <view class="progress-section">
+    <!-- 旋转动画圆圈 -->
+    <view class="spinner"></view>
+    <text class="progress-title">{{statusText}}</text>
+    <text class="progress-hint" wx:if="{{step === 'polling'}}">解析通常需要 5-15 秒</text>
+  </view>
+
+  <view class="steps-list">
+    <view class="step-item {{step === 'polling' ? 'done' : 'active'}}">
+      <view class="step-dot"></view>
+      <text>文件上传</text>
+    </view>
+    <view class="step-item {{step === 'polling' ? 'active' : ''}}">
+      <view class="step-dot"></view>
+      <text>轨迹解析</text>
+    </view>
+    <view class="step-item">
+      <view class="step-dot"></view>
+      <text>数据统计</text>
+    </view>
+    <view class="step-item">
+      <view class="step-dot"></view>
+      <text>赛段匹配</text>
+    </view>
+  </view>
+</view>
+
+<!-- ====== 4. 完成状态：显示摘要 ====== -->
+<view wx:if="{{step === 'done' && result}}" class="result-section">
+  <view class="success-banner">
+    <text class="success-icon">✅</text>
+    <view class="success-text">
+      <text class="success-title">解析完成</text>
+      <text class="success-sub">骑行数据已生成</text>
+    </view>
+  </view>
+
+  <!-- 深色摘要卡片（和详情页头部风格一致） -->
+  <view class="result-hero">
+    <text class="result-ride-title">{{result.title || fileName}}</text>
+    <view class="result-hero-stats">
+      <view class="result-hero-item">
+        <text class="result-hero-value">{{result.distance || 0}}</text>
+        <text class="result-hero-unit">km</text>
+        <text class="result-hero-label">距离</text>
+      </view>
+      <view class="result-hero-sep"></view>
+      <view class="result-hero-item">
+        <text class="result-hero-value">{{durationMin}}</text>
+        <text class="result-hero-unit">min</text>
+        <text class="result-hero-label">时长</text>
+      </view>
+      <view class="result-hero-sep"></view>
+      <view class="result-hero-item">
+        <text class="result-hero-value">{{result.elevation_gain || 0}}</text>
+        <text class="result-hero-unit">m</text>
+        <text class="result-hero-label">爬升</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 次要数据行 -->
+  <view class="result-secondary card" wx:if="{{result.avg_speed || result.avg_power || result.avg_hr}}">
+    <view class="result-metric" wx:if="{{result.avg_speed}}">
+      <view class="result-metric-dot speed"></view>
+      <text class="result-metric-label">均速</text>
+      <text class="result-metric-value">{{result.avg_speed}} km/h</text>
+    </view>
+    <view class="result-metric" wx:if="{{result.avg_power}}">
+      <view class="result-metric-dot power"></view>
+      <text class="result-metric-label">均功率</text>
+      <text class="result-metric-value">{{result.avg_power}} W</text>
+    </view>
+    <view class="result-metric" wx:if="{{result.avg_hr}}">
+      <view class="result-metric-dot hr"></view>
+      <text class="result-metric-label">均心率</text>
+      <text class="result-metric-value">{{result.avg_hr}} bpm</text>
+    </view>
+    <view class="result-metric" wx:if="{{result.avg_cadence}}">
+      <view class="result-metric-dot cad"></view>
+      <text class="result-metric-label">均踏频</text>
+      <text class="result-metric-value">{{result.avg_cadence}} rpm</text>
+    </view>
+    <view class="result-metric" wx:if="{{result.calories}}">
+      <view class="result-metric-dot cal"></view>
+      <text class="result-metric-label">热量</text>
+      <text class="result-metric-value">{{result.calories}} kcal</text>
+    </view>
+  </view>
+
+  <view class="result-actions">
+    <view class="btn-detail" bindtap="viewDetail">
+      <text>查看详情</text>
+    </view>
+    <view class="btn-again" bindtap="reset">
+      <text>再传一个</text>
+    </view>
+  </view>
+</view>
+
+<!-- ====== 5. 错误状态 ====== -->
+<view wx:if="{{step === 'error'}}" class="center-content">
+  <view class="error-section">
+    <text class="error-icon">❌</text>
+    <text class="error-title">{{errorMsg}}</text>
+    <view class="btn-retry" bindtap="reset">
+      <text>重新上传</text>
+    </view>
+  </view>
+</view>

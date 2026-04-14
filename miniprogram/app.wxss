@@ -1,0 +1,80 @@
+/**
+ * RIDEMAP 全局样式
+ *
+ * 这里定义的样式对所有页面生效，相当于"大楼统一装修标准"。
+ * 各页面的 .wxss 文件可以覆盖这里的样式（局部装修优先）。
+ *
+ * 设计原则（参考 Apple Human Interface Guidelines）：
+ * - 大量留白，内容区不要填满
+ * - 清晰的信息层级：标题大、正文小、辅助信息最小
+ * - 一致的圆角、间距、颜色
+ */
+
+/* ── 全局变量（通过 CSS 变量统一管理颜色和间距）── */
+page {
+  /* 主色调：骑行热情红，来自 ridemap.jsx 的 #FF2D55 */
+  --color-primary: #FF2D55;
+  --color-primary-light: rgba(255, 45, 85, 0.08);
+
+  /* 文字层级：从深到浅，对应"标题→正文→辅助→占位" */
+  --color-text-1: #1D1D1F;
+  --color-text-2: #6E6E73;
+  --color-text-3: #AEAEB2;
+
+  /* 背景和分割线 */
+  --color-bg: #F2F1F6;
+  --color-card: #FFFFFF;
+  --color-divider: #E8E7EC;
+
+  /* 功能色（成功/警告/信息） */
+  --color-success: #34C759;
+  --color-warning: #FF9500;
+  --color-info: #5AC8FA;
+
+  /* 间距系统（4px 倍数，保持一致性） */
+  --spacing-xs: 8rpx;
+  --spacing-sm: 16rpx;
+  --spacing-md: 24rpx;
+  --spacing-lg: 32rpx;
+  --spacing-xl: 48rpx;
+
+  /* 圆角 */
+  --radius-sm: 16rpx;
+  --radius-md: 24rpx;
+  --radius-lg: 36rpx;
+
+  /* 页面默认背景色 */
+  background-color: var(--color-bg);
+  font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  color: var(--color-text-1);
+  font-size: 28rpx;
+  line-height: 1.5;
+}
+
+/* ── 通用卡片样式 ── */
+.card {
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+/* ── 页面标题区 ── */
+.page-header {
+  padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+}
+
+.page-header .subtitle {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+  font-weight: 600;
+  letter-spacing: 1rpx;
+}
+
+.page-header .title {
+  font-size: 56rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  letter-spacing: -1rpx;
+  margin-top: 4rpx;
+}

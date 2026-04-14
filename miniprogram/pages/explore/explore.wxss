@@ -1,0 +1,26 @@
+/* 探索页样式 */
+
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 200rpx 48rpx 0;
+}
+
+.placeholder-icon {
+  font-size: 96rpx;
+  margin-bottom: 32rpx;
+}
+
+.placeholder-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  margin-bottom: 12rpx;
+}
+
+.placeholder-desc {
+  font-size: 26rpx;
+  color: var(--color-text-3);
+  text-align: center;
+}

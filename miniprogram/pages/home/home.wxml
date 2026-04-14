@@ -1,0 +1,108 @@
+<!--
+  首页 — 骑行动态流
+  每条骑行记录 = 一张卡片 = 产品核心内容单元
+-->
+
+<view class="page-header">
+  <text class="subtitle">RIDEMAP</text>
+  <text class="title">动态</text>
+</view>
+
+<!-- ====== 本周统计 ====== -->
+<view class="week-bar" wx:if="{{isLoggedIn}}">
+  <view class="week-item">
+    <text class="week-value">{{weeklyKm}}</text>
+    <text class="week-label">km</text>
+  </view>
+  <view class="week-sep"></view>
+  <view class="week-item">
+    <text class="week-value">{{weeklyRides}}</text>
+    <text class="week-label">次骑行</text>
+  </view>
+  <view class="week-sep"></view>
+  <view class="week-item">
+    <text class="week-value">{{weeklyElev}}</text>
+    <text class="week-label">m 爬升</text>
+  </view>
+</view>
+
+<!-- ====== 未登录 ====== -->
+<view class="login-card" wx:if="{{!isLoggedIn}}">
+  <text class="login-emoji">🚴</text>
+  <text class="login-text">登录后查看你的骑行动态</text>
+  <navigator url="/pages/profile/profile" class="login-btn">
+    <text>去登录</text>
+  </navigator>
+</view>
+
+<!-- ====== 骑行卡片流 ====== -->
+<view class="feed" wx:if="{{isLoggedIn}}">
+
+  <view class="activity-card" wx:for="{{rides}}" wx:key="id"
+    bindtap="openRide" data-id="{{item.id}}">
+
+    <!-- 卡片头部：头像 + 昵称 + 时间 -->
+    <view class="card-header">
+      <view class="card-avatar">
+        <text>{{item.initial}}</text>
+      </view>
+      <view class="card-user">
+        <text class="card-nickname">{{item.nickname}}</text>
+        <text class="card-date">{{item.dateText}}</text>
+      </view>
+    </view>
+
+    <!-- 活动标题 -->
+    <text class="card-title">{{item.title}}</text>
+
+    <!-- 解析中状态 -->
+    <view class="card-pending" wx:if="{{item.status !== 'completed'}}">
+      <text>{{item.status === 'failed' ? '解析失败' : '正在解析中...'}}</text>
+    </view>
+
+    <!-- 核心数据块（已完成的骑行） -->
+    <view class="card-stats" wx:if="{{item.status === 'completed'}}">
+      <view class="stat-block">
+        <text class="stat-num">{{item.distance}}</text>
+        <text class="stat-unit">km</text>
+        <text class="stat-name">距离</text>
+      </view>
+      <view class="stat-block">
+        <text class="stat-num">{{item.elevation_gain}}</text>
+        <text class="stat-unit">m</text>
+        <text class="stat-name">爬升</text>
+      </view>
+      <view class="stat-block">
+        <text class="stat-num">{{item.durationText}}</text>
+        <text class="stat-unit"> </text>
+        <text class="stat-name">时间</text>
+      </view>
+    </view>
+
+    <!-- 次要数据行 -->
+    <view class="card-secondary" wx:if="{{item.status === 'completed' && (item.avg_speed || item.avg_power)}}">
+      <text class="sec-item" wx:if="{{item.avg_speed}}">{{item.avg_speed}} km/h</text>
+      <text class="sec-dot" wx:if="{{item.avg_speed && item.avg_power}}">·</text>
+      <text class="sec-item power" wx:if="{{item.avg_power}}">{{item.avg_power}} W</text>
+      <text class="sec-dot" wx:if="{{item.avg_power && item.avg_hr}}">·</text>
+      <text class="sec-item hr" wx:if="{{item.avg_hr}}">{{item.avg_hr}} bpm</text>
+    </view>
+
+    <!-- 赛段匹配结果 -->
+    <view class="card-segments" wx:if="{{item.segments.length > 0}}">
+      <view class="seg-badge" wx:for="{{item.segments}}" wx:for-item="seg" wx:key="name">
+        <text class="seg-rank {{seg.is_pr ? 'pr' : ''}}">{{seg.is_pr ? 'PR' : '#' + seg.rank}}</text>
+        <text class="seg-name">{{seg.name}}</text>
+        <text class="seg-time">{{seg.timeText}}</text>
+      </view>
+    </view>
+
+  </view>
+
+  <!-- 空状态 -->
+  <view class="empty" wx:if="{{!loading && rides.length === 0}}">
+    <text class="empty-icon">🚴</text>
+    <text class="empty-title">还没有骑行记录</text>
+    <text class="empty-sub">上传你的第一条 GPX，从码表 App 分享到微信即可</text>
+  </view>
+</view>

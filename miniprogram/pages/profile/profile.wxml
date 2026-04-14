@@ -1,0 +1,78 @@
+<!--
+  个人中心页
+  两种状态：未登录（显示登录按钮） / 已登录（显示用户信息）
+  wx:if / wx:else 是小程序的条件渲染，类似 JS 的 if-else
+-->
+
+<view class="page-header">
+  <text class="subtitle">RIDEMAP</text>
+  <text class="title">我的</text>
+</view>
+
+<!-- ====== 未登录状态 ====== -->
+<view class="login-card card" wx:if="{{!isLoggedIn}}">
+  <text class="login-icon">👤</text>
+  <text class="login-title">登录以查看你的骑行数据</text>
+  <view class="login-btn" bindtap="handleLogin">
+    <text class="login-btn-text">{{loading ? '登录中...' : '微信一键登录'}}</text>
+  </view>
+</view>
+
+<!-- ====== 已登录状态 ====== -->
+<view wx:else>
+  <!-- 用户信息卡片 -->
+  <view class="user-card card">
+    <view class="user-header">
+      <view class="avatar">
+        <text class="avatar-text">{{profile.nickname ? profile.nickname[0] : '骑'}}</text>
+      </view>
+      <view class="user-info">
+        <text class="user-name">{{profile.nickname || '骑行者'}}</text>
+        <text class="user-id">ID: {{profile.id}}</text>
+      </view>
+    </view>
+
+    <!-- 体能参数 -->
+    <view class="params-row" wx:if="{{profile.ftp || profile.weight}}">
+      <view class="param" wx:if="{{profile.ftp}}">
+        <text class="param-value">{{profile.ftp}}</text>
+        <text class="param-label">FTP (W)</text>
+      </view>
+      <view class="param" wx:if="{{profile.weight}}">
+        <text class="param-value">{{profile.weight}}</text>
+        <text class="param-label">体重 (kg)</text>
+      </view>
+      <view class="param" wx:if="{{wpkg}}">
+        <text class="param-value">{{wpkg}}</text>
+        <text class="param-label">W/kg</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 累计统计 -->
+  <view class="stats-card card">
+    <text class="stats-title">累计骑行</text>
+    <view class="stats-grid">
+      <view class="stat-item">
+        <text class="stat-value">{{stats ? stats.distance : 0}}</text>
+        <text class="stat-unit">km</text>
+        <text class="stat-label">总里程</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-value">{{stats ? stats.rides : 0}}</text>
+        <text class="stat-unit">次</text>
+        <text class="stat-label">总骑行</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-value">{{stats ? stats.elevation_gain : 0}}</text>
+        <text class="stat-unit">m</text>
+        <text class="stat-label">总爬升</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 退出登录 -->
+  <view class="logout-btn" bindtap="handleLogout">
+    <text class="logout-text">退出登录</text>
+  </view>
+</view>

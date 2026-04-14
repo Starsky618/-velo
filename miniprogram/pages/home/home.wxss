@@ -1,0 +1,281 @@
+/* 首页样式 — Apple Fitness / Strava 风格骑行卡片 */
+
+/* ══════ 本周统计条 ══════ */
+.week-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 24rpx 28rpx;
+  padding: 20rpx 0;
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+.week-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6rpx;
+  padding: 0 28rpx;
+}
+
+.week-value {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  letter-spacing: -1rpx;
+}
+
+.week-label {
+  font-size: 22rpx;
+  color: var(--color-text-3);
+}
+
+.week-sep {
+  width: 2rpx;
+  height: 28rpx;
+  background: var(--color-divider);
+}
+
+/* ══════ 登录引导 ══════ */
+.login-card {
+  margin: 48rpx 24rpx;
+  padding: 64rpx 32rpx;
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+.login-emoji {
+  font-size: 64rpx;
+}
+
+.login-text {
+  font-size: 28rpx;
+  color: var(--color-text-2);
+}
+
+.login-btn {
+  margin-top: 8rpx;
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 600;
+  padding: 16rpx 48rpx;
+  border-radius: 40rpx;
+}
+
+/* ══════ 骑行卡片 ══════ */
+.feed {
+  padding: 0 24rpx;
+}
+
+.activity-card {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  padding: 28rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
+}
+
+/* ── 卡片头部 ── */
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.card-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 32rpx;
+  background: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.card-avatar text {
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.card-user {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.card-nickname {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.card-date {
+  font-size: 22rpx;
+  color: var(--color-text-3);
+}
+
+/* ── 活动标题 ── */
+.card-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  letter-spacing: -0.5rpx;
+  display: block;
+  margin-bottom: 20rpx;
+}
+
+/* ── 解析中 ── */
+.card-pending {
+  padding: 24rpx 0;
+  font-size: 26rpx;
+  color: var(--color-text-3);
+}
+
+/* ── 核心三项数据块 ── */
+.card-stats {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+
+.stat-block {
+  flex: 1;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  padding: 18rpx 16rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rpx;
+}
+
+.stat-num {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  line-height: 1.1;
+  letter-spacing: -1rpx;
+}
+
+.stat-unit {
+  font-size: 20rpx;
+  color: var(--color-text-3);
+}
+
+.stat-name {
+  font-size: 20rpx;
+  color: var(--color-text-3);
+  margin-top: 2rpx;
+}
+
+/* ── 次要数据行 ── */
+.card-secondary {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 4rpx 0 12rpx;
+}
+
+.sec-item {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: var(--color-text-2);
+}
+
+.sec-item.power {
+  color: #FF9500;
+}
+
+.sec-item.hr {
+  color: #FF2D55;
+}
+
+.sec-dot {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+}
+
+/* ══════ 赛段匹配结果 ══════ */
+.card-segments {
+  margin-top: 8rpx;
+  padding-top: 16rpx;
+  border-top: 2rpx solid rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.seg-badge {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.seg-rank {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--color-text-2);
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  min-width: 56rpx;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.seg-rank.pr {
+  background: var(--color-primary);
+}
+
+.seg-name {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: var(--color-text-1);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seg-time {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+  flex-shrink: 0;
+}
+
+/* ══════ 空状态 ══════ */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 96rpx 48rpx;
+}
+
+.empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 24rpx;
+}
+
+.empty-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+  margin-bottom: 8rpx;
+}
+
+.empty-sub {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+  text-align: center;
+  line-height: 1.6;
+}

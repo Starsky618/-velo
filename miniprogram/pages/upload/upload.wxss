@@ -1,0 +1,418 @@
+/* 上传页样式 */
+
+/* ── 居中容器（确认/进度/错误状态共用） ── */
+.center-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 64rpx 24rpx;
+}
+
+/* ── 上传区域 ── */
+.upload-zone {
+  margin: 32rpx 24rpx;
+  padding: 80rpx 48rpx;
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24rpx;
+  border: 4rpx dashed var(--color-divider);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+.upload-icon-wrap {
+  width: 144rpx;
+  height: 144rpx;
+  border-radius: 72rpx;
+  background: var(--color-primary-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-icon { font-size: 64rpx; }
+
+.upload-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.upload-hint {
+  font-size: 26rpx;
+  color: var(--color-text-2);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.brand-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12rpx;
+  padding: 0 48rpx;
+}
+
+.brand-tag {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--color-text-3);
+  background: var(--color-divider);
+  padding: 8rpx 20rpx;
+  border-radius: 12rpx;
+}
+
+.upload-note {
+  margin-top: 32rpx;
+  padding: 0 64rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--color-text-3);
+  line-height: 1.6;
+}
+
+/* ── 文件确认卡片 ── */
+.confirm-card {
+  width: 100%;
+  max-width: 640rpx;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  margin-bottom: 32rpx;
+}
+
+.file-icon-wrap {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, #FF6B35, #FF9500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-icon { font-size: 44rpx; }
+
+.file-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.file-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.file-meta {
+  font-size: 24rpx;
+  color: var(--color-text-2);
+}
+
+.confirm-btns {
+  display: flex;
+  gap: 16rpx;
+}
+
+.btn-cancel {
+  flex: 1;
+  padding: 24rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-divider);
+  text-align: center;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.btn-upload {
+  flex: 2;
+  padding: 24rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  text-align: center;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* ── 上传/解析进度 ── */
+.progress-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24rpx;
+  margin-bottom: 48rpx;
+}
+
+/* CSS 旋转动画 */
+.spinner {
+  width: 80rpx;
+  height: 80rpx;
+  border: 6rpx solid var(--color-divider);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.progress-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.progress-hint {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+}
+
+/* 解析步骤列表 */
+.steps-list {
+  width: 100%;
+  max-width: 500rpx;
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 16rpx 0;
+  font-size: 28rpx;
+  color: var(--color-text-3);
+}
+
+.step-item.active {
+  color: var(--color-text-1);
+  font-weight: 600;
+}
+
+.step-item.done {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.step-dot {
+  width: 24rpx;
+  height: 24rpx;
+  border-radius: 12rpx;
+  background: var(--color-divider);
+  flex-shrink: 0;
+}
+
+.step-item.active .step-dot {
+  background: var(--color-primary);
+}
+
+.step-item.done .step-dot {
+  background: var(--color-success);
+}
+
+/* ── 解析完成 ── */
+.result-section {
+  padding: 24rpx;
+}
+
+.success-banner {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 24rpx 32rpx;
+  background: rgba(52, 199, 89, 0.08);
+  border-radius: var(--radius-md);
+  margin-bottom: 24rpx;
+}
+
+.success-icon { font-size: 48rpx; }
+
+.success-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.success-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.success-sub {
+  font-size: 24rpx;
+  color: var(--color-success);
+}
+
+/* ── 深色摘要卡片 ── */
+.result-hero {
+  padding: 32rpx;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(145deg, #1D1D1F, #2C2C2E);
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.15);
+  margin-bottom: 20rpx;
+  position: relative;
+  overflow: hidden;
+}
+
+.result-hero::after {
+  content: '';
+  position: absolute;
+  top: -40rpx;
+  right: -40rpx;
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 45, 85, 0.15), transparent 70%);
+  pointer-events: none;
+}
+
+.result-ride-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #ffffff;
+  display: block;
+  margin-bottom: 24rpx;
+}
+
+/* 深色卡片内的核心三项 */
+.result-hero-stats {
+  display: flex;
+  align-items: center;
+}
+
+.result-hero-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.result-hero-value {
+  font-size: 52rpx;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1;
+  letter-spacing: -1rpx;
+}
+
+.result-hero-unit {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 4rpx;
+}
+
+.result-hero-label {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 8rpx;
+}
+
+.result-hero-sep {
+  width: 2rpx;
+  height: 56rpx;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 次要数据列表 */
+.result-secondary {
+  margin-bottom: 24rpx;
+}
+
+.result-metric {
+  display: flex;
+  align-items: center;
+  padding: 16rpx 0;
+  border-bottom: 2rpx solid rgba(0, 0, 0, 0.03);
+}
+
+.result-metric:last-child {
+  border-bottom: none;
+}
+
+.result-metric-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 7rpx;
+  margin-right: 16rpx;
+  flex-shrink: 0;
+}
+
+.result-metric-dot.speed { background: #5AC8FA; }
+.result-metric-dot.power { background: #FF9500; }
+.result-metric-dot.hr { background: #FF2D55; }
+.result-metric-dot.cad { background: #5856D6; }
+.result-metric-dot.cal { background: #34C759; }
+
+.result-metric-label {
+  font-size: 28rpx;
+  color: var(--color-text-2);
+  flex: 1;
+}
+
+.result-metric-value {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+/* 操作按钮 */
+.result-actions {
+  display: flex;
+  gap: 16rpx;
+}
+
+.btn-detail {
+  flex: 2;
+  padding: 24rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  text-align: center;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.btn-again {
+  flex: 1;
+  padding: 24rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-divider);
+  text-align: center;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+/* ── 错误状态 ── */
+.error-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.error-icon { font-size: 80rpx; }
+
+.error-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+  text-align: center;
+}
+
+.btn-retry {
+  padding: 24rpx 64rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #ffffff;
+}

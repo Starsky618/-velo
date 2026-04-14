@@ -1,0 +1,12 @@
+<!-- 探索页 — MVP 占位 -->
+
+<view class="page-header">
+  <text class="subtitle">RIDEMAP</text>
+  <text class="title">探索</text>
+</view>
+
+<view class="placeholder">
+  <text class="placeholder-icon">🗺️</text>
+  <text class="placeholder-title">即将上线</text>
+  <text class="placeholder-desc">发现附近的赛段和热门骑行路线</text>
+</view>
