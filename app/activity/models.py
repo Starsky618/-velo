@@ -79,8 +79,12 @@ class Activity(Base):
     max_hr = Column(Float, nullable=True)             # 最大心率
     avg_cadence = Column(Float, nullable=True)        # 平均踏频（rpm）
     calories = Column(Float, nullable=True)           # 估算卡路里（kcal）
+    normalized_power = Column(Float, nullable=True)   # 标准化功率（NP），FIT 自带，GPX/Strava 为 NULL
     started_at = Column(DateTime, nullable=True)      # 骑行开始时间
     finished_at = Column(DateTime, nullable=True)     # 骑行结束时间
+
+    # 数据来源标记：gpx / fit / strava，老数据为 NULL（都是 GPX）
+    data_source = Column(String(20), nullable=True)
 
     # ===== JSONB 字段（结构化数据，存为 JSON 格式）=====
 
@@ -156,6 +160,10 @@ class Trackpoint(Base):
     heart_rate = Column(Integer, nullable=True)  # 心率（bpm）
     cadence = Column(Integer, nullable=True)     # 踏频（rpm）
     power = Column(Integer, nullable=True)       # 功率（W）
+
+    # v2 新增：逐点速度和累计距离（翻译层计算后写入）
+    speed = Column(Float, nullable=True)         # 瞬时速度（m/s），老数据为 NULL
+    distance = Column(Float, nullable=True)      # 累计距离（米），老数据为 NULL
 
     # PostGIS 空间点，SRID 4326 = WGS84 坐标系（GPS 使用的坐标系）
     # 用于空间查询：ST_DWithin 判断点是否在赛段附近
