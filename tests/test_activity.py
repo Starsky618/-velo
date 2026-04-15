@@ -284,7 +284,7 @@ def test_17_upload_wrong_extension(client, auth_header):
         headers=auth_header,
     )
     assert resp.status_code == 400
-    assert "只接受.gpx文件" in resp.json()["detail"]
+    assert "只接受" in resp.json()["detail"]
 
 
 def test_18_upload_fake_gpx(client, auth_header):
@@ -492,7 +492,7 @@ def test_validate_gpx_rejects_too_many_trackpoints():
     big_gpx = header + body + footer
 
     with pytest.raises(ValueError, match="轨迹点过多"):
-        service.validate_gpx_file("test.gpx", big_gpx)
+        service.validate_ride_file("test.gpx", big_gpx)
 
 
 def test_validate_gpx_accepts_normal_trackpoints():
@@ -503,4 +503,4 @@ def test_validate_gpx_accepts_normal_trackpoints():
     footer = b'</trkseg></trk></gpx>'
     normal_gpx = header + body + footer
 
-    service.validate_gpx_file("test.gpx", normal_gpx)
+    service.validate_ride_file("test.gpx", normal_gpx)

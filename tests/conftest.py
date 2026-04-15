@@ -91,7 +91,7 @@ _activities_table = Table(
     Column("user_id", Integer, nullable=False),
     Column("title", String(128)),
     Column("status", String(20), default="pending"),
-    Column("file_url", Text, default=""),
+    Column("file_url", Text),              # nullable：Strava 导入的活动无本地文件
     Column("file_hash", String(64)),           # SHA-256 去重哈希
     Column("error_message", Text),
     Column("distance", Float),
@@ -110,6 +110,9 @@ _activities_table = Table(
     Column("simplified_track", Text),   # 替代 JSONB
     Column("splits", Text),             # 替代 JSONB
     Column("power_zones", Text),        # 替代 JSONB
+    Column("normalized_power", Float),    # 第 1 期新增：标准化功率
+    Column("data_source", String(20)),     # 第 1 期新增：数据来源标记
+    Column("strava_activity_id", Integer), # 第 2 期新增：Strava 活动去重 ID
     Column("created_at", DateTime),
     Column("updated_at", DateTime),
 )
