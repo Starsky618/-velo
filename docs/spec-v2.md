@@ -590,10 +590,7 @@ GET /api/activities/{id}/timeseries?points=500&coord=gcj02
 
 # 第 2 期详细设计：Strava 集成
 
-> 以下设计与上方任务 6.1-6.7 一一对应。
-> 编码时按任务号找对应小节即可。
-> 第 4 章（Strava 适配器）和第 9 章（导入调度器）是第 1 期已有的设计，
-> 此处不重复，只标注引用位置。
+> 以下设计与上方任务 6.1-6.7 一一对应。编码时按任务号找对应小节。
 >
 > **设计决策记录（2026-04-15，Starsky 确认）：**
 > - users 表直接加 4 列存 Strava token（不新建关联表）
@@ -601,6 +598,122 @@ GET /api/activities/{id}/timeseries?points=500&coord=gcj02
 > - Token 刷新用"调用前检查"策略，不用定时任务
 > - Webhook + 手动同步双保险（香港服务器有公网 HTTPS，无阻塞）
 > - 解绑功能后面再做，先跑通绑定 + 导入
+> - Worker 写入逻辑抽成共享函数，文件上传和 Strava 导入复用
+> - Strava 三层渐进状态流：importing → importing → completed
+> - 调度器用 RQ 定时任务，不引入新进程
+
+## 端到端数据流全景（第 2 期）
+
+### 路径 A：文件上传（第 1 期已实现）
+
+```
+用户上传 .gpx/.fit → service.upload_ride()
+  → 存文件 + 创建 Activity(status=pending) + 入 RQ 队列
+  → Worker: 下载文件 → GPXParser/FITParser.parse(bytes) → ParseResult
+  → normalize(result)
+  → _save_parse_result(activity, result)  ← 共享写入函数
+  → 赛段匹配
+  → status = completed
+```
+
+### 路径 B：Strava Webhook 通知（第 2 期新增）
+
+```
+Strava POST /api/strava/webhook {object_type:activity, aspect_type:create}
+  → 根据 owner_id 找到系统用户
+  → 入 RQ 队列：import_strava_activity(user_id, strava_activity_id)
+  → Worker: StravaClient.get_activity_detail(id) → JSON
+  → StravaClient.get_activity_streams(id) → JSON
+  → StravaAdapter.from_streams(streams, detail) → ParseResult
+  → _save_parse_result(activity, result)  ← 同一个共享写入函数
+  → 赛段匹配
+  → status = completed
+```
+
+### 路径 C：Strava 历史导入（第 2 期新增）
+
+```
+用户绑定 Strava → 创建 strava_imports(status=active)
+  → 调度器 RQ 定时任务（每 30 秒执行一次）
+  
+第一层（列表）：
+  StravaClient.get_athlete_activities(page=N)
+  → 遍历返回的活动列表
+  → 每条活动：创建 Activity(status=importing, data_source=strava,
+    strava_activity_id=xxx, title=xxx, distance=xxx, started_at=xxx)
+  → 只填骨架字段，用户立刻能在列表页看到
+  → 更新 strava_imports.tier1_completed
+
+第二层（摘要）：
+  StravaClient.get_activity_detail(id)
+  → 填充 Activity 的完整统计字段（speed/power/hr/calories 等）
+  → status 保持 importing
+  → 更新 strava_imports.tier2_completed
+
+第三层（轨迹）：
+  StravaClient.get_activity_streams(id)
+  → StravaAdapter.from_streams(streams, detail) → ParseResult
+  → _save_parse_result(activity, result)  ← 共享写入函数（写 trackpoints）
+  → 赛段匹配
+  → status = completed
+  → 更新 strava_imports.tier3_completed
+  
+跳过条件：非骑行、距离 < 5km、远离所有赛段 → tier3_skipped++
+```
+
+### 共享写入函数（核心复用点）
+
+```python
+def _save_parse_result(db, activity, result: ParseResult):
+    """
+    文件上传和 Strava 导入共用的 DB 写入逻辑。
+    从 ParseResult 中读取数据，写入 Activity 表和 Trackpoint 表。
+    
+    位置：app/activity/worker.py（从现有 _do_parse 中抽出）
+    """
+    summary = result.summary
+    activity.distance = summary.distance
+    activity.duration = summary.duration
+    activity.elevation_gain = summary.elevation_gain
+    activity.avg_speed = round(summary.avg_speed * 3.6, 1) if summary.avg_speed else None
+    activity.max_speed = round(summary.max_speed * 3.6, 1) if summary.max_speed else None
+    # ... 其余字段同现有 Worker 逻辑
+    activity.simplified_track = result.simplified_track
+    activity.power_zones = result.power_zones
+    # 批量插入 trackpoints（每 500 条一批）
+    # ... 
+```
+
+### Activity 状态机（v2 扩展）
+
+```
+文件上传路径：pending → processing → completed / failed
+
+Strava 导入路径：importing → importing → completed / failed
+                  (第一层)    (第二层)    (第三层完成)
+```
+
+- `importing` 是新增状态，表示"Strava 正在分层导入中"
+- 前端看到 `importing` 时显示"正在从 Strava 导入..."
+- `importing` 超过 24 小时未更新 → 视为卡死，可手动重触发
+
+### 数据库变更汇总（第 2 期）
+
+```sql
+-- users 表 +4 列
+ALTER TABLE users ADD COLUMN strava_athlete_id BIGINT UNIQUE;
+ALTER TABLE users ADD COLUMN strava_access_token VARCHAR(255);
+ALTER TABLE users ADD COLUMN strava_refresh_token VARCHAR(255);
+ALTER TABLE users ADD COLUMN strava_token_expires_at TIMESTAMP;
+
+-- activities 表 +1 列
+ALTER TABLE activities ADD COLUMN strava_activity_id BIGINT UNIQUE;
+
+-- activities.status CHECK 约束更新（新增 importing）
+-- 注意：需要先删旧约束再建新的，或用 ALTER ... ADD 如果原来没有 CHECK
+
+-- 新建 strava_imports 表（完整 schema 见 6.4 节）
+```
 
 ## 6.1 设计：Strava OAuth 接入
 
