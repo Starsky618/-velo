@@ -670,6 +670,13 @@ def _save_parse_result(db, activity, result: ParseResult):
     从 ParseResult 中读取数据，写入 Activity 表和 Trackpoint 表。
     
     位置：app/activity/worker.py（从现有 _do_parse 中抽出）
+    
+    职责边界（铁律）：
+    - ✅ 写 Activity 的统计字段（distance/speed/power 等）
+    - ✅ 批量插入 Trackpoint 记录
+    - ❌ 不改 status（由 caller 控制：文件路径设 completed，Strava 路径设 completed）
+    - ❌ 不调 db.commit()（由 caller 控制事务边界）
+    - ❌ 不触发赛段匹配（由 caller 在 commit 后单独触发）
     """
     summary = result.summary
     activity.distance = summary.distance
@@ -696,6 +703,30 @@ Strava 导入路径：importing → importing → completed / failed
 - `importing` 是新增状态，表示"Strava 正在分层导入中"
 - 前端看到 `importing` 时显示"正在从 Strava 导入..."
 - `importing` 超过 24 小时未更新 → 视为卡死，可手动重触发
+- CHECK 约束更新：`CHECK (status IN ('pending','processing','completed','failed','importing'))`
+
+### importing 僵尸检测
+
+由调度器本身负责（不扩展现有僵尸扫描）。调度器每次运行时检查：
+- 如果某用户的 `strava_imports.status='active'` 但 `updated_at` 超过 24 小时 → 标记 `status='paused'`
+- 用户可通过手动同步端点重新激活（`paused → active`）
+- `importing` 状态的 Activity 不由僵尸扫描处理——它们的生命周期由调度器管理
+
+### Strava 去重与幂等
+
+Webhook 和手动同步可能同时创建同一条 Strava 活动，处理策略：
+- 写入前先查 `strava_activity_id` 是否已存在
+- 已存在 → 跳过（不更新、不报错），返回已有记录
+- DB 层 UNIQUE 约束兜底：捕获 `IntegrityError` 后静默跳过
+- 日志记录：`"跳过已存在的 Strava 活动 strava_id=xxx"`
+
+### 调度器实现方案
+
+使用 `rq-scheduler`（RQ 官方调度扩展），不引入独立进程：
+- `pip install rq-scheduler`
+- 启动命令：`rqscheduler --host localhost --port 6379`（和 rq worker 一起跑）
+- 注册定时任务：`scheduler.schedule(func=run_import_tick, interval=30)`
+- 每 30 秒执行一次 `run_import_tick()`，内部检查额度 → 轮转用户 → 执行一次 API 调用
 
 ### 数据库变更汇总（第 2 期）
 
@@ -729,7 +760,7 @@ ALTER TABLE users ADD COLUMN strava_token_expires_at TIMESTAMP;    -- 令牌过�
 -- activities 表新增 1 列
 ALTER TABLE activities ADD COLUMN strava_activity_id BIGINT UNIQUE;  -- Strava 活动 ID（去重用）
 
--- 新建 strava_imports 表（schema 见第 9.5 节）
+-- 新建 strava_imports 表（schema 见 6.4 节）
 ```
 
 - 所有列 nullable：未绑定 Strava 的用户这些字段为 NULL
@@ -741,37 +772,41 @@ ALTER TABLE activities ADD COLUMN strava_activity_id BIGINT UNIQUE;  -- Strava �
 用户点"连接 Strava"
     │
     ▼
-后端 GET /api/strava/authorize
-    → 生成 Strava 授权 URL（含 client_id + redirect_uri + scope）
+后端 GET /api/strava/authorize（需 JWT 登录）
+    → 用 JWT 中的 user_id 生成 state 令牌（JWT 签名，含 user_id + 过期时间）
+    → 生成 Strava 授权 URL（含 client_id + redirect_uri + scope + state）
     → 返回 URL 给前端
     │
     ▼
 用户在浏览器打开 URL → 登录 Strava → 点"授权"
     │
     ▼
-Strava 带着 code 跳回 redirect_uri
-    → GET /api/strava/callback?code=xxx
+Strava 带着 code + state 跳回 redirect_uri
+    → GET /api/strava/callback?code=xxx&state=xxx
     │
     ▼
-后端用 code 调 Strava API 换 token
+后端验证 state 令牌 → 解出 user_id
+    → 用 code 调 Strava API 换 token
     → POST https://www.strava.com/oauth/token
     → 拿到 access_token + refresh_token + expires_at + athlete.id
     │
     ▼
-后端把 token 写入 users 表
+后端把 token 写入 users 表（按 state 中的 user_id 定位用户）
     → 同时创建 strava_imports 记录（status='active'，启动历史导入）
 ```
 
 ### API 端点
 
 ```python
-# 生成授权 URL（前端调用，拿到 URL 后引导用户跳转）
+# 生成授权 URL（需 JWT 登录，用 user_id 签发 state 令牌）
 GET /api/strava/authorize
-→ 返回 {"authorize_url": "https://www.strava.com/oauth/authorize?..."}
+→ 返回 {"authorize_url": "https://www.strava.com/oauth/authorize?...&state=xxx"}
 
-# 授权回调（Strava 跳回时调用，浏览器直接访问）
-GET /api/strava/callback?code=xxx&scope=xxx
-→ 用 code 换 token → 写入 DB → 返回 HTML 页面（"授权成功，请返回小程序"）
+# 授权回调（Strava 跳回时调用，浏览器直接访问，无需 JWT）
+# state 令牌用于识别用户身份（JWT 签名，10 分钟过期）
+GET /api/strava/callback?code=xxx&state=xxx&scope=xxx
+→ 验证 state → 解出 user_id → 用 code 换 token → 写入 DB
+→ 返回 HTML 页面（"授权成功，请返回小程序"）
 
 # 查询绑定状态（前端轮询用）
 GET /api/strava/status
@@ -833,29 +868,51 @@ STRAVA_REDIRECT_URI: str       # 回调地址（开发：localhost，生产：�
 
 ```python
 class StravaClient:
-    """Strava API 客户端。每个请求自动带 token、检查限流、处理错误。"""
+    """
+    Strava API 客户端。每个请求自动带 token、检查限流、处理错误。
+    
+    生命周期约束：短命对象，绑定单个 db session 的生命周期，禁止跨任务复用。
+    调度器中应为每个用户创建新的 StravaClient 实例，用完即弃。
+    """
 
     def __init__(self, db, user):
         self.db = db
         self.user = user
 
-    def get_athlete_activities(self, page=1, per_page=30) -> list[dict]:
-        """获取活动列表（第一层：骨架信息）"""
+    def get_athlete_activities(self, before: int = None, per_page: int = 30) -> list[dict]:
+        """获取活动列表（第一层：骨架信息）
+        before: Unix 时间戳，返回此时间之前的活动（游标分页）
+        """
 
     def get_activity_detail(self, activity_id: int) -> dict:
-        """获取活动详情（第二层：完整摘要）"""
+        """获取活动详情（摘要 + 统计数据）"""
 
     def get_activity_streams(self, activity_id: int) -> dict:
-        """获取活动轨迹流（第三层：逐点数据）"""
+        """获取活动轨迹流（逐点数据）
+        自动传 keys=time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts
+        """
 ```
+
+### 二三层合并（Starsky 2026-04-15 确认）
+
+原设计分三层独立调用（列表→详情→轨迹），但第三层的 `from_streams()` 同时需要详情+轨迹。
+如果分开调，每条活动要 3 次 API 调用（详情在第二层调过，第三层还要再调一次）。
+**决策：合并第二三层为一步**，每条活动只调 2 次（detail + streams），省 1/3 API 额度。
+代价：用户看到完整卡片稍晚（但 MVP 阶段几百条历史活动几天导完，用户感知不到差异）。
 
 ### 限流策略
 
 ```python
 # 调用前主动检查，不等 429 再停
 # 用 Redis 计数器实现滑动窗口
+# Redis 键名前缀 strava:rate:，与 rq 的 rq: 前缀隔离
 DAILY_LIMIT = 1000          # 全 App 每天 1000 次
 WINDOW_15MIN_LIMIT = 200    # 全 App 每 15 分钟 200 次
+
+# Redis 键名：
+#   strava:rate:daily:{date}       → INCR + EXPIRE 86400
+#   strava:rate:15m:{window_id}    → INCR + EXPIRE 900
+# window_id = int(timestamp / 900)，每 15 分钟自动轮转
 ```
 
 ### 错误处理
@@ -863,7 +920,7 @@ WINDOW_15MIN_LIMIT = 200    # 全 App 每 15 分钟 200 次
 | HTTP 状态码 | 含义 | 处理 |
 |------------|------|------|
 | 200 | 成功 | 正常返回 |
-| 401 | Token 失效 | 尝试刷新，刷新失败则标记需重新授权 |
+| 401 | Token 失效 | 刷新 token **最多 1 次**，失败则清空 Strava 字段、标记需重新授权 |
 | 403 | 权限不足 | 记录日志，跳过 |
 | 404 | 活动不存在 | 跳过（用户可能删了） |
 | 429 | 限流 | 停止当前批次，等下一个窗口 |
@@ -881,33 +938,58 @@ WINDOW_15MIN_LIMIT = 200    # 全 App 每 15 分钟 200 次
 
 ```python
 def from_streams(
-    streams: dict,              # Strava Streams API 返回的 JSON
+    streams: dict,              # Strava Streams API 原始 JSON（key_by_type=true 格式）
     activity_detail: dict,      # Strava Activity Detail API 返回的 JSON
+    **kwargs,                   # ftp: int | None（用于功率区间计算）
 ) -> ParseResult:
     """
     Strava 适配器入口。
 
-    Strava 的数据结构是"并行数组"——所有 stream 等长、按索引对齐。
-    我们需要按索引遍历，把并行数组"旋转"成逐点的 Trackpoint 列表。
+    streams 格式（key_by_type=true）：{"time": {"data": [...]}, "latlng": {"data": [...]}, ...}
+    adapter 内部自己提取 .data，caller 传原始 JSON 即可。
+    某些 key 可能不存在（如 watts 只有有功率计的骑行才有），用 .get() 安全访问。
     """
-    # 1. 从 streams 取各数组：
-    #    time[], distance[], latlng[][], altitude[],
-    #    velocity_smooth[], heartrate[], cadence[], watts[]
-    # 2. 计算绝对时间戳：activity_detail.start_date + time[i] 秒
+    # 1. 从 streams 提取各数组（安全访问，缺失的返回 None）：
+    #    time_data = streams["time"]["data"]                 # 必需
+    #    distance_data = streams["distance"]["data"]         # 必需
+    #    latlng_data = streams["latlng"]["data"]             # 必需
+    #    altitude_data = streams.get("altitude", {}).get("data")
+    #    speed_data = streams.get("velocity_smooth", {}).get("data")
+    #    hr_data = streams.get("heartrate", {}).get("data")
+    #    cad_data = streams.get("cadence", {}).get("data")
+    #    power_data = streams.get("watts", {}).get("data")
+    #
+    # 2. 解析 start_date（ISO 8601 字符串 → datetime）：
+    #    start_dt = datetime.fromisoformat(activity_detail["start_date"].replace("Z", "+00:00"))
+    #    每个点的时间戳 = start_dt + timedelta(seconds=time_data[i])
+    #
     # 3. 按索引遍历，生成 Trackpoint 列表：
-    #    - lat, lon: latlng[i][0], latlng[i][1]
-    #    - speed: velocity_smooth[i]（已是 m/s）
-    #    - distance: distance[i]（已是累计米）
+    #    - lat, lon: latlng_data[i][0], latlng_data[i][1]
+    #    - speed: speed_data[i]（已是 m/s），无则 None
+    #    - distance: distance_data[i]（已是累计米）
     #    - 可选字段不存在则为 None
-    # 4. 从 activity_detail 取摘要（Strava 已算好的）：
-    #    - distance, moving_time, elapsed_time
-    #    - average_speed（m/s）, max_speed（m/s）
-    #    - average_watts, max_watts
-    #    - average_heartrate, max_heartrate
-    #    - average_cadence
-    #    - calories, total_elevation_gain
-    # 5. 坐标系：Strava 返回 WGS84（但原始来源不确定，见下文）
-    # 6. 组装 ParseResult 返回
+    #
+    # 4. 从 activity_detail 取摘要（Strava 已算好的），完整映射：
+    #    - distance         ← detail["distance"]（米）
+    #    - duration         ← detail["elapsed_time"]（秒）
+    #    - elevation_gain   ← detail["total_elevation_gain"]（米）
+    #    - avg_speed        ← detail["average_speed"]（m/s）
+    #    - max_speed        ← detail["max_speed"]（m/s）
+    #    - avg_power        ← detail.get("average_watts")
+    #    - max_power        ← detail.get("max_watts")
+    #    - avg_hr           ← detail.get("average_heartrate")
+    #    - max_hr           ← detail.get("max_heartrate")
+    #    - avg_cadence      ← detail.get("average_cadence")
+    #    - calories         ← detail.get("calories")
+    #    - started_at       ← start_dt（上面解析好的 datetime）
+    #    - finished_at      ← start_dt + timedelta(seconds=detail["elapsed_time"])
+    #    - normalized_power ← detail.get("weighted_average_watts")
+    #    - splits           ← 从 trackpoints 计算（调 stats_calculator.calculate_splits）
+    #
+    # 5. 计算 simplified_track（调 simplify.py，与 GPX 解析器一致）
+    # 6. 计算 power_zones（需要 ftp 参数，调 power_zones.py，与 GPX 解析器一致）
+    # 7. 坐标系：标记为 WGS84（已知折衷，见下文）
+    # 8. 组装 ParseResult 返回
 ```
 
 ### 坐标系风险
@@ -921,6 +1003,12 @@ Strava 本身存储 WGS84，但如果用户的 Strava 活动原始来源是中�
 ---
 
 ## 6.4 设计：导入调度器（strava/import_scheduler.py）
+
+### 前置依赖（编码前必须完成）
+
+1. **Worker 重构**：将 worker.py 的步骤 6-11（统计量写入 + trackpoints 批量插入 + 赛段匹配）抽成独立函数 `save_parse_result(db, activity, result)`，供文件上传 Worker 和 Strava 调度器共用。该函数不改 status、不 commit（职责边界见"共享写入函数"节）。
+2. **file_url 改为 nullable**：Activity 表的 file_url 改为 `nullable=True`（Strava 导入无文件）。Alembic 迁移在本任务中一起做。
+3. **strava_imports 表**：新建 ORM 模型 + Alembic 迁移。
 
 ### API 限额约束
 
@@ -938,22 +1026,24 @@ Strava 本身存储 WGS84，但如果用户的 Strava 活动原始来源是中�
 | 日常操作预留 | 200 次/天 | 新上传触发的 Strava 同步等 |
 | 历史导入预算 | 800 次/天 | 最多导入 400 条活动/天 |
 
-### 三层渐进策略
+### 两层渐进策略（原三层，二三层已合并，Starsky 2026-04-15 确认）
 
 ```
 第一层（列表）：
-    - 调用 GET /athlete/activities?per_page=30
+    - 调用 GET /athlete/activities?per_page=30&before={timestamp}
+    - 用时间戳游标分页（before=上一批最早活动的 start_date）
     - 成本低：500 条只需 17 次调用
     - 用户立刻看到活动列表（骨架信息：名称、日期、距离）
+    - 每条活动创建 Activity(status=importing, data_source=strava)：
+        title ← name, distance ← distance（米）, started_at ← start_date（parse ISO 8601）,
+        strava_activity_id ← id, file_url=NULL（Strava 无文件，file_url 改为 nullable）
+    - 去重：写入前查 strava_activity_id 是否已存在，已存在则跳过
+    - 返回空列表时标记第一层完成（后续 tick 只跑第二层）
     
-第二层（摘要）：
-    - 调用 GET /activities/{id}
-    - 每条 1 次调用
-    - 用户看到完整卡片（统计数据、速度、功率等）
-    
-第三层（轨迹）：
-    - 调用 GET /activities/{id}/streams?keys=...&key_by_type=true
-    - 每条 1 次调用
+第二层（详情+轨迹，合并执行）：
+    - 调用 GET /activities/{id}（详情）+ GET /activities/{id}/streams（轨迹）
+    - 每条 2 次调用
+    - from_streams(streams, detail) → ParseResult → _save_parse_result
     - 赛段匹配开始工作
     - 可跳过：非骑行活动、距离 < 5km、远离所有赛段的活动
 ```
@@ -971,18 +1061,17 @@ CREATE TABLE strava_imports (
     user_id INTEGER REFERENCES users(id),
     strava_athlete_id BIGINT NOT NULL,
     total_activities INTEGER,           -- Strava 上的总活动数
-    tier1_completed INTEGER DEFAULT 0,  -- 已完成第一层
-    tier2_completed INTEGER DEFAULT 0,  -- 已完成第二层
-    tier3_completed INTEGER DEFAULT 0,  -- 已完成第三层
-    tier3_skipped INTEGER DEFAULT 0,    -- 第三层跳过的（非骑行等）
-    last_activity_id BIGINT,            -- 当前处理到的活动
+    tier1_completed INTEGER DEFAULT 0,  -- 已完成第一层（列表拉取）
+    tier2_completed INTEGER DEFAULT 0,  -- 已完成第二层（详情+轨迹+匹配）
+    tier2_skipped INTEGER DEFAULT 0,    -- 第二层跳过的（非骑行/距离<5km 等）
+    cursor_before TIMESTAMP,             -- 时间戳游标：下次拉列表用 before=此值
     status VARCHAR(20) DEFAULT 'active', -- active / paused / completed
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 ```
 
-服务器重启后，从 `last_activity_id` 继续，不丢进度不重复拉取。
+服务器重启后，从 `cursor_before` 时间戳继续，不丢进度不重复拉取。
 
 ### 调度算法
 
@@ -993,8 +1082,8 @@ CREATE TABLE strava_imports (
     3. 如果额度 = 0 → 等待
     4. 从所有 status='active' 的导入任务中，轮转选一个用户
     5. 根据该用户的进度，选最高优先级的层级任务
-       优先级：第一层 > 第二层（最新的先）> 第三层（最新的先）
-    6. 执行一次 API 调用
+       如果 tier1 未完成 → 跑第一层，否则 → 跑第二层（最新的先）
+    6. 执行一个最小任务单元：第一层 = 1 次列表调用，第二层 = detail+streams 共 2 次调用
     7. 更新进度
     8. 如果全部完成 → status = 'completed'
 ```
@@ -1066,10 +1155,9 @@ GET /api/strava/import-progress
     "total_activities": 500,
     "tier1_completed": 500,
     "tier2_completed": 120,
-    "tier3_completed": 45,
-    "tier3_skipped": 30,
+    "tier2_skipped": 30,
     "percent": 24,
-    "message": "正在导入详情，已完成 120/500"
+    "message": "正在导入详情+轨迹，已完成 120/500"
 }
 ```
 
@@ -1096,7 +1184,7 @@ GET /api/strava/import-progress
 | 字段 | 翻译层内部 | 数据库存储 | API 返回 | 前端显示 |
 |------|-----------|-----------|---------|---------|
 | 距离 | 米 | 米 | 公里 | 公里 |
-| 速度 | **m/s** | **m/s** | km/h | km/h |
+| 速度 | **m/s** | **km/h** | km/h | km/h |
 | 海拔 | 米 | 米 | 米 | 米 |
 | 心率 | bpm | bpm | bpm | bpm |
 | 踏频 | rpm | rpm | rpm | rpm |
@@ -1104,10 +1192,9 @@ GET /api/strava/import-progress
 | 时间 | 秒 | 秒 | 秒 | hh:mm:ss |
 | 温度 | °C | °C | °C | °C |
 
-> **注意**：速度单位从 v1 的 km/h 改为 v2 的 m/s（内部和数据库）。
-> 这意味着 Activity 表的 avg_speed、max_speed 列在 v2 之后存的是 m/s。
-> API 层做 ×3.6 转换，前端不感知变化。
-> 老数据（v1）的 avg_speed 是 km/h，需要在 API 层兼容处理。
+> **注意**：速度在翻译层内部统一使用 m/s（国际标准），写入数据库时 ×3.6 转为 km/h。
+> 这样数据库与 API、前端单位一致（km/h），无需兼容处理。
+> 转换发生在 Worker 写入 Activity 表时（`_save_parse_result` 函数内）。
 
 ## 附录 C：FIT 坐标转换公式
 
