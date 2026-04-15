@@ -279,6 +279,39 @@ Worker 和 service 层的关键步骤必须有 `logging` 输出，格式包含�
 - 例：讨论数据格式时突然问"手机电量优化你想过吗"
 - 应对：每讲完一个方案，主动想一层"他可能从哪个角度追问"，但不主动展开（避免信息过载）
 
+## 部署经验（第 2 期踩坑总结，2026-04-15）
+
+> **核心教训：本地 133 测试全绿 ≠ 生产能跑。** 测试用 SQLite + mock，不连真 Docker/PostgreSQL/Strava API。
+> 以下检查清单每次部署前必须过一遍。
+
+### 部署前强制检查清单
+
+- [ ] **requirements.txt 是否完整？** 本地 `pip install` 的每个新包都必须写进去。`pip freeze | grep 包名` 确认版本号在 PyPI/镜像上存在
+- [ ] **docker-compose.yml 是否同步？** .env 里加了新变量 → docker-compose.yml 的 environment 里也要加。否则容器内读不到
+- [ ] **Alembic 迁移在 PostgreSQL 上能跑吗？** 不要在迁移脚本中用 Python try/except 包 DDL 操作——PostgreSQL 事务 abort 后所有后续 SQL 都会失败。用 `DO $$ EXCEPTION` 块隔离
+- [ ] **第三方 OAuth 的回调地址配了吗？** 代码里写了 redirect_uri 不够，还要在第三方平台的开发者后台配对应的域名/IP
+- [ ] **服务器能连 GitHub 吗？** 大陆服务器访问 GitHub 不稳定，部署不能依赖 git pull。备用方案：本地打包 scp 上传，或服务器上直接 sed 改文件
+
+### 服务器信息
+
+| 项目 | 值 |
+|------|---|
+| IP | 114.132.190.245 |
+| 用户 | ubuntu |
+| 代码路径 | ~/ridemap |
+| Docker 命令前缀 | sudo |
+| 部署方式 | git clone（首次）+ git pull 或 scp（后续） |
+| 数据库迁移 | `sudo docker compose exec api python3 -m alembic upgrade head` |
+| 看日志 | `sudo docker compose logs api --tail 30` |
+
+### 已知部署缺陷（待修复）
+
+| 缺陷 | 影响 | 修复方案 |
+|------|------|---------|
+| 手动同步和调度器进度不联动 | 手动 sync 创建活动后调度器卡在 tier1 | handle_manual_sync 应更新 strava_imports 进度 |
+| OAuth callback 可重复创建 strava_imports | 多次授权回调产生重复导入任务 | callback 先查已有任务，存在则跳过 |
+| 无 scheduler 容器 | 调度器不会自动运行 | docker-compose 加 scheduler 服务 |
+
 ## 已知风险（持续维护）
 
 ### 已确认的生产风险
