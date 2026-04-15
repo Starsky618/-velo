@@ -17,6 +17,7 @@ from app.segment.router import (
     router as segment_router,
     user_effort_router,
 )
+from app.strava.router import router as strava_router
 from app.user.router import router as user_router
 
 # 创建 FastAPI 应用实例
@@ -43,6 +44,8 @@ app.include_router(activity_router)
 app.include_router(segment_router)
 app.include_router(user_effort_router)
 app.include_router(activity_segment_router)
+# Strava 集成模块——OAuth 授权、Webhook 回调、历史导入等
+app.include_router(strava_router)
 
 
 @app.get("/health")
