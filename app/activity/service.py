@@ -43,27 +43,42 @@ _MAX_TRACKPOINTS = 50_000
 _PROCESSING_TIMEOUT = 10 * 60
 
 
-def validate_gpx_file(filename: str, file_bytes: bytes) -> None:
-    """
-    校验上传的文件是否是合法的 GPX。
+# 支持的文件类型
+_ALLOWED_EXTENSIONS = {".gpx", ".fit"}
 
-    三道关卡，任一不通过就抛 ValueError：
-    1. 文件名必须以 .gpx 结尾
+
+def validate_ride_file(filename: str, file_bytes: bytes) -> None:
+    """
+    校验上传的骑行文件是否合法（支持 .gpx 和 .fit）。
+
+    四道关卡，任一不通过就抛 ValueError：
+    1. 文件名必须以 .gpx 或 .fit 结尾
     2. 文件大小不能超过 50MB
-    3. 文件内容必须以 XML 或 GPX 标签开头
+    3. 文件内容格式检查（GPX 查 XML 头，FIT 查二进制魔术字节）
+    4. GPX 额外做轨迹点预检（FIT 是二进制，无法字节扫描计数）
 
     好比快递收件窗口的验收流程：
     先看包裹标签对不对 → 再称重量超没超 → 最后打开看里面是不是该有的东西。
     """
     # 关卡 1：后缀检查
-    if not filename.lower().endswith(".gpx"):
-        raise ValueError("只接受.gpx文件")
+    ext = _get_file_extension(filename)
+    if ext not in _ALLOWED_EXTENSIONS:
+        raise ValueError("只接受 .gpx 或 .fit 文件")
 
     # 关卡 2：大小检查
     if len(file_bytes) > _MAX_FILE_SIZE:
         raise ValueError("文件大小不能超过50MB")
 
-    # 关卡 3：内容检查（读前 256 字节，跳过 BOM）
+    # 关卡 3 + 4：按文件类型做内容检查
+    if ext == ".gpx":
+        _validate_gpx_content(file_bytes)
+    elif ext == ".fit":
+        _validate_fit_content(file_bytes)
+
+
+def _validate_gpx_content(file_bytes: bytes) -> None:
+    """GPX 文件内容校验：XML 头 + 轨迹点预检。"""
+    # 内容检查（读前 256 字节，跳过 BOM）
     header = file_bytes[:256]
     if header.startswith(b"\xef\xbb\xbf"):
         header = header[3:]
@@ -72,9 +87,7 @@ def validate_gpx_file(filename: str, file_bytes: bytes) -> None:
     if not (header_str.startswith("<?xml") or header_str.startswith("<gpx")):
         raise ValueError("文件内容不是有效的GPX格式")
 
-    # 关卡 4：轨迹点数量预检（轻量字节扫描，不解析 XML）
-    # GPX 中每个轨迹点以 <trkpt 标签开头，数标签数 ≈ 数轨迹点数
-    # 纯字节扫描 50MB 耗时毫秒级，不建 DOM 树，不吃额外内存
+    # 轨迹点数量预检（轻量字节扫描，不解析 XML）
     trkpt_count = file_bytes.count(b"<trkpt")
     if trkpt_count > _MAX_TRACKPOINTS:
         raise ValueError(
@@ -82,9 +95,37 @@ def validate_gpx_file(filename: str, file_bytes: bytes) -> None:
         )
 
 
-def upload_gpx(db: Session, user_id: int, filename: str, file_bytes: bytes) -> Activity:
+def _validate_fit_content(file_bytes: bytes) -> None:
+    """FIT 文件内容校验：检查文件头魔术字节。"""
+    # FIT 文件头：第 8-11 字节应为 ".FIT" 签名（ASCII）
+    # 最小 FIT 文件约 12 字节（头部），过短一定不是有效文件
+    if len(file_bytes) < 12:
+        raise ValueError("文件过小，不是有效的 FIT 文件")
+
+    # FIT 文件头的第 8-11 字节固定为 ".FIT"
+    # 有些文件头是 12 字节，有些是 14 字节，但签名位置固定在 8-11
+    header_size = file_bytes[0]
+    if header_size < 12:
+        raise ValueError("FIT 文件头长度异常")
+
+    signature = file_bytes[8:12]
+    if signature != b".FIT":
+        raise ValueError("文件内容不是有效的 FIT 格式")
+
+
+def _get_file_extension(filename: str) -> str:
+    """提取文件扩展名（小写）。"""
+    if not filename:
+        return ""
+    dot_idx = filename.rfind(".")
+    if dot_idx < 0:
+        return ""
+    return filename[dot_idx:].lower()
+
+
+def upload_ride(db: Session, user_id: int, filename: str, file_bytes: bytes) -> Activity:
     """
-    处理 GPX 文件上传的完整流程。
+    处理骑行文件上传的完整流程（支持 .gpx 和 .fit）。
 
     步骤：
     1. 计算文件哈希 → 检查是否重复

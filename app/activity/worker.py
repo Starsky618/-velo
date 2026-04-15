@@ -104,11 +104,16 @@ def _do_parse(db, activity_id: int) -> None:
     file_content = _storage.download(activity.file_url)
 
     # ===== 步骤 4：解析 + 坐标归一化 =====
-    # 新翻译层：GPXParser 输出 ParseResult（frozen dataclass），
+    # 根据文件扩展名选择解析器（GPX 用 XML 翻译官，FIT 用二进制翻译官）
     # normalize 确保坐标全部是 WGS84（码表数据直接通过，中国 App 数据做纠偏）
     weight = float(user.weight) if user.weight else 70.0
     ftp = int(user.ftp) if user.ftp else None
-    parser = GPXParser()
+    file_ext = _get_file_extension(activity.file_url)
+    if file_ext == ".fit":
+        parser = FITParser()
+    else:
+        parser = GPXParser()
+
     result = parser.parse(
         file_content,
         weight=weight,
@@ -235,3 +240,13 @@ def _mark_failed(db, activity_id: int, error_message: str) -> None:
     except Exception:
         # 连数据库都挂了，只能放弃，Worker 日志会记录原始异常
         db.rollback()
+
+
+def _get_file_extension(file_url: str) -> str:
+    """从文件路径中提取扩展名（小写）。"""
+    if not file_url:
+        return ""
+    dot_idx = file_url.rfind(".")
+    if dot_idx < 0:
+        return ""
+    return file_url[dot_idx:].lower()

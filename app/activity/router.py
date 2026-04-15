@@ -24,15 +24,15 @@ router = APIRouter(prefix="/api/activities", tags=["activity"])
 # ========== 任务 3.5：GPX 上传 ==========
 
 @router.post("/upload", response_model=schemas.UploadResponse)
-def upload_gpx(
+def upload_ride(
     file: UploadFile = File(...),
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    GPX 文件上传接口。
+    骑行文件上传接口（支持 .gpx 和 .fit）。
 
-    前端以 multipart form-data 格式上传 .gpx 文件，
+    前端以 multipart form-data 格式上传骑行文件，
     后端校验 → 存储 → 建档 → 入队列，立即返回 activity_id。
     不需要等解析完成，前端可以用 activity_id 轮询进度。
     """
@@ -41,13 +41,13 @@ def upload_gpx(
 
     # 校验文件合法性（后缀、大小、内容格式）
     try:
-        service.validate_gpx_file(file.filename or "", file_bytes)
+        service.validate_ride_file(file.filename or "", file_bytes)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     # 执行上传流程（存储 + 建档 + 入队列）
     try:
-        activity = service.upload_gpx(db, user_id, file.filename or "upload.gpx", file_bytes)
+        activity = service.upload_ride(db, user_id, file.filename or "upload.gpx", file_bytes)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
