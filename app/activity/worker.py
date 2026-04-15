@@ -130,10 +130,49 @@ def _do_parse(db, activity_id: int) -> None:
             f"轨迹点过多（{len(trackpoints)} 个，上限 {_MAX_TRACKPOINTS}），请裁剪后重新上传"
         )
 
-    # ===== 步骤 6：将统计量写入 activity =====
-    # 从 ParseResult 的 summary 和 metadata 中读取，字段映射如下：
-    # - 速度：翻译层内部用 m/s，DB 存 km/h（兼容旧数据），写入时 ×3.6
-    # - 其他字段直接写入，单位不变
+    # ===== 步骤 6-9：统计量 + 轨迹点写入（共享函数）=====
+    save_parse_result(db, activity, result)
+
+    # ===== 步骤 10：标记完成 =====
+    activity.status = "completed"
+    db.commit()
+
+    # ===== 步骤 11：触发 Segment 匹配 =====
+    # 活动已标记 completed 并 commit，现在触发赛段自动匹配。
+    # 匹配是"尽力而为"：失败不影响活动状态（status 已经是 completed）。
+    # 单独 try/except 隔离，防止匹配异常被上层 _mark_failed 捕获而误改活动状态。
+    try:
+        from app.segment.auto_match import match_activity_against_segments
+        match_activity_against_segments(activity_id, db)
+    except Exception:
+        # 赛段匹配失败静默跳过，活动状态不受影响
+        db.rollback()
+
+
+def save_parse_result(db, activity, result) -> None:
+    """
+    文件上传和 Strava 导入共用的 DB 写入逻辑——"档案管理员"。
+
+    从 ParseResult 中读取数据，写入 Activity 表的统计字段和 Trackpoint 表。
+    好比收到一份翻译好的"标准文件袋"（ParseResult），把里面的内容分别归档到
+    "成绩单"（Activity 统计字段）和"GPS 足迹簿"（Trackpoint 表）。
+
+    职责边界（铁律）：
+    - 写 Activity 的统计字段（distance/speed/power 等）
+    - 写 Activity 的 simplified_track/power_zones/splits
+    - 批量插入 Trackpoint 记录（每 500 条一批）
+    - 不改 status（由 caller 控制）
+    - 不调 db.commit()（由 caller 控制事务边界）
+    - 不触发赛段匹配（由 caller 在 commit 后单独触发）
+
+    参数：
+        db: SQLAlchemy Session，由调用方管理生命周期
+        activity: Activity ORM 对象，统计字段会被直接修改
+        result: ParseResult，翻译层输出的标准数据包
+    """
+    # ---- 统计量写入 activity ----
+    # 速度：翻译层内部用 m/s，DB 存 km/h（兼容旧数据），写入时 ×3.6
+    # 其他字段直接写入，单位不变
     summary = result.summary
     activity.title = activity.title or result.metadata.title
     activity.distance = summary.distance
@@ -152,24 +191,25 @@ def _do_parse(db, activity_id: int) -> None:
     activity.finished_at = summary.finished_at
     activity.data_source = result.metadata.source.value  # "gpx" / "fit" / "strava"
 
-    # ===== 步骤 7：写入 splits（分段统计）=====
+    # ---- splits（分段统计）----
     # splits 中的 avg_speed 也是 m/s，转为 km/h 后存入 JSONB
     activity.splits = _convert_splits_speed(summary.splits)
 
-    # ===== 步骤 8：简化轨迹 + 功率区间 =====
+    # ---- 简化轨迹 + 功率区间 ----
     # 新版解析器内部已计算好，直接读取
     activity.simplified_track = result.simplified_track
     activity.power_zones = result.power_zones
 
-    # ===== 步骤 9：批量插入 trackpoints =====
+    # ---- 批量插入 trackpoints ----
     # parser 输出 Trackpoint dataclass（缩写字段名），数据库列用全称
     # v2 新增 speed（m/s）和 distance（累计米）两列
+    trackpoints = result.trackpoints
     for batch_start in range(0, len(trackpoints), _BATCH_SIZE):
         batch = trackpoints[batch_start:batch_start + _BATCH_SIZE]
         tp_objects = []
         for tp in batch:
             tp_obj = Trackpoint(
-                activity_id=activity_id,
+                activity_id=activity.id,
                 seq=tp.seq,
                 latitude=tp.lat,
                 longitude=tp.lon,
@@ -187,21 +227,6 @@ def _do_parse(db, activity_id: int) -> None:
             tp_objects.append(tp_obj)
         db.bulk_save_objects(tp_objects)
         db.flush()  # 每批次刷入数据库，释放内存
-
-    # ===== 步骤 10：标记完成 =====
-    activity.status = "completed"
-    db.commit()
-
-    # ===== 步骤 11：触发 Segment 匹配 =====
-    # 活动已标记 completed 并 commit，现在触发赛段自动匹配。
-    # 匹配是"尽力而为"：失败不影响活动状态（status 已经是 completed）。
-    # 单独 try/except 隔离，防止匹配异常被上层 _mark_failed 捕获而误改活动状态。
-    try:
-        from app.segment.auto_match import match_activity_against_segments
-        match_activity_against_segments(activity_id, db)
-    except Exception:
-        # 赛段匹配失败静默跳过，活动状态不受影响
-        db.rollback()
 
 
 def _convert_splits_speed(splits: list[dict] | None) -> list[dict] | None:
