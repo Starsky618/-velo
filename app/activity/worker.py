@@ -29,6 +29,7 @@ from sqlalchemy import update, func
 from app.activity.models import Activity, Trackpoint
 from app.database import SessionLocal
 from app.parsing.coord_normalizer import normalize
+from app.parsing.fit_parser import FITParser, FITParseError
 from app.parsing.gpx_parser import GPXParser, GPXParseError
 from app.storage.local import LocalStorage
 from app.user.models import User
@@ -58,7 +59,7 @@ def parse_activity(activity_id: int) -> None:
     db = SessionLocal()
     try:
         _do_parse(db, activity_id)
-    except GPXParseError as e:
+    except (GPXParseError, FITParseError) as e:
         # GPX 格式问题（用户上传了损坏的文件等）
         _mark_failed(db, activity_id, str(e))
     except Exception:
