@@ -14,7 +14,7 @@
 - 这个模型会被骑行模块（Activity）引用，建立"这条记录属于谁"的关系
 """
 
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, func
+from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, DateTime, Text, func
 
 from app.database import Base
 
@@ -60,6 +60,23 @@ class User(Base):
     # v1 阶段不开放注册管理员，需要手动在数据库里把这个字段改成 True
     # server_default 确保非 ORM 路径插入时也默认为 False
     is_admin = Column(Boolean, server_default="false")
+
+    # ===== Strava 绑定信息 =====
+    # 用户绑定 Strava 后，这四个字段存储 OAuth 令牌信息
+    # 好比你在一个翻译平台上绑定了谷歌账号：
+    #   - athlete_id 是你在 Strava 那边的"门牌号"
+    #   - access_token 是进门的"临时通行证"（有效期短，过期要换）
+    #   - refresh_token 是"换通行证的凭据"（用它去 Strava 换新的 access_token）
+    #   - token_expires_at 记着通行证什么时候过期
+    # 未绑定 Strava 的用户这些字段全部为 NULL
+    # strava_athlete_id 加 UNIQUE：一个 Strava 账号只能绑定一个系统用户，
+    # 防止两个微信号绑同一个 Strava 造成数据混乱
+    strava_athlete_id = Column(BigInteger, unique=True, nullable=True)
+    strava_access_token = Column(String(255), nullable=True)
+    strava_refresh_token = Column(String(255), nullable=True)
+    # 用 DateTime(timezone=True) 让 PostgreSQL 使用 TIMESTAMP WITH TIME ZONE，
+    # 这样存入和读出的都是带时区的 datetime，避免 naive vs aware 比较报 TypeError
+    strava_token_expires_at = Column(DateTime(timezone=True), nullable=True)
 
     # 创建时间和更新时间
     # server_default 让数据库自动填入当前时间，不依赖 Python 端的时钟

@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     # GPX 文件本地存储根目录
     UPLOAD_DIR: str = "./uploads"
 
+    # Strava OAuth 凭证——调用 Strava API 时需要
+    # 这三个值从 .env 文件读取，开发/生产环境各自配置
+    STRAVA_CLIENT_ID: str = ""           # Strava API 应用 ID
+    STRAVA_CLIENT_SECRET: str = ""       # Strava API 密钥
+    STRAVA_REDIRECT_URI: str = ""        # OAuth 回调地址
+    STRAVA_WEBHOOK_VERIFY_TOKEN: str = ""  # Webhook 订阅验证密钥
+
     class Config:
         # 告诉 pydantic-settings 从项目根目录的 .env 文件读取配置
         env_file = ".env"

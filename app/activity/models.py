@@ -19,7 +19,7 @@
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, Text,
+    Column, Integer, BigInteger, String, Float, DateTime, Text,
     ForeignKey, Index, UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -54,8 +54,10 @@ class Activity(Base):
     # 用字符串而非整数，方便调试和日志阅读
     status = Column(String(20), nullable=False, server_default="pending")
 
-    # GPX 文件存储路径（由 StorageBackend 管理）
-    file_url = Column(Text, nullable=False)
+    # 文件存储路径（由 StorageBackend 管理）
+    # nullable=True：Strava 导入的活动没有本地文件，file_url 为 NULL
+    # GPX/FIT 上传的活动此字段一定有值，Strava 来源的活动此字段为 NULL
+    file_url = Column(Text, nullable=True)
 
     # 文件内容的 SHA-256 哈希值（64 位十六进制字符串）
     # 用于去重：同一用户上传完全相同的文件时，秒级拦截返回已有记录
@@ -85,6 +87,13 @@ class Activity(Base):
 
     # 数据来源标记：gpx / fit / strava，老数据为 NULL（都是 GPX）
     data_source = Column(String(20), nullable=True)
+
+    # Strava 活动 ID（去重用）：一条 Strava 活动只导入一次
+    # 好比快递单号——同一个单号不能入库两次
+    # UNIQUE 约束是数据库层最后防线：即使应用层的"先查后写"被并发请求绕过，
+    # 数据库也会用 IntegrityError 拦住重复插入
+    # nullable=True：非 Strava 来源的活动（GPX/FIT 上传）此字段为 NULL
+    strava_activity_id = Column(BigInteger, unique=True, nullable=True)
 
     # ===== JSONB 字段（结构化数据，存为 JSON 格式）=====
 
