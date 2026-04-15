@@ -69,8 +69,10 @@ class ActivityDetail(BaseModel):
     max_hr: Optional[float] = None
     avg_cadence: Optional[float] = None
     calories: Optional[float] = None
+    normalized_power: Optional[float] = None  # 标准化功率（NP），FIT 自带
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    data_source: Optional[str] = None         # 数据来源：gpx / fit / strava
     simplified_track: Optional[Any] = None   # JSONB: [{lat, lon, ele}, ...]
     splits: Optional[Any] = None             # JSONB: [{km, avg_speed, ...}, ...]
     power_zones: Optional[Any] = None        # JSONB: [{zone, name, ...}, ...]

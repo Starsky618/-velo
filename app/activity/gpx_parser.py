@@ -1,4 +1,14 @@
 """
+⚠️ 已废弃 — 请使用 app/parsing/gpx_parser.py（v2 翻译层版本）。
+
+本文件是 v1 版 GPX 解析器，输出 dict 格式。
+v2 版（parsing/gpx_parser.py）输出 ParseResult dataclass，
+已包含 speed/distance 计算、坐标系检测、stats_calculator 调用等升级功能。
+Worker 已切换到 v2 版，本文件保留仅供参考，后续版本将删除。
+
+---
+
+原始说明：
 GPX 解析器——"成绩单批改员"。
 
 把骑行码表导出的 GPX 文件（一大堆 XML 标签）翻译成结构化的骑行数据：

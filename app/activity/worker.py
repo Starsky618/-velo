@@ -4,18 +4,18 @@
 当用户上传 GPX 文件后，API（Task 3.5）会把一个"解析任务"扔进 Redis 队列。
 rq Worker（根目录的 worker.py）从队列中取出任务，调用这里的 parse_activity() 执行。
 
-完整流程：
+完整流程（v2 翻译层改造后）：
 1. 从数据库取出 Activity 记录和用户信息
-2. 从文件存储下载 GPX 文件
-3. 调 gpx_parser 解析 → 得到轨迹点 + 统计数据
-4. 调 simplify 简化轨迹 → 供前端画地图
-5. 调 calculate_power_zones 算功率区间 → 训练分析
-6. 把所有结果写回数据库
-7. 批量插入轨迹点（每 500 条一批）
+2. 从文件存储下载文件
+3. 调用翻译层解析器（GPXParser/FITParser）→ 得到 ParseResult
+4. 坐标归一化（GCJ-02 → WGS84，大多数直接通过）
+5. 把统计摘要、简化轨迹、功率区间写回 Activity 表
+6. 批量插入轨迹点（每 500 条一批，含新增的 speed/distance 列）
+7. 触发赛段自动匹配
 
 好比快递分拣中心的拆包流程：
-拆包（下载GPX）→ 翻译内容（parser）→ 压缩照片（simplify）
-→ 分类评分（power_zones）→ 写入档案 → 标记完成。
+拆包（下载文件）→ 送进国际翻译中心（parsing/）→ 海关纠偏（coord_normalizer）
+→ 写入档案 → 标记完成。
 
 注意事项：
 - 这个函数由 rq Worker 在独立进程中执行，不在 FastAPI 请求上下文中
@@ -26,11 +26,10 @@ rq Worker（根目录的 worker.py）从队列中取出任务，调用这里的 
 
 from sqlalchemy import update, func
 
-from app.activity.gpx_parser import GPXParseError, parse_gpx
-from app.activity.power_zones import calculate_power_zones
 from app.activity.models import Activity, Trackpoint
-from app.activity.simplify import simplify_track
 from app.database import SessionLocal
+from app.parsing.coord_normalizer import normalize
+from app.parsing.gpx_parser import GPXParser, GPXParseError
 from app.storage.local import LocalStorage
 from app.user.models import User
 
@@ -100,70 +99,84 @@ def _do_parse(db, activity_id: int) -> None:
     if user is None:
         raise ValueError(f"User {activity.user_id} 不存在")
 
-    # ===== 步骤 3：下载 GPX 文件 =====
-    gpx_content = _storage.download(activity.file_url)
+    # ===== 步骤 3：下载文件 =====
+    file_content = _storage.download(activity.file_url)
 
-    # ===== 步骤 4：解析 GPX =====
-    # weight 用于无功率时的卡路里估算，默认 70kg
+    # ===== 步骤 4：解析 + 坐标归一化 =====
+    # 新翻译层：GPXParser 输出 ParseResult（frozen dataclass），
+    # normalize 确保坐标全部是 WGS84（码表数据直接通过，中国 App 数据做纠偏）
     weight = float(user.weight) if user.weight else 70.0
-    result = parse_gpx(gpx_content, weight=weight)
+    ftp = int(user.ftp) if user.ftp else None
+    parser = GPXParser()
+    result = parser.parse(
+        file_content,
+        weight=weight,
+        ftp=ftp,
+        file_hash=activity.file_hash,
+    )
+    result = normalize(result)
 
     # ===== 步骤 5.5：轨迹点数量安全网 =====
-    # 第二层防御：解析后检查实际点数。
-    # 即使第一层（上传时的标签计数）漏掉了异常格式，这里也能拦住。
-    trackpoints = result["trackpoints"]
+    # 第二层防御：GPX 解析器内部已有上限检查，这里是兜底
+    trackpoints = result.trackpoints
     if len(trackpoints) > _MAX_TRACKPOINTS:
         raise GPXParseError(
             f"轨迹点过多（{len(trackpoints)} 个，上限 {_MAX_TRACKPOINTS}），请裁剪后重新上传"
         )
 
     # ===== 步骤 6：将统计量写入 activity =====
-    activity.title = activity.title or result["title"]  # 用户没起名则用 GPX 里的
-    activity.distance = result["distance"]
-    activity.duration = result["duration"]
-    activity.elevation_gain = result["elevation_gain"]
-    activity.avg_speed = result["avg_speed"]
-    activity.max_speed = result["max_speed"]
-    activity.avg_power = result["avg_power"]
-    activity.max_power = result["max_power"]
-    activity.avg_hr = result["avg_hr"]
-    activity.max_hr = result["max_hr"]
-    activity.avg_cadence = result["avg_cadence"]
-    activity.calories = result["calories"]
-    activity.started_at = result["started_at"]
-    activity.finished_at = result["finished_at"]
-    activity.splits = result["splits"]
+    # 从 ParseResult 的 summary 和 metadata 中读取，字段映射如下：
+    # - 速度：翻译层内部用 m/s，DB 存 km/h（兼容旧数据），写入时 ×3.6
+    # - 其他字段直接写入，单位不变
+    summary = result.summary
+    activity.title = activity.title or result.metadata.title
+    activity.distance = summary.distance
+    activity.duration = summary.duration
+    activity.elevation_gain = summary.elevation_gain
+    activity.avg_speed = round(summary.avg_speed * 3.6, 1) if summary.avg_speed else None
+    activity.max_speed = round(summary.max_speed * 3.6, 1) if summary.max_speed else None
+    activity.avg_power = summary.avg_power
+    activity.max_power = summary.max_power
+    activity.avg_hr = summary.avg_hr
+    activity.max_hr = summary.max_hr
+    activity.avg_cadence = summary.avg_cadence
+    activity.calories = summary.calories
+    activity.normalized_power = summary.normalized_power
+    activity.started_at = summary.started_at
+    activity.finished_at = summary.finished_at
+    activity.data_source = result.metadata.source.value  # "gpx" / "fit" / "strava"
 
-    # ===== 步骤 7：生成简化轨迹 =====
-    activity.simplified_track = simplify_track(result["trackpoints"])
+    # ===== 步骤 7：写入 splits（分段统计）=====
+    # splits 中的 avg_speed 也是 m/s，转为 km/h 后存入 JSONB
+    activity.splits = _convert_splits_speed(summary.splits)
 
-    # ===== 步骤 8：功率区间计算 =====
-    if user.ftp is not None and result["avg_power"] is not None:
-        activity.power_zones = calculate_power_zones(result["trackpoints"], user.ftp)
-    else:
-        activity.power_zones = None
+    # ===== 步骤 8：简化轨迹 + 功率区间 =====
+    # 新版解析器内部已计算好，直接读取
+    activity.simplified_track = result.simplified_track
+    activity.power_zones = result.power_zones
 
     # ===== 步骤 9：批量插入 trackpoints =====
-    # parser 输出用缩写（lat/lon/ele/time/hr/cad），数据库列用全称
-    # 这里做字段映射
-    # trackpoints 已在步骤 5.5 中定义
+    # parser 输出 Trackpoint dataclass（缩写字段名），数据库列用全称
+    # v2 新增 speed（m/s）和 distance（累计米）两列
     for batch_start in range(0, len(trackpoints), _BATCH_SIZE):
         batch = trackpoints[batch_start:batch_start + _BATCH_SIZE]
         tp_objects = []
         for tp in batch:
             tp_obj = Trackpoint(
                 activity_id=activity_id,
-                seq=tp["seq"],
-                latitude=tp["lat"],
-                longitude=tp["lon"],
-                elevation=tp["ele"],
-                timestamp=tp["time"],
-                heart_rate=tp["hr"],
-                cadence=tp["cad"],
-                power=tp["power"],
+                seq=tp.seq,
+                latitude=tp.lat,
+                longitude=tp.lon,
+                elevation=tp.ele,
+                timestamp=tp.time,
+                heart_rate=tp.hr,
+                cadence=tp.cad,
+                power=tp.power,
+                speed=tp.speed,          # v2 新增：m/s
+                distance=tp.distance,    # v2 新增：累计米
                 # geom：用 PostGIS 函数从经纬度生成空间点
                 # WKT 格式："POINT(经度 纬度)"（注意顺序：先经度后纬度）
-                geom=f"SRID=4326;POINT({tp['lon']} {tp['lat']})",
+                geom=f"SRID=4326;POINT({tp.lon} {tp.lat})",
             )
             tp_objects.append(tp_obj)
         db.bulk_save_objects(tp_objects)
@@ -183,6 +196,25 @@ def _do_parse(db, activity_id: int) -> None:
     except Exception:
         # 赛段匹配失败静默跳过，活动状态不受影响
         db.rollback()
+
+
+def _convert_splits_speed(splits: list[dict] | None) -> list[dict] | None:
+    """
+    将 splits 中的 avg_speed 从 m/s 转为 km/h。
+
+    翻译层内部统一 m/s，但 DB 和 API 返回 km/h。
+    splits 存在 JSONB 里直接返回前端，必须在写入前转换。
+    """
+    if not splits:
+        return splits
+
+    converted = []
+    for s in splits:
+        new_split = dict(s)  # 浅拷贝，不改原始数据
+        if new_split.get("avg_speed") is not None:
+            new_split["avg_speed"] = round(new_split["avg_speed"] * 3.6, 1)
+        converted.append(new_split)
+    return converted
 
 
 def _mark_failed(db, activity_id: int, error_message: str) -> None:
