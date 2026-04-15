@@ -67,14 +67,16 @@ def upgrade() -> None:
 
     # ===== activities 表：更新 status CHECK 约束 =====
     # 新增 'importing' 状态：表示正在从 Strava 拉取数据
-    # 完整状态机：pending → processing → completed/failed
-    #             importing → processing → completed/failed
-    # 先尝试删除旧约束（如果存在），再创建新的
-    # 用 try-except 包裹删除操作，因为老项目可能从未创建过 CHECK 约束
-    try:
-        op.drop_constraint('ck_activities_status', 'activities', type_='check')
-    except Exception:
-        pass
+    # 先删除旧约束（如果存在），再创建新的
+    # 注意：PostgreSQL 中 try/except 不能绕过事务失败状态，
+    # 必须用 DO $$ 块 + EXCEPTION 处理，这是数据库层面的异常隔离
+    op.execute("""
+        DO $$ BEGIN
+            ALTER TABLE activities DROP CONSTRAINT ck_activities_status;
+        EXCEPTION
+            WHEN undefined_object THEN NULL;
+        END $$;
+    """)
 
     op.create_check_constraint(
         'ck_activities_status',
@@ -85,12 +87,13 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # ===== 回滚 status CHECK 约束 =====
-    # 恢复为不含 'importing' 的旧版本
-    # try-except 与 upgrade 保持一致：约束可能因为各种原因不存在
-    try:
-        op.drop_constraint('ck_activities_status', 'activities', type_='check')
-    except Exception:
-        pass
+    op.execute("""
+        DO $$ BEGIN
+            ALTER TABLE activities DROP CONSTRAINT ck_activities_status;
+        EXCEPTION
+            WHEN undefined_object THEN NULL;
+        END $$;
+    """)
     op.create_check_constraint(
         'ck_activities_status',
         'activities',
