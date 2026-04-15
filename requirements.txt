@@ -17,7 +17,7 @@ python-multipart==0.0.24
 
 # 第 1 期新增：翻译层
 garmin-fit-sdk>=21.200.0       # FIT 文件解析（Garmin 官方库）
-xyconvert>=0.4.0               # GCJ-02→WGS84 坐标转换（依赖 numpy）
+xyconvert>=0.1.2               # GCJ-02→WGS84 坐标转换（依赖 numpy）
 numpy>=1.24.0                  # xyconvert 的依赖
 
 # 第 2 期新增：Strava 集成
