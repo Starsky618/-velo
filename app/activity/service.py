@@ -27,9 +27,9 @@ from app.storage.local import LocalStorage
 # 存储后端实例（当前用本地存储，将来切云存储只改这一行）
 _storage = LocalStorage()
 
-# Redis 队列连接（与 worker.py 共用同一个队列名 "ridemap"）
+# Redis 队列连接（与 worker.py 共用同一个队列名 "velo"）
 _redis_conn = Redis.from_url(settings.REDIS_URL)
-_queue = Queue("ridemap", connection=_redis_conn)
+_queue = Queue("velo", connection=_redis_conn)
 
 # 文件大小上限：50MB
 _MAX_FILE_SIZE = 50 * 1024 * 1024

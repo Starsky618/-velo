@@ -1,7 +1,7 @@
-# RIDEMAP 项目规则书
+# VELO 项目规则书
 
 ## 项目概述
-RIDEMAP 是公路骑行垂直平台的后端 API + 微信小程序前端。
+VELO 是公路骑行垂直平台的后端 API + 微信小程序前端。
 MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排行榜。
 团队：3 人大一学生，100 活跃用户量级。
 
@@ -298,7 +298,7 @@ Worker 和 service 层的关键步骤必须有 `logging` 输出，格式包含�
 |------|---|
 | IP | 114.132.190.245 |
 | 用户 | ubuntu |
-| 代码路径 | ~/ridemap |
+| 代码路径 | ~/velo |
 | Docker 命令前缀 | sudo |
 | 部署方式 | git clone（首次）+ git pull 或 scp（后续） |
 | 数据库迁移 | `sudo docker compose exec api python3 -m alembic upgrade head` |

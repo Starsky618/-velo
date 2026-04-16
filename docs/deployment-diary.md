@@ -1,4 +1,4 @@
-# RIDEMAP 部署日志 — 从零到公网的完整踩坑记录
+# VELO 部署日志 — 从零到公网的完整踩坑记录
 
 > 2026-04-13/14，Starsky + Claude 完成首次云部署。
 > 本文档供团队成员和 AI agent 快速学习部署经验，避免重复踩坑。
@@ -10,7 +10,7 @@
 | 服务器 | 腾讯云 2核4G，Ubuntu 22.04 + Docker 26 |
 | 公网 IP | 114.132.190.245 |
 | SSH 用户 | ubuntu（已配免密登录） |
-| 代码位置 | 服务器 ~/ridemap |
+| 代码位置 | 服务器 ~/velo |
 | API 地址 | http://114.132.190.245 |
 | API 文档 | http://114.132.190.245/docs |
 | GitHub | Starsky618/-velo（私有） |
@@ -43,7 +43,7 @@
 
 **原因：** macOS 的 tar 命令会把文件的扩展属性（xattr）打包成 `._filename` 格式的隐藏文件。这些文件包含二进制数据（null bytes）。Alembic 扫描 migrations/ 目录时把 `._xxx.py` 当成 Python 文件加载，就炸了。
 
-**解决方案：** 解压后执行 `find ~/ridemap -name '._*' -delete`。已写入 deploy skill。
+**解决方案：** 解压后执行 `find ~/velo -name '._*' -delete`。已写入 deploy skill。
 
 **教训：** 任何从 macOS 传到 Linux 的 tar 包，解压后都要清理 `._*` 文件。这不是个例，是 macOS 的系统行为。
 
@@ -63,15 +63,15 @@
 
 ### 4. bash 中 `!` 是特殊字符
 
-**现象：** `echo "DB_PASSWORD=Ridemap2026!Prod"` 报 `event not found`
+**现象：** `echo "DB_PASSWORD=Velo2026!Prod"` 报 `event not found`
 
 **原因：** bash 中 `!` 触发历史展开（history expansion），`!Prod` 被解释为"查找以 Prod 开头的历史命令"。
 
-**解决方案：** 用单引号包裹内容：`echo 'DB_PASSWORD=Ridemap2026Prod'`。单引号内所有字符都是字面量，不做任何解释。
+**解决方案：** 用单引号包裹内容：`echo 'DB_PASSWORD=Velo2026Prod'`。单引号内所有字符都是字面量，不做任何解释。
 
 ### 5. cleanup 容器反复重启
 
-**现象：** `ridemap-cleanup-1` 状态显示 `Restarting (1) 33 seconds ago`
+**现象：** `velo-cleanup-1` 状态显示 `Restarting (1) 33 seconds ago`
 
 **原因：** cleanup 容器的命令是 `cp /app/crontab /etc/crontabs/root && crond -f`，这是 Alpine Linux 的路径。但容器基于 `python:3.11-slim`（Debian），Debian 的 cron 路径和命令名都不同。
 
@@ -97,7 +97,7 @@ RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.cloud.tenc
 
 **现象：** 部署后 API 返回 308 重定向，而不是 200。
 
-**原因：** 服务器上的 Caddyfile 之前手动改成了 `:80`（无域名模式），但本地的 Caddyfile 还写着 `api.ridemap.cn`。scp 传包时把服务器上的正确配置覆盖了。
+**原因：** 服务器上的 Caddyfile 之前手动改成了 `:80`（无域名模式），但本地的 Caddyfile 还写着 `api.velo.cn`。scp 传包时把服务器上的正确配置覆盖了。
 
 **解决方案：** 本地 Caddyfile 同步改成 `:80`，保持和服务器一致。
 
@@ -164,7 +164,7 @@ sudo docker compose up -d --build
 sudo docker compose exec api alembic upgrade head
 
 # 进入 PostgreSQL
-sudo docker compose exec db psql -U ridemap
+sudo docker compose exec db psql -U velo
 
 # 进入 API 容器的 Python 环境
 sudo docker compose exec api python

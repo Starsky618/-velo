@@ -87,7 +87,7 @@ def rescue_pending_zombies(db) -> int:
     # 尝试连接 Redis 并重新入队
     try:
         redis_conn = Redis.from_url(settings.REDIS_URL)
-        queue = Queue("ridemap", connection=redis_conn)
+        queue = Queue("velo", connection=redis_conn)
     except Exception as e:
         logger.warning(f"Redis 连接失败，跳过 pending 僵尸回收: {e}")
         return 0

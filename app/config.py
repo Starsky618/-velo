@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # 数据库连接地址
     # 格式：postgresql://用户名:密码@主机:端口/数据库名
-    DATABASE_URL: str = "postgresql://ridemap:changeme@localhost:5432/ridemap"
+    DATABASE_URL: str = "postgresql://velo:changeme@localhost:5432/velo"
 
     # Redis 连接地址（rq 任务队列用）
     REDIS_URL: str = "redis://localhost:6379/0"

@@ -1,4 +1,4 @@
-# RIDEMAP Vibe Coding 开发者指南
+# VELO Vibe Coding 开发者指南
 
 > 用 Claude Code 开发本项目的实战手册。
 > 不管你是 Starsky、颜颜还是 CCF，打开这份指南就能快速定位"我要改的东西在哪"。
@@ -8,7 +8,7 @@
 把整个项目想象成一栋大楼，每个文件夹是一个房间：
 
 ```
-ridemap/                     ← 大楼入口（在这里开终端 = 全局操作）
+velo/                        ← 大楼入口（在这里开终端 = 全局操作）
 ├── app/                     ← 业务区（所有后端代码）
 │   ├── main.py              ← 前台大厅（路由注册、应用启动）
 │   ├── config.py            ← 配电箱（环境变量、全局配置）
@@ -41,7 +41,7 @@ ridemap/                     ← 大楼入口（在这里开终端 = 全局操�
 
 ## 我要改 XX，在哪开终端？
 
-**核心原则：始终在项目根目录 `ridemap/` 打开 Claude Code。**
+**核心原则：始终在项目根目录 `velo/` 打开 Claude Code。**
 
 不要在子文件夹开终端，因为：
 - `import app.xxx` 需要从根目录才能正确解析
@@ -49,7 +49,7 @@ ridemap/                     ← 大楼入口（在这里开终端 = 全局操�
 - `pytest` 需要从根目录发现测试文件
 
 ```bash
-cd ~/Desktop/ridemap
+cd ~/Desktop/velo
 claude
 ```
 
@@ -157,7 +157,7 @@ git checkout -- .
 ```bash
 # 1. 克隆项目
 git clone <repo-url>
-cd ridemap
+cd velo
 
 # 2. 安装依赖
 pip3 install -r requirements.txt

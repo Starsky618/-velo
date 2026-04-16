@@ -15,8 +15,8 @@ services:
     image: postgis/postgis:16-3.4
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ridemap
-      POSTGRES_USER: ridemap
+      POSTGRES_DB: velo
+      POSTGRES_USER: velo
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -34,7 +34,7 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: ${JWT_SECRET}
       WX_APPID: ${WX_APPID}
@@ -52,7 +52,7 @@ services:
     command: python worker.py
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - db
@@ -65,7 +65,7 @@ services:
     command: sh -c "while true; do python scripts/cleanup_zombies.py; sleep 300; done"
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - db

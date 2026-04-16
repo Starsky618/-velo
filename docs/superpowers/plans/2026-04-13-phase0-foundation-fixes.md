@@ -243,10 +243,10 @@ Expected: 迁移成功，无报错
 
 - [ ] **Step 6: 验证数据库结构**
 
-Run: `docker compose -f docker-compose.dev.yml exec db psql -U ridemap -c "\d activities" | grep file_hash`
+Run: `docker compose -f docker-compose.dev.yml exec db psql -U velo -c "\d activities" | grep file_hash`
 Expected: 看到 `file_hash | character varying(64)` 列
 
-Run: `docker compose -f docker-compose.dev.yml exec db psql -U ridemap -c "\di" | grep -E "uq_user_file|idx_efforts_segment_user"`
+Run: `docker compose -f docker-compose.dev.yml exec db psql -U velo -c "\di" | grep -E "uq_user_file|idx_efforts_segment_user"`
 Expected: 看到两个新索引/约束
 
 - [ ] **Step 7: Commit**
@@ -539,7 +539,7 @@ def rescue_pending_zombies(db) -> int:
     # 尝试连接 Redis 并重新入队
     try:
         redis_conn = Redis.from_url(settings.REDIS_URL)
-        queue = Queue("ridemap", connection=redis_conn)
+        queue = Queue("velo", connection=redis_conn)
     except Exception as e:
         logger.warning(f"Redis 连接失败，跳过 pending 僵尸回收: {e}")
         return 0
@@ -654,7 +654,7 @@ git commit -m "feat(scripts): 僵尸活动回收脚本 — processing/pending/�
     command: sh -c "cp /app/crontab /etc/crontabs/root && crond -f -l 2"
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - db

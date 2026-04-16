@@ -1,4 +1,4 @@
-# RIDEMAP 反向代理配置
+# VELO 反向代理配置
 #
 # 当前无域名，监听 :80 接受所有请求。
 # 域名备案通过后改回 api.synexis.top（或其他域名），Caddy 会自动申请 HTTPS。

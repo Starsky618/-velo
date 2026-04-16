@@ -1,4 +1,4 @@
-# RIDEMAP 后端技术交接文档
+# VELO 后端技术交接文档
 
 > **用途**：本文档是项目现状的完整快照，可直接转发给任何 LLM（ChatGPT / Claude / Gemini）或新加入的开发者，让对方在零上下文的情况下完整理解项目"建到了哪、缺什么、怎么接着盖"。
 >
@@ -28,7 +28,7 @@
 
 ## 1. 系统总览
 
-**RIDEMAP** 是一个公路骑行垂直平台，目标用户 ~100 人。
+**VELO** 是一个公路骑行垂直平台，目标用户 ~100 人。
 
 **MVP 核心链路**：
 ```
@@ -544,7 +544,7 @@ const { code } = await wx.login();
 
 // 2. 换取 JWT
 const res = await wx.request({
-  url: 'https://api.ridemap.cn/api/user/login',
+  url: 'https://api.velo.cn/api/user/login',
   method: 'POST',
   data: { code }
 });
@@ -553,7 +553,7 @@ wx.setStorageSync('token', token);
 
 // 3. 后续请求带 token
 wx.request({
-  url: 'https://api.ridemap.cn/api/activities',
+  url: 'https://api.velo.cn/api/activities',
   header: { 'Authorization': `Bearer ${token}` }
 });
 
@@ -673,17 +673,17 @@ job = q.enqueue(your_task_function, arg1, arg2)
 ## 14. 部署操作手册
 
 ### 前置条件
-- 域名（如 `api.ridemap.cn`），A 记录指向服务器 IP
+- 域名（如 `api.velo.cn`），A 记录指向服务器 IP
 - 服务器开放 80（HTTP）和 443（HTTPS）端口
 - 安装 Docker + Docker Compose
 
 ### 部署步骤
 ```bash
 # 1. 上传代码到服务器
-scp -r ridemap/ user@server:/opt/ridemap
+scp -r velo/ user@server:/opt/velo
 
 # 2. 配置环境变量
-cd /opt/ridemap
+cd /opt/velo
 cp .env.example .env
 # 编辑 .env，填入：
 #   DB_PASSWORD=<随机强密码>
@@ -692,7 +692,7 @@ cp .env.example .env
 #   WX_SECRET=<微信公众平台获取>
 
 # 3. 修改域名
-# 编辑 Caddyfile，将 api.ridemap.cn 替换为你的实际域名
+# 编辑 Caddyfile，将 api.velo.cn 替换为你的实际域名
 
 # 4. 启动
 docker-compose up -d
@@ -726,7 +726,7 @@ docker-compose exec api alembic revision --autogenerate -m "描述"
 docker-compose exec api alembic upgrade head
 
 # 手动设置管理员
-docker-compose exec db psql -U ridemap -d ridemap \
+docker-compose exec db psql -U velo -d velo \
   -c "UPDATE users SET is_admin = true WHERE id = 1;"
 ```
 

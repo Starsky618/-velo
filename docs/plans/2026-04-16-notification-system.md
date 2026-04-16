@@ -249,7 +249,7 @@ _notifications_table = sa.Table(
 
 - [ ] **Step 5: 运行测试确认不破坏现有功能**
 
-Run: `cd /Users/macbookair/Desktop/ridemap && python -m pytest tests/ -v --tb=short`
+Run: `cd /Users/macbookair/Desktop/velo && python -m pytest tests/ -v --tb=short`
 Expected: 所有现有测试 PASS（conftest 新增表不影响已有测试）
 
 - [ ] **Step 6: Commit**
@@ -392,7 +392,7 @@ def test_classify_tied_first_but_not_pr():
 
 - [ ] **Step 2: 运行测试确认全部 FAIL**
 
-Run: `cd /Users/macbookair/Desktop/ridemap && python -m pytest tests/test_notification.py -v`
+Run: `cd /Users/macbookair/Desktop/velo && python -m pytest tests/test_notification.py -v`
 Expected: FAIL，ImportError: cannot import name 'classify'
 
 - [ ] **Step 3: 实现 `detector.py`**
@@ -496,7 +496,7 @@ def classify(
 
 - [ ] **Step 4: 运行测试确认全部 PASS**
 
-Run: `cd /Users/macbookair/Desktop/ridemap && python -m pytest tests/test_notification.py -v`
+Run: `cd /Users/macbookair/Desktop/velo && python -m pytest tests/test_notification.py -v`
 Expected: 7 passed
 
 - [ ] **Step 5: Commit**
@@ -662,7 +662,7 @@ def test_detect_events_gpx_old_activity_triggers(db, test_user):
 
 - [ ] **Step 2: 运行测试确认 FAIL**
 
-Run: `cd /Users/macbookair/Desktop/ridemap && python -m pytest tests/test_notification.py::test_detect_events_pr -v`
+Run: `cd /Users/macbookair/Desktop/velo && python -m pytest tests/test_notification.py::test_detect_events_pr -v`
 Expected: FAIL，ImportError
 
 - [ ] **Step 3: 在 `segment/service.py` 新增共享排名函数**
@@ -1009,7 +1009,7 @@ def cleanup_expired(db: Session) -> int:
 
 - [ ] **Step 5: 运行测试**
 
-Run: `cd /Users/macbookair/Desktop/ridemap && python -m pytest tests/test_notification.py -v`
+Run: `cd /Users/macbookair/Desktop/velo && python -m pytest tests/test_notification.py -v`
 Expected: 11 passed（7 纯函数 + 4 service）
 
 - [ ] **Step 6: Commit**
@@ -1077,7 +1077,7 @@ def test_api_honors_empty(client, auth_header):
 
 - [ ] **Step 2: 运行测试确认 FAIL**
 
-Run: `cd /Users/macbookair/Desktop/ridemap && python -m pytest tests/test_notification.py::test_api_notifications_empty -v`
+Run: `cd /Users/macbookair/Desktop/velo && python -m pytest tests/test_notification.py::test_api_notifications_empty -v`
 Expected: FAIL（路由不存在，404）
 
 - [ ] **Step 3: 实现 `router.py`**
@@ -1142,12 +1142,12 @@ app.include_router(honor_router)
 
 - [ ] **Step 5: 运行全部测试**
 
-Run: `cd /Users/macbookair/Desktop/ridemap && python -m pytest tests/test_notification.py -v`
+Run: `cd /Users/macbookair/Desktop/velo && python -m pytest tests/test_notification.py -v`
 Expected: 14 passed
 
 - [ ] **Step 6: 运行所有测试确认不破坏现有功能**
 
-Run: `cd /Users/macbookair/Desktop/ridemap && python -m pytest tests/ -v --tb=short`
+Run: `cd /Users/macbookair/Desktop/velo && python -m pytest tests/ -v --tb=short`
 Expected: 所有测试 PASS
 
 - [ ] **Step 7: Commit**
@@ -1221,7 +1221,7 @@ from app.notification.service import detect_events
 
 - [ ] **Step 3: 运行全部测试确认不破坏现有功能**
 
-Run: `cd /Users/macbookair/Desktop/ridemap && python -m pytest tests/ -v --tb=short`
+Run: `cd /Users/macbookair/Desktop/velo && python -m pytest tests/ -v --tb=short`
 Expected: 所有测试 PASS
 
 - [ ] **Step 4: Commit**
@@ -1323,12 +1323,12 @@ def test_full_flow_pr_and_kom(db, test_user):
 
 - [ ] **Step 2: 运行全部通知测试**
 
-Run: `cd /Users/macbookair/Desktop/ridemap && python -m pytest tests/test_notification.py -v`
+Run: `cd /Users/macbookair/Desktop/velo && python -m pytest tests/test_notification.py -v`
 Expected: 16 passed
 
 - [ ] **Step 3: 运行全部项目测试**
 
-Run: `cd /Users/macbookair/Desktop/ridemap && python -m pytest tests/ -v --tb=short`
+Run: `cd /Users/macbookair/Desktop/velo && python -m pytest tests/ -v --tb=short`
 Expected: 所有测试 PASS
 
 - [ ] **Step 4: Commit**

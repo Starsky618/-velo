@@ -377,7 +377,7 @@ git commit -m "fix(segment): 距离精度从 1 位改为 2 位小数"
 - [ ] **Step 1: 在 Caddyfile 中添加 tools 目录的静态文件服务**
 
 ```
-api.ridemap.cn {
+api.velo.cn {
     # 赛段创建等管理工具（静态 HTML 文件）
     handle /tools/* {
         root * /app

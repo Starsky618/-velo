@@ -1,5 +1,5 @@
 """
-RIDEMAP 后端 API 入口
+VELO 后端 API 入口
 
 整个应用的"大门"——所有请求从这里进来，被分配到各个模块的路由去处理。
 可以把它想象成一栋大楼的前台：来客先到前台登记，前台再告诉你去几楼找谁。
@@ -23,7 +23,7 @@ from app.user.router import router as user_router
 # 创建 FastAPI 应用实例
 # title 和 version 会显示在自动生成的 API 文档页面上（/docs）
 app = FastAPI(
-    title="RIDEMAP API",
+    title="VELO API",
     version="0.1.0",
     description="公路骑行垂直平台后端 API",
 )

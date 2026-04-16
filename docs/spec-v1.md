@@ -1,4 +1,4 @@
-# RIDEMAP v1 技术规格文档（终版）
+# VELO v1 技术规格文档（终版）
 
 > 本文档为 Claude Code 开发参考。每个子任务是一个独立可实现、可测试的工作单元。
 > 前端开发参考附录 A（API 对照表）对齐接口路径。
@@ -31,7 +31,7 @@
 
 ### 项目结构
 ```
-ridemap/
+velo/
 ├── app/
 │   ├── main.py                 # FastAPI 入口
 │   ├── config.py               # 配置管理（环境变量）
@@ -164,7 +164,7 @@ def get_db():
         db.close()
 ```
 
-**输入**：`.env` 中的 `DATABASE_URL`（格式：`postgresql://user:pass@host:5432/ridemap`）
+**输入**：`.env` 中的 `DATABASE_URL`（格式：`postgresql://user:pass@host:5432/velo`）
 **输出**：其他模块通过 `Depends(get_db)` 获取 session；Worker 直接 `SessionLocal()`
 **依赖**：任务 1.1
 
@@ -196,7 +196,7 @@ from redis import Redis
 from rq import Worker, Queue
 
 redis_conn = Redis.from_url(settings.REDIS_URL)
-queue = Queue("ridemap", connection=redis_conn)
+queue = Queue("velo", connection=redis_conn)
 
 if __name__ == "__main__":
     Worker([queue], connection=redis_conn).work()
@@ -920,7 +920,7 @@ def match_segment(
 ```
 ┌──────────────────────────────────────┐
 │                                      │
-│  [头像] 昵称          RIDEMAP logo   │  ← 顶栏 (80px)
+│  [头像] 昵称          VELO logo      │  ← 顶栏 (80px)
 │                                      │
 ├──────────────────────────────────────┤
 │                                      │
@@ -953,7 +953,7 @@ def match_segment(
 ├──────────────────────────────────────┤
 │                                      │
 │  [小程序码]  扫码查看完整骑行数据     │  ← 底栏 (100px)
-│              RIDEMAP · 骑行地图      │
+│              VELO · 骑行地图          │
 │                                      │
 └──────────────────────────────────────┘
 ```
@@ -977,7 +977,7 @@ const ctx = canvas.getContext('2d');
 // 绘制顺序：
 // 1. 背景（深色：#1D1D1F 渐变 / 浅色：#FFFFFF）
 // 2. 用户头像（wx.getImageInfo 加载 → 圆形裁剪 ctx.arc + ctx.clip）
-// 3. 用户昵称 + RIDEMAP logo
+// 3. 用户昵称 + VELO logo
 // 4. 标题 + 日期
 // 5. 路线图：
 //    - 从 simplified_track 提取 lat/lon
@@ -993,7 +993,7 @@ const ctx = canvas.getContext('2d');
 // 6. 六个数据格（2行×3列），数值大字 + 标签小字
 //    - 值为 null 时显示 "--"
 // 7. 赛段标签（如有）：每个标签一个圆角矩形，PR 用主题色背景
-// 8. 底栏：小程序码（需预置一张 miniprogram_qr.png）+ 文字
+// 8. 底栏：小程序码（需预置一张 miniprogram_qr.png）+ VELO 文字
 // 9. 导出：
 //    canvas.toTempFilePath({fileType: 'jpg', quality: 0.92})
 ```
@@ -1039,7 +1039,7 @@ python worker.py                              # Worker（另一个终端）
 
 > **HTTPS 是硬性要求**：微信小程序强制所有 API 请求走 HTTPS。使用 Caddy 作为反向代理，自动申请和续期 Let's Encrypt 证书，零配置 HTTPS。
 
-**前置条件**：需要一个域名（如 `api.ridemap.cn`），A 记录指向服务器 IP，服务器开放 80/443 端口。
+**前置条件**：需要一个域名（如 `api.velo.cn`），A 记录指向服务器 IP，服务器开放 80/443 端口。
 
 ```yaml
 # docker-compose.yml
@@ -1048,8 +1048,8 @@ services:
   db:
     image: postgis/postgis:16-3.4
     environment:
-      POSTGRES_DB: ridemap
-      POSTGRES_USER: ridemap
+      POSTGRES_DB: velo
+      POSTGRES_USER: velo
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -1065,7 +1065,7 @@ services:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     environment:
-      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: ${JWT_SECRET}
       WX_APPID: ${WX_APPID}
@@ -1082,7 +1082,7 @@ services:
     build: .
     command: python worker.py
     environment:
-      DATABASE_URL: postgresql://ridemap:${DB_PASSWORD}@db:5432/ridemap
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - db
@@ -1112,7 +1112,7 @@ volumes:
 
 ```
 # Caddyfile（仅两行，Caddy 自动申请 SSL 证书）
-api.ridemap.cn {
+api.velo.cn {
     reverse_proxy api:8000
 }
 ```
@@ -1129,7 +1129,7 @@ COPY . .
 **部署步骤**：
 1. 购买域名，A 记录指向服务器 IP，服务器防火墙开放 80/443 端口
 2. 服务器装 Docker + Docker Compose
-3. 上传代码 + `.env` + `Caddyfile`（将 `api.ridemap.cn` 替换为你的实际域名）
+3. 上传代码 + `.env` + `Caddyfile`（将 `api.velo.cn` 替换为你的实际域名）
 4. `docker-compose up -d`（Caddy 自动申请 SSL 证书）
 5. `docker-compose exec api alembic upgrade head`（初始化数据库）
 6. 微信小程序后台 → 开发管理 → 服务器域名 → 添加 `https://你的域名`

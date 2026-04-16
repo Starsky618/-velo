@@ -21,11 +21,11 @@ from app.config import settings
 # 连接 Redis——队列的"传送带"就建在 Redis 上
 redis_conn = Redis.from_url(settings.REDIS_URL)
 
-# 创建名为 "ridemap" 的队列——所有异步任务都投递到这个队列
+# 创建名为 "velo" 的队列——所有异步任务都投递到这个队列
 # 后续骑行模块上传 GPX 时，会把解析任务 enqueue 到这个队列
-queue = Queue("ridemap", connection=redis_conn)
+queue = Queue("velo", connection=redis_conn)
 
 if __name__ == "__main__":
-    # 启动 Worker，监听 ridemap 队列
+    # 启动 Worker，监听 velo 队列
     # Worker 会持续运行：取任务 → 执行 → 取下一个 → ...
     Worker([queue], connection=redis_conn).work()

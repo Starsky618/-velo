@@ -1,7 +1,7 @@
-# RIDEMAP 后端 Docker 镜像
+# VELO 后端 Docker 镜像
 #
 # 基于 Python 3.11 精简版，只装运行时依赖，不装开发工具。
-# 构建：docker build -t ridemap-api .
+# 构建：docker build -t velo-api .
 # 运行：由 docker-compose.yml 编排，不需要手动 docker run。
 
 FROM python:3.11-slim

@@ -1,5 +1,5 @@
 {
-  "description": "RIDEMAP 骑行平台微信小程序",
+  "description": "VELO 骑行平台微信小程序",
   "packOptions": {
     "ignore": [],
     "include": []
@@ -46,7 +46,7 @@
   "compileType": "miniprogram",
   "libVersion": "3.6.0",
   "appid": "wx8817dc514d95394a",
-  "projectname": "ridemap",
+  "projectname": "velo",
   "condition": {},
   "editorSetting": {
     "tabIndent": "insertSpaces",

@@ -206,7 +206,7 @@ WHERE status = 'pending'
 **部署方式：docker-compose 独立容器**
 ```yaml
 cleanup:
-  image: ridemap-api  # 复用 API 镜像，不额外构建
+  image: velo-api  # 复用 API 镜像，不额外构建
   command: crond -f    # 前台运行 cron 守护进程
   volumes:
     - ./scripts:/app/scripts
