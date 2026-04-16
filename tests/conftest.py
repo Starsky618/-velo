@@ -20,8 +20,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
-import sqlalchemy as sa
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Table, MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -160,23 +159,21 @@ _segment_efforts_table = Table(
     Column("created_at", DateTime),
 )
 
-# 通知表（SQLite 简化版，不含外键）
-# Notification 模型的外键和 CHECK 约束在 SQLite 下不支持，
-# 这里只保留基本列定义，确保测试能正常建表和插入数据。
-_notifications_table = sa.Table(
+# 通知表（SQLite 简化版，省略外键和 CHECK 约束以避免 SQLite 兼容性问题）
+_notifications_table = Table(
     "notifications",
     _test_metadata,
-    sa.Column("id", sa.Integer, primary_key=True),
-    sa.Column("user_id", sa.Integer, nullable=False),
-    sa.Column("event_type", sa.String(20), nullable=False),
-    sa.Column("segment_id", sa.Integer, nullable=False),
-    sa.Column("activity_id", sa.Integer, nullable=True),
-    sa.Column("effort_id", sa.Integer, nullable=True),
-    sa.Column("elapsed_time", sa.Integer, nullable=True),
-    sa.Column("rank", sa.Integer, nullable=True),
-    sa.Column("rival_user_id", sa.Integer, nullable=True),
-    sa.Column("expires_at", sa.DateTime, nullable=False),
-    sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
+    Column("id", Integer, primary_key=True),
+    Column("user_id", Integer, nullable=False),
+    Column("event_type", String(20), nullable=False),
+    Column("segment_id", Integer, nullable=False),
+    Column("activity_id", Integer, nullable=True),
+    Column("effort_id", Integer, nullable=True),
+    Column("elapsed_time", Integer, nullable=True),
+    Column("rank", Integer, nullable=True),
+    Column("rival_user_id", Integer, nullable=True),
+    Column("expires_at", DateTime, nullable=False),
+    Column("created_at", DateTime),
 )
 
 
