@@ -324,7 +324,7 @@ Worker 和 service 层的关键步骤必须有 `logging` 输出，格式包含�
 | 连接池不足 | 🟢 | pool_size=5 默认值 | pool_size=8, max_overflow=12, pool_recycle=3600, pre_ping=True | ✅ `845e226` |
 | Worker 重入 | 🟢 | RQ 超时重试 → 双重处理同一任务 | PostgreSQL UPDATE WHERE 原子抢锁，单向状态机 | ✅ `414fce9` |
 | N+1 查询 | 🟡 | 排名计算循环发 SQL | 代码 TODO 标注 | ⚠️ 计划修复 |
-| 缺失索引 | 🟡 | PR 检测需要的复合索引不存在 | 无 | ❌ 未建 |
+| 缺失索引 | 🟢 | PR 检测复合索引 | idx_efforts_segment_user_time 已在 phase0 建立 | ✅ |
 | 孤儿文件 | 🟡 | 上传成功但 DB 失败 → 磁盘泄漏 | 无 | ❌ 无清理机制 |
 | 匹配断裂 | 🟡 | 解析完成但匹配前崩溃 → 无赛段成绩 | 匹配失败静默跳过 | ❌ 无重新触发机制 |
 | 批量插入中断 | 🟢 | trackpoints 写到一半失败 | 事务保证原子性，整体回滚 | ✅ |
@@ -400,4 +400,13 @@ Worker 和 service 层的关键步骤必须有 `logging` 输出，格式包含�
 - [x] 第 0 期：地基修补 ✅
 - [x] 第 1 期：翻译层 ✅（10 任务 / 40 测试）
 - [x] 第 2 期：Strava 集成 ✅（7 任务 / 19 测试 / 已部署 / 30 条活动导入成功）
-- [ ] 第 3 期：事件通知系统 — PR/KOM 检测 + 通知
+- [x] 第 3 期：事件通知系统 ✅（6 任务 / 16 测试 / 已部署 / PR+KOM 检测 + 荣誉表）
+- [ ] 第 4 期：待规划
+
+### 第 3 期：事件通知系统（2026-04-16 完成 + 部署）
+- [x] 任务 7.1：Notification 数据模型 + Alembic 迁移
+- [x] 任务 7.2：detector.py — 纯函数事件分类（7 个边界测试）
+- [x] 任务 7.3：service.py — detect_events + 查询 + 清理 + 共享排名函数
+- [x] 任务 7.4：router.py — 通知列表 + 荣誉表 API
+- [x] 任务 7.5：auto_match + import_scheduler 衔接
+- [x] 任务 7.6：集成测试（完整流程 + 过期清理）
