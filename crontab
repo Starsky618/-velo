@@ -1,2 +1,0 @@
-# 每 5 分钟执行僵尸回收脚本
-*/5 * * * * cd /app && python scripts/cleanup_zombies.py >> /proc/1/fd/1 2>&1
