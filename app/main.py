@@ -46,6 +46,10 @@ app.include_router(user_effort_router)
 app.include_router(activity_segment_router)
 # Strava 集成模块——OAuth 授权、Webhook 回调、历史导入等
 app.include_router(strava_router)
+# 通知模块——PR/KOM 通知列表 + 用户荣誉表
+from app.notification.router import notification_router, honor_router
+app.include_router(notification_router)
+app.include_router(honor_router)
 
 
 @app.get("/health")

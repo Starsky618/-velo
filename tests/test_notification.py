@@ -253,3 +253,45 @@ def test_detect_events_gpx_old_activity_triggers(db, test_user):
 
     notifs = db.query(Notification).filter_by(user_id=test_user.id).all()
     assert len(notifs) == 1  # 手动上传永远触发
+
+
+# ===================== API 测试 =====================
+
+def test_api_notifications_empty(client, auth_header):
+    """通知列表为空时返回空数组"""
+    resp = client.get("/api/notifications", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["items"] == []
+    assert data["total"] == 0
+
+
+def test_api_notifications_with_data(client, db, test_user, auth_header):
+    """通知列表包含数据时正确返回"""
+    seg_id = _insert_segment(db)
+    act_id = _insert_activity(db, test_user.id)
+    eff_id = _insert_effort(db, seg_id, act_id, test_user.id, 300)
+
+    from app.notification.service import detect_events
+    from app.segment.models import SegmentEffort
+    effort = db.query(SegmentEffort).get(eff_id)
+    detect_events(db, effort)
+
+    resp = client.get("/api/notifications", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] >= 1
+    item = data["items"][0]
+    assert item["event_type"] in ("pr", "kom")
+    assert item["segment_name"] == "测试赛段"
+    assert isinstance(item["elapsed_time"], int)
+
+
+def test_api_honors_empty(client, auth_header):
+    """荣誉表为空时返回空数组"""
+    resp = client.get("/api/user/honors", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["koms"] == []
+    assert data["top10s"] == []
+    assert data["kom_count"] == 0
