@@ -20,6 +20,7 @@ router 是前台接待员（接请求、回结果），service 是后台办事�
 
 import json
 
+import sqlalchemy as sa
 from geoalchemy2 import Geography
 from sqlalchemy import cast, func
 from sqlalchemy.orm import Session
@@ -513,3 +514,37 @@ def delete_segment(db: Session, segment_id: int, user_id: int) -> None:
     db.query(SegmentEffort).filter_by(segment_id=segment_id).delete()
     db.delete(segment)
     db.commit()
+
+
+# ==================== 共享排名计算（notification 和 segment 共用） ====================
+
+def get_effort_rank(db: Session, effort) -> int:
+    """
+    计算某条成绩在其赛段中的排名——"在这条赛道上你排第几"。
+
+    共享函数：notification 模块和 segment 模块共用，避免排名逻辑重复。
+
+    排名规则：COUNT(同赛段中"比我快"的成绩) + 1。
+    并列处理：同 elapsed_time 时按 created_at 先到先得（tiebreaker）。
+    好比百米决赛：两人都跑 10.0 秒，先撞线的排前面。
+
+    使用索引：idx_efforts_segment_time (segment_id, elapsed_time)
+    """
+    # "比我快"的定义：
+    # 1. elapsed_time 更短的（显然更快）
+    # 2. elapsed_time 一样但 created_at 更早的（先到先得）
+    faster_count = (
+        db.query(func.count(SegmentEffort.id))
+        .filter(
+            SegmentEffort.segment_id == effort.segment_id,
+            sa.or_(
+                SegmentEffort.elapsed_time < effort.elapsed_time,
+                sa.and_(
+                    SegmentEffort.elapsed_time == effort.elapsed_time,
+                    SegmentEffort.created_at < effort.created_at,
+                ),
+            ),
+        )
+        .scalar()
+    )
+    return faster_count + 1

@@ -160,6 +160,8 @@ _segment_efforts_table = Table(
 )
 
 # 通知表（SQLite 简化版，省略外键和 CHECK 约束以避免 SQLite 兼容性问题）
+# 注意：必须保留 UniqueConstraint，否则幂等测试（IntegrityError 防重复）无法验证
+from sqlalchemy import UniqueConstraint
 _notifications_table = Table(
     "notifications",
     _test_metadata,
@@ -174,6 +176,7 @@ _notifications_table = Table(
     Column("rival_user_id", Integer, nullable=True),
     Column("expires_at", DateTime, nullable=False),
     Column("created_at", DateTime),
+    UniqueConstraint("effort_id", "event_type", name="uq_notif_effort_type"),
 )
 
 
