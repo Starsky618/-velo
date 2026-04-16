@@ -295,3 +295,80 @@ def test_api_honors_empty(client, auth_header):
     assert data["koms"] == []
     assert data["top10s"] == []
     assert data["kom_count"] == 0
+
+
+# ===================== 清理 + 集成测试 =====================
+
+def test_cleanup_expired(db, test_user):
+    """过期通知被正确删除"""
+    seg_id = _insert_segment(db)
+    act_id = _insert_activity(db, test_user.id)
+    eff_id = _insert_effort(db, seg_id, act_id, test_user.id, 300)
+
+    from app.notification.service import detect_events, cleanup_expired
+    from app.segment.models import SegmentEffort
+    from app.notification.models import Notification
+
+    effort = db.query(SegmentEffort).get(eff_id)
+    detect_events(db, effort)
+
+    # 确认生成了通知
+    assert db.query(Notification).count() >= 1
+
+    # 手动把 expires_at 改到过去
+    db.query(Notification).update(
+        {"expires_at": datetime.utcnow() - timedelta(days=1)},
+        synchronize_session=False,
+    )
+    db.commit()
+
+    # 清理
+    count = cleanup_expired(db)
+    assert count >= 1
+    assert db.query(Notification).count() == 0
+
+
+def test_full_flow_pr_and_kom(db, test_user):
+    """完整流程：两个用户，第二个拿 KOM，第一个收到被夺通知"""
+    seg_id = _insert_segment(db)
+
+    # 用户 1 先骑，成绩 300 秒（KOM）
+    act1_id = _insert_activity(db, test_user.id)
+    eff1_id = _insert_effort(db, seg_id, act1_id, test_user.id, 300)
+
+    from app.notification.service import detect_events
+    from app.segment.models import SegmentEffort
+    from app.notification.models import Notification
+
+    effort1 = db.query(SegmentEffort).get(eff1_id)
+    detect_events(db, effort1)
+
+    # 用户 1 应收到 KOM 通知
+    notifs1 = db.query(Notification).filter_by(user_id=test_user.id).all()
+    assert len(notifs1) == 1
+    assert notifs1[0].event_type == "kom"
+
+    # 创建用户 2
+    from app.user.models import User
+    user2 = User(openid="test_user_2", nickname="对手")
+    db.add(user2)
+    db.commit()
+
+    # 用户 2 骑更快，成绩 250 秒（夺 KOM）
+    act2_id = _insert_activity(db, user2.id)
+    eff2_id = _insert_effort(db, seg_id, act2_id, user2.id, 250)
+
+    effort2 = db.query(SegmentEffort).get(eff2_id)
+    detect_events(db, effort2)
+
+    # 用户 2 应收到 KOM 通知
+    user2_notifs = db.query(Notification).filter_by(user_id=user2.id).all()
+    assert any(n.event_type == "kom" for n in user2_notifs)
+
+    # 用户 1 应收到 KOM 被夺通知
+    user1_notifs = db.query(Notification).filter_by(
+        user_id=test_user.id, event_type="kom_lost"
+    ).all()
+    assert len(user1_notifs) == 1
+    assert user1_notifs[0].rank == 2
+    assert user1_notifs[0].rival_user_id == user2.id
