@@ -32,6 +32,7 @@ from app.database import SessionLocal
 from app.parsing.coord_normalizer import normalize
 from app.parsing.strava_adapter import from_streams, StravaAdapterError
 from app.strava.client import StravaClient, StravaRateLimitError
+from app.segment.models import SegmentEffort
 from app.strava.models import StravaImport
 from app.user.models import User
 
@@ -348,6 +349,17 @@ def _run_tier2(
     try:
         from app.segment.auto_match import match_activity_against_segments
         match_activity_against_segments(activity.id, db)
+        # auto_match 内部已对 GPX 上传路径的 effort 调用了 detect_events，
+        # 但 import_scheduler 走的是 Strava 导入路径，匹配完成后也需要检测。
+        # detect_events 内部会过滤 Strava 历史活动（>7 天），无需调用方判断。
+        from app.notification.service import detect_events
+        new_efforts = (
+            db.query(SegmentEffort)
+            .filter_by(activity_id=activity.id)
+            .all()
+        )
+        for eff in new_efforts:
+            detect_events(db, eff)
     except Exception:
         db.rollback()
         logger.warning(

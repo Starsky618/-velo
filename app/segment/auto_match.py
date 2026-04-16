@@ -27,6 +27,7 @@ from sqlalchemy import cast, func, select
 from sqlalchemy.orm import Session
 
 from app.activity.models import Activity, Trackpoint
+from app.notification.service import detect_events
 from app.segment.matcher import match_segment
 from app.segment.models import Segment, SegmentEffort
 
@@ -132,6 +133,7 @@ def match_activity_against_segments(activity_id: int, db: Session) -> None:
     # 好比每次考试用单独的答题卡：一科交白卷不影响其他科的成绩。
     # 如果用 db.rollback()，会回滚整个事务（连前面赛段的成绩一起清掉）。
     # SAVEPOINT 只回滚到"存档点"，保留前面已写入的成绩。
+    new_efforts = []  # 收集成功写入的 effort，commit 后逐个检测通知
     for segment, ref_wkt in candidates:
         savepoint = db.begin_nested()
         try:
@@ -196,6 +198,7 @@ def match_activity_against_segments(activity_id: int, db: Session) -> None:
             )
             db.add(effort)
             db.flush()
+            new_efforts.append(effort)
 
         except Exception as e:
             # 只回滚当前赛段的 SAVEPOINT，不影响其他赛段已写入的成绩
@@ -204,3 +207,9 @@ def match_activity_against_segments(activity_id: int, db: Session) -> None:
 
     # 所有赛段匹配完成后统一提交
     db.commit()
+
+    # ---- 成绩已全部 commit，逐个检测 PR/KOM 事件 ----
+    # 必须在 commit 之后调用：detect_events 需要查排名，排名依赖已提交的数据。
+    # detect_events 内部有 try/except + SAVEPOINT 隔离，单条失败不影响其他。
+    for effort in new_efforts:
+        detect_events(db, effort)
