@@ -256,6 +256,25 @@ def get_import_progress(
     """
     查询 Strava 导入进度——前端显示进度条用。
 
+    限速：1 秒 1 次/用户。
+    理由：前端正常轮询是 3s 一次，1s 限速只挡住误开发或恶意刷屏，
+    正常业务完全在阈值内。触发返 429。
+
+    Redis 不可用时：降级放行（限速不应阻断核心功能）。
+
     需要登录（请求头带 JWT）。
     """
+    # ---- Redis 限速（1s/user）----
+    # 用 SET NX + EX 原子操作：key 不存在时设置成功（放行），已存在则失败（限速）
+    try:
+        rl_key = f"rl:imp-prog:{user_id}"
+        allowed = _redis.set(rl_key, "1", ex=1, nx=True)
+        if not allowed:
+            raise HTTPException(status_code=429, detail="请求过于频繁，请 1 秒后再试")
+    except HTTPException:
+        raise  # 限流触发正常抛
+    except Exception:
+        # Redis 不可用 → 降级放行（日志记录即可）
+        logger.warning("Redis 限速失败，放行 user_id=%d", user_id)
+
     return service.get_import_progress(db, user_id)

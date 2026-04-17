@@ -676,52 +676,73 @@ def handle_manual_sync(db: Session, user_id: int) -> dict:
 
 def get_import_progress(db: Session, user_id: int) -> dict:
     """
-    查询当前用户的 Strava 导入进度。
+    查询 Strava 导入进度。v4 重构——从"算百分比"改为"吐视图状态"。
 
-    前端用这个接口显示"正在导入...已完成 120/500"的进度条。
+    为什么叫 view_status 不叫 status：
+        StravaImport.status（数据库值）只有三种：active / paused / completed。
+        "卡死" 不是一个数据库状态——而是"active 但 updated_at 5 分钟没动"，
+        属于视图层派生态。起两个不同的名字避免口径混乱。
+
+    前端约定（spec §2.8）：
+    - view_status == 'completed' / 'paused' / 'stalled' → 停止轮询
+    - view_status == 'active' → 继续轮询（3s 一次）
+    - view_status == 'none' → 未发起过导入，不轮询
+
+    Args:
+        db: SQLAlchemy Session
+        user_id: 当前用户 ID
+
+    Returns:
+        {
+          "view_status": "none" / "active" / "stalled" / "paused" / "completed",
+          "db_status": None / "active" / "paused" / "completed",
+          "total": 0,
+          "completed": 0,
+          "tier1_completed": 0,
+        }
     """
+    from datetime import timedelta
     from app.strava.models import StravaImport
 
-    import_task = (
+    imp = (
         db.query(StravaImport)
         .filter_by(user_id=user_id)
         .order_by(StravaImport.created_at.desc())
         .first()
     )
 
-    if import_task is None:
-        return {"status": "none", "message": "未开始导入"}
+    if imp is None:
+        return {
+            "view_status": "none",
+            "db_status": None,
+            "total": 0,
+            "completed": 0,
+            "tier1_completed": 0,
+        }
 
-    total = import_task.total_activities or 0
-    tier1 = import_task.tier1_completed or 0
-    tier2 = import_task.tier2_completed or 0
-    skipped = import_task.tier2_skipped or 0
+    # view_status 默认 = db_status（active / paused / completed 三种）
+    view_status = imp.status
 
-    # 计算百分比：第一层完成算 30%，第二层按比例算剩余 70%
-    if total == 0:
-        percent = 0
-    else:
-        tier1_pct = min(30, int(tier1 / total * 30)) if total > 0 else 0
-        tier2_done = tier2 + skipped
-        tier2_pct = int(tier2_done / total * 70) if total > 0 else 0
-        percent = tier1_pct + tier2_pct
-
-    # 构造人类可读的进度消息
-    if import_task.status == "completed":
-        message = f"导入完成，共 {tier2} 条骑行"
-    elif import_task.status == "paused":
-        message = "导入暂停，请重新同步"
-    elif tier1 < total or total == 0:
-        message = f"正在扫描活动列表，已发现 {tier1} 条"
-    else:
-        message = f"正在导入详情+轨迹，已完成 {tier2}/{total}"
+    # Critical-07：active 状态下 5 分钟无更新 → stalled
+    # 前提：task-7.1 已迁移 updated_at 为 timezone=True（PostgreSQL 生产环境）。
+    # 防御：SQLite 测试环境不保留 tz，读出的 updated_at 可能是 naive——
+    # 此时当作 UTC 处理（数据库一律存 UTC，这是项目约定）。
+    if imp.status == "active":
+        updated_at = imp.updated_at
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        staleness = datetime.now(timezone.utc) - updated_at
+        if staleness > timedelta(minutes=5):
+            view_status = "stalled"
+            logger.warning(
+                "import stalled user_id=%d import_id=%d 过期 %.0f 秒",
+                user_id, imp.id, staleness.total_seconds(),
+            )
 
     return {
-        "status": import_task.status,
-        "total_activities": total,
-        "tier1_completed": tier1,
-        "tier2_completed": tier2,
-        "tier2_skipped": skipped,
-        "percent": min(percent, 100),
-        "message": message,
+        "view_status": view_status,
+        "db_status": imp.status,
+        "total": imp.total_activities or 0,
+        "completed": imp.tier2_completed or 0,
+        "tier1_completed": imp.tier1_completed or 0,
     }

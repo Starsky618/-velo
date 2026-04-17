@@ -438,22 +438,35 @@ class TestManualSync:
 class TestImportProgress:
     """导入进度（GET /api/strava/import-progress）测试。"""
 
-    def test_import_progress_none(self, client, auth_header, db, test_user):
-        """没有导入任务时应返回 status=none。"""
+    def test_import_progress_none(self, client, auth_header, db, test_user, monkeypatch):
+        """没有导入任务时应返回 view_status=none（v4 契约）。"""
         # 需要 strava_imports 表存在才能查询
         from app.strava.models import StravaImport
+        from app.strava import router as strava_router
         StravaImport.__table__.create(bind=_test_engine, checkfirst=True)
+        # mock 掉 router 层的 _redis，避免真连 Redis 导致限速串扰
+        redis_mock = MagicMock()
+        redis_mock.set.return_value = True
+        monkeypatch.setattr(strava_router, "_redis", redis_mock)
         try:
             resp = client.get("/api/strava/import-progress", headers=auth_header)
             assert resp.status_code == 200
             data = resp.json()
-            assert data["status"] == "none"
+            assert data["view_status"] == "none"
+            assert data["db_status"] is None
         finally:
             StravaImport.__table__.drop(bind=_test_engine, checkfirst=True)
 
-    def test_import_progress_active(self, client, strava_auth_header, strava_db, strava_user):
-        """有 active 导入任务时应返回正确的进度信息。"""
+    def test_import_progress_active(self, client, strava_auth_header, strava_db,
+                                     strava_user, monkeypatch):
+        """有 active 导入任务时应返回正确的进度信息（v4 契约）。"""
         from app.strava.models import StravaImport
+        from app.strava import router as strava_router
+
+        # mock 掉 router 层的 _redis，避免真连 Redis 导致限速串扰
+        redis_mock = MagicMock()
+        redis_mock.set.return_value = True
+        monkeypatch.setattr(strava_router, "_redis", redis_mock)
 
         # 创建一个正在进行的导入任务
         import_task = StravaImport(
@@ -471,15 +484,12 @@ class TestImportProgress:
         resp = client.get("/api/strava/import-progress", headers=strava_auth_header)
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "active"
-        assert data["total_activities"] == 100
+        # v4 契约：view_status + db_status + total/completed/tier1_completed
+        assert data["view_status"] == "active"
+        assert data["db_status"] == "active"
+        assert data["total"] == 100
         assert data["tier1_completed"] == 100
-        assert data["tier2_completed"] == 40
-        assert data["tier2_skipped"] == 5
-        # percent 计算：tier1 完成 = 30%，tier2 完成 (40+5)/100 * 70% = 31.5% → 31
-        # 总计 30 + 31 = 61
-        assert data["percent"] == 61
-        assert "导入详情" in data["message"]
+        assert data["completed"] == 40
 
 
 # ==================== 调度器逻辑测试 ====================
