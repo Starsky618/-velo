@@ -353,12 +353,16 @@ class TestWebhookRoutes:
         """POST /api/strava/webhook activity create 应创建 importing Activity。"""
         from app.activity.models import Activity
 
+        # v4 task-7.4：webhook 加了 subscription_id 校验
+        mock_settings.STRAVA_WEBHOOK_SUBSCRIPTION_ID = "12345"
+
         # 给测试用户绑定 Strava
         test_user.strava_athlete_id = 88888
         test_user.strava_access_token = "test"
         db.commit()
 
         payload = {
+            "subscription_id": 12345,
             "object_type": "activity",
             "aspect_type": "create",
             "object_id": 99999,
@@ -377,7 +381,11 @@ class TestWebhookRoutes:
     @patch("app.strava.router.settings")
     def test_webhook_post_unknown_owner(self, mock_settings, client, db):
         """POST /api/strava/webhook 未知 owner_id 应静默忽略（返回 200）。"""
+        # v4 task-7.4：webhook 加了 subscription_id 校验
+        mock_settings.STRAVA_WEBHOOK_SUBSCRIPTION_ID = "12345"
+
         payload = {
+            "subscription_id": 12345,
             "object_type": "activity",
             "aspect_type": "create",
             "object_id": 11111,
@@ -391,6 +399,9 @@ class TestWebhookRoutes:
     def test_webhook_post_activity_delete(self, mock_settings, client, db, test_user):
         """POST /api/strava/webhook activity delete 应删除对应 Activity。"""
         from app.activity.models import Activity
+
+        # v4 task-7.4：webhook 加了 subscription_id 校验
+        mock_settings.STRAVA_WEBHOOK_SUBSCRIPTION_ID = "12345"
 
         # 准备：绑定 Strava + 创建一条活动
         test_user.strava_athlete_id = 88888
@@ -407,6 +418,7 @@ class TestWebhookRoutes:
         activity_id = activity.id
 
         payload = {
+            "subscription_id": 12345,
             "object_type": "activity",
             "aspect_type": "delete",
             "object_id": 77777,
