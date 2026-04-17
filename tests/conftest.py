@@ -112,6 +112,7 @@ _activities_table = Table(
     Column("power_zones", Text),        # 替代 JSONB
     Column("normalized_power", Float),    # 第 1 期新增：标准化功率
     Column("data_source", String(20)),     # 第 1 期新增：数据来源标记
+    Column("activity_type", String(20), default="cycling"),  # 第 4 期新增：活动类型
     Column("strava_activity_id", Integer), # 第 2 期新增：Strava 活动去重 ID
     Column("created_at", DateTime),
     Column("updated_at", DateTime),
@@ -168,7 +169,8 @@ _notifications_table = Table(
     Column("id", Integer, primary_key=True),
     Column("user_id", Integer, nullable=False),
     Column("event_type", String(20), nullable=False),
-    Column("segment_id", Integer, nullable=False),
+    # 第 4 期（task-7.1）外键改成 SET NULL 后 segment_id 允许 NULL
+    Column("segment_id", Integer, nullable=True),
     Column("activity_id", Integer, nullable=True),
     Column("effort_id", Integer, nullable=True),
     Column("elapsed_time", Integer, nullable=True),
@@ -176,6 +178,9 @@ _notifications_table = Table(
     Column("rival_user_id", Integer, nullable=True),
     Column("expires_at", DateTime, nullable=False),
     Column("created_at", DateTime),
+    # 第 4 期（task-7.1）新增：已读状态。SQLite 用 Integer 代替 Boolean
+    # 注意必须给 server_default，否则 test_notification fixture 不传 is_read 时 NOT NULL 违反
+    Column("is_read", Integer, nullable=False, server_default="0"),
     UniqueConstraint("effort_id", "event_type", name="uq_notif_effort_type"),
 )
 
