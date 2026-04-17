@@ -176,6 +176,7 @@ def get_notifications(
     user_id: int,
     page: int = 1,
     page_size: int = 20,
+    unread_only: bool = False,
 ) -> dict:
     """
     查询用户的通知列表，按时间倒序分页——"翻看公告栏上的便签"。
@@ -183,7 +184,20 @@ def get_notifications(
     JOIN 查出赛段名和对手昵称，前端无需二次请求。
     过滤掉已过期的通知（expires_at < now()）。
 
-    使用索引：idx_notif_user_created
+    v4 扩展（task-7.8）：
+    1. 加 unread_only 参数——前端可按需只取未读（默认 False 保持向后兼容）
+    2. 响应永远带 unread_count 字段——首页红点 + 通知页共用这个数字
+    3. Segment 从 inner join 改 outer join——配合 task-7.1 把 segment_id 外键改成
+       ON DELETE SET NULL。赛段被删后通知的 segment_id 会变 NULL，
+       inner join 会把这类通知过滤掉，outerjoin 才能保留（segment_name=None，
+       前端按 spec §3.1 兜底显示"该记录已失效"）。
+
+    为什么 unread_count 独立查询（不从 items 里数）：
+        items 受 page_size 限制——数出来的未读数 ≤ 实际未读数。
+        独立跑一条 COUNT 查询，走 task-7.1 建立的部分索引
+        idx_notifications_user_unread WHERE is_read=FALSE，极快。
+
+    使用索引：idx_notif_user_created + idx_notifications_user_unread
     """
     now = datetime.utcnow()
 
@@ -194,14 +208,22 @@ def get_notifications(
             Segment.name.label("segment_name"),
             User.nickname.label("rival_nickname"),
         )
-        .join(Segment, Segment.id == Notification.segment_id)
+        # ⚠ outer join：task-7.1 外键 SET NULL 后 segment_id 可能为 NULL，
+        # 不能用 inner join，否则这类通知会被静默过滤掉
+        .outerjoin(Segment, Segment.id == Notification.segment_id)
         .outerjoin(User, User.id == Notification.rival_user_id)
         .filter(
             Notification.user_id == user_id,
             Notification.expires_at > now,
         )
-        .order_by(Notification.created_at.desc())
     )
+
+    if unread_only:
+        # 显式 == False——Python truthiness 陷阱：SQLAlchemy 表达式里用 not is_read
+        # 会被当成 Python bool，生成的 SQL 不正确
+        query = query.filter(Notification.is_read == False)  # noqa: E712
+
+    query = query.order_by(Notification.created_at.desc())
 
     total = query.count()
     rows = query.offset((page - 1) * page_size).limit(page_size).all()
@@ -212,18 +234,33 @@ def get_notifications(
             "id": notif.id,
             "event_type": notif.event_type,
             "segment_id": notif.segment_id,
-            "segment_name": segment_name,
+            "segment_name": segment_name,  # 可能为 None（外键 SET NULL 后）
             "activity_id": notif.activity_id,
             "elapsed_time": notif.elapsed_time,
             "rank": notif.rank,
             "rival_user_id": notif.rival_user_id,
             "rival_nickname": rival_nickname,
+            "is_read": notif.is_read,
             "created_at": notif.created_at.isoformat() + "Z" if notif.created_at else None,
         })
+
+    # ---- unread_count 独立查询 ----
+    # 无论 unread_only 为何值都返回：首页红点调 unread_only=True&page_size=1
+    # 时只关心这个数字；通知页列表也要同一个数字显示红点
+    unread_count = (
+        db.query(sa.func.count(Notification.id))
+        .filter(
+            Notification.user_id == user_id,
+            Notification.is_read == False,  # noqa: E712
+            Notification.expires_at > now,
+        )
+        .scalar()
+    )
 
     return {
         "items": items,
         "total": total,
+        "unread_count": unread_count,
         "page": page,
         "page_size": page_size,
     }
@@ -321,4 +358,47 @@ def cleanup_expired(db: Session) -> int:
     )
     db.commit()
     logger.info("清理过期通知 %d 条", count)
+    return count
+
+
+def mark_all_read(db: Session, user_id: int) -> int:
+    """
+    把当前用户所有未读通知标为已读——"广播室一键盖章：所有便签标为已看过"。
+
+    幂等性保障（无需额外去重逻辑）：
+        SQL 层自带 `WHERE is_read == False` 过滤——已读的不会被重复计数。
+        重复调用返回 0，前端可以放心"进页即标读"。
+
+    为什么用 == False 而不用 not is_read：
+        Python truthiness 陷阱——SQLAlchemy 表达式里 not 作用在 Column 对象上
+        会当成 Python bool，生成的 SQL 不对。必须用显式 == False。
+
+    索引支撑：
+        task-7.1 建立的部分索引 idx_notifications_user_unread（user_id, expires_at）
+        WHERE is_read=FALSE，此 UPDATE 走这个部分索引，即使全表有百万通知也只扫未读行。
+
+    崩溃恢复：
+        .update(...) 是单条 SQL，PostgreSQL 保证原子性——要么全标要么都不标。
+        事务崩溃回滚到调用前状态，不会出现"标了一半"的半态。
+
+    Args:
+        db: SQLAlchemy Session
+        user_id: 当前用户 ID
+
+    Returns:
+        本次标读的数量（0 表示本来就全读了）
+    """
+    count = (
+        db.query(Notification)
+        .filter(
+            Notification.user_id == user_id,
+            Notification.is_read == False,  # noqa: E712 — SQLAlchemy 需要显式 == False
+        )
+        .update(
+            {Notification.is_read: True},
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    logger.info("mark_all_read user_id=%d 标读 %d 条", user_id, count)
     return count
