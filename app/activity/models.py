@@ -88,6 +88,16 @@ class Activity(Base):
     # 数据来源标记：gpx / fit / strava，老数据为 NULL（都是 GPX）
     data_source = Column(String(20), nullable=True)
 
+    # 活动类型（第 4 期种子字段）：cycling（骑行）/ running（预留）/ hiking（预留）
+    # 目前只有 cycling 一种值，保留字段为未来多运动扩展留口
+    # 非 cycling 活动由解析器入口分流：不做赛段匹配 / 不记功率区间
+    activity_type = Column(
+        String(20),
+        nullable=False,
+        server_default="cycling",
+        comment="活动类型：cycling（骑行）/ running（预留）/ hiking（预留）",
+    )
+
     # Strava 活动 ID（去重用）：一条 Strava 活动只导入一次
     # 好比快递单号——同一个单号不能入库两次
     # UNIQUE 约束是数据库层最后防线：即使应用层的"先查后写"被并发请求绕过，

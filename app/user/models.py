@@ -78,6 +78,15 @@ class User(Base):
     # 这样存入和读出的都是带时区的 datetime，避免 naive vs aware 比较报 TypeError
     strava_token_expires_at = Column(DateTime(timezone=True), nullable=True)
 
+    # ===== 免打扰开关（第 4 期种子字段）=====
+    # NULL 表示"未设置"，False 表示"已设置为不静音"，True 表示"静音"
+    # 本期前端不读写这字段，仅作为未来跨设备同步留位
+    mute_notifications = Column(
+        Boolean,
+        nullable=True,
+        comment="免打扰开关预留字段。本期仅字段存在，实际开关存前端本地",
+    )
+
     # 创建时间和更新时间
     # server_default 让数据库自动填入当前时间，不依赖 Python 端的时钟
     created_at = Column(DateTime, server_default=func.now())

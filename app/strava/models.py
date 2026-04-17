@@ -74,4 +74,11 @@ class StravaImport(Base):
 
     # ===== 时间戳 =====
     created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    # updated_at 用 timezone=True（第 4 期迁移 phase4_frontend_consume 配套）：
+    # task-7.5 stalled 判定用 datetime.now(UTC) - updated_at，
+    # 如果这里是 naive datetime，aware 减 naive 会抛 TypeError
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
