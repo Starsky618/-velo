@@ -20,11 +20,13 @@ Strava OAuth 业务逻辑层——"外交部的签证处"。
 
 import html
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
 import jwt
+from redis import Redis
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -92,36 +94,162 @@ def generate_authorize_url(user_id: int) -> str:
     return url
 
 
-def handle_callback(db: Session, code: str, state: str) -> dict:
-    """
-    处理 Strava 授权回调——用户在 Strava 授权成功后，Strava 会带着 code 跳回来。
+class InvalidStateError(Exception):
+    """OAuth state 异常：已使用 / 过期 / 跨用户冲突等"""
+    pass
 
-    流程：
-    1. 验证 state 令牌 → 解出 user_id（确认是哪个用户发起的授权）
-    2. 用 code 去 Strava 换 access_token 和 refresh_token
-    3. 把 token 信息写入 users 表
 
-    就像快递签收：
-    - state 是取件码（证明这个包裹是你的）
-    - code 是快递单号（拿去快递公司换实际包裹）
-    - token 就是包裹里的东西（拿到后存好，后续调 Strava API 要用）
+class BoundByOtherUserError(Exception):
+    """该 Strava 账号已被其他 VELO 账号绑定"""
+    pass
+
+
+def build_authorize_url(user_id: int, redis: Redis) -> str:
     """
-    # ---- 第 1 步：验证 state，解出 user_id ----
+    生成 Strava OAuth 授权 URL（v4 重构版）。
+
+    设计要点：
+    1. state 使用明文 nonce（24 字节随机），不套 JWT——
+       因为 nonce 本身不可猜，加 JWT 是冗余的
+    2. Redis 存储 {strava_state:{nonce}: user_id}，10 分钟 TTL
+    3. callback 时用 GETDEL 原子取出并删除，保证一次性消费
+
+    为什么这套组合能防 Login CSRF：
+        攻击者拿到自己的 nonce 后，Redis 里 key 对应的是攻击者自己的 user_id，
+        即使诱骗受害者点链接完成授权，Strava token 也会绑到攻击者账号（而不是受害者）
+        —— 这样攻击者获得的就是自己的账号而已，没有受害者数据。
+
+    Args:
+        user_id: 当前登录用户的 ID
+        redis: Redis 客户端（通常是 app.strava.client._redis）
+
+    Returns:
+        可直接跳转的 Strava 授权 URL
+    """
+    # 24 字节随机 = 32 个 urlsafe base64 字符，碰撞概率 2^-192，安全余量足够
+    nonce = secrets.token_urlsafe(24)
+
+    # 10 分钟 TTL：用户授权流程最长一般 5 分钟；给 2 倍余量防慢网速
+    redis.setex(f"strava_state:{nonce}", 600, str(user_id))
+
+    # 注意：state 直接用 nonce 明文，不套 JWT
+    return (
+        f"https://www.strava.com/oauth/authorize"
+        f"?client_id={settings.STRAVA_CLIENT_ID}"
+        f"&response_type=code"
+        f"&redirect_uri={settings.STRAVA_REDIRECT_URI}"
+        f"&approval_prompt=auto"
+        f"&scope=read,activity:read"
+        f"&state={nonce}"
+    )
+
+
+def verify_state_and_consume(state: str, redis: Redis) -> int:
+    """
+    验证 state 并一次性消费。
+
+    核心机制：Redis GETDEL 原子取出并删除，保证重放必失败。
+
+    Args:
+        state: Strava 回调带回的 state 参数（即 nonce 明文）
+        redis: Redis 客户端
+
+    Returns:
+        发起授权的 user_id
+
+    Raises:
+        InvalidStateError: state 不存在（过期 / 已使用 / 伪造）
+    """
+    # Redis 7+ 原生 getdel：读取并删除是原子操作
+    stored = redis.getdel(f"strava_state:{state}")
+
+    if stored is None:
+        raise InvalidStateError("state 已使用或过期")
+
+    # redis-py 默认 decode_responses=False 时返 bytes
+    if isinstance(stored, bytes):
+        stored = stored.decode()
+
     try:
-        payload = jwt.decode(state, settings.JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except jwt.ExpiredSignatureError:
-        raise ValueError("授权链接已过期，请重新操作")
-    except jwt.InvalidTokenError:
-        raise ValueError("授权链接已过期，请重新操作")
+        return int(stored)
+    except ValueError:
+        raise InvalidStateError(f"state 对应的 user_id 格式异常: {stored}")
 
-    # 检查 purpose 字段：确保这个 JWT 确实是 Strava OAuth 用的
-    # 防止有人拿登录用的 JWT 来冒充 state
-    if payload.get("purpose") != "strava_oauth":
-        raise ValueError("授权链接已过期，请重新操作")
 
-    user_id = int(payload["sub"])
+def _cleanup_old_athlete_activities(db: Session, user_id: int, old_athlete_id: int) -> int:
+    """
+    换号场景：把旧 athlete 还在导入中的活动标为 failed。
 
-    # ---- 第 2 步：用 code 向 Strava 换 token ----
+    为什么这么做：
+        用户从 Strava 账号 A 切到账号 B 时，调度器之前为账号 A 创建的
+        "importing 骨架活动"（只有元信息、还没拉轨迹的占位）失去意义——
+        再让调度器用账号 B 的 token 去拉账号 A 的活动，会 403 / 404。
+        提前把它们置 failed 能避免生产环境一堆无意义的失败日志。
+
+    注意：不删除历史已 completed 活动（用户可能还想看）。
+
+    Args:
+        db: SQLAlchemy session（调用方负责 commit）
+        user_id: 当前用户 id
+        old_athlete_id: 旧的 Strava athlete_id（传入用于日志）
+
+    Returns:
+        被标 failed 的活动数量
+    """
+    from app.activity.models import Activity  # 避免循环 import
+
+    count = (
+        db.query(Activity)
+        .filter(
+            Activity.user_id == user_id,
+            Activity.data_source == "strava",
+            Activity.status == "importing",  # Strava 活动的中间状态
+        )
+        .update(
+            {
+                Activity.status: "failed",
+                Activity.error_message: f"换号绑定：旧 athlete {old_athlete_id} 的导入中断",
+            },
+            synchronize_session=False,
+        )
+    )
+    logger.info(
+        "换号清理 user_id=%d old_athlete_id=%d 清了 %d 条 importing 活动",
+        user_id, old_athlete_id, count,
+    )
+    return count
+
+
+def handle_callback(db: Session, code: str, state: str, redis: Redis) -> dict:
+    """
+    Strava OAuth 回调处理。v4 重构要点：
+
+    1. state 一次性消费（verify_state_and_consume）
+    2. user 行锁（避免并发 callback 竞态）
+    3. **UNIQUE 冲突检测必须在清理旧活动之前**（顺序不能换，否则会误伤自家数据）
+    4. 换号清理（_cleanup_old_athlete_activities）
+    5. StravaImport 防重复：覆盖 active + paused 两种未完成态
+
+    Args:
+        db: SQLAlchemy session
+        code: Strava 回调带回的 authorization_code
+        state: 本次授权的 state（nonce）
+        redis: Redis 客户端
+
+    Returns:
+        {"bound": True, "athlete_id": int}
+
+    Raises:
+        InvalidStateError: state 失效
+        ValueError: 用户不存在 / Strava 响应异常
+        BoundByOtherUserError: 该 athlete 已被他人绑定
+    """
+    from app.strava.models import StravaImport
+
+    # ---- Step 1：一次性消费 state ----
+    user_id = verify_state_and_consume(state, redis)
+
+    # ---- Step 2：换 token（内联，不抽新函数——参考现有流程）----
     try:
         resp = httpx.post(
             STRAVA_TOKEN_URL,
@@ -137,7 +265,6 @@ def handle_callback(db: Session, code: str, state: str) -> dict:
         logger.error("Strava token 请求网络错误 user_id=%d", user_id)
         raise ValueError("Strava 授权失败")
 
-    # Strava 返回非 200 状态码表示授权码无效或过期
     if resp.status_code != 200:
         logger.error(
             "Strava token 请求失败 user_id=%d status=%d body=%s",
@@ -148,61 +275,94 @@ def handle_callback(db: Session, code: str, state: str) -> dict:
     try:
         data = resp.json()
     except Exception:
-        logger.error("Strava 返回非 JSON 响应 user_id=%d body=%s", user_id, resp.text[:200])
-        raise ValueError("Strava 授权失败")
+        raise ValueError("Strava 返回非 JSON 响应")
 
-    # ---- 第 3 步：把 token 写入数据库 ----
-    # 防御性访问：Strava 返回结构不符合预期时给出明确错误，而不是抛 KeyError
     athlete = data.get("athlete")
     if not athlete or "id" not in athlete:
-        logger.error("Strava 返回数据缺少 athlete 字段 user_id=%d", user_id)
-        raise ValueError("Strava 授权失败")
-
+        raise ValueError("Strava 返回数据缺少 athlete 字段")
     for key in ("access_token", "refresh_token", "expires_at"):
         if key not in data:
-            logger.error("Strava 返回数据缺少 %s 字段 user_id=%d", key, user_id)
-            raise ValueError("Strava 授权失败")
+            raise ValueError(f"Strava 返回数据缺少 {key} 字段")
 
-    athlete_id = athlete["id"]
+    new_athlete_id = athlete["id"]
 
-    user = db.query(User).filter_by(id=user_id).first()
+    # ---- Step 3：user 行锁 + NoResultFound 兜底 ----
+    # 为什么用 .first() 而不是 .one()：
+    #   .one() 遇到用户不存在会抛 NoResultFound，前端收到 500；
+    #   .first() + 显式 raise ValueError 更可控，前端收到 400
+    user = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .with_for_update()
+        .first()
+    )
     if not user:
-        raise ValueError("用户不存在")
+        raise ValueError(f"用户 {user_id} 不存在")
 
-    user.strava_athlete_id = athlete_id
+    # ---- Step 4：UNIQUE 冲突检测（必须在清理之前，顺序不可换）----
+    # 如果该 Strava 账号已被其他 VELO 账号绑定，直接拒绝；
+    # 不往下走，避免误清自家数据后再被 UNIQUE 挡下（造成数据损失）
+    other = (
+        db.query(User)
+        .filter(
+            User.strava_athlete_id == new_athlete_id,
+            User.id != user_id,
+        )
+        .first()
+    )
+    if other:
+        logger.warning(
+            "Strava 账号占用 user_id=%d 试图绑定 athlete=%d 但被 user_id=%d 占用",
+            user_id, new_athlete_id, other.id,
+        )
+        raise BoundByOtherUserError("该 Strava 账号已被其他 VELO 账号绑定")
+
+    # ---- Step 5：换号时清理旧 athlete 的 importing 活动 ----
+    if user.strava_athlete_id and user.strava_athlete_id != new_athlete_id:
+        _cleanup_old_athlete_activities(db, user.id, user.strava_athlete_id)
+
+    # ---- Step 6：写入新 token（expires_at 内联解析，不抽新函数）----
+    user.strava_athlete_id = new_athlete_id
     user.strava_access_token = data["access_token"]
     user.strava_refresh_token = data["refresh_token"]
     user.strava_token_expires_at = datetime.fromtimestamp(
-        data["expires_at"], tz=timezone.utc
+        data["expires_at"], tz=timezone.utc,
     )
+    db.flush()
 
-    try:
-        db.commit()
-    except IntegrityError:
-        # strava_athlete_id 有 UNIQUE 约束，如果另一个用户已绑定同一个 Strava 账号，
-        # 数据库层面会拒绝插入——这是最后一道防线
-        db.rollback()
-        logger.warning(
-            "Strava 账号重复绑定 athlete_id=%d user_id=%d", athlete_id, user_id
+    # ---- Step 7：StravaImport 防重复（覆盖 active + paused 两种未完成态）----
+    # 为什么检查 paused 而不只是 active：
+    #   若上次导入因 token 失效被标 paused，新 callback 若只查 active
+    #   会再建一条新 active 任务 → paused+active 并存，调度器混乱
+    existing = (
+        db.query(StravaImport)
+        .filter(
+            StravaImport.user_id == user_id,
+            StravaImport.status.in_(["active", "paused"]),
         )
-        raise ValueError("该 Strava 账号已被其他用户绑定")
-
-    logger.info(
-        "Strava 绑定成功 user_id=%d athlete_id=%d", user_id, athlete_id
+        .with_for_update()
+        .first()
     )
 
-    # 绑定成功后创建 strava_imports 记录，启动历史导入
-    # 调度器（import_scheduler.py）每 30 秒检查 active 的导入任务并执行
-    from app.strava.models import StravaImport
-    import_record = StravaImport(
-        user_id=user_id,
-        strava_athlete_id=athlete_id,
-    )
-    db.add(import_record)
+    if existing:
+        # 已有未完成任务 → 复用（若是 paused 重新置 active 让调度器接手）
+        if existing.status == "paused":
+            existing.status = "active"
+            logger.info("复用并激活 paused 导入任务 user_id=%d import_id=%d", user_id, existing.id)
+        else:
+            logger.info("复用已有 active 导入任务 user_id=%d import_id=%d", user_id, existing.id)
+    else:
+        # 没有未完成任务 → 新建
+        # strava_athlete_id 是 NOT NULL，必须带上
+        db.add(StravaImport(
+            user_id=user_id,
+            strava_athlete_id=new_athlete_id,
+            status="active",
+        ))
+        logger.info("创建新 Strava 导入任务 user_id=%d athlete_id=%d", user_id, new_athlete_id)
+
     db.commit()
-    logger.info("创建导入任务 import_id=%d user_id=%d", import_record.id, user_id)
-
-    return {"athlete_id": athlete_id, "user_id": user_id}
+    return {"bound": True, "athlete_id": new_athlete_id}
 
 
 def get_strava_status(db: Session, user_id: int) -> dict:
@@ -217,8 +377,11 @@ def get_strava_status(db: Session, user_id: int) -> dict:
 
     connected = user.strava_athlete_id is not None
     return {
+        # 老字段保留——向后兼容现有调用方
         "connected": connected,
         "athlete_id": user.strava_athlete_id if connected else None,
+        # 新增——task-7.10 前端要用 res.bound 做判断
+        "bound": connected,
     }
 
 

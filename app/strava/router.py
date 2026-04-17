@@ -16,6 +16,7 @@ Strava 集成的 API 路由——"外交部的前台"。
 """
 
 import html
+import logging
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -25,6 +26,14 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.strava import service
+from app.strava.client import _redis
+from app.strava.service import (
+    BoundByOtherUserError,
+    InvalidStateError,
+    handle_callback,
+)
+
+logger = logging.getLogger(__name__)
 
 # 创建路由器，所有 Strava 相关接口都挂在 /api/strava 下
 router = APIRouter(prefix="/api/strava", tags=["strava"])
@@ -72,8 +81,10 @@ def get_authorize_url(user_id: int = Depends(get_current_user)):
     用户在 Strava 登录授权后，Strava 会跳回我们的 /callback。
 
     需要登录（请求头带 JWT）。
+
+    v4 重构：state 改为 Redis 存储的一次性 nonce（见 service.build_authorize_url）。
     """
-    url = service.generate_authorize_url(user_id)
+    url = service.build_authorize_url(user_id, _redis)
     return {"authorize_url": url}
 
 
@@ -93,10 +104,23 @@ def strava_callback(
     返回 HTML 页面而不是 JSON，因为用户在浏览器里直接看到这个页面。
     """
     try:
-        service.handle_callback(db, code, state)
+        handle_callback(db, code, state, _redis)
+    except InvalidStateError as e:
+        logger.warning("OAuth state 验证失败: %s", e)
+        return HTMLResponse(
+            content=_ERROR_HTML_TEMPLATE.format(message=html.escape(str(e))),
+            status_code=400,
+        )
+    except BoundByOtherUserError as e:
+        logger.warning("Strava 账号已被占用: %s", e)
+        return HTMLResponse(
+            content=_ERROR_HTML_TEMPLATE.format(message=html.escape(str(e))),
+            status_code=409,
+        )
     except ValueError as e:
         # 授权失败：显示错误页面
         # html.escape 防止错误消息中的特殊字符被当成 HTML 执行（XSS 防护）
+        logger.error("handle_callback ValueError: %s", e)
         return HTMLResponse(
             content=_ERROR_HTML_TEMPLATE.format(message=html.escape(str(e))),
             status_code=400,
