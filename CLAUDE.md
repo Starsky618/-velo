@@ -85,6 +85,57 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 - 红灯：**先评估逻辑是否统一**——如果文件内的函数围绕同一职责、拆开后反而逻辑分散（如 stats_calculator 的摘要+分段+卡路里本质是一个"成绩单计算器"），则保持不拆，标注理由即可。只有职责确实混杂的文件才必须拆分
 - 巡检命令：`wc -l app/**/*.py` 查行数，`pytest --durations=0` 查耗时
 
+## 防黑盒化机制（硬性，每期必做）
+
+> **核心信条：黑盒不是一次形成的，是每次偷懒的累积。每期体检一次，就能把小问题摁在萌芽。**
+> 没有这两道机制，当期不给通过、不给进入下一期。
+
+### 🛡️ 机制 1：每期结束强制刷新架构导览
+
+每完成一期（比如第 4 期结束），**必须更新 `docs/architecture-guide.md`**，让这份文档永远反映系统最新样子。
+
+- **刷新内容**：新增的模块、改动的数据流、废弃的接口都要同步进去
+- **为什么硬性**：过时文档比没文档更坑（会骗人），是黑盒化最大来源
+- **执行方式**：AI 辅助完成，半小时内搞定
+- **检查标准**：新人（或半年后的 Starsky 自己）只读这份导览，能在 10 分钟内搞懂系统全貌，不需要翻代码
+
+### 🛡️ 机制 2：每期结束做"黑盒度体检"
+
+完工汇报时，必须附带这三问的答卷：
+
+1. **10 分钟讲解挑战**：我能否用 10 分钟给陌生人讲清整个系统？哪个模块卡壳最多？
+2. **数据流复述**：挑一个典型用户操作（比如"上传 GPX 并看到赛段成绩"），从按钮点击到数据落库的完整路径，能在纸上画清楚吗？
+3. **30 秒读懂**：有没有哪个文件 / 函数自己看都要想超过 30 秒才明白意图？
+
+**只要有一项答得不满意 → 当期内必须清理，不留到下期**。清理动作包括但不限于：
+- 加注释解释设计意图
+- 拆分职责混杂的文件
+- 补接口文档
+- 更新模块 `__init__.py` 的一句话说明
+- 重命名有歧义的变量 / 函数
+
+> **为什么这两道机制能防黑盒：** 黑盒化的根本原因是"每次微小偷懒累积成巨大理解成本"。两道机制的分工：机制 1 保证**外部视角的入口**（架构导览）永远新鲜；机制 2 保证**内部视角的每个模块**不会积累理解成本。两道一起做，系统撑到用户 1000+ 规模都不会腐化。
+
+### 🛡️ 机制 3：每期**开工前**做"回溯体检"（防历史债务累积）
+
+> **核心信条：已上线的代码有测试兜底，但当前"审查强度"扫不到的坑还在。新功能会把老坑放大。开工前扫一遍相关历史代码，发现隐患列 tech debt 清单，每期匀 10-20% 时间逐步清。**
+
+**触发时机**：每期 ③ 需求塑形 / ④ Spec 阶段开始前。
+
+**扫描范围**：**不是整个项目**——只扫本期要改动的模块 + 直接依赖的模块（`git log --name-only` 近 3 个月改过的文件）。
+
+**扫描方法**：用当前审查强度（架构信条 14 证据分级 + 预读清单）对照历史代码。典型产出：
+- 虚构函数调用（代码里写了但从未实现）
+- 状态值和 model 不一致
+- 没人跑的脚本 / 容器
+- TODO 标着但拖了 3 期没清
+
+**产出**：`docs/tech-debt.md`（新增，本期 P0 清单 + 下期 P1 清单）。
+
+**硬规则**：新期 Spec 不允许依赖"还在 tech-debt 清单里"的功能——先修清理再做。否则是在债务之上加债务。
+
+第 4 期故障分析抓到的 3 条历史缺陷（scheduler 容器缺失、Webhook 无校验、OAuth 重复绑定）正是这条机制想防的——**那些都是第 2 期就有的坑，拖到第 4 期要用时才修**。有了这条，未来每期开工就会主动扫一遍，不会再拖。
+
 ## 命名规范
 - API 路径：RESTful 复数（`/api/activities`）
 - Python：snake_case（变量、函数、文件名）
@@ -246,6 +297,25 @@ Worker 和 service 层的关键步骤必须有 `logging` 输出，格式包含�
 - [ ] **输入数据的最大可能规模是多少？内存峰值能控制在多少？**
 - [ ] **每个 `if x` 判断：x=0 或 x="" 是合法值吗？** 如果是，必须用 `if x is not None` 而非 `if x`。Python 的 truthiness 陷阱已在 6.2（elapsed_time=0）和 6.3（同一问题）连续踩坑两次。
 - [ ] **循环中的 flush/rollback：是否需要 SAVEPOINT 隔离？** 如果循环体里 flush 后可能 rollback，必须用 `db.begin_nested()` 隔离，否则 rollback 会炸掉循环外所有已 flush 的数据。项目内已有模式：赛段匹配隔离（matcher）、Strava 批量导入隔离（import_scheduler）。
+
+## 技术栈陷阱清单（Python + FastAPI + SQLAlchemy + Alembic + Redis + PostgreSQL）
+
+> **架构 skill 每次写 spec 前都会引用这份清单**。以下陷阱都是本项目实战踩过的坑。spec / 代码里出现对应模式必须按"正确姿势"写，否则双审判必抓 Critical。
+
+| # | 陷阱 | 错误表现 | 正确姿势 |
+|---|------|---------|---------|
+| 1 | **Python truthiness**（NULL / 0 / "" 都为 False） | `if user.mute_notifications:` — NULL 被当 False；`if count:` — 0 是合法值时被误判 | 判断 bool 字段 `is True` / `== False`；判断存在性 `is not None`；不要用 `if x:` |
+| 2 | **naive vs aware datetime** | `datetime.now(timezone.utc) - db_value` TypeError（db_value 无时区）| DB 字段声明 `DateTime(timezone=True)`；Python 端 `datetime.fromtimestamp(ts, tz=timezone.utc)` |
+| 3 | **Python `or` 短路永真** | `type == 'Ride' or 'VirtualRide'` — 字符串 'VirtualRide' 永真，判断永真 | 用 `type in ('Ride', 'VirtualRide')` |
+| 4 | **SQLAlchemy `.one()` vs `.first()`** | `.one()` 遇零记录抛 `NoResultFound` → FastAPI 返 500 | 用 `.first()` + `if not x: raise ValueError(...)`；或捕获 `NoResultFound` 显式处理 |
+| 5 | **redis-py `execute_command` 返 bytes** | `redis.execute_command('GETDEL', k)` 返 bytes，后续 `int(x)` 能过但 `x == 'N'` 永假 | Redis 7+ 优先用原生 `redis.getdel(k)`；必要时 `.decode()` |
+| 6 | **PostgreSQL 外键自动命名** | spec 写 `fk_<table>_<col>` 自编（真实不存在）→ Alembic drop_constraint 报错 | PostgreSQL 默认命名规则 `<table>_<column>_fkey`；不确定时 Alembic `inspector.get_foreign_keys()` 反查 |
+| 7 | **Alembic `alter_column` 类型转换** | 字段从 naive 改 tz-aware 时忘 `postgresql_using`，老数据报错 | 用 `postgresql_using="col_name AT TIME ZONE 'UTC'"` 显式指定转换表达式 |
+| 8 | **SAVEPOINT 隔离**（见"关键技术约定"）| 循环里 flush 后 rollback → 炸掉循环外已 flush 数据 | 循环内用 `db.begin_nested()` 隔离 |
+| 9 | **Strava 响应结构嵌套** | 假设 `data['athlete']['id']` 固定 → 接口变动 KeyError | `data.get('athlete', {}).get('id')` 或显式 `if not athlete or 'id' not in athlete: raise` |
+| 10 | **状态机值脑补** | spec 写 `status='running'/'pending'`，实际值域是 `active/paused/completed` | 先 grep `server_default` 和 service 赋值源头，抄对真实值 |
+
+> **这份清单是"活文档"**：以后每踩一个新的语言/库陷阱，就在这里加一条（不要回到 architect skill 里加——那里只留跨栈通用的 3 条）。
 
 ## 协作实战规范（从项目实践中总结，硬性要求）
 
