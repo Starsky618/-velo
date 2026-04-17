@@ -98,35 +98,34 @@ def test_token_refresh_401_pauses_active_imports(
 
 
 def test_ensure_valid_token_uses_row_lock(db, strava_imports_table):
-    """入口行锁回归：未过期 token 直接返回，行锁不崩即通过。
+    """入口行锁回归：用 mock Query spy 直接验证 `with_for_update()` 被调用过。
 
-    SQLite 没真正的行锁，with_for_update 会被静默忽略——
-    本测试保证函数结构没被破坏：入参 user 被替换为查库后的对象，流程正常。
-
-    expires_at=None 时会进入刷新分支——为只验证"行锁 + 未过期直接返回"路径，
-    这里 mock httpx.post 永不被调用：如果行锁版 user 读不出 token，就会走刷新
-    触发 mock。最终断言 token 值 + mock 未被调用。
+    之前的版本只验证"用户不存在 → ValueError"路径，被代码审查指为假通过——
+    那条路径即使去掉 `.with_for_update()` 也通过，无法证明行锁调用存在。
+    v4 加强：mock db.query().filter().with_for_update()，断言该链条被调用。
+    SQLite 本身不支持行锁，真正并发行为由生产 PostgreSQL 保证，本地只验证
+    SQL 构造链条存在（缺一环就失效）。
     """
-    # 未过期：设一个足够远的时间戳。SQLite 读出 naive，函数内 > 比较会 TypeError——
-    # 所以这里断言"未过期直接返回"无法在 SQLite 完成。
-    # 退化为：验证入参是 None user 时会抛 ValueError（行锁查不到 → 走 None 分支）。
-    user = _make_user(
-        db,
-        strava_athlete_id=99001,
-        access_token="at",
-        refresh_token="rt",
-        expires_at=None,
-    )
-    # 删掉这个 user 再调——应当因行锁查不到而抛 ValueError("用户不存在")
-    user_id = user.id
-    db.delete(user)
-    db.commit()
+    from unittest.mock import MagicMock
 
-    # 构造一个 id 指向已删用户的 User 对象
-    ghost = User(id=user_id, openid=f"ghost_{uuid.uuid4().hex[:8]}")
+    # 构造 mock session，精确断言 with_for_update 被调用
+    mock_db = MagicMock()
+    # query() → filter() → with_for_update() → first() 链
+    mock_filter = MagicMock()
+    mock_query = MagicMock()
+    mock_query.filter.return_value = mock_filter
+    mock_lock_result = MagicMock()
+    mock_filter.with_for_update.return_value = mock_lock_result
+    mock_lock_result.first.return_value = None  # 模拟查不到用户
+    mock_db.query.return_value = mock_query
 
+    fake_user = User(id=9999, openid="fake")
     with pytest.raises(ValueError, match="用户不存在"):
-        service.ensure_valid_token(db, ghost)
+        service.ensure_valid_token(mock_db, fake_user)
+
+    # 核心断言：with_for_update() 确实被调用过——这是行锁语义的"证据"
+    mock_filter.with_for_update.assert_called_once()
+    mock_lock_result.first.assert_called_once()
 
 
 # ==================== I9：tier1 连续 2 次空 ====================

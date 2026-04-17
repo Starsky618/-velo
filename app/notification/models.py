@@ -45,16 +45,18 @@ class Notification(Base):
     event_type = Column(String(20), nullable=False)
 
     # ---- 关联实体 ----
-    # 哪条赛段
+    # 哪条赛段。第 4 期 task-7.1 起：外键 SET NULL + nullable=True
+    # 赛段被删时通知保留（前端显示"该记录已失效"），不跟着连环删
     segment_id = Column(
         Integer,
-        ForeignKey("segments.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("segments.id", ondelete="SET NULL"),
+        nullable=True,
     )
     # 触发这条通知的骑行（kom_lost 时存夺走者的活动）
+    # 第 4 期 task-7.1 起：外键改为 SET NULL（原 CASCADE）
     activity_id = Column(
         Integer,
-        ForeignKey("activities.id", ondelete="CASCADE"),
+        ForeignKey("activities.id", ondelete="SET NULL"),
         nullable=True,
     )
     # 关联的成绩记录（删成绩后通知保留，只是看不到详情）

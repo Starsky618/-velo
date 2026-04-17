@@ -350,10 +350,22 @@ def _run_tier2(
         return
 
     # 检查活动类型（detail 里有更准确的 type 字段）
-    activity_type = detail.get("type", "")
-    if activity_type not in _CYCLING_TYPES:
-        logger.info("跳过非骑行活动 strava_id=%d type=%s", strava_id, activity_type)
+    # v4 task-7.6 双审判发现：此前非骑行活动被置 status=completed 但 activity_type
+    # 仍保留默认的 'cycling' → get_user_stats / get_activity_list 会把
+    # 跑步/徒步误当骑行计入距离。修正：回填真实类型（小写 Strava type）。
+    strava_activity_type = detail.get("type", "")
+    if strava_activity_type not in _CYCLING_TYPES:
+        logger.info("跳过非骑行活动 strava_id=%d type=%s", strava_id, strava_activity_type)
         activity.status = "completed"
+        # Strava type 映射到 VELO activity_type：
+        # Run/TrailRun/VirtualRun → running；Hike/Walk → hiking；其他 → other
+        _type_lower = strava_activity_type.lower()
+        if "run" in _type_lower:
+            activity.activity_type = "running"
+        elif "hike" in _type_lower or "walk" in _type_lower:
+            activity.activity_type = "hiking"
+        else:
+            activity.activity_type = "other"
         import_task.tier2_skipped = (import_task.tier2_skipped or 0) + 1
         db.commit()
         return
@@ -389,18 +401,12 @@ def _run_tier2(
     # ---- 赛段匹配（尽力而为）----
     try:
         from app.segment.auto_match import match_activity_against_segments
+        # auto_match 内部已对 new_efforts 逐个调用 detect_events（两条路径共用，
+        # GPX 上传 worker.py 和 Strava 导入 scheduler 都走这里）。
+        # 历史原注释误以为 auto_match 只服务 GPX 路径，本期双审判纠正：
+        # 这里不要再调一次 detect_events，否则 30 条活动导入时会 30× 放大
+        # 排名查询和 SAVEPOINT 嵌套，UNIQUE 约束兜住但日志刷屏。
         match_activity_against_segments(activity.id, db)
-        # auto_match 内部已对 GPX 上传路径的 effort 调用了 detect_events，
-        # 但 import_scheduler 走的是 Strava 导入路径，匹配完成后也需要检测。
-        # detect_events 内部会过滤 Strava 历史活动（>7 天），无需调用方判断。
-        from app.notification.service import detect_events
-        new_efforts = (
-            db.query(SegmentEffort)
-            .filter_by(activity_id=activity.id)
-            .all()
-        )
-        for eff in new_efforts:
-            detect_events(db, eff)
     except Exception:
         db.rollback()
         logger.warning(
