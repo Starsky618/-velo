@@ -181,13 +181,44 @@ def _run_tier1(db, client: StravaClient, import_task: StravaImport) -> None:
     activities = client.get_athlete_activities(before=before_ts, per_page=30)
 
     if not activities:
-        # 列表返回空 → 第一层完成
+        # v4 I9：连续 2 次空才判完成（防 Strava 偶发空返回）
+        # 为什么不加 DB 字段：Redis 轻量，无需 Alembic 迁移；TTL 24h 自动清理
+        # key 独立于 import_task.id，即使 StravaImport 被重建也不会串用
+        from redis import Redis
+        from app.config import settings
+
+        empty_key = f"strava:tier1_empty:{import_task.id}"
+        try:
+            r = Redis.from_url(settings.REDIS_URL)
+            empty_count = r.incr(empty_key)  # 不存在则初始化为 1
+            r.expire(empty_key, 86400)  # 24h TTL 自动清理（远大于正常完成周期）
+        except Exception:
+            # Redis 不可用：降级为老行为（直接判完成，保持功能不阻断）
+            logger.warning("Redis 不可用，tier1 空返回降级为立即完成")
+            empty_count = 2  # 强制达到阈值
+            r = None
+
+        if empty_count < 2:
+            logger.info(
+                "tier1 空返回（第 %d 次），等下次 tick 再确认 import_id=%d",
+                empty_count, import_task.id,
+            )
+            return  # 保持 active 不动，下次 tick 再拉
+
+        # 连续 2 次空 → 真的完成了
         if import_task.total_activities is None:
             import_task.total_activities = import_task.tier1_completed
         logger.info(
-            "第一层完成 import_id=%d total=%d",
+            "第一层完成（连续 2 次空确认）import_id=%d total=%d",
             import_task.id, import_task.total_activities,
         )
+
+        # 清 Redis 计数（避免下次 tier1 重启时继承旧计数）
+        if r is not None:
+            try:
+                r.delete(empty_key)
+            except Exception:
+                pass
         return
 
     # 逐条创建 Activity 骨架
@@ -248,6 +279,16 @@ def _run_tier1(db, client: StravaClient, import_task: StravaImport) -> None:
         import_task.cursor_before = oldest_start_date
 
     db.commit()
+
+    # v4 I9：非空拉取 → 重置空计数器
+    # 放在 commit 之后，即使 Redis 操作失败也不影响进度的持久化
+    try:
+        from redis import Redis
+        from app.config import settings
+        r = Redis.from_url(settings.REDIS_URL)
+        r.delete(f"strava:tier1_empty:{import_task.id}")
+    except Exception:
+        pass  # 清理失败不阻塞主流程
 
     logger.info(
         "第一层 tick import_id=%d created=%d total_so_far=%d",

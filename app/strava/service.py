@@ -400,8 +400,27 @@ def ensure_valid_token(db: Session, user: User, force: bool = False) -> str:
     就像出国前检查签证：
     - 还没过期 → 直接走
     - 快过期了 → 去大使馆续签（用 refresh_token 换新的 access_token）
-    - 续签被拒（refresh_token 也失效了）→ 得重新办签证（用户需要重新授权）
+    - 续签被拒（refresh_token 也失效了）→ 得重新办签证（用户需要重新授权)
+
+    v4 改动：
+    - 入口加行锁（SELECT FOR UPDATE），防并发请求同时进到刷新逻辑
+      导致两个 Python 进程都向 Strava 发 refresh 请求（refresh_token
+      使用后会变新，两者会互相顶掉对方的新 token → 用户账户被踢出）
+    - 401 分支同步 pause 该用户的 active 导入任务（I7）
     """
+    # v4 I8：入口行锁——把 user 行锁住，避免并发刷 token 竞态
+    # 注意：必须在事务内才能锁住；caller（StravaClient._request）已在隐式事务内
+    # 调用方审视：client.py:154/208 两处 caller 在函数返回后只用返回的 token 值
+    # 做 HTTP header，不再写 user 字段——行锁版 user 遮蔽入参 user 是安全的
+    user = (
+        db.query(User)
+        .filter(User.id == user.id)
+        .with_for_update()
+        .first()
+    )
+    if user is None:
+        raise ValueError("用户不存在")
+
     now = datetime.now(timezone.utc)
 
     # 检查是否过期（留 5 分钟缓冲，避免"刚好在请求途中过期"）
@@ -435,6 +454,25 @@ def ensure_valid_token(db: Session, user: User, force: bool = False) -> str:
     # 401 表示 refresh_token 也失效了（用户在 Strava 端撤销了授权）
     if resp.status_code == 401:
         logger.warning("Strava refresh_token 失效 user_id=%d", user.id)
+
+        # v4 I7：先把该用户 active 导入任务置 paused，再清 token
+        # 顺序理由：先 pause 让 scheduler 不再继续空跑调它的 API（空跑会持续失败）；
+        # 清 token 放后面——先标 paused 保证即使下面清 token 失败，scheduler 也已被喊停
+        from app.strava.models import StravaImport
+        paused_count = (
+            db.query(StravaImport)
+            .filter(
+                StravaImport.user_id == user.id,
+                StravaImport.status == "active",
+            )
+            .update({StravaImport.status: "paused"}, synchronize_session=False)
+        )
+        if paused_count > 0:
+            logger.info(
+                "token 失效 自动 pause %d 个 active 导入任务 user_id=%d",
+                paused_count, user.id,
+            )
+
         # 清空所有 Strava 字段，让用户重新绑定
         user.strava_athlete_id = None
         user.strava_access_token = None
@@ -662,6 +700,29 @@ def handle_manual_sync(db: Session, user_id: int) -> dict:
                         pass
                 db.commit()
             new_count += 1
+
+    # v4 I10：若该用户有 active StravaImport，同步累加 tier1_completed
+    # 避免手动 sync 创建的骨架活动没计入进度 → 前端显示 "0/X" 直到调度器接手
+    # 只在循环后做一次批量更新（而非循环内每条 +1），减少 DB round-trip
+    if new_count > 0:
+        from app.strava.models import StravaImport
+        active_import = (
+            db.query(StravaImport)
+            .filter(
+                StravaImport.user_id == user_id,
+                StravaImport.status == "active",
+            )
+            .with_for_update()
+            .first()
+        )
+        if active_import:
+            active_import.tier1_completed = (active_import.tier1_completed or 0) + new_count
+            # total_activities 可能还是 None（首次绑定后 tier1 尚未跑完）——不动它
+            db.commit()
+            logger.info(
+                "手动 sync 联动更新 tier1_completed user_id=%d +%d 到 %d",
+                user_id, new_count, active_import.tier1_completed,
+            )
 
     logger.info("手动同步完成 user_id=%d new=%d", user_id, new_count)
     return {
