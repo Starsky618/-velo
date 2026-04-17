@@ -24,6 +24,8 @@ rq Worker（根目录的 worker.py）从队列中取出任务，调用这里的 
 - Segment 匹配（步骤 11）在 Task 4 中实现，当前留空跳过
 """
 
+import logging
+
 from sqlalchemy import update, func
 
 from app.activity.models import Activity, Trackpoint
@@ -33,6 +35,8 @@ from app.parsing.fit_parser import FITParser, FITParseError
 from app.parsing.gpx_parser import GPXParser, GPXParseError
 from app.storage.local import LocalStorage
 from app.user.models import User
+
+logger = logging.getLogger(__name__)
 
 # 存储后端（与 service.py 共用同一类型，但 Worker 进程独立，各自创建实例）
 _storage = LocalStorage()
@@ -94,6 +98,27 @@ def _do_parse(db, activity_id: int) -> None:
     # ===== 步骤 2：取完整记录 =====
     activity = db.query(Activity).filter_by(id=activity_id).first()
     if activity is None:
+        return
+
+    # ===== 步骤 2.5：🌱 运动类型分流（种子 3）=====
+    # 本期只支持 cycling。未来加运动类型时，在这里加 elif 分支：
+    #   elif activity.activity_type == 'running':
+    #       _parse_running(db, activity)
+    #       return
+    # 结构设计理由：
+    #   - 分流点在"锁后、文件下载前"：非 cycling 活动连文件下载 I/O 都省了
+    #   - 用不等式判断（!= "cycling"）而不是枚举所有不支持类型：
+    #     对 NULL 也返回 True（NULL 和任何值不等），安全兜底
+    #   - 每种运动的解析未来分到独立函数（_parse_cycling / _parse_running 等），
+    #     彼此互不干扰。本期只有一个分支，不抽出 _parse_cycling（纯粹改名不增价值）
+    if activity.activity_type != "cycling":
+        activity.status = "failed"
+        activity.error_message = f"暂不支持的运动类型: {activity.activity_type}"
+        db.commit()
+        logger.warning(
+            "活动 %d 运动类型 %s 暂不支持，置 failed",
+            activity_id, activity.activity_type,
+        )
         return
 
     user = db.query(User).filter_by(id=activity.user_id).first()
