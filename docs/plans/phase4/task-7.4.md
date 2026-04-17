@@ -135,12 +135,14 @@ def webhook_receive(
     return {"status": "ok"}
 ```
 
-**import 补充**（文件顶部确认已有 / 没有则加）：
+**import 补充**（**必做**——现有 `app/strava/router.py` 顶部**没有** logger 声明。不加的话下面 `logger.warning/error` 全部 NameError。subagent 必须在文件顶部 import 区追加以下两行）：
 
 ```python
 import logging
 logger = logging.getLogger(__name__)
 ```
+
+放位置建议：和 `import html` 同一段，保持现有 import 风格。
 
 ### 5. GET /webhook（订阅验证端点）**不改**
 

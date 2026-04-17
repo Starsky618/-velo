@@ -2,6 +2,10 @@
 
 > 修复 Critical-01（Login CSRF）+ Critical-08（state 可重放）。
 
+> ⚠ **必须和 task-7.3 合并由同一 subagent 连续执行、同一 commit 推送**。
+> 理由：本任务把 state 改成 Redis getdel 一次性消费，但过渡期 callback 仍调旧 `handle_callback(db, code, state)`，旧函数内部再解一次 state 必然报 InvalidStateError。
+> 执行方式：subagent 同时加载 task-7.2 + task-7.3，先实现 7.2 的 service.py 新函数、再实现 7.3 的 handle_callback 重写 + router.py callback 改造，**用 7.3 的 commit 消息一次提交**。跳过 7.2 的独立 commit。
+
 ---
 
 ## 🎯 目标（一句话）

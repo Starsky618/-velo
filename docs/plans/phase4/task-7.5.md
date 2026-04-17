@@ -154,7 +154,14 @@ def get_import_progress(
     return service.get_import_progress(db, user_id)
 ```
 
-**注意 import**：`_redis` 从 `app.strava.client` 导入，这个实例 task-7.2/7.3 已经在用。如 `app/strava/client.py` 顶部没暴露 `_redis`，需补一句 `from .client import _redis`（预读 client.py 确认）。
+**注意 import**：
+- `_redis` 从 `app.strava.client` 导入——该实例已在 `client.py:59` 暴露，直接 `from app.strava.client import _redis` 即可（已验证）
+- **router.py 顶部必须有 logger**——现有代码没有声明，本任务用到 `logger.warning`。在 import 区追加：
+  ```python
+  import logging
+  logger = logging.getLogger(__name__)
+  ```
+  （如果 task-7.4 / 7.3 先合入已加了就不用重复）
 
 ---
 

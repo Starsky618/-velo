@@ -2,6 +2,10 @@
 
 > 修复 Critical-02（重复绑定堆积）+ Important I6（换号不清旧账号）。
 
+> ⚠ **和 task-7.2 合并执行**：同一 subagent 连续实施 7.2 + 7.3，合并为**一个 commit**（用本任务的 commit 消息提交）。跳过 7.2 的独立 commit。
+>
+> **另外，task-7.3 同步把 `get_strava_status` 响应扩展字段**：当前响应是 `{connected: bool, athlete_id: int|null}`。为让前端 task-7.10 读 `res.bound` 方便（对齐 spec §2.6 "handle_callback 返 bound=True"语义），把 `get_strava_status` 改为同时返 `bound` 和 `connected`（两者值相同，bound 是 connected 的别名）——向后兼容：老前端用 connected 不变，新前端用 bound。
+
 ---
 
 ## 🎯 目标（一句话）
@@ -42,6 +46,23 @@
 class BoundByOtherUserError(Exception):
     """该 Strava 账号已被其他 VELO 账号绑定"""
     pass
+```
+
+### 1.5 同步修改 `get_strava_status`（新增 bound 字段别名）
+
+找到现有 `app/strava/service.py` 的 `get_strava_status`（大约在 `:215-222`），把返回结构扩展：
+
+```python
+def get_strava_status(db: Session, user_id: int) -> dict:
+    user = db.query(User).filter_by(id=user_id).first()
+    connected = user is not None and user.strava_athlete_id is not None
+    return {
+        # 老字段保留——向后兼容现有调用方
+        "connected": connected,
+        "athlete_id": user.strava_athlete_id if connected else None,
+        # 新增——task-7.10 前端要用 res.bound 做判断
+        "bound": connected,
+    }
 ```
 
 ### 2. 新增清理函数 `_cleanup_old_athlete_activities`
@@ -245,6 +266,15 @@ def handle_callback(db: Session, code: str, state: str, redis: Redis) -> dict:
 ```
 
 ### 4. 改 `app/strava/router.py` 的 callback（替换 task-7.2 的过渡版）
+
+**先确保 router.py 顶部有**：
+
+```python
+import logging
+logger = logging.getLogger(__name__)
+```
+
+没有则加上——否则下面的 `logger.warning/error` 调用会 NameError。
 
 ```python
 from app.strava.service import (

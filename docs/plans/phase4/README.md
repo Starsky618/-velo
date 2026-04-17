@@ -55,6 +55,8 @@ task-7.1.md ~ 7.11.md ← 叶子：每任务独立的完整实现 + 测试 + com
 | 8 | **测试先行**：纯函数模块先写 fixture 再写实现 | TDD 纪律 |
 | 9 | **commit 颗粒度**：每个子任务一个独立 commit，格式 `feat(模块): 任务 7.X 简要描述` | 便于 revert 单步 |
 | 10 | **完工三问**：每任务结束必答 task 文件末尾「自检三问」，答不满意不交付 | 质量前移 |
+| 11 | **router.py 改动必备 logger**：每当修改 `app/strava/router.py` 或 `app/notification/router.py`，先确认文件顶部有 `import logging` + `logger = logging.getLogger(__name__)`，没有则追加——task-7.3/7.4/7.5 都要用 `logger.warning/error`，不先加会 NameError | 现有 router.py 无 logger 声明 |
+| 12 | **特殊串行：task-7.2 + task-7.3 必须同一 subagent 连续执行**——不可拆。理由：7.2 把 state 改成 Redis getdel 一次性消费，但 7.2 过渡期 callback 仍调旧 `handle_callback(db, code, state)`，旧函数内部再解一次 state 会 InvalidStateError（state 已被消费）。两任务合并后才是完整可运行态 | 中间态必炸 |
 
 ---
 
@@ -141,6 +143,16 @@ task-7.1.md ~ 7.11.md ← 叶子：每任务独立的完整实现 + 测试 + com
 字段改动：`strava_imports.updated_at` → `DateTime(timezone=True)`
 外键改动：`notifications.segment_id/activity_id` → ON DELETE SET NULL
 新增索引：`idx_notifications_user_unread`（部分索引）
+
+### 既有关键枚举值（subagent 写代码时不要脑补）
+
+| 字段 | 真实值域 | 来源 |
+|------|---------|------|
+| `Activity.status` | `pending / processing / completed / failed / importing` | importing 仅用于 data_source='strava'（Strava 拉取的骨架活动） |
+| `StravaImport.status` | `active / paused / completed` | 不是 running/pending——spec §0.1 已核实 |
+| `Notification.event_type` | `pr / kom / kom_lost` | 三种，无 top10（top10 只在荣誉表语义里，不是通知类型） |
+| `Activity.data_source` | `gpx / fit / strava` | 不是 'upload'/'import' 等 |
+| `GET /api/strava/status` 响应字段 | `{connected: bool, athlete_id: int \| null}` | **不是 bound**——前端 task-7.10 如误用 `res.bound` 则永远 false |
 
 ### 新增函数（按任务归属）
 

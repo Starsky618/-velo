@@ -188,10 +188,14 @@ Page({
     unreadCount: 0,
   },
 
-  // onShow 每次回到首页都会触发（tab 切换也会）
+  // ⚠ 现有 home.js 已定义 onShow，不要"另加一个"——
+  // **要在现有 onShow 函数体内追加 this.refreshUnreadCount() 这一行**。
+  // 现有 home.js 用的函数名是 fetchWeeklyStats + fetchRides（不是 loadRides——那是虚构）
+  // 示例：现有 onShow 里可能已有如下调用，保留它们，只在末尾追加 refreshUnreadCount：
   onShow: function () {
-    // 原有加载骑行流的逻辑保留
-    this.loadRides && this.loadRides()
+    // 原有逻辑保留（具体是 fetchWeeklyStats / fetchRides 等，以 home.js 现状为准）
+    this.fetchWeeklyStats && this.fetchWeeklyStats()
+    this.fetchRides && this.fetchRides()
 
     // v4 新增：查未读数
     this.refreshUnreadCount()
@@ -353,11 +357,12 @@ Page({
    * 前端做展示格式化，后端只管数据。
    */
   decorate: function (n) {
-    var iconMap = { pr: '🏆', kom: '👑', top10: '🥇', kom_lost: '💔' }
+    // ⚠ 后端 Notification.event_type CHECK 约束只有 'pr' / 'kom' / 'kom_lost' 三种
+    // （top10 只是荣誉表的概念，不是通知类型）——这里不要加 top10
+    var iconMap = { pr: '🏆', kom: '👑', kom_lost: '💔' }
     var titleMap = {
       pr: '破纪录！',
       kom: '恭喜夺得 KOM',
-      top10: '进入前十',
       kom_lost: 'KOM 被超越',
     }
 
@@ -754,7 +759,8 @@ page { background: #F2F1F6; }
   <view wx:else class="strava-bound">
     <view class="strava-info">
       <text class="strava-label">Strava</text>
-      <text class="strava-athlete">已绑定</text>
+      <!-- 显示 athlete_id 让用户确认绑的是哪个账号 -->
+      <text class="strava-athlete">已绑定 (athlete #{{stravaAthleteId}})</text>
     </view>
     <view class="strava-progress" wx:if="{{importView === 'active'}}">
       正在导入 {{importCompleted}}/{{importTotal}}
@@ -786,16 +792,19 @@ var api = require('../../utils/api')
 data: {
   // ...原字段
   stravaBound: false,
+  stravaAthleteId: null,
   importView: 'none',         // none / active / stalled / completed / paused
   importCompleted: 0,
   importTotal: 0,
   importLastSync: '',
 },
 
-// onShow 追加
+// ⚠ 现有 profile.js 已定义 onShow——**不要新建一个 onShow 属性**（会语法冲突）。
+// 正确做法：**打开现有 onShow 函数体，在末尾追加一行 this.refreshStravaStatus()**。
+// 伪代码示意（保留现有所有逻辑，只在末尾加一行）：
 onShow: function () {
-  // ...原逻辑
-  this.refreshStravaStatus()
+  // ...原有全部逻辑保留（fetchProfile 等）
+  this.refreshStravaStatus()   // v4 新增
 },
 
 onHide: function () {
@@ -815,9 +824,15 @@ onUnload: function () {
 
 refreshStravaStatus: function () {
   var self = this
+  // task-7.3 让 get_strava_status 同时返 bound 和 connected（兼容）。
+  // 但防御性：万一老版本部署未更新，退回读 res.connected。
   api.get('/api/strava/status').then(function (res) {
-    self.setData({ stravaBound: res.bound === true })
-    if (res.bound) {
+    var bound = res.bound === true || res.connected === true
+    self.setData({
+      stravaBound: bound,
+      stravaAthleteId: res.athlete_id || null,
+    })
+    if (bound) {
       self.refreshImportProgress()
     }
   }).catch(function () {})
