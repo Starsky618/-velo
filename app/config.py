@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     STRAVA_CLIENT_SECRET: str = ""       # Strava API 密钥
     STRAVA_REDIRECT_URI: str = ""        # OAuth 回调地址
     STRAVA_WEBHOOK_VERIFY_TOKEN: str = ""  # Webhook 订阅验证密钥
+    # Webhook 订阅 ID——初次订阅 Strava Push Subscription 时 Strava 返回的 id
+    # 用于 Webhook 事件真伪校验（payload 里带，不匹配则拒收）
+    # 未配置时 POST /webhook 会返 503，防止裸奔
+    STRAVA_WEBHOOK_SUBSCRIPTION_ID: str = ""
 
     class Config:
         # 告诉 pydantic-settings 从项目根目录的 .env 文件读取配置

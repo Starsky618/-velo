@@ -18,7 +18,7 @@ Strava 集成的 API 路由——"外交部的前台"。
 import html
 import logging
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 
@@ -176,15 +176,51 @@ def webhook_receive(
     """
     Webhook 事件接收——Strava 有新活动时主动推送到这里。
 
-    就像快递到了柜子里，菜鸟驿站发短信通知你。
-    这个端点不需要 JWT（Strava 服务器直接 POST）。
-    必须快速返回 200（Strava 要求 2 秒内响应），实际处理异步完成。
+    v4 加固：用 payload.subscription_id 校验来源真实性。
+    Strava 不提供 HMAC 签名（官方文档已确认），所以靠两点联合防伪：
+    1. subscription_id：初次订阅时 Strava 返回的唯一 id（伪造者不知道）
+    2. HTTPS：Caddy 强制 TLS，传输层防中间人
 
-    FastAPI 自动将 JSON body 解析为 dict（同步模式兼容）。
+    为什么不用 IP 白名单：
+        Strava 官方不承诺 Webhook 发送方 IP 稳定，维护 IP 表会误杀合法回调。
+    为什么不用自定义 header 密钥：
+        Strava 不支持在 Webhook 里加自定义 header。
+
+    状态码约定：
+    - 未配置 SUBSCRIPTION_ID: 503（系统未就绪，应由运维修 env）
+    - subscription_id 不匹配: 403（伪造，拒收）
+    - 正常: 200（Strava 要求 2 秒内响应，业务处理走 service 内部队列）
     """
+    # ---- 第 1 道门：配置兜底 ----
+    # getattr 兜底防止 AttributeError（万一未来 Settings 没声明这字段）
+    expected_sub_id_str = getattr(settings, "STRAVA_WEBHOOK_SUBSCRIPTION_ID", "")
+    if not expected_sub_id_str:
+        # 注意：判空用 `not`，因为环境变量默认值是 "" 空串——空串是合法未配置态
+        logger.error("Webhook 未配置 STRAVA_WEBHOOK_SUBSCRIPTION_ID")
+        raise HTTPException(status_code=503, detail="Webhook 订阅未配置")
+
+    try:
+        expected_sub_id = int(expected_sub_id_str)
+    except ValueError:
+        # 配置了但格式不对（比如被填了非数字）——同样视为未配置
+        logger.error(
+            "STRAVA_WEBHOOK_SUBSCRIPTION_ID 格式非法: %r", expected_sub_id_str
+        )
+        raise HTTPException(status_code=503, detail="Webhook 订阅配置格式错误")
+
+    # ---- 第 2 道门：payload 校验 ----
+    incoming_sub_id = payload.get("subscription_id")
+    if incoming_sub_id != expected_sub_id:
+        logger.warning(
+            "Webhook subscription_id 不匹配: 收到=%r 期望=%d",
+            incoming_sub_id, expected_sub_id,
+        )
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # ---- 真实事件：走原有处理逻辑 ----
     service.handle_webhook_event(db, payload)
 
-    # Strava 要求 Webhook 端点始终返回 200，无论内部处理是否成功
+    # Strava 要求 Webhook 端点始终返回 200
     return {"status": "ok"}
 
 
