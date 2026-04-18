@@ -1,6 +1,32 @@
 # VELO 项目规则书
 
+## 🔴 commit 前 4 问（每次会话开头必看）
+
+写代码 / commit 前回答下面 4 问，不能全答 yes 就停下：
+
+1. 我**亲自读了 diff** 吗？（不是只看 subagent 报告 / pytest 数字）
+2. pytest 跑过吗？
+3. 这个改动**是 spec 说要的**吗？（防 scope creep）
+4. 改动 >300 行 / 跨模块：**跑了代码层双审**吗？（详见 architect skill 信条 5）
+
+## 📐 任务规模预算（防 v4 复杂度失控）
+
+- 一期任务数 **≤ 6**——写到第 7 个停下自问"该拆下期吗？"
+- spec **≤ 800 行**——超了说明塞了脂肪，先审视哪些能砍
+- 违反 = 复杂度失控信号，立即与 Starsky 讨论
+
+## 🛡 防火墙式扩展（防核心表被未来需求污染）
+
+**新功能默认放新表 / 新模块**，禁止修改核心表（`users` / `activities` / `segments` / `segment_efforts`）——除非修 bug。
+
+- 理由：核心表稳定 → 新功能是"加房间"不是"拆墙"。未来想删只删新模块，不动核心
+- 反例（v4 教训）：把 `mute_notifications` 加到 `users`、`activity_type` 加到 `activities`——未来想砍代价大
+- 正例：积分系统应建 `user_progress` 独立表，不在 `users` 加 `score/level` 字段
+
+---
+
 ## 项目概述
+
 VELO 是公路骑行垂直平台的后端 API + 微信小程序前端。
 MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排行榜。
 团队：3 人大一学生，100 活跃用户量级。
@@ -10,357 +36,145 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 环上最脆弱的节点 = 最该先投入的地方。
 
 ## 权威文档
-- **v1 技术规格**：`docs/spec-v1.md` — 第 0 期及之前的功能、接口、数据模型
-- **v2 技术规格**：`docs/spec-v2.md` — 第 1 期翻译层 + 第 2 期 Strava 集成
-- **开发变更**：`docs/changelog.md` — 每次偏离 spec 或补充设计时记录
+
+- **技术规格**：`docs/spec-v1.md`（v0 期）/ `docs/spec-v2.md`（翻译层+Strava）/ `docs/spec-v4.md`（前端反馈环+Strava 加固）
+- **PRD 模板**：`docs/prd/TEMPLATE.md`（每期写 spec 前先写 PRD）
+- **实施计划**：`docs/plans/phaseN/`（subagent 派工的输入）
+- **架构导览**：`docs/architecture-guide.md`（每期收尾刷新，新人 10 分钟看懂全貌）
+- **变更记录**：`docs/changelog.md`
+- **技术债务**：`docs/tech-debt.md`（每期开工前必扫）
 - **规则**：发现 spec 有问题 → 先改文档再改代码，不允许代码和文档不一致
 
 ## 技术栈（不可变更）
+
 - Python 3.11+ / FastAPI（**同步模式，禁止 async def**）
 - SQLAlchemy 2.0 同步 session / PostgreSQL 16 + PostGIS
 - Redis Queue (rq) 异步任务
 - 微信小程序前端
 
 ## 开发原则
-1. **严格按 spec 任务顺序开发**，不跳步、不并行开发有依赖关系的任务
-2. **每完成一个任务，单独 commit**，提交信息格式：`feat(模块): 任务X.X 简要描述`
-3. **先写测试数据/fixture，再写实现**（对纯函数模块）
-4. **模块间单向依赖**：User ← Activity ← Segment，禁止反向 import
-5. **不做 spec 里没有的功能**，不做"顺手优化"
-6. **稳扎稳打，有疑必停**：如果技术架构不清晰、自我检查发现隐患、或对方案的可靠性没有充分信心——**立即停止，不写一行代码**。把问题提出来，分析故障模式，与 Starsky 讨论对策后再动手。宁可多花一天讨论设计，不可带着隐患赶进度。这条是战略层刹车，和"强制检查清单"（战术层逐行审查）互补
-7. **独立判断，敢于说不**：不做应声虫。当 Starsky 的方案存在过度设计、时机不对、性价比低、或技术上有隐患时，**必须从资深工程师和第一性原理的角度直接反驳**，给出具体理由和替代方案。附和一个错误方案比拒绝它危害大得多——前者浪费时间写出要返工的代码，后者只是多花五分钟讨论。判断标准：这个方案在当前阶段（用户量、数据量、团队规模）是否真的需要？有没有用 20% 复杂度解决 95% 问题的更简方案？
-8. **执行前双重审判技术文档（铁律）**：拿到 spec 准备编码时，**必须启动两轮独立审查**（用并行 subagent），和审判代码一样严格。两轮都通过才能进入编码，发现问题 → 停下 → 列成清单 → 与 Starsky 讨论 → 修正 spec → 再编码。
-   - **第一轮：内部一致性审判（"自我矛盾检察官"）**
-     - spec 内部有没有自相矛盾？（同一个字段在不同章节的类型、单位、命名不一致）
-     - 数据流有没有断点？从用户操作到数据库写入，每一步谁调谁、参数怎么传、返回什么
-     - 状态转换有没有遗漏？所有合法路径画出来，异常恢复路径在哪
-     - 事务边界清不清楚？共享函数由谁 commit？崩溃后谁负责回滚？
-     - 章节之间交叉引用是否对得上？（比如"详见 6.4 节"，6.4 节真的有对应内容吗）
-   - **第二轮：代码兼容性审判（"现实核查官"）**
-     - 把 spec 中的每个接口签名、数据结构、字段类型**与现有代码逐一对照**
-     - 新增字段与现有 ORM 模型是否兼容？需要哪些 Alembic 迁移？
-     - 新模块的依赖方向是否符合现有架构？会不会引入循环依赖？
-     - 现有 API 的入参/出参格式会不会被破坏？前端是否需要同步改？
-     - 新增依赖包（pip install xxx）是否真的存在、版本是否兼容？
-     - **逐行模拟代码执行**：把 spec 中的伪代码当真代码读——变量类型对不对？比较操作会不会报错（如 naive vs aware datetime）？异常路径有没有兜住？光看"逻辑合理"不够，必须想象这行代码真的在 Python 解释器里跑
-   > **为什么必须双重审判：** 单轮审查有盲区——写 spec 的人和审 spec 的人是同一个思维模型，容易"自己骗自己"。两个不同角度的审查互相补位：第一轮抓逻辑漏洞，第二轮抓现实脱节。第 2 期 spec 中速度单位矛盾 + OAuth 缺用户关联这两个 bug，一个是内部矛盾（第一轮能抓），一个是代码脱节（第二轮能抓），单轮审查大概率只发现其中一个。
-9. **每次任务完成后自我复盘（铁律）**：完工汇报中必须包含一段自我反思——这次犯了什么错、审查抓到了什么、哪些模式反复出现。有价值的经验立刻落地：
-   - **反复出现的 bug 模式** → 写进"强制检查清单"（CLAUDE.md 第 8 节），防止同一个坑踩第三次
-   - **设计决策教训** → 写进 memory（feedback 类型），指导未来类似场景的判断
-   - **跨任务趋势** → 标注在完工汇报中（如"Critical 从 6 个降到 2 个，但 Python 语言陷阱仍未根治"）
-   > **为什么这条是铁律（Starsky 原话）：** "你沉淀积累的越多，工作效率越快，这是指数增长的复利效应。"不复盘的执行是线性的——每次从零开始。复盘后经验沉淀成检查清单和 memory，下次遇到同类问题能在写代码时就拦住，而不是等审查 agent 来兜底。
-   >
-   > 实证：truthiness 陷阱存入检查清单后，6.4 审查时 5 处全写对（一次存入，永久免疫）。SAVEPOINT 模式没存，6.4 又踩坑（白费一次经验）。**每条存入的经验都是未来的模式匹配快捷键，越早存越值钱。**
 
-## 技术文档自审清单（写完 spec 后、写代码前必须过）
-
-每次写完或修改技术文档后，**必须逐项自审**，全部通过才能进入编码阶段。
-不通过的项必须补完设计、和 Starsky 讨论确认后才能继续。
-
-| # | 审查项 | 问自己什么 |
-|---|--------|-----------|
-| 1 | **端到端数据流** | 从用户操作到数据库写入，每一步数据在哪、格式是什么、谁传给谁？画完整链路图，不能有断点 |
-| 2 | **模块边界与接口** | 每个模块的输入输出是否明确？模块之间是否单向依赖？有没有循环引用或职责混杂？ |
-| 3 | **状态机完整性** | 涉及状态变更的实体（Activity、Import 等），所有合法状态转换是否画出来了？有没有遗漏的中间状态或异常恢复路径？ |
-| 4 | **数据库变更清单** | 新增/修改了哪些表和列？是否都有 Alembic 迁移方案？老数据怎么兼容？ |
-| 5 | **异常与恢复** | 每个外部调用（API/DB/Redis）失败时怎么办？数据会处于什么中间状态？能自动恢复吗？ |
-| 6 | **共享逻辑识别** | 有没有两个地方要做同样的事（如"ParseResult 写入 DB"）？如果有，是否抽成共享函数？不允许复制粘贴 |
-| 7 | **章节与任务编号对齐** | 设计章节编号是否和任务编号一一对应？找设计时能否直接按任务号定位？ |
-
-> **为什么这条是硬性要求：** 数据流不清晰就动手写代码 = 在沙子上盖楼。
-> 第 2 期 Strava 集成时，因为没做端到端数据流自审，导致三个断点（Worker 复用、三层状态机、调度器进程模型）到编码前才发现。
-> 这条规则就是为了防止同样的事再发生。
+1. **严格按 spec 任务顺序**，不跳步、不并行有依赖任务
+2. **每任务单独 commit**，格式 `feat(模块): 任务X.X 简要描述`
+3. **纯函数模块先 fixture 后实现**
+4. **模块单向依赖**：User ← Activity ← Segment ← Notification ← Strava
+5. **不做 spec 没要求的功能 / 顺手优化**
+6. **稳扎稳打有疑必停**：架构不清晰 / 自查发现隐患 / 信心不足 → 立即停，与 Starsky 讨论再动手。宁可多花一天讨论，不带隐患赶进度
+7. **独立判断**：方案过度设计 / 时机不对 / 性价比低 → 直接反驳给替代方案（详见 architect 信条 3）
+8. **双重审判（硬性，违反 = 双重违规）**：spec 层（写完 spec）+ 代码层（每批 subagent 产出后）都跑两个独立 agent 互补审。详见 architect 信条 5
+9. **任务完工三问复盘**：新 bug 模式 / 设计判断 / 流程问题（详见 architect 信条 11）
+10. **spec 自审 2 项**（architect Step 7 双审之外的项目特定补充）：
+    - **状态机完整性**：所有合法状态转换画完整图，含异常恢复路径——遗漏一个状态转换 = 未来踩 bug
+    - **共享逻辑识别**：两处做同样事的代码必须抽共享函数，禁止复制粘贴（如 GPX/Strava 都要把 ParseResult 写入 DB → 抽 `save_parse_result` 共享）
 
 ## 代码健康度自动巡检
-每次任务完工汇报时，必须附带一次健康度检查，格式如下：
 
-| 指标 | 黄灯（注意） | 红灯（评估是否拆） |
-|------|-------------|-------------------|
-| 单文件行数 | >300 行 | >500 行 |
-| 单函数行数 | >50 行 | >80 行 |
-| 测试总耗时 | >10 秒 | >30 秒 |
-| 单模块文件数 | >8 个 | >12 个 |
+每次任务完工汇报必附健康度检查：
 
-- 黄灯：在汇报中标注"⚠ xxx.py 已达 320 行，下次修改时考虑拆分"
-- 红灯：**先评估逻辑是否统一**——如果文件内的函数围绕同一职责、拆开后反而逻辑分散（如 stats_calculator 的摘要+分段+卡路里本质是一个"成绩单计算器"），则保持不拆，标注理由即可。只有职责确实混杂的文件才必须拆分
-- 巡检命令：`wc -l app/**/*.py` 查行数，`pytest --durations=0` 查耗时
+| 指标 | 黄灯 | 红灯 |
+|------|------|------|
+| 单文件行数 | >300 | >500 |
+| 单函数行数 | >50 | >80 |
+| 测试总耗时 | >10s | >30s |
+| 单模块文件数 | >8 | >12 |
 
-## 防黑盒化机制（硬性，每期必做）
+- 黄灯：汇报中标注"⚠ xxx.py 已达 320 行"
+- 红灯：先评估职责是否统一——同一职责的"成绩单计算器"不拆；职责混杂才拆
+- 命令：`wc -l app/**/*.py` / `pytest --durations=0`
 
-> **核心信条：黑盒不是一次形成的，是每次偷懒的累积。每期体检一次，就能把小问题摁在萌芽。**
-> 没有这两道机制，当期不给通过、不给进入下一期。
+## 防黑盒化（每期开工前 + 收尾必做）
 
-### 🛡️ 机制 1：每期结束强制刷新架构导览
-
-每完成一期（比如第 4 期结束），**必须更新 `docs/architecture-guide.md`**，让这份文档永远反映系统最新样子。
-
-- **刷新内容**：新增的模块、改动的数据流、废弃的接口都要同步进去
-- **为什么硬性**：过时文档比没文档更坑（会骗人），是黑盒化最大来源
-- **执行方式**：AI 辅助完成，半小时内搞定
-- **检查标准**：新人（或半年后的 Starsky 自己）只读这份导览，能在 10 分钟内搞懂系统全貌，不需要翻代码
-
-### 🛡️ 机制 2：每期结束做"黑盒度体检"
-
-完工汇报时，必须附带这三问的答卷：
-
-1. **10 分钟讲解挑战**：我能否用 10 分钟给陌生人讲清整个系统？哪个模块卡壳最多？
-2. **数据流复述**：挑一个典型用户操作（比如"上传 GPX 并看到赛段成绩"），从按钮点击到数据落库的完整路径，能在纸上画清楚吗？
-3. **30 秒读懂**：有没有哪个文件 / 函数自己看都要想超过 30 秒才明白意图？
-
-**只要有一项答得不满意 → 当期内必须清理，不留到下期**。清理动作包括但不限于：
-- 加注释解释设计意图
-- 拆分职责混杂的文件
-- 补接口文档
-- 更新模块 `__init__.py` 的一句话说明
-- 重命名有歧义的变量 / 函数
-
-> **为什么这两道机制能防黑盒：** 黑盒化的根本原因是"每次微小偷懒累积成巨大理解成本"。两道机制的分工：机制 1 保证**外部视角的入口**（架构导览）永远新鲜；机制 2 保证**内部视角的每个模块**不会积累理解成本。两道一起做，系统撑到用户 1000+ 规模都不会腐化。
-
-### 🛡️ 机制 3：每期**开工前**做"回溯体检"（防历史债务累积）
-
-> **核心信条：已上线的代码有测试兜底，但当前"审查强度"扫不到的坑还在。新功能会把老坑放大。开工前扫一遍相关历史代码，发现隐患列 tech debt 清单，每期匀 10-20% 时间逐步清。**
-
-**触发时机**：每期 ③ 需求塑形 / ④ Spec 阶段开始前。
-
-**扫描范围**：**不是整个项目**——只扫本期要改动的模块 + 直接依赖的模块（`git log --name-only` 近 3 个月改过的文件）。
-
-**扫描方法**：用当前审查强度（架构信条 14 证据分级 + 预读清单）对照历史代码。典型产出：
-- 虚构函数调用（代码里写了但从未实现）
-- 状态值和 model 不一致
-- 没人跑的脚本 / 容器
-- TODO 标着但拖了 3 期没清
-
-**产出**：`docs/tech-debt.md`（新增，本期 P0 清单 + 下期 P1 清单）。
-
-**硬规则**：新期 Spec 不允许依赖"还在 tech-debt 清单里"的功能——先修清理再做。否则是在债务之上加债务。
-
-第 4 期故障分析抓到的 3 条历史缺陷（scheduler 容器缺失、Webhook 无校验、OAuth 重复绑定）正是这条机制想防的——**那些都是第 2 期就有的坑，拖到第 4 期要用时才修**。有了这条，未来每期开工就会主动扫一遍，不会再拖。
+- **开工前**：扫本期改动模块的历史代码，列 tech-debt 进 `docs/tech-debt.md`。**新期 spec 不允许依赖 tech-debt 中的项**——先修清理再做
+- **收尾**：刷新 `docs/architecture-guide.md` + 答黑盒度三问（10 分钟讲全貌 / 数据流复述 / 30 秒读懂任意文件）
+- 任何一项不满意当期清完，不留下期。**清理动作 5 种**：加注释解释设计意图 / 拆分职责混杂文件 / 补接口文档 / 更新模块 `__init__.py` 一句话说明 / 重命名歧义变量
 
 ## 命名规范
+
 - API 路径：RESTful 复数（`/api/activities`）
-- Python：snake_case（变量、函数、文件名）
+- Python：snake_case
 - 数据库表名：复数小写（`users`, `activities`, `segments`）
 - 分页参数：`page` + `page_size`（不用 `limit`）
 
 ## 关键技术约定
-- **距离单位**：数据库存米，API 返回公里（km），转换在 service 层
-- **时区**：数据库存 UTC，"本周/本月"按北京时间 UTC+8 计算
+
+- **距离单位**：DB 存米，API 返回 km，转换在 service 层
+- **时区**：DB 存 UTC，"本周/本月"按北京时间 UTC+8 计算
 - **PostGIS 距离查询**：`ST_DWithin` 必须转 `::geography`，否则单位是度
 - **GPX 上传**：先跳过 BOM 再检查 XML 头
-- **JWT**：7 天有效期，前端收到 401 自动 wx.login() 静默续期
-- **Activity 状态机**：`pending → processing → completed/failed`，是有向状态机，禁止非法转换（如 completed → processing）。processing 超过 10 分钟自动视为 failed
-- **SAVEPOINT 隔离**：赛段匹配时，单个赛段失败用 `db.begin_nested()` 隔离，不影响其他赛段
-- **Alembic 迁移纪律**：改表结构必须通过 Alembic 生成迁移脚本，禁止手动 ALTER TABLE
+- **JWT**：7 天有效期，401 时前端 wx.login() 静默续期
+- **Activity 状态机**：`pending → processing → completed/failed`，禁止非法转换。Strava 导入用 `importing` 中间态。processing >10 分钟自动 failed
+- **SAVEPOINT 隔离**：循环里 flush 后可能 rollback 必须用 `db.begin_nested()`
+- **Alembic 迁移纪律**：改表结构必须 Alembic 生成迁移脚本，禁止手动 ALTER TABLE
 
 ## 纯函数规则
-以下模块是纯函数，**不碰数据库、不碰文件系统**，只接收参数返回结果：
-- `activity/gpx_parser.py` — GPX 解析
+
+以下模块**不碰数据库 / 不碰文件系统**，只接收参数返回结果：
+- `parsing/gpx_parser.py` / `parsing/fit_parser.py` — GPX/FIT 解析
 - `activity/simplify.py` — 轨迹简化
 - `segment/matcher.py` — GPS 精确匹配
 - `activity/power_zones.py` — 功率区间计算
+- `notification/detector.py` — 事件分类
 
-纯函数的价值：可独立测试、可替换实现、无副作用。调用方负责数据库读写。
+价值：可独立测试 / 可替换实现 / 无副作用。调用方负责 DB 读写。
 
 ## 日志规范
-Worker 和 service 层的关键步骤必须有 `logging` 输出，格式包含实体 ID：
+
+Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 ```
 "开始解析 activity_id=42"
-"解析完成 activity_id=42，distance=48200，trackpoints=3847"
 "匹配 segment_id=3 失败，覆盖率 0.65 < 0.8"
 ```
-日志是生产环境的唯一眼睛——Worker 在后台跑，没有界面，出了问题只能靠日志回溯。
+日志是生产唯一眼睛——Worker 后台跑无界面，出问题靠日志回溯。
 
-## 工程纪律：故障思维（硬性要求）
+## 强制检查清单（写涉及状态变更的代码前必答）
 
-> **核心信条：每一行涉及状态变更的代码，都必须回答"如果执行到这里崩了会怎样"。**
-> 不是"会不会崩"的问题——服务器会断电、进程会被 OOM Killer 杀死、网络会断、
-> Redis 会宕机、用户会在最不该操作的时候操作。工程师的职责不是祈祷它们不发生，
-> 而是让它们发生时系统能自愈或至少不丢数据。
+- [ ] 进程被 kill → 数据处于什么状态？能自愈吗？
+- [ ] 同时执行两次（并发/重试）→ 结果幂等吗？
+- [ ] 外部依赖（DB/Redis/API）超时或报错 → 上游怎么回滚？
+- [ ] 创建了什么资源（文件/记录/连接）→ 清理路径在哪？
+- [ ] 查询在 10 万行下执行计划是？有索引支撑吗？
+- [ ] 输入最大可能规模？内存峰值能控制在多少？
+- [ ] 每个 `if x` 判断：x=0 / x="" 是合法值吗？是 → 用 `if x is not None`（**truthiness 陷阱已在 6.2/6.3 连续踩坑两次**）
+- [ ] 循环中 flush/rollback：要 SAVEPOINT 隔离吗？（matcher / import_scheduler 已有此模式）
 
-### 1. 崩溃恢复（Crash Recovery）
+故障思维 5 维背景（崩溃/并发/批量/边界/级联）见 architect 信条 2。
 
-**原则：任何两个 commit 之间的崩溃，系统都必须能回到一致状态。**
-
-| 规则 | 说明 | 违反后果 |
-|------|------|---------|
-| **先写可恢复的，后写不可恢复的** | 先写数据库（可回滚），后写文件（不可回滚）；如果必须先写文件，必须有孤儿清理机制 | 磁盘空间泄漏，孤儿文件永远无法被关联到任何记录 |
-| **不允许存在僵尸状态** | 任何状态（pending/processing）都必须有主动恢复机制，不能只依赖"用户来轮询时才检测" | 用户关了 App → 僵尸记录永远占着资源 |
-| **多步操作必须有补偿链** | 如果 A 成功但 B 失败，必须有机制回滚 A 或重试 B | 文件存了但 DB 没存 → 孤儿；DB 存了但队列没入 → pending 僵尸 |
-| **幂等性是底线** | 任何任务被重复执行的结果必须和执行一次完全相同 | RQ 超时重试 → 两个 Worker 同时写同一个 activity → trackpoints 双倍插入、数据错乱 |
-
-**当前已知漏洞（必须修复）：**
-- `upload_gpx()`：文件上传成功但 `db.commit()` 失败 → 孤儿文件无清理机制
-- `upload_gpx()`：`db.commit()` 成功但 `_queue.enqueue()` 失败 → pending 僵尸
-- Worker 完成解析（completed）但赛段匹配前崩溃 → 用户看到"完成"但无赛段成绩，且无法重新触发匹配
-- 无主动僵尸扫描：pending/processing 僵尸只在用户轮询时才被发现
-
-### 2. 内存保护
-
-**原则：永远不信任外部输入的大小。文件大小限制不等于内存安全。**
-
-| 规则 | 说明 |
-|------|------|
-| **输入必须有数量级上限** | 文件大小限制（50MB）不够——50MB 的 XML 解析后 DOM 树可膨胀 4-8 倍。必须同时限制轨迹点数量（如 50000 点上限） |
-| **流式处理优先于全量加载** | 能用 SAX/流式解析就不用 DOM 全量加载；能逐批处理就不把所有数据装进内存 |
-| **ORM 大查询必须分批** | `db.query(X).all()` 在大表上等于把整张表装进内存。用 `yield_per()` 或分页查询 |
-| **注意隐式复制** | 列表推导、dict 映射、simplify 算法都会在内存中复制一份数据。峰值 = 所有副本之和 |
-
-**当前已知漏洞（必须修复）：**
-- 无轨迹点数量上限：50MB GPX 可含 50 万点，峰值内存 ~400MB
-- `auto_match.py:108` 全量加载 trackpoints ORM 对象 + 列表推导复制 → 双倍内存
-- `ST_Collect(50000个点)` 在 PostgreSQL 服务端也有内存开销
-
-### 3. 并发安全与竞态条件
-
-**原则：如果两个请求/进程可能同时操作同一条数据，就必须假设它们一定会同时操作。**
-
-| 规则 | 说明 |
-|------|------|
-| **去重必须在后端实现** | 不能依赖前端防抖。文件哈希 + 用户 ID 的联合检测是最低要求 |
-| **写入幂等性靠 UNIQUE 约束** | 应用层的 `if existing: skip` 检查存在 TOCTOU 竞态。数据库 UNIQUE 约束是最后防线 |
-| **并发写入靠行级锁** | 对同一条记录的并发更新，用 `SELECT ... FOR UPDATE` 或乐观锁（version 字段） |
-| **Worker 任务必须防重入** | 同一个 activity_id 的解析任务不能被两个 Worker 同时执行。需要分布式锁或状态检查 |
-
-**当前已知漏洞（必须修复）：**
-- 重复上传零防护：无文件哈希检测，用户双击 → 两条重复 activity + 双倍数据
-- trackpoints 无 UNIQUE(activity_id, seq) 约束 → Worker 重试时会插入重复轨迹点
-- 用户删除正在处理中的 activity → Worker 报外键约束错误（数据安全但日志脏）
-
-### 4. 状态机纪律
-
-**原则：状态转换必须是显式的、受约束的、可审计的。**
-
-| 规则 | 说明 |
-|------|------|
-| **状态转换必须校验前置状态** | 不是 `activity.status = "processing"`，而是 `assert activity.status == "pending"; activity.status = "processing"` |
-| **数据库层加 CHECK 约束** | `CHECK (status IN ('pending','processing','completed','failed'))` |
-| **状态变更必须记日志** | 每次 status 变更都 log：`activity_id=42 pending→processing` |
-| **不允许跳跃或倒退** | pending→processing→completed/failed 是唯一合法路径。completed 不能回到 processing |
-
-**当前已知漏洞：**
-- status 是纯字符串赋值，无前置状态校验
-- 数据库无 CHECK 约束，可以写入任意字符串
-- 状态变更无统一日志
-
-### 5. 数据库工程纪律
-
-**原则：每一个查询模式都必须有对应的索引支撑；每一个表都必须有增长预案。**
-
-| 规则 | 说明 |
-|------|------|
-| **先设计查询模式，再建索引** | 不是"表建好了再想要什么索引"，而是"这个功能需要什么查询 → 查询需要什么索引 → 建表时就建好" |
-| **N+1 查询是 P1 级 bug** | 循环里发 SQL = 用户量 × 循环次数 = 连接池爆炸。用 JOIN、窗口函数、子查询一次完成 |
-| **连接池必须显式配置** | 默认 pool_size=5 在并发场景下是定时炸弹。必须配置 pool_size、max_overflow、pool_recycle |
-| **大表必须有分区或归档策略** | trackpoints 在百万级时就该考虑分区。到亿级再想就晚了——在线加分区需要锁表 |
-| **索引不是免费的** | 每个索引都增加写入开销和存储。只为真实查询模式建索引，不盲目加 |
-
-**当前已知漏洞：**
-- 缺少 `segment_efforts(segment_id, user_id, elapsed_time)` 索引 → PR 检测是全表扫描
-- 连接池 pool_size=5（默认值），无 pool_recycle → 连接不回收
-- N+1 查询：`get_user_efforts()` 和 `get_activity_segments()` 的排名计算
-- trackpoints 表无分区策略，无增长预案
-
-### 6. 外部 API 集成纪律
-
-**原则：第三方 API 是最不可靠的依赖。它会限流、宕机、改接口、删数据。**
-
-| 规则 | 说明 |
-|------|------|
-| **限流必须在客户端实现** | 不是等 429 了才停，而是主动控制请求速率（令牌桶/滑动窗口），永远不触碰限额上限 |
-| **Token 生命周期必须管理** | access_token 过期、refresh_token 失效、用户撤销授权——每种情况都要有对应处理路径 |
-| **Webhook 不可信赖** | Webhook 会丢失（服务器 503 时 Strava 最多重试 3 次就放弃）。必须有定期主动拉取作为补偿 |
-| **导入任务必须有状态机** | "导入中 50%"时崩溃 → 恢复后必须能从断点续传，不是从头重来 |
-| **缓存的数据会过期** | Strava 条款要求缓存 ≤7 天。但我们存的是自己计算的赛段成绩（派生数据），不是 Strava 原始数据——这两者的法律边界必须分清 |
-
-### 7. 资源清理纪律
-
-**原则：创建的东西必须有对应的清理路径。没有清理路径的创建 = 泄漏。**
-
-| 资源 | 创建方 | 清理方 | 当前状态 |
-|------|--------|--------|---------|
-| GPX 文件（磁盘） | `_storage.upload()` | `delete_activity()` 时清理 | ⚠️ upload 成功但 DB commit 失败 → 孤儿 |
-| Activity 记录 | `upload_gpx()` | 用户主动删除 | ⚠️ pending/processing 僵尸无人清理 |
-| Trackpoints | Worker 批量插入 | CASCADE 删除 | ✅ |
-| SegmentEffort | auto_match 写入 | CASCADE 删除 | ✅ |
-| DB 连接 | SessionLocal() | finally: db.close() | ⚠️ 如果 close 前异常且 finally 未执行 → 连接泄漏 |
-| Redis 队列任务 | _queue.enqueue() | Worker 处理完自动移除 | ⚠️ Worker 崩溃 → failed queue 积压 |
-
-### 8. 每次写代码前的强制检查清单
-
-**以下问题必须在写任何涉及状态变更的代码之前回答，回答不了就不许写：**
-
-- [ ] **如果执行到这行代码时进程被 kill，数据处于什么状态？能自动恢复吗？**
-- [ ] **如果这段代码被同时执行两次（并发/重试），结果是否幂等？**
-- [ ] **如果外部依赖（DB/Redis/API）在这个调用点超时或报错，上游状态怎么回滚？**
-- [ ] **这个操作创建了什么资源（文件/记录/连接）？对应的清理路径在哪？**
-- [ ] **这个查询在 10 万行数据量下的执行计划是什么？有索引支撑吗？**
-- [ ] **输入数据的最大可能规模是多少？内存峰值能控制在多少？**
-- [ ] **每个 `if x` 判断：x=0 或 x="" 是合法值吗？** 如果是，必须用 `if x is not None` 而非 `if x`。Python 的 truthiness 陷阱已在 6.2（elapsed_time=0）和 6.3（同一问题）连续踩坑两次。
-- [ ] **循环中的 flush/rollback：是否需要 SAVEPOINT 隔离？** 如果循环体里 flush 后可能 rollback，必须用 `db.begin_nested()` 隔离，否则 rollback 会炸掉循环外所有已 flush 的数据。项目内已有模式：赛段匹配隔离（matcher）、Strava 批量导入隔离（import_scheduler）。
-
-## 技术栈陷阱清单（Python + FastAPI + SQLAlchemy + Alembic + Redis + PostgreSQL）
-
-> **架构 skill 每次写 spec 前都会引用这份清单**。以下陷阱都是本项目实战踩过的坑。spec / 代码里出现对应模式必须按"正确姿势"写，否则双审判必抓 Critical。
+## 技术栈陷阱清单（项目专属，写代码前必扫）
 
 | # | 陷阱 | 错误表现 | 正确姿势 |
 |---|------|---------|---------|
-| 1 | **Python truthiness**（NULL / 0 / "" 都为 False） | `if user.mute_notifications:` — NULL 被当 False；`if count:` — 0 是合法值时被误判 | 判断 bool 字段 `is True` / `== False`；判断存在性 `is not None`；不要用 `if x:` |
-| 2 | **naive vs aware datetime** | `datetime.now(timezone.utc) - db_value` TypeError（db_value 无时区）| DB 字段声明 `DateTime(timezone=True)`；Python 端 `datetime.fromtimestamp(ts, tz=timezone.utc)` |
-| 3 | **Python `or` 短路永真** | `type == 'Ride' or 'VirtualRide'` — 字符串 'VirtualRide' 永真，判断永真 | 用 `type in ('Ride', 'VirtualRide')` |
-| 4 | **SQLAlchemy `.one()` vs `.first()`** | `.one()` 遇零记录抛 `NoResultFound` → FastAPI 返 500 | 用 `.first()` + `if not x: raise ValueError(...)`；或捕获 `NoResultFound` 显式处理 |
-| 5 | **redis-py `execute_command` 返 bytes** | `redis.execute_command('GETDEL', k)` 返 bytes，后续 `int(x)` 能过但 `x == 'N'` 永假 | Redis 7+ 优先用原生 `redis.getdel(k)`；必要时 `.decode()` |
-| 6 | **PostgreSQL 外键自动命名** | spec 写 `fk_<table>_<col>` 自编（真实不存在）→ Alembic drop_constraint 报错 | PostgreSQL 默认命名规则 `<table>_<column>_fkey`；不确定时 Alembic `inspector.get_foreign_keys()` 反查 |
-| 7 | **Alembic `alter_column` 类型转换** | 字段从 naive 改 tz-aware 时忘 `postgresql_using`，老数据报错 | 用 `postgresql_using="col_name AT TIME ZONE 'UTC'"` 显式指定转换表达式 |
-| 8 | **SAVEPOINT 隔离**（见"关键技术约定"）| 循环里 flush 后 rollback → 炸掉循环外已 flush 数据 | 循环内用 `db.begin_nested()` 隔离 |
-| 9 | **Strava 响应结构嵌套** | 假设 `data['athlete']['id']` 固定 → 接口变动 KeyError | `data.get('athlete', {}).get('id')` 或显式 `if not athlete or 'id' not in athlete: raise` |
-| 10 | **状态机值脑补** | spec 写 `status='running'/'pending'`，实际值域是 `active/paused/completed` | 先 grep `server_default` 和 service 赋值源头，抄对真实值 |
+| 1 | **Python truthiness**（NULL/0/"" 都为 False） | `if user.mute_notifications:` NULL 被当 False；`if count:` 0 被误判 | bool 字段 `is True` / `== False`；存在性 `is not None` |
+| 2 | **naive vs aware datetime** | `datetime.now(UTC) - db_value` TypeError | DB 字段 `DateTime(timezone=True)`；Python 端 `datetime.fromtimestamp(ts, tz=UTC)` |
+| 3 | **Python `or` 短路永真** | `type == 'Ride' or 'VirtualRide'` 永真 | 用 `type in ('Ride', 'VirtualRide')` |
+| 4 | **SQLAlchemy `.one()` vs `.first()`** | `.one()` 遇零记录抛 NoResultFound → 500 | `.first()` + `if not x: raise ValueError` |
+| 5 | **redis-py 返 bytes** | `redis.execute_command('GETDEL', k)` 返 bytes | Redis 7+ 用原生 `redis.getdel(k)`；必要时 `.decode()` |
+| 6 | **PostgreSQL 外键自动命名** | spec 写 `fk_<table>_<col>` 自编 → drop_constraint 报错 | 默认是 `<table>_<column>_fkey`；不确定用 inspector 反查 |
+| 7 | **Alembic alter_column 类型转换** | naive 改 tz-aware 忘 `postgresql_using` | `postgresql_using="col_name AT TIME ZONE 'UTC'"` |
+| 8 | **SAVEPOINT 隔离**（同关键技术约定）| 循环 flush 后 rollback 炸循环外 | 循环内 `db.begin_nested()` |
+| 9 | **第三方响应嵌套** | 假设 `data['athlete']['id']` 固定 → KeyError | `.get()` 链 + 显式存在性检查 |
+| 10 | **状态机值脑补** | spec 写 `'running'/'pending'`，真实是 `active/paused/completed` | grep server_default 和 service 赋值抄真实值 |
 
-> **这份清单是"活文档"**：以后每踩一个新的语言/库陷阱，就在这里加一条（不要回到 architect skill 里加——那里只留跨栈通用的 3 条）。
+> **活文档**：每踩新陷阱在这加一条（不要回 architect skill 加——那里只留跨栈通用 3 条）。
 
-## 协作实战规范（从项目实践中总结，硬性要求）
+## 协作硬约束（项目特定）
 
-### Starsky 是总建筑设计师，不是程序员
-- 技术讲解**必须用生活类比**（便签 vs 表格、翻译官、急诊分诊台），术语只在他追问时展开
-- 代码层面的选型（库、数据结构、设计模式）自己判断，只需说一句话结论
-- 他不需要看代码，需要看结构、模块关系、数据流方向
+- **Starsky 验证你的结论**：说"完成"前必须查代码验证，不只看清单。说"不确定"比说错好——他尊重诚实，不尊重自信的错误
+- **细节判断 AI 自己做**：Starsky 是产品设计师视角，不会判断技术细节。AI 应自己拿主意，给整体效果让他过目（**不要列每段命运逐项让他过审**——那是强行让他做不擅长的事）
+- **并行 agent 不浪费等待**：讨论同时后台跑调研
 
-### 决策格式：选项表格，他一次拍板
-- 需要他决策时用这个格式：问题一句话 → 选项 A/B 各一句话 → 我的建议 + 理由
-- 不要长篇分析后才问"你觉得呢"——先结论后理由
-- 数字比文字有效 10 倍："500条×2次=1000调用÷800预算=2天"
+详细沟通格式（决策表格、三段节奏、生活类比）见 architect 信条 7。
 
-### 三段式节奏：讨论 → 锁定 → 执行
-- **讨论阶段**：允许发散，他会从意想不到的角度追问（操作系统、电量、网络协议），不要急着写代码
-- **锁定阶段**：所有决策列成表格确认，"定了就不再改"
-- **执行阶段**：全速推进不回头讨论，有疑问查 spec
+## 部署经验（第 2 期踩坑总结）
 
-### 他会验证你的结论
-- 说"已完成/未完成"之前**必须查代码验证**，不能只看文档清单
-- 说"不确定"比说错好——他尊重诚实，不尊重自信的错误
-- 记忆文件可能过时，引用记忆后必须和代码交叉验证
-
-### 沟通节奏：先结论后展开
-- 先一句结论 → 再三个要点 → 细节他追问时再展开
-- 每完成一个大讨论立即更新 memory 和 CLAUDE.md，他在意进度追踪
-- 并行 agent 研究不浪费等待时间——讨论同时后台跑调研
-
-### 他的追问模式：会突然跳维度
-- 他看起来在跟你走，但脑子里在想更大的画面
-- 例：讨论数据格式时突然问"手机电量优化你想过吗"
-- 应对：每讲完一个方案，主动想一层"他可能从哪个角度追问"，但不主动展开（避免信息过载）
-
-## 部署经验（第 2 期踩坑总结，2026-04-15）
-
-> **核心教训：本地 133 测试全绿 ≠ 生产能跑。** 测试用 SQLite + mock，不连真 Docker/PostgreSQL/Strava API。
-> 以下检查清单每次部署前必须过一遍。
+> **核心教训：本地测试全绿 ≠ 生产能跑。** 测试用 SQLite + mock，不连真 Docker/PostgreSQL/Strava API。
 
 ### 部署前强制检查清单
 
-- [ ] **requirements.txt 是否完整？** 本地 `pip install` 的每个新包都必须写进去。`pip freeze | grep 包名` 确认版本号在 PyPI/镜像上存在
-- [ ] **docker-compose.yml 是否同步？** .env 里加了新变量 → docker-compose.yml 的 environment 里也要加。否则容器内读不到
-- [ ] **Alembic 迁移在 PostgreSQL 上能跑吗？** 不要在迁移脚本中用 Python try/except 包 DDL 操作——PostgreSQL 事务 abort 后所有后续 SQL 都会失败。用 `DO $$ EXCEPTION` 块隔离
-- [ ] **第三方 OAuth 的回调地址配了吗？** 代码里写了 redirect_uri 不够，还要在第三方平台的开发者后台配对应的域名/IP
-- [ ] **服务器能连 GitHub 吗？** 大陆服务器访问 GitHub 不稳定，部署不能依赖 git pull。备用方案：本地打包 scp 上传，或服务器上直接 sed 改文件
+- [ ] **requirements.txt 完整**？本地 pip install 的新包都写进去
+- [ ] **docker-compose.yml 同步**？.env 加新变量 → docker-compose 的 environment 也加
+- [ ] **Alembic 迁移在 PostgreSQL 上能跑**？不要在迁移脚本中用 Python try/except 包 DDL——PG 事务 abort 后所有后续 SQL 都失败。用 `DO $$ EXCEPTION` 块隔离
+- [ ] **第三方 OAuth 回调地址配了**？代码里写 redirect_uri 不够，第三方平台后台也要配
+- [ ] **服务器能连 GitHub**？大陆服务器不稳定。备用：本地 scp 上传 / 服务器 sed 改文件
 
 ### 服务器信息
 
@@ -370,113 +184,48 @@ Worker 和 service 层的关键步骤必须有 `logging` 输出，格式包含�
 | 用户 | ubuntu |
 | 代码路径 | ~/velo |
 | Docker 命令前缀 | sudo |
-| 部署方式 | git clone（首次）+ git pull 或 scp（后续） |
+| 部署方式 | git pull 或 scp |
 | 数据库迁移 | `sudo docker compose exec api python3 -m alembic upgrade head` |
 | 看日志 | `sudo docker compose logs api --tail 30` |
 
-### 已知部署缺陷（待修复）
-
-| 缺陷 | 影响 | 修复方案 |
-|------|------|---------|
-| 手动同步和调度器进度不联动 | 手动 sync 创建活动后调度器卡在 tier1 | handle_manual_sync 应更新 strava_imports 进度 |
-| OAuth callback 可重复创建 strava_imports | 多次授权回调产生重复导入任务 | callback 先查已有任务，存在则跳过 |
-| 无 scheduler 容器 | 调度器不会自动运行 | docker-compose 加 scheduler 服务 |
-
 ## 已知风险（持续维护）
 
-### 已确认的生产风险
-
-| 风险 | 级别 | 说明 | 当前应对 | 修复状态 |
-|------|------|------|---------|---------|
-| Worker 僵尸 | 🟢 | activity 卡在 processing/pending | 僵尸扫描脚本（5min 一轮）+ API 层超时保护 + 原子状态锁 | ✅ `0e2c690` |
-| 重复上传 | 🟢 | 用户双击 → 两条重复 activity | SHA-256 哈希去重 + DB UNIQUE 约束 + IntegrityError 兜底 | ✅ `e1dcba1` |
-| 内存爆炸 | 🟢 | 50MB GPX → 50 万轨迹点 → 峰值 400MB | 上传预检 + 解析后安全网，上限 50000 点 + 500 条批量插入 | ✅ `c15daf8` |
-| 连接池不足 | 🟢 | pool_size=5 默认值 | pool_size=8, max_overflow=12, pool_recycle=3600, pre_ping=True | ✅ `845e226` |
-| Worker 重入 | 🟢 | RQ 超时重试 → 双重处理同一任务 | PostgreSQL UPDATE WHERE 原子抢锁，单向状态机 | ✅ `414fce9` |
-| N+1 查询 | 🟡 | 排名计算循环发 SQL | 代码 TODO 标注 | ⚠️ 计划修复 |
-| 缺失索引 | 🟢 | PR 检测复合索引 | idx_efforts_segment_user_time 已在 phase0 建立 | ✅ |
-| 孤儿文件 | 🟡 | 上传成功但 DB 失败 → 磁盘泄漏 | 无 | ❌ 无清理机制 |
-| 匹配断裂 | 🟡 | 解析完成但匹配前崩溃 → 无赛段成绩 | 匹配失败静默跳过 | ❌ 无重新触发机制 |
-| 批量插入中断 | 🟢 | trackpoints 写到一半失败 | 事务保证原子性，整体回滚 | ✅ |
-| 赛段匹配隔离 | 🟢 | 单赛段失败不影响其他 | SAVEPOINT 隔离 | ✅ |
-| 级联删除 | 🟢 | 删活动时自动清理子表 | ON DELETE CASCADE | ✅ |
+| 风险 | 级别 | 说明 | 应对 / 修复状态 |
+|------|------|------|----------------|
+| Worker 僵尸 | 🟢 | activity 卡 processing/pending | 僵尸扫描脚本（5min 一轮）+ 原子状态锁 ✅ `0e2c690` |
+| 重复上传 | 🟢 | 用户双击 → 重复 activity | SHA-256 哈希 + UNIQUE + IntegrityError 兜底 ✅ `e1dcba1` |
+| 内存爆炸 | 🟢 | 50MB GPX → 50 万点 → 400MB | 上限 50000 点 + 500 条批量插入 ✅ `c15daf8` |
+| 连接池不足 | 🟢 | pool_size=5 默认 | pool_size=8, max_overflow=12, pool_recycle=3600 ✅ `845e226` |
+| Worker 重入 | 🟢 | RQ 超时重试 → 双重处理 | UPDATE WHERE 原子抢锁 ✅ `414fce9` |
+| OAuth state CSRF/重放 | 🟢 | JWT state 可重放 | Redis nonce GETDEL 一次性消费 ✅ v4 task-7.2 |
+| Webhook 裸奔 | 🟢 | 任意人可伪造回调 | subscription_id 校验 ✅ v4 task-7.4 |
+| scheduler 不跑 | ⚠️ | 无独立容器 → 导入永远不推进 | 待 v4 task-7.9 修 |
+| N+1 查询 | 🟡 | 排名计算循环 SQL | 代码 TODO ⚠️ tech-debt |
+| 孤儿文件 | 🟡 | 上传成功 DB 失败 → 磁盘泄漏 | 无清理机制 ❌ tech-debt |
+| 匹配断裂 | 🟡 | 解析完成但匹配前崩溃 | 失败静默跳过 ❌ tech-debt |
+| trackpoints 无 UNIQUE(activity_id, seq) | 🟡 | Worker 重试可能插入重复轨迹点 | 缺 DB 约束 ❌ tech-debt |
+| status 字段无 CHECK 约束 | 🟡 | DB 层可写任意字符串 | 应用层校验 ⚠️ |
+| trackpoints 表无分区策略 | 🟡 | 百万级时在线加分区需锁表 | 未来事 ❌ |
+| 删 importing 中 activity | 🟡 | Worker 报外键错（脏日志，数据安全）| 未处理 ❌ |
 
 ## 当前进度
-- [x] 技术文档终版完成
-- [x] 项目初始化 + Git 仓库
-- [x] 任务 1.1：项目骨架
-- [x] 任务 1.2：数据库连接
-- [x] 任务 1.3：文件存储抽象层
-- [x] 任务 1.4：Redis + rq 配置
-- [x] 任务 2.1：User 数据模型
-- [x] 任务 2.2：微信登录接口
-- [x] 任务 2.3：JWT 认证中间件
-- [x] 任务 2.4：用户资料接口
-- [x] 任务 2.5：骑行统计接口
-- [x] 任务 2.6：User 模块测试
-- [x] 任务 3.1：Activity 数据模型
-- [x] 任务 3.2：GPX 解析器
-- [x] 任务 3.3：功率区间计算
-- [x] 任务 3.4：Douglas-Peucker 轨迹简化
-- [x] 任务 3.5：GPX 上传接口
-- [x] 任务 3.6：异步解析 Worker
-- [x] 任务 3.7：活动查询接口
-- [x] 任务 3.8：Activity 模块测试
-- [x] 任务 4.1：Segment 数据模型
-- [x] 任务 4.2：路段管理接口
-- [x] 任务 4.3：GPS 精确匹配算法
-- [x] 任务 4.4：粗筛 + 自动匹配触发
-- [x] 任务 4.5：排行榜查询接口
-- [x] 任务 4.6：活动途经赛段接口
-- [x] 任务 4.7：Segment 模块测试
-- [x] 任务 6：部署文件（Dockerfile + docker-compose + Caddy）
 
-### 第 0 期：地基修补（2026-04-13 完成）
-- [x] Worker 僵尸扫描 + 超时保护
-- [x] 重复上传防护（SHA-256 哈希 + UNIQUE 约束）
-- [x] 内存保护（轨迹点 50000 上限 + 批量插入）
-- [x] 连接池显式配置（pool_size=8）
-- [x] Worker 重入防护（原子状态锁）
+### 已完成（v0 期 + 各任务）
+- v0 期所有基础任务（项目骨架/DB/JWT/User/Activity/Segment/部署）✅
+- 第 0 期：地基修补 ✅
+- 小程序 MVP（5 tab + 详情页 + 海拔图）✅
+- 第 1 期：翻译层（10 任务 / 40 测试）✅
+- 第 2 期：Strava 集成（7 任务 / 19 测试 / 已部署 / 30 条活动导入）✅
+- 第 3 期：事件通知系统（6 任务 / 16 测试 / 已部署 / PR+KOM+荣誉表）✅
 
-### 小程序前端（2026-04-14 完成）
-- [x] MVP 骨架：5 tab + 登录 + 上传 + 详情 + 排行榜
-- [x] 详情页改造：海拔剖面图 + 途经赛段嵌入
-- [x] 后端时序数据 API
-- [x] 速度/功率/心率/踏频曲线图（canvas 手绘）
-
-### 第 1 期：翻译层（2026-04-15 完成）
-- [x] spec-v2.md 技术规格文档
-- [x] 任务 5.1：types.py — 统一数据结构定义
-- [x] 任务 5.2：geo_math.py — 通用地理计算工具
-- [x] 任务 5.3：stats_calculator.py — 通用统计计算
-- [x] 任务 5.4：GPX 解析器重构 — 迁移到 parsing/，输出 ParseResult
-- [x] 任务 5.5：coord_normalizer.py — 坐标系检测 + GCJ-02→WGS84
-- [x] 任务 5.6：Trackpoint 表 Alembic 迁移 — 新增 speed, distance 列
-- [x] 任务 5.7：Worker 改造 — 调用新的 parsing 模块
-- [x] 任务 5.8：FIT 解析器 — fit_parser.py
-- [x] 任务 5.9：上传接口改造 — 支持 .fit 文件
-- [x] 任务 5.10：翻译层测试（40 用例，0.14s 全通过）
-
-### 第 2 期：Strava 集成（2026-04-15 完成 + 部署 + 生产验证）
-- [x] 任务 6.1：Strava OAuth 接入 — 用户授权流程
-- [x] 任务 6.2：Strava API 客户端 — 封装请求 + 限流
-- [x] 任务 6.3：Strava 适配器 — from_streams() 实现
-- [x] 任务 6.4：导入调度器 — 两层渐进策略 + 轮转 + 断点续传
-- [x] 任务 6.5：Webhook + 手动同步 — 新活动通知 + 5 分钟冷却
-- [x] 任务 6.6：导入进度 API — 前端显示进度百分比
-- [x] 任务 6.7：Strava 集成测试（19 用例全通过）
-
-### 四步战略规划
-- [x] 第 0 期：地基修补 ✅
-- [x] 第 1 期：翻译层 ✅（10 任务 / 40 测试）
-- [x] 第 2 期：Strava 集成 ✅（7 任务 / 19 测试 / 已部署 / 30 条活动导入成功）
-- [x] 第 3 期：事件通知系统 ✅（6 任务 / 16 测试 / 已部署 / PR+KOM 检测 + 荣誉表）
-- [ ] 第 4 期：待规划
-
-### 第 3 期：事件通知系统（2026-04-16 完成 + 部署）
-- [x] 任务 7.1：Notification 数据模型 + Alembic 迁移
-- [x] 任务 7.2：detector.py — 纯函数事件分类（7 个边界测试）
-- [x] 任务 7.3：service.py — detect_events + 查询 + 清理 + 共享排名函数
-- [x] 任务 7.4：router.py — 通知列表 + 荣誉表 API
-- [x] 任务 7.5：auto_match + import_scheduler 衔接
-- [x] 任务 7.6：集成测试（完整流程 + 过期清理）
+### 第 4 期：前端反馈环 + Strava 加固（进行中）
+- [x] 任务 7.1：Alembic 迁移 + 4 model 改动
+- [x] 任务 7.2+7.3：OAuth state 加固 + callback 防重复绑定
+- [x] 任务 7.4：Webhook subscription_id 校验
+- [x] 任务 7.5：import-progress stalled + Redis 限速
+- [x] 任务 7.6：Strava 现有函数加固（I7/I8/I9/I10）
+- [x] 任务 7.7：解析器 activity_type 分流
+- [x] 任务 7.8：mark-all-read + unread_count
+- [ ] 任务 7.9：scheduler 容器部署 ← 下一批
+- [ ] 任务 7.10：小程序前端（瘦身版：通知中心 + 荣誉 + 红点 + 免打扰，砍 Strava 绑定 UI）
+- [ ] 任务 7.11：集成测试 + 收尾
