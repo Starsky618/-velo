@@ -15,7 +15,7 @@ Strava 历史导入调度器——"搬家调度中心"。
 - 断点续传：进度存在 strava_imports 表里，服务器重启不丢
 
 注意事项：
-- 这个函数由 rq-scheduler 每 30 秒调度一次，不在 FastAPI 请求上下文中
+- 这个函数由 scheduler.py 容器每 30 秒调度一次（v4 task-7.9 起），不在 FastAPI 请求上下文中
 - 使用 SessionLocal 手动管理数据库连接（和 Worker 一样）
 - 所有 Strava API 调用通过 StravaClient，限流由 client 统一管理
 - StravaClient 是短命对象，每个用户创建新实例，tick 结束后释放
@@ -24,6 +24,7 @@ Strava 历史导入调度器——"搬家调度中心"。
 import logging
 from datetime import datetime, timezone
 
+from sqlalchemy import update as sql_update
 from sqlalchemy.exc import IntegrityError
 
 from app.activity.models import Activity
@@ -45,7 +46,7 @@ _CYCLING_TYPES = {"Ride", "VirtualRide", "EBikeRide", "Handcycle", "Velomobile"}
 
 def run_import_tick() -> None:
     """
-    调度器的心跳函数——每 30 秒被 rq-scheduler 调用一次。
+    调度器的心跳函数——每 30 秒被 scheduler.py 容器调用一次（v4 task-7.9 起）。
 
     流程：
     1. 找到一个需要导入的用户（轮转选择）
@@ -273,8 +274,16 @@ def _run_tier1(db, client: StravaClient, import_task: StravaImport) -> None:
         if started_at and (oldest_start_date is None or started_at < oldest_start_date):
             oldest_start_date = started_at
 
-    # 更新进度
-    import_task.tier1_completed = (import_task.tier1_completed or 0) + created_count
+    # 更新进度（v4 双审 I-1 修复）：
+    # 用 SQL 原子表达式 `tier1_completed = tier1_completed + n` 避免和
+    # handle_manual_sync (service.py:715) 的 with_for_update + += 并发丢计数。
+    # SQL 表达式每次 UPDATE 都用 DB 当前值，不依赖 ORM 缓存的旧快照。
+    if created_count > 0:
+        db.execute(
+            sql_update(StravaImport)
+            .where(StravaImport.id == import_task.id)
+            .values(tier1_completed=StravaImport.tier1_completed + created_count)
+        )
     if oldest_start_date:
         import_task.cursor_before = oldest_start_date
 

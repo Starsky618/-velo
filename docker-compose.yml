@@ -91,6 +91,24 @@ services:
     volumes:
       - uploads:/app/uploads
 
+  # ===== Scheduler：Strava 导入调度器 =====
+  # 每 30s 触发一次 run_import_tick，推进所有 active 用户的 tier1/tier2 导入
+  # 和 worker 分开的理由：worker 是队列消费者，scheduler 是时间驱动
+  # 职责不同 → 独立容器便于监控和重启
+  # 不挂 uploads 卷：scheduler 路径全程 DB + Redis + HTTP，不写文件系统
+  scheduler:
+    build: .
+    command: python scheduler.py
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
+      REDIS_URL: redis://redis:6379/0
+      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
+      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET}
+    depends_on:
+      - db
+      - redis
+
   # ===== Caddy：反向代理 + 自动 HTTPS =====
   # 微信小程序强制要求 HTTPS，Caddy 自动申请 Let's Encrypt 证书
   caddy:
