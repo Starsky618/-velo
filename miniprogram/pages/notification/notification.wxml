@@ -1,0 +1,48 @@
+<!--
+  通知中心页 — 用户打开"你破了 PR / 你被超越"的地方
+
+  三个状态：
+  1. 加载中：loading=true
+  2. 空态：列表空时显示"还没有通知"
+  3. 有数据：列表 + 下拉刷新 + 触底分页
+
+  进页立即 UI 视觉化已读（.unread / .read 样式已统一成白底），
+  后台并行调 mark-all-read，不等返回——避免"列表到了 + 标读还没到"的已读闪烁。
+-->
+<view class="notif-page">
+  <!-- 通知列表 -->
+  <view
+    wx:for="{{items}}"
+    wx:key="id"
+    class="notif-item {{item.is_read ? 'read' : 'unread'}}"
+    bindtap="onTapItem"
+    data-id="{{item.id}}"
+    data-segment="{{item.segment_id}}"
+  >
+    <view class="notif-icon">
+      <text>{{item.iconText}}</text>
+    </view>
+    <view class="notif-body">
+      <text class="notif-title">{{item.titleText}}</text>
+      <text class="notif-sub">{{item.subText}}</text>
+    </view>
+    <text class="notif-time">{{item.timeText}}</text>
+  </view>
+
+  <!-- 加载中 -->
+  <view class="loading" wx:if="{{loading}}">
+    <text>加载中...</text>
+  </view>
+
+  <!-- 没有更多 -->
+  <view class="end" wx:if="{{!loading && noMore && items.length > 0}}">
+    <text>没有更多了</text>
+  </view>
+
+  <!-- 空态 -->
+  <view class="empty" wx:if="{{!loading && items.length === 0}}">
+    <text class="empty-emoji">🔔</text>
+    <text class="empty-title">还没有通知</text>
+    <text class="empty-sub">骑一段新成绩或破个 PR 再来看看</text>
+  </view>
+</view>

@@ -1,0 +1,54 @@
+<!--
+  我的荣誉页 — 用户所有 KOM（第 1 名）和前十成绩一览
+
+  两个 tab 切换：
+  - KOM（皇冠成绩）：所有 rank=1 的赛段
+  - 前十：rank 在 2-10 的赛段
+-->
+<view class="honor-page">
+  <!-- Tab 切换 -->
+  <view class="tab-bar">
+    <view
+      class="tab {{currentTab === 'kom' ? 'active' : ''}}"
+      bindtap="switchTab"
+      data-tab="kom"
+    >
+      <text class="tab-emoji">🏆</text>
+      <text class="tab-text">KOM ({{komCount}})</text>
+    </view>
+    <view
+      class="tab {{currentTab === 'top10' ? 'active' : ''}}"
+      bindtap="switchTab"
+      data-tab="top10"
+    >
+      <text class="tab-emoji">🥇</text>
+      <text class="tab-text">前十 ({{top10Count}})</text>
+    </view>
+  </view>
+
+  <!-- 列表 -->
+  <view class="list">
+    <view
+      wx:for="{{currentList}}"
+      wx:key="segment_id"
+      class="honor-item"
+      bindtap="goSegment"
+      data-id="{{item.segment_id}}"
+    >
+      <text class="honor-rank {{item.rank === 1 ? 'kom-rank' : ''}}">#{{item.rank}}</text>
+      <view class="honor-body">
+        <text class="honor-name">{{item.segment_name}}</text>
+        <text class="honor-meta">{{item.timeText}} · {{item.speedText}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 空态 -->
+  <view class="empty" wx:if="{{!loading && currentList.length === 0}}">
+    <text class="empty-emoji">🚴</text>
+    <text class="empty-title">还没有{{currentTab === 'kom' ? ' KOM' : '前十'}}成绩</text>
+    <navigator url="/pages/leaderboard/leaderboard" class="empty-btn">
+      <text>去排行榜看看</text>
+    </navigator>
+  </view>
+</view>

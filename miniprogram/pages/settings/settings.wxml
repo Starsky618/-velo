@@ -1,0 +1,16 @@
+<!--
+  设置页 — 目前只有免打扰开关
+
+  免打扰开启后：
+  - 首页铃铛不再显示红点（home.js onShow 会读本地存储判断）
+  - 列表数据仍然照常请求展示（只是视觉上不打扰）
+-->
+<view class="settings-page">
+  <view class="setting-group">
+    <view class="setting-item">
+      <text class="setting-label">免打扰</text>
+      <switch checked="{{muted}}" bindchange="onToggleMute" color="#FF2D55" />
+    </view>
+    <text class="setting-hint">开启后首页不再显示通知红点</text>
+  </view>
+</view>

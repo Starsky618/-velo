@@ -25,6 +25,8 @@ Page({
     // 骑行卡片列表
     rides: [],
     loading: false,
+    // v4 新增：未读通知数（控制铃铛红点显示）
+    unreadCount: 0,
   },
 
   onShow() {
@@ -32,9 +34,56 @@ Page({
       this.setData({ isLoggedIn: true })
       this.fetchWeeklyStats()
       this.fetchRides()
+      // v4 新增：每次进首页都刷新未读数
+      // 用 onShow 而非 onLoad——因为用户从通知页返回时要看到红点消失
+      this.refreshUnreadCount()
     } else {
-      this.setData({ isLoggedIn: false, rides: [] })
+      this.setData({ isLoggedIn: false, rides: [], unreadCount: 0 })
     }
+  },
+
+  /**
+   * 查询未读通知数，控制右上角红点显示。
+   *
+   * 设计说明：
+   * - 免打扰开关开启时不发请求，直接清 0（省流量 + 符合用户意图）
+   * - 未登录时不发请求（Authorization 会空，后端返 401 又清 token 循环）
+   * - 失败静默——首页主功能是骑行流，查红点失败不应该干扰主流程
+   *
+   * 类比：就像手机锁屏上的消息图标——
+   * 开了勿扰模式图标就不亮，没登录也没东西可亮，
+   * 查不到网络就维持老样子，总之不打扰用户看主要内容。
+   */
+  refreshUnreadCount() {
+    // truthiness 陷阱：显式 === true 比 if (muted) 安全
+    // 如果 storage 里存的是旧版字符串 'true' 或 undefined，if 判断会出意外
+    var muted = wx.getStorageSync('mute_notifications') === true
+    if (muted) {
+      this.setData({ unreadCount: 0 })
+      return
+    }
+
+    if (!app.globalData.token) {
+      this.setData({ unreadCount: 0 })
+      return
+    }
+
+    var that = this
+    // page_size=1：只关心响应里的 unread_count 字段，列表数据无需真下发
+    api.get('/api/notifications', { unread_only: true, page_size: 1 })
+      .then(function (res) {
+        that.setData({ unreadCount: res.unread_count || 0 })
+      })
+      .catch(function () {
+        // 失败静默，保持上次值，避免闪烁
+      })
+  },
+
+  /**
+   * 点铃铛跳通知中心页。
+   */
+  goNotifications() {
+    wx.navigateTo({ url: '/pages/notification/notification' })
   },
 
   fetchWeeklyStats() {

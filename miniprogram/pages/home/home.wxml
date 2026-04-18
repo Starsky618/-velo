@@ -4,8 +4,18 @@
 -->
 
 <view class="page-header">
-  <text class="subtitle">VELO</text>
-  <text class="title">动态</text>
+  <view class="page-header-left">
+    <text class="subtitle">VELO</text>
+    <text class="title">动态</text>
+  </view>
+  <!-- 右上角铃铛 + 红点（未登录时隐藏，避免给陌生用户制造噪音） -->
+  <view class="bell-btn" bindtap="goNotifications" wx:if="{{isLoggedIn}}">
+    <text class="bell-icon">🔔</text>
+    <view class="red-dot" wx:if="{{unreadCount > 0}}">
+      <text wx:if="{{unreadCount < 100}}">{{unreadCount}}</text>
+      <text wx:else>99+</text>
+    </view>
+  </view>
 </view>
 
 <!-- ====== 本周统计 ====== -->

@@ -1,0 +1,116 @@
+/* 荣誉页样式 */
+
+page {
+  background: #F2F1F6;
+}
+
+/* ══════ Tab 切换条 ══════ */
+.tab-bar {
+  display: flex;
+  background: #fff;
+  padding: 20rpx 40rpx;
+  margin-bottom: 20rpx;
+}
+
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx;
+  border-bottom: 4rpx solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+}
+
+.tab.active {
+  border-bottom-color: #FF2D55;
+}
+
+.tab-emoji {
+  font-size: 36rpx;
+}
+
+.tab-text {
+  font-size: 28rpx;
+  color: #000;
+}
+
+/* ══════ 荣誉条目 ══════ */
+.honor-item {
+  display: flex;
+  align-items: center;
+  padding: 30rpx 40rpx;
+  background: #fff;
+  margin-bottom: 2rpx;
+}
+
+.honor-rank {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #666;
+  width: 100rpx;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* KOM 专属金色 */
+.honor-rank.kom-rank {
+  color: #FFD700;
+}
+
+.honor-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-left: 20rpx;
+}
+
+.honor-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #000;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.honor-meta {
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 6rpx;
+}
+
+/* ══════ 空态 ══════ */
+.empty {
+  text-align: center;
+  padding: 200rpx 40rpx;
+}
+
+.empty-emoji {
+  font-size: 100rpx;
+  margin-bottom: 20rpx;
+  display: block;
+}
+
+.empty-title {
+  font-size: 32rpx;
+  color: #000;
+  display: block;
+  margin-bottom: 30rpx;
+}
+
+.empty-btn {
+  display: inline-block;
+  padding: 20rpx 60rpx;
+  background: #FF2D55;
+  color: #fff;
+  border-radius: 50rpx;
+  font-size: 28rpx;
+}
+
+.empty-btn text {
+  color: #fff;
+  font-size: 28rpx;
+}

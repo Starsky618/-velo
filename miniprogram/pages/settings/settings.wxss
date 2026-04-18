@@ -1,0 +1,35 @@
+/* 设置页样式 */
+
+page {
+  background: #F2F1F6;
+}
+
+.settings-page {
+  padding: 20rpx 0;
+}
+
+/* 设置分组卡片 */
+.setting-group {
+  background: #fff;
+  padding: 0 40rpx;
+}
+
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 30rpx 0;
+}
+
+.setting-label {
+  font-size: 30rpx;
+  color: #000;
+}
+
+.setting-hint {
+  display: block;
+  font-size: 24rpx;
+  color: #999;
+  padding: 20rpx 0 30rpx;
+  border-top: 1rpx solid #f0f0f0;
+}

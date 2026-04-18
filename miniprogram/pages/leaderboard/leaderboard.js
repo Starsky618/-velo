@@ -23,6 +23,16 @@ Page({
     loading: true,
   },
 
+  /**
+   * v4 task-7.10：接收外部跳转传来的 segment_id（从通知中心 / 荣誉页 navigateTo 时带）。
+   * onLoad 只触发一次（页面首次创建），把意图存到实例字段，等 onShow → fetchSegments
+   * 取到列表后再定位到对应赛段。找不到则 fallback 到 list[0]。
+   */
+  onLoad(options) {
+    var sid = options && options.segment_id
+    this._pendingSegmentId = sid ? parseInt(sid, 10) : null
+  },
+
   onShow() {
     this.fetchSegments()
   },
@@ -36,10 +46,25 @@ Page({
     api.get('/api/segments?page=1&page_size=100')
       .then(function (data) {
         var list = data.items || []
-        that.setData({ segments: list })
-        // 默认选中第一个赛段，加载其排行榜
+
+        // v4 task-7.10：优先定位到外部跳转指定的 segment_id
+        // 找到则用 list 中对应 index；找不到（比如赛段被删）fallback 到 list[0]
+        var targetIdx = 0
+        var pendingId = that._pendingSegmentId
+        if (pendingId && list.length > 0) {
+          for (var i = 0; i < list.length; i++) {
+            if (list[i].id === pendingId) {
+              targetIdx = i
+              break
+            }
+          }
+          // 消费一次后清掉，防止后续 onShow 重定位（用户切 tab 该按 activeIdx 走）
+          that._pendingSegmentId = null
+        }
+
+        that.setData({ segments: list, activeIdx: targetIdx })
         if (list.length > 0) {
-          that.fetchDetail(list[0].id)
+          that.fetchDetail(list[targetIdx].id)
         } else {
           that.setData({ loading: false })
         }

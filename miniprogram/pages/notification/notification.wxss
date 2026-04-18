@@ -1,0 +1,104 @@
+/* 通知中心页样式 */
+
+page {
+  background: #F2F1F6;
+}
+
+.notif-page {
+  padding: 20rpx 0;
+}
+
+/* ══════ 通知条目 ══════ */
+.notif-item {
+  display: flex;
+  align-items: center;
+  padding: 28rpx 40rpx;
+  background: #fff;
+  margin-bottom: 2rpx;
+}
+
+/* 未读：浅蓝底色，提示"还没看" */
+.notif-item.unread {
+  background: #f0f8ff;
+}
+
+/* 已读：白底 */
+.notif-item.read {
+  background: #fff;
+}
+
+.notif-icon {
+  font-size: 48rpx;
+  margin-right: 24rpx;
+  width: 64rpx;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.notif-icon text {
+  font-size: 48rpx;
+}
+
+.notif-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.notif-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #000;
+  margin-bottom: 6rpx;
+}
+
+.notif-sub {
+  font-size: 26rpx;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-time {
+  font-size: 24rpx;
+  color: #999;
+  margin-left: 16rpx;
+  flex-shrink: 0;
+}
+
+/* ══════ 状态提示 ══════ */
+.loading,
+.end {
+  text-align: center;
+  color: #999;
+  padding: 30rpx;
+  font-size: 26rpx;
+}
+
+/* ══════ 空态 ══════ */
+.empty {
+  text-align: center;
+  padding: 200rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.empty-emoji {
+  font-size: 100rpx;
+  margin-bottom: 20rpx;
+}
+
+.empty-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #000;
+  margin-bottom: 10rpx;
+}
+
+.empty-sub {
+  font-size: 26rpx;
+  color: #666;
+}

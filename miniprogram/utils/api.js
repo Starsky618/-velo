@@ -82,9 +82,39 @@ function request(url, method, data) {
   })
 }
 
+/**
+ * 把 params 对象拼成 URL query 字符串。
+ *
+ * 设计说明：
+ * - 跳过 undefined / null（不该出现在 URL 上）
+ * - 保留 false / 0 / ""（它们都是合法值，如 page_size=0 无意义但 page=0 可能有意义）
+ * - 用 encodeURIComponent 保证中文和特殊字符能安全传输
+ *
+ * 类比：就像寄快递时的收件地址——
+ * 对象的 key 是"省/市/街道"的标签，value 是具体内容，
+ * 最后拼成"?省=山西&市=太原"这种一条线写完的格式。
+ *
+ * @param {object} params 例如 { unread_only: true, page: 1 }
+ * @returns {string} 例如 "?unread_only=true&page=1"；无参数返回空串
+ */
+function buildQuery(params) {
+  if (!params) return ''
+  var parts = []
+  for (var k in params) {
+    if (!params.hasOwnProperty(k)) continue
+    var v = params[k]
+    if (v === undefined || v === null) continue
+    parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(v))
+  }
+  return parts.length > 0 ? '?' + parts.join('&') : ''
+}
+
 // 快捷方法：api.get('/path')、api.post('/path', data)
 module.exports = {
-  get: function (url) { return request(url, 'GET') },
+  // v4 扩展：get 支持可选 params 对象（不传则等同旧行为，向后兼容）
+  //   老用法：api.get('/api/activities')
+  //   新用法：api.get('/api/notifications', { unread_only: true, page: 1 })
+  get: function (url, params) { return request(url + buildQuery(params), 'GET') },
   post: function (url, data) { return request(url, 'POST', data) },
   put: function (url, data) { return request(url, 'PUT', data) },
   del: function (url) { return request(url, 'DELETE') },
