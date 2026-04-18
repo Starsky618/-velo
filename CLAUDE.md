@@ -218,7 +218,7 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 - 第 2 期：Strava 集成（7 任务 / 19 测试 / 已部署 / 30 条活动导入）✅
 - 第 3 期：事件通知系统（6 任务 / 16 测试 / 已部署 / PR+KOM+荣誉表）✅
 
-### 第 4 期：前端反馈环 + Strava 加固（进行中）
+### 第 4 期：前端反馈环 + Strava 加固（已完成代码 + 文档收尾，待部署 + 真实 E2E）
 - [x] 任务 7.1：Alembic 迁移 + 4 model 改动
 - [x] 任务 7.2+7.3：OAuth state 加固 + callback 防重复绑定
 - [x] 任务 7.4：Webhook subscription_id 校验
@@ -226,6 +226,17 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 - [x] 任务 7.6：Strava 现有函数加固（I7/I8/I9/I10）
 - [x] 任务 7.7：解析器 activity_type 分流
 - [x] 任务 7.8：mark-all-read + unread_count
-- [ ] 任务 7.9：scheduler 容器部署 ← 下一批
-- [ ] 任务 7.10：小程序前端（瘦身版：通知中心 + 荣誉 + 红点 + 免打扰，砍 Strava 绑定 UI）
-- [ ] 任务 7.11：集成测试 + 收尾
+- [x] 任务 7.9：scheduler 容器部署
+- [x] 任务 7.10：小程序前端瘦身版（通知中心 + 荣誉 + 红点 + 免打扰；**Strava 绑定 UI 砍**留第 5 期）
+- [x] 任务 7.11：收尾文档（架构导览刷新 + 黑盒度三问 + changelog；**集成测试跳过**——单元已覆盖；真实 E2E 留生产部署后）
+
+**第 4 期总结**：
+- 8 Critical + 11 Important 风险全修复
+- 181 测试 passed / 0 failed
+- 13 commit + 双审制度沉淀（信条 5 升级 + CLAUDE.md 顶部 3 硬规则）
+- 待做（独立批次）：生产部署 + Strava 真实 E2E + 小程序手工回归
+
+### 第 5 期：待规划
+- 候选：Strava 绑定 UI 完整版（H5 跳板 + Caddyfile + web-view 域名白名单）
+- 候选：积分 + 骑行等级系统（用户活跃度达标后）
+- 候选：技术债务清理批（datetime tz 统一 / service.py 拆分 / N+1 查询）—— 详见 docs/tech-debt.md

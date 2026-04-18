@@ -1,5 +1,61 @@
 # VELO 开发变更日志
 
+## 2026-04-17 ~ 2026-04-18 第 4 期：前端反馈环闭合 + Strava 集成加固
+
+### 一、产品目标
+把后端早就做好的成就数据（通知/荣誉/Strava 同步）真正送到用户眼前，顺手修 8 个 Critical + 11 个 Important 历史风险。
+
+### 二、9 批闭环 + 双审制度（2026-04-17 晚 → 04-18 凌晨）
+
+| 批 | 任务 | 主体改动 | 双审收获 |
+|----|------|---------|---------|
+| 7.1 | Alembic 迁移 + 4 model 改动 | is_read / activity_type / mute_notifications / updated_at tz / 外键 SET NULL | 上线后发现 conftest 遗漏，事后补 fix commit |
+| 7.2+7.3 | OAuth state 加固 + callback 防重复 | Redis nonce GETDEL 一次性消费 / 7 步 callback 流程 / UNIQUE 检测先于 cleanup | 合并成单 commit（中间态会炸不可拆）|
+| 7.4 | Webhook subscription_id 校验 | 双门校验（未配置 503 / 不匹配 403）| 老 webhook 测试需补 subscription_id mock |
+| 7.5 | import-progress stalled + Redis 限速 | view_status 派生态 / 1s/user 限速 | 老测试契约迁移 |
+| 7.6 | Strava 现有函数加固 | I7/I8/I9/I10：401 pause imports / 行锁 / 连续 2 次空确认 / 手动 sync 联动 | — |
+| 7.7 | 解析器入口 activity_type 分流 | 抢锁后、下载前分流，省 I/O | — |
+| 7.8 | mark-all-read + unread_count | service.mark_all_read + GET 加 unread_only / 响应永远带 unread_count + outerjoin Segment | — |
+| 7.9 | scheduler 容器部署 | scheduler.py + docker-compose 加 7th 容器 | **集成审抓出 tier1_completed 无行锁 → SQL 原子表达式修复**（code-reviewer 没看到）|
+| 7.10（瘦身）| 小程序前端通知反馈环 | 通知中心 + 荣誉页 + 红点 + 免打扰 + api.js 扩展（**砍 Strava 绑定 UI** 留第 5 期）| **集成审抓出 leaderboard.js 不读 segment_id → 反馈环断**（差点把核心目标交付一半）|
+
+### 三、双审制度沉淀
+
+第 4 期最大教训：**v1-v3 单 agent 模式 → v4 多 subagent 模式后我没及时同步纪律 → 批 1-6 跑完才发现没做"代码层双审"违反 CLAUDE.md 明文**。
+
+事后双审一次抓 1 Critical + 6 Important（ORM/DB schema 不一致、重复 detect_events、非骑行活动 activity_type 错、行锁测试假通过等），证明双审硬性的价值。
+
+**沉淀**：
+- `~/.claude/skills/architect/SKILL.md` 信条 5 升级为"两处必做硬性"（spec 层 + 代码层），强调 prompt 互补
+- `velo/CLAUDE.md` 顶部加 3 条硬规则：commit 前 4 问 / 任务规模预算（每期 ≤6 任务）/ 防火墙式扩展（新功能默认放新表）
+- `velo/CLAUDE.md` 大瘦身 482 → 231 行（与 architect skill 重叠的方法论砍掉留指针）
+
+### 四、规模数据
+
+- 13 个 commit（含双审修复 4 个 fix commit）
+- ~3500 行净增（后端 + 小程序 + 文档 + 测试）
+- 50+ 新测试用例
+- 全套：181 passed / 0 failed
+- 工时：约 10 小时（含规划、双审、3 次重大反思）
+
+### 五、留 P1 给第 5 期（详见 docs/tech-debt.md）
+
+- datetime 栈内不一致（naive vs aware 全量迁移）
+- ensure_valid_token 行锁约束封装（防绕过）
+- service.py 727 行（红灯）拆分（OAuth / token / sync）
+- handle_callback 7 步流程拆函数
+- _run_tier1 拆 fetch / persist / progress 三步
+- N+1 查询历史 TODO 清理
+
+### 六、未做（明确推迟）
+
+- Strava 绑定 UI（task-7.10 砍掉，留第 5 期）—— 当前用户走后台手动绑定
+- 后端集成测试（mock 链路，单元测试已覆盖关键路径，价值低）
+- 真实 Strava E2E（生产部署后做）
+- 前端手工回归（部署后小程序开发者工具跑）
+
+---
+
 ## 2026-04-09 ~ 2026-04-13 本轮开发总结
 
 ### 一、GCJ-02 → WGS-84 坐标系转换（04-09）
