@@ -725,7 +725,7 @@ v7+ 的 agent 模块与主 SaaS 通过**薄接口**连接,不共享 session / �
 | 深入方向 | 参考文档 |
 |---|---|
 | 数据流链路、状态转换时序 | `docs/data-flow-guide.md`(占位,待建) |
-| 技术决策背后的原因 | `docs/adr/*.md`(占位,待建) |
+| 技术决策背后的原因 | `docs/adr/*.md` |
 | 跨模块契约精确规格 | `docs/contracts/*.md`(占位,待建) |
 | 当前期任务清单 | `docs/spec-v{current}.md` |
 | 产品方向、市场、用户 | `docs/prd/prd-v{current}.md`(占位,当前仅 TEMPLATE.md) |
@@ -733,7 +733,7 @@ v7+ 的 agent 模块与主 SaaS 通过**薄接口**连接,不共享 session / �
 | 技术债务 | `docs/tech-debt.md` |
 | 开发约束规则 | `/CLAUDE.md` |
 | 变更历史 | `docs/changelog.md` |
-| 竞品分析 | `docs/competitive-analysis/*.md`(占位,待建) |
+| 竞品分析与产品警示 | `docs/competitive-analysis/*.md` |
 
 ⚠️ agent 注意: 标注"占位"的引用目前在仓库里不存在,是未来会建立的文档槽位。遇到这些死链不用自动创建,等本期 spec 明确要求时再补。
 

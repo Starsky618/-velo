@@ -1069,11 +1069,11 @@ Worker 后台无界面,日志是唯一观察窗口。
 | 如果想了解... | 去看 |
 |---|---|
 | 静态架构 | `architecture-guide.md` |
-| 技术决策原因 | `adr/*.md`(占位,待建) |
+| 技术决策原因 | `adr/*.md` |
 | 模块精确契约 | `contracts/*.md`(占位,待建) |
 | 本期任务 | `spec-v{current}.md`(当前扁平在 docs/ 下) |
 | 产品方向 | `prd/prd-v{current}.md`(占位,当前仅 TEMPLATE.md) |
 | 模块内部 | `app/<模块>/README.md`(占位,待建) |
 | 技术债务 | `tech-debt.md` |
 | 开发约束 | `/CLAUDE.md` |
-| 竞品分析 | `competitive-analysis/*.md`(占位,待建) |
+| 竞品分析与产品警示 | `competitive-analysis/*.md` |
