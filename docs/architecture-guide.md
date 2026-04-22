@@ -1,295 +1,776 @@
-# VELO 架构导览
+# velo 系统架构全景 v2
 
-> 给架构师看的地图，不是给程序员看的手册。
-> 5 分钟读完，脑子里有张图。出了 bug 知道去哪找，AI 改了代码知道动了哪块。
-
----
-
-## 一句话说清楚
-
-VELO 是一台"骑行成绩加工厂"：**用户把骑行数据扔进去，工厂自动加工成成绩单、排行榜、通知，用户拿走结果。**
+> **Primary audience: AI coding agents.** Humans may reference but will find it terse.
+> Structured for query, not narrative. Every field/path/port/env-var is precise.
+>
+> Mental model primer (human-friendly one-paragraph): velo 是一台 "骑行成绩加工厂"。用户上传骑行数据,工厂拆解为成绩单、排行榜、通知,用户拿走结果。加工厂由 6 个车间组成,共享 7 个后厨(容器),数据存 7 张表。数据单向流动,不回头。— 往下不再使用此类比喻。
 
 ---
 
-## 六个车间
+## 目录
 
-把整个工厂想象成六个车间，每个车间干一件事，通过传送带（函数调用）连接。
+1. [系统边界](#1-系统边界)
+2. [业务模块(6+1)](#2-业务模块61)
+3. [运行时容器(7)](#3-运行时容器7)
+4. [数据表(7)](#4-数据表7)
+5. [API 汇总](#5-api-汇总)
+6. [前端结构](#6-前端结构)
+7. [依赖方向规则](#7-依赖方向规则)
+8. [AI 改动定位表](#8-ai-改动定位表)
+9. [已知风险状态](#9-已知风险状态)
+10. [文档交叉引用](#10-文档交叉引用)
+
+---
+
+## 1. 系统边界
+
+### 1.1 包含
+
+- 微信小程序前端(velo)
+- 后端 API(FastAPI)
+- 异步 Worker(rq)
+- 调度器(scheduler)
+- 僵尸扫描(cleanup)
+- PostgreSQL + PostGIS 数据库
+- Redis(队列 + state + 限流)
+- Caddy 反向代理
+- 第三方集成: Strava OAuth/API/Webhook
+
+### 1.2 不包含(明确排除)
+
+- iOS / Android 原生 app(v7+ 才考虑)
+- 实时导航(跳转高德,见 ADR-010)
+- 骑行路线算法生成(只推荐历史轨迹,见 ADR-010)
+- 机器学习 / 深度学习模型(RAG 作为独立小项目隔离,见 ADR-009)
+- 视频内容
+- 电商 / 支付(v8+ 考虑,不在任何当前期)
+
+### 1.3 代码量基线(v4 end)
+
+| 层 | 行数 |
+|---|---|
+| 后端 Python | ~8927 |
+| 小程序前端 | ~2000 |
+| **总计** | **~10927** |
+
+⚠️ agent 注意: 当前期任何 PR 如果使后端行数超过 9500 行,触发健康度黄灯,需评估是否需要拆模块(CLAUDE.md 健康度自动巡检规则)。
+
+---
+
+## 2. 业务模块(6+1)
+
+### 2.1 模块清单
+
+| 模块 | 文件夹 | 代码量 | 引入版本 | 核心职责 |
+|---|---|---|---|---|
+| user | `app/user/` | 591 行 | v0 | 微信登录、JWT、个人资料、统计 |
+| activity | `app/activity/` | 1617 行 | v0 | 骑行活动 CRUD、异步解析调度 |
+| segment | `app/segment/` | 1843 行 | v0 | 赛段定义、匹配算法、排行榜 |
+| parsing | `app/parsing/` | 1802 行 | v1 | GPX/FIT/Strava 三源统一翻译层(纯函数) |
+| strava | `app/strava/` | 1996 行 | v2 | Strava OAuth/API/Webhook/tier1-2 导入 |
+| notification | `app/notification/` | 693 行 | v3 | PR/KOM/KOM_lost 事件检测、通知列表 |
+| agent | (未建) | 0 | v7+ | 预留槽位(见 ADR-009) |
+
+### 2.2 模块内部结构(统一约定)
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    用户（小程序）                          │
-│         登录 / 上传文件 / 查排行榜 / 看通知                 │
-└────────┬──────────┬──────────┬──────────┬───────────────┘
-         │          │          │          │
-    ┌────▼───┐ ┌────▼────┐ ┌──▼───┐ ┌────▼────┐
-    │ 用户   │ │ 活动    │ │ 赛段 │ │ 通知    │
-    │ user/  │ │activity/│ │segment│ │notifi-  │
-    │        │ │         │ │      │ │cation/  │
-    │ 微信   │ │ 上传    │ │ 匹配 │ │ PR/KOM  │
-    │ 登录   │ │ 解析    │ │ 排行 │ │ 检测    │
-    │ JWT    │ │ 统计    │ │ 榜   │ │ 荣誉表  │
-    └────────┘ └────┬────┘ └──▲───┘ └────▲────┘
-                    │         │          │
-              ┌─────▼─────────┴──────────┘
-              │        Worker（后厨）
-              │  解析文件 → 写轨迹点 → 匹配赛段 → 检测通知
-              └─────┬─────────────────────────
-                    │
-    ┌───────────────▼───────────────┐
-    │  翻译层 parsing/ + Strava集成   │
-    │  GPX / FIT / Strava → 统一格式  │
-    └─────────────────────────────────┘
+app/<模块名>/
+  __init__.py      # 对外暴露什么
+  models.py        # SQLAlchemy 数据模型
+  schemas.py       # Pydantic 请求/响应
+  router.py        # FastAPI 路由
+  service.py       # 业务逻辑,不碰 HTTP
+  worker.py        # rq 异步任务(仅 activity 有;segment/strava 的异步逻辑混在 service 或单独文件)
+  README.md        # 模块画像(占位,逐模块补)
 ```
 
-| 车间 | 类比 | 干什么 | 文件夹 | 代码量 |
-|------|------|--------|--------|--------|
-| **用户** | 门卫室 | 验身份、发通行证（JWT） | `app/user/` | 591 行 |
-| **活动** | 收发室 | 收文件、排队、派工 | `app/activity/` | 1617 行 |
-| **赛段** | 计时裁判 | 匹配路线、记成绩、排名次 | `app/segment/` | 1843 行 |
-| **通知** | 广播室 | 检测 PR/KOM、通知用户、标读 | `app/notification/` | 693 行 |
-| **翻译层** | 翻译官 | GPX/FIT/Strava → 统一语言 | `app/parsing/` | 1802 行 |
-| **Strava** | 海关 | 对接 Strava 平台、导入骑行、OAuth/Webhook 加固 | `app/strava/` | 1996 行 |
+实际模块文件清单(v4 end):
 
-**总计 8927 行 Python（v4 后增长 ~160 行，主要在 strava/notification）+ 微信小程序前端约 2000 行。**
+- `app/activity/`: models / schemas / router / service / worker / simplify / power_zones
+- `app/segment/`: models / schemas / router / service / auto_match / matcher / coord_convert / _geo_utils
+- `app/parsing/`: gpx_parser / fit_parser / strava_adapter / stats_calculator / coord_normalizer / geo_math / types
+- `app/strava/`: models / router / service / client / import_scheduler
+- `app/notification/`: models / schemas / router / service / detector(在 service 内部)
+- `app/user/`: models / schemas / router / service
+
+⚠️ agent 注意:
+- 新增模块必须遵守此结构,不得自创
+- `service.py` 超过 300 行需要评估拆分(见 tech-debt.md)
+- 纯函数文件(如 `parsing/gpx_parser.py`, `segment/matcher.py`)不碰 DB,独立可测(见 ADR-008)
+
+### 2.3 模块依赖图
+
+```
+             parsing(纯函数层)
+             ↑          ↑
+             │          │
+    user ← activity ← segment ← notification
+              ↑          ↑
+              │          │
+              └── strava ┘
+              (strava 依赖 user/activity/segment/parsing,
+               通过 import_scheduler 写入 activities + segment_efforts + notifications)
+```
+
+**实际依赖**(grep 验证,v4 end):
+
+- `user`: 无业务模块依赖
+- `parsing`: 纯函数层,不 import 任何业务模块
+- `activity`: 依赖 `user` + `parsing`
+- `segment`: 依赖 `user` + `activity`(通过 trackpoints 查询)
+- `notification`: 依赖 `user` + `activity` + `segment`
+- `strava`: 依赖 `user` + `activity` + `segment` + `parsing`(`import_scheduler.py` import `activity.models.Activity` / `activity.worker.save_parse_result` / `segment.models.SegmentEffort` / `segment.auto_match.match_activity_against_segments`)
+
+⚠️ agent 注意:
+- strava **不是**"独立只出不入"——它反向消费 activity/segment 的 model 和 worker 函数,这是当前写入 Strava 导入活动的必经之路
+- 违反核心依赖方向(user ← activity ← segment ← notification)= 循环 import = FastAPI 启动崩溃
+- strava 反向 import activity/segment 不构成循环(activity/segment 不 import strava),但新增时必须确认单向
 
 ---
 
-## 数据怎么流的
+## 3. 运行时容器(7)
 
-从用户骑完车到看到排名，数据经过这条路：
+### 3.1 容器清单
+
+| 容器 | 镜像/启动 | 端口 | 引入版本 | 职责 |
+|---|---|---|---|---|
+| caddy | `caddy:2-alpine` | 80, 443(外) | v0 | HTTPS 终结、证书续期、反向代理 |
+| api | `velo-api` | 8000(内) | v0 | FastAPI, 接用户请求 |
+| worker | `velo-worker` | - | v0 | rq worker,异步解析/匹配 |
+| scheduler | `velo-scheduler` | - | **v4** | 每 30s 推进 Strava 导入(tier1/tier2) |
+| cleanup | `velo-cleanup` | - | v0 | 每 5min 扫 status=processing 超 10 分钟的 activity 置 failed |
+| db | `postgis/postgis:16-3.4` | 5432(内) | v0 | PostgreSQL 16 + PostGIS 3.4 |
+| redis | `redis:7-alpine` | 6379(内) | v0 | rq 队列 + OAuth state nonce + 限流计数 |
+
+### 3.2 容器职责细则
+
+#### caddy
+
+- 配置文件: `Caddyfile`(生产) / `Caddyfile.dev`(本地)
+- 自动 Let's Encrypt 证书续期
+- 代理规则: `api.velo.xxx` → `api:8000`
+- 失败症状: 用户完全无法访问,502/504
+
+#### api
+
+- 启动: `uvicorn app.main:app --host 0.0.0.0 --port 8000`
+- 全**同步**模式(见 ADR-001,禁止 async def)
+- 连接池: `pool_size=8, max_overflow=12, pool_recycle=3600`
+- 失败症状: 小程序报 500
+
+#### worker
+
+- 启动: `python worker.py`
+- rq 单 worker 进程,listen `rq:queue:default`
+- 子进程 fork 模式执行任务(崩溃隔离)
+- 超时 300s,重试 3 次,失败 → dead letter queue
+- 失败症状: 上传后永远"处理中"
+
+#### scheduler(v4 新增)
+
+- 启动: `python scheduler.py`
+- 每 30s 执行 `_run_tier1` + `_run_tier2`
+- Redis 连接**每次新建**(tech-debt #5,见 §9.2)
+- Redis 限速: 每 user 每秒 1 次 Strava API 调用
+- 失败症状: `/api/strava/import-progress` 的 `view_status` 为 `stalled`
+
+#### cleanup
+
+- 启动: `sh -c "while true; do python scripts/cleanup_zombies.py; sleep 300; done"`(脚本路径在 `scripts/`,不是根目录)
+- 每 300s 扫描: `SELECT * FROM activities WHERE status='processing' AND updated_at < now() - interval '10 minutes'`
+- 批量置 `failed`
+- 失败症状: 僵尸 activity 越积越多
+
+#### db
+
+- 挂载 volume: `pgdata:/var/lib/postgresql/data`
+- 备份策略(未做,tech-debt)
+- 失败症状: 所有功能 500
+
+#### redis
+
+- 挂载 volume: (目前仅 docker-compose 默认,无显式持久化 volume 配置)
+- 三用途: rq 队列 / OAuth state nonce(TTL 10min) / 限流计数(TTL 1s)
+- 失败症状: Worker 收不到任务 / OAuth 回调失败 / 限流失效
+
+### 3.3 容器拓扑
 
 ```
-第①步                第②步              第③步             第④步            第⑤步
-用户上传文件     →   Worker 解析     →   匹配赛段      →   检测通知     →   用户查看
-或 Strava 同步       翻译成统一格式       和已有赛段比对      有没有破纪录       排行榜/通知
-
-文件/API数据      →  Activity 表      →  SegmentEffort  →  Notification  →  API 返回
-                    Trackpoint 表        （成绩表）         （通知表）        JSON
+外部 HTTPS
+    ↓
+[caddy] ─────────┐
+                 ↓
+            [api] ←──→ [redis]
+              ↓           ↑
+            [db] ←──── [worker]
+              ↑           ↑
+              │        [scheduler]
+              │
+              └──── [cleanup]
 ```
 
-**关键：每一步只往右走，不回头。** 活动不知道通知的存在，赛段不知道 Strava 的存在。这样一块坏了不会连锁倒塌。
+⚠️ agent 注意:
+- 所有容器通过 docker-compose 内部网络通信,不暴露除 80/443 外的端口到宿主机(db/redis 仅绑定 127.0.0.1)
+- 容器重启顺序依赖: `db` → `redis` → `api/worker/scheduler/cleanup` → `caddy`
+- 修改 `docker-compose.yml` 需要全栈重启,不是热加载
 
 ---
 
-## 七张数据表
+## 4. 数据表(7)
 
-| 表名 | 存什么 | 类比 | 量级预估 |
-|------|--------|------|---------|
-| **users** | 用户档案 | 会员卡 | ~100 行 |
-| **activities** | 每次骑行记录（v4 加 activity_type 种子）| 比赛登记表 | ~3000 行 |
-| **trackpoints** | GPS 轨迹点 | 心电图采样点 | ~300 万行 |
-| **segments** | 赛段定义 | 赛道图纸 | ~30 行 |
-| **segment_efforts** | 赛段成绩 | 成绩单 | ~5000 行 |
-| **strava_imports** | Strava 导入进度（v4 改 updated_at tz-aware）| 搬运工进度条 | ~50 行 |
-| **notifications** | PR/KOM 通知（v4 加 is_read + 部分索引；外键改 SET NULL）| 广播便签 | ~500 行 |
+### 4.1 表清单
 
-**表之间的关系（谁依赖谁）：**
+| 表 | 引入版本 | 量级预估 | 负责模块 |
+|---|---|---|---|
+| `users` | v0 | 1k-10k | user |
+| `activities` | v0 | 30k-300k | activity |
+| `trackpoints` | v0 | 3M-30M | activity |
+| `segments` | v0 | 30-500 | segment |
+| `segment_efforts` | v0 | 5k-50k | segment |
+| `strava_imports` | v2 | 同 users | strava |
+| `notifications` | v3 | 5k-50k | notification |
+
+### 4.2 表字段规格
+
+> 所有字段以 `app/*/models.py` 为准。文档每期收尾对照 models.py 校验。
+
+#### 4.2.1 users
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | int PK | |
+| openid | str(64) unique | 微信 openid |
+| nickname | str(64) | 微信昵称(可空) |
+| avatar_url | text | 微信头像 URL(可空) |
+| ftp | int | 功率阈值 W(可空) |
+| weight | float | 体重 kg(可空) |
+| bike_type | str(20) | `road`/`gravel`/`mtb`(v4,可空) |
+| **weekly_goal** | float | 周目标公里,server_default=200.0(v4) |
+| is_admin | bool | 管理员标记,server_default=false(v1 手动改 DB 赋权) |
+| **strava_athlete_id** | BigInteger unique | Strava 用户 ID(v2,可空) |
+| **strava_access_token** | str(255) | Strava 访问令牌(v2,可空) |
+| **strava_refresh_token** | str(255) | Strava 刷新令牌(v2,可空) |
+| **strava_token_expires_at** | timestamp tz | Strava token 过期时间(v2,可空) |
+| **mute_notifications** | bool | 免打扰预留字段(v3,可空;本期前端不读写,仅占位) |
+| created_at | timestamp | server_default=now() |
+| updated_at | timestamp | onupdate=now() |
+
+⚠️ agent 注意:
+- **没有** `unionid` / `role` 字段(文档早期版本曾列出,已证伪)
+- `mute_notifications` 是预留字段,三态(NULL/true/false),实际开关存前端本地
+- `strava_*` token 字段明文存储(tech-debt,后续应加密)
+
+#### 4.2.2 activities
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | int PK | |
+| user_id | int FK → users.id | |
+| title | str(128) | 可空 |
+| status | str(20) | `pending`/`processing`/`importing`(Strava)/`completed`/`failed`(见 §4.3) |
+| **file_url** | text | 原始文件存储路径,GPX/FIT 必填,Strava 来源为 NULL |
+| **file_hash** | str(64) | SHA-256 去重,用 `UNIQUE(user_id, file_hash)` 兜底 |
+| error_message | text | 解析失败时的错误信息,可空 |
+| distance | float | 米,可空 |
+| duration | int | 秒,可空 |
+| elevation_gain | float | 米,可空 |
+| **avg_speed** | float | **m/s**(以 parsing/stats_calculator 为准,可空) |
+| **max_speed** | float | **m/s**(可空) |
+| avg_power | float | W,可空 |
+| **max_power** | float | W,可空 |
+| **normalized_power** | float | NP,FIT 自带,GPX/Strava 为 NULL |
+| **avg_hr** | float | bpm,可空(字段名**不是** `avg_heart_rate`) |
+| **max_hr** | float | bpm,可空 |
+| avg_cadence | float | rpm,可空 |
+| **calories** | float | kcal,可空 |
+| started_at | timestamp | 骑行开始,可空 |
+| finished_at | timestamp | 骑行结束,可空 |
+| **data_source** | str(20) | `gpx`/`fit`/`strava`(v2,老数据 NULL) |
+| **activity_type** | str(20) | `cycling`/`running`/`hiking`,server_default=cycling(v4) |
+| **strava_activity_id** | BigInteger unique | Strava 活动 ID,非 Strava 来源为 NULL |
+| simplified_track | jsonb | Douglas-Peucker 简化轨迹 |
+| **splits** | jsonb | 每 10km 分段(v4) |
+| **power_zones** | jsonb | 功率区间分布(v4,依赖 FTP) |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+索引: `idx_activities_user_status(user_id, status)` / `idx_activities_user_started(user_id, started_at)` / `UNIQUE(user_id, file_hash) uq_user_file_hash`
+
+⚠️ agent 注意:
+- 字段名是 **`file_url`** 不是 `gpx_file_url`,**`avg_hr`** 不是 `avg_heart_rate`
+- **没有** `moving_time` 字段(早期文档误列,实际只有 `duration`)
+- **没有** `card_image_url` 字段(v1 规划但后端卡片流水线从未实现,前端 Canvas 一条路)
+- **没有** `is_deleted` 软删字段(硬删 + 外键级联)
+- 速度字段单位是 **m/s**(stats_calculator 统一口径),activity/models.py 字段注释写的 `km/h` 是旧注释错误,以 parsing 层为准
+
+#### 4.2.3 trackpoints
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | serial PK | |
+| activity_id | int FK → activities.id ON DELETE CASCADE | |
+| seq | int | 顺序 |
+| latitude | float | 必填 |
+| longitude | float | 必填 |
+| elevation | float | 米,可空 |
+| timestamp | timestamp | 可空 |
+| heart_rate | int | bpm,可空 |
+| cadence | int | rpm,可空 |
+| power | int | W,可空 |
+| **speed** | float | 瞬时速度 m/s(v2,老数据 NULL) |
+| **distance** | float | 累计距离米(v2,老数据 NULL) |
+| geom | `GEOMETRY(POINT, 4326)` | PostGIS 几何列,可空 |
+
+索引: `idx_trackpoints_activity(activity_id)` + `idx_trackpoints_geom GIST(geom)`
+
+⚠️ agent 注意:
+- 缺少 `UNIQUE(activity_id, seq)` 约束(tech-debt,Worker 重试可能插重复)
+- 批量插入用 `bulk_insert_mappings`,不要 `session.add` 循环
+- 上限 50000 点/activity(见 CLAUDE.md 已知风险)
+
+#### 4.2.4 segments
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | int PK | |
+| name | str(128) | 必填 |
+| **description** | text | 可空 |
+| distance | float | 米,必填 |
+| elevation_gain | float | 米,可空 |
+| elevation_loss | float | 米,可空 |
+| avg_gradient | float | %,可空 |
+| **elevation_profile** | **text** | 海拔采样 JSON 字符串(约 80 个数值)——**不是 jsonb** |
+| start_lat | float | 必填 |
+| start_lon | float | 必填 |
+| end_lat | float | 必填 |
+| end_lon | float | 必填 |
+| match_tolerance | float | server_default=50.0(米) |
+| min_match_ratio | float | server_default=0.8 |
+| reference_line | `GEOMETRY(LINESTRING, 4326)` | 参考轨迹,必填 |
+| created_at | timestamp | |
+
+索引: **`idx_segments_geom GIST(reference_line)`**(真实索引名不是 `idx_segments_reference_line`)
+
+⚠️ agent 注意:
+- **没有** `updated_at` 字段(只有 `created_at`)
+- **没有** `status`(draft/active/archived)/`city`/`category`/`reference_points jsonb` 字段(v1 规划未实现)
+- 创建/删除只能 admin 通过 API 做
+
+#### 4.2.5 segment_efforts
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | int PK | |
+| segment_id | int FK → segments.id | |
+| activity_id | int FK → activities.id ON DELETE CASCADE | |
+| user_id | int FK → users.id | 冗余存储,排行榜查询不必 JOIN |
+| elapsed_time | int | 秒,必填 |
+| **avg_speed** | float | km/h,可空 |
+| avg_power | float | W,可空 |
+| **start_index** | int | 匹配到的 trackpoint seq 起,必填 |
+| **end_index** | int | 匹配到的 trackpoint seq 止,必填 |
+| created_at | timestamp | |
+
+索引 + 约束:
+- **`UNIQUE(segment_id, activity_id) uq_segment_activity`**(**两列**,不是三列)
+- `idx_efforts_segment_time(segment_id, elapsed_time)` — 排行榜
+- `idx_efforts_user(user_id)` — 个人成绩
+- `idx_efforts_segment_user_time(segment_id, user_id, elapsed_time)` — PR 检测 index-only scan
+
+⚠️ agent 注意:
+- **没有** `avg_heart_rate` / `started_at` 字段
+- **没有** `is_pr` / `is_kom` 字段(PR/KOM 是 notification.service 计算后的事件,只在 `notifications` 表有,见 ADR-004)
+- PR/KOM 展示需要前端 join `/api/activities/{id}/segments` + `/api/notifications?event_type=pr` 两个接口
+
+#### 4.2.6 strava_imports(v2)
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | int PK | |
+| user_id | int FK → users.id | 一个用户可能多次解绑再绑,同时只一个 active |
+| **strava_athlete_id** | BigInteger | 冗余存储,不必 JOIN users |
+| **total_activities** | int | 首扫列表后填入,扫描前 NULL |
+| **tier1_completed** | **int**(**计数器**,不是 bool) | server_default=0,第一层列表扫描完成数 |
+| **tier2_completed** | int | server_default=0,第二层详情+轨迹完成数 |
+| **tier2_skipped** | int | server_default=0,跳过数(非骑行/无轨迹等) |
+| **cursor_before** | timestamp tz | 断点续传时间游标,NULL=从最新起 |
+| status | str(20) | `active`/`paused`/`completed`,server_default=active |
+| created_at | timestamp | naive |
+| **updated_at** | timestamp tz | v4 改为 tz-aware(stalled 判定用) |
+
+⚠️ agent 注意:
+- `updated_at` 是 tz-aware,其他表的 datetime 是 naive(tech-debt #1)
+- 不要直接 `datetime.utcnow()`,用 `datetime.now(timezone.utc)`
+- **没有** `tier2_cursor`(实际叫 `cursor_before`)/`last_strava_sync_at`/`total_imported`/`total_skipped`/`last_error` 字段(文档早期版本误列,已证伪)
+- `tier1_completed` 是计数器 int,不是 bool —— 判断"tier1 扫完"的逻辑在 service 层,不在 DB 字段层面
+
+#### 4.2.7 notifications(v3)
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | int PK | |
+| user_id | int FK → users.id ON DELETE CASCADE | 接收人 |
+| event_type | str(20) | `pr`/`kom`/`kom_lost`,CHECK 约束 |
+| **segment_id** | int FK → segments.id ON DELETE SET NULL | v4 外键改 SET NULL,可空 |
+| **activity_id** | int FK → activities.id ON DELETE SET NULL | v4 外键改 SET NULL,可空 |
+| **effort_id** | int FK → segment_efforts.id ON DELETE SET NULL | 关联成绩,可空 |
+| **elapsed_time** | int | 用时快照秒数(kom_lost 时 NULL) |
+| **rank** | int | 排名快照,PR 且 rank>10 时 NULL |
+| **rival_user_id** | int FK → users.id ON DELETE SET NULL | KOM 被夺时的对手 |
+| expires_at | timestamp | created_at+60 天 |
+| created_at | timestamp | |
+| **is_read** | bool | server_default=false(v4 新增) |
+
+索引 + 约束:
+- `UNIQUE(effort_id, event_type) uq_notif_effort_type` — 幂等防护,同成绩不重复生成同类通知
+- `idx_notif_user_created(user_id, created_at)` — 列表按用户+时间倒序
+- `idx_notif_expires(expires_at)` — 过期清理
+- `idx_notifications_user_unread(user_id) WHERE is_read=FALSE` — **v4 部分索引**,加速 unread_count 查询(在 phase4_frontend_consume migration 建)
+- `CheckConstraint event_type IN ('pr','kom','kom_lost') ck_notif_event_type`
+
+⚠️ agent 注意:
+- **没有** `message` / `meta jsonb` 字段(文档早期版本误列,实际通知内容由前端按 event_type 组装)
+- `effort_id` 是幂等防护主键,不是可选字段——新通知必须带 effort_id(kom_lost 可为 NULL 是特例)
+
+### 4.3 表关系图
 
 ```
-users ← activities ← trackpoints
-                   ← segment_efforts → segments
-                   ← notifications
-strava_imports → users
+users (1) ─── (N) activities ─── (N) trackpoints (CASCADE)
+  │                │
+  │                ├─── (N) segment_efforts (CASCADE) ──(N)── segments
+  │                │
+  │                └─── (N) notifications (SET NULL)
+  │                                 │
+  │                                 ├─ segment_id (SET NULL) → segments
+  │                                 ├─ effort_id (SET NULL) → segment_efforts
+  │                                 └─ rival_user_id (SET NULL) → users
+  │
+  └─── (1..N) strava_imports (同一 user 可有多条,同时只一条 active)
 ```
 
-箭头方向 = 删除方向。删用户 → 自动删他的活动 → 自动删轨迹点和成绩。
+### 4.4 Activity 状态机
 
----
+```
+[不存在]
+   │ upload
+   ▼
+[pending] ─── worker 抢锁 ──► [processing] ─── 解析成功 ──► [completed]
+                                  │                            │
+                                  │ 10min 超时                  │ 匹配 + 通知触发
+                                  ▼                            │
+                              [failed]                          │
+                                                                ▼
+                                                        (不再变状态)
 
-## 七个进程
-
-服务器上跑着 7 个进程（Docker 容器），各司其职：
-
-| 容器 | 干什么 | 类比 | 出问题的症状 |
-|------|--------|------|------------|
-| **api** | 接收用户请求、返回数据 | 前台柜员 | 小程序报 500 错误 |
-| **worker** | 后台解析文件、匹配赛段 | 后厨 | 上传后一直"处理中" |
-| **scheduler** | 每 30s 推进 Strava 历史导入（v4 新增）| 搬家调度员 | Strava 同步进度不动 / view_status=stalled |
-| **cleanup** | 每 5 分钟扫僵尸活动（>10min 的）| 保洁员 | 僵尸活动越积越多 |
-| **db** | PostgreSQL 数据库 | 档案柜 | 所有功能都报错 |
-| **redis** | 消息队列 + state nonce + 限流计数器 | 传话筒 | Worker/Scheduler 收不到任务 / OAuth 失败 |
-| **caddy** | HTTPS + 反向代理 | 大门保安 | 完全无法访问 |
-
----
-
-## 出了 bug 去哪找
-
-### 快速定位表
-
-| 症状 | 最可能的车间 | 看哪个日志 | 查哪个文件 |
-|------|------------|----------|----------|
-| 登录失败 | 用户 | api 日志 | `user/service.py` |
-| 上传后卡在"处理中" | 活动/Worker | worker 日志 | `activity/worker.py` |
-| 上传成功但无赛段成绩 | 赛段 | worker 日志 | `segment/auto_match.py` |
-| 排行榜数据不对 | 赛段 | api 日志 | `segment/service.py` |
-| 没收到 PR/KOM 通知 | 通知 | worker 日志 | `notification/service.py` |
-| 通知红点不消失 / 不显示 | 通知 / 前端 | api 日志 | `notification/service.py:mark_all_read` + `home.js` |
-| Strava 同步不动 | Strava | **scheduler 日志** | `strava/import_scheduler.py` + `scheduler.py` |
-| Strava 进度卡 / view_status=stalled | Strava | scheduler 日志 | scheduler 容器是否在跑 + `service.py:get_import_progress` |
-| Webhook 收 403 | Strava | api 日志 | `STRAVA_WEBHOOK_SUBSCRIPTION_ID` env 是否配 |
-| OAuth 回调失败 | Strava | api 日志 | `service.py:handle_callback` + Redis state |
-| GPX 解析出错 | 翻译层 | worker 日志 | `parsing/gpx_parser.py` |
-| FIT 文件解析出错 | 翻译层 | worker 日志 | `parsing/fit_parser.py` |
-| 所有功能都挂 | 数据库或 Redis | db/redis 日志 | Docker 容器状态 |
-
-### 看日志的命令
-
-```bash
-# SSH 到服务器
-ssh ubuntu@114.132.190.245
-
-# 进项目目录
-cd ~/velo
-
-# 看 API 日志（前台柜员）
-sudo docker compose logs api --tail 30
-
-# 看 Worker 日志（后厨）—— GPX/FIT 上传 bug 在这里
-sudo docker compose logs worker --tail 30
-
-# 看 Scheduler 日志（Strava 调度）—— Strava 同步问题在这里
-sudo docker compose logs scheduler --tail 30
-
-# 看数据库日志
-sudo docker compose logs db --tail 30
-
-# 看所有容器状态
-sudo docker compose ps
+Strava 导入路径:
+[不存在] ──► [importing] ─── 解析成功 ──► [completed]
+                 │
+                 │ 失败
+                 ▼
+             [failed]
 ```
 
----
+⚠️ agent 注意:
+- 完成态叫 `completed` 不叫 `done`(CLAUDE.md 技术栈陷阱 #10 — 不要脑补状态值)
+- worker 抢锁用 `UPDATE activities SET status='processing' WHERE id=X AND status='pending'`,原子,幂等
+- 禁止非法状态转换,应用层校验(DB 层无 CHECK 约束,tech-debt)
 
-## AI 改了代码，怎么判断动了哪块
+### 4.5 StravaImport 状态机
 
-| AI 说改了这个文件 | 它动的是 | 可能影响 |
-|-----------------|---------|---------|
-| `user/*.py` | 登录/个人资料 | 所有需要登录的功能 |
-| `activity/*.py` | 上传/解析/查询 | 骑行详情页、统计 |
-| `segment/auto_match.py` | 赛段匹配算法 | 成绩准不准 |
-| `segment/service.py` | 排行榜查询 | 排名对不对 |
-| `notification/*.py` | 通知检测 | PR/KOM 通知 |
-| `parsing/*.py` | 文件解析 | 所有数据来源的第一步 |
-| `strava/*.py` | Strava 对接 | 同步功能 |
-| `main.py` | 路由注册 | 新 API 能不能访问到 |
-| `scheduler.py` | Strava 调度入口（v4 新增）| Strava 同步是否在跑 |
-| `migrations/*.py` | 数据库结构 | 需要跑迁移才生效 |
-| `docker-compose.yml` | 容器配置 | 需要重启容器 |
-| `miniprogram/pages/notification/*` | 通知中心页 | 红点点击后看到的页面 |
-| `miniprogram/pages/honor/*` | 荣誉页 | "我的"页 → 荣誉入口 |
-| `miniprogram/pages/settings/*` | 设置页（免打扰）| 静音开关 |
+```
+[active] ──── 用户点暂停 ──► [paused]
+   │          ◄── 用户点继续
+   │
+   │ tier1_completed=total 且 tier2 扫完全部历史
+   ▼
+[completed]
+```
+
+⚠️ agent 注意: `active` 不叫 `running`,`completed` 不叫 `done`。
 
 ---
 
-## API 地图
+## 5. API 汇总
 
-一共 **22 个接口**，分五组：
+### 5.1 用户(4)
 
-### 用户（4 个）
-| 方法 | 路径 | 干什么 |
-|------|------|--------|
-| POST | `/api/user/login` | 微信登录 |
-| GET | `/api/user/profile` | 看个人资料 |
-| PUT | `/api/user/profile` | 改个人资料 |
-| GET | `/api/user/stats` | 骑行统计（总里程等） |
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/user/login` | 微信登录,body `{code: str}`,return `{token, user, is_new}` |
+| GET | `/api/user/profile` | 个人资料 |
+| PUT | `/api/user/profile` | 更新个人资料 |
+| GET | `/api/user/stats` | 骑行统计(总里程等) |
 
-### 活动（7 个）
-| 方法 | 路径 | 干什么 |
-|------|------|--------|
-| POST | `/api/activities/upload` | 上传 GPX/FIT |
-| GET | `/api/activities` | 骑行列表 |
-| GET | `/api/activities/{id}` | 骑行详情 |
-| PATCH | `/api/activities/{id}` | 改标题 |
-| DELETE | `/api/activities/{id}` | 删骑行 |
-| GET | `/api/activities/{id}/timeseries` | 速度/功率曲线数据 |
-| GET | `/api/activities/{id}/status` | 解析进度轮询 |
+### 5.2 活动(7)
 
-### 赛段（7 个）
-| 方法 | 路径 | 干什么 |
-|------|------|--------|
-| POST | `/api/segments` | 创建赛段（管理员） |
-| DELETE | `/api/segments/{id}` | 删赛段（管理员） |
-| GET | `/api/segments` | 赛段列表（支持附近搜索） |
-| GET | `/api/segments/{id}` | 赛段详情 + TOP20 |
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/activities/upload` | 上传 GPX/FIT,multipart/form-data |
+| GET | `/api/activities` | 活动列表,分页 `page` + `page_size` |
+| GET | `/api/activities/{id}` | 活动详情 |
+| PATCH | `/api/activities/{id}` | 改标题等 |
+| DELETE | `/api/activities/{id}` | 删 |
+| GET | `/api/activities/{id}/timeseries` | 速度/心率/功率时间序列 |
+| GET | `/api/activities/{id}/status` | 轮询解析进度 |
+
+### 5.3 赛段(7)
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/segments` | 创建赛段,admin only |
+| DELETE | `/api/segments/{id}` | 删,admin only |
+| GET | `/api/segments` | 赛段列表,支持 `?near=lat,lon&radius=5000` 附近搜索 |
+| GET | `/api/segments/{id}` | 详情 + TOP20 |
 | GET | `/api/segments/{id}/leaderboard` | 完整排行榜 |
-| GET | `/api/user/efforts` | 我的所有赛段成绩 |
-| GET | `/api/activities/{id}/segments` | 这次骑行经过的赛段 |
+| GET | `/api/user/efforts` | 我的所有赛段成绩(挂载在 user_effort_router) |
+| GET | `/api/activities/{id}/segments` | 此活动经过的赛段 + 成绩(activity_segment_router) |
 
-### 通知（3 个）
-| 方法 | 路径 | 干什么 |
-|------|------|--------|
-| GET | `/api/notifications` | 通知列表（v4 加 `unread_only` 参数 + 响应永远带 `unread_count`）|
-| POST | `/api/notifications/mark-all-read` | 一键标读（v4 新增，幂等）|
-| GET | `/api/user/honors` | KOM + 前十荣誉表 |
+### 5.4 通知(3)
 
-### Strava（6 个）
-| 方法 | 路径 | 干什么 |
-|------|------|--------|
-| GET | `/api/strava/authorize` | 获取授权链接（v4 改 Redis nonce state）|
-| GET | `/api/strava/callback` | 授权回调（v4 重写防重复绑定 + 换号清理）|
-| GET | `/api/strava/status` | 绑定状态（v4 响应加 `bound` 别名 = `connected`）|
-| POST | `/api/strava/sync` | 手动同步（v4 联动 tier1_completed）|
-| GET | `/api/strava/import-progress` | 导入进度（v4 加 `view_status`：none/active/stalled/paused/completed + Redis 1s/user 限速）|
-| GET/POST | `/api/strava/webhook` | Webhook（v4 加 subscription_id 校验防伪造）|
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/notifications` | 列表,支持 `unread_only` 参数,响应必带 `unread_count` |
+| POST | `/api/notifications/mark-all-read` | 一键标读,幂等 |
+| GET | `/api/user/honors` | KOM + Top 10 荣誉聚合(挂载在 honor_router) |
 
----
+### 5.5 Strava(7 路由,6 行展示)
 
-## 技术栈速查
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/strava/authorize` | 获取授权链接,Redis nonce state |
+| GET | `/api/strava/callback` | OAuth 回调,防重复绑定 + 换号清理 |
+| GET | `/api/strava/status` | 绑定状态,响应含 `bound`=`connected` |
+| GET | `/api/strava/webhook` | Webhook 订阅验证(challenge) |
+| POST | `/api/strava/webhook` | Webhook 事件推送,subscription_id 校验防伪造 |
+| POST | `/api/strava/sync` | 手动触发同步,联动 tier1_completed |
+| GET | `/api/strava/import-progress` | 进度,含 `view_status`: `none/active/stalled/paused/completed`,Redis 1s/user 限速 |
 
-| 层 | 用什么 | 为什么选它 |
-|----|--------|----------|
-| 后端框架 | FastAPI (Python) | 快、自动生成文档、同步模式简单 |
-| 数据库 | PostgreSQL 16 + PostGIS | 空间查询（"附近有哪些赛段"） |
-| 消息队列 | Redis + rq | 异步解析不阻塞用户操作 |
-| 反向代理 | Caddy | 自动 HTTPS、配置极简 |
-| 容器 | Docker Compose | 一条命令启动所有服务 |
-| 前端 | 微信小程序（原生） | 目标用户在微信生态 |
-| 文件解析 | garmin-fit-sdk + 自研 GPX 解析 | FIT 用官方库、GPX 自己写更灵活 |
-| 坐标转换 | xyconvert + numpy | GCJ-02（国内偏移）→ WGS-84（标准） |
+**API 总路由数: 25**(user 4 + activity 7 + segment 5 + user_effort 1 + activity_segment 1 + notification 2 + honor 1 + strava 7 − 1(`/api/user/efforts` 归 segment 一组统计)= 25,按业务组 4+7+7+3+7 加总 25 不变)。
+
+⚠️ agent 注意:
+- 完整 OpenAPI schema: `/api/docs`(FastAPI 自动生成)
+- 所有需登录接口都走 JWT 中间件,401 时前端应该 `wx.login` 静默续期
+- API 路径用**复数**(`/activities` 不是 `/activity`),但 `/user/*` 不复数(单用户 resource)
 
 ---
 
-## 和团队对接时的一分钟话术
+## 6. 前端结构
 
-> "VELO 分六个模块。用户模块管登录，活动模块管上传和解析，赛段模块管匹配和排行榜，通知模块管 PR 和 KOM 提醒，翻译层负责把不同格式的骑行文件翻译成统一格式，Strava 模块负责从 Strava 导入数据。
->
-> 数据流是单向的：上传 → 解析 → 匹配 → 通知 → 用户看到红点 → 点开看排名。每个模块只管自己的事，一个崩了不影响其他的。
->
-> 后端跑在 Docker 里，**七个容器**：API 接请求、Worker 解析文件、Scheduler 推 Strava 同步（每 30s）、Cleanup 扫僵尸、PostgreSQL 存数据、Redis 传消息+OAuth state+限流、Caddy 管 HTTPS。
->
-> 小程序 5 个 tab + 通知中心 + 荣誉页 + 设置页（免打扰开关）。
->
-> 目前 **24 个 API 接口**，**181 个自动化测试**，~9500 行 Python + ~2000 行小程序代码。"
+### 6.1 小程序 5 tabs(v4 实际)
+
+| # | 名称 | 图标 | 职责 |
+|---|---|---|---|
+| 1 | 动态 | 屋子 | 我的活动列表 + 周统计卡片 + 铃铛通知入口(未来加关注 feed) |
+| 2 | 探索 | 指南针 | (v4 瘦身后暂空,待 v5/v6 填热图 + 附近赛段) |
+| 3 | 上传 | 加号 | GPX/FIT 上传 → 解析 → 跳详情页 |
+| 4 | 赛段 | 山峰 | 赛段列表 + 排行榜 + 我的成绩(leaderboard 页) |
+| 5 | 我的 | 人像 | 个人资料(profile) + 骑行记录 + 设置 + 荣誉入口 |
+
+### 6.2 子页(非 tab)
+
+- `miniprogram/pages/notification/` — 通知中心(从铃铛进入)
+- `miniprogram/pages/honor/` — 荣誉页(我的 → 荣誉入口)
+- `miniprogram/pages/settings/` — 设置页(免打扰开关)
+- `miniprogram/pages/detail/` — 活动详情页(任何列表点击进入)
+- `miniprogram/pages/leaderboard/` — 赛段 tab 兼详情(含坡度剖面,v5 待完整化)
+- `miniprogram/pages/upload/` — 上传 tab
+- `miniprogram/pages/explore/` — 探索 tab(v4 暂空)
+- `miniprogram/pages/profile/` — 我的 tab
+- `miniprogram/pages/home/` — 动态 tab
+
+### 6.3 前端-后端数据流示例
+
+**"动态 tab 显示活动卡片上的 PR 徽章"的真实数据流**:
+
+```
+home.onShow()
+  │
+  ├─── GET /api/activities  ──► 活动列表 A
+  │
+  ├─── GET /api/notifications?unread_only=true&page_size=1 ──► unread_count(铃铛红点)
+  │
+  └─── 对每条活动 A[i]:
+        GET /api/activities/{A[i].id}/segments ──► 经过的赛段 + 成绩
+        GET /api/notifications?activity_id={A[i].id}&event_type=pr ──► PR 事件
+        合并后渲染 "PR <段名> <时间>" 徽章
+```
+
+⚠️ agent 注意:
+- PR/KOM 数据**不在** `/api/activities/{id}` 主响应里(见 ADR-004)
+- 前端要 join 两个接口(activities/segments + notifications)才能算出徽章
+- v4 前端瘦身后,探索 tab 和信息流 feed 暂时空白,v5+ 填内容
 
 ---
 
-## 附录：v4 收尾 — 黑盒度体检三问答卷（2026-04-18）
+## 7. 依赖方向规则
 
-> 防黑盒化机制 2 要求每期收尾必答。
+### 7.1 铁律
 
-**Q1：10 分钟讲解挑战 — 我能用 10 分钟给陌生人讲清整个系统吗？哪个模块卡壳最多？**
+```
+核心链:   user ← activity ← segment ← notification
+纯函数层: parsing (被 activity + strava 调用, 无反向依赖)
+集成层:   strava 依赖 user + activity + segment + parsing
+         (通过 import_scheduler 写入 activities + segment_efforts + notifications)
+```
 
-> 能。骑行成绩加工厂的比喻 + 7 个容器 + 4 步数据流，10 分钟够。
->
-> **卡壳最多的模块：Strava**（OAuth 流程 + 两层导入 + scheduler/Webhook/手动 sync 三入口 + 行锁/Redis state/限流多个机制叠加）。这是 v4 加固后的复杂度代价。**清理动作**：service.py 727 行已黄灯，下期触达时考虑拆 OAuth / token 管理 / 业务同步三个独立文件。
+- `user`: 不 import 任何业务模块
+- `parsing`: 纯函数,不 import 任何业务模块
+- `activity`: 只 import `user` 和 `parsing`
+- `segment`: 只 import `user` 和 `activity`(通过 trackpoints)
+- `notification`: 只 import `user / activity / segment`
+- `strava`: import `user / activity(models+worker) / segment(models+auto_match) / parsing`
 
-**Q2：数据流复述 — 挑一个典型用户操作，从按钮点击到数据落库能在纸上画清楚吗？**
+**strava 不是独立"只出不入"**——它反向消费 activity/segment 的 model 和函数,这是把 Strava 活动落入 velo 数据库的必经路径。只要 activity/segment **不反向** import strava,就不构成循环。
 
-> 选"上传 GPX 看到赛段成绩 + 通知"全链路：
->
-> 1. 小程序 → `POST /api/activities/upload`（带 JWT）
-> 2. api 容器：哈希去重 → 文件落 LocalStorage → DB 写 Activity(pending) → 入 Redis 队列
-> 3. worker 容器：从队列取任务 → 原子抢锁 status=processing → 下载文件 → **activity_type 分流**（v4 task-7.7：非 cycling 直接 failed）→ 翻译层解析 → 写 Trackpoint → 写 Activity 统计字段 → status=completed
-> 4. worker 同步触发 auto_match → 匹配赛段 → SAVEPOINT 隔离写入 SegmentEffort → 调 detect_events → SAVEPOINT 隔离写 Notification
-> 5. 用户回首页 → onShow → `GET /notifications?unread_only=true&page_size=1` → 拿 unread_count → 红点显示
-> 6. 用户点铃铛 → 通知中心页 → 并行调 GET 列表 + POST mark-all-read → UI 立即视觉化已读
-> 7. 用户点通知条目 → wx.navigateTo `/leaderboard?segment_id=X` → leaderboard.onLoad 接参数定位赛段（v4 批 8 双审修复）
->
-> 全链路画清楚。每个箭头对应代码文件 file:line 我都能指出。
+### 7.2 防火墙式扩展
 
-**Q3：30 秒读懂 — 有没有哪个文件 / 函数自己看都要想超过 30 秒才明白意图？**
+**新功能默认新表、新模块,禁止修改核心表**(`users` / `activities` / `segments` / `segment_efforts`),除非修 bug。
 
-> 有 2 处需要后续清理：
-> - `app/strava/service.py:handle_callback`（重写后 7 步流程，146 行）—— 有详细注释，但流程长，第一次读需要 1 分钟。**对策**：保留（流程本身就是这 7 步必要的，砍任何一步都丢功能）。建议下期触达时把 7 步抽成 7 个内部函数。
-> - `app/strava/import_scheduler.py:_run_tier1`（含 SAVEPOINT 嵌套 + Redis 计数器 + SQL 原子表达式，70+ 行）—— v4 加固后变厚。**对策**：暂保留，下期触达时考虑拆 fetch / persist / progress 三步。
+- ✅ 正例: 积分系统建 `user_progress` 独立表,不在 `users` 加 `score/level`
+- ❌ 反例: v4 把 `mute_notifications` 加到 `users`(已做,未来想砍代价大)
+- ❌ 反例: v4 把 `activity_type` 加到 `activities`(已做)
 
-> 三问体检结论：黑盒度可控。两处复杂度高的函数已识别 + 写进 `docs/tech-debt.md` 下期清。
+详见 ADR-008(为什么防火墙式扩展)。
+
+### 7.3 agent-native 独立性
+
+v7+ 的 agent 模块与主 SaaS 通过**薄接口**连接,不共享 session / 不互相 import。见 ADR-009(为什么 agent 层独立)。
+
+---
+
+## 8. AI 改动定位表
+
+用于: agent 告诉 Tim"我改了 X 文件",Tim 5 秒内判断影响范围。
+
+| AI 说改了这个文件 | 动的是 | 需要警惕 | 哪个容器重启 |
+|---|---|---|---|
+| `app/user/*.py` | 登录/资料 | 所有登录相关 | api |
+| `app/activity/models.py` | activities/trackpoints 表 | **必须 Alembic 迁移** | api + worker + 迁移 |
+| `app/activity/service.py` | 活动业务逻辑 | 跨模块依赖 | api |
+| `app/activity/worker.py` | 异步解析调度 + `save_parse_result` | 幂等、重入、strava 复用 | worker |
+| `app/activity/simplify.py` / `power_zones.py` | 纯函数后处理 | 无副作用必须保持 | worker |
+| `app/segment/auto_match.py` | 赛段匹配总调度 | 匹配假阳/假阴率 | worker |
+| `app/segment/matcher.py` | 纯函数空间匹配 | 无副作用必须保持 | worker |
+| `app/segment/service.py` | 排行榜查询 | N+1 查询 | api |
+| `app/notification/detector.py` 或 service 内部 | PR/KOM 检测纯函数 | 事件逻辑 | worker |
+| `app/notification/service.py` | 通知列表/标读/荣誉 | 前端红点 | api |
+| `app/parsing/gpx_parser.py` | GPX 解析纯函数 | 所有 GPX 上传 | worker |
+| `app/parsing/fit_parser.py` | FIT 解析纯函数 | 所有 FIT 上传 | worker |
+| `app/parsing/strava_adapter.py` | Strava 数据 → ParseResult | Strava 导入链路 | worker + scheduler |
+| `app/parsing/stats_calculator.py` | 统计字段生成 | splits/power_zones 口径 | worker |
+| `app/strava/service.py` | Strava OAuth/业务 | token 失效、换号 | api + scheduler |
+| `app/strava/client.py` | Strava API client | 限流、token 刷新 | api + scheduler |
+| `app/strava/import_scheduler.py` | tier1/2 推进 | Redis 连接复用(tech-debt #5)、SAVEPOINT 隔离 | scheduler |
+| `app/main.py` | 路由注册 | 新 API 能否访问 | api |
+| `scheduler.py` | scheduler 入口 | Strava 同步是否跑 | scheduler |
+| `worker.py` | worker 入口 | 队列监听 | worker |
+| **`scripts/cleanup_zombies.py`** | 僵尸扫描 | processing 超时兜底 | cleanup |
+| `migrations/versions/*.py` | **数据库结构** | 上生产前必须本地 PG 跑通 | 需 alembic upgrade |
+| `Dockerfile` / `docker-compose.yml` | 镜像/容器配置 | 端口、volume、环境变量 | 全栈 |
+| `requirements.txt` | Python 依赖 | 版本兼容 | docker-compose build |
+| `.env` | 秘钥 | 不许进 git | api + worker + scheduler |
+| `Caddyfile` | 反向代理 | TLS、路由 | caddy |
+| `miniprogram/pages/home/*` | 动态 tab | 周统计、铃铛 | 小程序 |
+| `miniprogram/pages/notification/*` | 通知中心页 | 红点点击 | 小程序 |
+| `miniprogram/pages/leaderboard/*` | 赛段详情/排行 | segment_id 参数、定位 | 小程序 |
+| `miniprogram/pages/detail/*` | 活动详情 | 地图、海拔、数据 | 小程序 |
+| `miniprogram/pages/honor/*` | 荣誉页 | KOM + Top10 | 小程序 |
+| `miniprogram/pages/settings/*` | 设置页 | 免打扰开关 | 小程序 |
+
+---
+
+## 9. 已知风险状态
+
+### 9.1 已修复(🟢,但 agent 需知道这些陷阱存在)
+
+| 风险 | 修复方式 | 修复版本 |
+|---|---|---|
+| Worker 重入 | UPDATE WHERE status='pending' 原子抢锁 | v0 |
+| 僵尸 activity | cleanup 容器每 5min 扫描 | v0 |
+| 重复上传 | file_hash SHA-256 + UNIQUE(user_id, file_hash) | v0 |
+| 内存爆炸 | trackpoint 上限 50000 + 批量插入 | v0 |
+| 连接池不足 | pool_size=8, max_overflow=12 | v0 |
+| OAuth state CSRF/重放 | Redis nonce GETDEL 一次性消费 | v4 |
+| Webhook 伪造 | subscription_id 校验 | v4 |
+| scheduler 不跑 | 独立容器启动 | v4 |
+| mark-all-read 非幂等 | 改为幂等 | v4 |
+| datetime tz 不一致(strava_imports.updated_at) | 改 tz-aware | v4 |
+
+### 9.2 待修(🟡 / 🔴,tech-debt)
+
+| 风险 | 级别 | 状态 |
+|---|---|---|
+| datetime tz 不一致(activities/notifications 其他字段) | 🟡 P1 | tech-debt #1 |
+| ensure_valid_token 行锁约束 | 🟡 P1 | tech-debt #2 |
+| ensure_valid_token 未绑定用户路径 | 🟡 P1 | tech-debt #3 |
+| SQLAlchemy legacy .get() | 🟢 低 | tech-debt #4 |
+| scheduler Redis 连接每次新建 | 🟡 P1 | tech-debt #5 |
+| N+1 查询(排名循环) | 🟡 | 代码 TODO |
+| 孤儿文件清理 | 🟡 | 无机制 |
+| 匹配断裂静默跳过 | 🟡 | 无回溯 |
+| trackpoints 无 UNIQUE(activity_id, seq) | 🟡 | 缺 DB 约束 |
+| status 无 CHECK 约束 | 🟡 | 应用层校验 |
+| trackpoints 无分区策略 | 🟡 | 未来事 |
+| 删 importing 中 activity 外键报错 | 🟡 | 未处理 |
+| strava token 明文存储 | 🟡 | 未加密 |
+
+⚠️ agent 注意: 新期开工前**必须扫 tech-debt.md**,新期 spec 不允许依赖还在 tech-debt 清单里的功能(CLAUDE.md 防黑盒化机制 3)。
+
+---
+
+## 10. 文档交叉引用
+
+本文档是 velo 系统的**静态画像**。动态数据流见 `data-flow-guide.md`。
+
+| 深入方向 | 参考文档 |
+|---|---|
+| 数据流链路、状态转换时序 | `docs/data-flow-guide.md`(占位,待建) |
+| 技术决策背后的原因 | `docs/adr/*.md`(占位,待建) |
+| 跨模块契约精确规格 | `docs/contracts/*.md`(占位,待建) |
+| 当前期任务清单 | `docs/spec-v{current}.md` |
+| 产品方向、市场、用户 | `docs/prd/prd-v{current}.md`(占位,当前仅 TEMPLATE.md) |
+| 模块内部画像 | `app/<模块>/README.md`(占位,待逐模块补) |
+| 技术债务 | `docs/tech-debt.md` |
+| 开发约束规则 | `/CLAUDE.md` |
+| 变更历史 | `docs/changelog.md` |
+| 竞品分析 | `docs/competitive-analysis/*.md`(占位,待建) |
+
+⚠️ agent 注意: 标注"占位"的引用目前在仓库里不存在,是未来会建立的文档槽位。遇到这些死链不用自动创建,等本期 spec 明确要求时再补。
+
+---
+
+## 附录 A: 部署信息
+
+| 项 | 值 |
+|---|---|
+| IP | 114.132.190.245 |
+| 用户 | ubuntu |
+| 代码路径 | ~/velo |
+| Docker 命令前缀 | sudo |
+| 数据库迁移 | `sudo docker compose exec api python3 -m alembic upgrade head` |
+| 看日志 | `sudo docker compose logs <service> --tail 30` |
+
+## 附录 B: 技术栈版本
+
+| 层 | 值 |
+|---|---|
+| Python | 3.11+ |
+| FastAPI | latest(同步模式) |
+| SQLAlchemy | 2.0(同步 session) |
+| PostgreSQL | 16 |
+| PostGIS | 3.4 |
+| Redis | 7-alpine |
+| Caddy | 2-alpine |
+| rq | latest |
+| 微信小程序 | 原生 |
+| FIT 解析 | garmin-fit-sdk |
+| GPX 解析 | 自研 + gpxpy |
+| 坐标转换 | xyconvert + numpy(GCJ-02 ↔ WGS-84) |
+
+## 附录 C: 收尾体检(v4)
+
+- 10 分钟能给陌生人讲清系统 ✅
+- 画清典型用户操作全链路 ✅
+- 文件 / 函数 30 秒可读 ⚠️ 2 处待清理(strava/service.py handle_callback, import_scheduler.py _run_tier1)
+
+下期必答的收尾三问(CLAUDE.md 防黑盒化机制)。
