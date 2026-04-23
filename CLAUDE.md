@@ -92,7 +92,14 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 5. **不做 spec 没要求的功能 / 顺手优化**
 6. **稳扎稳打有疑必停**：架构不清晰 / 自查发现隐患 / 信心不足 → 立即停，与 Starsky 讨论再动手。宁可多花一天讨论，不带隐患赶进度
 7. **独立判断**：方案过度设计 / 时机不对 / 性价比低 → 直接反驳给替代方案（详见 architect 信条 3）
-8. **双重审判（硬性，违反 = 双重违规）**：spec 层（写完 spec）+ 代码层（每批 subagent 产出后）都跑两个独立 agent 互补审。详见 architect 信条 5
+8. **三重审判（硬性，违反 = 双重违规）**：
+    - spec 层（写完 spec）+ 代码层（每批 subagent 产出后）跑 Claude 内部双审（Agent A 忠 spec / Agent B 集成审）
+    - **代码层 commit 前追加 Codex 异源第三审**（独立训练分布，抓 Claude 系统性盲区）
+    - Codex 审查协议：调用 `codex:codex-rescue` subagent，prompt 按 `docs/agent-rules/codex-division-of-labor.md §4 场景 B` 模板填
+    - 迭代纪律：Codex 抓到 Critical/Important → Claude 修 → **同 threadId `--resume` 复查** → 最多 3 轮收敛
+    - 跳过场景：纯文档 / 单文件 <50 行 / 紧急 hotfix（理由写在 commit message）——完整跳过清单见分工宪章 §5
+    - 2026-04-23 v4 task-7.10 实验 1 验证：Codex 一轮抓到 1 条核心反馈环级 Important + 1 条 UX Important，Claude 双审均漏
+    - 详见 architect 信条 5 + `docs/agent-rules/codex-division-of-labor.md`（Claude ↔ Codex 完整分工规则 + 4 个场景 prompt 模板）
 9. **任务完工三问复盘**：新 bug 模式 / 设计判断 / 流程问题（详见 architect 信条 11）
 10. **spec 自审 2 项**（architect Step 7 双审之外的项目特定补充）：
     - **状态机完整性**：所有合法状态转换画完整图，含异常恢复路径——遗漏一个状态转换 = 未来踩 bug

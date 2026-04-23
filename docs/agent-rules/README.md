@@ -20,9 +20,9 @@ agent 读 PRD 效率低。agent 需要的是**规则化结论**加**可执行的
 
 ---
 
-## 两层结构:B+ 树式设计
+## 三层结构
 
-本目录采用**索引 + 细节**两层结构,类似 B+ 树的内部节点和叶子节点。
+本目录采用**规则执行 + 战略思考 + 协作协议**三层结构。
 
 ### Layer 1: 规则执行层 — `product-decisions.md`
 
@@ -53,6 +53,23 @@ agent 读 PRD 效率低。agent 需要的是**规则化结论**加**可执行的
 
 **使用场景**:规则层没覆盖、需要创造性判断、要给出有深度的 reasoning 时,加载这份。
 
+### Layer 3: 协作协议层 — `codex-division-of-labor.md`
+
+**按需加载**。agent 需要决定某个细节工作是否外包给 Codex 时加载。
+
+内容是**Claude ↔ Codex 分工规则**:
+- 三档分工清单(A 全外包 / B 混合协作 / C 不外包)
+- 五条判断法则
+- 四个调用场景的 prompt 模板(写测试 / 代码审查 / 陷阱扫描 / 浅 bug 修复)
+- Codex 输出可信度分级 + 冲突解决 + 3 轮不收敛兜底
+
+**使用场景**:
+- 遇到"这个细节活 Claude 做还是 Codex 做"的路由决策
+- 要调用 `codex:codex-rescue` subagent 前查 prompt 模板
+- Codex 输出和 Claude 判断冲突时翻兜底规则
+
+**与其他两层的关系**:这是**执行层工具**,规则本身来自 CLAUDE.md §开发原则 8。Layer 1/2 回答"做什么判断",Layer 3 回答"细节实现找谁做"。
+
 ---
 
 ## Agent 工作流:何时读哪份
@@ -62,14 +79,18 @@ Agent 接到任务
     ↓
 是否涉及产品判断 / 功能决策 / 战略方向?
     ├── 否(纯技术任务)→ 读 CLAUDE.md 的技术规则就够
+    │       ↓
+    │   是不是细节活(测试/lint/纯函数/浅 bug/代码审查)?
+    │       ├── 是 → 读 codex-division-of-labor.md(Layer 3)→ 按 §3 五条法则路由给 Codex
+    │       └── 否 → Claude 自己做
     │
-    └── 是 → 读 product-decisions.md(规则层)
+    └── 是 → 读 product-decisions.md(Layer 1 规则层)
               ↓
           规则能直接回答吗?
               ├── 能 → 按规则执行,引用 INV/D-P0N ID
               │
               └── 不能(新场景/边界模糊/需要 PM 判断)
-                  → 加载 velo-mental-model.md
+                  → 加载 velo-mental-model.md(Layer 2)
                   → 按 10 问框架思考
                   → 给出判断 + 引用哪个 mental model
                   → 有进一步疑问 → 读 docs/prd/ 原始 PRD

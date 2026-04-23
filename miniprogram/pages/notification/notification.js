@@ -127,8 +127,10 @@ Page({
 
     return {
       id: n.id,
-      // is_read 用 === true 严格判断（防 NULL / undefined 被当 false）
-      is_read: n.is_read === true,
+      // 进页产品契约 = 视觉化已读：mark-all-read 是异步 POST，GET 列表可能先回来
+      // 后端未及时标读时列表仍带 is_read=false，会短暂闪现蓝底未读态。
+      // 前端渲染一律按已读处理——反正进这个页的语义就是"全部标读"。
+      is_read: true,
       iconText: iconMap[n.event_type] || '📢',
       titleText: titleMap[n.event_type] || '通知',
       subText: sub,

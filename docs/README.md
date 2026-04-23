@@ -119,21 +119,34 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
 **像**：每个工人在自己的独立工棚干活，互不踩脚。
 
 - **关键动作**：`using-git-worktrees` 建隔离工作目录 → `dispatching-parallel-agents` 派多个 subagent → 每个 agent 启动时**只读 README + 自己那份 task 卡**
-- **必看**：每个 subagent 进到自己 worktree 后读 `CLAUDE.md` + 对应 `task-N.X.md`
+- **🟨 Codex 可代劳**（按 `docs/agent-rules/codex-division-of-labor.md §4` 场景模板）：
+  - A 档：纯函数实现（parser/matcher/simplify）/ 写单元测试 / 补覆盖率（场景 A）
+  - B 档：浅 bug 修复（场景 D）——Claude 定位，Codex 执行修复
+- **必看**：每个 subagent 进到自己 worktree 后读 `CLAUDE.md` + 对应 `task-N.X.md` + 分工宪章
 - **硬规则**：
   - subagent 一次只加载一个 task 文件（防注意力稀释）
   - TDD 纪律：先写测试再实现（`test-driven-development`）
   - 每任务单独 commit，格式 `feat(模块): 任务X.X 简要描述`
 - **踩坑**：多 subagent 跨任务传数据走共享状态 → 应该走 task 的"输入输出契约"章节显式声明
 
-#### ⑦ 验证审查 —— 代码层双审判
+#### ⑦ 验证审查 —— 代码层三重审判（Claude 双审 + Codex 异源第三审）
 
-**像**：验收前两个独立监理同时检查——一个看工艺，一个看和楼宇整体的配合。
+**像**：验收前三个独立监理——两个看工艺（Claude 内部），一个是**从完全不同学校毕业的专家**（Codex）来看别的监理的盲区。
 
-- **关键动作**：Agent A（code-reviewer）看忠于 spec / 语言陷阱 / 幂等崩溃恢复 / 测试假通过；Agent B（集成审）看 grep caller / 对现有流程干扰 / 数据一致性跨模块 / 前向不兼容
-- **必看**：本期 spec + 修改的代码 + `CLAUDE.md § 技术栈陷阱清单`
-- **硬规则**：**不做代码层双审 = 违反 CLAUDE.md `commit 前 4 问`第 4 条 + `architect` 信条 5**。Critical 必修 / Important 按优先级 / Minor 入 `tech-debt.md`
-- **踩坑**：只看 pytest passed 就 commit。v4 批 1-6 这样跑被补审抓出 1 Critical + 3 Important
+- **关键动作**：
+  - **第一轮**：Agent A（code-reviewer）看忠于 spec / 语言陷阱 / 幂等崩溃恢复 / 测试假通过；Agent B（集成审）看 grep caller / 对现有流程干扰 / 数据一致性跨模块 / 前向不兼容
+  - **第二轮**（commit 前必做）：调 `codex:codex-rescue` subagent，prompt 按分工宪章 §4 场景 B 模板填（spec + diff + Claude 已列问题禁止复读）
+  - Codex 若抓到 Critical/Important → Claude 修 → **同 threadId `--resume` 复查** → 最多 3 轮收敛
+- **必看**：本期 spec + 修改的代码 + `CLAUDE.md § 技术栈陷阱清单` + `docs/agent-rules/codex-division-of-labor.md §4 场景 B`
+- **硬规则**：
+  - **不做代码层双审 = 违反 `CLAUDE.md § commit 前 4 问`第 4 条 + `architect` 信条 5**
+  - **不跑 Codex 异源第三审 = 违反 `CLAUDE.md § 开发原则 8`**
+  - Critical 必修 / Important 按优先级 / Minor 入 `tech-debt.md`
+  - Codex 输出可信度分级见分工宪章 §6
+- **跳过场景**（理由写在 commit message）：纯文档改动 / 单文件 <50 行 / 紧急 hotfix（完整清单见分工宪章 §5）
+- **踩坑**：
+  - 只看 pytest passed 就 commit → v4 批 1-6 被补审抓出 1 Critical + 3 Important
+  - 只跑 Claude 双审不跑 Codex → v4 task-7.10 Claude 双审漏掉 leaderboard fallback（第一页未命中时跳错赛段，核心反馈环断），Codex 一轮抓到
 
 #### ⑧ 部署上线 —— 从本地到生产
 
@@ -236,6 +249,7 @@ velo 工作流由两套大脑支撑：
 | `docs/agent-rules/README.md` | agent 规则体系索引 + ID 命名规范 | 首次加载 |
 | `docs/agent-rules/product-decisions.md` | 378 行规则化结论（INV-P01~P06 / D-P01~P10 / 活人感 / 禁止词） | **agent 常驻加载** |
 | `docs/agent-rules/velo-mental-model.md` | 756 行思考框架（公司定位 / 画像深描 / 10 问框架） | 复杂决策按需加载 |
+| `docs/agent-rules/codex-division-of-labor.md` | Claude ↔ Codex 分工宪章：3 档 / 5 判断法则 / 4 场景 prompt 模板 | 调用 Codex 前按需加载 |
 
 ### D. 历史档案
 

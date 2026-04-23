@@ -46,15 +46,19 @@ Page({
     api.get('/api/segments?page=1&page_size=100')
       .then(function (data) {
         var list = data.items || []
-
-        // v4 task-7.10：优先定位到外部跳转指定的 segment_id
-        // 找到则用 list 中对应 index；找不到（比如赛段被删）fallback 到 list[0]
-        var targetIdx = 0
         var pendingId = that._pendingSegmentId
+
+        // v4 task-7.10 + 7.10-hotfix：定位外部跳转指定的 segment_id
+        // 分三种情况：
+        //   ① pendingId 命中第一页 → activeIdx 指向对应 tab，拉该赛段详情
+        //   ② pendingId 不在第一页（排序靠后 / 超 100 条）→ activeIdx=-1（无 tab 高亮），
+        //      直接按 id 拉详情——保证"用户看到的是他点的赛段"，核心反馈环不断
+        //   ③ 无 pendingId（tab 自然进入）→ 现行逻辑，展示 list[0]
+        var hitIdx = -1
         if (pendingId && list.length > 0) {
           for (var i = 0; i < list.length; i++) {
             if (list[i].id === pendingId) {
-              targetIdx = i
+              hitIdx = i
               break
             }
           }
@@ -62,11 +66,17 @@ Page({
           that._pendingSegmentId = null
         }
 
-        that.setData({ segments: list, activeIdx: targetIdx })
-        if (list.length > 0) {
+        if (pendingId && hitIdx === -1) {
+          // 情况 ②：未命中 → 按 id 直拉详情，不依赖 list 索引
+          that.setData({ segments: list, activeIdx: -1 })
+          that.fetchDetail(pendingId)
+        } else if (list.length > 0) {
+          // 情况 ① / ③
+          var targetIdx = hitIdx >= 0 ? hitIdx : 0
+          that.setData({ segments: list, activeIdx: targetIdx })
           that.fetchDetail(list[targetIdx].id)
         } else {
-          that.setData({ loading: false })
+          that.setData({ segments: [], activeIdx: 0, loading: false })
         }
       })
       .catch(function () {
