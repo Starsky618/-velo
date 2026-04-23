@@ -1,5 +1,19 @@
 # VELO 项目规则书
 
+## 🎯 产品层硬约束(在写任何功能代码前确认)
+
+1. 这个功能对严肃公路车骑手有价值吗?
+2. 是否违反 INV-P01 到 INV-P06?(见 `docs/agent-rules/product-decisions.md`)
+3. 是否符合 60:40 社交工具比例?
+4. 是否 spec 明确要求的?(防 scope creep)
+
+违反任一 → 停下来与 Tim 讨论,不要自行推进。
+
+产品层完整决策规则: `docs/agent-rules/product-decisions.md`（常驻）
+产品复杂决策走: `docs/agent-rules/velo-mental-model.md` § 10 问框架（按需加载）
+技术层完整规则: 本文档后续内容
+📖 **开新任务前先读 `docs/README.md` § 2** —— 9 阶段工作流 × 文档 × skill 全景
+
 ## 🔴 commit 前 4 问（每次会话开头必看）
 
 写代码 / commit 前回答下面 4 问，不能全答 yes 就停下：
@@ -37,13 +51,30 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 
 ## 权威文档
 
-- **技术规格**：`docs/spec-v1.md`（v0 期）/ `docs/spec-v2.md`（翻译层+Strava）/ `docs/spec-v4.md`（前端反馈环+Strava 加固）
-- **PRD 模板**：`docs/prd/TEMPLATE.md`（每期写 spec 前先写 PRD）
+> 📖 **文档全地图**：`docs/README.md`（开新任务前必读）——含 9 阶段工作流 × 文档 × skill 全景、场景速查、5 分类目录。
+
+**执行与技术（agent 线）**
+- **技术规格**：`docs/spec-v1.md` ~ `docs/spec-v4.md`（当前 v4 已完成，v5 待规划）
 - **实施计划**：`docs/plans/phaseN/`（subagent 派工的输入）
-- **架构导览**：`docs/architecture-guide.md`（每期收尾刷新，新人 10 分钟看懂全貌）
+- **架构导览**：`docs/architecture-guide.md`（系统静态全景，每期收尾刷新）
+- **数据流全景**：`docs/data-flow-guide.md`（9 条链路动态视图，修跨模块 bug 必读）
+- **架构决策历史**：`docs/adr/`（10 份 ADR / 见 `docs/adr/README.md` 索引）—— 有人提议改决策时必读
+- **每期战术 PRD**：`docs/prd/phase-N-prd.md`（每期开工前写，含用户故事 + 验收标准）
+
+**战略与产品（人类线）**
+- **战略 PRD**：`docs/prd/velo-vision.md` / `velo-strategy.md` / `velo-product-spec.md`（3 份 / 见 `docs/prd/README.md` 索引）
+- **竞品深度分析**：`docs/competitive-analysis/`（5 份 / 见 `docs/competitive-analysis/README.md` 索引）
+
+**运行规则（agent 常驻）**
+- **agent 产品规则**：`docs/agent-rules/product-decisions.md`（常驻，规则层）
+- **agent 思考框架**：`docs/agent-rules/velo-mental-model.md`（按需，mental model 层）
+
+**历史档案**
 - **变更记录**：`docs/changelog.md`
+- **部署踩坑**：`docs/deployment-diary.md`
 - **技术债务**：`docs/tech-debt.md`（每期开工前必扫）
-- **规则**：发现 spec 有问题 → 先改文档再改代码，不允许代码和文档不一致
+
+**规则**：发现 spec 有问题 → 先改文档再改代码，不允许代码和文档不一致。
 
 ## 技术栈（不可变更）
 
