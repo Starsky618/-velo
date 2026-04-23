@@ -29,3 +29,6 @@ caddy_config/
 # Superpowers 工具内部文件
 .superpowers/
 docker-compose.override.yml
+
+# Claude Code 本地权限配置（本机专属 allow 列表，不跨机共享）
+.claude/settings.local.json
