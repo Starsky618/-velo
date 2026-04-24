@@ -16,6 +16,20 @@
 
 **全 Codex**：盲区。v4 task-7.10 实证——Codex 第一轮审查没抓到 C1（leaderboard onLoad 读 query 参数），这条 Critical 是 Claude 集成审抓到的。**Codex 擅长微观细致，Claude 擅长宏观集成**，两种视角互补。
 
+### Codex 的独特价值是"异源"，不是"更快"
+
+常见误区：以为 Codex 擅长"快速写代码 / 脚本 / 修 bug"——这是市场叙事，不是 velo 实证。
+
+**真相**：GPT-5.4 和 Opus 4.7 在单纯代码生成上没有数量级差距。写同一个函数谁快，取决于上下文准备，不是模型。Claude Code 也有后台长任务（`run_in_background`）、多 subagent 并行、内置 code-reviewer——这些都**不是** Codex 独有。
+
+**Codex 真正不可替代的是"训练分布独立"**：同一个系统性盲区，Claude 双 agent 会一起漏（它们来自同一个训练分布、共享偏见），Codex 不会。v4 task-7.10 实证过——Codex 一轮抓到 2 条 Claude 双审都漏的 Important，其中 1 条是核心反馈环级问题。
+
+**所以路由直觉要校正**：
+- Claude = **大脑 + 规划中枢**（宏观集成、跨模块决策、和人沟通、skill 生态）
+- Codex = **独立异源审判 + 局部执行**（反 Claude 系统性盲区 + 重复性任务批量化省 token）
+
+"Codex 便宜"是真的，但便宜的价值是**允许你把重复性扫描外包**（单测 / 覆盖率 / 陷阱清单），不是"因为便宜所以让它多写代码"。**兜底代码的总量要最小化，不能因为 Codex 便宜就让它批量生产**——兜底多 = 状态机漏（见 §4 场景 E）。
+
 ### 目标：把判断规则化，不凭感觉
 
 每次遇到"这个小活谁做"就讨论一次 = 浪费时间。**本宪章决定谁做什么，Claude 按规则直接路由。**
@@ -220,6 +234,60 @@ velo 项目有个浅 bug 需要修。
 
 ---
 
+### 场景 E：状态机漏洞扫描
+
+**触发**：spec 里定义了状态机（如 activity `pending → processing → completed/failed`）/ 代码里发现要写大量兜底 try/except / 怀疑异常恢复路径有洞
+
+**前置认知**：**兜底代码多 = 状态机设计破了洞**，正解不是外包兜底，是把状态机建完整。Codex 在这里做的是**扫漏洞**，不是**写兜底**——后者会让设计破洞被糊上一层反而看不到根因（CLAUDE.md §开发原则 5 + 系统级 "Don't add error handling for scenarios that can't happen"）。
+
+**调用**：`Agent(subagent_type: "codex:codex-rescue", prompt: ...)`
+
+**Prompt 骨架**：
+```
+你是 velo 项目的状态机审查员。**不要写兜底代码**，只列漏洞清单。
+
+## 状态机定义（我给你的事实）
+- 实体：<比如 activity>
+- 状态字段：<status 字段名 + 值域>
+- 合法转换：
+  - pending → processing（触发：worker 抢锁）
+  - processing → completed（触发：解析成功）
+  - processing → failed（触发：解析异常）
+  - <其他转换列全>
+- 状态 server_default：<从 model 抄真实值>
+
+## 当前代码
+- model 文件：<path:line>
+- service 文件（状态写入点）：<path:line>
+- worker 文件（状态推进点）：<path:line>
+
+## 你要扫的 5 类漏洞
+1. **漏转换**：是否有业务上合法但图里没画的转换？（例：用户删 importing 中活动 → 转什么状态？宪章里这类未处理）
+2. **漏异常恢复**：每个非终态 crash 后能自愈吗？（processing 卡死 → 有超时机制吗？）
+3. **并发冲突**：两个 worker 同时抢锁 → 有 UPDATE WHERE 原子性保证吗？
+4. **级联一致性**：上游数据删除 → 下游状态怎么办？（activity 删了 → segment_efforts 呢？）
+5. **值域不符**：spec 里写的状态字符串和 model server_default / service 赋值是否一致？
+
+## 输出（Critical / Important / Minor 三档）
+每条：
+- 漏洞类型（5 类之一）
+- 具体场景描述（"当 X 发生时，Y 状态没有定义"）
+- file:line（引用现有代码）
+- 建议怎么补（改 spec 加新转换 / 加超时机制 / 加原子锁……**不要给具体兜底代码，只说补什么**）
+
+## 硬约束
+- 不要写兜底代码，列漏洞清单就好
+- 不要泛泛说"建议加异常处理"——要具体说"状态 X 缺少转到 Y 的路径"
+- 证据分级：✅ 可 grep 验证 / ⚠️ 推断 / ❌ 不确定
+- 诚实说"状态机完整"比虚构漏洞强
+```
+
+**验收**：Claude 核对漏洞是否真漏（grep 代码 + 读 spec）→ 真漏的改 **spec**（不是直接写代码），再按正常流程（Step 6/7/8/9）推进。**严禁跳过 spec 直接给 Codex 写兜底代码补上去。**
+
+**与场景 B 的区别**：场景 B 是 commit 前的代码审查（diff 视角），场景 E 是 spec 阶段的设计审查（状态图视角）——一个查已写代码，一个查未写设计。两者互补不替代。
+
+---
+
 ## §5 成本意识
 
 Codex 比 Claude 便宜，但**不是免费**。
@@ -330,9 +398,27 @@ Codex 比 Claude 便宜，但**不是免费**。
 - 主维护：Starsky
 - 协作：Claude（提议修订 / 实战反馈）
 
+### 待实证实验（计划任务）
+
+> 列在这里的是**已立项但未完成**的分工实验，完成后根据结果更新 §2 / §4 对应条目。
+
+| # | 实验 | 触发期 | 目的 | 成功标准 | 失败处理 |
+|---|---|---|---|---|---|
+| E1 | **Spec 层 Codex 三审** A/B 对比 | v5 期第一个任务的 spec 写完后 | 验证 Codex 异源审查在 spec 层的边际价值（目前只代码层实证） | Codex 抓到 Claude spec 双审漏的 Critical ≥ 1 条 → 写进宪章 §4 作为场景 F | 零新发现 → spec 层保持 Claude × 2，Codex 只管代码层；在 §9 记录实验结论 |
+
+**E1 执行协议**：
+1. 按 architect Step 7 正常跑 Claude spec 双审（Agent 1 + Agent 2），收敛到 Critical=0
+2. 把同一份 spec + Claude 双审的 Critical/Important 清单 喂给 Codex（prompt 明写"禁止复读"）
+3. 对比 Codex 新增 Critical 数 / 真命中率 / 单次调用 token 成本
+4. 决策：记录进 §9 + 根据成功/失败分支修 §2 §4
+
 ---
 
 ## §9 修订记录
 
 - **2026-04-23 v1.0 初版**：基于 v4 task-7.10 异源审查实验（Codex 抓到 2 条 Claude 双审漏项）奠基 + 分三档 + 五条判断法则 + 4 个场景模板
 - **2026-04-23 v1.1 补 §6 兜底**：同日第二轮复查实验中 Codex job 启动后 25 秒卡死 1 小时 + `--resume` 开了新 session——两个坑实证加进 §6，规则库从"正向场景"扩展到"异常场景"
+- **2026-04-24 v1.2 校正定位 + 加场景 E + 立 E1 实验**：
+  - §1 加"Codex 独特价值是异源，不是更快"小节——校正"Codex 擅长快速写代码"的市场叙事误区，明确 Claude 是大脑+规划中枢 / Codex 是异源审判+局部执行
+  - §4 加场景 E：状态机漏洞扫描——Codex 的角色是**扫漏洞**不是**写兜底**，明确"兜底多=状态机破洞"的根因认知，严禁跳过 spec 直接让 Codex 补兜底代码
+  - §8 立 E1 实验：v5 期做 spec 层 Codex 三审 A/B 对比（现行只代码层实证），根据边际价值决定是否写进宪章
