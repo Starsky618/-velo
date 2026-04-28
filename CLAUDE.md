@@ -100,6 +100,7 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
     - 跳过场景：纯文档 / 单文件 <50 行 / 紧急 hotfix（理由写在 commit message）——完整跳过清单见分工宪章 §5
     - 2026-04-23 v4 task-7.10 实验 1 验证：Codex 一轮抓到 1 条核心反馈环级 Important + 1 条 UX Important，Claude 双审均漏
     - 详见 architect 信条 5 + `docs/agent-rules/codex-division-of-labor.md`（Claude ↔ Codex 完整分工规则 + 4 个场景 prompt 模板）
+    - ⭐ **2026-04-28 新增硬规则**：派 codex 写大文档（spec / plans / > 800 字 / > 1500 行）= **默认禁止**——codex CLI 单 task 输入+输出 > 50K token 几乎必卡（已知 bug 链 #13738/#14048/#18723，2026-04-28 v5 spec 实证卡死 30+ 分钟）。**默认路径**：主 agent 自己写 → 写完派 codex review-only。详见分工宪章 §5 + memory `feedback_main_agent_as_middle_manager.md` §2.1
 9. **任务完工三问复盘**：新 bug 模式 / 设计判断 / 流程问题（详见 architect 信条 11）
 10. **spec 自审 2 项**（architect Step 7 双审之外的项目特定补充）：
     - **状态机完整性**：所有合法状态转换画完整图，含异常恢复路径——遗漏一个状态转换 = 未来踩 bug

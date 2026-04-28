@@ -41,7 +41,7 @@
 | 档 | 特征 | 谁主导 | 典型场景 |
 |---|---|---|---|
 | **A 全外包 Codex** | 纯逻辑 / 单文件 / 有客观标准 | 🟨 Codex 做，Claude 不参与 | 写单元测试 / 补覆盖率 / 纯函数实现 / typo / 死代码清理 / lint / docstring 补全 / 按陷阱清单逐条扫 |
-| **B 混合协作** | 跨文件但单模块 / 有 spec 约束 | 🟦 Claude 决策 + 🟨 Codex 执行 | 集成层代码（router/service）/ 浅 bug 修复 / Alembic 迁移脚本 / 复杂状态机实现 / **代码审查**（异源第三审已落地）|
+| **B 混合协作** | 跨文件但单模块 / 有 spec 约束 / 单 task 输入+输出 < 50K token | 🟦 Claude 决策 + 🟨 Codex 执行 | 集成层代码（router/service）/ 浅 bug 修复 / Alembic 迁移脚本 / 复杂状态机实现 / **代码审查**（异源第三审已落地）/ **大文档 review-only 审查**（spec / plans 写完后让 codex 审，不让它写）|
 | **C 不外包 Claude** | 跨模块决策 / 和人沟通 / 产品判断 | 🟦 Claude 主导 | PRD / spec 撰写 / 架构讨论 / 和 Starsky 沟通 / 9 阶段 ③④⑤（塑形→spec→计划）/ 跨模块 bug 调查 / 集成审 Agent B |
 
 ### §2.1 具体映射到 velo 纯函数模块
@@ -62,8 +62,8 @@ CLAUDE.md 标注的 5 个纯函数（不碰 DB / 不碰文件系统）**默认 A
 | ① 脑暴 | ❌ 不代劳（C 档）|
 | ② PRD | ❌ 不代劳（C 档）|
 | ③ 需求塑形 | ⚠️ 可代劳"Explore agent 式的代码库扫描"（B 档）|
-| ④ Spec 撰写 | ⚠️ 可代劳"预读清单 grep 核对"（A 档）|
-| ⑤ 实施计划 | ⚠️ 可代劳"任务拆分后的依赖图生成"（B 档）|
+| ④ Spec 撰写 | ⚠️ 可代劳"预读清单 grep 核对"（A 档）/ ⚠️ spec 写完后异源审查（B 档 review-only）；❌ **禁止派 codex 撰写 spec 正文**——见 §5 跳过场景"大文档撰写"|
+| ⑤ 实施计划 | ⚠️ 可代劳"任务拆分后的依赖图生成"（B 档）/ ⚠️ plans 写完后异源审查（B 档 review-only）；❌ **禁止派 codex 撰写 plans 正文**——理由同 ④ |
 | ⑥ 并行执行 | ✅ **大量代劳**——单 task 的纯函数实现 / 测试 / 浅 bug 修复（A/B 档）|
 | ⑦ 验证审查 | ✅ **异源第三审**（B 档，硬规则见 CLAUDE.md §开发原则 8）|
 | ⑧ 部署 | ⚠️ 可代劳"部署前检查清单扫描"（A 档）|
@@ -307,6 +307,7 @@ Codex 比 Claude 便宜，但**不是免费**。
 | 紧急 hotfix | 争分夺秒时不走异步调用 |
 | **改动低风险 + Claude 双审已覆盖** | 比如仅加 docstring 或 rename 变量，不必三审 |
 | **重复性任务**（比如同类 10 条陷阱全部已命中）| 第 1 条让 Codex 扫，剩下 9 条 Claude 依样画葫芦 |
+| **大文档撰写**（spec / plans / 长技术文档 > 800 字 / > 1500 行）⭐**硬禁止** | **codex CLI 单 task 输入+输出 > 50K token 几乎必卡**——已知 bug 链：GPT-5.4 in codex CLI 的 258K context 截断（#13738）/ websocket 沉默断流（#18723）/ 长任务无 progress 卡死（#14048）。2026-04-28 实证：派 codex 写 spec-v5.md 卡死 30+ 分钟，broker.log 0 字节。**默认路径**：主 agent 自己写（chunk by chunk）→ 写完派 codex **review-only**（合规且不卡）|
 
 **跳过了必须在 commit message 写理由**——留痕便于复盘。
 
@@ -422,3 +423,9 @@ Codex 比 Claude 便宜，但**不是免费**。
   - §1 加"Codex 独特价值是异源，不是更快"小节——校正"Codex 擅长快速写代码"的市场叙事误区，明确 Claude 是大脑+规划中枢 / Codex 是异源审判+局部执行
   - §4 加场景 E：状态机漏洞扫描——Codex 的角色是**扫漏洞**不是**写兜底**，明确"兜底多=状态机破洞"的根因认知，严禁跳过 spec 直接让 Codex 补兜底代码
   - §8 立 E1 实验：v5 期做 spec 层 Codex 三审 A/B 对比（现行只代码层实证），根据边际价值决定是否写进宪章
+- **2026-04-28 v1.3 撤回"派 codex 写大文档"**：
+  - 实证踩坑：派 codex 写 spec-v5.md（1500-2500 行）卡死 30+ 分钟，broker.log 0 字节 + session 3 行后无 stream event
+  - 已知 bug 链：codex CLI 单 task 输入+输出 > 50K token 几乎必卡——#13738 (258K context 截断) / #14048 (无 progress 卡死) / #18723 (websocket 断流)
+  - §2 B 档加 token 阈值约束 / §2.2 ④⑤行明确禁派 codex 写正文 / §5 跳过场景加"大文档撰写"硬禁止行
+  - **新默认路径**：大文档主 agent 自己写（chunk by chunk）→ 写完派 codex review-only
+  - 撤回 v1.2 的"代码层 spec 三审 E1 实验"前置假设——E1 的"派 codex 审 spec"仍可做，但 spec 本身改回 Claude 写

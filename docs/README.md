@@ -53,8 +53,8 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
 | ① | 脑暴探索 | 你 | `prd/velo-vision.md` + `prd/velo-strategy.md` | `superpowers:brainstorming` | 对话记录（无文件） | 0.5-1 天 |
 | ② | PRD 撰写 | 你 | `prd/velo-vision.md` + `prd/velo-product-spec.md` + `competitive-analysis/` | 无 | `prd/phase-N-prd.md` ⚠️ | 1-2 天 |
 | ③ | 需求塑形 | agent | phase PRD + `agent-rules/` + `competitive-analysis/` | `architect` Step 1-3 | 技术方向 3 选 1 锁定 | 0.5-1 天 |
-| ④ | Spec 撰写 | agent | 上一步方向 + `architecture-guide.md` + `data-flow-guide.md` + `adr/` | `architect` Step 4-8 | `spec-vN.md`（Critical=0） | 1-2 天 |
-| ⑤ | 实施计划 | agent | `spec-vN.md` | `architect` Step 9 + `superpowers:writing-plans` | `plans/phaseN/README.md` + `task-N.X.md` | 0.5-1 天 |
+| ④ | Spec 撰写 | **主 agent 自己写**（chunk by chunk，⭐ 2026-04-28 起禁派 codex 写正文）| 上一步方向 + `architecture-guide.md` + `data-flow-guide.md` + `adr/` | `architect` Step 4-8 | `spec-vN.md`（Critical=0） | 1-2 天 |
+| ⑤ | 实施计划 | **主 agent 自己写**（chunk by chunk，⭐ 2026-04-28 起禁派 codex 写正文）| `spec-vN.md` | `architect` Step 9 + `superpowers:writing-plans` | `plans/phaseN/README.md` + `task-N.X.md` | 0.5-1 天 |
 | ⑥ | 并行执行 | agent 群 | `plans/phaseN/` | `subagent-driven-development` + `using-git-worktrees` + `test-driven-development` | 代码 + 单测 + commits | 3-10 天 |
 | ⑦ | 验证审查 | agent + 你 | 代码 + spec | `verification-before-completion` + `requesting-code-review` + `receiving-code-review` | 双审报告 | 1-2 天 |
 | ⑧ | 部署上线 | agent + 你 | `CLAUDE.md §部署前强制检查清单` + `deployment-diary.md` | `deploy` | 生产上线 | 0.5 天 |
@@ -103,6 +103,7 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
   - 预读清单（信条 14）：spec 里**任何字段 / 函数 / 状态值**引用必须先 grep 核对
   - 双审判 Agent A + Agent B 并行，prompt 互补，**Critical = 0 才能进下一步**
   - spec ≤ 800 行，一期任务数 ≤ 6
+  - ⭐ **2026-04-28 起：spec 正文由主 agent 自己写**（chunk by chunk，每段写完 Edit 落盘）——**禁止派 codex 写**（codex CLI 长任务卡死 bug 链 #13738/#14048/#18723，spec-v5 实证卡死 30+ 分钟）。codex 仍用于：预读清单 grep 核对（A 档）/ spec 写完后异源审查（B 档 review-only）。详见 `docs/agent-rules/codex-division-of-labor.md` §5
 - **踩坑**：凭记忆写字段名 → 双审判必抓一堆虚构引用。v4 实战 12 条 Critical 里一半是这类
 
 #### ⑤ 实施计划 —— 把 spec 拆成可派工的任务卡
@@ -112,6 +113,7 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
 - **关键动作**：产出 `plans/phaseN/README.md`（总调度）+ 每个 `task-N.X.md`（单任务独立卡片）
 - **必看**：`plans/phase3/README.md` + `plans/phase4/README.md`（历史样板）
 - **硬规则**：2 层扁平结构（README + task 文件），**严禁加第三层索引**（`architect` 信条 + 反模式表）。每个 task 卡含：目标 / 前置依赖 / 输入输出契约 / 完整代码 / 测试用例 / commit 指令 / 自检三问
+  - ⭐ **2026-04-28 起：plans 正文由主 agent 自己写**（chunk by chunk，每个 task 卡写完 Edit 落盘）——**禁止派 codex 写**，理由同 ④（codex CLI 长任务卡死 bug 链）。codex 仍用于：plans 写完后异源审查（B 档 review-only）
 - **踩坑**：task 卡只写"抽成函数 X"而不给完整实现 → agent 当虚构函数处理
 
 #### ⑥ 并行执行 —— subagent 群同时干活
@@ -324,3 +326,4 @@ velo 工作流由两套大脑支撑：
 
 - 2026-04-17 初版：5 楼结构 + 9 阶段
 - **2026-04-23 v2 重构**：双轨读者分层 + 9 阶段 × 文档 × skill 全景表 + 每阶段执行卡 + 场景速查 + 5 分类目录地图；删除"5 楼办公楼"物理隐喻
+- **2026-04-28 v2.1**：撤回"派 codex 写 spec/plans"——§2.1 全景表 ④⑤ 行主导改回主 agent / §2.2 ④⑤ 卡加硬规则行禁派 codex 写正文（chunk by chunk 自己写 → 写完 codex review-only）。理由：codex CLI 长任务卡死 bug 链（#13738/#14048/#18723），实证 spec-v5 卡死 30+ 分钟
