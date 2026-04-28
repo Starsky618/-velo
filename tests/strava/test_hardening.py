@@ -82,7 +82,8 @@ def test_token_refresh_401_pauses_active_imports(
 
     with pytest.raises(ValueError):
         # force=True 绕过 expires_at 检查，直接进入刷新→401 分支
-        service.ensure_valid_token(db, user, force=True)
+        # v5 task-0.2：传 user_id（不再传 user 对象）
+        service.ensure_valid_token(db, user.id, force=True)
 
     # 验证 import 被置 paused
     imp = db.query(StravaImport).filter_by(user_id=user.id).first()
@@ -119,13 +120,95 @@ def test_ensure_valid_token_uses_row_lock(db, strava_imports_table):
     mock_lock_result.first.return_value = None  # 模拟查不到用户
     mock_db.query.return_value = mock_query
 
-    fake_user = User(id=9999, openid="fake")
-    with pytest.raises(ValueError, match="用户不存在"):
-        service.ensure_valid_token(mock_db, fake_user)
+    # v5 task-0.2：传 user_id（int）替代 user 对象；错误消息含 user_id
+    with pytest.raises(ValueError, match=r"user_id=9999"):
+        service.ensure_valid_token(mock_db, 9999)
 
     # 核心断言：with_for_update() 确实被调用过——这是行锁语义的"证据"
     mock_filter.with_for_update.assert_called_once()
     mock_lock_result.first.assert_called_once()
+
+
+# ==================== v5 task-0.2：返回 (User, token) 元组 ====================
+
+
+@patch("app.strava.service.httpx.post")
+def test_ensure_valid_token_returns_locked_user_instance(
+    mock_post, db, strava_imports_table
+):
+    """v5 task-0.2：成功刷新后返回 (User, token)，user 实例字段已被新 token 写回。
+
+    验证两点：
+    1. 返回值是 (User, str) 元组（不是单 str）
+    2. 返回的 user 实例已带新 access_token（不是缓存的旧值）
+    """
+    user = _make_user(
+        db,
+        strava_athlete_id=99001,
+        access_token="old_at",
+        refresh_token="old_rt",
+        expires_at=None,  # None → 走刷新分支（绕开 SQLite naive vs aware 比较）
+    )
+
+    # mock Strava 返回新 token
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "access_token": "new_at",
+        "refresh_token": "new_rt",
+        "expires_at": int(
+            (datetime.now(timezone.utc) + timedelta(hours=6)).timestamp()
+        ),
+    }
+    mock_post.return_value = mock_resp
+
+    # 调用——传 user_id，不传 user 对象
+    result = service.ensure_valid_token(db, user.id, force=True)
+
+    # 断言 1：返回元组
+    assert isinstance(result, tuple) and len(result) == 2
+    locked_user, token = result
+
+    # 断言 2：返回的 user 是 User 实例 + 字段已刷新
+    assert isinstance(locked_user, User)
+    assert locked_user.id == user.id
+    assert locked_user.strava_access_token == "new_at"
+    assert token == "new_at"
+
+
+def test_ensure_valid_token_not_expired_returns_tuple():
+    """v5 task-0.2：未过期分支也返回 (User, token) 元组——堵单值回归。
+
+    若未来有人误把"未过期早 return"路径改回 `return token`（单值），
+    本测试立即失败；否则只能依赖集成测在解构时炸 unpack error，定位慢。
+
+    用 mock session 而非真实 SQLite——SQLite 反序列化 aware datetime 会丢
+    时区，触发 task-0.1 修过的 naive vs aware 比较错（测试环境边角，
+    与 task-0.2 改造无关）。Mock 让 expires_at 比较两边都是纯 Python aware。
+    """
+    fake_user = User(
+        id=42,
+        openid="mock",
+        strava_access_token="still_valid",
+        strava_refresh_token="rt",
+        strava_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+    )
+
+    mock_db = MagicMock()
+    (
+        mock_db.query.return_value
+        .filter.return_value
+        .with_for_update.return_value
+        .first.return_value
+    ) = fake_user
+
+    result = service.ensure_valid_token(mock_db, 42)
+
+    # 关键断言：早 return 分支也返回元组（不是单 str）
+    assert isinstance(result, tuple) and len(result) == 2
+    locked_user, token = result
+    assert locked_user is fake_user
+    assert token == "still_valid"
 
 
 # ==================== I9：tier1 连续 2 次空 ====================

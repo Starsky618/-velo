@@ -385,7 +385,9 @@ def get_strava_status(db: Session, user_id: int) -> dict:
     }
 
 
-def ensure_valid_token(db: Session, user: User, force: bool = False) -> str:
+def ensure_valid_token(
+    db: Session, user_id: int, force: bool = False
+) -> tuple[User, str]:
     """
     确保用户的 Strava access_token 有效，过期则自动刷新。
 
@@ -393,9 +395,14 @@ def ensure_valid_token(db: Session, user: User, force: bool = False) -> str:
     StravaClient 和 service.py 都会调用此函数。
 
     参数：
+        user_id: 用户 id（不传 user 对象，函数内部行锁查最新行）
         force: 强制刷新 token，即使 expires_at 还没到期也刷新。
                用于 Strava 返回 401 时——说明 token 在服务端已失效，
                但我们记录的过期时间还没到（Strava 可以提前作废 token）。
+
+    返回：
+        (User, access_token) 元组——User 是行锁后的最新实例，调用方应用
+        它替换自己持有的旧 user 引用，避免后续读到过时字段。
 
     就像出国前检查签证：
     - 还没过期 → 直接走
@@ -407,19 +414,24 @@ def ensure_valid_token(db: Session, user: User, force: bool = False) -> str:
       导致两个 Python 进程都向 Strava 发 refresh 请求（refresh_token
       使用后会变新，两者会互相顶掉对方的新 token → 用户账户被踢出）
     - 401 分支同步 pause 该用户的 active 导入任务（I7）
+
+    v5 task-0.2 签名改造：
+    - 入参 User 对象 → user_id：函数内部完整封装"行锁 + 查询"，调用方
+      不必先 query user。打个比方：以前是"客户先去派出所拿户口本再交给我办事"，
+      现在是"客户报身份证号即可，我自己去派出所拿最新户口本"。
+    - 返回 str → tuple[User, str]：调用方拿到行锁后的 user 实例，
+      避免在外部用过时 user 对象触发并发数据 drift。
     """
     # v4 I8：入口行锁——把 user 行锁住，避免并发刷 token 竞态
     # 注意：必须在事务内才能锁住；caller（StravaClient._request）已在隐式事务内
-    # 调用方审视：client.py:154/208 两处 caller 在函数返回后只用返回的 token 值
-    # 做 HTTP header，不再写 user 字段——行锁版 user 遮蔽入参 user 是安全的
     user = (
         db.query(User)
-        .filter(User.id == user.id)
+        .filter(User.id == user_id)
         .with_for_update()
         .first()
     )
     if user is None:
-        raise ValueError("用户不存在")
+        raise ValueError(f"user_id={user_id} 不存在")
 
     now = datetime.now(timezone.utc)
 
@@ -431,7 +443,7 @@ def ensure_valid_token(db: Session, user: User, force: bool = False) -> str:
         and user.strava_token_expires_at > now + TOKEN_REFRESH_BUFFER
     ):
         # 未过期，直接返回
-        return user.strava_access_token
+        return user, user.strava_access_token
 
     # 过期了，用 refresh_token 换新 token
     logger.info("Strava token 过期，开始刷新 user_id=%d", user.id)
@@ -508,7 +520,7 @@ def ensure_valid_token(db: Session, user: User, force: bool = False) -> str:
     db.commit()
 
     logger.info("Strava token 刷新成功 user_id=%d", user.id)
-    return user.strava_access_token
+    return user, user.strava_access_token
 
 
 # ==================== 6.5 Webhook + 手动同步 ====================

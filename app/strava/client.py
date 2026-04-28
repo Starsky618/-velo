@@ -151,7 +151,9 @@ class StravaClient:
         self._check_rate_limit()
 
         # 第 2 步：确保 token 有效
-        token = ensure_valid_token(self.db, self.user)
+        # v5 task-0.2：函数返回 (锁后 user, token) 元组——回写 self.user
+        # 让后续 client 方法读到刷新后的最新字段（access_token / expires_at）
+        self.user, token = ensure_valid_token(self.db, self.user.id)
 
         # 第 3 步：发请求
         url = f"{_API_BASE}{path}"
@@ -205,7 +207,10 @@ class StravaClient:
                 self.user.id, path,
             )
             try:
-                token = ensure_valid_token(self.db, self.user, force=True)
+                # v5 task-0.2：force=True 路径同步回写 self.user
+                self.user, token = ensure_valid_token(
+                    self.db, self.user.id, force=True
+                )
             except ValueError:
                 # refresh_token 失效，用户需要重新绑定
                 logger.error("Strava token 刷新失败 user_id=%d，需重新授权", self.user.id)
