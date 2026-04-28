@@ -178,6 +178,11 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 10. **spec 自审 2 项**（architect Step 7 双审之外的项目特定补充）：
     - **状态机完整性**：所有合法状态转换画完整图，含异常恢复路径——遗漏一个状态转换 = 未来踩 bug
     - **共享逻辑识别**：两处做同样事的代码必须抽共享函数，禁止复制粘贴（如 GPX/Strava 都要把 ParseResult 写入 DB → 抽 `save_parse_result` 共享）
+11. **审核工具分层使用（2026-04-28 沉淀，三者不可互替）**：
+    - **写代码过程中**（在编辑器随手扫一段）→ `/simplify` 做局部漂亮度检查（单 LLM 调用，10 秒级）
+    - **commit 前**（硬性，详见原则 8）→ architect 三重审判（spec 一致性 + 跨模块集成 + Codex 异源盲区，3-5 次 LLM 调用）
+    - **任务完工 / claim 完成前** → `superpowers:verification-before-completion`（强制跑验证命令读完整输出，防"嘴上说测过了实际没跑"）
+    - 关键：simplify ≠ 三审的轻量替代——砍三审 = 失 spec 字段对照（v4 已踩 `fk_xxx` vs `_fkey` 命名坑）+ 异源盲区扫（v4 task-7.10 实证 Codex 一轮抓到 Claude 双审漏的反馈环级 Important）。三者各管一段时间窗，不互斥
 
 ## 代码健康度自动巡检
 
