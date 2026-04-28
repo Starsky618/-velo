@@ -62,6 +62,19 @@
 - [查询] activities.status String(20) server_default='pending' | app/activity/models.py:55
 - [查询] 状态机：pending / processing / completed / failed | app/activity/models.py:53-55
 
+**RQ 基础设施 + 部署事实（第二轮双审 B3A-I1 + B3B-1 修复）**：
+- [查询] rq==2.7.0 / httpx==0.28.1 已装 | requirements.txt:11/15；**anthropic / requests 未装**
+- [查询] Redis 连接散在 3 处：worker.py:24（`Redis.from_url(...)`）/ app/activity/service.py:31（`_redis_conn`/`_queue`）/ scripts/cleanup_zombies.py —— **`app/queue.py` 不存在**
+- [查询] 真实 SessionLocal 路径是 `app.database`（**不是 `app.db`**）| app/database.py
+- [查询] alembic 真实路径是 `migrations/versions/`（**不是 `alembic/versions/`**）| alembic.ini → script_location = migrations
+- [查询] worker.py:31 硬编码 `Worker([queue], connection=redis_conn).work()` —— 单 'velo' 队列订阅
+- [查询] settings 单一来源：`from app.config import settings` + `settings.XXX`（项目 30+ 处使用），**禁止顶层常量 import**
+- [查询] 现有 cron 模式：`scripts/cleanup_zombies.py` + docker-compose 内 `while true; sleep 300` 容器包装 | docker-compose.yml:81
+- [查询] User.is_admin Boolean server_default='false' | app/user/models.py:62
+- [查询] Activity.started_at = `Column(DateTime, nullable=True)` —— **naive，无 timezone=True**（Sprint 0 task 0.1 必迁，第二轮双审 B2B-2）| app/activity/models.py:85
+- [查询] Trackpoint.geom = `Column(Geometry("POINT", srid=4326), nullable=True)` —— 老数据可能 NULL | app/activity/models.py:189
+- [推断] v5 必新建：`app/queue.py`（task 0.8）+ `app/common/__init__.py` + `app/common/geo.py`（B2A-2）+ `app/agent/__init__.py` + `app/agent/segment_writer.py` + `app/agent/tasks.py` + `app/admin/*`（4 文件）+ `app/monitor/*`（2 文件）
+
 ### §0.2 决策汇总
 
 #### PRD v0.4 产品决策
@@ -132,7 +145,7 @@
 3. **5.C.1 即时反馈**：用户访问赛段页 → service 查 last/PR + 计算 diff → API 返回
 4. **5.C.2 功率曲线**：访问个人页 → 算 max_avg_power per bucket per period → Redis 缓存 → 返回多曲线
 5. **5.C.3 进步推送**：activity processing 完成 → progress_detector → 阈值检测 → 写 notification → 通知中心
-6. **5.A.1 热图**：访问个人页 → service 按 user.city 查 simplified_track → PostGIS 聚合 → 返回 multipoint
+6. **5.A.1 热图**：访问个人页 → service 按 user.city 查 activities.simplified_track（JSONB list of [lon, lat]）→ Python 端聚合点列表 + Redis 缓存 1h → 返回 points 数组（**第二轮双审 B2A-3 修复：实际是 JSONB 聚合，不是 PostGIS 聚合，与 §3.5 实现保持一致**）
 7. **5.A.2 他人主页**：跳转 → GET /api/users/{user_id} → 严格字段过滤 → 返回
 
 ---
@@ -303,7 +316,9 @@ class SegmentCurationPool(Base):
 
 ### §2.5 Alembic 迁移脚本（完整实现）
 
-**文件**：`alembic/versions/<rev_id>_phase5_v5_db_changes.py`
+> **路径修正（第二轮双审 B3B-3）**：本项目实际目录是 `migrations/versions/` 而非 `alembic/versions/`。下文所有 file path 均按真实路径理解。
+
+**文件**：`migrations/versions/<rev_id>_phase5_v5_db_changes.py`
 
 **前置 grep**（实施时必做）：
 - 当前 alembic head：`alembic current` 取 prev_revision
@@ -459,6 +474,8 @@ def downgrade():
 
 ### §2.6 老数据回填策略（独立脚本，不阻塞迁移）
 
+> **simplified_track 结构假设（第二轮双审 B1-A4 / B1-B5 修复）**：activities.simplified_track JSONB 是 list of dict `[{'lat': float, 'lon': float, 'distance': float, ...}, ...]`（v3 既定，参 `app/activity/simplify.py`）。本节代码 `pt.get('lat') / pt.get('lon')` 默认此结构。subagent 实施前 grep `simplify.py` 验证字段名；未来若改 simplified 字段结构需同步本脚本。
+
 **文件**：`scripts/backfill_phase5.py`
 **触发顺序**：alembic upgrade → backfill segments → backfill users.city → 验证
 
@@ -471,11 +488,8 @@ import logging
 from app.database import SessionLocal
 from app.segment.models import Segment
 from app.activity.models import Trackpoint
-from app.segment.service import (
-    calculate_max_gradient,
-    calculate_difficulty,
-    infer_city_from_coords,
-)
+from app.segment.service import calculate_max_gradient, calculate_difficulty
+from app.common.geo import infer_city_from_coords  # 第二轮双审 B2A-2 修复：抽到 common 避免反向依赖
 
 logger = logging.getLogger(__name__)
 
@@ -492,8 +506,18 @@ def backfill_segments(db):
         try:
             with db.begin_nested():  # SAVEPOINT 隔离单条失败
                 # max_gradient: PostGIS ST_DWithin 查 reference_line buffer 50m 内 trackpoints
+                # ⚠️ ST_DWithin 单位陷阱（CLAUDE.md §关键技术约定）：必须 ::geography 转换，
+                # 否则单位是经纬度（度），50 ≈ 5500km buffer 完全失效。
+                # 第二轮双审 B1-B6 修复：Trackpoint.geom nullable=True，老数据可能 NULL，必须过滤
+                from sqlalchemy import cast
+                from geoalchemy2 import Geography  # 与现有 service.py:24 风格一致（顶层 import）
                 tps = db.query(Trackpoint).filter(
-                    Trackpoint.geom.ST_DWithin(seg.reference_line, 50)  # 50m buffer
+                    Trackpoint.geom.isnot(None),
+                    func.ST_DWithin(
+                        cast(Trackpoint.geom, Geography),
+                        cast(seg.reference_line, Geography),
+                        50,  # 米
+                    )
                 ).order_by(Trackpoint.activity_id, Trackpoint.seq).all()
                 seg.max_gradient = calculate_max_gradient(tps) if tps else None
 
@@ -806,7 +830,8 @@ def calculate_difficulty(
 
 #### 3.1.3 infer_city_from_coords（新增纯函数）
 
-**位置**：`app/segment/service.py` 新增
+**位置**：**`app/common/geo.py` 新建**（第二轮双审 B2A-2 + Tim 拍：抽到 common 模块避免 user.service → segment.service 反向依赖。`app/common/__init__.py` 同步建空文件，作为"无业务逻辑、可被任意模块依赖的工具层"）。
+segment / user 两个模块都从 `app.common.geo` 导入，符合 CLAUDE.md "User ← Activity ← Segment" 单向依赖（common 在所有模块下方）。
 
 ```python
 # 6 城 GPS 边界 box（经验值，spec 实施时可调，5.D.3 批量管理工具人工修正）
@@ -847,7 +872,7 @@ def infer_city_from_coords(lat: float | None, lon: float | None) -> str:
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast
 from geoalchemy2 import Geography
-from app.segment.models import Segment
+from app.segment.models import Segment, SegmentEffort  # 第二轮双审 B1-B1 修复：保留 entries_count outerjoin
 
 
 def get_segment_list(
@@ -856,54 +881,87 @@ def get_segment_list(
     page_size: int,
     near_lat: float | None = None,
     near_lon: float | None = None,
-    radius: float | None = None,
+    radius: float = 50000,  # 第二轮双审 B1-B2 修复：保留现有 default 50km，避免"传 lat/lon 不传 radius"行为静默回退
     search: str | None = None,
     city: str | None = None,
     difficulty: str | None = None,
-) -> dict:
+) -> tuple[list[dict], int]:
     """
     赛段列表查询。支持搜索 + city + difficulty + 地理位置 多参数组合（AND 关系）。
+    
+    返回 (赛段列表, 总条数)，每条赛段带 entries（成绩记录数）—— 沿用现有 router.py:123 解构契约。
+    第二轮双审 B1-B1 修复：必须保留 tuple + entries_count outerjoin，禁止改 → dict 破坏 router 契约。
     
     陷阱 #5（SQL 注入）：用 SQLAlchemy ORM ilike 参数化，**禁止 f-string 拼 SQL**。
     陷阱 #1（truthiness）：search='' 不应触发搜索 → `if search and len(search) >= 2`
     """
-    query = db.query(Segment)
+    # 构造 filter 列表（与现有 service.py:170-184 同模式）
+    filters = []
     
-    # 搜索（中文 ILIKE 不区分大小写，PostgreSQL 原生支持）
+    # 搜索（中文 ILIKE 不区分大小写）
     if search and len(search) >= 2:
-        query = query.filter(Segment.name.ilike(f'%{search}%'))  # ORM 参数化，安全
+        filters.append(Segment.name.ilike(f'%{search}%'))  # ORM 参数化，安全
     
     # 城市筛
     if city:
-        query = query.filter(Segment.city == city)
+        filters.append(Segment.city == city)
     
     # 难度筛
     if difficulty:
-        query = query.filter(Segment.difficulty == difficulty)
+        filters.append(Segment.difficulty == difficulty)
     
-    # 地理位置筛（沿用现有逻辑）
-    if near_lat is not None and near_lon is not None and radius is not None:
-        query = query.filter(
+    # 地理位置筛（沿用现有逻辑：lat/lon 给了就启用，radius 用 default 50km）
+    if near_lat is not None and near_lon is not None:
+        filters.append(
             func.ST_DWithin(
                 cast(Segment.reference_line, Geography),
-                cast(func.ST_MakePoint(near_lon, near_lat), Geography),
+                cast(
+                    func.ST_SetSRID(func.ST_MakePoint(near_lon, near_lat), 4326),
+                    Geography,
+                ),
                 radius,
             )
         )
     
-    total = query.count()
-    items = (
-        query.order_by(Segment.id)
+    # 总条数（独立 count 查询，避免 GROUP BY 计数偏差，与现有 service.py:187-190 同模式）
+    count_query = db.query(func.count(Segment.id))
+    for f in filters:
+        count_query = count_query.filter(f)
+    total = count_query.scalar()
+    
+    # 分页查询：赛段 + 每个赛段成绩记录数（entries）
+    entries_count = func.count(SegmentEffort.id).label("entries")
+    query = (
+        db.query(Segment, entries_count)
+        .outerjoin(SegmentEffort, SegmentEffort.segment_id == Segment.id)
+        .group_by(Segment.id)
+    )
+    for f in filters:
+        query = query.filter(f)
+    
+    results = (
+        query.order_by(Segment.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
     )
-    return {
-        'items': items,
-        'total': total,
-        'page': page,
-        'page_size': page_size,
-    }
+    
+    # 组装返回（沿用现有 service.py:211+ 风格：距离米→公里，附 entries）
+    items = []
+    for seg, entries in results:
+        items.append({
+            'id': seg.id,
+            'name': seg.name,
+            'distance_km': round((seg.distance or 0) / 1000, 2),
+            'elevation_gain': seg.elevation_gain,
+            'avg_gradient': seg.avg_gradient,
+            'max_gradient': seg.max_gradient,  # v5 新增
+            'difficulty': seg.difficulty,      # v5 新增
+            'city': seg.city,                  # v5 新增
+            'entries': entries,
+            # ... 其他现有字段沿用
+        })
+    return items, total
 ```
 
 **Router 改动**（`app/segment/router.py:103-111` `list_segments` 加 search / city / difficulty 参数）：
@@ -922,12 +980,14 @@ def list_segments(
     city: str | None = Query(None, description="按城市筛"),
     difficulty: str | None = Query(None, description="按难度筛"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    # 第二轮双审 B1-B3 修复 + Tim 拍：GET /api/segments **保持公开**（赛段目录是发现性内容，匿名可看），
+    # 不加 Depends(get_current_user)，与现有 router.py:104-111 一致
 ):
-    return service.get_segment_list(
+    items, total = service.get_segment_list(
         db, page, page_size, near_lat, near_lon, radius,
         search=search, city=city, difficulty=difficulty,
     )
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
 ```
 
 #### 3.1.5 create_segment_from_activity（5.D.4 新增 service）
@@ -935,7 +995,8 @@ def list_segments(
 **位置**：`app/segment/service.py` 新增（admin 专用）
 
 ```python
-from sqlalchemy import func
+from sqlalchemy import cast, func, text  # 第二轮双审 B1-B7 修复：cast 用于 ST_Intersection geography
+from geoalchemy2 import Geography  # 第二轮双审 B1-B7 修复：与现有 service.py:24 风格一致（顶层 import 而非 .types）
 from app.activity.models import Trackpoint
 
 
@@ -966,9 +1027,20 @@ def create_segment_from_activity(
     - ValueError("子序列点数不足") if len < 2
     - ValueError("赛段太短（< 1 公里）") if distance < 1000
     - ValueError("赛段已存在 id={existing.id}") if 重叠 > 80%
+    
+    ⚠️ 并发原子性（codex E1 I28 修复）：
+    PostGIS 几何重叠不能用 UNIQUE 约束。两个 admin 同时调本函数同一段轨迹 →
+    两次重复检测都没命中 → 两条重叠赛段同时入库。
+    解法：进函数立即取 **PostgreSQL advisory transaction lock**（hashtext-based key），
+    把整个 from-activity 创建路径串行化。admin 低频操作（< 50 次/天），串行无性能问题。
+    锁会随事务结束自动释放。
     """
     if start_index >= end_index:
         raise ValueError("起点必须在终点之前")
+    
+    # codex E1 I28 修复：advisory lock 串行化 from-activity 创建路径
+    # 把"重复检测 + 写入"作为一个原子段。任何并发请求都串行排队，避免重叠赛段同时入库。
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtext('segment-create-from-activity'))"))
     
     tps = (
         db.query(Trackpoint)
@@ -1014,31 +1086,31 @@ def create_segment_from_activity(
         difficulty = calculate_difficulty(distance, elevation_gain, max_gradient)
     
     if city is None:
+        from app.common.geo import infer_city_from_coords  # 第二轮双审 B2A-2 修复：抽到 common
         city = infer_city_from_coords(tps[0].latitude, tps[0].longitude)
     
     # reference_line LINESTRING WKT
     coords_str = ', '.join(f'{tp.longitude} {tp.latitude}' for tp in tps)
     reference_line_wkt = f'LINESTRING({coords_str})'
     
-    # 重复检测（PostGIS 重叠长度 > 80% × 当前 distance）
-    overlap_threshold = 0.8
+    # 重复检测（第二轮双审 B1-B7 修复：用 ST_HausdorffDistance 判轨迹相似度，
+    # 不用 ST_Intersection + ST_Length —— 两 LINESTRING 求交可能返 GeometryCollection / POINT，
+    # ST_Length 对非线串返 0 → 漏判重复）
+    # ST_HausdorffDistance 单位是度（reference_line SRID 4326）；
+    # 1 度 ≈ 111km，**< 0.0005 ≈ 55m** = 两条线整体距离很近 → 视为同一赛段
+    HAUSDORFF_THRESHOLD = 0.0005  # 经验值，spec 实施时可调
     existing = (
         db.query(Segment)
         .filter(
-            func.ST_Length(
-                cast(
-                    func.ST_Intersection(
-                        Segment.reference_line,
-                        func.ST_GeomFromText(reference_line_wkt, 4326),
-                    ),
-                    Geography,
-                )
-            ) > distance * overlap_threshold
+            func.ST_HausdorffDistance(
+                Segment.reference_line,
+                func.ST_GeomFromText(reference_line_wkt, 4326),
+            ) < HAUSDORFF_THRESHOLD
         )
         .first()
     )
     if existing:
-        raise ValueError(f"赛段已存在 id={existing.id}（重叠 > {int(overlap_threshold * 100)}%）")
+        raise ValueError(f"赛段已存在 id={existing.id}（轨迹相似度过高，Hausdorff < {HAUSDORFF_THRESHOLD}°）")
     
     new_seg = Segment(
         name=name,
@@ -1071,6 +1143,7 @@ def create_segment_from_activity(
 ```python
 from sqlalchemy import func
 from app.segment.models import SegmentEffort
+from app.activity.models import Activity  # codex E1 I27 修复：按 Activity.started_at 排序
 
 
 def get_my_effort_with_compare(
@@ -1085,9 +1158,19 @@ def get_my_effort_with_compare(
     
     陷阱 #4（.one() vs .first()）：用 .first() / .scalar()，**不用 .one()**（NoResultFound 抛 500）
     
+    ⚠️ 时序基准（codex E1 I27 修复）：
+    "current / last" 必须按 **Activity.started_at**（实际骑行时间）排序，
+    不按 SegmentEffort.created_at（DB 入库时间）。
+    反例：用户先上传今天的骑行，再补传昨天的 GPX —— 用 created_at 会把昨天的标成 current。
+    
+    ⚠️ PR 计算与时序无关（第二轮双审 B1-A1 修复）：
+    `pr_elapsed_time` 用 `MIN(elapsed_time)` 子查询，**不需要 join Activity 排序**——
+    PR 是历史最佳，谁先创下不影响。`current_attempt_is_pr` 仅判 current.elapsed_time == pr_time，
+    并列时 is_pr=True 表示用时持平 PR，不区分谁最先。
+    
     返回字段：
-    - current_attempt_elapsed_time: 这次（最新一次）用时
-    - last_attempt_elapsed_time: 上次（倒数第二次）用时
+    - current_attempt_elapsed_time: 这次（按骑行时间最新一次）用时
+    - last_attempt_elapsed_time: 上次（按骑行时间倒数第二次）用时
     - pr_elapsed_time: 个人最佳用时
     - current_attempt_diff_to_last: 这次 - 上次（正数 = 变快，负数 = 变慢）
     - current_attempt_is_pr: 这次是否破 PR
@@ -1095,11 +1178,12 @@ def get_my_effort_with_compare(
     """
     efforts = (
         db.query(SegmentEffort)
+        .join(Activity, SegmentEffort.activity_id == Activity.id)
         .filter(
             SegmentEffort.segment_id == segment_id,
             SegmentEffort.user_id == user_id,
         )
-        .order_by(SegmentEffort.created_at.desc())
+        .order_by(Activity.started_at.desc())  # codex E1 I27 修复：实际骑行时间，不是 DB 入库时间
         .limit(2)
         .all()
     )
@@ -1162,8 +1246,12 @@ def calculate_power_curve(
     陷阱 #1（truthiness）：power=0 是合法值，**用 `if power is not None`，不用 `tp.power or 0` 兜底**
     （`tp.power or 0` 把 0 当 None 处理，反而吞掉合法 0 值）
     
+    ⚠️ **不允许跨 activity 拼接 trackpoints**：本函数语义是"单次骑行内的滑窗最大平均"。
+    跨 N 次骑行算 period 最佳，必须对每个 activity 独立调本函数，再取 per-window max——
+    见 calculate_power_curve_from_activities。直接拼 list 会让"5min 最佳"出现跨日合并的虚假极值。
+    
     参数：
-        trackpoints: list[Trackpoint] 按 seq / created_at 升序，含 power（int|None，单位 W）
+        trackpoints: list[Trackpoint] 单个 activity 内、按 seq / created_at 升序，含 power（int|None，单位 W）
         windows_sec: list[int] 时长档位（秒）。None 用默认 6 档
     返回：
         dict[int → float] window_sec → max_avg_power_W
@@ -1212,6 +1300,55 @@ def calculate_power_curve(
 - 极端高瓦数 1200W spike 1s → window=1 ~1200, window=5 ~240（被平均稀释）
 - power=0 合法（休息段）不被当 None
 
+#### 3.3.1.1 calculate_power_curve_from_activities（新增纯函数 / codex E1 C6 反馈环级修复）
+
+**位置**：`app/activity/power_zones.py` 同模块新增。
+
+**目的**：跨 N 个 activity 算"period 内最大平均功率曲线"——对每个 activity 独立算 curve，取所有 activity 的 per-window max。**禁止跨 activity 拼接 trackpoints**（破坏"5min 最佳"语义）。
+
+```python
+def calculate_power_curve_from_activities(
+    activities_trackpoints: list[list],
+    windows_sec: list[int] | None = None,
+) -> dict:
+    """
+    跨 N 个 activity 的时长分桶最大平均功率曲线。
+    
+    算法：对每个 activity 独立 calculate_power_curve，再对每个 window 取所有 activity 的 max。
+    
+    codex E1 C6 修复：原跨 activity 拼接 trackpoints 的算法语义错误
+    （activity A 末尾 + activity B 开头算 5min 平均会失真）。
+    
+    参数：
+        activities_trackpoints: list[list[Trackpoint]]，每个内层 list 是**单 activity** 的 trackpoints
+        windows_sec: list[int] 时长档位（秒）。None 用默认 6 档
+    返回:
+        dict[int → float] window_sec → max_avg_power_W（取所有 activity 的 max）
+    """
+    if windows_sec is None:
+        windows_sec = [1, 5, 30, 60, 300, 1200]
+    
+    if not activities_trackpoints:
+        return {w: 0.0 for w in windows_sec}
+    
+    result = {w: 0.0 for w in windows_sec}
+    for tps in activities_trackpoints:
+        if not tps:
+            continue
+        curve = calculate_power_curve(tps, windows_sec)
+        for w in windows_sec:
+            if curve[w] > result[w]:
+                result[w] = curve[w]
+    
+    return result
+```
+
+**单元测试要求**（≥ 4 case）：
+- 空 list → 全 0
+- 单 activity（list of 1）→ 等价 calculate_power_curve
+- 2 activity，A 5min 高于 B → 该 window 取 A
+- 2 activity，A window=5 高 / B window=300 高 → 各 window 各取最高（不同 activity 可在不同 window 称王）
+
 #### 3.3.2 service 层包装 + Redis 缓存
 
 **位置**：`app/user/service.py` 或 `app/activity/service.py` 新增（具体放哪 spec 实施时拍，建议 user.service 因为是用户主动查询）
@@ -1221,7 +1358,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from app.strava.client import _redis as REDIS_CLIENT  # 复用现有 Redis 客户端（app/strava/client.py:59），不新建 config 顶级变量
 from app.activity.models import Activity, Trackpoint
-from app.activity.power_zones import calculate_power_curve
+from app.activity.power_zones import calculate_power_curve_from_activities  # codex E1 C6 修复：跨 activity 用 _from_activities 不直接拼
 
 CACHE_TTL_SEC = 3600  # 1 小时
 
@@ -1274,8 +1411,8 @@ def get_user_power_curve(
     else:
         raise ValueError(f"unknown period: {period}")
     
-    # 3. 查 period 内所有 completed activities 的 trackpoints
-    activity_ids = (
+    # 3. 查 period 内所有 completed activities 的 trackpoints（按 activity 分组，codex E1 C6）
+    activities = (
         db.query(Activity.id)
         .filter(
             Activity.user_id == user_id,
@@ -1283,17 +1420,22 @@ def get_user_power_curve(
             Activity.started_at >= start,
             Activity.started_at < end,
         )
-        .subquery()
-    )
-    trackpoints = (
-        db.query(Trackpoint)
-        .filter(Trackpoint.activity_id.in_(activity_ids))
-        .order_by(Trackpoint.activity_id, Trackpoint.seq)
         .all()
     )
     
-    # 4. 计算
-    curve = calculate_power_curve(trackpoints)
+    # 按 activity_id 分组（禁止跨 activity 拼接 trackpoints）
+    activities_trackpoints = []
+    for act in activities:
+        tps = (
+            db.query(Trackpoint)
+            .filter(Trackpoint.activity_id == act.id)
+            .order_by(Trackpoint.seq)
+            .all()
+        )
+        activities_trackpoints.append(tps)
+    
+    # 4. 计算（每 activity 独立算后取 max）
+    curve = calculate_power_curve_from_activities(activities_trackpoints)
     result = {
         'period': period,
         'buckets': curve,  # {1: 850.0, 5: 720.0, 30: 320.0, ...}
@@ -1401,7 +1543,7 @@ from sqlalchemy.orm import Session
 from app.activity.models import Activity, Trackpoint
 from app.notification.models import Notification
 from app.user.models import User
-from app.activity.power_zones import calculate_power_curve
+from app.activity.power_zones import calculate_power_curve, calculate_power_curve_from_activities
 
 # 进步阈值（PRD Q6 路径 C Tim 拍）
 PROGRESS_5MIN_POWER_THRESHOLD_W = 5
@@ -1451,23 +1593,32 @@ def detect_5min_power_progress(
             month=first_this_month.month - 1
         )
     
-    baseline_tps = (
-        db.query(Trackpoint)
-        .join(Activity, Trackpoint.activity_id == Activity.id)
+    # codex E1 C6 修复：按 activity 分组算 baseline，禁止跨 activity 拼接
+    baseline_activities = (
+        db.query(Activity.id)
         .filter(
             Activity.user_id == user_id,
             Activity.status == 'completed',
             Activity.started_at >= last_month_start,
             Activity.started_at < first_this_month,
         )
-        .order_by(Trackpoint.activity_id, Trackpoint.seq)
         .all()
     )
     
-    if not baseline_tps:
+    if not baseline_activities:
         return None  # 上月无 activity，无 baseline
     
-    baseline_curve = calculate_power_curve(baseline_tps, windows_sec=[300])
+    baseline_acts_tps = []
+    for act in baseline_activities:
+        tps = (
+            db.query(Trackpoint)
+            .filter(Trackpoint.activity_id == act.id)
+            .order_by(Trackpoint.seq)
+            .all()
+        )
+        baseline_acts_tps.append(tps)
+    
+    baseline_curve = calculate_power_curve_from_activities(baseline_acts_tps, windows_sec=[300])
     baseline_5min = baseline_curve[300]
     
     # 3. 阈值检测
@@ -1513,15 +1664,24 @@ def detect_5min_power_progress(
     return notification
 ```
 
-**Worker 集成**：activity processing 完成后（status='completed' 切换点）调用：
+**Worker 集成**（第二轮双审 B2B-5 修复：明确 hook 位置）：
+
+实施前先 grep 找 status='completed' 赋值点：
+```bash
+grep -n "status.*completed\|status\s*=\s*['\"]completed" app/activity/worker.py app/activity/service.py
+```
+
+确认 hook 落在 worker.py 解析成功路径（即将 commit 之前），不在 status='processing' 切换点、不在 'failed' 路径：
+
 ```python
-# app/activity/worker.py 或同等位置
+# app/activity/worker.py（hook 落在 status='completed' 赋值后、db.commit 前）
 from app.notification.progress_detector import detect_5min_power_progress
 from app.user.service import invalidate_power_curve_cache
 
-# 在 activity.status 更新为 'completed' 后
+# activity.status = 'completed' 之后立即触发
 detect_5min_power_progress(db, activity.user_id, activity.id)
 invalidate_power_curve_cache(activity.user_id)
+# 然后 db.commit()
 ```
 
 **单元测试**（≥ 5 case）：上月无 activity → None / 当前无功率 → None / 涨 4W → None / 涨 5W → notification / 涨 -10W（退步）→ None
@@ -1531,7 +1691,7 @@ invalidate_power_curve_cache(activity.user_id)
 **模块归属**：`app/user/service.py` 新增 + `app/user/router.py` 加 endpoint + `app/user/models.py:32-93` 加 city 字段（防火墙破例 1 处）。
 
 **隔离边界**：
-- 输入：用 ORM 关系查 Activity（user_id 索引）+ activities.simplified_track（已有 JSONB）+ Trackpoint.geom（PostGIS）
+- 输入：用 ORM 关系查 Activity（user_id 索引）+ activities.simplified_track（已有 JSONB list of [lon, lat]）—— **纯 Python 端 JSONB 聚合，不调 PostGIS ST_Collect**（第二轮双审 B2A-3 修复：与 §1.3 第 6 条保持一致）
 - **禁止**：调 segment / notification 模块；不写其他主轴的表
 - 缓存：Redis（沿用 v4 全局 `_redis` 客户端模式）
 
@@ -1540,12 +1700,12 @@ invalidate_power_curve_cache(activity.user_id)
 ```python
 # app/user/service.py 新增
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone  # 第二轮双审 B2A-1/B2B-1 修复：本块行 1819 用了 timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.user.models import User
 from app.activity.models import Activity
-from app.segment.service import infer_city_from_coords  # 跨模块调 service public API（隔离 OK）
+from app.common.geo import infer_city_from_coords  # 第二轮双审 B2A-2 修复：抽到 common 避免 user→segment 反向依赖
 from app.strava.client import _redis as REDIS_CLIENT  # 复用现有 Redis 客户端
 
 HEATMAP_CACHE_TTL_SEC = 3600
@@ -1669,15 +1829,17 @@ if user.city is None and activity.simplified_track and len(activity.simplified_t
 
 ```python
 # app/user/service.py 新增
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone  # 第二轮双审 B2A-1/B2B-1 修复：本块用了 timedelta
 from sqlalchemy import func
 from app.user.models import User
 from app.activity.models import Activity
 
 
-# 默认公开字段（PRD 5.A.2 拍：默认全公开 + settings 隐私开关）
-# v5 简化版：所有字段默认公开，user.privacy_settings JSONB 字段控制（§2 修订补遗待补，或 v6 加）
-PUBLIC_FIELDS = {
+# 响应 keys 白名单（**第二轮双审 B2B-3 修复：改名 RESPONSE_KEYS 避免与 User model 字段混淆**）
+# 含 4 个 user 表列字段（nickname/avatar_url/city/ftp/bike_type）+ 4 个 service 层聚合字段
+# （total_distance_km / total_elevation_m / activity_count / current_month_summary）
+# v5 简化：默认全公开（D-P08 红线"看自己 = 看他人"），未来 v6 加 privacy_settings JSONB 控制
+RESPONSE_KEYS = {
     'id', 'nickname', 'avatar_url', 'city', 'ftp', 'bike_type',
     'total_distance_km', 'total_elevation_m', 'activity_count',
     'current_month_summary',
@@ -1687,7 +1849,7 @@ PUBLIC_FIELDS = {
 def get_user_profile_for_others(
     db: Session,
     target_user_id: int,
-    requester_user_id: int,
+    requester_user_id: int,  # v6 隐私开关预留（D-P08 红线下 v5 不区分 self/others，参数仅占位）
 ) -> dict:
     """
     返回他人用户主页字段（严格只读，D-P08 红线）。
@@ -1902,10 +2064,10 @@ v5 留接口不实现 RAG / 不上向量检索，仅直连 Claude API。
 """
 import logging
 from anthropic import Anthropic  # 需 requirements.txt 加 anthropic
-from app.config import ANTHROPIC_API_KEY  # 部署时配 env，docker-compose.yml 同步加
+from app.config import settings  # 第二轮双审 B3B-3 修复：项目统一 settings.XXX 风格，不用顶层常量
 
 logger = logging.getLogger(__name__)
-_client = Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY) if settings.ANTHROPIC_API_KEY else None
 
 
 PROMPT_TEMPLATE = """你是 velo 平台的本地骑友写手。给一条赛段写**活人感介绍**：
@@ -1967,6 +2129,122 @@ def generate_segment_draft(
         return ""
 ```
 
+#### 3.7.3 AI 草稿 RQ 异步载体（codex E1 C10 修复）
+
+**位置**：`app/agent/tasks.py` 新建（RQ task 入口，与现有 `app/activity/worker.py` 等价分模块）
+
+**为什么需要**：
+- `generate_segment_draft` 调 Claude API 单次 ~3-8s，admin endpoint 不能同步阻塞
+- 两条调用入口（POST generate / PATCH curation-pool selected=true）必须**复用同一 RQ task 不复制**
+- RQ 失败重试、worker 崩溃恢复都走标准基础设施（沿用 v0/v4）
+
+```python
+# app/agent/tasks.py（新建）
+"""
+AI 草稿 RQ 异步任务入口。
+所有 admin 触发 AI 草稿生成的入口都 enqueue 这个 task，禁止同步调用 generate_segment_draft。
+"""
+import logging
+from sqlalchemy.exc import IntegrityError
+from app.database import SessionLocal  # 第二轮双审 B3B-1 修复：真实路径 app.database 不是 app.db
+from app.segment.models import Segment, SegmentAiDraft
+from app.agent.segment_writer import generate_segment_draft
+
+logger = logging.getLogger(__name__)
+
+
+def generate_segment_draft_task(segment_id: int) -> None:
+    """
+    RQ async task：给指定 segment 生成 AI 草稿并 UPSERT segment_ai_drafts。
+    
+    幂等：UPSERT by segment_id UNIQUE（强制检查清单 #2）。
+    失败：generate_segment_draft 返空字符串 → 不 UPSERT，记 logger（不抛异常打断 RQ）。
+    """
+    db = SessionLocal()
+    try:
+        seg = db.query(Segment).filter(Segment.id == segment_id).first()
+        if not seg:
+            logger.error(f"generate_segment_draft_task: segment_id={segment_id} 不存在，skip")
+            return
+        
+        segment_props = {
+            'name': seg.name,
+            'city': seg.city or '未知',
+            'distance_km': round((seg.distance or 0) / 1000, 1),
+            'elevation_gain_m': int(seg.elevation_gain or 0),
+            'max_gradient_pct': round(seg.max_gradient or 0, 1),
+            'difficulty': seg.difficulty or '未知',
+        }
+        
+        ai_text = generate_segment_draft(segment_props)
+        if not ai_text:
+            logger.warning(f"AI 返回空草稿，segment_id={segment_id}，跳过 UPSERT")
+            return
+        
+        # UPSERT：UNIQUE(segment_id) 保证幂等
+        existing = db.query(SegmentAiDraft).filter(
+            SegmentAiDraft.segment_id == segment_id
+        ).first()
+        if existing:
+            # 已存在：仅 pending 状态允许覆盖（避免覆盖人工编辑）
+            if existing.status == 'pending':
+                existing.ai_draft_text = ai_text
+            else:
+                logger.info(f"draft segment_id={segment_id} status={existing.status}，跳过覆盖")
+                return
+        else:
+            draft = SegmentAiDraft(
+                segment_id=segment_id,
+                ai_draft_text=ai_text,
+                status='pending',
+            )
+            db.add(draft)
+        
+        try:
+            db.commit()
+        except IntegrityError:
+            # 并发场景：另一 worker 已插入。回滚不抛
+            db.rollback()
+            logger.warning(f"draft segment_id={segment_id} 并发插入冲突，跳过")
+    finally:
+        db.close()
+```
+
+**enqueue 入口**（admin/service.py 新增辅助）：
+
+```python
+# app/admin/service.py
+from rq import Queue
+from app.queue import redis_conn  # Sprint 0 task 0.8 新建的单一连接源（第二轮双审 B3B-1 修复）
+
+def enqueue_ai_draft_generation(segment_id: int) -> None:
+    """admin endpoint 调用：把 AI 草稿生成丢给 RQ。"""
+    q = Queue('ai_drafts', connection=redis_conn)
+    q.enqueue(
+        'app.agent.tasks.generate_segment_draft_task',
+        segment_id,
+        job_timeout=120,  # 第二轮双审 M-B3-1 修复：与项目其他位置整数秒风格一致（2 分钟）
+        retry={'max': 2, 'interval': [30, 90]},
+    )
+```
+
+**部署同步**（陷阱 #2 环境变量 N 处同步 + 第二轮双审 B3B-2/B3B-3 修复）：
+
+- **`worker.py` 改造（必做）**：现有 `worker.py:31` 硬编码 `Worker([queue], connection=...)` 单 `velo` 队列。
+  v5 改为读 env：`RQ_QUEUES = os.getenv('RQ_QUEUES', 'velo,ai_drafts').split(',')` →
+  `Worker([Queue(name, connection=redis_conn) for name in RQ_QUEUES], connection=redis_conn)`。
+  确保单 worker 容器同时订阅 velo + ai_drafts。
+- **`docker-compose.yml`**：worker service 加 `environment: RQ_QUEUES=velo,ai_drafts`。
+  扩容用 `docker compose up --scale worker=3`（**不用 v3 standalone 不支持的 `replicas:` 字段**，B3B-4 修复）。
+- 新增 env：`ANTHROPIC_API_KEY`（不在 v4 范围）—— `.env.example` + `docker-compose.yml` environment + `app/config.py` Settings 类加字段（**不用顶层常量**，B3B-3 修复）：
+  ```python
+  # app/config.py Settings 类追加
+  ANTHROPIC_API_KEY: str = ""
+  FEISHU_BOT_WEBHOOK: str = ""
+  ```
+  调用方 `from app.config import settings` + `settings.ANTHROPIC_API_KEY`（项目现有风格）。
+- **`app/queue.py`**：Sprint 0 task 0.8 已建（第二轮双审 B3B-1 修复），本节直接 `from app.queue import redis_conn`。
+
 ### §3.8 worker 软目标监控（5.7.1）
 
 **模块归属**：`app/monitor/processing_health.py` 新建（或 app/activity/monitor.py，spec 实施时拍）。
@@ -1982,8 +2260,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.activity.models import Activity
-from app.config import FEISHU_BOT_WEBHOOK  # 需部署时配
-import requests
+from app.config import settings  # 第二轮双审 B3B-3 修复：项目统一 settings.XXX 风格
+import httpx  # 第二轮双审 B3B-2 修复：项目统一 httpx 不是 requests（requirements.txt:httpx==0.28.1）
 
 logger = logging.getLogger(__name__)
 
@@ -2029,8 +2307,8 @@ def scan_processing_health(db: Session) -> list[int]:
     )
     
     try:
-        requests.post(
-            FEISHU_BOT_WEBHOOK,
+        httpx.post(
+            settings.FEISHU_BOT_WEBHOOK,
             json={"msg_type": "text", "content": {"text": msg}},
             timeout=5,
         )
@@ -2040,9 +2318,9 @@ def scan_processing_health(db: Session) -> list[int]:
     return [a.id for a in stuck_activities]
 ```
 
-**部署集成**：cron 每 1 分钟跑 `python -m app.monitor.processing_health` 或 docker scheduler 容器加这条。
-
-**worker 容器扩容**（PRD 5.7.1 拍："worker 容器 replicas spec 决定"）：建议 docker-compose.yml worker 服务 `replicas: 3`（spec 实施时拍是否提到 3 / 5）。
+**部署集成**（第二轮双审 M-B3-2 修复 + B3B-4 修复）：
+- **cron 模式**：沿用现有 `scripts/cleanup_zombies.py` 模式（docker-compose 内 `while true; sleep 60` 容器包装），不新建独立 cron。
+- **worker 容器扩容**（PRD 5.7.1 拍）：用 `docker compose up --scale worker=3` 命令式扩容，**不用** v3 standalone 不支持的 `replicas:` 字段。容器名自动 `velo_worker_1/_2/_3`。
 
 ---
 
@@ -2056,10 +2334,10 @@ def scan_processing_health(db: Session) -> list[int]:
 
 | 维度 | 内容 |
 |---|---|
-| 权限 | current_user（沿用 Depends(get_current_user)）|
-| 参数 | `page` int default 1 / `page_size` int 1-100 default 20 / `near_lat` float? / `near_lon` float? / `radius` float? / `search` str? len ≥ 2 / `city` str? enum / `difficulty` str? enum |
-| 响应 | `{items: [{id, name, distance, elevation_gain, avg_gradient, max_gradient, city, difficulty, ...}], total, page, page_size}` |
-| 错误 | 401 未登录 / 422 invalid enum |
+| 权限 | **公开**（**第二轮双审 B1-B3 + Tim 2026-04-28 拍：赛段目录是发现性内容，匿名可看，沿用现有 router.py:104-111 不加 get_current_user**）|
+| 参数 | `page` int default 1 / `page_size` int 1-100 default 20 / `near_lat` float? / `near_lon` float? / `radius` float default 50000（米，沿用现有，**不允许改 None**）/ `search` str? len ≥ 2 / `city` str? enum / `difficulty` str? enum |
+| 响应 | `{items: [{id, name, distance_km, elevation_gain, avg_gradient, max_gradient, city, difficulty, entries, ...}], total, page, page_size}` |
+| 错误 | 422 invalid enum |
 
 #### GET /api/segments/{segment_id}（扩展返回字段）
 
@@ -2076,8 +2354,8 @@ def scan_processing_health(db: Session) -> list[int]:
 | 权限 | current_user |
 | 参数 | path: segment_id |
 | 响应 | `{current_attempt_elapsed_time: int?, last_attempt_elapsed_time: int?, pr_elapsed_time: int?, current_attempt_diff_to_last: int?, current_attempt_is_pr: bool, is_first_attempt: bool}` |
-| 错误 | 401 / 404 segment 不存在 |
-| 备注 | 用 idx_efforts_segment_user_time 索引（已存）|
+| 错误 | 401。**404 segment 不存在 由 router 层显式查 `db.query(Segment).get(segment_id)` 校验抛出（第二轮双审 B1-B4 修复：service `get_my_effort_with_compare` 不抛 404，无 effort 时返 `is_first_attempt=True`）**|
+| 备注 | 用 idx_efforts_segment_user_time 索引（已存）；router 层 ValueError → 404 翻译参 §4.5 |
 
 ### §4.2 user 模块（用户端 / 5.C.2 + 5.A.1 + 5.A.2）
 
@@ -2147,9 +2425,9 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 | 权限 | require_admin |
 | 参数 | path: segment_id |
 | body | 无 |
-| 响应 | `{draft_id: int, segment_id, ai_draft_text: str, status: 'pending'}` |
-| 副作用 | 调 Anthropic API 生成草稿 + UPSERT segment_ai_drafts（segment_id UNIQUE）|
-| 错误 | 401 / 403 非 admin / 404 segment 不存在 / 502 AI API 失败（不阻断业务，记 logger）|
+| 响应 | `202 Accepted` `{job_id: str, segment_id, status: 'enqueued'}` —— **不同步等 AI** |
+| 副作用 | **enqueue RQ task `app.agent.tasks.generate_segment_draft_task(segment_id)`**（§3.7.3）→ Worker 异步调 Anthropic API + UPSERT segment_ai_drafts（segment_id UNIQUE）。完成后 admin 通过 GET /api/admin/ai/segment-drafts 拉取 |
+| 错误 | 401 / 403 非 admin / 404 segment 不存在（enqueue 前预校验，不到 worker）|
 
 #### GET /api/admin/ai/segment-drafts（新增 / 5.D.2）
 
@@ -2185,7 +2463,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 |---|---|
 | 权限 | require_admin |
 | body | `{selected_for_v5: bool}` |
-| 副作用 | false → true 时**触发 5.B.2 generate AI draft**（异步调用，不阻塞响应）|
+| 副作用 | false → true 时**enqueue 同一 RQ task**（`app.agent.tasks.generate_segment_draft_task`，§3.7.3）—— 复用 5.B.2 的 worker 路径，不复制 |
 | 响应 | updated pool item |
 | 错误 | 401 / 403 / 404 / 400 当前选中数 ≥ 50 时拒绝新增 |
 
@@ -2253,7 +2531,9 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 | `app/segment/models.py` | 40-69 Segment 类 | 加 3 字段：difficulty / max_gradient / city（含 server_default + CheckConstraint）|
 | `app/segment/models.py` | 124 后 | 加 Index `idx_segments_city_difficulty(city, difficulty)` |
 | `app/segment/models.py` | SegmentEffort 类后追加 | **新增 ORM 类 `SegmentAiDraft` + `SegmentCurationPool`** —— 完整定义参 §2.2.3 |
-| `app/segment/service.py` | 现有 + 新增 | 新增 `_haversine_distance` / `calculate_max_gradient` / `calculate_difficulty` / `infer_city_from_coords` / `get_my_effort_with_compare` / `create_segment_from_activity` |
+| `app/segment/service.py` | 现有 + 新增 | 新增 `_haversine_distance` / `calculate_max_gradient` / `calculate_difficulty` / `get_my_effort_with_compare` / `create_segment_from_activity` —— **`infer_city_from_coords` 不在此处**（第二轮双审 B2A-2 拆到 `app/common/geo.py`）|
+| `app/common/__init__.py` | **新建** | 空文件，标识 common 是包 |
+| `app/common/geo.py` | **新建** | `infer_city_from_coords` + `_CITY_BOUNDS`（第二轮双审 B2A-2 修复反向依赖）|
 | `app/segment/service.py` | 123-125 `get_segment_list` | 扩展加 search / city / difficulty 参数 |
 | `app/segment/service.py` | 37-46 `create_segment` | **不改**（沿用，admin 用 from-activity 走新路径）|
 | `app/segment/router.py` | 103-111 `list_segments` | 加 search / city / difficulty Query 参数 |
@@ -2292,6 +2572,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 |---|---|
 | `app/agent/__init__.py` | **新建空模块**（按 ADR-009 留接口架构）|
 | `app/agent/segment_writer.py` | **新建**：`generate_segment_draft` + PROMPT_TEMPLATE + Anthropic client 初始化 |
+| `app/agent/tasks.py` | **新建（第二轮双审 B3A-I3/M-2 修复）**：RQ 异步任务入口 `generate_segment_draft_task(segment_id)` —— UPSERT segment_ai_drafts 幂等。所有 admin 触发 AI 草稿生成都 enqueue 此 task，禁止同步调用 segment_writer |
 
 ### §5.6 admin 模块（新建）
 
@@ -2329,7 +2610,8 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 | 文件 | 改动 |
 |---|---|
-| `alembic/versions/<rev_id>_phase5_v5_db_changes.py` | **新建**：完整 upgrade / downgrade（参 §2.5）|
+| `migrations/versions/<rev_id>_phase5_v5_db_changes.py` | **新建（第二轮双审 B3B-3 修复：真实路径是 `migrations/versions/`，不是 `alembic/versions/`）**：完整 upgrade / downgrade（参 §2.5）|
+| `migrations/versions/<rev_id>_phase5_tz_aware.py` | **新建（第二轮双审 B2B-2 修复 + Sprint 0 task 0.1）**：迁 5 张表 DateTime 列为 timezone=True，`postgresql_using="<col> AT TIME ZONE 'UTC'"` |
 
 ### §5.11 H5 admin 前端项目（独立）
 
@@ -2363,6 +2645,9 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 | 候选池脚本跑期间 admin 改候选 | UPSERT by segment_id UNIQUE 幂等 |
 | cache miss + 多请求并发计算 | 接受重复计算（结果幂等）；避免 thundering herd 用 Redis SET NX 加锁（可选）|
 | approved draft 同步 segments.description 失败 | status 保 approved + 异步重试（不阻断 admin 操作）|
+| **多 admin 同时 from-activity 创建相同轨迹（第二轮双审 B3A-I2）**| §3.1.5 进函数即取 `pg_advisory_xact_lock(hashtext('segment-create-from-activity'))` 串行化整条创建路径，事务结束自动释放。低频操作可接受。|
+| **RQ task 重试导致同 segment_id 重复 enqueue（B3A-I2）**| §3.7.3 worker 内 UPSERT by `segment_id UNIQUE` + IntegrityError 回滚兜底，幂等保证。|
+| **advisory lock 等待超时 / 死锁（B3A-I2）**| from-activity 单 admin 操作 < 1s 完成；可加 `SET LOCAL lock_timeout = '5s'` 兜底，超时返 503 让用户重试 |
 
 ### §6.3 批量冲击（100 倍数据量涌入会怎样）
 
@@ -2414,27 +2699,36 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 **实施原则**（Tim 2026-04-28 拍 + 信条 15）：模块组之间**并行**（独立 worktree 不冲突），模块组内**串行**（同 git 冲突）。每个 task 主 agent 自己写到 `plans/phase5/task-N.X.md`（不派 codex 写）。
 
-### §8.1 Sprint 0：P1 tech-debt 清理（5-8 天，单 worktree 串行）
+### §8.1 Sprint 0：P1 tech-debt 清理 + 迁移基线（5-8 天，单 worktree 串行）
 
 依赖：无。前置 v5 所有 Sprint。
 
 | 任务 | 文件改动 | 工期 |
 |---|---|---|
-| 0.1 datetime 栈内统一 aware UTC | 全项目 `datetime.utcnow()` → `datetime.now(timezone.utc)` + DateTime 字段加 timezone=True + alembic 迁移 | 2-3 天 |
+| 0.1 datetime 栈内统一 aware UTC | 全项目 `datetime.utcnow()` → `datetime.now(timezone.utc)` + DateTime 字段加 timezone=True + **alembic 迁移 A（tech-debt tz-aware）独立一份**。**必迁列（第二轮双审 B2B-2 修复）**：`activities.started_at` / `activities.created_at` / `notifications.created_at` / `segment_efforts.created_at` / `users.created_at` —— 写迁移时 `postgresql_using="<col> AT TIME ZONE 'UTC'"`（陷阱 #7）。Sprint 1+ 业务代码（§3.3 / §3.4 / §3.6）假设这些列已 tz-aware，未迁前直接跑会触发陷阱 #2 TypeError | 2-3 天 |
 | 0.2 ensure_valid_token 行锁注释化 | `app/strava/service.py` 函数签名改 `(db, user_id) → (User, token)` | 1 天 |
 | 0.3 ensure_valid_token 未绑定路径 | 入口加 `if user.strava_refresh_token is None: raise` | 0.5 天 |
 | 0.4 SQLAlchemy legacy `.get()` 替换 | `tests/test_notification.py` `Session.query().get()` → `session.get()` | 0.5 天 |
 | 0.5 scheduler Redis 连接复用 | `app/strava/import_scheduler.py:187-198` 改用全局 `_redis` | 0.5 天 |
+| **0.6 v5 主迁移（codex E1 C11 修复）** | **跑 §2 v5 迁移脚本（segments 加 difficulty/city/max_gradient + users.city + segment_ai_drafts + segment_curation_pool）—— 一份独立 migrations/versions/ revision，依赖 0.1 的 tz-aware revision** | 0.5 天 |
+| **0.7 老数据回填（codex E1 C11 修复）** | **跑 `scripts/backfill_phase5.py`（§2.6）：填 segments 三新字段 + users.city。在 0.6 迁移后跑，Sprint 1 启动前完成** | 0.5-1 天 |
+| **0.8 建立 app/queue.py 单一 Redis 连接源（第二轮双审 B3B-1 + Tim 拍）** | **新建 `app/queue.py` 提取 `redis_conn = Redis.from_url(settings.REDIS_URL)` + `default_queue = Queue('velo', connection=redis_conn)` 单一真相源；同步重构 `worker.py` / `app/activity/service.py` / `scripts/cleanup_zombies.py` 三处散点都 `from app.queue import redis_conn`。v5 §3.7.3 RQ task 直接用本模块。**禁止 v5 各模块各自 `Redis.from_url`** | 1 天 |
+
+**⚠️ 迁移时机硬约束（codex E1 C11 修复）**：
+- v5 共**两份独立 migrations revision**：A=tz-aware（task 0.1），B=v5 主迁移（task 0.6）
+- 顺序固定：A → B → 老数据回填脚本（0.7）
+- B 必须在 Sprint 1 三个模块组**启动前**完成 —— Sprint 1 / 2 / 3 业务代码假设三新字段（difficulty / city / max_gradient）已在 DB
+- B 完成 + 0.7 回填完成 + 0.8 app/queue.py 落地 = Sprint 0 closure；任一未完成不许启动 Sprint 1
 
 ### §8.2 Sprint 1：B 主轴 + worker 软目标（10-14 天，3 模块组并行）
 
 | 模块组 | 子任务 | 文件 | 串行 / 并行 |
 |---|---|---|---|
 | **A: segment 模块** | 5.B.1（坡度+难度+城市）+ 5.B.3（搜索）+ **5.C.1（即时反馈）** | `app/segment/models.py` + `service.py` + `router.py` | 组内串行（Index + service + router 顺序）|
-| **B: agent 模块（新建）** | 5.B.2（AI 介绍 RAG 留接口）| `app/agent/__init__.py` + `segment_writer.py` | 独立 worktree |
+| **B: agent 模块（新建）** | 5.B.2（AI 介绍 RAG 留接口）| `app/agent/__init__.py` + `segment_writer.py` + **`tasks.py`**（第二轮双审 B3A-I3 修复：RQ 异步入口必须 Sprint 1 完成，否则 Sprint 3 admin 启动时 enqueue 字符串路径无效）| 独立 worktree |
 | **C: monitor 模块（新建）** | 5.7.1（worker 软目标）| `app/monitor/processing_health.py` + cron + worker replicas | 独立 worktree |
 
-依赖：Sprint 0 全部完成 + alembic 迁移完成。
+依赖：Sprint 0 全部完成（含 task 0.1 tz-aware 迁移 + task 0.6 v5 主迁移 + task 0.7 老数据回填）。
 
 ### §8.3 Sprint 2：C 主轴 + A 主轴（12-15 天，3 模块组并行 + user 模块内串行）
 
