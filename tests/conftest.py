@@ -105,8 +105,8 @@ _activities_table = Table(
     Column("max_hr", Float),
     Column("avg_cadence", Float),
     Column("calories", Float),
-    Column("started_at", DateTime),
-    Column("finished_at", DateTime),
+    Column("started_at", DateTime(timezone=True)),
+    Column("finished_at", DateTime(timezone=True)),
     Column("simplified_track", Text),   # 替代 JSONB
     Column("splits", Text),             # 替代 JSONB
     Column("power_zones", Text),        # 替代 JSONB
@@ -114,8 +114,8 @@ _activities_table = Table(
     Column("data_source", String(20)),     # 第 1 期新增：数据来源标记
     Column("activity_type", String(20), default="cycling"),  # 第 4 期新增：活动类型
     Column("strava_activity_id", Integer), # 第 2 期新增：Strava 活动去重 ID
-    Column("created_at", DateTime),
-    Column("updated_at", DateTime),
+    Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
 )
 
 
@@ -140,8 +140,8 @@ _segments_table = Table(
     Column("reference_line", Text),          # 替代 Geometry
     Column("match_tolerance", Float, default=50.0),
     Column("min_match_ratio", Float, default=0.8),
-    Column("created_at", DateTime),
-    Column("updated_at", DateTime),
+    Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
 )
 
 # segment_efforts 表
@@ -157,7 +157,7 @@ _segment_efforts_table = Table(
     Column("avg_power", Float),
     Column("start_index", Integer, nullable=False),
     Column("end_index", Integer, nullable=False),
-    Column("created_at", DateTime),
+    Column("created_at", DateTime(timezone=True)),
 )
 
 # 通知表（SQLite 简化版，省略外键和 CHECK 约束以避免 SQLite 兼容性问题）
@@ -176,8 +176,8 @@ _notifications_table = Table(
     Column("elapsed_time", Integer, nullable=True),
     Column("rank", Integer, nullable=True),
     Column("rival_user_id", Integer, nullable=True),
-    Column("expires_at", DateTime, nullable=False),
-    Column("created_at", DateTime),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("created_at", DateTime(timezone=True)),
     # 第 4 期（task-7.1）新增：已读状态。SQLite 用 Integer 代替 Boolean
     # 注意必须给 server_default，否则 test_notification fixture 不传 is_read 时 NOT NULL 违反
     Column("is_read", Integer, nullable=False, server_default="0"),
@@ -273,7 +273,8 @@ def activities_data(db, test_user):
     now_bj = datetime.now(beijing_tz)
     # 用今天零点做基准：保证数据一定在"本周"和"本月"范围内
     today_start = now_bj.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_utc = today_start.astimezone(timezone.utc).replace(tzinfo=None)
+    # 保留 tzinfo（第 5 期 task-0.1）：DB 列已 tz-aware，写入也用 aware datetime
+    today_utc = today_start.astimezone(timezone.utc)
 
     # 第 1 条：已完成，今天上午，距离 50km，爬升 500m，时间 1h
     db.execute(
@@ -345,7 +346,8 @@ def last_month_activity(db, test_user):
     else:
         last_month = now_bj.replace(month=now_bj.month - 1, day=15,
                                      hour=12, minute=0, second=0, microsecond=0)
-    last_month_utc = last_month.astimezone(timezone.utc).replace(tzinfo=None)
+    # 保留 tzinfo（第 5 期 task-0.1）：DB 列已 tz-aware，写入也用 aware datetime
+    last_month_utc = last_month.astimezone(timezone.utc)
 
     db.execute(
         _activities_table.insert().values(

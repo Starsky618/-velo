@@ -16,7 +16,7 @@ task-7.8：mark-all-read 接口 + unread_count 扩展测试。
 - effort_id 在每个测试里要唯一，否则 UNIQUE(effort_id, event_type) 会冲突
 - user_factory 在 conftest 里不存在，每个测试直接 new User
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -46,7 +46,7 @@ def _make_notif(db, user_id, is_read=False, event_type="pr",
         elapsed_time=100,
         rank=1,
         is_read=is_read,
-        expires_at=datetime.utcnow() + timedelta(days=30),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
     )
     db.add(n)
     db.commit()
@@ -150,7 +150,7 @@ def test_expired_notifications_excluded_from_unread_count(db):
         elapsed_time=100,
         rank=1,
         is_read=False,
-        expires_at=datetime.utcnow() - timedelta(days=1),  # 已过期
+        expires_at=datetime.now(timezone.utc) - timedelta(days=1),  # 已过期
     )
     db.add(expired)
     db.commit()
@@ -177,7 +177,7 @@ def test_notification_with_null_segment_still_returned(db):
         elapsed_time=100,
         rank=1,
         is_read=False,
-        expires_at=datetime.utcnow() + timedelta(days=30),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
     )
     db.add(n)
     db.commit()

@@ -118,13 +118,13 @@ def test_classify_tied_first_but_not_pr():
 
 # ===================== Service 层测试 =====================
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 def _insert_activity(db, user_id, data_source="gpx", started_at=None):
     """测试辅助：插入活动记录"""
     if started_at is None:
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
     from tests.conftest import _activities_table
     result = db.execute(
         _activities_table.insert().values(
@@ -158,7 +158,7 @@ def _insert_effort(db, segment_id, activity_id, user_id, elapsed_time, created_a
     """测试辅助：插入赛段成绩"""
     from tests.conftest import _segment_efforts_table
     if created_at is None:
-        created_at = datetime.utcnow()
+        created_at = datetime.now(timezone.utc)
     result = db.execute(
         _segment_efforts_table.insert().values(
             segment_id=segment_id,
@@ -222,7 +222,7 @@ def test_detect_events_idempotent(db, test_user):
 def test_detect_events_strava_history_skipped(db, test_user):
     """Strava 历史导入（超过 7 天）→ 不生成通知"""
     seg_id = _insert_segment(db)
-    old_date = datetime.utcnow() - timedelta(days=30)
+    old_date = datetime.now(timezone.utc) - timedelta(days=30)
     act_id = _insert_activity(db, test_user.id, data_source="strava", started_at=old_date)
     eff_id = _insert_effort(db, seg_id, act_id, test_user.id, 300)
 
@@ -240,7 +240,7 @@ def test_detect_events_strava_history_skipped(db, test_user):
 def test_detect_events_gpx_old_activity_triggers(db, test_user):
     """手动上传的旧 GPX → 即使超过 7 天也生成通知"""
     seg_id = _insert_segment(db)
-    old_date = datetime.utcnow() - timedelta(days=30)
+    old_date = datetime.now(timezone.utc) - timedelta(days=30)
     act_id = _insert_activity(db, test_user.id, data_source="gpx", started_at=old_date)
     eff_id = _insert_effort(db, seg_id, act_id, test_user.id, 300)
 
@@ -317,7 +317,7 @@ def test_cleanup_expired(db, test_user):
 
     # 手动把 expires_at 改到过去
     db.query(Notification).update(
-        {"expires_at": datetime.utcnow() - timedelta(days=1)},
+        {"expires_at": datetime.now(timezone.utc) - timedelta(days=1)},
         synchronize_session=False,
     )
     db.commit()

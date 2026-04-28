@@ -89,5 +89,6 @@ class User(Base):
 
     # 创建时间和更新时间
     # server_default 让数据库自动填入当前时间，不依赖 Python 端的时钟
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    # tz-aware（第 5 期 task-0.1）：统一时区元数据，避免 naive vs aware TypeError
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

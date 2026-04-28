@@ -162,7 +162,7 @@ def _create_test_activity(db, user_id: int, title: str = "测试骑行", status:
             distance=50000.0,
             duration=3600,
             elevation_gain=500.0,
-            started_at=datetime(2026, 4, 7, 6, 0, 0),
+            started_at=datetime(2026, 4, 7, 6, 0, 0, tzinfo=timezone.utc),  # task-0.1 双审 C2 修复 naive→aware
         )
     )
     db.commit()

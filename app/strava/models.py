@@ -73,7 +73,8 @@ class StravaImport(Base):
     status = Column(String(20), server_default="active")
 
     # ===== 时间戳 =====
-    created_at = Column(DateTime, server_default=func.now())
+    # tz-aware（第 5 期 task-0.1）：与本表 updated_at（v4 已 tz-aware）保持一致
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     # updated_at 用 timezone=True（第 4 期迁移 phase4_frontend_consume 配套）：
     # task-7.5 stalled 判定用 datetime.now(UTC) - updated_at，
     # 如果这里是 naive datetime，aware 减 naive 会抛 TypeError

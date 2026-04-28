@@ -82,8 +82,11 @@ class Activity(Base):
     avg_cadence = Column(Float, nullable=True)        # 平均踏频（rpm）
     calories = Column(Float, nullable=True)           # 估算卡路里（kcal）
     normalized_power = Column(Float, nullable=True)   # 标准化功率（NP），FIT 自带，GPX/Strava 为 NULL
-    started_at = Column(DateTime, nullable=True)      # 骑行开始时间
-    finished_at = Column(DateTime, nullable=True)     # 骑行结束时间
+    # 用 DateTime(timezone=True) 让 PostgreSQL 用 TIMESTAMP WITH TIME ZONE 存储，
+    # 读出来的 datetime 自带 tzinfo，避免与 datetime.now(timezone.utc) 比较时报
+    # naive vs aware TypeError（陷阱 #2）。第 5 期统一改造（task-0.1）。
+    started_at = Column(DateTime(timezone=True), nullable=True)   # 骑行开始时间（UTC）
+    finished_at = Column(DateTime(timezone=True), nullable=True)  # 骑行结束时间（UTC）
 
     # 数据来源标记：gpx / fit / strava，老数据为 NULL（都是 GPX）
     data_source = Column(String(20), nullable=True)
@@ -123,8 +126,9 @@ class Activity(Base):
     power_zones = Column(JSONB, nullable=True)
 
     # ===== 时间戳 =====
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    # tz-aware（第 5 期 task-0.1）：避免 naive vs aware 比较 TypeError
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # ===== 索引 =====
     # 加速常见查询：按用户+状态筛选、按用户+开始时间排序
@@ -172,8 +176,8 @@ class Trackpoint(Base):
     # 海拔（米），GPS 精度有限，可能为空
     elevation = Column(Float, nullable=True)
 
-    # 时间戳：这个点是什么时候经过的
-    timestamp = Column(DateTime, nullable=True)
+    # 时间戳：这个点是什么时候经过的（tz-aware UTC，第 5 期 task-0.1）
+    timestamp = Column(DateTime(timezone=True), nullable=True)
 
     # 传感器数据（可选，取决于骑行设备是否有对应传感器）
     heart_rate = Column(Integer, nullable=True)  # 心率（bpm）

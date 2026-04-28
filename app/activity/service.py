@@ -307,9 +307,10 @@ def get_activity_status(db: Session, activity_id: int, user_id: int) -> Activity
     # 超时保护：processing 超过 10 分钟视为失败
     # updated_at 在 Worker 开始解析时会被更新为 processing 的时间戳，
     # 如果距今超过 10 分钟还没完成，说明 Worker 卡死或崩溃了
-    # 用 datetime.now(timezone.utc) 替代已弃用的 datetime.utcnow()（Python 3.12+）
+    # task-0.1 双审 Critical 1 修复：activities.updated_at 已迁 tz-aware，
+    # 删 .replace(tzinfo=None)，否则 naive - aware = TypeError processing 详情页全 500
     if activity.status == "processing" and activity.updated_at:
-        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        now_utc = datetime.now(timezone.utc)
         elapsed = now_utc - activity.updated_at
         if elapsed.total_seconds() > _PROCESSING_TIMEOUT:
             activity.status = "failed"

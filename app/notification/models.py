@@ -82,8 +82,9 @@ class Notification(Base):
 
     # ---- 生命周期 ----
     # created_at + 60 天，过期后由定时任务清理
-    expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    # tz-aware（第 5 期 task-0.1）：与 datetime.now(timezone.utc) 比较不踩 TypeError
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # ---- 已读状态（第 4 期新增）----
     # 配合 idx_notifications_user_unread 部分索引加速 unread_count 查询

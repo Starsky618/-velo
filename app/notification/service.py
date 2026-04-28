@@ -14,7 +14,7 @@
 - 排名计算复用 segment/service.get_effort_rank，不要重复实现
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -68,7 +68,7 @@ def _detect_events_inner(db: Session, effort: SegmentEffort) -> None:
 
     if (activity.data_source == "strava"
             and activity.started_at is not None
-            and activity.started_at < datetime.utcnow() - timedelta(days=_STRAVA_HISTORY_DAYS)):
+            and activity.started_at < datetime.now(timezone.utc) - timedelta(days=_STRAVA_HISTORY_DAYS)):
         logger.debug(
             "跳过 Strava 历史活动通知 effort_id=%s activity_id=%s",
             effort.id, effort.activity_id,
@@ -121,7 +121,7 @@ def _detect_events_inner(db: Session, effort: SegmentEffort) -> None:
         return  # 不是 PR，不生成通知
 
     # ---- 写入通知（SAVEPOINT 隔离）----
-    expires_at = datetime.utcnow() + timedelta(days=_NOTIFICATION_TTL_DAYS)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=_NOTIFICATION_TTL_DAYS)
 
     with db.begin_nested():
         # 当前用户的通知（PR 或 KOM）
@@ -199,7 +199,7 @@ def get_notifications(
 
     使用索引：idx_notif_user_created + idx_notifications_user_unread
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # 基础查询：JOIN 赛段名和对手昵称
     query = (
@@ -241,7 +241,7 @@ def get_notifications(
             "rival_user_id": notif.rival_user_id,
             "rival_nickname": rival_nickname,
             "is_read": notif.is_read,
-            "created_at": notif.created_at.isoformat() + "Z" if notif.created_at else None,
+            "created_at": notif.created_at.isoformat() if notif.created_at else None,  # task-0.1 Codex: tz-aware 后 isoformat 自带 +00:00，禁止再加 Z 否则成 ...+00:00Z 畸形
         })
 
     # ---- unread_count 独立查询 ----
@@ -328,7 +328,7 @@ def get_user_honors(db: Session, user_id: int) -> dict:
             "elapsed_time": row.elapsed_time,
             "avg_speed": row.avg_speed,
             "rank": row.rank,
-            "achieved_at": row.created_at.isoformat() + "Z" if row.created_at else None,
+            "achieved_at": row.created_at.isoformat() if row.created_at else None,  # task-0.1 Codex: tz-aware 后 isoformat 自带 +00:00
         }
         if row.rank == 1:
             koms.append(entry)
@@ -350,7 +350,7 @@ def cleanup_expired(db: Session) -> int:
     由定时任务每天调用一次。返回删除的条数，供日志记录。
     使用索引：idx_notif_expires
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     count = (
         db.query(Notification)
         .filter(Notification.expires_at < now)

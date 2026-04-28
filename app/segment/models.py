@@ -66,7 +66,8 @@ class Segment(Base):
     # min_match_ratio：轨迹点中至少多大比例在容差内才算匹配成功，默认 80%
     min_match_ratio = Column(Float, server_default="0.8")
 
-    created_at = Column(DateTime, server_default=func.now())
+    # tz-aware（第 5 期 task-0.1）：统一时区元数据，避免 naive vs aware TypeError
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # 空间索引：加速"附近有哪些赛段"的查询
     __table_args__ = (
@@ -110,7 +111,8 @@ class SegmentEffort(Base):
     start_index = Column(Integer, nullable=False)
     end_index = Column(Integer, nullable=False)
 
-    created_at = Column(DateTime, server_default=func.now())
+    # tz-aware（第 5 期 task-0.1）：统一时区元数据，避免 naive vs aware TypeError
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         # 联合唯一：一次骑行在同一赛段只有一条成绩

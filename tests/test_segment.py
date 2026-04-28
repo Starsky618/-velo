@@ -12,7 +12,7 @@
 - 排行榜和用户成绩的测试通过直接插入 _segments_table/_segment_efforts_table 数据绕过 PostGIS
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone  # task-0.1 双审 C2：加 timezone 用于 aware datetime
 
 from app.segment.matcher import match_segment
 
@@ -29,7 +29,7 @@ def _make_trackpoints(coords, start_time=None, interval=10):
     - interval: 相邻点之间的秒数间隔，默认 10 秒
     """
     if start_time is None:
-        start_time = datetime(2026, 1, 1, 8, 0, 0)
+        start_time = datetime(2026, 1, 1, 8, 0, 0, tzinfo=timezone.utc)  # task-0.1 双审 C2 修复
     return [
         {
             "lat": lat,
@@ -283,7 +283,7 @@ def _insert_segment(db, name="汾河北段计时", distance=556.0, elevation_gai
         end_lon=112.55,
         match_tolerance=50.0,
         min_match_ratio=0.8,
-        created_at=datetime(2026, 4, 1),
+        created_at=datetime(2026, 4, 1, tzinfo=timezone.utc),  # task-0.1 双审 C2 修复
     ))
     db.commit()
     # 返回插入的 id（SQLite 最后插入的 rowid）
@@ -306,7 +306,7 @@ def _insert_effort(db, segment_id, activity_id, user_id,
         avg_power=avg_power,
         start_index=1,
         end_index=6,
-        created_at=datetime(2026, 4, 1),
+        created_at=datetime(2026, 4, 1, tzinfo=timezone.utc),  # task-0.1 双审 C2 修复
     ))
     db.commit()
 
@@ -320,7 +320,7 @@ def _insert_activity(db, user_id, title="测试骑行"):
         status="completed",
         file_url="test.gpx",
         distance=50000.0,
-        created_at=datetime(2026, 4, 1),
+        created_at=datetime(2026, 4, 1, tzinfo=timezone.utc),  # task-0.1 双审 C2 修复
     ))
     db.commit()
     result = db.execute(_activities_table.select().where(
