@@ -110,24 +110,29 @@ def test_ensure_valid_token_uses_row_lock(db, strava_imports_table):
     """
     from unittest.mock import MagicMock
 
-    # 构造 mock session，精确断言 with_for_update 被调用
+    # 构造 mock session，精确断言 with_for_update + populate_existing 都被调用
     mock_db = MagicMock()
-    # query() → filter() → with_for_update() → first() 链
+    # query() → filter() → with_for_update() → populate_existing() → first() 链
     mock_filter = MagicMock()
     mock_query = MagicMock()
     mock_query.filter.return_value = mock_filter
     mock_lock_result = MagicMock()
     mock_filter.with_for_update.return_value = mock_lock_result
-    mock_lock_result.first.return_value = None  # 模拟查不到用户
+    # v5 task-0.2 fix：链里多了 populate_existing（codex 异源审抓的 Important）
+    mock_populated = MagicMock()
+    mock_lock_result.populate_existing.return_value = mock_populated
+    mock_populated.first.return_value = None  # 模拟查不到用户
     mock_db.query.return_value = mock_query
 
     # v5 task-0.2：传 user_id（int）替代 user 对象；错误消息含 user_id
     with pytest.raises(ValueError, match=r"user_id=9999"):
         service.ensure_valid_token(mock_db, 9999)
 
-    # 核心断言：with_for_update() 确实被调用过——这是行锁语义的"证据"
+    # 核心断言：with_for_update() + populate_existing() 都被调用过——
+    # 缺任何一环，task-0.2 "返回锁后最新 user" 的契约就失效
     mock_filter.with_for_update.assert_called_once()
-    mock_lock_result.first.assert_called_once()
+    mock_lock_result.populate_existing.assert_called_once()
+    mock_populated.first.assert_called_once()
 
 
 # ==================== v5 task-0.2：返回 (User, token) 元组 ====================
@@ -196,10 +201,12 @@ def test_ensure_valid_token_not_expired_returns_tuple():
     )
 
     mock_db = MagicMock()
+    # v5 task-0.2 fix：链里多一环 populate_existing（codex 异源审抓的 Important）
     (
         mock_db.query.return_value
         .filter.return_value
         .with_for_update.return_value
+        .populate_existing.return_value
         .first.return_value
     ) = fake_user
 

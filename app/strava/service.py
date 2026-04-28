@@ -425,10 +425,19 @@ def ensure_valid_token(
     """
     # v4 I8：入口行锁——把 user 行锁住，避免并发刷 token 竞态
     # 注意：必须在事务内才能锁住；caller（StravaClient._request）已在隐式事务内
+    #
+    # v5 task-0.2 codex 异源审抓到的 Important：行锁 SQL 拿到了，但 SQLAlchemy
+    # 在同一 session 内会优先返回 identity map 里的旧 ORM 实例（缓存），字段
+    # 值不会被锁后从 DB 读到的最新值覆盖。结果：caller 持有的 self.user 拿到的
+    # 仍是 stale 字段（如 strava_token_expires_at），可能误判"未过期"返回旧
+    # access_token——task-0.2 改造的"返回锁后最新 user"契约失效。
+    # 加 .populate_existing() 强制刷新 identity map 里已有对象的 attributes，
+    # 让 query 返回的对象字段一定是 DB 里加锁后看到的最新值。
     user = (
         db.query(User)
         .filter(User.id == user_id)
         .with_for_update()
+        .populate_existing()
         .first()
     )
     if user is None:
