@@ -69,7 +69,7 @@
 - [查询] alembic 真实路径是 `migrations/versions/`（**不是 `alembic/versions/`**）| alembic.ini → script_location = migrations
 - [查询] worker.py:31 硬编码 `Worker([queue], connection=redis_conn).work()` —— 单 'velo' 队列订阅
 - [查询] settings 单一来源：`from app.config import settings` + `settings.XXX`（项目 30+ 处使用），**禁止顶层常量 import**
-- [查询] 现有 cron 模式：`scripts/cleanup_zombies.py` + docker-compose 内 `while true; sleep 300` 容器包装 | docker-compose.yml:81
+- [查询] 现有 cron 模式：`scripts/cleanup_zombies.py` + docker-compose 内 `while true; sleep 300` 容器包装 | docker-compose.yml:83
 - [查询] User.is_admin Boolean server_default='false' | app/user/models.py:62
 - [查询] Activity.started_at = `Column(DateTime, nullable=True)` —— **naive，无 timezone=True**（Sprint 0 task 0.1 必迁，第二轮双审 B2B-2）| app/activity/models.py:85
 - [查询] Trackpoint.geom = `Column(Geometry("POINT", srid=4326), nullable=True)` —— 老数据可能 NULL | app/activity/models.py:189
@@ -1008,7 +1008,8 @@ def create_segment_from_activity(
     end_index: int,
     city: str | None = None,
     difficulty: str | None = None,
-    creator_user_id: int | None = None,
+    # 第三轮双审 R3-C2 修复：删 creator_user_id 参数 —— v5 segments 表无 created_by 列，
+    # 参数无处可存。未来追溯创建者走 audit log（v6+），不在 segments 表落字段。
 ) -> Segment:
     """
     从 activity 的 trackpoints 提取子序列创建赛段（5.D.4 admin 专用）。
@@ -1356,7 +1357,7 @@ def calculate_power_curve_from_activities(
 ```python
 import json
 from datetime import datetime, timedelta, timezone
-from app.strava.client import _redis as REDIS_CLIENT  # 复用现有 Redis 客户端（app/strava/client.py:59），不新建 config 顶级变量
+from app.queue import redis_conn as REDIS_CLIENT  # 第三轮双审 R3-C1 修复：Sprint 0 task 0.8 单一连接源，禁止 user→strava 反向依赖
 from app.activity.models import Activity, Trackpoint
 from app.activity.power_zones import calculate_power_curve_from_activities  # codex E1 C6 修复：跨 activity 用 _from_activities 不直接拼
 
@@ -1385,29 +1386,34 @@ def get_user_power_curve(
         # redis-py 7+ 默认返 bytes（陷阱 #5）
         return json.loads(cached.decode() if isinstance(cached, bytes) else cached)
     
-    # 2. 计算 period 时间范围
-    now = datetime.now(timezone.utc)
+    # 2. 计算 period 时间范围（第三轮双审 R3-C3 修复：CLAUDE.md "时区"硬约定 —— 本周/本月按北京时间 UTC+8）
+    BJ_TZ = timezone(timedelta(hours=8))
+    now_utc = datetime.now(timezone.utc)
+    now_bj = now_utc.astimezone(BJ_TZ)
     if period == 'this_month':
-        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        end = now
+        start_bj = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        start = start_bj.astimezone(timezone.utc)
+        end = now_utc
     elif period == 'last_month':
-        first_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        end = first_this_month
-        # 上月 1 日
-        if first_this_month.month == 1:
-            start = first_this_month.replace(year=first_this_month.year - 1, month=12)
+        first_this_month_bj = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = first_this_month_bj.astimezone(timezone.utc)
+        if first_this_month_bj.month == 1:
+            start_bj = first_this_month_bj.replace(year=first_this_month_bj.year - 1, month=12)
         else:
-            start = first_this_month.replace(month=first_this_month.month - 1)
+            start_bj = first_this_month_bj.replace(month=first_this_month_bj.month - 1)
+        start = start_bj.astimezone(timezone.utc)
     elif period == 'this_year':
-        start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        end = now
+        start_bj = now_bj.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        start = start_bj.astimezone(timezone.utc)
+        end = now_utc
     elif period == 'last_year':
-        first_this_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        end = first_this_year
-        start = first_this_year.replace(year=first_this_year.year - 1)
+        first_this_year_bj = now_bj.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = first_this_year_bj.astimezone(timezone.utc)
+        start_bj = first_this_year_bj.replace(year=first_this_year_bj.year - 1)
+        start = start_bj.astimezone(timezone.utc)
     elif period == 'all_time':
         start = datetime(1970, 1, 1, tzinfo=timezone.utc)
-        end = now
+        end = now_utc
     else:
         raise ValueError(f"unknown period: {period}")
     
@@ -1579,19 +1585,23 @@ def detect_5min_power_progress(
     if current_5min <= 0:
         return None  # 当前 activity 无功率数据，不检测
     
-    # 2. 上月 baseline
-    now = datetime.now(timezone.utc)
-    first_this_month = now.replace(
+    # 2. 上月 baseline（第三轮双审 R3-C3 修复：按北京时间 UTC+8 划月，CLAUDE.md 时区约定）
+    BJ_TZ = timezone(timedelta(hours=8))
+    now_bj = datetime.now(timezone.utc).astimezone(BJ_TZ)
+    first_this_month_bj = now_bj.replace(
         day=1, hour=0, minute=0, second=0, microsecond=0
     )
-    if first_this_month.month == 1:
-        last_month_start = first_this_month.replace(
-            year=first_this_month.year - 1, month=12
+    if first_this_month_bj.month == 1:
+        last_month_start_bj = first_this_month_bj.replace(
+            year=first_this_month_bj.year - 1, month=12
         )
     else:
-        last_month_start = first_this_month.replace(
-            month=first_this_month.month - 1
+        last_month_start_bj = first_this_month_bj.replace(
+            month=first_this_month_bj.month - 1
         )
+    # 转回 UTC 用于 DB 查询（Activity.started_at Sprint 0 task 0.1 后是 tz-aware UTC）
+    first_this_month = first_this_month_bj.astimezone(timezone.utc)
+    last_month_start = last_month_start_bj.astimezone(timezone.utc)
     
     # codex E1 C6 修复：按 activity 分组算 baseline，禁止跨 activity 拼接
     baseline_activities = (
@@ -1620,6 +1630,12 @@ def detect_5min_power_progress(
     
     baseline_curve = calculate_power_curve_from_activities(baseline_acts_tps, windows_sec=[300])
     baseline_5min = baseline_curve[300]
+    
+    # 第三轮双审 R3-I1（codex E1 漏抓 / 强制检查清单 #6 边界）：上月无功率数据守卫
+    # 反例：上月所有骑行无功率（GPX 无 power 流）→ baseline_5min=0 → current=200 → delta=200
+    # → 误推送"涨 200W"假阳性。从无到有不算"进步 5W+"。
+    if baseline_5min <= 0:
+        return None
     
     # 3. 阈值检测
     delta = current_5min - baseline_5min
@@ -1706,7 +1722,7 @@ from sqlalchemy.orm import Session
 from app.user.models import User
 from app.activity.models import Activity
 from app.common.geo import infer_city_from_coords  # 第二轮双审 B2A-2 修复：抽到 common 避免 user→segment 反向依赖
-from app.strava.client import _redis as REDIS_CLIENT  # 复用现有 Redis 客户端
+from app.queue import redis_conn as REDIS_CLIENT  # 第三轮双审 R3-C1 修复：Sprint 0 task 0.8 单一连接源，禁止 user→strava 反向依赖
 
 HEATMAP_CACHE_TTL_SEC = 3600
 
@@ -1805,8 +1821,19 @@ def update_user_city(db: Session, user_id: int, city: str) -> User:
 ```
 
 **首次上传 GPX 自动推断主城市**（worker 集成，activity status='completed' 切换点）：
+
 ```python
-# 在 detect_5min_power_progress 调用旁
+# 在 detect_5min_power_progress 调用旁，**同一事务内**走原子检查避免并发重复触发
+# 第三轮双审 R3-Minor 修复：用 SELECT FOR UPDATE 锁住 user 行，
+# 保证多 activity 并发解析时只有一次 city 推断 commit
+from sqlalchemy.orm import Session
+
+user = (
+    db.query(User)
+    .filter(User.id == activity.user_id)
+    .with_for_update()  # 行锁，并发请求串行
+    .first()
+)
 if user.city is None and activity.simplified_track and len(activity.simplified_track) > 0:
     pt = activity.simplified_track[0]
     if pt.get('lat') is not None and pt.get('lon') is not None:
@@ -1906,7 +1933,7 @@ def get_user_profile_for_others(
         .first()
     )
     
-    return {
+    raw_response = {
         'id': target.id,
         'nickname': target.nickname,
         'avatar_url': target.avatar_url,
@@ -1922,6 +1949,9 @@ def get_user_profile_for_others(
             'avg_power_w': round(current_month.m_avg_power or 0, 1),
         },
     }
+    # 第三轮双审 R3-I3 修复：RESPONSE_KEYS 白名单实际生效。
+    # 防止未来手滑加 'strava_access_token' / 'openid' 等字段时静默泄漏（D-P08 红线靠机制不靠自觉）。
+    return {k: v for k, v in raw_response.items() if k in RESPONSE_KEYS}
 ```
 
 **测试覆盖**（≥ 4 case）：
@@ -2214,16 +2244,14 @@ def generate_segment_draft_task(segment_id: int) -> None:
 
 ```python
 # app/admin/service.py
-from rq import Queue
-from app.queue import redis_conn  # Sprint 0 task 0.8 新建的单一连接源（第二轮双审 B3B-1 修复）
+from app.queue import ai_drafts_queue  # 第三轮双审 R3-I4 修复：直接用 task 0.8 expose 的 queue 实例，不就地 Queue('ai_drafts')
 
 def enqueue_ai_draft_generation(segment_id: int) -> None:
     """admin endpoint 调用：把 AI 草稿生成丢给 RQ。"""
-    q = Queue('ai_drafts', connection=redis_conn)
-    q.enqueue(
+    ai_drafts_queue.enqueue(
         'app.agent.tasks.generate_segment_draft_task',
         segment_id,
-        job_timeout=120,  # 第二轮双审 M-B3-1 修复：与项目其他位置整数秒风格一致（2 分钟）
+        job_timeout=120,  # 整数秒，与项目其他位置一致
         retry={'max': 2, 'interval': [30, 90]},
     )
 ```
@@ -2319,7 +2347,7 @@ def scan_processing_health(db: Session) -> list[int]:
 ```
 
 **部署集成**（第二轮双审 M-B3-2 修复 + B3B-4 修复）：
-- **cron 模式**：沿用现有 `scripts/cleanup_zombies.py` 模式（docker-compose 内 `while true; sleep 60` 容器包装），不新建独立 cron。
+- **cron 模式**：沿用 `scripts/cleanup_zombies.py` 容器包装模式（docker-compose 内 `while true; sleep <周期>`）。本节 monitor 周期 **60 秒**（不沿用 cleanup_zombies 的 300 秒，监控更密；第三轮双审 R3-Minor 修复：spec 显式注明独立周期，避免实施 subagent 误抄）。
 - **worker 容器扩容**（PRD 5.7.1 拍）：用 `docker compose up --scale worker=3` 命令式扩容，**不用** v3 standalone 不支持的 `replicas:` 字段。容器名自动 `velo_worker_1/_2/_3`。
 
 ---
@@ -2597,7 +2625,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 | `app/main.py` | include 新增 router：`admin_router` + `progress_detector` 不需要 router |
 | `requirements.txt` | 加 `anthropic` SDK |
 | `.env.example` | 加 `ANTHROPIC_API_KEY` / `FEISHU_BOT_WEBHOOK` |
-| `docker-compose.yml` | api/worker 服务的 `environment` 加 ANTHROPIC_API_KEY 等；worker `replicas: 3`（5.7.1 扩容）；可选加 admin-h5 容器 |
+| `docker-compose.yml` | api/worker 服务的 `environment` 加 ANTHROPIC_API_KEY 等；**worker 扩容用 `docker compose up --scale worker=3`**（第三轮双审 R3-I2 修复：v3 standalone 不支持 `replicas:`）；可选加 admin-h5 容器 |
 
 ### §5.9 scripts 目录
 
@@ -2712,7 +2740,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 | 0.5 scheduler Redis 连接复用 | `app/strava/import_scheduler.py:187-198` 改用全局 `_redis` | 0.5 天 |
 | **0.6 v5 主迁移（codex E1 C11 修复）** | **跑 §2 v5 迁移脚本（segments 加 difficulty/city/max_gradient + users.city + segment_ai_drafts + segment_curation_pool）—— 一份独立 migrations/versions/ revision，依赖 0.1 的 tz-aware revision** | 0.5 天 |
 | **0.7 老数据回填（codex E1 C11 修复）** | **跑 `scripts/backfill_phase5.py`（§2.6）：填 segments 三新字段 + users.city。在 0.6 迁移后跑，Sprint 1 启动前完成** | 0.5-1 天 |
-| **0.8 建立 app/queue.py 单一 Redis 连接源（第二轮双审 B3B-1 + Tim 拍）** | **新建 `app/queue.py` 提取 `redis_conn = Redis.from_url(settings.REDIS_URL)` + `default_queue = Queue('velo', connection=redis_conn)` 单一真相源；同步重构 `worker.py` / `app/activity/service.py` / `scripts/cleanup_zombies.py` 三处散点都 `from app.queue import redis_conn`。v5 §3.7.3 RQ task 直接用本模块。**禁止 v5 各模块各自 `Redis.from_url`** | 1 天 |
+| **0.8 建立 app/queue.py 单一 Redis 连接源（第二轮双审 B3B-1 + Tim 拍）** | **新建 `app/queue.py`** 暴露三个对象：`redis_conn = Redis.from_url(settings.REDIS_URL)` / `default_queue = Queue('velo', connection=redis_conn)` / **`ai_drafts_queue = Queue('ai_drafts', connection=redis_conn)`**（第三轮双审 R3-I4 修复：v5 用到的所有队列实例都在此 expose，禁止调用方就地构造 `Queue('xxx')`）。同步重构 `worker.py` / `app/activity/service.py` / `scripts/cleanup_zombies.py` / `app/strava/client.py:_redis` 四处散点都 `from app.queue import redis_conn`。**禁止 v5 各模块各自 `Redis.from_url`** | 1 天 |
 
 **⚠️ 迁移时机硬约束（codex E1 C11 修复）**：
 - v5 共**两份独立 migrations revision**：A=tz-aware（task 0.1），B=v5 主迁移（task 0.6）
@@ -2726,7 +2754,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 |---|---|---|---|
 | **A: segment 模块** | 5.B.1（坡度+难度+城市）+ 5.B.3（搜索）+ **5.C.1（即时反馈）** | `app/segment/models.py` + `service.py` + `router.py` | 组内串行（Index + service + router 顺序）|
 | **B: agent 模块（新建）** | 5.B.2（AI 介绍 RAG 留接口）| `app/agent/__init__.py` + `segment_writer.py` + **`tasks.py`**（第二轮双审 B3A-I3 修复：RQ 异步入口必须 Sprint 1 完成，否则 Sprint 3 admin 启动时 enqueue 字符串路径无效）| 独立 worktree |
-| **C: monitor 模块（新建）** | 5.7.1（worker 软目标）| `app/monitor/processing_health.py` + cron + worker replicas | 独立 worktree |
+| **C: monitor 模块（新建）** | 5.7.1（worker 软目标）| `app/monitor/processing_health.py` + cron + 部署文档说明 `--scale worker=3`（第三轮双审 R3-I2 修复）| 独立 worktree |
 
 依赖：Sprint 0 全部完成（含 task 0.1 tz-aware 迁移 + task 0.6 v5 主迁移 + task 0.7 老数据回填）。
 
@@ -2800,7 +2828,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 - requirements.txt 含 `anthropic` SDK
 - docker-compose.yml `environment` 含 ANTHROPIC_API_KEY / FEISHU_BOT_WEBHOOK
-- worker 服务 replicas: 3
+- worker 容器扩容用 `docker compose up --scale worker=3`（第三轮双审 R3-I2 修复：v3 standalone 不支持 `replicas:`）
 - alembic upgrade + downgrade 在 PostgreSQL 真实环境跑通
 - backfill_phase5.py 跑完 220 条 segments + N 条 users（unknown 占比 < 30%）
 - admin.velo.com 域名解析 + Caddyfile 反代 + JWT 复用主站登录态
