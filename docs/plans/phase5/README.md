@@ -59,7 +59,7 @@ task-0.1.md ~ task-4.4.md ← 叶子：每任务独立的完整实现 + 测试 +
 | 11 | **代码层三审**（commit 前硬性）：Claude 双审（A 忠 spec / B 集成审）+ Codex 异源第三审。**跳过场景**：纯文档 / 单文件 < 50 行 / 紧急 hotfix（理由写 commit message） | architect 信条 5 + CLAUDE.md 强制 |
 | 12 | **时区硬约定**：DB 存 UTC（DateTime 字段 `timezone=True`）；"本周 / 本月 / 本年"按**北京时间 UTC+8** 计算（先 `datetime.now(UTC).astimezone(BJ_TZ)` 再 `.replace(day=1)` 算月初） | CLAUDE.md 关键技术约定 + v5 spec §3.3 §3.6 已对齐 |
 | 13 | **Redis 单一连接源**：`from app.queue import redis_conn`，**禁止**各模块自己 `Redis.from_url`。Queue 实例（default_queue / ai_drafts_queue）也在 `app/queue.py` expose | Sprint 0 task 0.8 拍板 + 第三轮双审 R3-I4 |
-| 14 | **配置走 settings.XXX**：`from app.config import settings` + `settings.ANTHROPIC_API_KEY`，**禁止**顶层常量 `from app.config import ANTHROPIC_API_KEY` | 项目现有 30+ 处一致风格 |
+| 14 | **配置走 settings.XXX**：`from app.config import settings` + `settings.DEEPSEEK_API_KEY`，**禁止**顶层常量 `from app.config import DEEPSEEK_API_KEY` | 项目现有 30+ 处一致风格 |
 
 ---
 
@@ -217,7 +217,7 @@ Sprint 4：收尾 (5-7 天，主 agent 主导)
 | 1.A.2 | `app/segment/service.py` | `get_segment_list(...search/city/difficulty)` | tuple[list, int]，**保留现有契约** |
 | 1.A.2 | `app/segment/service.py` | `get_my_effort_with_compare(db, segment_id, user_id) -> dict` | 即时反馈 6 字段 |
 | 1.A.2 | `app/segment/service.py` | `create_segment_from_activity(db, activity_id, name, start, end, ...) -> Segment` | advisory lock 串行 |
-| 1.B.1 | `app/agent/segment_writer.py` | `generate_segment_draft(segment_props) -> str` | 同步调 Anthropic |
+| 1.B.1 | `app/agent/segment_writer.py` | `generate_segment_draft(segment_props) -> str` | 同步调 DeepSeek（OpenAI 兼容 SDK）|
 | 1.B.1 | `app/agent/tasks.py` | `generate_segment_draft_task(segment_id) -> None` | RQ 异步入口 |
 | 2.A.1 | `app/notification/progress_detector.py` | `detect_5min_power_progress(db, user_id, activity_id) -> Notification \| None` | baseline ≤ 0 守卫 |
 | 2.B.1 | `app/activity/power_zones.py` | `calculate_power_curve(trackpoints, windows_sec) -> dict` | 单次骑行 |
@@ -249,8 +249,8 @@ Sprint 4：收尾 (5-7 天，主 agent 主导)
 | 0.6 | migrations revision 2 份（A=tz-aware / B=v5 主迁移） | `migrations/versions/` |
 | 0.7 | `scripts/backfill_phase5.py` | 项目根 + docker-compose 跑一次性容器 |
 | 0.8 | `app/queue.py` 新建（redis_conn / default_queue / ai_drafts_queue） | 项目根 |
-| 1.B.1 | 环境变量 `ANTHROPIC_API_KEY` | `app/config.py settings` + `.env.example` + docker-compose.yml |
-| 1.B.1 | `requirements.txt` 加 `anthropic` SDK | requirements.txt |
+| 1.B.1 | 环境变量 `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` | `app/config.py settings` + `.env.example` + docker-compose.yml |
+| 1.B.1 | `requirements.txt` 加 `openai` SDK（DeepSeek 兼容 OpenAI 格式） | requirements.txt |
 | 1.B.1 | docker-compose worker `RQ_QUEUES=velo,ai_drafts` env | docker-compose.yml |
 | 1.C.1 | 环境变量 `FEISHU_BOT_WEBHOOK` | settings + .env + docker-compose.yml |
 | 1.C.1 | monitor 容器（while true; sleep 60）+ `--scale worker=3` 部署文档 | docker-compose.yml |

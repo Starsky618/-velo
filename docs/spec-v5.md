@@ -63,7 +63,7 @@
 - [查询] 状态机：pending / processing / completed / failed | app/activity/models.py:53-55
 
 **RQ 基础设施 + 部署事实（第二轮双审 B3A-I1 + B3B-1 修复）**：
-- [查询] rq==2.7.0 / httpx==0.28.1 已装 | requirements.txt:11/15；**anthropic / requests 未装**
+- [查询] rq==2.7.0 / httpx==0.28.1 已装 | requirements.txt:11/15；**openai / requests 未装**（v5 用 DeepSeek 兼容 OpenAI SDK，Tim 2026-04-29 拍）
 - [查询] Redis 连接散在 3 处：worker.py:24（`Redis.from_url(...)`）/ app/activity/service.py:31（`_redis_conn`/`_queue`）/ scripts/cleanup_zombies.py —— **`app/queue.py` 不存在**
 - [查询] 真实 SessionLocal 路径是 `app.database`（**不是 `app.db`**）| app/database.py
 - [查询] alembic 真实路径是 `migrations/versions/`（**不是 `alembic/versions/`**）| alembic.ini → script_location = migrations
@@ -141,7 +141,7 @@
 ### §1.3 数据流概要（7 条新增 / 改动链路）
 
 1. **5.B.1 + 5.D.4 赛段创建**：trackpoints 提坐标 → 算 max_gradient + difficulty + city → 写 segments
-2. **5.B.2 + 5.D.1 + 5.D.2 AI 介绍**：候选池脚本 → 团队勾选 → AI 调 Anthropic API → 草稿入 segment_ai_drafts → 审核改写 → status=approved → 同步到 segments.description
+2. **5.B.2 + 5.D.1 + 5.D.2 AI 介绍**：候选池脚本 → 团队勾选 → AI 调 DeepSeek API → 草稿入 segment_ai_drafts → 审核改写 → status=approved → 同步到 segments.description
 3. **5.C.1 即时反馈**：用户访问赛段页 → service 查 last/PR + 计算 diff → API 返回
 4. **5.C.2 功率曲线**：访问个人页 → 算 max_avg_power per bucket per period → Redis 缓存 → 返回多曲线
 5. **5.C.3 进步推送**：activity processing 完成 → progress_detector → 阈值检测 → 写 notification → 通知中心
@@ -656,7 +656,7 @@ if __name__ == '__main__':
    segments 全表 → 候选池脚本（pool_score 排序）
        → segment_curation_pool top 100
        → 团队 H5 admin 勾选 selected_for_v5=true
-       → 触发 AI 调 Anthropic Claude API
+       → 触发 AI 调 DeepSeek API（OpenAI 兼容 SDK）
        → segment_ai_drafts.ai_draft_text 写入（status=pending）
        → 团队 H5/小程序 admin tab 审核改写
        → human_edited_text + status=approved
@@ -1972,7 +1972,7 @@ def get_user_profile_for_others(
 **隔离边界**：
 - admin 路由前缀 `/api/admin/*`（新增）—— 跟用户端 `/api/*` 隔离
 - admin endpoint 必须 `is_admin` dependency（沿用 users.is_admin 字段）
-- app/agent/ 模块：调 Anthropic Claude API + 写 segment_ai_drafts 表，**禁止反向 import 业务代码**（参 ADR-009）
+- app/agent/ 模块：调 DeepSeek API（OpenAI 兼容 SDK）+ 写 segment_ai_drafts 表，**禁止反向 import 业务代码**（参 ADR-009）
 
 #### 3.7.1 候选池脚本（5.D.1）
 
@@ -2081,7 +2081,7 @@ if __name__ == '__main__':
 **模块归属**：`app/agent/segment_writer.py`（新建模块，按 ADR-009 留接口架构）
 
 **隔离边界**：
-- 调 Anthropic Claude API
+- 调 DeepSeek API（OpenAI 兼容 SDK，Tim 2026-04-29 拍）
 - 写 segment_ai_drafts 表（v5 新建）
 - **禁止**：反向 import 业务代码（segment / activity / user 模块的 service）—— 通过 spec 提供的赛段属性 dict 输入，不进业务逻辑
 
@@ -2089,15 +2089,21 @@ if __name__ == '__main__':
 # app/agent/segment_writer.py（新建）
 """
 AI 赛段介绍草稿生成器（5.B.2）。
-v5 留接口不实现 RAG / 不上向量检索，仅直连 Claude API。
-未来 v7+ 扩展 RAG 时此模块为入口。
+v5 留接口不实现 RAG / 不上向量检索，仅直连 DeepSeek API（OpenAI 兼容 SDK）。
+未来 v7+ 扩展 RAG 时此模块为入口；切其他厂商模型把 base_url + model 名改一下即可。
 """
 import logging
-from anthropic import Anthropic  # 需 requirements.txt 加 anthropic
-from app.config import settings  # 第二轮双审 B3B-3 修复：项目统一 settings.XXX 风格，不用顶层常量
+from openai import OpenAI  # DeepSeek 兼容 OpenAI Python SDK
+from app.config import settings
 
 logger = logging.getLogger(__name__)
-_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY) if settings.ANTHROPIC_API_KEY else None
+_client = (
+    OpenAI(
+        api_key=settings.DEEPSEEK_API_KEY,
+        base_url="https://api.deepseek.com",
+    )
+    if settings.DEEPSEEK_API_KEY else None
+)
 
 
 PROMPT_TEMPLATE = """你是 velo 平台的本地骑友写手。给一条赛段写**活人感介绍**：
@@ -2134,23 +2140,26 @@ def generate_segment_draft(
     陷阱 #9（API 嵌套）：response 字段用 .get() 链 / 显式存在性检查
     """
     if _client is None:
-        logger.warning("ANTHROPIC_API_KEY not configured, skip generate")
+        logger.warning("DEEPSEEK_API_KEY not configured, skip generate")
         return ""
     
     prompt = PROMPT_TEMPLATE.format(**segment_props)
     
     try:
-        response = _client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=300,
+        response = _client.chat.completions.create(
+            model=settings.DEEPSEEK_MODEL,  # 默认 'deepseek-chat'，env 可覆盖
             messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+            temperature=0.7,
         )
         # 嵌套字段安全访问（陷阱 #9）
-        content = response.content
-        if not content or not isinstance(content, list):
+        choices = getattr(response, 'choices', None)
+        if not choices:
             return ""
-        first_block = content[0]
-        text = getattr(first_block, 'text', None)
+        msg = getattr(choices[0], 'message', None)
+        if not msg:
+            return ""
+        text = getattr(msg, 'content', None)
         if not text:
             return ""
         return text.strip()
@@ -2264,13 +2273,15 @@ def enqueue_ai_draft_generation(segment_id: int) -> None:
   确保单 worker 容器同时订阅 velo + ai_drafts。
 - **`docker-compose.yml`**：worker service 加 `environment: RQ_QUEUES=velo,ai_drafts`。
   扩容用 `docker compose up --scale worker=3`（**不用 v3 standalone 不支持的 `replicas:` 字段**，B3B-4 修复）。
-- 新增 env：`ANTHROPIC_API_KEY`（不在 v4 范围）—— `.env.example` + `docker-compose.yml` environment + `app/config.py` Settings 类加字段（**不用顶层常量**，B3B-3 修复）：
+- 新增 env：`DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL`（Tim 2026-04-29 拍走 DeepSeek） + `FEISHU_BOT_WEBHOOK` —— `.env.example` + `docker-compose.yml` environment + `app/config.py` Settings 类加字段（**不用顶层常量**，B3B-3 修复）：
   ```python
   # app/config.py Settings 类追加
-  ANTHROPIC_API_KEY: str = ""
+  DEEPSEEK_API_KEY: str = ""
+  DEEPSEEK_MODEL: str = "deepseek-chat"  # env 覆盖切其他模型
   FEISHU_BOT_WEBHOOK: str = ""
   ```
-  调用方 `from app.config import settings` + `settings.ANTHROPIC_API_KEY`（项目现有风格）。
+  调用方 `from app.config import settings` + `settings.DEEPSEEK_API_KEY`（项目现有风格）。
+  **⚠ 真实 API key 仅放生产 .env，不进 git。**
 - **`app/queue.py`**：Sprint 0 task 0.8 已建（第二轮双审 B3B-1 修复），本节直接 `from app.queue import redis_conn`。
 
 ### §3.8 worker 软目标监控（5.7.1）
@@ -2454,7 +2465,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 | 参数 | path: segment_id |
 | body | 无 |
 | 响应 | `202 Accepted` `{job_id: str, segment_id, status: 'enqueued'}` —— **不同步等 AI** |
-| 副作用 | **enqueue RQ task `app.agent.tasks.generate_segment_draft_task(segment_id)`**（§3.7.3）→ Worker 异步调 Anthropic API + UPSERT segment_ai_drafts（segment_id UNIQUE）。完成后 admin 通过 GET /api/admin/ai/segment-drafts 拉取 |
+| 副作用 | **enqueue RQ task `app.agent.tasks.generate_segment_draft_task(segment_id)`**（§3.7.3）→ Worker 异步调 DeepSeek API + UPSERT segment_ai_drafts（segment_id UNIQUE）。完成后 admin 通过 GET /api/admin/ai/segment-drafts 拉取 |
 | 错误 | 401 / 403 非 admin / 404 segment 不存在（enqueue 前预校验，不到 worker）|
 
 #### GET /api/admin/ai/segment-drafts（新增 / 5.D.2）
@@ -2544,7 +2555,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 | 404 | 资源不存在 | segment_id / user_id / draft_id 不存在 |
 | 409 | 资源冲突 | from-activity 重复检测命中 |
 | 422 | 参数格式错 | enum 不匹配 / 数值越界 |
-| 502 | 上游服务失败 | Anthropic API 调用失败 |
+| 502 | 上游服务失败 | DeepSeek API 调用失败 |
 
 ---
 
@@ -2599,7 +2610,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 | 文件 | 改动 |
 |---|---|
 | `app/agent/__init__.py` | **新建空模块**（按 ADR-009 留接口架构）|
-| `app/agent/segment_writer.py` | **新建**：`generate_segment_draft` + PROMPT_TEMPLATE + Anthropic client 初始化 |
+| `app/agent/segment_writer.py` | **新建**：`generate_segment_draft` + PROMPT_TEMPLATE + OpenAI 兼容 client 初始化（base_url=https://api.deepseek.com） |
 | `app/agent/tasks.py` | **新建（第二轮双审 B3A-I3/M-2 修复）**：RQ 异步任务入口 `generate_segment_draft_task(segment_id)` —— UPSERT segment_ai_drafts 幂等。所有 admin 触发 AI 草稿生成都 enqueue 此 task，禁止同步调用 segment_writer |
 
 ### §5.6 admin 模块（新建）
@@ -2623,9 +2634,9 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 | 文件 | 改动 |
 |---|---|
 | `app/main.py` | include 新增 router：`admin_router` + `progress_detector` 不需要 router |
-| `requirements.txt` | 加 `anthropic` SDK |
-| `.env.example` | 加 `ANTHROPIC_API_KEY` / `FEISHU_BOT_WEBHOOK` |
-| `docker-compose.yml` | api/worker 服务的 `environment` 加 ANTHROPIC_API_KEY 等；**worker 扩容用 `docker compose up --scale worker=3`**（第三轮双审 R3-I2 修复：v3 standalone 不支持 `replicas:`）；可选加 admin-h5 容器 |
+| `requirements.txt` | 加 `openai` SDK（DeepSeek 兼容 OpenAI 格式） |
+| `.env.example` | 加 `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` / `FEISHU_BOT_WEBHOOK` |
+| `docker-compose.yml` | api/worker 服务的 `environment` 加 DEEPSEEK_API_KEY / DEEPSEEK_MODEL 等；**worker 扩容用 `docker compose up --scale worker=3`**（第三轮双审 R3-I2 修复：v3 standalone 不支持 `replicas:`）；可选加 admin-h5 容器 |
 
 ### §5.9 scripts 目录
 
