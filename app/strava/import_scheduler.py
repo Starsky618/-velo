@@ -33,6 +33,7 @@ from app.database import SessionLocal
 from app.parsing.coord_normalizer import normalize
 from app.parsing.strava_adapter import from_streams, StravaAdapterError
 from app.strava.client import StravaClient, StravaRateLimitError
+from app.strava.exceptions import UnboundStravaError
 from app.segment.models import SegmentEffort
 from app.strava.models import StravaImport
 from app.user.models import User
@@ -97,10 +98,23 @@ def _do_tick(db) -> None:
     client = StravaClient(db, user)
 
     # ===== 5. 决定跑哪一层 =====
-    if not _is_tier1_complete(import_task):
-        _run_tier1(db, client, import_task)
-    else:
-        _run_tier2(db, client, import_task, user)
+    # v5 task-0.3 兜底：理论上第 3 步 athlete_id is None 已拦截解绑用户，但
+    # 若 DB 出现不一致行（athlete_id 在 + refresh_token NULL，可能因运维手工
+    # 介入或旧迁移残留），ensure_valid_token 会抛 UnboundStravaError。这里
+    # 显式 catch 后置 paused 避免反复捞同一条卡住其他用户的导入轮转。
+    try:
+        if not _is_tier1_complete(import_task):
+            _run_tier1(db, client, import_task)
+        else:
+            _run_tier2(db, client, import_task, user)
+    except UnboundStravaError:
+        logger.warning(
+            "导入任务遇到未绑定 Strava，标记 paused import_id=%d user_id=%d",
+            import_task.id, import_task.user_id,
+        )
+        import_task.status = "paused"
+        db.commit()
+        return
 
     # ===== 6. 更新时间戳（用于僵尸检测）=====
     import_task.updated_at = datetime.now(timezone.utc)

@@ -31,6 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.strava.exceptions import UnboundStravaError
 from app.user.models import User
 
 logger = logging.getLogger(__name__)
@@ -432,6 +433,14 @@ def ensure_valid_token(
     )
     if user is None:
         raise ValueError(f"user_id={user_id} 不存在")
+
+    # v5 task-0.3：未绑定路径明确化——避免函数继续走到 refresh API 误报
+    # "NULL refresh_token" 之类底层错误。caller 应 catch UnboundStravaError 转
+    # 400 给前端，提示用户先去绑定。
+    # 注意用 `is None` 不用 truthiness：空串语义虽等价未绑定但项目约定 NULL 是
+    # 未绑定的唯一标准（陷阱清单 #1），这里保守显式比较。
+    if user.strava_refresh_token is None:
+        raise UnboundStravaError(f"user_id={user_id} 未绑定 Strava")
 
     now = datetime.now(timezone.utc)
 

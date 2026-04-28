@@ -15,6 +15,7 @@ import uuid
 import pytest
 
 from app.strava import service
+from app.strava.exceptions import UnboundStravaError
 from app.strava.import_scheduler import _run_tier1
 from app.strava.models import StravaImport
 from app.user.models import User
@@ -209,6 +210,104 @@ def test_ensure_valid_token_not_expired_returns_tuple():
     locked_user, token = result
     assert locked_user is fake_user
     assert token == "still_valid"
+
+
+# ==================== v5 task-0.3：未绑定路径明确化 ====================
+
+
+def test_ensure_valid_token_unbound_raises_unbound_error(db, strava_imports_table):
+    """未绑定 Strava（refresh_token IS NULL）→ 抛 UnboundStravaError。
+
+    避免函数继续走到 refresh API 误报"NULL refresh_token"等底层错误。
+    深度防御：即使 caller（如 handle_manual_sync）已用 strava_athlete_id
+    拦截了一道，本函数也要自完备校验。
+    """
+    user = _make_user(
+        db,
+        strava_athlete_id=None,
+        access_token=None,
+        refresh_token=None,  # 关键：未绑定
+        expires_at=None,
+    )
+
+    with pytest.raises(UnboundStravaError, match=r"user_id=\d+ 未绑定 Strava"):
+        service.ensure_valid_token(db, user.id)
+
+
+def test_router_sync_translates_unbound_error_to_400(monkeypatch):
+    """router /sync 应把 UnboundStravaError 翻译成 400 + 友好 detail。
+
+    用 monkeypatch 直接让 service.handle_manual_sync 抛 UnboundStravaError，
+    验证 router 层的 except 翻译路径——不依赖真实 user / refresh_token 状态，
+    单测 router 行为本身。
+    """
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.strava import router as strava_router
+    from app.dependencies import get_current_user
+
+    # 让 handle_manual_sync 直接抛 UnboundStravaError
+    def fake_handle(db, user_id):
+        raise UnboundStravaError(f"user_id={user_id} 未绑定 Strava")
+
+    monkeypatch.setattr(strava_router.service, "handle_manual_sync", fake_handle)
+
+    # 绕过 JWT：直接 override get_current_user 依赖
+    app.dependency_overrides[get_current_user] = lambda: 1
+    try:
+        client = TestClient(app)
+        resp = client.post("/api/strava/sync")
+
+        assert resp.status_code == 400
+        # 关键断言：翻译为友好 detail，而非透传底层错误
+        detail = resp.json()["detail"]
+        assert "未绑定" in detail
+        assert "设置页" in detail
+        # 堵"懒人 caller 把 e.args[0] 透传"的回归——detail 不含内部 user_id
+        assert "user_id=" not in detail
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_scheduler_pauses_import_on_unbound_error(
+    db, strava_imports_table, redis_mock
+):
+    """v5 task-0.3 兜底：scheduler 遇 UnboundStravaError 应把 import 置 paused。
+
+    场景：DB 出现不一致行（athlete_id 在 + refresh_token NULL，非常态但可能
+    因运维手工介入），_run_tier1/_run_tier2 内部触发 ensure_valid_token 抛
+    UnboundStravaError——scheduler 必须 catch 后 paused，避免反复捞同一条
+    卡住其他用户的导入轮转。
+    """
+    from unittest.mock import patch
+    from app.strava import import_scheduler
+
+    user = _make_user(
+        db,
+        strava_athlete_id=99001,  # athlete_id 在
+        access_token="stale",
+        refresh_token=None,  # 但 refresh_token NULL（不一致行）
+        expires_at=None,
+    )
+    imp = StravaImport(
+        user_id=user.id, strava_athlete_id=99001, status="active",
+    )
+    db.add(imp)
+    db.commit()
+
+    # mock StravaClient 让 _run_tier1 抛 UnboundStravaError
+    with patch("app.strava.import_scheduler.StravaClient") as MockClient:
+        mock_instance = MagicMock()
+        MockClient.return_value = mock_instance
+        mock_instance.get_athlete_activities.side_effect = UnboundStravaError(
+            f"user_id={user.id} 未绑定 Strava"
+        )
+
+        import_scheduler._do_tick(db)
+
+    # 关键断言：import 被标 paused（不会被反复捞）
+    db.refresh(imp)
+    assert imp.status == "paused"
 
 
 # ==================== I9：tier1 连续 2 次空 ====================

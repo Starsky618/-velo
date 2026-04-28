@@ -27,6 +27,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.strava import service
 from app.strava.client import _redis
+from app.strava.exceptions import UnboundStravaError
 from app.strava.service import (
     BoundByOtherUserError,
     InvalidStateError,
@@ -240,8 +241,11 @@ def manual_sync(
     """
     try:
         return service.handle_manual_sync(db, user_id)
+    except UnboundStravaError:
+        # v5 task-0.3：未绑定 Strava 翻译成 400 + 友好提示，
+        # 避免底层"NULL refresh_token"错误透传给前端
+        raise HTTPException(status_code=400, detail="未绑定 Strava 账号，请先去设置页绑定")
     except ValueError as e:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=str(e))
 
 
