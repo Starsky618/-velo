@@ -192,6 +192,7 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 | 8 | **SAVEPOINT 隔离**（同关键技术约定）| 循环 flush 后 rollback 炸循环外 | 循环内 `db.begin_nested()` |
 | 9 | **第三方响应嵌套** | 假设 `data['athlete']['id']` 固定 → KeyError | `.get()` 链 + 显式存在性检查 |
 | 10 | **状态机值脑补** | spec 写 `'running'/'pending'`，真实是 `active/paused/completed` | grep server_default 和 service 赋值抄真实值 |
+| 11 | **aware datetime 手工拼 Z**（v5 新踩） | `created_at.isoformat() + "Z"` 在 tz-aware 后变 `2026-04-29T12:00:00+00:00Z` 畸形，前端解析必炸 | 让 Pydantic 自动序列化 / 或 `.isoformat()` 不加 Z；**禁止手工拼 Z 后缀** |
 
 > **活文档**：每踩新陷阱在这加一条（不要回 architect skill 加——那里只留跨栈通用 3 条）。
 
@@ -275,7 +276,41 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 - 13 commit + 双审制度沉淀（信条 5 升级 + CLAUDE.md 顶部 3 硬规则）
 - 待做（独立批次）：生产部署 + Strava 真实 E2E + 小程序手工回归
 
-### 第 5 期：待规划
-- 候选：Strava 绑定 UI 完整版（H5 跳板 + Caddyfile + web-view 域名白名单）
-- 候选：积分 + 骑行等级系统（用户活跃度达标后）
-- 候选：技术债务清理批（datetime tz 统一 / service.py 拆分 / N+1 查询）—— 详见 docs/tech-debt.md
+### 第 5 期：赛段内容深化 + 数据成长 + 个人页 + admin 工具（进行中）
+
+**总览**：4 主轴（B 赛段内容 / C 数据成长 / A 个人页 / D admin 工具）= 14 子任务 / 29 张实施卡 / 8-10 周（三人并行）
+
+**关键文档**：
+- 战术 PRD：`docs/prd/phase-5-prd.md`（v0.4，Tim 拍 11 yes 决策点）
+- 技术 spec：`docs/spec-v5.md`（2879 行，3 轮双审 Critical=0 收敛）
+- 实施计划：`docs/plans/phase5/`（README.md + 29 张 task 卡，subagent 启动只读 README + 自己那张）
+
+**关键产品决策（Tim 拍）**：
+- 赛段目录公开访问（不要求登录）
+- 看他人主页默认公开（无隐私开关）
+- AI 介绍 30-50 条精选 / 单条 50-100 字
+- 5W 是 5 分钟功率进步推送阈值
+- 6 城枚举 + unknown：beijing / shanghai / hangzhou / shenzhen / chengdu / taiyuan
+- AI 草稿 202 异步（不阻塞 admin）
+- from-activity advisory lock 串行
+- LLM API 走 **DeepSeek**（OpenAI 兼容 SDK，Tim 2026-04-29 拍国产 + 国内访问稳 + 极便宜）
+- admin H5 独立部署（域名暂不买，先 IP）
+
+**Sprint 进度**：
+- ✅ Sprint 0 task-0.1（datetime 全局 tz-aware）— 三审收敛 commit `4a94097` + alembic 双向真 PG 验证 ✅
+- ⏳ Sprint 0 task-0.2 ~ 0.8（7 任务）— 待执行
+- ⏳ Sprint 1 / 2 / 3 / 4 — 待执行
+
+**生产环境配置**（Tim 已配 ~/velo/.env）：
+- DEEPSEEK_API_KEY ✅
+- DEEPSEEK_MODEL=deepseek-chat ✅
+- 备份：`~/velo/.env.bak.20260429`
+
+**Sprint 0 closure 硬约束**：task-0.1 ✅ + task-0.6 + task-0.7 + task-0.8 全完成才许启动 Sprint 1（业务代码假设 DB 字段已就位）。
+
+**新会话起手必读**（给下次 /clear 后的主 agent）：
+1. 本 CLAUDE.md（项目规则 + 进度）
+2. `docs/plans/phase5/README.md`（29 张 task 索引 + 14 全局约定 + 符号索引）
+3. 当前要做的 `docs/plans/phase5/task-N.X.md` 单张
+4. memory（已经自动加载）
+**禁止**：读 spec-v5.md 全文（2879 行污染上下文）—— task 卡里有 spec 行号引用，需要时只读那段。
