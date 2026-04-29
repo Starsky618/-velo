@@ -2902,7 +2902,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
   - 思考框架：`docs/agent-rules/velo-mental-model.md`
   - 技术债：`docs/tech-debt.md`（Sprint 0 清完后移除已修条目 + 新增 v5 实施期发现的）
   - architect SKILL：`~/.claude/skills/architect/SKILL.md` 信条 15
-  - 分工宪章：`docs/agent-rules/codex-division-of-labor.md` v1.3
+  - 分工宪章：`docs/agent-rules/agent-collaboration.md` v1.3
   - 全局 CLAUDE.md：`~/.claude/CLAUDE.md`（4 条工作风格硬规则）
 
 ---

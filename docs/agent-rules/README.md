@@ -53,7 +53,7 @@ agent 读 PRD 效率低。agent 需要的是**规则化结论**加**可执行的
 
 **使用场景**:规则层没覆盖、需要创造性判断、要给出有深度的 reasoning 时,加载这份。
 
-### Layer 3: 协作协议层 — `codex-division-of-labor.md`
+### Layer 3: 协作协议层 — `agent-collaboration.md`
 
 **按需加载**。agent 需要决定某个细节工作是否外包给 Codex 时加载。
 
@@ -81,7 +81,7 @@ Agent 接到任务
     ├── 否(纯技术任务)→ 读 CLAUDE.md 的技术规则就够
     │       ↓
     │   是不是细节活(测试/lint/纯函数/浅 bug/代码审查)?
-    │       ├── 是 → 读 codex-division-of-labor.md(Layer 3)→ 按 §3 五条法则路由给 Codex
+    │       ├── 是 → 读 agent-collaboration.md(Layer 3)→ 按 §3 五条法则路由给 Codex
     │       └── 否 → Claude 自己做
     │
     └── 是 → 读 product-decisions.md(Layer 1 规则层)

@@ -14,7 +14,7 @@
 - **次要角色**：A 档细节活（写测试 / 纯函数实现 / 陷阱扫描 / 浅 bug 修复）
 - **永不做**：架构决策 / PRD / spec 撰写 / 和 Starsky 拍板——这些是 Claude Code 的 C 档工作
 
-完整分工档位见 `docs/agent-rules/codex-division-of-labor.md`（下文简称「分工宪章」）。
+完整分工档位见 `docs/agent-rules/agent-collaboration.md`（下文简称「分工宪章」）。
 
 ---
 
@@ -63,7 +63,7 @@ Claude 调我时 prompt 里**必给**：
 
 1. `CLAUDE.md`（项目根）— 硬约束 + 技术栈陷阱 + 已知风险
 2. `docs/README.md` — 9 阶段工作流 + 文档全地图
-3. `docs/agent-rules/codex-division-of-labor.md` — 分工宪章（我的完整职责）
+3. `docs/agent-rules/agent-collaboration.md` — 分工宪章（我的完整职责）
 4. 当期 `docs/spec-vN.md` + `docs/plans/phaseN/task-N.X.md`
 5. 目标 diff + 修改文件的真实上下文
 

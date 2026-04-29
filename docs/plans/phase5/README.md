@@ -276,5 +276,5 @@ Sprint 4：收尾 (5-7 天，主 agent 主导)
 
 每完成一个 task：
 - 跑代码层 Claude 双审（A 忠 spec / B 集成审）
-- 跑 Codex 异源第三审（按 `docs/agent-rules/codex-division-of-labor.md §4 场景 B`）
+- 跑 Codex 异源第三审（按 `docs/agent-rules/agent-collaboration.md §4 场景 B`）
 - Critical 修完才 commit

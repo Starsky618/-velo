@@ -39,6 +39,38 @@
 
 ---
 
+## 🤝 协作硬规则（v5 新增 / 双 agent 协作 / 授权来源：Tim 2026-04-29 对话）
+
+> **3 条 meta 规则**——约束 agent 怎么和 Tim / 另一个 agent 协作。详细规则在 `docs/agent-rules/agent-collaboration.md`。
+
+### ⚙️ 信息整流原则
+
+给 Tim 提议 / 报告**必须**用翻译层句式：
+
+> **干啥用** / **触发** / **影响** / **风险** / **建议** y/n/show
+
+**禁止**：只贴 diff / 长输出 / 代码片段 / 术语堆砌。技术细节默认折叠，Tim 主动 show 才展开。
+
+类比：CEO 看产品经理翻译，不直接读代码。
+
+### 📦 少增加文档
+
+新增文档类型需 Tim 拍板。能合并到现有文档章节，不允许独立成文。改名（如旧版"codex 分工宪章" → 现 `agent-collaboration.md`）不算新增。
+
+**Why**：文档膨胀 = 双方认知负荷加重 + 漂移源更多 + 系统不稳定性加重。
+
+### 🔄 动作 trigger 自查（每次写报告前 mental check 3 问）
+
+1. 我有没有把代码细节直接推给 Tim？（违反 → 改翻译层句式）
+2. 我做了哪些实证 / 没做哪些？（涉及未做的 → 用最低限度不确定度自报：🟡 + 一句"未 grep / 未跑命令"）
+3. 这是高风险动作吗？（涉及 schema / 生产数据 / 核心规则 → 走硬 checklist）
+
+**光"知道规则"不够——必须动作 trigger 强制自查**。否则下次又翻车。
+
+> 详细规则、checklist 表格、实证案例：`docs/agent-rules/agent-collaboration.md` §7
+
+---
+
 ## 项目概述
 
 VELO 是公路骑行垂直平台的后端 API + 微信小程序前端。
@@ -95,11 +127,11 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 8. **三重审判（硬性，违反 = 双重违规）**：
     - spec 层（写完 spec）+ 代码层（每批 subagent 产出后）跑 Claude 内部双审（Agent A 忠 spec / Agent B 集成审）
     - **代码层 commit 前追加 Codex 异源第三审**（独立训练分布，抓 Claude 系统性盲区）
-    - Codex 审查协议：调用 `codex:codex-rescue` subagent，prompt 按 `docs/agent-rules/codex-division-of-labor.md §4 场景 B` 模板填
+    - Codex 审查协议：调用 `codex:codex-rescue` subagent，prompt 按 `docs/agent-rules/agent-collaboration.md §4 场景 B` 模板填
     - 迭代纪律：Codex 抓到 Critical/Important → Claude 修 → **同 threadId `--resume` 复查** → 最多 3 轮收敛
     - 跳过场景：纯文档 / 单文件 <50 行 / 紧急 hotfix（理由写在 commit message）——完整跳过清单见分工宪章 §5
     - 2026-04-23 v4 task-7.10 实验 1 验证：Codex 一轮抓到 1 条核心反馈环级 Important + 1 条 UX Important，Claude 双审均漏
-    - 详见 architect 信条 5 + `docs/agent-rules/codex-division-of-labor.md`（Claude ↔ Codex 完整分工规则 + 4 个场景 prompt 模板）
+    - 详见 architect 信条 5 + `docs/agent-rules/agent-collaboration.md`（Claude ↔ Codex 完整分工规则 + 4 个场景 prompt 模板）
     - ⭐ **2026-04-28 新增硬规则**：派 codex 写大文档（spec / plans / > 800 字 / > 1500 行）= **默认禁止**——codex CLI 单 task 输入+输出 > 50K token 几乎必卡（已知 bug 链 #13738/#14048/#18723，2026-04-28 v5 spec 实证卡死 30+ 分钟）。**默认路径**：主 agent 自己写 → 写完派 codex review-only。详见分工宪章 §5 + memory `feedback_main_agent_as_middle_manager.md` §2.1
 9. **链路收尾三问复盘**（spec 链路完成时跑，不是每个 task）：新 bug 模式 / 设计判断 / 流程问题 → 识别完直接调 `/neat` 分发到 memory / CLAUDE.md / docs（详见 architect 信条 11 + neat-freak skill）
 10. **spec 自审 2 项**（architect Step 7 双审之外的项目特定补充）：

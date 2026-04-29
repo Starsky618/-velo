@@ -103,7 +103,7 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
   - 预读清单（信条 14）：spec 里**任何字段 / 函数 / 状态值**引用必须先 grep 核对
   - 双审判 Agent A + Agent B 并行，prompt 互补，**Critical = 0 才能进下一步**
   - spec ≤ 800 行，一期任务数 ≤ 6
-  - ⭐ **2026-04-28 起：spec 正文由主 agent 自己写**（chunk by chunk，每段写完 Edit 落盘）——**禁止派 codex 写**（codex CLI 长任务卡死 bug 链 #13738/#14048/#18723，spec-v5 实证卡死 30+ 分钟）。codex 仍用于：预读清单 grep 核对（A 档）/ spec 写完后异源审查（B 档 review-only）。详见 `docs/agent-rules/codex-division-of-labor.md` §5
+  - ⭐ **2026-04-28 起：spec 正文由主 agent 自己写**（chunk by chunk，每段写完 Edit 落盘）——**禁止派 codex 写**（codex CLI 长任务卡死 bug 链 #13738/#14048/#18723，spec-v5 实证卡死 30+ 分钟）。codex 仍用于：预读清单 grep 核对（A 档）/ spec 写完后异源审查（B 档 review-only）。详见 `docs/agent-rules/agent-collaboration.md` §5
 - **踩坑**：凭记忆写字段名 → 双审判必抓一堆虚构引用。v4 实战 12 条 Critical 里一半是这类
 
 #### ⑤ 实施计划 —— 把 spec 拆成可派工的任务卡
@@ -121,7 +121,7 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
 **像**：每个工人在自己的独立工棚干活，互不踩脚。
 
 - **关键动作**：`using-git-worktrees` 建隔离工作目录 → `dispatching-parallel-agents` 派多个 subagent → 每个 agent 启动时**只读 README + 自己那份 task 卡**
-- **🟨 Codex 可代劳**（按 `docs/agent-rules/codex-division-of-labor.md §4` 场景模板）：
+- **🟨 Codex 可代劳**（按 `docs/agent-rules/agent-collaboration.md §4` 场景模板）：
   - A 档：纯函数实现（parser/matcher/simplify）/ 写单元测试 / 补覆盖率（场景 A）
   - B 档：浅 bug 修复（场景 D）——Claude 定位，Codex 执行修复
 - **必看**：每个 subagent 进到自己 worktree 后读 `CLAUDE.md` + 对应 `task-N.X.md` + 分工宪章
@@ -139,7 +139,7 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
   - **第一轮**：Agent A（code-reviewer）看忠于 spec / 语言陷阱 / 幂等崩溃恢复 / 测试假通过；Agent B（集成审）看 grep caller / 对现有流程干扰 / 数据一致性跨模块 / 前向不兼容
   - **第二轮**（commit 前必做）：调 `codex:codex-rescue` subagent，prompt 按分工宪章 §4 场景 B 模板填（spec + diff + Claude 已列问题禁止复读）
   - Codex 若抓到 Critical/Important → Claude 修 → **同 threadId `--resume` 复查** → 最多 3 轮收敛
-- **必看**：本期 spec + 修改的代码 + `CLAUDE.md § 技术栈陷阱清单` + `docs/agent-rules/codex-division-of-labor.md §4 场景 B`
+- **必看**：本期 spec + 修改的代码 + `CLAUDE.md § 技术栈陷阱清单` + `docs/agent-rules/agent-collaboration.md §4 场景 B`
 - **硬规则**：
   - **不做代码层双审 = 违反 `CLAUDE.md § commit 前 4 问`第 4 条 + `architect` 信条 5**
   - **不跑 Codex 异源第三审 = 违反 `CLAUDE.md § 开发原则 8`**
@@ -251,7 +251,7 @@ velo 工作流由两套大脑支撑：
 | `docs/agent-rules/README.md` | agent 规则体系索引 + ID 命名规范 | 首次加载 |
 | `docs/agent-rules/product-decisions.md` | 378 行规则化结论（INV-P01~P06 / D-P01~P10 / 活人感 / 禁止词） | **agent 常驻加载** |
 | `docs/agent-rules/velo-mental-model.md` | 756 行思考框架（公司定位 / 画像深描 / 10 问框架） | 复杂决策按需加载 |
-| `docs/agent-rules/codex-division-of-labor.md` | Claude ↔ Codex 分工宪章：3 档 / 5 判断法则 / 4 场景 prompt 模板 | 调用 Codex 前按需加载 |
+| `docs/agent-rules/agent-collaboration.md` | Claude ↔ Codex 分工宪章：3 档 / 5 判断法则 / 4 场景 prompt 模板 | 调用 Codex 前按需加载 |
 
 ### D. 历史档案
 
