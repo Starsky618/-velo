@@ -31,6 +31,15 @@ from app.segment.coord_convert import convert_points_to_wgs84
 from app.segment.models import Segment, SegmentEffort
 from app.user.models import User
 
+# v5 task-1.A.1：算法纯函数实体住 algorithms.py（service.py 红灯保护）
+# 这里转导出让 spec §3.1 / scripts/backfill_phase5.py 等调用方按
+# `from app.segment.service import calculate_max_gradient, calculate_difficulty`
+# 写的代码能正常 import，不必感知文件分拆细节
+from app.segment.algorithms import (  # noqa: F401 — 转导出
+    calculate_difficulty,
+    calculate_max_gradient,
+)
+
 
 # ==================== 创建赛段 ====================
 
