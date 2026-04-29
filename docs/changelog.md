@@ -8,18 +8,53 @@
 - 技术 spec `docs/spec-v5.md` 2879 行，3 轮双审 Critical 14→8→3→0 收敛
 - 实施计划 `docs/plans/phase5/` 29 张 task 卡 + README
 
-### Sprint 0：地基修补（5-8 天）
+### Sprint 0：地基修补（5-8 天）✅ 全部完成
 
 | 任务 | 状态 | commit |
 |------|------|--------|
 | 0.1 datetime 全局 tz-aware | ✅ 三审通过 + alembic 真 PG 双向验证 | `4a94097` |
-| 0.2 ~ 0.8 | ⏳ 待执行 | - |
+| 0.2 ensure_valid_token 签名改造 + populate_existing | ✅ Codex 异源抓陷阱第 12 条 | `022e2b1` + `db7e475` |
+| 0.3 ensure_valid_token 未绑定路径 + scheduler 兜底 | ✅ | `07327b1` |
+| 0.4 SQLAlchemy legacy `.get()` 替换 | ✅ | `5e44c4f` |
+| 0.5 + 0.8 scheduler Redis 复用 + app/queue.py 单一源 | ✅（0.5 并入 0.8）| `04bb17d` |
+| 0.6 v5 主迁移（segments + users + 2 新表）| ✅ Codex 异源抓 2 Critical | `91a3691` |
+| 0.7 老数据回填脚本 + 生产部署 | ✅ 24 segments + 2 users 全部回填 / 双主驾首次互审 | `daf6f1f` + `01caa5e` |
+
+### Sprint 1：赛段内容深化（5-7 天）⏳ 进行中
+
+| 任务 | 状态 | 备注 |
+|------|------|------|
+| 1.A.1 segment 算法纯函数（max_gradient/difficulty/infer_city）+ common 包 | ✅ 41 测试 + Codex 异源抓 2 Critical | `a9c1bff` |
+| 1.A.2 segment service 扩展（搜索 + 即时反馈 + from-activity）| ⏳ 下一个 | 计划"双主驾首战"——codex 主开发 + Claude 异源审 + 必跑命令 |
+| 1.A.3 segment router 扩展 + 即时反馈 endpoint | ⏳ 待 1.A.2 完工 | - |
+| 1.B.1 / 1.C.1 | ⏳ 待执行 | - |
+
+### 2026-04-29 战略升级：双主驾协作架构 v2.0 ⭐
+
+**触发**：task-0.7 部署链路暴露 6 个真实问题（mock ≠ 真环境 / 容器 rebuild 验证 / PAT 泄露 / progress_records 误报 / EWKB hex 字段 / 信息整流原则违反）→ Tim ↔ Claude 长讨论收敛 4 议题。
+
+**落地（3 commits）**：
+- `1bd15ec` `codex-division-of-labor.md` 改名 → `agent-collaboration.md` v2.0（660 行，从 Claude 中枢改为双主驾）+ CLAUDE.md 顶部加协作硬规则（信息整流 / 少增文档 / 动作 trigger 自查）+ 5 文件 11 处引用更新
+- `a836637` `docs/README.md` §5.F 加升级路由表（教训类型 → 进哪份文档）
+- 2 条新 memory：`feedback_promise_must_action.md`（承诺必落实）/ `user_decision_style_defense_and_roi.md`（Tim 决策风格画像）
+
+**核心规则（4 议题决议，详见 agent-collaboration.md）**：
+- **B 议题**：信息整流原则——给 Tim 用翻译层句式，禁止贴 raw diff；高风险动作硬 checklist；最低限度不确定度自报；动作 trigger 自查（mental check 4 问）
+- **A 议题**：运行时验证门禁——动 DB / 外部 API / 文件系统类代码必跑命令，配本地 docker stack 替代频繁 SSH 生产
+- **C 议题**：memory → 文档升级机制——半自动 + agent 自决目标 + 翻译层问 Tim
+- **D 议题**：切换 trigger——按自然边界切 + 例外清单 + Tim 主权
+
+### 待办（2026-04-30 起）⭐ 新 session 必读
+
+1. **A 叠加 D 计划**：先配 `docker-compose.dev.yml` + 种子数据（30-60min Claude 主驾）→ 然后 task-1.A.2 派 codex 主开发 + Claude 异源审 + 在新 docker stack 必跑命令验证（首次实战双主驾架构）
+2. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）
 
 ### 关键决策
 
 - LLM API 走 DeepSeek（OpenAI 兼容 SDK，Tim 2026-04-29 拍）
 - 赛段目录公开访问 / 看他人主页默认公开 / AI 草稿 202 异步
 - admin H5 独立部署（域名暂不买，先 IP）
+- **agent 协作模式：双主驾 + 单一裁决链**（v1.x Claude-中枢 → v2.0 双主驾对称）
 
 ---
 
