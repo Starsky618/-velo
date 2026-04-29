@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Table, MetaData
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Table, MetaData, JSON
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -168,7 +168,8 @@ _notifications_table = Table(
     _test_metadata,
     Column("id", Integer, primary_key=True),
     Column("user_id", Integer, nullable=False),
-    Column("event_type", String(20), nullable=False),
+    # event_type v5 task-0.6：扩长 String(20) → String(32) 容下 'progress_monthly_summary'(24)
+    Column("event_type", String(32), nullable=False),
     # 第 4 期（task-7.1）外键改成 SET NULL 后 segment_id 允许 NULL
     Column("segment_id", Integer, nullable=True),
     Column("activity_id", Integer, nullable=True),
@@ -181,6 +182,8 @@ _notifications_table = Table(
     # 第 4 期（task-7.1）新增：已读状态。SQLite 用 Integer 代替 Boolean
     # 注意必须给 server_default，否则 test_notification fixture 不传 is_read 时 NOT NULL 违反
     Column("is_read", Integer, nullable=False, server_default="0"),
+    # v5 task-0.6 新增：progress 类通知 payload（PG 用 JSONB，SQLite 用 sa.JSON 抽象）
+    Column("payload", JSON, nullable=True),
     UniqueConstraint("effort_id", "event_type", name="uq_notif_effort_type"),
 )
 

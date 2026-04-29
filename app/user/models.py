@@ -12,9 +12,14 @@
 - ftp 和 weight 可以为空（用户可能还没填）
 - is_admin 只能手动在数据库里改，不开放给普通接口
 - 这个模型会被骑行模块（Activity）引用，建立"这条记录属于谁"的关系
+- city 字段（v5）允许 NULL：未填写状态等价于"不参与按城市筛选/热图"，
+  填值必须是 6 城枚举之一（防止脏数据混入热图聚合）
 """
 
-from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, DateTime, Text, func
+from sqlalchemy import (
+    Column, Integer, BigInteger, String, Float, Boolean, DateTime, Text,
+    CheckConstraint, func,
+)
 
 from app.database import Base
 
@@ -87,8 +92,29 @@ class User(Base):
         comment="免打扰开关预留字段。本期仅字段存在，实际开关存前端本地",
     )
 
+    # ===== 城市（第 5 期 task-0.6 + 2.C.1 完整启用）=====
+    # 6 主城枚举 + 'unknown' 兜底，NULL 表示用户未填写
+    # 用于：5.A.1 个人页热图按城市筛选 + admin 列表按城市分组
+    # 防止脏数据混入：CHECK 约束要么 NULL 要么 7 个允许值之一
+    # 注意 truthiness 陷阱（CLAUDE.md 陷阱 #1）：判"是否填写"用 `is not None`，
+    # 不要用 `if user.city:`——'unknown' 也会是 truthy（已选了"我不在这 6 城"也算填了）
+    city = Column(
+        String(32),
+        nullable=True,
+        comment="所属城市：beijing/shanghai/hangzhou/shenzhen/chengdu/taiyuan/unknown 或 NULL",
+    )
+
     # 创建时间和更新时间
     # server_default 让数据库自动填入当前时间，不依赖 Python 端的时钟
     # tz-aware（第 5 期 task-0.1）：统一时区元数据，避免 naive vs aware TypeError
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        # city 必须 NULL 或 7 个枚举值之一（防脏数据进热图聚合）
+        CheckConstraint(
+            "city IS NULL OR city IN ('beijing', 'shanghai', 'hangzhou', "
+            "'shenzhen', 'chengdu', 'taiyuan', 'unknown')",
+            name="ck_users_city",
+        ),
+    )
