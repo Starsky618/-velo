@@ -189,7 +189,7 @@ def test_detect_events_pr(db, test_user):
     # 手动调用 detect_events
     from app.notification.service import detect_events
     from app.segment.models import SegmentEffort
-    effort = db.query(SegmentEffort).get(eff2_id)
+    effort = db.get(SegmentEffort, eff2_id)
     detect_events(db, effort)
 
     # 验证：应该生成 KOM 通知（因为自己就是 KOM，自己打破自己的）
@@ -210,7 +210,7 @@ def test_detect_events_idempotent(db, test_user):
     from app.notification.service import detect_events
     from app.segment.models import SegmentEffort
     from app.notification.models import Notification
-    effort = db.query(SegmentEffort).get(eff_id)
+    effort = db.get(SegmentEffort, eff_id)
 
     detect_events(db, effort)
     detect_events(db, effort)  # 重复调用
@@ -229,7 +229,7 @@ def test_detect_events_strava_history_skipped(db, test_user):
     from app.notification.service import detect_events
     from app.segment.models import SegmentEffort
     from app.notification.models import Notification
-    effort = db.query(SegmentEffort).get(eff_id)
+    effort = db.get(SegmentEffort, eff_id)
 
     detect_events(db, effort)
 
@@ -247,7 +247,7 @@ def test_detect_events_gpx_old_activity_triggers(db, test_user):
     from app.notification.service import detect_events
     from app.segment.models import SegmentEffort
     from app.notification.models import Notification
-    effort = db.query(SegmentEffort).get(eff_id)
+    effort = db.get(SegmentEffort, eff_id)
 
     detect_events(db, effort)
 
@@ -274,7 +274,7 @@ def test_api_notifications_with_data(client, db, test_user, auth_header):
 
     from app.notification.service import detect_events
     from app.segment.models import SegmentEffort
-    effort = db.query(SegmentEffort).get(eff_id)
+    effort = db.get(SegmentEffort, eff_id)
     detect_events(db, effort)
 
     resp = client.get("/api/notifications", headers=auth_header)
@@ -309,7 +309,7 @@ def test_cleanup_expired(db, test_user):
     from app.segment.models import SegmentEffort
     from app.notification.models import Notification
 
-    effort = db.query(SegmentEffort).get(eff_id)
+    effort = db.get(SegmentEffort, eff_id)
     detect_events(db, effort)
 
     # 确认生成了通知
@@ -340,7 +340,7 @@ def test_full_flow_pr_and_kom(db, test_user):
     from app.segment.models import SegmentEffort
     from app.notification.models import Notification
 
-    effort1 = db.query(SegmentEffort).get(eff1_id)
+    effort1 = db.get(SegmentEffort, eff1_id)
     detect_events(db, effort1)
 
     # 用户 1 应收到 KOM 通知
@@ -358,7 +358,7 @@ def test_full_flow_pr_and_kom(db, test_user):
     act2_id = _insert_activity(db, user2.id)
     eff2_id = _insert_effort(db, seg_id, act2_id, user2.id, 250)
 
-    effort2 = db.query(SegmentEffort).get(eff2_id)
+    effort2 = db.get(SegmentEffort, eff2_id)
     detect_events(db, effort2)
 
     # 用户 2 应收到 KOM 通知
