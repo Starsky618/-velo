@@ -298,8 +298,15 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 - admin H5 独立部署（域名暂不买，先 IP）
 
 **Sprint 进度**：
-- ✅ Sprint 0 task-0.1（datetime 全局 tz-aware）— 三审收敛 commit `4a94097` + alembic 双向真 PG 验证 ✅
-- ⏳ Sprint 0 task-0.2 ~ 0.8（7 任务）— 待执行
+- ✅ Sprint 0 task-0.1（datetime 全局 tz-aware）— 三审收敛 commit `4a94097` + alembic 双向真 PG 验证
+- ✅ Sprint 0 task-0.2（ensure_valid_token 签名改造）— commit `022e2b1` + Codex 异源审抓到的 SQLAlchemy `populate_existing` Important 已修 commit `db7e475`（CLAUDE.md 陷阱清单第 12 条沉淀）
+- ✅ Sprint 0 task-0.3（ensure_valid_token 未绑定路径 + scheduler 兜底）— commit `07327b1`（Codex 抓到 scheduler 未 catch UnboundStravaError 的 Important，已闭环）
+- ✅ Sprint 0 task-0.4（SQLAlchemy legacy `.get()` 替换）— commit `5e44c4f`（实测 8 处 task 卡声明 5 处）
+- ✅ Sprint 0 task-0.8（app/queue.py 单一 Redis 源）— commit `04bb17d`（Codex 跳过 / 工具基础设施版本不兼容；Claude code-reviewer 4 Important 全处理）
+- ✅ Sprint 0 task-0.5（scheduler Redis 复用）— **并入 task-0.8 commit `04bb17d`**，无独立 commit。task-0.8 时为便于测试 patch app.queue.redis_conn 已用局部 `from app.queue import redis_conn as r` 替代 Redis.from_url，task-0.5 目标"消除连接散点"实质已完成
+- ⏳ Sprint 0 task-0.6（v5 主迁移）— **closure 关键**，下一个要做
+- ⏳ Sprint 0 task-0.7（老数据回填）— closure 关键，依赖 0.6
+- ⏳ Sprint 1 / 2 / 3 / 4 — 待执行
 - ⏳ Sprint 1 / 2 / 3 / 4 — 待执行
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
