@@ -269,6 +269,27 @@ velo 工作流由两套大脑支撑：
 | `docs/learning/VELO学习笔记.docx` | Starsky 的 CS 学习积累 |
 | `docs/superpowers/plans/` + `superpowers/specs/` | 旧 superpowers 工作流归档（低频访问） |
 
+### F. 升级路由表：教训类型 → 进哪份文档（agent 自决用）⭐
+
+> agent 每次 save memory 后自问"这条对方看不见会重蹈覆辙吗？"——是 → 按下表升级到 git 文档。
+> 详细机制见 `docs/agent-rules/agent-collaboration.md §9`。
+
+| 教训类型 | 升级目标 | 示例 |
+|---|---|---|
+| 协作协议 / 流程改进 | `docs/agent-rules/agent-collaboration.md` | "rebuild 后必须验容器代码版本" / "SSH 命令必须 sed 脱敏" |
+| 项目特定技术陷阱（写代码时易踩）| `CLAUDE.md` § 技术栈陷阱清单 | "EWKB hex vs WKT" / "populate_existing 配 with_for_update" |
+| 安全 / 边界硬护栏 | `CLAUDE.md` 顶部硬规则 | "防火墙式扩展" / "PAT 不进 git" |
+| 产品决策规则 | `docs/agent-rules/product-decisions.md` | INV-P01 ~ P06 类硬约束 |
+| 架构演进决策（含理由）| `docs/adr/` | "为什么不用 Redis Cluster" |
+| 一次性踩坑（非通用）| `docs/changelog.md` / `docs/deployment-diary.md` | "task-0.7 24/24 失败诊断 → fix" |
+
+**留 memory（不升级）的类型**：
+- user 偏好（Tim 偏爱压缩输出 / 战略发散）
+- agent 自己工作模式反思
+- 项目背景（朋友圈 / 战略 PRD 关系）
+
+**核心标准**：如果对方 agent（Claude ↔ Codex 互换主开发时）看不见会重蹈覆辙 → 升级；如果只是 agent 自己工作偏好 → memory 即可。
+
 ---
 
 ## §6 文档命名规范
