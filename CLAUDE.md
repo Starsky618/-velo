@@ -71,6 +71,24 @@
 
 ---
 
+## 🧭 决策反向索引（每次决策前自查 / 永远加载）
+
+> agent 任何决策前先来这表，再去 `agent-collaboration.md` 详读对应章节。**索引让我永远看到决策点 → 主动去深读详细规则**。
+
+| 决策类型 | 必查规则 |
+|---|---|
+| 加规则到哪文件 | `agent-collaboration.md` §9 升级路由表 |
+| 该不该立规则 | `agent-collaboration.md` §12 规则成熟度（含 80% 高频例外）|
+| 高风险动作前（动 schema/生产/核心规则）| `agent-collaboration.md` §7 硬 checklist |
+| 切换主开发 vs 一气呵成 | `agent-collaboration.md` §10 切换 trigger |
+| 会话拥挤 / 长讨论收尾 / 换窗口 | `agent-collaboration.md` §10 工作交接桥梁 |
+| 给 Tim 提议 / 报告前 | `agent-collaboration.md` §7 翻译层句式 |
+| 代码审查（动 DB / 外部 API / 文件系统）| `agent-collaboration.md` §4 场景 B 必跑命令 |
+
+> **索引膨胀风险**：本表 ≤ 10 行硬约束（关联 §12 熵增警觉）。新增决策类型须 Tim 拍板 + 同时考虑合并/精简既有项。
+
+---
+
 ## 项目概述
 
 VELO 是公路骑行垂直平台的后端 API + 微信小程序前端。
