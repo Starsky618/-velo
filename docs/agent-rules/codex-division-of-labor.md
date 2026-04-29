@@ -311,6 +311,30 @@ Codex 比 Claude 便宜，但**不是免费**。
 
 **跳过了必须在 commit message 写理由**——留痕便于复盘。
 
+### §5.1 授权改动留痕（2026-04-29 新增，task-0.7 互审实证）
+
+**背景**：task-0.7 互审实验里，codex 改了 CLAUDE.md 两处核心规则（健康度红灯 500→600、第 9 项规则改名）。
+Claude 审查时只看 diff + commit message，**无法分辨"Tim 授权"vs"codex 自作主张"**——按默认策略一律按 scope creep 报为 Critical。
+Tim 复盘后告知是他授权的，但下次如果 codex 真擅自改、长得也是同样的报告——审查者分辨不了。
+
+**硬规则**：codex / 任何 subagent 改以下"高敏感文件"时，commit message **必须**含一行授权来源声明：
+
+```
+授权来源：Tim YYYY-MM-DD 对话 / Tim 在 task-X.X 卡里写明 / 等
+```
+
+**高敏感文件清单**（改这些必须留授权痕）：
+- `CLAUDE.md`（项目规则书）
+- `docs/agent-rules/*.md`（agent 行为规则）
+- `docs/spec-v*.md`（技术 spec）
+- `docs/prd/velo-vision.md` / `velo-strategy.md` / `velo-product-spec.md`（战略 PRD）
+- `.claude/settings.json` / hook 配置
+
+**没写授权来源的改动 = 默认按越权处理**——Claude 审查报 Critical，要求撤回或补授权说明。
+成本几乎为零（一行字），但让 Tim / Claude / 未来 agent 都能秒辨"授权 vs 自作主张"。
+
+> **不在清单上的文件**（业务代码 / 测试 / 实施计划 task 卡）：照常执行 task 即可，不需要授权痕。
+
 ---
 
 ## §6 失败兜底

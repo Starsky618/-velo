@@ -101,7 +101,7 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
     - 2026-04-23 v4 task-7.10 实验 1 验证：Codex 一轮抓到 1 条核心反馈环级 Important + 1 条 UX Important，Claude 双审均漏
     - 详见 architect 信条 5 + `docs/agent-rules/codex-division-of-labor.md`（Claude ↔ Codex 完整分工规则 + 4 个场景 prompt 模板）
     - ⭐ **2026-04-28 新增硬规则**：派 codex 写大文档（spec / plans / > 800 字 / > 1500 行）= **默认禁止**——codex CLI 单 task 输入+输出 > 50K token 几乎必卡（已知 bug 链 #13738/#14048/#18723，2026-04-28 v5 spec 实证卡死 30+ 分钟）。**默认路径**：主 agent 自己写 → 写完派 codex review-only。详见分工宪章 §5 + memory `feedback_main_agent_as_middle_manager.md` §2.1
-9. **任务完工三问复盘**：新 bug 模式 / 设计判断 / 流程问题（详见 architect 信条 11）
+9. **链路收尾三问复盘**（spec 链路完成时跑，不是每个 task）：新 bug 模式 / 设计判断 / 流程问题 → 识别完直接调 `/neat` 分发到 memory / CLAUDE.md / docs（详见 architect 信条 11 + neat-freak skill）
 10. **spec 自审 2 项**（architect Step 7 双审之外的项目特定补充）：
     - **状态机完整性**：所有合法状态转换画完整图，含异常恢复路径——遗漏一个状态转换 = 未来踩 bug
     - **共享逻辑识别**：两处做同样事的代码必须抽共享函数，禁止复制粘贴（如 GPX/Strava 都要把 ParseResult 写入 DB → 抽 `save_parse_result` 共享）
@@ -112,7 +112,7 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 
 | 指标 | 黄灯 | 红灯 |
 |------|------|------|
-| 单文件行数 | >300 | >500 |
+| 单文件行数 | >300 | >600 |
 | 单函数行数 | >50 | >80 |
 | 测试总耗时 | >10s | >30s |
 | 单模块文件数 | >8 | >12 |
@@ -304,17 +304,19 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 - ✅ Sprint 0 task-0.4（SQLAlchemy legacy `.get()` 替换）— commit `5e44c4f`（实测 8 处 task 卡声明 5 处）
 - ✅ Sprint 0 task-0.8（app/queue.py 单一 Redis 源）— commit `04bb17d`（Codex 跳过 / 工具基础设施版本不兼容；Claude code-reviewer 4 Important 全处理）
 - ✅ Sprint 0 task-0.5（scheduler Redis 复用）— **并入 task-0.8 commit `04bb17d`**，无独立 commit。task-0.8 时为便于测试 patch app.queue.redis_conn 已用局部 `from app.queue import redis_conn as r` 替代 Redis.from_url，task-0.5 目标"消除连接散点"实质已完成
-- ⏳ Sprint 0 task-0.6（v5 主迁移）— **closure 关键**，下一个要做
-- ⏳ Sprint 0 task-0.7（老数据回填）— closure 关键，依赖 0.6
-- ⏳ Sprint 1 / 2 / 3 / 4 — 待执行
-- ⏳ Sprint 1 / 2 / 3 / 4 — 待执行
+- ✅ Sprint 0 task-0.6（v5 主迁移 + ORM 同步）— commit `91a3691`（Codex 异源审抓到 2 Critical：event_type VARCHAR(20) 容不下 progress_monthly_summary、payload 字段被误判推迟；2 轮收敛。spec §2 修订补遗 5.5/5.6 全部落地：payload JSONB + uniq_progress_notification_per_activity 部分唯一索引）
+- ✅ Sprint 1 task-1.A.1（segment 算法纯函数 + common 包）— commit `a9c1bff`（Codex 异源审抓到 2 Critical：haversine 对跖点 ValueError 浮点累计 + spec §3.1 调用路径 import 失败；2 轮收敛。新建 app/common/__init__.py + geo.py + app/segment/algorithms.py + 41 测试。task 卡 step 4-5 model 字段已在 task-0.6 完成，本 task 实际做 step 1-3 + 测试。**偏离 spec 字面路径**：算法住 algorithms.py 不进 service.py（红灯保护），service.py 加转导出兼容字面调用路径）
+- ⏳ Sprint 0 task-0.7（老数据回填）— **现在可做**（前置 1.A.1 已完成 commit `a9c1bff`；脚本依赖的 `calculate_max_gradient` / `calculate_difficulty` / `infer_city_from_coords` 全部就位，可顶层 import 不再炸 load）
+- ⏳ Sprint 1 / 2 / 3 / 4 — 待执行（1.A.1 已提前做完）
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
 - DEEPSEEK_API_KEY ✅
 - DEEPSEEK_MODEL=deepseek-chat ✅
 - 备份：`~/velo/.env.bak.20260429`
 
-**Sprint 0 closure 硬约束**：task-0.1 ✅ + task-0.6 + task-0.7 + task-0.8 全完成才许启动 Sprint 1（业务代码假设 DB 字段已就位）。
+**Sprint 0 closure 硬约束（v2 / 2026-04-29 调整）**：task-0.1 ✅ + task-0.6 ✅ + task-0.8 ✅ = Sprint 0 schema 闭环完成；task-0.7 与 task-1.A.1 配对延后（先做 1.A.1，再回 0.7 真跑+verify）。
+- 调整理由：原 closure 把 0.7 列必做，但 0.7 spec §2.6 顶层 import `app.segment.service.calculate_max_gradient` 等函数，这些函数在 1.A.1 才实现 → 0.7 现在写完连 Python load 都炸 → "占位脚本"无价值。
+- Sprint 1 启动条件实际是：DB schema 就位（0.6 已落地）+ 单一 Redis 源（0.8 已落地）+ tz-aware（0.1 已落地）。算法函数 1.A.1 写完后 0.7 立刻回填 = Sprint 1 内部第一动作。
 
 **新会话起手必读**（给下次 /clear 后的主 agent）：
 1. 本 CLAUDE.md（项目规则 + 进度）

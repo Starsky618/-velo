@@ -140,6 +140,9 @@ _segments_table = Table(
     Column("reference_line", Text),          # 替代 Geometry
     Column("match_tolerance", Float, default=50.0),
     Column("min_match_ratio", Float, default=0.8),
+    Column("difficulty", String(16), default="medium"),
+    Column("max_gradient", Float),
+    Column("city", String(32), default="unknown"),
     Column("created_at", DateTime(timezone=True)),
     Column("updated_at", DateTime(timezone=True)),
 )
