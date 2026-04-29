@@ -26,7 +26,7 @@ import logging
 import sys
 
 from geoalchemy2 import Geography
-from sqlalchemy import cast, func
+from sqlalchemy import cast, func, select
 
 from app.activity.models import Activity, Trackpoint
 from app.common.geo import infer_city_from_coords
@@ -48,13 +48,23 @@ def backfill_segments(db) -> list[int]:
     for seg in segments:
         try:
             with db.begin_nested():
+                # reference_line 是 PostGIS Geometry 列。如果用 cast(seg.reference_line, Geography)
+                # 会把 ORM 实例属性（Python 端 EWKB hex 字符串）当 bind param，SQLAlchemy
+                # 自动包 ST_GeogFromText 期望 WKT 格式 → PG parse error - invalid geometry。
+                # 正解：用 scalar_subquery 让 SQL 渲染成列引用 segments.reference_line，
+                # PG 自然 cast Geometry → Geography，不走 Python 字符串路径。
+                ref_line_subq = (
+                    select(Segment.reference_line)
+                    .where(Segment.id == seg.id)
+                    .scalar_subquery()
+                )
                 tps = (
                     db.query(Trackpoint)
                     .filter(
                         Trackpoint.geom.isnot(None),
                         func.ST_DWithin(
                             cast(Trackpoint.geom, Geography),
-                            cast(seg.reference_line, Geography),
+                            cast(ref_line_subq, Geography),
                             50,
                         ),
                     )
