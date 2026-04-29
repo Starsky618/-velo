@@ -14,22 +14,20 @@ import hashlib
 import math
 from datetime import datetime, timezone
 
-from redis import Redis
-from rq import Queue
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.activity.models import Activity, Trackpoint
 from app.activity.worker import parse_activity
 from app.config import settings
+from app.queue import redis_conn as _redis_conn, default_queue as _queue
 from app.storage.local import LocalStorage
 
 # 存储后端实例（当前用本地存储，将来切云存储只改这一行）
 _storage = LocalStorage()
 
-# Redis 队列连接（与 worker.py 共用同一个队列名 "velo"）
-_redis_conn = Redis.from_url(settings.REDIS_URL)
-_queue = Queue("velo", connection=_redis_conn)
+# v5 task-0.8：_redis_conn / _queue 沿用旧别名，避免本文件 caller 大改
+# Redis 连接和 Queue 实例从 app.queue 单一源拿（禁止本地 Redis.from_url）
 
 # 文件大小上限：50MB
 _MAX_FILE_SIZE = 50 * 1024 * 1024

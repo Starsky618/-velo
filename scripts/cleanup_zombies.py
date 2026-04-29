@@ -18,8 +18,6 @@ import sys
 import time
 from pathlib import Path
 
-from redis import Redis
-from rq import Queue
 from sqlalchemy import text
 
 # 项目根目录加入 Python 路径，让 import app.xxx 生效
@@ -27,6 +25,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import settings
 from app.database import SessionLocal
+# v5 task-0.8：Redis + Queue 走 app.queue 单一源
+from app.queue import redis_conn, default_queue
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,13 +84,13 @@ def rescue_pending_zombies(db) -> int:
     if not rows:
         return 0
 
-    # 尝试连接 Redis 并重新入队
-    try:
-        redis_conn = Redis.from_url(settings.REDIS_URL)
-        queue = Queue("velo", connection=redis_conn)
-    except Exception as e:
-        logger.warning(f"Redis 连接失败，跳过 pending 僵尸回收: {e}")
-        return 0
+    # v5 task-0.8：Redis + Queue 已在模块顶部从 app.queue 单一源 import
+    # 这里不再 try/except 包连接构造——连接是惰性的（Redis.from_url 不立即连），
+    # 构造永远不抛错；真实网络 I/O 风险点是下方 enqueue 调用，
+    # 下方循环行 97-102 inline try/except 已逐条处理失败 enqueue
+    # 注：原代码"整批跳过"的软失败语义改为"逐条记录"——Redis 真宕机时会多打
+    # N 条 warning，但 cleanup 是辅助任务、pending 僵尸不会很多，可接受
+    queue = default_queue
 
     from app.activity.worker import parse_activity
 

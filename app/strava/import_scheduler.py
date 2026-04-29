@@ -199,12 +199,11 @@ def _run_tier1(db, client: StravaClient, import_task: StravaImport) -> None:
         # v4 I9：连续 2 次空才判完成（防 Strava 偶发空返回）
         # 为什么不加 DB 字段：Redis 轻量，无需 Alembic 迁移；TTL 24h 自动清理
         # key 独立于 import_task.id，即使 StravaImport 被重建也不会串用
-        from redis import Redis
-        from app.config import settings
+        # v5 task-0.8：Redis 走 app.queue 单一源（局部 import 隔离故障域）
+        from app.queue import redis_conn as r
 
         empty_key = f"strava:tier1_empty:{import_task.id}"
         try:
-            r = Redis.from_url(settings.REDIS_URL)
             empty_count = r.incr(empty_key)  # 不存在则初始化为 1
             r.expire(empty_key, 86400)  # 24h TTL 自动清理（远大于正常完成周期）
         except Exception:
@@ -305,10 +304,9 @@ def _run_tier1(db, client: StravaClient, import_task: StravaImport) -> None:
 
     # v4 I9：非空拉取 → 重置空计数器
     # 放在 commit 之后，即使 Redis 操作失败也不影响进度的持久化
+    # v5 task-0.8：Redis 走 app.queue 单一源
     try:
-        from redis import Redis
-        from app.config import settings
-        r = Redis.from_url(settings.REDIS_URL)
+        from app.queue import redis_conn as r
         r.delete(f"strava:tier1_empty:{import_task.id}")
     except Exception:
         pass  # 清理失败不阻塞主流程

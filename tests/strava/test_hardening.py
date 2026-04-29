@@ -35,7 +35,14 @@ def strava_imports_table(db):
 
 @pytest.fixture()
 def redis_mock():
-    """MagicMock 版 Redis 客户端——用于 I9 / I10 测试中的 redis 行为断言。"""
+    """MagicMock 版 Redis 客户端——用于 I9 / I10 测试中的 redis 行为断言。
+
+    ⚠️ 陷阱提示：MagicMock 默认 return_value 是 MagicMock 对象，与真实 redis-py
+    返回值类型（int / bytes / None）不一致。使用前**必须显式 set 各方法的
+    return_value**——例：`redis_mock.incr.return_value = 1`、
+    `redis_mock.set.return_value = True`。否则被测代码 `int(r.incr(...))` 等会
+    因 `int(MagicMock)` 抛 TypeError。
+    """
     return MagicMock()
 
 
@@ -335,7 +342,9 @@ def test_tier1_empty_once_not_completed(db, strava_imports_table, redis_mock):
 
     redis_mock.incr.return_value = 1  # 第 1 次
 
-    with patch("redis.Redis.from_url", return_value=redis_mock):
+    # v5 task-0.8：被测代码改用 `from app.queue import redis_conn as r`，
+    # 不再走 redis.Redis.from_url——patch target 改为模块级单例
+    with patch("app.queue.redis_conn", redis_mock):
         _run_tier1(db, client, imp)
 
     # 不应判完成——函数在 empty_count<2 分支直接 return，未碰 total_activities
@@ -360,7 +369,8 @@ def test_tier1_empty_twice_completes(db, strava_imports_table, redis_mock):
 
     redis_mock.incr.return_value = 2  # 第 2 次达到阈值
 
-    with patch("redis.Redis.from_url", return_value=redis_mock):
+    # v5 task-0.8：patch app.queue 模块级单例（同上）
+    with patch("app.queue.redis_conn", redis_mock):
         _run_tier1(db, client, imp)
 
     # 函数内设置了 total_activities = tier1_completed（未 commit）
@@ -387,7 +397,8 @@ def test_tier1_non_empty_resets_counter(db, strava_imports_table, redis_mock):
         },
     ]
 
-    with patch("redis.Redis.from_url", return_value=redis_mock):
+    # v5 task-0.8：patch app.queue 模块级单例（同上）
+    with patch("app.queue.redis_conn", redis_mock):
         _run_tier1(db, client, imp)
 
     # 应调用 delete 清 empty_key
@@ -400,12 +411,12 @@ def test_tier1_non_empty_resets_counter(db, strava_imports_table, redis_mock):
 # ==================== I10：manual_sync 联动 tier1_completed ====================
 
 
-# handle_manual_sync 内部用 `from app.strava.client import StravaClient`
-# 和 `from redis import Redis` 做延迟 import——patch 这两个源头模块
-@patch("redis.Redis")
+# v5 task-0.8：handle_manual_sync 内 `from app.queue import redis_conn`
+# 局部 import——patch 模块级单例 app.queue.redis_conn 即可拦截
+@patch("app.queue.redis_conn")
 @patch("app.strava.client.StravaClient")
 def test_manual_sync_updates_tier1_completed(
-    MockClient, MockRedis, db, strava_imports_table
+    MockClient, MockRedisConn, db, strava_imports_table
 ):
     """手动同步新增活动后，active StravaImport.tier1_completed 应累加。"""
     user = _make_user(db, strava_athlete_id=99001)
@@ -417,7 +428,7 @@ def test_manual_sync_updates_tier1_completed(
     db.commit()
 
     # 冷却 Redis：set NX 返回 True 放行
-    MockRedis.from_url.return_value.set.return_value = True
+    MockRedisConn.set.return_value = True
 
     client_instance = MockClient.return_value
     client_instance.get_athlete_activities.return_value = [

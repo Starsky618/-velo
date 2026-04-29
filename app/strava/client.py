@@ -27,10 +27,9 @@ import time
 from datetime import date
 
 import httpx
-from redis import Redis
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.queue import redis_conn as _redis
 from app.strava.service import ensure_valid_token
 from app.user.models import User
 
@@ -55,8 +54,8 @@ _STREAM_KEYS = "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,
 # HTTP 请求超时（秒）
 _TIMEOUT = 15
 
-# 模块级 Redis 连接（复用 rq 同一个 Redis 服务，键名前缀不同所以不冲突）
-_redis = Redis.from_url(settings.REDIS_URL)
+# v5 task-0.8：_redis 别名沿用，连接源从 app.queue 单一获取
+# （键名前缀 "strava:rate:..." 与 rq 的 "rq:..." 隔离不冲突）
 
 
 class StravaRateLimitError(Exception):

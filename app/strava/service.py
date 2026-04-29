@@ -685,7 +685,11 @@ def handle_manual_sync(db: Session, user_id: int) -> dict:
     """
     from app.strava.client import StravaClient
     from app.activity.models import Activity
-    from redis import Redis
+    # v5 task-0.8：Redis 走 app.queue 单一源
+    # 局部 import 理由：与本函数已有的 StravaClient 局部 import 风格一致
+    # （client 必须局部 import 因 client.py 顶部反向依赖 service.ensure_valid_token
+    # 形成循环；redis_conn 没循环但放局部便于测试 patch app.queue.redis_conn 拦截）
+    from app.queue import redis_conn
 
     user = db.query(User).filter_by(id=user_id).first()
     if not user or user.strava_athlete_id is None:
@@ -694,7 +698,6 @@ def handle_manual_sync(db: Session, user_id: int) -> dict:
     # 冷却时间检查：每个用户 5 分钟内只能同步一次，防止烧光 API 额度
     # Redis SET NX + EX 原子操作：键不存在时设置成功（首次同步），键存在时设置失败（冷却中）
     try:
-        redis_conn = Redis.from_url(settings.REDIS_URL)
         cooldown_key = f"strava:sync_cooldown:{user_id}"
         if not redis_conn.set(cooldown_key, "1", ex=300, nx=True):
             raise ValueError("同步太频繁，请 5 分钟后再试")
