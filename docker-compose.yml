@@ -100,6 +100,20 @@ services:
     volumes:
       - uploads:/app/uploads
 
+  # ===== Monitor：worker 软目标监控 + 飞书告警（v5 task-1.C.1）=====
+  # 每 60 秒扫一次 activities 表，发现 status='processing' 卡超 4 分钟的就推飞书
+  # 沿用 cleanup_zombies 的"while true; sleep N"包装模式，周期更密（60s vs 300s）
+  # 不挂任何 volume：只读 DB + 推外部 webhook，不写文件系统
+  monitor:
+    build: .
+    command: sh -c "while true; do python -m app.monitor.processing_health || true; sleep 60; done"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
+      FEISHU_BOT_WEBHOOK: ${FEISHU_BOT_WEBHOOK}
+    depends_on:
+      - db
+
   # ===== Scheduler：Strava 导入调度器 =====
   # 每 30s 触发一次 run_import_tick，推进所有 active 用户的 tier1/tier2 导入
   # 和 worker 分开的理由：worker 是队列消费者，scheduler 是时间驱动

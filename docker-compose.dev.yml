@@ -109,6 +109,17 @@ services:
     volumes:
       - uploads_dev:/app/uploads
 
+  # v5 task-1.C.1：worker 软目标监控（dev 同步生产 / 沿用模式）
+  monitor:
+    build: .
+    command: sh -c "while true; do python -m app.monitor.processing_health || true; sleep 60; done"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD:-devpass}@db:5432/velo
+      FEISHU_BOT_WEBHOOK: ${FEISHU_BOT_WEBHOOK:-}
+    depends_on:
+      - db
+
 volumes:
   pgdata_dev:    # dev 独立卷，不和生产共享
   uploads_dev:

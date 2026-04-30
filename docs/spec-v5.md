@@ -2346,12 +2346,17 @@ def scan_processing_health(db: Session) -> list[int]:
     )
     
     try:
-        httpx.post(
+        # task-1.C.1 codex 异源审 2026-04-30 修订：
+        # httpx.post 默认遇 4xx/5xx 不抛，会让飞书 502 静默成功 → monitor 自己失效不知道
+        # 必须显式 raise_for_status() 让 HTTPStatusError 走入下方 except logger.error
+        response = httpx.post(
             settings.FEISHU_BOT_WEBHOOK,
             json={"msg_type": "text", "content": {"text": msg}},
             timeout=5,
         )
+        response.raise_for_status()
     except Exception as e:
+        # catch 范围：网络异常 / 超时 / HTTPStatusError(4xx/5xx) / SDK 升级新异常
         logger.error(f"feishu webhook failed: {e}")
     
     return [a.id for a in stuck_activities]

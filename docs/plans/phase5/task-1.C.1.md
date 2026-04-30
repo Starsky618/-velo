@@ -1,5 +1,10 @@
 # 任务 1.C.1：monitor 模块新建（worker 软目标 + 飞书告警）
 
+> **task 卡 stale 修订**（2026-04-30 task-1.C.1 开工前同步 §7 第 5 问）：
+> - "现状"区块行号 stale —— `_PROCESSING_TIMEOUT` 在 service.py **:41**（不是 :43）
+> - spec §3.8 行号 stale —— 实际 **2287**（不是 2167-2245）
+> - dev stack 同步：本 task 也加 `monitor` 容器到 `docker-compose.dev.yml`（task 卡只提生产 yml）
+
 ## 🎯 目标
 
 新建 `app/monitor/processing_health.py`：扫 processing 状态超过 4 分钟的 activities，发飞书告警。沿用 v4 `_PROCESSING_TIMEOUT = 10 min` 硬上限**不改**——本 task 只加监控告警，不改业务。
@@ -19,9 +24,10 @@
 ## 🧱 现状
 
 - `app/monitor/` 目录**不存在**
-- `app/activity/service.py:43` `_PROCESSING_TIMEOUT = 10 * 60`（沿用，不改）
-- 现有 cron 模式：`scripts/cleanup_zombies.py` + docker-compose 内 `while true; sleep 300` 容器（spec §0.1 已查实 docker-compose.yml:83）
-- `httpx==0.28.1` 已装（spec §0.1 已查实）—— 用 httpx 不用 requests
+- `app/activity/service.py:41` `_PROCESSING_TIMEOUT = 10 * 60`（沿用，不改 / grep 实证 :41 不是 :43）
+- 现有 cron 模式：`scripts/cleanup_zombies.py` + docker-compose 内 `while true; sleep 300` 容器（沿用模式）
+- `httpx==0.28.1` 已装（grep 实证 requirements.txt）—— 用 httpx 不用 requests
+- `app/config.py` 无 `FEISHU_BOT_WEBHOOK` —— 本 task 加
 
 ## 🛠 完整代码
 
@@ -39,7 +45,7 @@
 
 ### 2. `app/monitor/processing_health.py`
 
-抄 `docs/spec-v5.md §3.8`（行 2167-2245）—— 含 `WARN_THRESHOLD_SEC = 4 * 60` + `scan_processing_health(db)`。
+抄 `docs/spec-v5.md §3.8`（行 2287 起）—— 含 `WARN_THRESHOLD_SEC = 4 * 60` + `scan_processing_health(db)`。
 
 **关键修订（spec 已修）**：
 - `from app.config import settings` + `settings.FEISHU_BOT_WEBHOOK`（陷阱 #2）

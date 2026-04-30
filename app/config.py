@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     # 默认 'deepseek-chat'（通用对话）；可切 'deepseek-reasoner' 等
     DEEPSEEK_MODEL: str = "deepseek-chat"
 
+    # 飞书机器人 Webhook（v5 task-1.C.1 起用 / monitor 模块给我们三人发告警用）
+    # 没配（如 dev / CI）→ scan_processing_health 跳过推送但仍返 stuck_id 列表
+    # 配了 → activity 处理卡 4 分钟以上自动推飞书消息
+    FEISHU_BOT_WEBHOOK: str = ""
+
     class Config:
         # 告诉 pydantic-settings 从项目根目录的 .env 文件读取配置
         env_file = ".env"
