@@ -376,14 +376,22 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 - CLAUDE.md 顶部 + agent-collaboration.md §7 同步
 - 新增 memory `feedback_spec_drift_immediate_doc_fix.md`
 
-**Sprint 2：A + B + C 主轴部分推进 / 2026-04-30**
-- ✅ task-2.B.1 power_curve 算法（calculate_power_curve / _from_activities）— `661a717`（codex 抓 1 Important：测试假阳性 A/B 都 100W 拼不拼都过 / 重设计为 A 末尾高 + B 开头高 错拼会算出连续 5 个 1000W）— 15 测试
-- ✅ task-2.A.1 progress_detector + worker hook + SAVEPOINT 升级 — `7611042` + `3abcd83`（CLAUDE.md 陷阱 #13）实施时**主动捕获 spec §3.4 隐患**：detector 内部 db.commit/rollback 会回退 worker 同 session 改的 activity.status → 升级 SAVEPOINT 隔离 + 同步 spec / codex 网络断走 3 层兜底（知识层 + 主线程自审 + 实证测试）— 10 测试
-- 🟡 task-2.C.2 部分（power_curve service + 真 invalidate）— `a306bd1`（codex Critical=0 / 1 Nice-to-have `if cached is not None` 已修；JSON int→str key 统一 service 层转换；余 3 函数 heatmap/update_city/profile_for_others 等 task-2.C.1）— 7 测试
+**Sprint 2：A + B + C 主轴 ✅ 全部完成 / 2026-04-30**
+- ✅ task-2.B.1 power_curve 算法 — `661a717`（codex 抓 1 Important：拼接测试假阳性 / 重设计为 A 末尾高 + B 开头高）— 15 测试
+- ✅ task-2.A.1 progress_detector + worker hook + SAVEPOINT 升级 — `7611042` + `3abcd83`（CLAUDE.md 陷阱 #13）/ 主动捕获 spec §3.4 隐患（detector rollback 回退 worker activity.status）/ codex 网络断走 3 层兜底 — 10 测试
+- ✅ task-2.C.2 part1 power_curve service + 真 invalidate — `a306bd1`（codex Critical=0 / 1 Nice-to-have `if cached is not None` 已修；JSON int→str key 统一 service 层转换）— 7 测试
+- ✅ task-2.C.1 city 字段防回退（verify-only / grep 实证 ORM/Constraint/migration 全已落地）— `eee3d98` — 5 测试
+- ✅ task-2.C.2 part2 余下 3 函数 + worker city hook — `1250df1`（codex 抓 2 Important：白名单测试弱 / SAVEPOINT 隔离；UnboundLocalError 修：函数顶部已 import User，函数内重复 import 触发 Python 函数作用域将名视为局部 → 之前的引用全 UnboundLocalError）— 16 测试
+- ✅ task-2.C.3 user.router 4 endpoint — `bdec206`（路径命名修订 spec /api/users → /api/user 单数 / Tim 拍 A；codex 配额上限走 3 层兜底）— 17 测试
 
-**反馈环已闭环**：上传 → worker → status='completed' → detector 推 progress 通知 → invalidate Redis → 下次查 power_curve 走真实计算
+**反馈环完整跑通**：
+1. 上传 GPX → worker 解析 → status='completed'
+2. progress_detector 推进步通知（payload JSONB / SAVEPOINT 隔离）
+3. worker 自动推 city（SELECT FOR UPDATE + populate_existing + SAVEPOINT）
+4. invalidate_power_curve_cache 真删 Redis
+5. 用户进个人页 → GET /api/user/me/power-curve / GET /api/user/me/heatmap / GET /api/user/{id}/profile
 
-**当前位置**：Sprint 2 部分推进 / 下一个 task = **task-2.C.1（User.city 字段 / ~30min）**——完成后立即解锁 task-2.C.2 余下 3 函数（heatmap / update_city / profile_for_others），再跑 task-2.C.3 router 暴露 power_curve API。
+**当前位置**：Sprint 2 全闭环 / 下一个 task = **Sprint 3 入口 task-3.A.1（admin 模块框架 / ~1d）**。Sprint 3 路径：3.A.1 → 3.A.2 → 3.A.3 → 3.A.4 → 3.A.5（A 严格串行）+ 3.B.1（H5 独立 repo）+ 3.C.1（候选池 cron）。
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
 - DEEPSEEK_API_KEY ✅
@@ -395,8 +403,9 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 - Sprint 1 启动条件实际是：DB schema 就位（0.6 已落地）+ 单一 Redis 源（0.8 已落地）+ tz-aware（0.1 已落地）。算法函数 1.A.1 写完后 0.7 立刻回填 = Sprint 1 内部第一动作。
 
 **新会话起手必读**（给下次 /clear 后的主 agent）：
-1. 本 CLAUDE.md（项目规则 + 进度 / 含 Sprint 2 当前位置）
-2. `docs/plans/phase5/README.md`（29 张 task 索引 + 14 全局约定 + 符号索引 / Sprint 2 已部分 ✅）
-3. 当前要做的 `docs/plans/phase5/task-N.X.md` 单张（默认 = `task-2.C.1.md`）
-4. memory（已经自动加载 / 含 SAVEPOINT 隔离 + grep stale 模式 + §7 升级标记）
+1. 本 CLAUDE.md（项目规则 + 进度 / Sprint 2 全闭环 / 当前 = Sprint 3 入口）
+2. `docs/plans/phase5/README.md`（29 张 task 索引 / Sprint 0/1/2 全 ✅ / 14 全局约定 + 符号索引）
+3. 当前要做的 `docs/plans/phase5/task-N.X.md` 单张（默认 = `task-3.A.1.md`）
+4. memory（已自动加载 / 含 SAVEPOINT 隔离 + grep stale 模式 + 三审 3 层兜底 + §7 升级标记）
 **禁止**：读 spec-v5.md 全文（2879 行污染上下文）—— task 卡里有 spec 行号引用，需要时只读那段。
+**起手第一动作**：grep 验证 task 卡"现状"块（已实证 6 次必查 / memory `feedback_phase5_task_card_grep_stale.md`）。

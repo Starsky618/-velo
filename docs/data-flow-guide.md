@@ -1153,7 +1153,148 @@ scan_iter 是 cursor 模式，不阻塞，对全库友好。
 
 ---
 
-## 12. 全局不变式
+## 链路 13：城市热图 + PATCH 改 city（v5 task-2.C.2/C.3 / 5.A.1）
+
+### 13.1 触发
+
+- 用户进个人主页"城市热图"卡片 → 前端调 `GET /api/user/me/heatmap?city=beijing`
+- 用户在 settings 改主城市 → 前端调 `PATCH /api/user/me` body `{"city": "shanghai"}`
+- worker 完成 activity 解析自动推断 city（链路 1.4.6 / 仅 `user.city is None` 时）
+
+### 13.2 GET /api/user/me/heatmap 序列
+
+```
+[api]  GET /api/user/me/heatmap?city=beijing  Auth: Bearer JWT
+  ↓ schema 校验：city ∈ UserCity 7 枚举（不在 → 422）
+  ↓ user.service.get_user_heatmap(db, user_id, "beijing")
+  ↓ cache_key = f"heatmap:user_{user_id}:city_beijing"
+  ↓ cached = redis_conn.get(cache_key)
+  ↓ if cached is not None: return json.loads(...)  # cache hit p95 < 50ms
+  ↓ cache miss 路径：
+     ↓ activities = SELECT Activity WHERE user_id=? AND status='completed'
+                    AND simplified_track IS NOT NULL
+     ↓ filtered = [a for a in activities if infer_city_from_coords(a.simplified_track[0]) == city]
+     ↓ points = [[lon, lat] for a in filtered for pt in a.simplified_track]
+     ↓ result = {"city", "multipoint": {"type": "MultiPoint", "coordinates": points}, "activity_count"}
+     ↓ redis_conn.setex(cache_key, 3600, json.dumps(result))
+  ↓ return GeoJSON
+```
+
+性能：500 用户 × 30 activity × 80 simplified 点 = 1.2M 点。聚合后端单次 < 1s（按 user_id 索引筛）。Redis 缓存 TTL 1h。
+
+### 13.3 PATCH /api/user/me 序列（改 city）
+
+```
+[api]  PATCH /api/user/me  body={"city": "shanghai"}
+  ↓ schema UserPatchRequest 校验（city ∈ UserCity 7 枚举 + None / 不传不改 / B2B-6 设计：与 PUT /profile 分开）
+  ↓ body.model_dump(exclude_unset=True, mode="json")
+     ↓ "未传 city" → 'city' not in update_data → 不调 service.update_user_city
+     ↓ "传 city=null" → update_data['city'] is None → 调 service 传 None（清空 user.city）
+     ↓ "传枚举值" → update_data['city'] = "shanghai" → 调 service 更新
+  ↓ service.update_user_city(db, user_id, city):
+     ↓ if city not in {7 枚举} and city is not None → ValueError("invalid city")
+     ↓ user = db.query(User).filter(User.id == user_id).first()
+     ↓ if not user → ValueError("user not found") → router 翻 404
+     ↓ user.city = city / db.commit()
+     ↓ 失效 heatmap 缓存：scan_iter("heatmap:user_{user_id}:*") + delete
+  ↓ 返回最新 user（schemas.UserProfile / 沿用现有）
+```
+
+### 13.4 worker 自动推 city 子流程（链路 1.4.6 详细）
+
+worker.py 步骤 10.6（status='completed' 后、db.commit 前）：
+
+```
+🔒 SAVEPOINT 隔离（CLAUDE.md 陷阱 #13 / 与 progress_detector 同 pattern）：
+nested_city = db.begin_nested()
+try:
+    user = SELECT User WHERE id=user_id
+            FOR UPDATE                    # 行锁防并发重复推断
+            populate_existing()           # 陷阱 #12：刷新 identity map 防 stale
+    if user.city is None and activity.simplified_track:
+        first_pt = activity.simplified_track[0]
+        if first_pt.lat / lon 都不为 None:
+            user.city = infer_city_from_coords(lat, lon)  # 6 主城 / 'unknown'
+    db.flush()  # 强制 INSERT/UPDATE 触达 DB（SAVEPOINT 内）
+    nested_city.commit()
+except Exception:
+    nested_city.rollback()  # 失败只回退 SAVEPOINT，外层 activity.status / notification 不受影响
+```
+
+### 13.5 失败恢复
+
+| 失败点 | 后果 | 自愈 |
+|---|---|---|
+| invalidate heatmap 时 Redis 不可用 | 缓存陈旧 | 1h TTL 自然过期兜底 |
+| infer_city_from_coords 返 'unknown' | user.city = 'unknown' | 用户可手动 PATCH /me 改正 |
+| worker city hook 内 DB 异常 | SAVEPOINT 回退 / activity 仍 completed | 下次上传新 activity 重试 |
+
+### 13.6 不变式
+
+- `user.city is None` 是触发条件（**不能用 truthy / 'unknown' 也是 truthy**——CLAUDE.md 陷阱 #1）
+- 6 主城 + 'unknown' 7 枚举 = `_VALID_USER_CITIES` = `UserCity` enum = `ck_users_city` CHECK 约束（四方一致）
+- **跨模块 SAVEPOINT 隔离**：worker city hook 失败不影响外层 activity / notification（陷阱 #13）
+
+---
+
+## 链路 14：看他人主页（v5 task-2.C.3 / 5.A.2）
+
+### 14.1 触发
+
+用户在 feed / 排行榜点击其他用户头像 → 跳转 user profile 页 → 前端调 `GET /api/user/{user_id}/profile`
+
+### 14.2 序列
+
+```
+[api]  GET /api/user/{user_id}/profile  Auth: Bearer JWT
+  ↓ get_current_user 解 JWT → requester_user_id
+  ↓ user.service.get_user_profile_for_others(db, target_user_id, requester_user_id):
+     ↓ target = SELECT User WHERE id=target_user_id
+     ↓ if not target → ValueError("用户不存在") → router 翻 404
+     ↓ totals = SELECT SUM(distance) / SUM(elevation_gain) / COUNT(id)
+                FROM activities WHERE user_id=target AND status='completed'
+     ↓ now_bj = now_utc.astimezone(BJ_TZ +8)
+     ↓ first_of_month_utc = first_bj_month.astimezone(UTC)
+     ↓ current_month = SELECT SUM(distance) / SUM(elevation_gain) / AVG(avg_power)
+                       FROM activities WHERE user_id=target AND status='completed'
+                       AND started_at >= first_of_month_utc
+     ↓ raw_response = {id, nickname, avatar_url, city, ftp, bike_type,
+                       total_distance_km, total_elevation_m, activity_count,
+                       current_month_summary={distance_km, elevation_m, avg_power_w}}
+     ↓ return _filter_profile_keys(raw_response)
+              ↓ {k: v for k, v in raw_response.items() if k in _PROFILE_RESPONSE_KEYS}
+  ↓ FastAPI 用 UserProfileResponse 序列化（schema 双层白名单 / Pydantic v2 默认 extra='ignore'）
+  ↓ 前端拿到的 JSON 严格 10 字段
+```
+
+### 14.3 D-P08 红线"看自己 = 看他人"
+
+`requester_user_id` 参数仅占位（v6 隐私开关预留）。当前**不区分** self / others：
+- 看自己 ID 跟看他人**字段集合完全一致**
+- 测试 `test_self_vs_others_same_field_set` 防回退
+
+### 14.4 双层白名单（service + schema）
+
+| 层 | 实现 | 防回退 |
+|---|---|---|
+| service | `_filter_profile_keys` 白名单 dict 推导式 | 测试反向构造含敏感字段的 raw_response → 验证被过滤 |
+| schema | `UserProfileResponse` 严格 10 字段 / Pydantic v2 默认忽略多余 | 测试 mock service 返回含 openid → schema 过滤 |
+
+任一层被破坏（删推导式 / 改 schema 加敏感字段），测试立即抓。
+
+### 14.5 严格不返字段（D-P08 红线）
+
+efforts / activities 列表 / heatmap / strava_access_token / strava_refresh_token / openid / mute_notifications / weight / weekly_goal / 任何 token
+
+### 14.6 不变式
+
+- `_PROFILE_RESPONSE_KEYS` 集合本身不应包含敏感字段名（元防回退测试）
+- 改白名单字段时**必须同步**：service `_PROFILE_RESPONSE_KEYS` ↔ schema `UserProfileResponse` 字段
+- BJ_TZ 划"本月"（与 link 12 power_curve / link 1.4.5 detector 一致）
+
+---
+
+## 全局不变式
 
 这些是跨所有链路必须遵守的:
 
@@ -1216,7 +1357,7 @@ strava:   与 notification 同层 —— 依赖 user + activity + segment + pars
 
 ---
 
-## 13. 未实现链路(易踩坑)
+## 未实现链路(易踩坑)
 
 **以下链路在 PRD v0 中规划过但实际未实现**,agent 不要假设存在:
 

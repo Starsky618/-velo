@@ -45,13 +45,13 @@
 - 视频内容
 - 电商 / 支付(v8+ 考虑,不在任何当前期)
 
-### 1.3 代码量基线(v5 Sprint 2 部分推进 / 2026-04-30)
+### 1.3 代码量基线(v5 Sprint 2 全闭环 / 2026-04-30)
 
 | 层 | 行数 |
 |---|---|
-| 后端 Python | ~10800（+notification.progress_detector 210 行 / +user.service power_curve 服务 ~150 行） |
+| 后端 Python | ~11200（+notification.progress_detector 210 / +user.service v5 全套 ~390 / +user.router v5 4 endpoint ~100 / +user.schemas v5 ~90 / +activity.power_zones v5 ~125 / +worker city hook ~35）|
 | 小程序前端 | ~2000 |
-| **总计** | **~12800** |
+| **总计** | **~13200** |
 
 ⚠️ agent 注意: 当前期 PR 评估健康度黄灯阈值更新为后端 11000 行(CLAUDE.md 健康度自动巡检规则)。
 
@@ -509,14 +509,18 @@ Strava 导入路径:
 
 ## 5. API 汇总
 
-### 5.1 用户(4)
+### 5.1 用户(8 / v5 +4)
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/user/login` | 微信登录,body `{code: str}`,return `{token, user, is_new}` |
 | GET | `/api/user/profile` | 个人资料 |
-| PUT | `/api/user/profile` | 更新个人资料 |
+| PUT | `/api/user/profile` | 更新个人资料（ftp/weight/bike_type/weekly_goal） |
 | GET | `/api/user/stats` | 骑行统计(总里程等) |
+| **GET** | **`/api/user/me/power-curve`** | **功率曲线（period 5 枚举 + Redis 缓存 / v5 task-2.C.3）** |
+| **GET** | **`/api/user/me/heatmap`** | **个人骑行热图（city 7 枚举 + GeoJSON MultiPoint / v5 task-2.C.3）** |
+| **PATCH** | **`/api/user/me`** | **改 settings（v5 只 city / 与 PUT /profile 分开 / B2B-6 设计）** |
+| **GET** | **`/api/user/{user_id}/profile`** | **看他人主页（D-P08 红线白名单 / v5 task-2.C.3）** |
 
 ### 5.2 活动(7)
 
@@ -563,7 +567,7 @@ Strava 导入路径:
 | POST | `/api/strava/sync` | 手动触发同步,联动 tier1_completed |
 | GET | `/api/strava/import-progress` | 进度,含 `view_status`: `none/active/stalled/paused/completed`,Redis 1s/user 限速 |
 
-**API 总路由数: 25**(user 4 + activity 7 + segment 5 + user_effort 1 + activity_segment 1 + notification 2 + honor 1 + strava 7 − 1(`/api/user/efforts` 归 segment 一组统计)= 25,按业务组 4+7+7+3+7 加总 25 不变)。
+**API 总路由数: 29**(user 8 + activity 7 + segment 5 + user_effort 1 + activity_segment 1 + notification 2 + honor 1 + strava 7 − 1(`/api/user/efforts` 归 segment 一组统计)= 29 / v5 +4 user endpoint）。
 
 ⚠️ agent 注意:
 - 完整 OpenAPI schema: `/api/docs`(FastAPI 自动生成)

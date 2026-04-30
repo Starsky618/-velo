@@ -1,5 +1,13 @@
 # 任务 2.C.3：user.router 4 个新 endpoint
 
+## ✅ 完成状态（2026-04-30）
+
+- commit `bdec206` / 17 测试全过 / 0.12s
+- 4 endpoint 注册：GET /api/user/me/power-curve / GET /api/user/me/heatmap / PATCH /api/user/me / GET /api/user/{user_id}/profile
+- 路径命名修订（Tim 拍 A）：spec §4.2 字面 `/api/users/`（复数）与 CLAUDE.md 命名规则 + 现有 router prefix `/api/user` 冲突 → 统一单数 + spec 同步注释升级
+- 双层白名单（service `_filter_profile_keys` + schema `UserProfileResponse`）—— Pydantic v2 默认 extra='ignore' 过滤多余字段
+- codex 配额到上限 → 3 层兜底（知识层 + 主线程自审 + 实证测试 / 与 task-2.A.1 同 pattern）
+
 ## ⚠ 路径命名修订（2026-04-30 实施时 / Tim 拍 A）
 
 原 task 卡声明 `/api/users/...`（复数）与 CLAUDE.md 命名规则"user/* 不复数"+ 现有 router prefix `/api/user`（单数）冲突。

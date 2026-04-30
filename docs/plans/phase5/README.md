@@ -143,19 +143,20 @@ Sprint 4：收尾 (5-7 天，主 agent 主导)
 | dev stack | docker-compose.dev.yml + 种子数据 | ✅（task 卡未列 / 计划外）| `3e9f50d` | — |
 | §7 升级 | mental check 3 问 → 5 问 | ✅（计划外 / Sprint 1 教训沉淀）| `02261e4` | — |
 
-### Sprint 2：C 主轴 + A 主轴 / 部分推进（2026-04-30）
+### Sprint 2：C 主轴 + A 主轴 ✅ 全部完成（2026-04-30）
 
 | # | 任务名 | 状态 | commit | 测试 |
 |---|--------|------|------|------|
-| 2.A.1 | notification.progress_detector + worker hook + SAVEPOINT 升级 | ✅ 实施时主动捕获 spec 隐患 / codex 网络断走 3 层兜底 | `7611042` | 10 |
+| 2.A.1 | notification.progress_detector + worker hook + SAVEPOINT 升级 | ✅ 实施时主动捕获 spec 隐患 / codex 网络断走 3 层兜底 | `7611042` + `3abcd83` | 10 |
 | 2.B.1 | activity.power_zones：calculate_power_curve + _from_activities | ✅ codex 抓 1 Important 测试假阳性 | `661a717` | 15 |
-| 2.C.1 | user.models 加 city 字段 | ⏳ pending（下一个 task / ~30min）| — | — |
-| 2.C.2 | user.service：5 个新函数（power-curve / heatmap / city / profile） | 🟡 部分（power_curve + invalidate ✅ / heatmap+city+profile 等 2.C.1）| `a306bd1` | 7 |
-| 2.C.3 | user.router：4 个新 endpoint | ⏳ pending（等 2.C.2 全部完成）| — | — |
+| 2.C.1 | user.models 加 city 字段（verify-only / grep 实证已落地）| ✅ | `eee3d98` | 5 |
+| 2.C.2 | user.service：5 个新函数（power-curve / invalidate / heatmap / update_city / profile_for_others）| ✅ codex 抓 2 Important（白名单测试弱 / SAVEPOINT 隔离）/ ⚡ UnboundLocalError 修 | `a306bd1` + `1250df1` | 23 |
+| 2.C.3 | user.router：4 个新 endpoint | ✅ 路径命名修订（spec /api/users → /api/user 单数 / Tim 拍 A）/ codex 配额上限走 3 层兜底 | `bdec206` | 17 |
 
-**Sprint 2 部分推进 metrics**（4 commit / 32 测试 / 2026-04-30）：
-- 反馈环已闭环：上传 → worker → status='completed' → detector 推 progress 通知 → invalidate Redis → 下次查 power_curve 走真实计算
-- 实施时主动发现 spec §3.4 SAVEPOINT 隐患（detector rollback 回退 worker 改的 activity.status）→ 升级 spec + 落 CLAUDE.md 陷阱 #13 + memory pattern
+**Sprint 2 闭环 metrics**（6 commit + 1 docs + 1 doc-sync = 8 commit / 70 测试 / 2026-04-30）：
+- 反馈环完整跑通：上传 → worker（detector + city 自动推断 + invalidate cache）→ 用户进个人页查 power-curve / heatmap / 看他人主页
+- 实施时主动发现 spec §3.4 SAVEPOINT 隐患 + spec §4.2 路径命名冲突 → 都升级 spec + 沉淀 memory + CLAUDE.md
+- ⭐ **SAVEPOINT pattern 复利**：早晨为 detector 升级，中午 codex 又指出 worker city hook 同样需要——同模式第二次落地（陷阱 #13 价值兑现）
 
 ### Sprint 3：D 主轴（依赖 Sprint 1）
 
