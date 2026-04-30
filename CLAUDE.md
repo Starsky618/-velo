@@ -59,13 +59,17 @@
 
 **Why**：文档膨胀 = 双方认知负荷加重 + 漂移源更多 + 系统不稳定性加重。
 
-### 🔄 动作 trigger 自查（每次写报告前 mental check 3 问）
+### 🔄 动作 trigger 自查（每次写报告前 mental check 5 问）
 
 1. 我有没有把代码细节直接推给 Tim？（违反 → 改翻译层句式）
 2. 我做了哪些实证 / 没做哪些？（涉及未做的 → 用最低限度不确定度自报：🟡 + 一句"未 grep / 未跑命令"）
 3. 这是高风险动作吗？（涉及 schema / 生产数据 / 核心规则 → 走硬 checklist）
+4. 我有没有给 Tim 任何"未来承诺"句式（"记住了 / 学到了 / 待会做 X"）？有 → **立刻** save memory / TaskCreate / 写文件落实
+5. 这次决策 / 评审是否引入 spec / task 卡 / 文档偏离？是 → **立刻** Edit 同步文档（或先 git commit doc fix），再动代码。不允许"代码先改、文档后补、文档不补"
 
 **光"知道规则"不够——必须动作 trigger 强制自查**。否则下次又翻车。
+
+> 详细规则、5 条翻车实证表：`docs/agent-rules/agent-collaboration.md` §7
 
 > 详细规则、checklist 表格、实证案例：`docs/agent-rules/agent-collaboration.md` §7
 
