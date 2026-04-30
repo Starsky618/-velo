@@ -71,10 +71,12 @@
 
 ### 待办（2026-05-01 起）⭐ 新 session 必读
 
-1. **下一个 task = task-2.A.1（单线 / Tim 2026-04-30 拍）**：notification.progress_detector + payload 字段
-   - 用户视角：骑完车看到"你 5 分钟功率比上月进步 15W"推送
-   - 前置 1.A.1 ✅ / 工作量 ~2d / Claude 主开发 + codex 异源审
-   - 选 2.A.1 不选 2.B.1（功率曲线）/ 2.C.1（加字段）的理由：用户感知最强 / Sprint 2 反馈环跑通最快路径
+1. **顺序调整：2.B.1 优先 → 再做 2.A.1**（2026-04-30 grep 实证 / Tim 拍）
+   - 起手 grep 发现 task-2.A.1 卡片"前置依赖"漏写 task-2.B.1：spec §3.4 第 1552 行 `from app.activity.power_zones import calculate_power_curve, calculate_power_curve_from_activities` 这两个函数在 2.B.1 实现
+   - 不先做 2.B.1 → 写 detector 时调用不存在函数 → ImportError；改造方向：a)先 2.B.1（power_curve 算法 + cache）→ 再 2.A.1（detector）
+   - 用户视角：先磨刀（power_curve 是 detector 的"原料"）再砍柴（推送通知）
+   - **task-2.B.1**：~1d / Claude 主开发 + codex 异源审 / 纯函数无 DB
+   - **task-2.A.1**：~0.5d / 待 2.B.1 完成后做
 2. **Sprint 2 余下**（依赖图）：2.A.1 ↔ 2.B.1 / 2.C.1 → 2.C.2 → 2.C.3
 3. **生产部署 v5 Sprint 1**：rebuild 生产 docker images（requirements.txt 加了 `openai>=1.0.0` / docker-compose.yml worker 加了 DEEPSEEK_API_KEY+MODEL / 加了 monitor 容器）
 4. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）

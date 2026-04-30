@@ -10,8 +10,16 @@
 
 ## ⛓ 前置依赖
 
-- task-1.A.1（segment 算法）—— 实际**只依赖 Sprint 1 power_zones 完成**，但 power_zones 在 Sprint 2 task 2.B.1，时序上 2.A.1 应该等 2.B.1 完成
-- task-0.6（notifications.payload 字段已迁 + event_type CHECK 扩展）
+- **task-2.B.1（硬依赖）**——spec §3.4 第 1552 行 import `calculate_power_curve` + `calculate_power_curve_from_activities`，在 2.B.1 实现。**2.A.1 必须等 2.B.1 完成**（2026-04-30 grep 实证 / Tim 拍）
+- task-2.C.2（软依赖）—— `invalidate_power_curve_cache` 在 2.C.2 实现；本 task worker 集成 hook 调用此函数，可先 stub / 等 2.C.2 真实现后无缝替换
+- task-0.6（notifications.payload 字段 + event_type CHECK 扩展）—— **已完成**，model 已同步（models.py:114-118 + 138-142）
+
+## ⚠ task 卡 stale 标记（2026-04-30 grep 验证）
+
+- ❌ "前置依赖只列 task-1.A.1" 错——1.A.1 是 segment 算法，与 power_curve 无关
+- ❌ "本 task 加 ORM 声明（payload）" 错——payload 已在 task-0.6 加 ORM 声明（models.py:114-118）
+- ❌ "event_type CHECK 扩展" 错——已扩展（models.py:138-142 含 6 值）
+- ✅ 真正本 task 要做的：**只新建 progress_detector.py + worker hook 集成**（model 全已就绪）
 
 ## 📤 输出契约
 
