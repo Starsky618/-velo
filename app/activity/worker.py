@@ -160,6 +160,25 @@ def _do_parse(db, activity_id: int) -> None:
 
     # ===== 步骤 10：标记完成 =====
     activity.status = "completed"
+
+    # ===== 步骤 10.5：5min 功率进步检测（v5 task-2.A.1 / spec §3.4）=====
+    # hook 落在 status='completed' 赋值后、db.commit 前——这样 detector 写的
+    # notification 与 activity.status 在同一 transaction 提交（一致性 OK）。
+    # detector 内部用 SAVEPOINT 隔离，写失败不会回退 activity.status。
+    # try/except 兜底：detector 任何异常都不影响 activity 已经 completed 的事实。
+    try:
+        from app.notification.progress_detector import detect_5min_power_progress
+        from app.user.service import invalidate_power_curve_cache
+
+        detect_5min_power_progress(db, activity.user_id, activity.id)
+        # invalidate_power_curve_cache 是 task-2.A.1 stub / task-2.C.2 真实现
+        # 上传新 activity 后清缓存让下次查 power_curve 走真实计算
+        invalidate_power_curve_cache(activity.user_id)
+    except Exception:
+        # 进步检测失败静默跳过，不影响 activity 已经 completed 的事实
+        # 失败场景：power_curve 算法异常 / DB 临时网络抖动 / Redis 不可用
+        pass
+
     db.commit()
 
     # ===== 步骤 11：触发 Segment 匹配 =====

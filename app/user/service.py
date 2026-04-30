@@ -264,3 +264,27 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
         "weekly_goal": weekly_goal,
         "goal_percent": goal_percent,
     }
+
+
+# ========== task-2.A.1 stub：power curve 缓存失效占位 ==========
+# 真实现在 task-2.C.2（service 层 + Redis 缓存）/ 接进来后这个 stub 会被替换
+# 现在只是占位让 worker 集成（status='completed' 后调）能正常 import + 调用不炸
+# 不写真逻辑是因为 cache 还没建——还没建的 cache 没东西要 invalidate
+
+def invalidate_power_curve_cache(user_id: int) -> None:
+    """
+    清除用户 power_curve 缓存——**task-2.A.1 stub / task-2.C.2 真实现**。
+
+    用户上传新 activity → 上月最佳功率可能变化 → 下次查 power_curve 要重算。
+    清缓存让下次查时 cache miss 走真实计算。
+
+    现在是空 stub，因为 cache 系统在 task-2.C.2 才建（Redis 缓存 power_curve:user_{id}:period_{p}）。
+    保留空函数让 worker 集成路径稳定（worker 在 status='completed' 后调本函数 +
+    detect_5min_power_progress 是 spec §3.4 钦定的两步动作 / 现在先把第二步打通）。
+
+    task-2.C.2 实现后此 stub 会被替换为：
+        for period in ('this_month', 'last_month', 'this_year', 'last_year', 'all_time'):
+            REDIS_CLIENT.delete(f'power_curve:user_{user_id}:period_{period}')
+    """
+    # 故意空实现 / 不抛错 / 不写日志（避免无意义的"清了空缓存"日志噪音）
+    return None

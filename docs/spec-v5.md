@@ -1669,18 +1669,24 @@ def detect_5min_power_progress(
             'baseline_period': 'last_month',
         },
     )
-    db.add(notification)
+    # ⚠ SAVEPOINT 隔离（task-2.A.1 实施时升级 / CLAUDE.md 关键技术约定 + 陷阱 #8）
+    # 不能直接 db.commit()/db.rollback()——本函数被 worker 调用时
+    # worker 已在同 session 改了 activity.status='completed' 但还没 commit。
+    # 直接 rollback 会把 activity.status 一起回退 → activity 卡回 processing！
+    # 用 SAVEPOINT 隔离：notification 失败只回退到嵌套点，外层 activity.status 不受影响。
+    # 由 worker 在 detector 返回后统一 db.commit() 提交。
+    nested = db.begin_nested()
     try:
-        db.commit()
+        db.add(notification)
+        db.flush()
+        nested.commit()
     except IntegrityError:
-        # 并发场景兜底：另一个 worker 同时写入同一 (activity_id, event_type)
-        # 部分唯一索引 uniq_progress_notification_per_activity 触发约束
-        db.rollback()
+        nested.rollback()
         return None
     return notification
 ```
 
-**Worker 集成**（第二轮双审 B2B-5 修复：明确 hook 位置）：
+**Worker 集成**（第二轮双审 B2B-5 修复：明确 hook 位置 / task-2.A.1 实施时升级 SAVEPOINT 配套）：
 
 实施前先 grep 找 status='completed' 赋值点：
 ```bash
