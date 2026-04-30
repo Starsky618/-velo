@@ -1,10 +1,16 @@
 # 任务 1.B.1：agent 模块新建（segment_writer + tasks.py）
 
+> **task 卡顶部 stale 修订**（2026-04-30 task-1.B.1 开工前同步 §7 第 5 问）：
+> - 顶部目标 / 输出契约表 / `__init__.py` 文档 stale 残留 "Anthropic"——已改 "DeepSeek"
+> - 现状区块 "无 anthropic / ANTHROPIC_API_KEY" → 改 "无 openai / DEEPSEEK_API_KEY"
+> - spec §3.7.3 行号 2064-2178 → 2171-2286（grep 实证）
+> - LLM 厂商选择（Tim 2026-04-29 拍）：DeepSeek（国产 + 国内访问稳 + 极便宜 + OpenAI 兼容 SDK）
+
 ## 🎯 目标
 
 新建 `app/agent/` 模块，含三个文件：
 - `__init__.py` 标识包
-- `segment_writer.py` 同步调 Anthropic API 生成赛段介绍草稿（按 ADR-009 留接口架构，v5 不实现 RAG）
+- `segment_writer.py` 同步调 **DeepSeek** API 生成赛段介绍草稿（按 ADR-009 留接口架构，v5 不实现 RAG）
 - `tasks.py` RQ 异步任务入口（admin 触发后由 worker 跑）
 
 ## ⛓ 前置依赖
@@ -16,14 +22,18 @@
 
 | 函数 | 用途 | 调用方 |
 |---|---|---|
-| `app/agent/segment_writer.py` `generate_segment_draft(segment_props) -> str` | 调 Anthropic 返活人感介绍 50-100 字 | tasks.py 内部用 |
+| `app/agent/segment_writer.py` `generate_segment_draft(segment_props) -> str` | 调 DeepSeek 返活人感介绍 50-100 字 | tasks.py 内部用 |
 | `app/agent/tasks.py` `generate_segment_draft_task(segment_id) -> None` | RQ async task，UPSERT segment_ai_drafts | admin/service.py enqueue（task-3.A.3）+ admin/service.py PATCH curation-pool（task-3.A.2）|
 
 ## 🧱 现状
 
 - `app/agent/` 目录**不存在**（v5 全新建）
-- `requirements.txt` 无 `anthropic` —— 本 task 同 commit 加
-- `app/config.py` 无 `ANTHROPIC_API_KEY` —— 本 task 加 `settings.ANTHROPIC_API_KEY: str = ""`
+- `requirements.txt` 无 `openai` —— 本 task 同 commit 加 `openai>=1.0.0`（DeepSeek 兼容 OpenAI SDK）
+- `app/config.py` 无 `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` —— 本 task 加这两字段
+- `.env.example` 无 DEEPSEEK_* 占位符 —— 本 task 加（生产 .env 实值 Tim 已 2026-04-29 配，不进 git）
+- `docker-compose.yml` 生产 worker `DEEPSEEK_API_KEY/MODEL` env 注入**已配**（task-0.8 留）
+- `docker-compose.dev.yml` 同样 env 占位**已配**（2026-04-30 dev stack commit `3e9f50d`）
+- `app/queue.py` `ai_drafts_queue` **已存在**（task-0.8 commit `04bb17d`）/ enqueue 调用方暂无
 - 项目其他文件统一用 `httpx` 不用 `requests`（陷阱清单已记）
 
 ## 🛠 完整代码
@@ -34,7 +44,7 @@
 """AI 内容生成模块（v5 留接口，未来 v7+ 扩 RAG）。
 
 边界：
-- 调外部 LLM API（Anthropic）
+- 调外部 LLM API（DeepSeek，OpenAI 兼容 SDK）
 - 写 segment_ai_drafts 表（v5 task-0.6 已建）
 - 不反向 import 业务模块（segment / activity / user 的 service）
 - 通过参数 dict 输入，不进业务逻辑
@@ -131,7 +141,7 @@ def generate_segment_draft(segment_props: dict) -> str:
 
 ### 3. `app/agent/tasks.py`
 
-抄 `docs/spec-v5.md §3.7.3`（行 2064-2178）—— 含 `generate_segment_draft_task(segment_id)`。
+抄 `docs/spec-v5.md §3.7.3`（行 2171-2286）—— 含 `generate_segment_draft_task(segment_id)`。
 
 **关键修订（spec 已修）**：
 - `from app.database import SessionLocal`（不是 `app.db`）
