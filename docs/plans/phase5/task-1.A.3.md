@@ -69,12 +69,13 @@ def get_my_effort_compare(
 class SegmentListItem(BaseModel):
     id: int
     name: str
-    distance_km: float
+    distance: float             # 公里，沿用 v4 字段名（不破 leaderboard.js 等前端消费）
     elevation_gain: float | None
-    avg_gradient: float | None
+    avg_gradient: float | None  # v5 新增
     max_gradient: float | None  # v5 新增
     difficulty: str             # v5 新增
     city: str                   # v5 新增
+    # 沿用 v4：start_lat / start_lon / end_lat / end_lon（schemas 现有字段，本次不动）
     entries: int
 
 

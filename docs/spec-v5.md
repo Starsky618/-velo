@@ -2375,7 +2375,7 @@ def scan_processing_health(db: Session) -> list[int]:
 |---|---|
 | 权限 | **公开**（**第二轮双审 B1-B3 + Tim 2026-04-28 拍：赛段目录是发现性内容，匿名可看，沿用现有 router.py:104-111 不加 get_current_user**）|
 | 参数 | `page` int default 1 / `page_size` int 1-100 default 20 / `near_lat` float? / `near_lon` float? / `radius` float default 50000（米，沿用现有，**不允许改 None**）/ `search` str? len ≥ 2 / `city` str? enum / `difficulty` str? enum |
-| 响应 | `{items: [{id, name, distance_km, elevation_gain, avg_gradient, max_gradient, city, difficulty, entries, ...}], total, page, page_size}` |
+| 响应 | `{items: [{id, name, distance, elevation_gain, avg_gradient, max_gradient, city, difficulty, entries, start_lat, start_lon, end_lat, end_lon}], total, page, page_size}`（**字段名 `distance` 单位公里——沿用 v4 router 契约，task-1.A.3 codex 异源审 + Tim 2026-04-30 拍：保留现有不破 v4 leaderboard.js 等前端消费方**）|
 | 错误 | 422 invalid enum |
 
 #### GET /api/segments/{segment_id}（扩展返回字段）
