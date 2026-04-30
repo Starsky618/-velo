@@ -21,13 +21,15 @@ router 是前台接待员（接请求、回结果），service 是后台办事�
 import json
 
 import sqlalchemy as sa
-from geoalchemy2 import Geography
-from sqlalchemy import cast, func
+from geoalchemy2 import Geography, WKTElement
+from sqlalchemy import cast, func, text
 from sqlalchemy.orm import Session
 
-from app.activity.models import Activity
+from app.activity.models import Activity, Trackpoint
+from app.common.geo import infer_city_from_coords
 from app.segment._geo_utils import _haversine, _sample_elevation_profile
 from app.segment.coord_convert import convert_points_to_wgs84
+from app.segment.exceptions import InvalidSegmentRangeError, SegmentOverlapError
 from app.segment.models import Segment, SegmentEffort
 from app.user.models import User
 
@@ -36,6 +38,7 @@ from app.user.models import User
 # `from app.segment.service import calculate_max_gradient, calculate_difficulty`
 # 写的代码能正常 import，不必感知文件分拆细节
 from app.segment.algorithms import (  # noqa: F401 — 转导出
+    _haversine_distance,
     calculate_difficulty,
     calculate_max_gradient,
 )
@@ -160,11 +163,14 @@ def create_segment(
 
 def get_segment_list(
     db: Session,
-    page: int,
-    page_size: int,
+    page: int = 1,
+    page_size: int = 20,
     near_lat: float | None = None,
     near_lon: float | None = None,
     radius: float = 50000,
+    search: str | None = None,
+    city: str | None = None,
+    difficulty: str | None = None,
 ) -> tuple[list[dict], int]:
     """
     查询赛段列表（分页），支持按地理位置筛选附近赛段。
@@ -191,6 +197,14 @@ def get_segment_list(
                 radius,
             )
         )
+    # v5 搜索筛选：这些条件像在赛段目录上叠三张透明筛网。
+    # 注意用 is not None，空字符串也是调用方明确传入的搜索值，不用 truthiness 猜语义。
+    if search is not None:
+        filters.append(Segment.name.ilike(f"%{search}%"))
+    if city is not None:
+        filters.append(Segment.city == city)
+    if difficulty is not None:
+        filters.append(Segment.difficulty == difficulty)
 
     # 总条数（独立查询，不含 GROUP BY，避免计数偏差）
     count_query = db.query(func.count(Segment.id))
@@ -557,3 +571,222 @@ def get_effort_rank(db: Session, effort) -> int:
         .scalar()
     )
     return faster_count + 1
+
+
+# ==================== 我的赛段即时反馈（v5 task-1.A.2） ====================
+
+def _effort_with_activity_to_dict(effort: SegmentEffort, activity: Activity) -> dict:
+    """
+    把一条赛段成绩整理成普通 dict，给上层直接拼响应。
+
+    类比：ORM 对象像档案柜里的原件，dict 像复印件；接口层拿复印件更稳，
+    不会因为 session 关闭后再摸 ORM 懒加载字段而踩坑。
+    """
+    return {
+        "id": effort.id,
+        "segment_id": effort.segment_id,
+        "activity_id": effort.activity_id,
+        "user_id": effort.user_id,
+        "elapsed_time": effort.elapsed_time,
+        "avg_speed": effort.avg_speed,
+        "avg_power": effort.avg_power,
+        "start_index": effort.start_index,
+        "end_index": effort.end_index,
+        "created_at": effort.created_at,
+        "activity_started_at": activity.started_at,
+    }
+
+
+def get_my_effort_with_compare(
+    db: Session,
+    segment_id: int,
+    user_id: int,
+) -> dict:
+    """
+    查询当前用户在某赛段的即时反馈：个人最佳、最近一次、排名、总挑战人数。
+
+    设计思路：
+    - my_best 看 elapsed_time，像成绩单里挑最快的一次；
+    - my_latest 必须看 Activity.started_at，像按"真正骑行时间"翻日记，
+      不能按 effort 入库时间猜；
+    - rank 用每个用户的最佳成绩比较，避免同一个人刷多次把排行榜挤歪。
+    """
+    # 先数不同骑手人数。这里用 distinct(user_id)，因为一个人可以刷多次，但只算一个骑手。
+    total_riders = (
+        db.query(func.count(func.distinct(SegmentEffort.user_id)))
+        .filter(SegmentEffort.segment_id == segment_id)
+        .scalar()
+    )
+
+    # 查我的所有成绩，并显式 JOIN Activity 后按 Activity.started_at 倒序。
+    # 陷阱警示：created_at 是"记录写入时间"，不是"哪天骑的"，排序用错会让最近一次错位。
+    my_rows = (
+        db.query(SegmentEffort, Activity)
+        .join(Activity, SegmentEffort.activity_id == Activity.id)
+        .filter(
+            SegmentEffort.segment_id == segment_id,
+            SegmentEffort.user_id == user_id,
+        )
+        .order_by(Activity.started_at.desc(), SegmentEffort.id.desc())
+        .all()
+    )
+    if len(my_rows) == 0:
+        return {
+            "my_best": None,
+            "my_latest": None,
+            "rank": None,
+            "total_riders": total_riders,
+        }
+
+    # my_latest 直接取按 Activity.started_at DESC 排好序后的第一条。
+    my_latest_effort, my_latest_activity = my_rows[0]
+
+    # my_best 按耗时最短挑；如果耗时并列，用最近骑行时间兜底，避免结果随机抖动。
+    my_best_effort, my_best_activity = min(
+        my_rows,
+        key=lambda row: (
+            row[0].elapsed_time,
+            row[1].started_at is None,
+            row[1].started_at,
+        ),
+    )
+
+    # 每个用户只拿自己的最佳时间再排名。类比每个选手只交一张最好成绩单参赛。
+    best_time_rows = (
+        db.query(
+            SegmentEffort.user_id,
+            func.min(SegmentEffort.elapsed_time).label("best_time"),
+        )
+        .filter(SegmentEffort.segment_id == segment_id)
+        .group_by(SegmentEffort.user_id)
+        .all()
+    )
+    faster_riders = sum(
+        1 for row in best_time_rows
+        if row.best_time is not None and row.best_time < my_best_effort.elapsed_time
+    )
+
+    return {
+        "my_best": _effort_with_activity_to_dict(my_best_effort, my_best_activity),
+        "my_latest": _effort_with_activity_to_dict(my_latest_effort, my_latest_activity),
+        "rank": faster_riders + 1,
+        "total_riders": total_riders,
+    }
+
+
+# ==================== 从已骑活动创建赛段（v5 task-1.A.2） ====================
+
+def create_segment_from_activity(
+    db: Session,
+    activity_id: int,
+    name: str,
+    start_index: int,
+    end_index: int,
+    city: str | None = None,
+    difficulty: str | None = None,
+) -> Segment:
+    """
+    从一段已完成骑行轨迹中裁剪出新赛段。
+
+    这像从一根长绳上剪下一段做成标准赛道：先锁住剪刀避免两个人同时剪，
+    再检查起止点、量长度、查重，最后把线段写进 PostGIS。
+    """
+    # 1. 入函数立即拿事务级 advisory lock。
+    # 类比：创建赛段前先拿唯一号码牌，同一时刻只有一个人能裁剪，避免并发重复创建。
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtext('segment-create-from-activity'))"))
+
+    # 2. 先检查索引方向。起点必须早于终点，像剪绳子不能从右往左倒着剪。
+    if start_index >= end_index:
+        raise InvalidSegmentRangeError("start_index 必须小于 end_index")
+
+    activity = db.query(Activity).filter(Activity.id == activity_id).first()
+    if activity is None:
+        raise ValueError("活动不存在")
+
+    tps = (
+        db.query(Trackpoint)
+        .filter(
+            Trackpoint.activity_id == activity_id,
+            Trackpoint.seq >= start_index,
+            Trackpoint.seq <= end_index,
+        )
+        .order_by(Trackpoint.seq)
+        .all()
+    )
+    if len(tps) < 2:
+        raise InvalidSegmentRangeError("赛段至少需要 2 个轨迹点")
+
+    # 3. 逐段累加距离和正高差。距离像用软尺沿弯路一段段量，高差只累计上坡。
+    distance = 0.0
+    elevation_gain = 0.0
+    elevation_loss = 0.0
+    for i in range(1, len(tps)):
+        prev = tps[i - 1]
+        curr = tps[i]
+        distance += _haversine_distance(
+            prev.latitude, prev.longitude,
+            curr.latitude, curr.longitude,
+        )
+        if prev.elevation is not None and curr.elevation is not None:
+            diff = curr.elevation - prev.elevation
+            if diff > 0:
+                elevation_gain += diff
+            else:
+                elevation_loss += abs(diff)
+    if distance < 1000:
+        raise InvalidSegmentRangeError("赛段太短，至少 1 公里")
+    avg_gradient = (elevation_gain - elevation_loss) / distance * 100 if distance > 0 else 0.0
+
+    # 4. Hausdorff 查重：比较两条线整体是否贴得太近，避免同一路段被重复建赛段。
+    # 陷阱警示：不用 ST_Intersection + ST_Length，它容易把局部交叉误判成整体重复。
+    coords = ", ".join(f"{p.longitude} {p.latitude}" for p in tps)
+    wkt = f"LINESTRING({coords})"
+    overlap = db.execute(
+        text(
+            """
+            SELECT id
+            FROM segments
+            WHERE ST_HausdorffDistance(reference_line, ST_GeomFromText(:wkt, 4326)) < :threshold
+            LIMIT 1
+            """
+        ),
+        {"wkt": wkt, "threshold": 0.0005},
+    ).first()
+    if overlap is not None:
+        raise SegmentOverlapError("新赛段与已有赛段高度重叠")
+
+    # 5. 自动推断城市和难度。调用方没填时，系统用起点和坡度尺自己判断。
+    # 注意 is None 才代表未传，不能用 `if not city`，因为空字符串也可能是调用方错误输入。
+    start = tps[0]
+    inferred_city = city
+    if inferred_city is None:
+        inferred_city = infer_city_from_coords(start.latitude, start.longitude)
+
+    max_gradient = calculate_max_gradient(tps)
+    inferred_difficulty = difficulty
+    if inferred_difficulty is None:
+        inferred_difficulty = calculate_difficulty(distance, elevation_gain, max_gradient)
+
+    # 6. 构建 PostGIS LineString。WKT 坐标顺序是"经度 纬度"，和日常说法相反。
+    path = WKTElement(wkt, srid=4326)
+
+    # 7. 插入并 flush，让调用方在同一个事务里能拿到 id；是否 commit 由外层决定。
+    # 类比：先把报名表放进柜台系统并拿到流水号，最后盖章提交交给调用方统一处理。
+    segment = Segment(
+        name=name,
+        distance=distance,
+        elevation_gain=elevation_gain,
+        elevation_loss=elevation_loss,
+        avg_gradient=avg_gradient,
+        start_lat=start.latitude,
+        start_lon=start.longitude,
+        end_lat=tps[-1].latitude,
+        end_lon=tps[-1].longitude,
+        reference_line=path,
+        city=inferred_city,
+        difficulty=inferred_difficulty,
+        max_gradient=max_gradient,
+    )
+    db.add(segment)
+    db.flush()
+    return segment
