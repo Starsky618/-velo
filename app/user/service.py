@@ -266,25 +266,167 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
     }
 
 
-# ========== task-2.A.1 stub：power curve 缓存失效占位 ==========
-# 真实现在 task-2.C.2（service 层 + Redis 缓存）/ 接进来后这个 stub 会被替换
-# 现在只是占位让 worker 集成（status='completed' 后调）能正常 import + 调用不炸
-# 不写真逻辑是因为 cache 还没建——还没建的 cache 没东西要 invalidate
+# ========== task-2.C.2：功率曲线 service + Redis 缓存 ==========
+#
+# 用户视角：进个人主页"功率曲线"卡片 → 看到"5min 最佳 240W"等 6 档时长。
+# 后端路径：
+#   1. cache 命中 → 直接返（毫秒级）
+#   2. cache miss → 查 period 内 activities → 跨 activity 算曲线 → 写 cache → 返
+#   3. 用户上传新 activity → invalidate_power_curve_cache(user_id) → 清所有 period 缓存
+#
+# Redis key 结构：power_curve:user_{user_id}:period_{period}（TTL 1h）
+
+import json as _json
+from app.activity.models import Activity, Trackpoint
+from app.activity.power_zones import calculate_power_curve_from_activities
+
+# 1h 缓存。短了 cache 命中率不达标（PRD 要求 > 80%），长了用户上传后看不到"刚才骑行"
+# 影响曲线（虽然 invalidate 会清，但万一 invalidate 失败 → 1h 自然过期兜底）
+_POWER_CURVE_CACHE_TTL_SEC = 3600
+
+# Redis key 前缀（统一在此声明，scan 和 set 都引用）
+_POWER_CURVE_CACHE_PREFIX = "power_curve:user_"
+
+
+def _get_redis_client():
+    """延迟导入 redis_conn—— 让纯单元测试不依赖 Redis 启动（task-0.8 单一连接源）。"""
+    from app.queue import redis_conn
+    return redis_conn
+
+
+def _power_curve_period_window(period: str) -> tuple[datetime, datetime]:
+    """
+    计算 period 时间窗口（按北京时间 UTC+8 划分 / CLAUDE.md 时区约定）。
+
+    period 枚举：
+    - this_month / last_month / this_year / last_year / all_time
+    返回 (start_utc, end_utc) tuple，用于 DB 查询。
+
+    跨年特例：1 月 last_month 落到去年 12 月 / 1 月 last_year 落到去年。
+    """
+    now_utc = datetime.now(timezone.utc)
+    now_bj = now_utc.astimezone(BEIJING_TZ)
+
+    if period == "this_month":
+        start_bj = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return start_bj.astimezone(timezone.utc), now_utc
+
+    if period == "last_month":
+        first_this_bj = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = first_this_bj.astimezone(timezone.utc)
+        if first_this_bj.month == 1:
+            start_bj = first_this_bj.replace(year=first_this_bj.year - 1, month=12)
+        else:
+            start_bj = first_this_bj.replace(month=first_this_bj.month - 1)
+        return start_bj.astimezone(timezone.utc), end
+
+    if period == "this_year":
+        start_bj = now_bj.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        return start_bj.astimezone(timezone.utc), now_utc
+
+    if period == "last_year":
+        first_this_year_bj = now_bj.replace(
+            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+        end = first_this_year_bj.astimezone(timezone.utc)
+        start_bj = first_this_year_bj.replace(year=first_this_year_bj.year - 1)
+        return start_bj.astimezone(timezone.utc), end
+
+    if period == "all_time":
+        return datetime(1970, 1, 1, tzinfo=timezone.utc), now_utc
+
+    raise ValueError(f"unknown period: {period}")
+
+
+def get_user_power_curve(
+    db: Session, user_id: int, period: str = "this_month"
+) -> dict:
+    """
+    用户功率曲线（按 period 切片）+ Redis 缓存——"用户的训练成绩单"。
+
+    把用户最近一段时间的所有骑行数据放在一起，算 6 档时长（1s / 5s / 30s / 1min / 5min / 20min）
+    各自的最佳平均功率。比如 5 分钟：上月你最好 5 分钟的平均输出多少瓦——这是衡量
+    持续输出能力的核心指标，也是用户拿来跟自己历史 / 跟朋友对比的"成绩单"。
+
+    period 切片按北京时间划分（CLAUDE.md 时区约定）。
+    缓存 key: power_curve:user_{user_id}:period_{period}，TTL 1h。
+
+    返回 dict：
+        {"period": "this_month", "buckets": {1: 850.0, 5: 720.0, ..., 1200: 220.0}}
+
+    陷阱守卫：
+    - redis-py 7+ 默认返 bytes（陷阱 #5）→ json.loads 前需 decode
+    - 跨 activity 必须用 calculate_power_curve_from_activities 不要直接拼 trackpoints
+      （陷阱：跨日合并出现虚假 5min 极值）
+    - 时区：用 BEIJING_TZ +8 划月 / 不用 datetime.utcnow（陷阱 #2）
+    """
+    # 1. Cache lookup
+    cache_key = f"{_POWER_CURVE_CACHE_PREFIX}{user_id}:period_{period}"
+    redis_client = _get_redis_client()
+    cached = redis_client.get(cache_key)
+    if cached is not None:
+        # redis-py 7+ 默认返 bytes
+        # 用 is not None 不用 truthy（CLAUDE.md 陷阱 #1）：理论上不会缓存空字符串，
+        # 但严谨防御 —— 假设未来有人写 setex(..., "") 不会被错当 cache miss
+        return _json.loads(cached.decode() if isinstance(cached, bytes) else cached)
+
+    # 2. period 时间窗口（提前算 / 失败抛 ValueError）
+    start, end = _power_curve_period_window(period)
+
+    # 3. 查 period 内 completed activities + trackpoints（按 activity 分组）
+    # 禁止跨 activity 拼接 trackpoints —— 用 from_activities 取 per-window max
+    activity_ids = (
+        db.query(Activity.id)
+        .filter(
+            Activity.user_id == user_id,
+            Activity.status == "completed",
+            Activity.started_at >= start,
+            Activity.started_at < end,
+        )
+        .all()
+    )
+
+    activities_trackpoints = []
+    for (act_id,) in activity_ids:
+        tps = (
+            db.query(Trackpoint)
+            .filter(Trackpoint.activity_id == act_id)
+            .order_by(Trackpoint.seq)
+            .all()
+        )
+        activities_trackpoints.append(tps)
+
+    # 4. 计算（每 activity 独立算后取 per-window max）
+    # calculate_power_curve_from_activities 返 dict[int → float]
+    # service 层统一转成 str key —— 因为：
+    #   a) cache miss 路径若返 int key，写入 Redis 后 json.dumps 转 str，
+    #      下次 cache hit 反序列化得 str key → 调用方两次拿到不同类型 dict
+    #   b) FastAPI JSON 序列化也会把 dict int key 转 str → 前端拿到的本来就是 str
+    # 统一在 service 层转换，让上下游类型稳定 + 与 JSON 协议一致
+    curve_int_key = calculate_power_curve_from_activities(activities_trackpoints)
+    curve = {str(k): v for k, v in curve_int_key.items()}
+    result = {"period": period, "buckets": curve}
+
+    # 5. Cache SET
+    redis_client.setex(cache_key, _POWER_CURVE_CACHE_TTL_SEC, _json.dumps(result))
+    return result
+
 
 def invalidate_power_curve_cache(user_id: int) -> None:
     """
-    清除用户 power_curve 缓存——**task-2.A.1 stub / task-2.C.2 真实现**。
+    清除用户 power_curve 全部 period 缓存——"通知账房先生重新算账"。
 
-    用户上传新 activity → 上月最佳功率可能变化 → 下次查 power_curve 要重算。
-    清缓存让下次查时 cache miss 走真实计算。
+    场景：用户上传新 activity → 上月 / 本月最佳功率可能变化 → 缓存的曲线作废。
+    用 scan_iter 找所有 period（this_month / last_month / ... / all_time）
+    对应的 key，逐个删。
 
-    现在是空 stub，因为 cache 系统在 task-2.C.2 才建（Redis 缓存 power_curve:user_{id}:period_{p}）。
-    保留空函数让 worker 集成路径稳定（worker 在 status='completed' 后调本函数 +
-    detect_5min_power_progress 是 spec §3.4 钦定的两步动作 / 现在先把第二步打通）。
+    why scan_iter 不直接 keys：keys 命令在大 Redis 上会阻塞数十秒（生产事故级），
+    scan_iter 是 cursor 模式不阻塞，对全库友好。
 
-    task-2.C.2 实现后此 stub 会被替换为：
-        for period in ('this_month', 'last_month', 'this_year', 'last_year', 'all_time'):
-            REDIS_CLIENT.delete(f'power_curve:user_{user_id}:period_{period}')
+    why 不只删几个固定 period：未来加 7_days / last_quarter 等新 period 时本函数
+    自动覆盖；硬编码列表会漏。
     """
-    # 故意空实现 / 不抛错 / 不写日志（避免无意义的"清了空缓存"日志噪音）
-    return None
+    pattern = f"{_POWER_CURVE_CACHE_PREFIX}{user_id}:*"
+    redis_client = _get_redis_client()
+    for key in redis_client.scan_iter(match=pattern):
+        redis_client.delete(key)
