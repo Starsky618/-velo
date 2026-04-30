@@ -2409,7 +2409,12 @@ def scan_processing_health(db: Session) -> list[int]:
 
 ### §4.2 user 模块（用户端 / 5.C.2 + 5.A.1 + 5.A.2）
 
-#### GET /api/users/me/power-curve（新增 / 5.C.2）
+> **路径命名修订（2026-04-30 task-2.C.3 实施时 / Tim 拍 A）**：
+> 原 spec 字面 `/api/users/...`（复数）与 CLAUDE.md 命名规则"user/* 不复数"+ 现有 router prefix `/api/user`（单数）三方冲突。
+> 选 A：按 CLAUDE.md 规则统一**单数** `/api/user/...`。新增 4 endpoint 全部用单数前缀。
+> 现有 user router prefix 不动。
+
+#### GET /api/user/me/power-curve（新增 / 5.C.2）
 
 | 维度 | 内容 |
 |---|---|
@@ -2419,7 +2424,7 @@ def scan_processing_health(db: Session) -> list[int]:
 | 错误 | 401 / 422 invalid period |
 | 备注 | Redis 缓存 TTL 1h；FTP 为 NULL 用户返绝对 W |
 
-#### GET /api/users/me/heatmap（新增 / 5.A.1）
+#### GET /api/user/me/heatmap（新增 / 5.A.1）
 
 | 维度 | 内容 |
 |---|---|
@@ -2429,7 +2434,7 @@ def scan_processing_health(db: Session) -> list[int]:
 | 错误 | 401 / 400 city 未指定且 user.city is NULL / 422 invalid city |
 | 备注 | Redis 缓存 TTL 1h |
 
-#### PATCH /api/users/me（扩展 body / 5.A.1 settings）
+#### PATCH /api/user/me（扩展 body / 5.A.1 settings）
 
 | 维度 | 内容 |
 |---|---|
@@ -2438,7 +2443,7 @@ def scan_processing_health(db: Session) -> list[int]:
 | 副作用 | 修改 user.city 后失效该用户所有 city 的 heatmap 缓存 |
 | 错误 | 401 / 422 invalid city enum |
 
-#### GET /api/users/{user_id}/profile（新增 / 5.A.2）
+#### GET /api/user/{user_id}/profile（新增 / 5.A.2）
 
 | 维度 | 内容 |
 |---|---|

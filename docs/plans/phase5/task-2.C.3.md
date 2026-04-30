@@ -1,5 +1,10 @@
 # 任务 2.C.3：user.router 4 个新 endpoint
 
+## ⚠ 路径命名修订（2026-04-30 实施时 / Tim 拍 A）
+
+原 task 卡声明 `/api/users/...`（复数）与 CLAUDE.md 命名规则"user/* 不复数"+ 现有 router prefix `/api/user`（单数）冲突。
+**选 A：统一单数**——所有新 endpoint 用 `/api/user/me/...` `/api/user/{user_id}/profile`。spec §4.2 已同步。
+
 ## 🎯 目标
 
 `app/user/router.py` 加 4 个新 endpoint，对接 task-2.C.2 的 service 函数。
