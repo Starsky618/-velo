@@ -71,9 +71,20 @@
 
 ### 待办（2026-05-01 起）⭐ 新 session 必读
 
-1. **进入 Sprint 2**：数据成长主轴（5.A 个人页 / 5.C 即时反馈+功率曲线+进步推送）—— 5 个 task（2.A.1 / 2.B.1 / 2.C.1-3）
-2. **生产部署 v5 Sprint 1**：rebuild 生产 docker images（requirements.txt 加了 `openai>=1.0.0` / docker-compose.yml worker 加了 DEEPSEEK_API_KEY+MODEL / 加了 monitor 容器）
-3. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）
+1. **下一个 task = task-2.A.1（单线 / Tim 2026-04-30 拍）**：notification.progress_detector + payload 字段
+   - 用户视角：骑完车看到"你 5 分钟功率比上月进步 15W"推送
+   - 前置 1.A.1 ✅ / 工作量 ~2d / Claude 主开发 + codex 异源审
+   - 选 2.A.1 不选 2.B.1（功率曲线）/ 2.C.1（加字段）的理由：用户感知最强 / Sprint 2 反馈环跑通最快路径
+2. **Sprint 2 余下**（依赖图）：2.A.1 ↔ 2.B.1 / 2.C.1 → 2.C.2 → 2.C.3
+3. **生产部署 v5 Sprint 1**：rebuild 生产 docker images（requirements.txt 加了 `openai>=1.0.0` / docker-compose.yml worker 加了 DEEPSEEK_API_KEY+MODEL / 加了 monitor 容器）
+4. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）
+
+**新 session 起手必读顺序**（compact 后或 /clear 后）：
+1. CLAUDE.md（Sprint 进度块 / 当前 = Sprint 2）
+2. 本 changelog 待办段（task-2.A.1 决定 + 选择理由）
+3. `docs/plans/phase5/task-2.A.1.md`（task 卡 / 起手前 grep 验证现状）
+4. memory 自动加载（含今日 2 条新 + §7 升级标记）
+**禁止**：读 spec-v5.md 全文（task 卡有 spec 行号引用，需要时只读那段）。
 
 **dev stack 已就绪**（task `3e9f50d` 落地）：
 - `docker compose -p velo-dev -f docker-compose.dev.yml up -d` 独立 project name 不撞生产
