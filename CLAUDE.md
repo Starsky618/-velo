@@ -248,6 +248,7 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 | 10 | **状态机值脑补** | spec 写 `'running'/'pending'`，真实是 `active/paused/completed` | grep server_default 和 service 赋值抄真实值 |
 | 11 | **aware datetime 手工拼 Z**（v5 新踩） | `created_at.isoformat() + "Z"` 在 tz-aware 后变 `2026-04-29T12:00:00+00:00Z` 畸形，前端解析必炸 | 让 Pydantic 自动序列化 / 或 `.isoformat()` 不加 Z；**禁止手工拼 Z 后缀** |
 | 12 | **`with_for_update()` 单独不够 → 配 `populate_existing()`**（v5 task-0.2 codex 抓的） | 同 session identity map 返回旧 ORM 缓存——**行锁 SQL 拿到了但字段值是 stale 的**，并发场景下会读到过时 token / 状态导致逻辑误判 | `.with_for_update().populate_existing().first()` 强制刷新 identity map 里已有对象的 attributes，确保字段值 = 加锁后 DB 最新值 |
+| 13 | **跨模块场景 SAVEPOINT 隔离**（v5 task-2.A.1 实施时捕获 / 区别于 #8 循环场景）| 内层模块（detector / 通知写入器 / progress 检测器）被 worker / endpoint 调用时，若内部直接 `db.commit()` 成功会把外层未 commit 的改动一起提交（OK），但 `db.rollback()` 失败会把外层改动**一起回退**！worker 改的 `activity.status='completed'` 因 detector UNIQUE 冲突被回退 = worker 白干 | 内层用 `nested = db.begin_nested()` + `db.flush()` + `nested.commit()/nested.rollback()`，让失败只回退到嵌套点；外层 commit 由调用者统一做。详见 memory `feedback_savepoint_isolation_for_inner_modules.md` |
 
 > **活文档**：每踩新陷阱在这加一条（不要回 architect skill 加——那里只留跨栈通用 3 条）。
 
