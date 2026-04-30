@@ -1,5 +1,14 @@
 # 任务 2.C.1：user.models 加 city 字段
 
+## ✅ 完成状态（2026-04-30）
+
+**verify-only task**：grep 实证 ORM Column + CheckConstraint + migration 全在 task-1.A.1 / task-0.6 落地。
+本 task 真做的事 = **加防回退测试**（5 case）。
+
+- commit `<本次>` / 5 测试全过真 PG / 0.10s
+- column_exists / check_constraint_exists / null_allowed / six_cities_allowed / invalid_value_rejected
+- 跳过 codex 异源审：纯防回退测试 / 0 业务逻辑改动 / 等价 spec §11 跳过场景
+
 ## 🎯 目标
 
 `app/user/models.py` User 类追加 `city = Column(String(32), nullable=True)` + CheckConstraint。task 0.6 迁移已落地 DB 列，本 task 只补 ORM 声明（这一步组内串行的最先做，让 service / router 后续步骤能引用此字段）。
