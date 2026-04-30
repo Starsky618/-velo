@@ -1,5 +1,12 @@
 # 任务 2.A.1：notification.progress_detector + payload 字段
 
+## ✅ 完成状态（2026-04-30）
+
+- commit `7611042` / 10 测试全过真 PG / 0.78s
+- 实施时**主动捕获 spec §3.4 SAVEPOINT 隐患**：detector 内部 `db.commit()/db.rollback()` 会回退 worker 在同 session 改的 `activity.status='completed'` → 升级为 `db.begin_nested()` SAVEPOINT 隔离 + 同步 spec
+- codex 异源审网络层连续 2 次流断 → **3 层兜底成熟**：知识层验证 + 主线程自审 + 实证测试（`test_savepoint_isolates_failure_from_outer_transaction`）
+- 沉淀：CLAUDE.md 陷阱清单 #13 / memory `feedback_savepoint_isolation_for_inner_modules.md`
+
 ## 🎯 目标
 
 新建 `app/notification/progress_detector.py`：

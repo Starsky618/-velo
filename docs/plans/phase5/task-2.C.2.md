@@ -1,5 +1,20 @@
 # 任务 2.C.2：user.service 5 个新增函数
 
+## 🟡 部分完成（2026-04-30）
+
+| 函数 | 状态 | commit |
+|---|---|---|
+| `get_user_power_curve` | ✅ 真 PG + 真 Redis 测试 | `a306bd1` |
+| `invalidate_power_curve_cache` | ✅ scan_iter pattern + 跨 user 隔离测试 | `a306bd1` |
+| `get_user_heatmap` | ⏳ 等 task-2.C.1 完成（依赖 User.city 字段）| — |
+| `update_user_city` | ⏳ 等 task-2.C.1 | — |
+| `get_user_profile_for_others` | ⏳ 等 task-2.C.1 | — |
+
+**partial commit 关键决策**：
+- JSON int→str key 统一在 service 层转换（cache hit / miss 类型一致 + 与 FastAPI JSON 协议一致）
+- `if cached is not None` 不用 truthy（codex Nice-to-have / CLAUDE.md 陷阱 #1）
+- `_power_curve_period_window` 提取共用辅助函数（与 task-2.A.1 detector BJ_TZ 划月一致）
+
 ## 🎯 目标
 
 `app/user/service.py` 追加 5 个新增函数，覆盖 5.C.2（功率曲线）+ 5.A.1（热图）+ 5.A.2（看他人主页）+ city 更新。

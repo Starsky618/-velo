@@ -247,7 +247,86 @@ for effort in new_efforts:
   │                           rival_user_id=<新 kom 获得者>, ...)
 ```
 
-⚠️ notifications 表**没有** `message` 字段 —— 通知内容由前端按 `event_type` + 关联实体数据组装展示。
+### 1.4.5 5min 功率进步检测子流程（v5 task-2.A.1 新增）
+
+worker.py:162 `activity.status = "completed"` 后、`db.commit()` 前调用：
+
+```
+detect_5min_power_progress(db, user_id, activity_id)（progress_detector.py）
+  │
+  │ Step 10.5.1 当前 activity 5min 最大平均功率:
+  │   tps = SELECT trackpoints WHERE activity_id=N ORDER BY seq
+  │   curve = calculate_power_curve(tps, windows_sec=[300]) ✨ 纯函数
+  │   current_5min = curve[300]
+  │   if current_5min <= 0: return None  # 无功率数据 → 不检测
+  │
+  │ Step 10.5.2 上月时间窗（按 BJ_TZ +8 划月，CLAUDE.md 时区约定）:
+  │   now_bj = now_utc.astimezone(BJ_TZ)
+  │   first_this_month_bj = now_bj.replace(day=1, hour=0, ...)
+  │   last_month_start_bj = first_this_month_bj - 1 month（含跨年特例）
+  │   start, end = (BJ → UTC 互转后)
+  │
+  │ Step 10.5.3 上月 baseline（按 activity 分组，禁止跨 activity 拼接 trackpoints）:
+  │   baseline_acts = SELECT Activity.id WHERE user_id=? AND status='completed'
+  │                   AND started_at >= last_month_start AND started_at < first_this_month
+  │   if not baseline_acts: return None  # 上月无骑行 → 无 baseline
+  │
+  │   for each act_id:
+  │     tps = SELECT trackpoints WHERE activity_id=act_id ORDER BY seq
+  │     baseline_acts_tps.append(tps)
+  │
+  │   baseline_curve = calculate_power_curve_from_activities(baseline_acts_tps, windows_sec=[300])
+  │     ⚠️ 用 _from_activities 不直接拼 trackpoints —— 防止跨 activity 算出虚假 5min 极值
+  │   baseline_5min = baseline_curve[300]
+  │
+  │   if baseline_5min <= 0: return None
+  │     ⚠️ 守卫：上月骑行全无功率（如全在训练台/无功率计） → baseline=0 → 不假阳性"涨 200W"
+  │     "从无到有"不算"进步 5W+"
+  │
+  │ Step 10.5.4 阈值检测 + 静音:
+  │   delta = current_5min - baseline_5min
+  │   if delta < 5W: return None  # PRD Q6 路径 C / Tim 拍 5W 阈值
+  │   user = SELECT User WHERE id=user_id
+  │   if user.mute_notifications: return None
+  │
+  │ Step 10.5.5 应用层幂等检查:
+  │   existing = SELECT Notification WHERE activity_id=N AND event_type='progress_5min_power'
+  │   if existing: return None
+  │
+  │ 🔒 Step 10.5.6 SAVEPOINT 隔离写入（CLAUDE.md 陷阱 #13 / 跨模块场景）:
+  │   notification = Notification(
+  │     user_id, event_type='progress_5min_power', activity_id=N,
+  │     expires_at=now+60d,
+  │     payload={current_value, prev_value, delta, window_sec=300, baseline_period='last_month'},
+  │   )
+  │   nested = db.begin_nested()  # SAVEPOINT
+  │   try:
+  │     db.add(notification)
+  │     db.flush()  # 强制 INSERT 触达 DB，让 IntegrityError 在这里抛
+  │     nested.commit()
+  │   except IntegrityError:
+  │     # 部分唯一索引 uniq_progress_notification_per_activity 触发约束
+  │     # 仅回退到 SAVEPOINT —— 外层 worker 的 activity.status='completed' 不受影响
+  │     nested.rollback()
+  │     return None
+  │
+  │ 然后 worker 自己 db.commit() 把 activity.status + notification 一起提交
+```
+
+**与 1.4 PR/KOM detector 的区别**：
+- 1.4 路径：每条新 effort 检测 → PR/KOM 通知（同步检测，跟匹配赛段绑死）
+- 1.4.5 路径：activity 整体 status='completed' 时检测 → progress 通知（不依赖赛段，关心整体进步）
+- payload 字段是 1.4.5 用的（progress 类），1.4（PR/KOM）沿用 elapsed_time/rank/rival_user_id
+
+**worker hook 时序与 try/except 兜底**（worker.py:162-181）：
+- hook 必须在 `activity.status='completed'` **赋值后**、`db.commit()` **前**调用
+  - 在前调用：detector 读 activity 看到的还是 `processing` 状态，逻辑会判错
+  - 在后调用：activity status 已 commit，但本意是让 notification 与 status 同事务原子提交
+- detector 异常用 `try/except Exception: pass` 兜底（与 `match_activity_against_segments` 同模式）
+  - 失败静默跳过，不影响 activity 已经 completed 的事实
+- `invalidate_power_curve_cache(user_id)` 在 detector 之后调（清 Redis 缓存让下次查曲线走真实计算）
+
+⚠️ notifications 表**没有** `message` 字段 —— 通知内容由前端按 `event_type` + 关联实体数据组装展示（progress 类前端读 `payload.delta` 等字段）。
 
 ### 1.5 状态机回顾
 
@@ -267,7 +346,8 @@ for effort in new_efforts:
 | worker 抢锁 | UPDATE WHERE status='pending',0 行则 return |
 | trackpoint 插入 | ⚠️ **不完全幂等**:缺 UNIQUE(activity_id, seq) 约束,重试会产生重复(tech-debt) |
 | segment_effort 插入 | UNIQUE(segment_id, activity_id) 保证(**两列**,不含 user_id) |
-| notification 插入 | **幂等**,UNIQUE(effort_id, event_type) 兜底;kom_lost 场景 effort_id 可为 NULL,幂等性由 service 层逻辑保证 |
+| notification PR/KOM 插入 | **幂等**,UNIQUE(effort_id, event_type) 兜底;kom_lost 场景 effort_id 可为 NULL,幂等性由 service 层逻辑保证 |
+| notification progress 插入 | **幂等**,部分唯一索引 `uniq_progress_notification_per_activity` 兜底（仅 progress_% 类生效），应用层 + DB 双层防 worker 重试 / 并发重复推送 |
 
 ### 1.7 失败恢复
 
@@ -991,6 +1071,85 @@ monitor 容器 cron → main()
 - monitor **只读** activities 表 / **不改** status / `_PROCESSING_TIMEOUT` 沿用 v4 不动
 - 飞书 webhook 失败（含 5xx 响应）catch 后仍返 stuck list（让 cron 退码反映状态）
 - httpx 不用 requests（项目统一）/ 用 `raise_for_status()` 显式让 5xx 抛
+
+---
+
+## 链路 12：用户功率曲线查询 + 缓存（v5 task-2.C.2 / 5.C.2）
+
+> **router 在 task-2.C.3 才暴露**——链路记录 service 层完整路径，router 跑通时回填 endpoint。
+
+### 12.1 触发
+
+- （未来）用户进个人主页 → "功率曲线"卡片 → 前端调 `GET /api/user/power-curve?period=this_month`
+- worker 完成 activity 解析后，自动 `invalidate_power_curve_cache(user_id)` 清缓存（链路 1.4.5 Step 10.5 后续）
+
+### 12.2 序列：cache hit（90% 路径）
+
+```
+[api]  GET /api/user/power-curve?period=this_month  (router 待 2.C.3)
+  ↓ user.service.get_user_power_curve(db, user_id, period)
+  ↓ cache_key = f"power_curve:user_{user_id}:period_{period}"
+  ↓ cached = redis_conn.get(cache_key)  # bytes（redis-py 7+ 默认）
+  ↓ if cached is not None:
+       return json.loads(cached.decode())  # 直接返回，不查 DB
+  ↓ p95 < 50ms（仅 1 次 Redis GET）
+```
+
+### 12.3 序列：cache miss（10% 路径 / 首次 / 过期 / 失效后）
+
+```
+[api]  cache miss
+  ↓ start, end = _power_curve_period_window(period)
+     period 5 档：this_month / last_month / this_year / last_year / all_time
+     ⚠️ 用 BJ_TZ +8 划月（CLAUDE.md 时区约定 / 与链路 1.4.5 detector 共用辅助函数）
+     跨年特例：1 月 last_month → 上一年 12 月
+  ↓ activity_ids = SELECT Activity.id WHERE user_id=? AND status='completed'
+                   AND started_at >= start AND started_at < end
+  ↓ for each act_id:
+       tps = SELECT Trackpoint WHERE activity_id=act_id ORDER BY seq
+       activities_trackpoints.append(tps)
+  ↓ curve_int_key = calculate_power_curve_from_activities(activities_trackpoints) ✨ 纯函数
+     ⚠️ 禁止跨 activity 拼接 trackpoints（破坏"5min 最佳"语义）
+     算法：每 activity 独立 calculate_power_curve，再 per-window 取 max
+  ↓ curve = {str(k): v for k, v in curve_int_key.items()}
+     ⚠️ JSON int→str key 转换：calculate_power_curve_from_activities 返 dict[int → float]，
+     但 JSON.dumps 把 int key 转 str → cache hit 反序列化得 str key →
+     调用方两次拿到不同类型 dict。service 层统一转 str（与 FastAPI JSON 协议一致）。
+  ↓ result = {"period": period, "buckets": curve}
+  ↓ redis_conn.setex(cache_key, 3600, json.dumps(result))  # TTL 1h
+  ↓ return result
+```
+
+性能：100k trackpoints × 6 windows ≈ 32ms（O(n) per window 前缀和），p95 < 300ms。
+
+### 12.4 序列：缓存失效（worker 完成 activity 后调）
+
+```
+worker 完成 activity → activity.status='completed' → 调用：
+  ↓ user.service.invalidate_power_curve_cache(user_id)
+  ↓ pattern = f"power_curve:user_{user_id}:*"
+  ↓ for key in redis_conn.scan_iter(match=pattern):
+       redis_conn.delete(key)
+  ↓ p95 < 100ms（每 user 至多 5 个 period key）
+```
+
+⚠️ scan_iter 不是 keys：`KEYS power_curve:*` 在大 Redis 上会阻塞数十秒（生产事故级），
+scan_iter 是 cursor 模式，不阻塞，对全库友好。
+
+### 12.5 失败恢复
+
+| 失败点 | 后果 | 自愈 |
+|---|---|---|
+| invalidate 时 Redis 不可用 | 缓存陈旧（看不到刚上传的活动）| 1h TTL 自然过期兜底（spec 决定接受陈旧 < 1h）|
+| cache miss 路径 DB 查询慢 | API 慢 | activities 表已有 `(user_id, status, started_at)` 索引 |
+| user A 失效误清 user B | 不会，pattern `power_curve:user_{A_id}:*` 冒号边界（user_10 不误中 user_100） | 测试 `test_invalidate_does_not_touch_other_users` 真验证 |
+
+### 12.6 不变式
+
+- service 层返回 `{"period": str, "buckets": dict[str, float]}`，**str key 不是 int key**（cache hit / miss 类型一致）
+- **跨 activity 必须用 `_from_activities` 不直接拼 trackpoints**（破坏"5min 最佳"语义）
+- "本月 / 本年" 一律按 BJ_TZ 划分（与 progress detector 共用 `_power_curve_period_window`）
+- 应用层 `if cached is not None` 不用 truthy（CLAUDE.md 陷阱 #1 / 防空字符串误判 cache miss）
 
 ---
 

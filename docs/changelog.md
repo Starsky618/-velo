@@ -37,6 +37,31 @@
 - codex 异源审 4 task 全抓到非平凡问题（spec 字段语义换 / distance_km 漂移 / format 漏 catch / httpx 5xx 静默）
 - **3 次同类 spec/契约偏离失职**（详见 2026-04-30 §7 升级）
 
+### Sprint 2：A + B + C 主轴部分推进 / 2026-04-30
+
+| 任务 | 状态 | commit | 测试 |
+|------|------|------|------|
+| 2.B.1 power_curve 算法（calculate_power_curve / _from_activities）| ✅ Claude 主开发 + codex 异源抓 1 Important（test_must_not_concatenate 假阳性 / A/B 都 100W 拼不拼都过）| `661a717` | 15 |
+| 2.A.1 progress_detector + worker hook（5min 功率进步推送）| ✅ Claude 主开发 + 实施时**主动捕获 spec §3.4 隐患**（detector rollback 会回退 worker 的 activity.status）→ 升级 SAVEPOINT 隔离 + 同步 spec | `7611042` | 10 |
+| CLAUDE.md 陷阱清单 #13 跨模块 SAVEPOINT | ✅ 区别于 #8 循环场景 / 引 memory `feedback_savepoint_isolation_for_inner_modules.md` | `3abcd83` | — |
+| 2.C.2 部分（power_curve service + 真 invalidate）| ✅ Claude 主开发 + codex 异源 Critical=0 / 1 Nice-to-have（`if cached is not None`）已修 / 余 3 函数等 task-2.C.1 | `a306bd1` | 7 |
+
+**Sprint 2 部分推进 metrics**：
+- 4 commit / 全套 pytest 63 passed（含 detector 10 / power_curve 算法 15 / power_curve service 7 / 0 回归）
+- detector 真 PG + 真 Redis 双跑（dev stack：db:5435 / redis:16379 / api:8001）
+- codex 网络层连续 2 次流断（task-2.A.1 SAVEPOINT 审）→ **3 层兜底成熟**：
+  1. 知识层验证（codex 基于 SQLAlchemy 文档判断 SAVEPOINT 用法对错）
+  2. 主线程自审（按原 codex prompt 关注点列表逐项过）
+  3. 实证测试（`test_savepoint_isolates_failure_from_outer_transaction` mock query 强制走 DB UNIQUE）
+- **反馈环已闭环**：上传 → worker → status='completed' → detector 写 progress 通知 → invalidate Redis → 下次查 power_curve 走真实计算
+
+**Sprint 2 沉淀**（2026-04-30 复盘）：
+- memory 新建 `feedback_savepoint_isolation_for_inner_modules.md`（跨模块 SAVEPOINT pattern）
+- memory 更新 `feedback_phase5_task_card_grep_stale.md`（加 2.A.1 实证 + "硬依赖最易漏写"段）
+- memory 更新 `feedback_three_review_pipeline.md`（加 codex 网络断 3 层兜底段）
+- CLAUDE.md 陷阱清单第 13 条
+- spec-v5.md §3.4 SAVEPOINT 升级注释
+
 ### 2026-04-30 §7 mental check 3 问 → 5 问升级
 
 **触发**：Sprint 1 内连续 3 次同类失职：
@@ -71,21 +96,23 @@
 
 ### 待办（2026-05-01 起）⭐ 新 session 必读
 
-1. **顺序调整：2.B.1 优先 → 再做 2.A.1**（2026-04-30 grep 实证 / Tim 拍）
-   - 起手 grep 发现 task-2.A.1 卡片"前置依赖"漏写 task-2.B.1：spec §3.4 第 1552 行 `from app.activity.power_zones import calculate_power_curve, calculate_power_curve_from_activities` 这两个函数在 2.B.1 实现
-   - 不先做 2.B.1 → 写 detector 时调用不存在函数 → ImportError；改造方向：a)先 2.B.1（power_curve 算法 + cache）→ 再 2.A.1（detector）
-   - 用户视角：先磨刀（power_curve 是 detector 的"原料"）再砍柴（推送通知）
-   - **task-2.B.1**：~1d / Claude 主开发 + codex 异源审 / 纯函数无 DB
-   - **task-2.A.1**：~0.5d / 待 2.B.1 完成后做
-2. **Sprint 2 余下**（依赖图）：2.A.1 ↔ 2.B.1 / 2.C.1 → 2.C.2 → 2.C.3
-3. **生产部署 v5 Sprint 1**：rebuild 生产 docker images（requirements.txt 加了 `openai>=1.0.0` / docker-compose.yml worker 加了 DEEPSEEK_API_KEY+MODEL / 加了 monitor 容器）
-4. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）
+1. **下一个 task = task-2.C.1（User.city 字段 / ~30min）**：
+   - 加 `User.city` Column（已在 task-0.6 主迁移就位 / 本 task 仅加 ORM 同步 + 测试 + admin 工具脚本）
+   - 完成后立即解锁 task-2.C.2 余下 3 函数（heatmap / update_city / profile_for_others）
+2. **task-2.C.2 余下 3 函数**：等 task-2.C.1 完成 / 最大块工作量
+3. **task-2.C.3 router 暴露 4 endpoint**：等 task-2.C.2 全部完成
+   - 关键：`GET /api/user/power-curve` 暴露今日完成的 service（链路 12 闭环）
+4. **生产部署 v5 Sprint 1 + Sprint 2 部分**：rebuild 生产 docker images
+   - requirements.txt 加了 `openai>=1.0.0`
+   - docker-compose.yml worker 加了 DEEPSEEK_API_KEY+MODEL
+   - 加了 monitor 容器
+5. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）
 
 **新 session 起手必读顺序**（compact 后或 /clear 后）：
-1. CLAUDE.md（Sprint 进度块 / 当前 = Sprint 2）
-2. 本 changelog 待办段（task-2.A.1 决定 + 选择理由）
-3. `docs/plans/phase5/task-2.A.1.md`（task 卡 / 起手前 grep 验证现状）
-4. memory 自动加载（含今日 2 条新 + §7 升级标记）
+1. CLAUDE.md（Sprint 进度块 / 当前 = Sprint 2 部分 / 下一个 task-2.C.1）
+2. 本 changelog 待办段（task-2.C.1 决定 + 选择理由）
+3. `docs/plans/phase5/task-2.C.1.md`（task 卡 / 起手前 grep 验证现状）
+4. memory 自动加载（含 SAVEPOINT 隔离新 memory + §7 升级标记 + grep stale 模式）
 **禁止**：读 spec-v5.md 全文（task 卡有 spec 行号引用，需要时只读那段）。
 
 **dev stack 已就绪**（task `3e9f50d` 落地）：

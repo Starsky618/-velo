@@ -45,13 +45,13 @@
 - 视频内容
 - 电商 / 支付(v8+ 考虑,不在任何当前期)
 
-### 1.3 代码量基线(v5 Sprint 1 end / 2026-04-30)
+### 1.3 代码量基线(v5 Sprint 2 部分推进 / 2026-04-30)
 
 | 层 | 行数 |
 |---|---|
-| 后端 Python | ~10500（+segment v5 扩展 / agent / monitor / common） |
+| 后端 Python | ~10800（+notification.progress_detector 210 行 / +user.service power_curve 服务 ~150 行） |
 | 小程序前端 | ~2000 |
-| **总计** | **~12500** |
+| **总计** | **~12800** |
 
 ⚠️ agent 注意: 当前期 PR 评估健康度黄灯阈值更新为后端 11000 行(CLAUDE.md 健康度自动巡检规则)。
 
@@ -63,12 +63,12 @@
 
 | 模块 | 文件夹 | 代码量 | 引入版本 | 核心职责 |
 |---|---|---|---|---|
-| user | `app/user/` | 591 行 | v0 | 微信登录、JWT、个人资料、统计 |
-| activity | `app/activity/` | 1617 行 | v0 | 骑行活动 CRUD、异步解析调度 |
+| user | `app/user/` | ~750 行 | v0 | 微信登录、JWT、个人资料、统计、**v5: power_curve service + Redis 缓存**（task-2.C.2 部分） |
+| activity | `app/activity/` | ~1750 行 | v0 | 骑行活动 CRUD、异步解析调度、**v5: power_curve 算法**（task-2.B.1 加 calculate_power_curve / _from_activities）|
 | segment | `app/segment/` | ~2320 行 | v0 | 赛段定义、匹配算法、排行榜、即时反馈、from-activity（v5 +474 行）|
 | parsing | `app/parsing/` | 1802 行 | v1 | GPX/FIT/Strava 三源统一翻译层(纯函数) |
 | strava | `app/strava/` | 1996 行 | v2 | Strava OAuth/API/Webhook/tier1-2 导入 |
-| notification | `app/notification/` | 693 行 | v3 | PR/KOM/KOM_lost 事件检测、通知列表 |
+| notification | `app/notification/` | ~903 行 | v3 | PR/KOM/KOM_lost 事件检测、通知列表、**v5: 5min 功率进步检测**（task-2.A.1 / progress_detector.py 210 行）|
 | **agent** | `app/agent/` | **252 行** | **v5** | **AI 赛段介绍生成（DeepSeek + RQ async）** |
 | **monitor** | `app/monitor/` | **138 行** | **v5** | **worker 软目标监控（4min 阈值 + 飞书告警）** |
 | **common** | `app/common/` | **61 行** | **v5** | **跨模块工具：地理函数 / haversine / city 推断** |
@@ -86,14 +86,14 @@ app/<模块名>/
   README.md        # 模块画像(占位,逐模块补)
 ```
 
-实际模块文件清单(v5 Sprint 1 end):
+实际模块文件清单(v5 Sprint 2 部分推进 / 2026-04-30):
 
-- `app/activity/`: models / schemas / router / service / worker / simplify / power_zones
+- `app/activity/`: models / schemas / router / service / worker / simplify / power_zones（**v5 task-2.B.1** 加 `calculate_power_curve` / `calculate_power_curve_from_activities`）
 - `app/segment/`: models / schemas / router / service / auto_match / matcher / coord_convert / _geo_utils / **algorithms** (v5) / **exceptions** (v5)
 - `app/parsing/`: gpx_parser / fit_parser / strava_adapter / stats_calculator / coord_normalizer / geo_math / types
 - `app/strava/`: models / router / service / client / import_scheduler
-- `app/notification/`: models / schemas / router / service / detector(在 service 内部)
-- `app/user/`: models / schemas / router / service
+- `app/notification/`: models / schemas / router / service / detector(PR/KOM 同步检测) / **progress_detector**（**v5 task-2.A.1** / 5min 功率进步异步检测）
+- `app/user/`: models / schemas / router / service（**v5 task-2.C.2 部分** 加 `get_user_power_curve` + `invalidate_power_curve_cache` + Redis 缓存）
 - **`app/agent/`** (v5): __init__ / segment_writer / tasks（DeepSeek + RQ）
 - **`app/monitor/`** (v5): __init__ / processing_health（cron 60s + 飞书告警）
 - **`app/common/`** (v5): __init__ / geo（haversine / infer_city_from_coords）

@@ -178,3 +178,26 @@ uvicorn app.main:app --reload
 # 7. 启动异步 Worker
 python3 worker.py
 ```
+
+## 推荐：dev stack 隔离（v5 Sprint 1 起 / 不撞生产）
+
+需要跑真 PG / 真 Redis 集成测试时，用独立 dev stack（独立 project name，端口偏移避免撞生产容器）：
+
+```bash
+# 一键启动整套 dev 容器（db:5435 / redis:16379 / api:8001 / worker / scheduler / monitor）
+docker compose -p velo-dev -f docker-compose.dev.yml up -d
+
+# 写入种子数据（7 segments + 2 users + 60-tp activity）
+docker compose -p velo-dev -f docker-compose.dev.yml exec api python -m scripts.seed_dev_data
+
+# 在容器里跑测试（自动连 dev db + redis）
+docker compose -p velo-dev -f docker-compose.dev.yml exec api python3 -m pytest tests/ -x
+
+# 只跑某个文件
+docker compose -p velo-dev -f docker-compose.dev.yml exec api python3 -m pytest tests/test_progress_detector.py -v
+```
+
+关键约定：
+- 测试用前缀 `[task-X.Y.Z ...]` 创建数据 → 跑完 cleanup，避免污染开发种子
+- 涉及 PG 部分唯一索引 / advisory lock / JSONB / tz-aware datetime 的测试**必须走真 PG**，SQLite mock 假绿
+- 涉及 Redis scan_iter / setex / decode 的测试**必须走真 Redis**（CLAUDE.md 陷阱 #5）

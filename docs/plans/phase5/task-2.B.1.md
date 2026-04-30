@@ -1,5 +1,11 @@
 # 任务 2.B.1：activity.power_zones 算法（calculate_power_curve + _from_activities）
 
+## ✅ 完成状态（2026-04-30）
+
+- commit `661a717` / 15 测试全过 / 0.02s
+- 性能 bench：100k trackpoints × 6 windows = 32ms（spec 期望 < 500ms）
+- codex 异源审 Critical=0 / 1 Important（test_must_not_concatenate 假阳性 / A/B 都 100W 拼不拼都 100 → 重设计为 A 末尾高 + B 开头高，错拼会算出连续 5 个 1000W）已修
+
 ## 🎯 目标
 
 `app/activity/power_zones.py` 追加两个新增纯函数：
