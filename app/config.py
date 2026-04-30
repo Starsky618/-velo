@@ -48,6 +48,15 @@ class Settings(BaseSettings):
     # 未配置时 POST /webhook 会返 503，防止裸奔
     STRAVA_WEBHOOK_SUBSCRIPTION_ID: str = ""
 
+    # DeepSeek API（v5 task-1.B.1 起用 / Tim 2026-04-29 拍）
+    # AI 赛段介绍生成器调它——OpenAI 兼容 SDK，仅 base_url 不同
+    # 未配置（如 dev / CI）时 segment_writer._client = None / 调 generate 直接返空字符串
+    # 不抛异常 → 不阻塞 admin 流程；admin 后台手动重发解决
+    DEEPSEEK_API_KEY: str = ""
+    # 模型解耦：env 配置化，未来切其他厂商（阿里通义 / 智谱）只换 base_url + 这里的模型名
+    # 默认 'deepseek-chat'（通用对话）；可切 'deepseek-reasoner' 等
+    DEEPSEEK_MODEL: str = "deepseek-chat"
+
     class Config:
         # 告诉 pydantic-settings 从项目根目录的 .env 文件读取配置
         env_file = ".env"

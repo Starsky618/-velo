@@ -74,6 +74,11 @@ services:
       # velo = GPX/Strava 解析；ai_drafts = AI 草稿生成（task 1.B.1 起用）
       # 用 docker compose up --scale worker=N 横向扩展
       RQ_QUEUES: "velo,ai_drafts"
+      # v5 task-1.B.1：worker 跑 AI 草稿生成时调 DeepSeek API
+      # task-0.8 commit 04bb17d 漏配（codex 异源审 2026-04-30 抓 Critical）
+      # 不配 worker 容器内 _client = None / 所有 AI 草稿静默不生成
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
     depends_on:
       - db
       - redis
