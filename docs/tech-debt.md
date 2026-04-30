@@ -68,6 +68,41 @@
 - OAuth callback 可重复创建 strava_imports（本期 task-7.3 已修）
 - ~~无 scheduler 容器~~（本期 task-7.9 将修）
 
+### 来源：task-1.A.2 完工（2026-04-30 双主驾首战收尾）
+
+**现状**：`app/segment/service.py` 792 行，超红灯 600。
+
+**性质**：本期新增三个函数（`get_my_effort_with_compare` / `create_segment_from_activity` /
+`get_segment_list` 扩展）职责均属"赛段操作"，与现有 8 个函数同模块语义一致，
+**职责单一不强制拆**（CLAUDE.md §代码健康度自动巡检"红灯：先评估职责是否统一"）。
+
+**和第 4 期 service.py 727 行红灯条的区别**：那条点的是 strava service.py（OAuth/token/sync），
+这条点的是 segment service.py，两者无关。
+
+**下期动作**（性价比中 / Sprint 2 完工后再评估）：
+- 拆 `app/segment/service.py` → `service.py`（核心 CRUD）+ `effort_service.py`（即时反馈/排行榜）+ `admin_service.py`（from-activity 等 admin 专用）
+- 触发条件：再加 1 个函数超 850 行 / 或 task-1.A.3 router 完工后看依赖收敛情况
+
+---
+
+### 来源：task-0.7 收尾遗漏（2026-04-30 dev stack 验证发现）
+
+**现状**：commit `01caa5e` 改 `scripts/backfill_phase5.py` 用
+`select(Segment.reference_line).where(...).scalar_subquery()` 解决 EWKB hex 字符串
+被误当 WKT 解析，但 `tests/test_backfill_phase5.py` 的 `_FakeSegment` mock 类
+未同步加 `reference_line` 类属性 → 2 测试持续失败。
+
+**影响**：
+- `test_backfill_segments_updates_each_segment_and_commits_once`
+- `test_backfill_segments_keeps_going_when_one_segment_fails`
+
+**性质**：fix-then-fix（hot-fix 后测试 fixture 漏同步），生产 backfill 已实证 24/24
+回填成功（commit `daf6f1f` + `01caa5e`），所以 mock 测试失败不代表生产逻辑挂。
+
+**下期动作**（性价比低 / 可推迟）：
+- 给 `_FakeSegment` 加 `reference_line = Mock()` 或改测试用真 PG fixture（更稳但慢）
+- 或者评估把 backfill 测试整体迁到集成测试（dev stack 已就绪）
+
 ---
 
 ## P2（远期）

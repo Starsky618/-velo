@@ -1,13 +1,16 @@
 # 本地开发专用编排文件
 #
-# 和生产版的区别：
+# 和生产版的区别（docker-compose.yml）：
 # - 不启动 Caddy（本地不需要 HTTPS）
 # - API 端口直接暴露到 localhost:8000
-# - 微信凭证用占位符（本地不需要真实登录）
+# - 外部服务凭证（Strava / DeepSeek / 微信）默认占位符——本地不真调
+# - 端口映射避开本机已用端口（db:5434 / redis:6379 / api:8000）
 #
 # 使用方法：
 # docker compose -f docker-compose.dev.yml up -d
 # docker compose -f docker-compose.dev.yml exec api alembic upgrade head
+# docker compose -f docker-compose.dev.yml exec api python scripts/seed_dev_data.py
+# docker compose -f docker-compose.dev.yml exec api pytest -x
 # docker compose -f docker-compose.dev.yml logs -f api worker
 
 services:
@@ -17,62 +20,95 @@ services:
     environment:
       POSTGRES_DB: velo
       POSTGRES_USER: velo
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-devpass}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata_dev:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:5434:5432"  # 映射到 5434 避免和本地 PostgreSQL 冲突
+      - "127.0.0.1:5435:5432"  # 5432/5433 被 brew postgres / 5434 被 ridemap-db 占用，dev 用 5435
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:16379:6379"  # 6379 被 ridemap 项目的 redis 容器占了，dev 用 16379
 
   api:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD:-devpass}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: ${JWT_SECRET}
-      WX_APPID: ${WX_APPID}
-      WX_SECRET: ${WX_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret}
+      WX_APPID: ${WX_APPID:-dev-placeholder}
+      WX_SECRET: ${WX_SECRET:-dev-placeholder}
+      # Strava：本地不真调外部 API，给占位符让 import 不报 KeyError
+      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID:-dev-placeholder}
+      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET:-dev-placeholder}
+      STRAVA_REDIRECT_URI: ${STRAVA_REDIRECT_URI:-http://localhost:8000/api/strava/callback}
+      STRAVA_WEBHOOK_VERIFY_TOKEN: ${STRAVA_WEBHOOK_VERIFY_TOKEN:-dev-placeholder}
+      STRAVA_WEBHOOK_SUBSCRIPTION_ID: ${STRAVA_WEBHOOK_SUBSCRIPTION_ID:-0}
+      # DeepSeek：v5 task 1.B.1 起用，本地占位符即可
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-dev-placeholder}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8001:8000"  # 现有生产 stack 已占 8000，dev 用 8001
     depends_on:
       - db
       - redis
     volumes:
-      - uploads:/app/uploads
+      - uploads_dev:/app/uploads
+      # dev 专用：源码 + 测试 + 脚本目录挂宿主，--reload 修改即时生效；
+      # tests/ 被 .dockerignore 排除（生产镜像不含），靠挂载补回
+      - ./app:/app/app
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
 
   worker:
     build: .
     command: python worker.py
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD:-devpass}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
+      # 与生产对齐：单 worker 容器订阅 velo + ai_drafts 两个队列
+      RQ_QUEUES: "velo,ai_drafts"
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-dev-placeholder}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
     depends_on:
       - db
       - redis
     volumes:
-      - uploads:/app/uploads
+      - uploads_dev:/app/uploads
+
+  scheduler:
+    build: .
+    command: python scheduler.py
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD:-devpass}@db:5432/velo
+      REDIS_URL: redis://redis:6379/0
+      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID:-dev-placeholder}
+      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET:-dev-placeholder}
+    depends_on:
+      - db
+      - redis
 
   cleanup:
     build: .
     command: sh -c "while true; do python scripts/cleanup_zombies.py; sleep 300; done"
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD:-devpass}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - db
       - redis
     volumes:
-      - uploads:/app/uploads
+      - uploads_dev:/app/uploads
 
 volumes:
-  pgdata:
-  uploads:
+  pgdata_dev:    # dev 独立卷，不和生产共享
+  uploads_dev:
