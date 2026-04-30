@@ -68,6 +68,11 @@ def _fake_segment(**overrides):
         "name": "太行测试坡",
         "distance": 1234.0,
         "elevation_gain": 88.0,
+        # v5 task-1.A.3：service 返 dict 含 4 新字段，mock 也要带
+        "avg_gradient": 3.2,
+        "max_gradient": 7.5,
+        "difficulty": "medium",
+        "city": "taiyuan",
         "start_lat": 37.8,
         "start_lon": 112.5,
         "end_lat": 37.9,
@@ -125,58 +130,66 @@ def test_get_segment_list_returns_tuple_with_entries():
 
 
 def test_get_my_effort_with_compare_no_effort():
-    """用户没骑过该赛段时，个人字段为 None，但 total_riders 仍返回真实人数。"""
-    total_query = _FakeQuery(scalar_value=2)
-    my_query = _FakeQuery(all_value=[])
+    """用户没在该赛段留 effort 时，6 字段进入"首次访问"兜底状态。"""
+    efforts_query = _FakeQuery(all_value=[])
+    pr_query = _FakeQuery(scalar_value=None)
     db = MagicMock()
-    db.query.side_effect = [total_query, my_query]
+    db.query.side_effect = [efforts_query, pr_query]
 
     result = service.get_my_effort_with_compare(db, segment_id=1, user_id=2)
 
     assert result == {
-        "my_best": None,
-        "my_latest": None,
-        "rank": None,
-        "total_riders": 2,
+        "current_attempt_elapsed_time": None,
+        "last_attempt_elapsed_time": None,
+        "pr_elapsed_time": None,
+        "current_attempt_diff_to_last": None,
+        "current_attempt_is_pr": False,
+        "is_first_attempt": True,
     }
 
 
-def test_get_my_effort_with_compare_ordering():
-    """my_latest 必须按 Activity.started_at，my_best 必须按 elapsed_time。"""
+def test_get_my_effort_with_compare_pr_attempt():
+    """current 是历史最佳时 is_pr=True / diff 反映这次比上次快了多少。"""
     early_started = datetime(2026, 4, 10, 9, 0, tzinfo=timezone.utc)
     late_started = datetime(2026, 4, 20, 9, 0, tzinfo=timezone.utc)
-    early_effort = SimpleNamespace(
-        id=10, segment_id=1, activity_id=100, user_id=2,
-        elapsed_time=1300, avg_speed=20.0, avg_power=180.0,
-        start_index=0, end_index=10, created_at=late_started,
-    )
-    late_effort = SimpleNamespace(
-        id=9, segment_id=1, activity_id=101, user_id=2,
-        elapsed_time=1100, avg_speed=22.0, avg_power=190.0,
-        start_index=0, end_index=10, created_at=early_started,
-    )
-    early_activity = SimpleNamespace(started_at=early_started)
-    late_activity = SimpleNamespace(started_at=late_started)
+    # spec §3.2.1：efforts 已按 Activity.started_at DESC 排序，limit(2)
+    # 第一条 = current（最新一次骑）/ 第二条 = last（上一次）
+    late_effort = SimpleNamespace(elapsed_time=1100)   # 后骑（current）
+    early_effort = SimpleNamespace(elapsed_time=1300)  # 早骑（last）
 
-    total_query = _FakeQuery(scalar_value=2)
-    my_query = _FakeQuery(all_value=[
-        (late_effort, late_activity),
-        (early_effort, early_activity),
-    ])
-    rank_query = _FakeQuery(all_value=[
-        SimpleNamespace(user_id=2, best_time=1100),
-        SimpleNamespace(user_id=3, best_time=1000),
-    ])
+    efforts_query = _FakeQuery(all_value=[late_effort, early_effort])
+    pr_query = _FakeQuery(scalar_value=1100)  # PR 是 1100，等于 current → is_pr
     db = MagicMock()
-    db.query.side_effect = [total_query, my_query, rank_query]
+    db.query.side_effect = [efforts_query, pr_query]
 
     result = service.get_my_effort_with_compare(db, segment_id=1, user_id=2)
 
-    assert "activities.started_at DESC" in " ".join(str(arg) for arg in my_query.order_args)
-    assert result["my_best"]["elapsed_time"] == 1100
-    assert result["my_latest"]["activity_started_at"] == late_started
-    assert result["rank"] == 2
-    assert result["total_riders"] == 2
+    # 验证按 Activity.started_at DESC 排序写进了 SQL
+    assert "activities.started_at DESC" in " ".join(str(a) for a in efforts_query.order_args)
+    assert result["current_attempt_elapsed_time"] == 1100
+    assert result["last_attempt_elapsed_time"] == 1300
+    assert result["pr_elapsed_time"] == 1100
+    assert result["current_attempt_diff_to_last"] == 200  # last - current = 1300 - 1100
+    assert result["current_attempt_is_pr"] is True
+    assert result["is_first_attempt"] is False
+
+
+def test_get_my_effort_with_compare_first_attempt():
+    """只骑过 1 次时 last/diff 为 None / is_first=True / is_pr 看 current 是否 == pr。"""
+    only_effort = SimpleNamespace(elapsed_time=1500)
+    efforts_query = _FakeQuery(all_value=[only_effort])
+    pr_query = _FakeQuery(scalar_value=1500)
+    db = MagicMock()
+    db.query.side_effect = [efforts_query, pr_query]
+
+    result = service.get_my_effort_with_compare(db, segment_id=1, user_id=2)
+
+    assert result["current_attempt_elapsed_time"] == 1500
+    assert result["last_attempt_elapsed_time"] is None
+    assert result["pr_elapsed_time"] == 1500
+    assert result["current_attempt_diff_to_last"] is None
+    assert result["current_attempt_is_pr"] is True  # 唯一一次 = PR
+    assert result["is_first_attempt"] is True
 
 
 def test_create_segment_invalid_range():

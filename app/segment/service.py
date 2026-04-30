@@ -239,6 +239,11 @@ def get_segment_list(
             "name": segment.name,
             "distance": round(segment.distance / 1000.0, 2),
             "elevation_gain": segment.elevation_gain,
+            # v5 task-1.A.3 新增 4 字段（task-1.A.2 已落 DB 但 dict 未带，本次补全）
+            "avg_gradient": segment.avg_gradient,
+            "max_gradient": segment.max_gradient,
+            "difficulty": segment.difficulty,
+            "city": segment.city,
             "start_lat": segment.start_lat,
             "start_lon": segment.start_lon,
             "end_lat": segment.end_lat,
@@ -305,6 +310,11 @@ def get_segment_detail(db: Session, segment_id: int) -> dict:
         "description": segment.description,
         "distance": round(segment.distance / 1000.0, 2),  # 米 → 公里
         "elevation_gain": segment.elevation_gain,
+        # v5 task-1.A.3 新增 4 字段（spec §4.1：详情响应加 max_gradient/city/difficulty）
+        "avg_gradient": segment.avg_gradient,
+        "max_gradient": segment.max_gradient,
+        "difficulty": segment.difficulty,
+        "city": segment.city,
         "start_lat": segment.start_lat,
         "start_lon": segment.start_lon,
         "end_lat": segment.end_lat,
@@ -573,29 +583,7 @@ def get_effort_rank(db: Session, effort) -> int:
     return faster_count + 1
 
 
-# ==================== 我的赛段即时反馈（v5 task-1.A.2） ====================
-
-def _effort_with_activity_to_dict(effort: SegmentEffort, activity: Activity) -> dict:
-    """
-    把一条赛段成绩整理成普通 dict，给上层直接拼响应。
-
-    类比：ORM 对象像档案柜里的原件，dict 像复印件；接口层拿复印件更稳，
-    不会因为 session 关闭后再摸 ORM 懒加载字段而踩坑。
-    """
-    return {
-        "id": effort.id,
-        "segment_id": effort.segment_id,
-        "activity_id": effort.activity_id,
-        "user_id": effort.user_id,
-        "elapsed_time": effort.elapsed_time,
-        "avg_speed": effort.avg_speed,
-        "avg_power": effort.avg_power,
-        "start_index": effort.start_index,
-        "end_index": effort.end_index,
-        "created_at": effort.created_at,
-        "activity_started_at": activity.started_at,
-    }
-
+# ==================== 我的赛段即时反馈（v5 task-1.A.2 / fix 对齐 spec §3.2.1） ====================
 
 def get_my_effort_with_compare(
     db: Session,
@@ -603,74 +591,83 @@ def get_my_effort_with_compare(
     user_id: int,
 ) -> dict:
     """
-    查询当前用户在某赛段的即时反馈：个人最佳、最近一次、排名、总挑战人数。
+    返回当前用户在某赛段的即时反馈对比数据。
 
-    设计思路：
-    - my_best 看 elapsed_time，像成绩单里挑最快的一次；
-    - my_latest 必须看 Activity.started_at，像按"真正骑行时间"翻日记，
-      不能按 effort 入库时间猜；
-    - rank 用每个用户的最佳成绩比较，避免同一个人刷多次把排行榜挤歪。
+    设计思路（spec §3.2.1）：
+    - 这是"骑完看进步"的语义，对比"这次 vs 上次 vs 个人最佳"
+    - 不是"看排行榜第几名"——排名走另一个 leaderboard endpoint，不在这里
+    - 类比成绩单：每次骑完打开看"上次 28 分钟，这次 26 分钟，PR 是 25 分钟"
+
+    陷阱警示：
+    - "current/last" 必须按 **Activity.started_at**（实际骑行时间）排序，
+      不能按 SegmentEffort.created_at（DB 入库时间）。
+      反例：用户先上传今天的骑行，再补传昨天的 GPX —— 用 created_at 会把昨天误标 current。
+    - PR 与时序无关：用 MIN(elapsed_time) 子查询，不需 join。PR 是历史最佳，谁先创下不影响。
+    - is_pr 仅判 current.elapsed_time == pr_time；并列时 is_pr=True（用时持平视为 PR）。
+    - 用现有索引 idx_efforts_segment_user_time（app/segment/models.py）。
+
+    返回 6 字段（与 spec §4.1 endpoint 响应字段一一对应）：
+    - current_attempt_elapsed_time: int? 这次（按骑行时间最新一次）用时（秒）
+    - last_attempt_elapsed_time:    int? 上次（按骑行时间倒数第二次）用时（秒）
+    - pr_elapsed_time:              int? 个人最佳用时（秒）
+    - current_attempt_diff_to_last: int? last - current（正数 = 变快，负数 = 变慢）
+    - current_attempt_is_pr:        bool 这次是否破或持平 PR
+    - is_first_attempt:             bool 是否首次（无 last 对比）
+
+    无 effort 时（首次访问该赛段）：6 字段全 None / False / True 兜底，由 router 层包装回前端。
+    404（segment 不存在）由 router 层显式查 db.get(Segment) 抛出，**本函数不抛 404**。
     """
-    # 先数不同骑手人数。这里用 distinct(user_id)，因为一个人可以刷多次，但只算一个骑手。
-    total_riders = (
-        db.query(func.count(func.distinct(SegmentEffort.user_id)))
-        .filter(SegmentEffort.segment_id == segment_id)
-        .scalar()
-    )
-
-    # 查我的所有成绩，并显式 JOIN Activity 后按 Activity.started_at 倒序。
-    # 陷阱警示：created_at 是"记录写入时间"，不是"哪天骑的"，排序用错会让最近一次错位。
-    my_rows = (
-        db.query(SegmentEffort, Activity)
+    # 第 1 步：取最近 2 条 effort，按 Activity.started_at 倒序。
+    # 类比翻日记本最新两页——"今天"和"昨天"；只取 2 条够算 current+last。
+    efforts = (
+        db.query(SegmentEffort)
         .join(Activity, SegmentEffort.activity_id == Activity.id)
         .filter(
             SegmentEffort.segment_id == segment_id,
             SegmentEffort.user_id == user_id,
         )
-        .order_by(Activity.started_at.desc(), SegmentEffort.id.desc())
+        .order_by(Activity.started_at.desc())
+        .limit(2)
         .all()
     )
-    if len(my_rows) == 0:
+
+    # 第 2 步：算 PR（历史最佳用时）。
+    # 用 MIN 子查询不 join Activity——PR 是历史最佳，与骑行时间先后无关。
+    # 陷阱 #4：用 .scalar()（无记录返 None），不用 .one()（NoResultFound 抛 500）。
+    pr_time = (
+        db.query(func.min(SegmentEffort.elapsed_time))
+        .filter(
+            SegmentEffort.segment_id == segment_id,
+            SegmentEffort.user_id == user_id,
+        )
+        .scalar()
+    )
+
+    # 第 3 步：兜底 — 用户在此赛段从未留 effort，6 字段全初始态。
+    if not efforts:
         return {
-            "my_best": None,
-            "my_latest": None,
-            "rank": None,
-            "total_riders": total_riders,
+            "current_attempt_elapsed_time": None,
+            "last_attempt_elapsed_time": None,
+            "pr_elapsed_time": None,
+            "current_attempt_diff_to_last": None,
+            "current_attempt_is_pr": False,
+            "is_first_attempt": True,
         }
 
-    # my_latest 直接取按 Activity.started_at DESC 排好序后的第一条。
-    my_latest_effort, my_latest_activity = my_rows[0]
-
-    # my_best 按耗时最短挑；如果耗时并列，用最近骑行时间兜底，避免结果随机抖动。
-    my_best_effort, my_best_activity = min(
-        my_rows,
-        key=lambda row: (
-            row[0].elapsed_time,
-            row[1].started_at is None,
-            row[1].started_at,
-        ),
-    )
-
-    # 每个用户只拿自己的最佳时间再排名。类比每个选手只交一张最好成绩单参赛。
-    best_time_rows = (
-        db.query(
-            SegmentEffort.user_id,
-            func.min(SegmentEffort.elapsed_time).label("best_time"),
-        )
-        .filter(SegmentEffort.segment_id == segment_id)
-        .group_by(SegmentEffort.user_id)
-        .all()
-    )
-    faster_riders = sum(
-        1 for row in best_time_rows
-        if row.best_time is not None and row.best_time < my_best_effort.elapsed_time
-    )
+    current = efforts[0]
+    last = efforts[1] if len(efforts) > 1 else None
 
     return {
-        "my_best": _effort_with_activity_to_dict(my_best_effort, my_best_activity),
-        "my_latest": _effort_with_activity_to_dict(my_latest_effort, my_latest_activity),
-        "rank": faster_riders + 1,
-        "total_riders": total_riders,
+        "current_attempt_elapsed_time": current.elapsed_time,
+        "last_attempt_elapsed_time": last.elapsed_time if last is not None else None,
+        "pr_elapsed_time": pr_time,
+        # diff = last - current（正数 = 这次比上次快，符合用户直觉"快了 N 秒"）
+        "current_attempt_diff_to_last": (
+            last.elapsed_time - current.elapsed_time if last is not None else None
+        ),
+        # 用 == 判等而非 <=，因为 pr_time 已是历史最小，current 不会比它更小（除非并列）
+        "current_attempt_is_pr": (current.elapsed_time == pr_time),
+        "is_first_attempt": last is None,
     }
 
 

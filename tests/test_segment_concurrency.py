@@ -177,7 +177,10 @@ def test_advisory_lock_serializes_concurrent_creates(pg_session_factory):
 
 
 def test_get_my_effort_ordering_with_real_db(pg_session_factory):
-    """真 DB 验证 my_latest 按 Activity.started_at，晚骑的 1100s 应被选中。"""
+    """
+    真 DB 验证 spec §3.2.1 即时反馈契约：current 按 Activity.started_at 选最新一次，
+    pr 用 MIN(elapsed_time) 子查询不参与时序。
+    """
     db = pg_session_factory()
     try:
         _cleanup(db)
@@ -266,11 +269,13 @@ def test_get_my_effort_ordering_with_real_db(pg_session_factory):
 
         result = get_my_effort_with_compare(db, segment.id, rider.id)
 
-        assert result["my_best"]["elapsed_time"] == 1100
-        assert result["my_latest"]["elapsed_time"] == 1100
-        assert result["my_latest"]["activity_started_at"] == late_started
-        assert result["rank"] == 2
-        assert result["total_riders"] == 2
+        # spec §3.2.1 6 字段对比类语义（不是排名类）
+        assert result["current_attempt_elapsed_time"] == 1100  # 后骑（started_at 最新）
+        assert result["last_attempt_elapsed_time"] == 1300     # 早骑（started_at 倒数第二）
+        assert result["pr_elapsed_time"] == 1100               # MIN(elapsed_time) 历史最佳
+        assert result["current_attempt_diff_to_last"] == 200   # last - current = 1300 - 1100
+        assert result["current_attempt_is_pr"] is True         # 1100 == pr_time
+        assert result["is_first_attempt"] is False             # 有 last 对比
     finally:
         _cleanup(db)
         db.close()

@@ -83,11 +83,18 @@ class SegmentListItem(BaseModel):
 
     比完整信息更精简，多了 entries（成绩记录数）字段，
     前端用它显示"已有 XX 人挑战"。
+
+    v5 task-1.A.3 新增 4 字段（avg_gradient/max_gradient/difficulty/city），
+    服务于赛段卡片展示坡度信息 + 列表筛选 + 城市标签。
     """
     id: int
     name: str
     distance: float                          # 公里
     elevation_gain: Optional[float] = None   # 米
+    avg_gradient: Optional[float] = None     # %，平均坡度（v5）
+    max_gradient: Optional[float] = None     # %，最陡 100m 滑窗坡度（v5）
+    difficulty: str                          # easy/medium/hard/extreme（v5）
+    city: str                                # beijing/.../taiyuan/unknown（v5）
     start_lat: float
     start_lon: float
     end_lat: float
@@ -132,12 +139,21 @@ class LeaderboardResponse(BaseModel):
 
 
 class SegmentDetailResponse(BaseModel):
-    """赛段详情——赛段信息 + 排行榜前 20 名"""
+    """
+    赛段详情——赛段信息 + 排行榜前 20 名。
+
+    v5 task-1.A.3 新增 4 字段（avg_gradient/max_gradient/difficulty/city），
+    详情页要展示完整赛段画像（不止距离爬升，还要坡度+难度+城市）。
+    """
     id: int
     name: str
     description: Optional[str] = None
     distance: float                          # 公里
     elevation_gain: Optional[float] = None   # 米
+    avg_gradient: Optional[float] = None     # %（v5）
+    max_gradient: Optional[float] = None     # %（v5）
+    difficulty: str                          # 4 档枚举（v5）
+    city: str                                # 城市枚举（v5）
     start_lat: float
     start_lon: float
     end_lat: float
@@ -146,6 +162,27 @@ class SegmentDetailResponse(BaseModel):
     min_match_ratio: float
     created_at: Optional[datetime] = None
     leaderboard: list[LeaderboardEntry]
+
+
+# ========== 即时反馈（v5 task-1.A.3 新增） ==========
+
+class EffortCompareResponse(BaseModel):
+    """
+    赛段即时反馈对比——"骑完看进步"语义。
+
+    每次骑完该赛段，前端调 GET /api/segments/{id}/efforts/me 拿这个对象，
+    展示"上次 28 分钟、这次 26 分钟、PR 25 分钟"——让用户直观感受进步。
+
+    与 leaderboard endpoint 的区别：那里看排名，这里看自己；这里不含名次。
+
+    字段一一对应 spec §4.1 endpoint 响应（spec §3.2.1 service 契约）。
+    """
+    current_attempt_elapsed_time: Optional[int] = None   # 这次（最新一次骑行）用时秒
+    last_attempt_elapsed_time: Optional[int] = None      # 上次用时秒
+    pr_elapsed_time: Optional[int] = None                # 个人最佳用时秒
+    current_attempt_diff_to_last: Optional[int] = None   # last - current（正数 = 变快）
+    current_attempt_is_pr: bool                          # 这次是否破或持平 PR
+    is_first_attempt: bool                               # 是否首次（无 last 对比）
 
 
 # ========== 用户赛段成绩（Task 4.5） ==========

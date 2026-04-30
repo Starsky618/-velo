@@ -1,28 +1,31 @@
 """
 赛段模块的 API 路由——"赛道服务台"。
 
-五个窗口各有分工：
+六个窗口各有分工：
 1. POST /api/segments — 管理员创建赛段（"赛事审批窗口"）
-2. GET /api/segments — 查赛段列表（"赛道目录查询机"）
-3. GET /api/segments/{id} — 查赛段详情 + TOP20 排行榜
+2. GET /api/segments — 查赛段列表（"赛道目录查询机"，v5 加 search/city/difficulty 三筛选卡）
+3. GET /api/segments/{id} — 查赛段详情 + TOP20 排行榜（v5 响应加 max_gradient/city/difficulty）
 4. GET /api/segments/{id}/leaderboard — 完整排行榜（分页+车型过滤）
-5. GET /api/user/efforts — 当前用户的所有赛段成绩
+5. GET /api/segments/{id}/efforts/me — 即时反馈（v5 新增 / "骑完看进步"对比）
+6. GET /api/user/efforts — 当前用户的所有赛段成绩
 
 注意事项：
 - 所有路由函数用 def（同步），禁止 async def
-- 创建赛段需要管理员权限，排行榜公开，用户成绩需登录
+- 创建赛段需要管理员权限；列表/详情/排行榜公开（PRD §B-P02：发现性内容匿名可看）
+- 即时反馈需登录（看自己的成绩对比）
 - 用户成绩接口路径是 /api/user/efforts，通过单独的 user_effort_router 挂载
 - 不直接操作数据库，所有业务逻辑交给 service 层
 """
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.segment import schemas, service
+from app.segment.models import Segment
 
 # 创建路由器，所有赛段相关接口都挂在 /api/segments 下
 router = APIRouter(prefix="/api/segments", tags=["segment"])
@@ -107,14 +110,35 @@ def list_segments(
     near_lat: float | None = Query(None, ge=-90, le=90),
     near_lon: float | None = Query(None, ge=-180, le=180),
     radius: float = Query(50000, gt=0, le=500000),
+    # v5 task-1.A.3 新增 3 筛选 Query：
+    # search 模糊搜赛段名（≥ 2 字防 a/b 单字误触发全表扫）
+    # city 是 7 枚举（6 主城 + unknown），用 pattern 严格校验防脏数据
+    # difficulty 是 4 枚举，同理
+    search: str | None = Query(None, min_length=2, max_length=64,
+                               description="赛段名模糊搜索，≥ 2 字"),
+    city: str | None = Query(
+        None,
+        pattern="^(beijing|shanghai|hangzhou|shenzhen|chengdu|taiyuan|unknown)$",
+        description="城市枚举（PRD 6 主城 + unknown）",
+    ),
+    difficulty: str | None = Query(
+        None,
+        pattern="^(easy|medium|hard|extreme)$",
+        description="难度枚举（4 档）",
+    ),
     db: Session = Depends(get_db),
+    # 第二轮双审 B1-B3 + Tim 2026-04-28 拍：保持公开，不加 get_current_user
 ):
     """
-    查询赛段列表（分页）。
+    查询赛段列表（分页 + 附近搜索 + v5 三筛选）。
 
     支持附近搜索：传入 near_lat + near_lon + radius（默认 50km，上限 500km），
     返回指定半径内的赛段。不传坐标则返回所有赛段。
-    不需要登录——赛段目录对所有人公开。
+
+    v5 三筛选叠加：search 模糊搜名 + city 精确等值 + difficulty 精确等值，
+    都可同时传，service 层会一起 AND 到 SQL where。
+
+    不需要登录——赛段目录对所有人公开（PRD §B-P02 发现性内容）。
     """
     # near_lat 和 near_lon 必须成对出现，只传一个没有意义
     if (near_lat is None) != (near_lon is None):
@@ -122,6 +146,7 @@ def list_segments(
 
     items, total = service.get_segment_list(
         db, page, page_size, near_lat, near_lon, radius,
+        search=search, city=city, difficulty=difficulty,
     )
     return schemas.SegmentListResponse(
         items=items,
@@ -175,6 +200,34 @@ def get_leaderboard(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get(
+    "/{segment_id}/efforts/me",
+    response_model=schemas.EffortCompareResponse,
+)
+def get_my_effort_compare(
+    segment_id: int = Path(..., ge=1),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    即时反馈——"骑完看进步"对比（v5 task-1.A.3 / spec §4.1）。
+
+    用户骑完一段赛段，前端调这里拿对比数据：
+    "这次 26 分钟、上次 28 分钟、PR 25 分钟"——给用户看进步。
+    需要登录（看自己的）。
+
+    路径 404 由本 router 显式查 segment 存在性（spec §3.2.1 + 第二轮双审 B1-B4：
+    service 不抛 404，无 effort 时返"首次访问"6 字段兜底；router 负责 segment 存在校验）。
+    """
+    # 显式 404 校验：用 db.get(Segment, ...) 主键查询（SQLAlchemy 2.0 推荐）
+    # 防 service 拿到无效 segment_id 仍返兜底，前端误以为"赛段存在但用户没骑过"
+    seg = db.get(Segment, segment_id)
+    if seg is None:
+        raise HTTPException(status_code=404, detail="赛段不存在")
+
+    return service.get_my_effort_with_compare(db, segment_id, user_id)
 
 
 # ==================== 用户赛段成绩 ====================
