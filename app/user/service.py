@@ -430,3 +430,238 @@ def invalidate_power_curve_cache(user_id: int) -> None:
     redis_client = _get_redis_client()
     for key in redis_client.scan_iter(match=pattern):
         redis_client.delete(key)
+
+
+# ========== task-2.C.2 余下 3 函数：heatmap + update_city + profile_for_others ==========
+#
+# 与 power_curve 的关系：
+# - power_curve 是"训练成绩单"（看自己进步 / 数据由 trackpoints 重新计算 + 缓存）
+# - heatmap 是"我去过哪儿"（按城市筛 simplified_track 起点 / 聚合所有点位）
+# - profile_for_others 是"别人怎么看我"（严格白名单字段 / 不返 efforts/strava_token 等）
+# - update_user_city 是"用户手动改主城市"（settings 改完顺手清掉旧 heatmap 缓存）
+#
+# 6 主城枚举（与 segments.city 一致）：beijing / shanghai / hangzhou / shenzhen / chengdu / taiyuan
+# 加 'unknown' 兜底：用户填了"我不在这 6 城" → 'unknown'，与 NULL（未填写）语义不同
+
+from sqlalchemy import func as _func
+
+from app.activity.models import Activity as _Activity
+from app.common.geo import infer_city_from_coords as _infer_city_from_coords
+
+_HEATMAP_CACHE_TTL_SEC = 3600
+_HEATMAP_CACHE_PREFIX = "heatmap:user_"
+_VALID_USER_CITIES = {
+    "beijing", "shanghai", "hangzhou", "shenzhen", "chengdu", "taiyuan", "unknown",
+}
+
+# 看他人主页严格白名单（PRD 5.A.2 / D-P08 红线 / spec R3-I3 强制生效）
+# 加新字段前先 review：是否泄漏 token / openid / mute_notifications / 任何隐私字段？
+_PROFILE_RESPONSE_KEYS = {
+    "id", "nickname", "avatar_url", "city", "ftp", "bike_type",
+    "total_distance_km", "total_elevation_m", "activity_count",
+    "current_month_summary",
+}
+
+
+def _filter_profile_keys(raw_response: dict) -> dict:
+    """
+    白名单过滤——"门口的安检员"。
+
+    把 raw_response（含可能的敏感字段）过一遍 _PROFILE_RESPONSE_KEYS 白名单，
+    只放白名单内的字段出去。
+
+    抽成独立函数的目的是**让防回退测试能直接构造含敏感字段的输入**：
+    如果有人删掉 dict 推导式 / 把白名单改成黑名单 / 误加敏感字段进白名单
+    → 单测 `test_filter_profile_keys_strips_sensitive_fields` 立即失败。
+
+    防回退要点（codex 异源审 Important / 2026-04-30）：
+    单纯断言 `set(result.keys()) == 白名单` 防不住推导式被删——因为 raw_response
+    本身就字面只列白名单字段，删推导式 result 也不变。本 helper 让测试**反向**
+    构造含敏感字段的输入，dict 推导式被删时立即被抓。
+    """
+    return {k: v for k, v in raw_response.items() if k in _PROFILE_RESPONSE_KEYS}
+
+
+def get_user_heatmap(db: Session, user_id: int, city: str) -> dict:
+    """
+    用户在指定城市的骑行热图——"我在这座城里去过哪些地方"。
+
+    把用户在该城市的所有骑行轨迹点位聚合成 GeoJSON MultiPoint，
+    前端拿来铺色块——骑得越多的地方颜色越深。
+    城市筛选基于 simplified_track 起点（activity 表无 start_lat/lon 字段）。
+
+    Redis 缓存 TTL 1h（用户上传新活动后 update_user_city 不会触发清缓存——
+    清缓存职责由 worker hook 或 update_user_city 承担）。
+
+    陷阱守卫：
+    - 陷阱 #5（redis-py 7+ 默认返 bytes）→ json.loads 前 decode
+    - `if cached is not None`（CLAUDE.md 陷阱 #1 / 与 power_curve 一致）
+
+    返回结构：
+        {
+          "city": "beijing",
+          "multipoint": {"type": "MultiPoint", "coordinates": [[lon, lat], ...]},
+          "activity_count": 12
+        }
+    """
+    cache_key = f"{_HEATMAP_CACHE_PREFIX}{user_id}:city_{city}"
+    redis_client = _get_redis_client()
+    cached = redis_client.get(cache_key)
+    if cached is not None:
+        return _json.loads(cached.decode() if isinstance(cached, bytes) else cached)
+
+    # 查该用户所有 completed activities + 有 simplified_track 的
+    activities = (
+        db.query(_Activity)
+        .filter(
+            _Activity.user_id == user_id,
+            _Activity.status == "completed",
+            _Activity.simplified_track.isnot(None),
+        )
+        .all()
+    )
+
+    # 起点城市筛（infer_city_from_coords 是 common.geo 纯函数 / spec §1.3 / B2A-2 修复反向依赖）
+    filtered = []
+    for a in activities:
+        track = a.simplified_track
+        if not track or len(track) == 0:
+            continue
+        first_pt = track[0]
+        lat = first_pt.get("lat")
+        lon = first_pt.get("lon")
+        if _infer_city_from_coords(lat, lon) == city:
+            filtered.append(a)
+
+    # 聚合所有点位（GeoJSON 顺序 [lon, lat]，不是 [lat, lon]）
+    points = []
+    for a in filtered:
+        for pt in a.simplified_track:
+            lat = pt.get("lat")
+            lon = pt.get("lon")
+            if lat is not None and lon is not None:
+                points.append([lon, lat])
+
+    result = {
+        "city": city,
+        "multipoint": {"type": "MultiPoint", "coordinates": points},
+        "activity_count": len(filtered),
+    }
+
+    redis_client.setex(cache_key, _HEATMAP_CACHE_TTL_SEC, _json.dumps(result))
+    return result
+
+
+def update_user_city(db: Session, user_id: int, city) -> User:
+    """
+    用户主动改主城市——"用户在 settings 页选了一个城市"。
+
+    动作：
+    1. 校验 city ∈ 7 主城枚举（含 'unknown' / 含 NULL 表示清空）
+    2. 找到 user 行（不存在抛 ValueError，不是 404）
+    3. 改字段并 commit
+    4. 清掉该用户所有 city 的 heatmap 缓存（用户改主城后旧缓存作废）
+
+    陷阱守卫：
+    - 陷阱 #4（.one() vs .first()）：用 .first() + 显式 ValueError
+    - 接受 city=None 表示"清空选择"，与 nullable=True 一致
+
+    抛错：
+    - city 非法 → ValueError("invalid city: <值>")
+    - user 不存在 → ValueError("user not found: <id>")
+    """
+    if city is not None and city not in _VALID_USER_CITIES:
+        raise ValueError(f"invalid city: {city}")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise ValueError(f"user not found: {user_id}")
+
+    user.city = city
+    db.commit()
+
+    # 失效该用户所有 city 的热图缓存（pattern: heatmap:user_{id}:*）
+    pattern = f"{_HEATMAP_CACHE_PREFIX}{user_id}:*"
+    redis_client = _get_redis_client()
+    for key in redis_client.scan_iter(match=pattern):
+        redis_client.delete(key)
+
+    return user
+
+
+def get_user_profile_for_others(
+    db: Session,
+    target_user_id: int,
+    requester_user_id: int,
+) -> dict:
+    """
+    返回他人用户主页字段——"别人能看到我什么"。
+
+    PRD 5.A.2 / D-P08 红线："看自己 = 看他人"——返回字段集合**完全一致**，
+    不区分 self 还是 others。requester_user_id 参数只是 v6 隐私开关预留位。
+
+    严格 RESPONSE_KEYS 白名单（spec R3-I3 强制生效）：
+    - 通过：id / nickname / avatar_url / city / ftp / bike_type +
+      total_distance_km / total_elevation_m / activity_count / current_month_summary
+    - 拦截：efforts / activities / heatmap / strava_* / openid / mute_notifications / 任何 token
+    - 这是机制不是自觉——白名单 dict 推导式生效，未来误加敏感字段也不会泄漏
+
+    时区约定：current_month 按北京时间 UTC+8 划月（CLAUDE.md / 与 power_curve / detector 一致）
+
+    抛错：target_user_id 不存在 → ValueError("用户不存在")
+    """
+    target = db.query(User).filter(User.id == target_user_id).first()
+    if not target:
+        raise ValueError("用户不存在")
+
+    # 累计统计（COUNT / SUM 一次性聚合，比 N+1 查询省）
+    totals = (
+        db.query(
+            _func.coalesce(_func.sum(_Activity.distance), 0).label("total_distance"),
+            _func.coalesce(_func.sum(_Activity.elevation_gain), 0).label("total_elevation"),
+            _func.count(_Activity.id).label("activity_count"),
+        )
+        .filter(
+            _Activity.user_id == target_user_id,
+            _Activity.status == "completed",
+        )
+        .first()
+    )
+
+    # 当月汇总（北京时间划月）
+    now_bj = datetime.now(timezone.utc).astimezone(BEIJING_TZ)
+    first_of_month_bj = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    first_of_month_utc = first_of_month_bj.astimezone(timezone.utc)
+
+    current_month = (
+        db.query(
+            _func.coalesce(_func.sum(_Activity.distance), 0).label("m_distance"),
+            _func.coalesce(_func.sum(_Activity.elevation_gain), 0).label("m_elevation"),
+            _func.coalesce(_func.avg(_Activity.avg_power), 0).label("m_avg_power"),
+        )
+        .filter(
+            _Activity.user_id == target_user_id,
+            _Activity.status == "completed",
+            _Activity.started_at >= first_of_month_utc,
+        )
+        .first()
+    )
+
+    raw_response = {
+        "id": target.id,
+        "nickname": target.nickname,
+        "avatar_url": target.avatar_url,
+        "city": target.city,
+        "ftp": target.ftp,
+        "bike_type": target.bike_type,
+        "total_distance_km": round((totals.total_distance or 0) / 1000.0, 1),
+        "total_elevation_m": round(totals.total_elevation or 0, 1),
+        "activity_count": totals.activity_count or 0,
+        "current_month_summary": {
+            "distance_km": round((current_month.m_distance or 0) / 1000.0, 1),
+            "elevation_m": round(current_month.m_elevation or 0, 1),
+            "avg_power_w": round(current_month.m_avg_power or 0, 1),
+        },
+    }
+    # 白名单严格生效（R3-I3 防回退 / 防止未来手滑加敏感字段静默泄漏）
+    return _filter_profile_keys(raw_response)

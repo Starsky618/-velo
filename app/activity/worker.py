@@ -171,12 +171,52 @@ def _do_parse(db, activity_id: int) -> None:
         from app.user.service import invalidate_power_curve_cache
 
         detect_5min_power_progress(db, activity.user_id, activity.id)
-        # invalidate_power_curve_cache 是 task-2.A.1 stub / task-2.C.2 真实现
+        # invalidate_power_curve_cache 是 task-2.A.1 stub / task-2.C.2 已替换为真实现
         # 上传新 activity 后清缓存让下次查 power_curve 走真实计算
         invalidate_power_curve_cache(activity.user_id)
     except Exception:
         # 进步检测失败静默跳过，不影响 activity 已经 completed 的事实
         # 失败场景：power_curve 算法异常 / DB 临时网络抖动 / Redis 不可用
+        pass
+
+    # ===== 步骤 10.6：首次上传自动推断主城市（v5 task-2.C.2 / spec §3.5）=====
+    # 用户没填 city 时，从首条骑行起点反推主城市（北京/上海/...等 6 主城 / 'unknown'）。
+    # 用 SELECT FOR UPDATE 行锁防并发：多 activity 同时进 worker 时只有一次 city 推断 commit。
+    #
+    # ⚠ SAVEPOINT 隔离（CLAUDE.md 陷阱 #13 / 与 task-2.A.1 detector 同一 pattern）：
+    # city hook 内任何 DB 异常（如 SELECT FOR UPDATE 死锁 / 事务 rollback-only）会让外层
+    # session 进入 invalid 状态，导致 worker 后续 db.commit() 一起失败 → activity 卡 processing。
+    # 用 begin_nested() 让失败只回退 SAVEPOINT，外层 activity.status / notification 不受影响。
+    try:
+        # User 已在文件顶部 import（line 37）—— 这里不能再 import：
+        # Python 函数作用域规则下，函数内任何位置 `from ... import User`
+        # 会让整个函数内 User 视为局部变量，导致前面 step 2.5 之后第 124 行
+        # `db.query(User)` 触发 UnboundLocalError（实测踩过 / 2026-04-30）
+        from app.common.geo import infer_city_from_coords
+
+        nested_city = db.begin_nested()
+        try:
+            user = (
+                db.query(User)
+                .filter(User.id == activity.user_id)
+                .with_for_update()  # 行锁，并发请求串行（spec R3-Minor 修）
+                .populate_existing()  # CLAUDE.md 陷阱 #12：刷新 identity map 避免读到 stale city
+                .first()
+            )
+            if user is not None and user.city is None and activity.simplified_track:
+                track = activity.simplified_track
+                if len(track) > 0:
+                    first_pt = track[0]
+                    lat = first_pt.get("lat")
+                    lon = first_pt.get("lon")
+                    if lat is not None and lon is not None:
+                        user.city = infer_city_from_coords(lat, lon)
+            db.flush()  # 强制把 user.city 改动 flush 到 DB（SAVEPOINT 内）
+            nested_city.commit()
+        except Exception:
+            nested_city.rollback()  # SAVEPOINT 回退 / 不影响外层 activity.status
+    except Exception:
+        # 最外层兜底：begin_nested 失败 / 模块 import 失败等极端场景
         pass
 
     db.commit()
