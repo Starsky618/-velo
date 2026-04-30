@@ -899,7 +899,102 @@ docker-compose 里 cleanup 容器启动命令是 `sh -c "while true; do python s
 
 ---
 
-## 10. 全局不变式
+## 链路 10：AI 草稿生成（v5 task-1.B.1 / 5.B.2）
+
+### 10.1 触发
+
+admin H5 后台两条入口：
+- POST `/admin/segments/{id}/ai-drafts`（直接生成）
+- PATCH `/admin/curation-pool/{id}` selected=true（候选池勾选触发）
+
+### 10.2 序列
+
+```
+admin endpoint → app.queue.ai_drafts_queue.enqueue('app.agent.tasks.generate_segment_draft_task', segment_id)
+                 ↓ 返 202 不阻塞
+worker（订阅 ai_drafts 队列）拿到 job
+  ↓ generate_segment_draft_task(segment_id)
+  ↓ SessionLocal() open db
+  ↓ 查 Segment 不存在 → log + return
+  ↓ 组装 segment_props 6 字段（兜底 '未知' / 0）
+  ↓ 调 segment_writer.generate_segment_draft(props)
+     ↓ DeepSeek API（OpenAI 兼容 SDK / base_url=api.deepseek.com）
+     ↓ 任何失败返空字符串（无 key / 网络 / 嵌套字段缺）
+  ↓ ai_text 空 → log + return（避免 RQ 重试浪费配额）
+  ↓ UPSERT segment_ai_drafts:
+     - existing.status='pending' → 覆盖 ai_draft_text
+     - existing.status in (human_edited / approved / rejected) → log + skip 保护
+     - 不存在 → 新建 status='pending'
+  ↓ commit / IntegrityError 兜底 rollback + log
+  ↓ db.close()
+```
+
+### 10.3 状态机
+
+```
+(无草稿) ──[task]──▶ pending ──[admin 改稿]──▶ human_edited ──[主管批]──▶ approved
+                       │                                              │
+                       │                            [主管打回]──────▶ rejected
+                       │
+                       └──[task 重跑]──▶ pending（覆盖）
+                            （human_edited / approved / rejected 不被覆盖）
+```
+
+### 10.4 不变式
+
+- `segment_id UNIQUE` 约束保证一段赛段一份草稿
+- 失败路径不抛异常给 RQ（避免重试浪费 DeepSeek 配额）
+- agent 模块**不反向 import** 业务模块 service（ADR-009 边界）
+- 真实 API key 仅在生产 `.env`，不进 git
+
+### 10.5 ⚠️ agent 注意
+
+- DEEPSEEK_API_KEY 必须同步 4 处：`app/config.py` / `.env.example` / `docker-compose.yml` worker / `docker-compose.dev.yml` worker —— 漏一处生产 worker 容器内 `_client = None` 静默不工作（task-1.B.1 codex 抓的 Critical）
+
+---
+
+## 链路 11：worker 软目标监控（v5 task-1.C.1 / 5.7.1）
+
+### 11.1 触发
+
+`monitor` 容器 `while true; sleep 60` 每 60 秒跑一次 `python -m app.monitor.processing_health`。
+
+### 11.2 序列
+
+```
+monitor 容器 cron → main()
+  ↓ SessionLocal() open db
+  ↓ scan_processing_health(db):
+     ↓ now = datetime.now(timezone.utc) / cutoff = now - 4min
+     ↓ 查 Activity WHERE status='processing' AND updated_at < cutoff
+     ↓ 无命中 → 返 [] / 退码 0
+     ↓ 有命中 → 渲染告警文本（含 id / user_id / elapsed）
+        ↓ FEISHU_BOT_WEBHOOK 未配 → log warning + 返 stuck_ids
+        ↓ 已配 → httpx.post(webhook, json=..., timeout=5)
+                 → response.raise_for_status() 让 4xx/5xx 抛 HTTPStatusError
+                 → catch 任何异常 → log error 不阻断
+        ↓ 返 stuck_ids（退码 1）
+  ↓ db.close()
+```
+
+### 11.3 与 cleanup 的区别
+
+| 维度 | monitor（v5 / 软目标）| cleanup（v0 / 硬上限）|
+|---|---|---|
+| 阈值 | 4 分钟（PRD 5.7.1 / 80% 软告警）| 10 分钟（v4 _PROCESSING_TIMEOUT）|
+| 周期 | 60 秒 | 300 秒 |
+| 动作 | 推飞书告警，**不改业务** | 批量置 `failed`，**自愈** |
+| 失败影响 | 我们三人收不到告警，业务正常 | 僵尸 activity 越积越多 |
+
+### 11.4 不变式
+
+- monitor **只读** activities 表 / **不改** status / `_PROCESSING_TIMEOUT` 沿用 v4 不动
+- 飞书 webhook 失败（含 5xx 响应）catch 后仍返 stuck list（让 cron 退码反映状态）
+- httpx 不用 requests（项目统一）/ 用 `raise_for_status()` 显式让 5xx 抛
+
+---
+
+## 12. 全局不变式
 
 这些是跨所有链路必须遵守的:
 
@@ -962,7 +1057,7 @@ strava:   与 notification 同层 —— 依赖 user + activity + segment + pars
 
 ---
 
-## 11. 未实现链路(易踩坑)
+## 13. 未实现链路(易踩坑)
 
 **以下链路在 PRD v0 中规划过但实际未实现**,agent 不要假设存在:
 

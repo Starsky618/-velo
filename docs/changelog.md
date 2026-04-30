@@ -20,14 +20,37 @@
 | 0.6 v5 主迁移（segments + users + 2 新表）| ✅ Codex 异源抓 2 Critical | `91a3691` |
 | 0.7 老数据回填脚本 + 生产部署 | ✅ 24 segments + 2 users 全部回填 / 双主驾首次互审 | `daf6f1f` + `01caa5e` |
 
-### Sprint 1：赛段内容深化（5-7 天）⏳ 进行中
+### Sprint 1：赛段内容深化（5-7 天）✅ 全部完成 / 2026-04-30
 
-| 任务 | 状态 | 备注 |
-|------|------|------|
-| 1.A.1 segment 算法纯函数（max_gradient/difficulty/infer_city）+ common 包 | ✅ 41 测试 + Codex 异源抓 2 Critical | `a9c1bff` |
-| 1.A.2 segment service 扩展（搜索 + 即时反馈 + from-activity）| ⏳ 下一个 | 计划"双主驾首战"——codex 主开发 + Claude 异源审 + 必跑命令 |
-| 1.A.3 segment router 扩展 + 即时反馈 endpoint | ⏳ 待 1.A.2 完工 | - |
-| 1.B.1 / 1.C.1 | ⏳ 待执行 | - |
+| 任务 | 状态 | commit | 测试 |
+|------|------|------|------|
+| 1.A.1 segment 算法纯函数 + common 包 | ✅ Codex 异源抓 2 Critical（haversine 对跖点 / spec import 路径） | `a9c1bff` | 41 |
+| 1.A.2 segment service 扩展（搜索 + 即时反馈 + from-activity）| ✅ **双主驾首战**：codex 主开发 + Claude 异源审 2 轮收敛（I1 SQL seq 切片 / I2 elevation_loss 字段缺）| `9b24465` | 13 |
+| **E1 修 task-1.A.2 service 契约对齐 spec §3.2.1** | ✅ task-1.A.3 开工时发现 codex 第一轮把 6 字段对比类语义换成 4 字段排名类（current/last/pr/diff/is_pr/is_first → my_best/my_latest/rank/total_riders），已重写 | （并入 1.A.3 commit） | （并入 1.A.3 测试）|
+| 1.A.3 segment router 扩展 + 即时反馈 endpoint | ✅ Claude 主开发 + codex 异源抓 distance_km/distance 字段名漂移（doc fix `1a0631f` 同步 spec）| `bbef245` + `1a0631f` | 11 |
+| 1.B.1 agent 模块（DeepSeek + RQ 异步 + 状态机保护） | ✅ Claude 主开发 + codex 异源抓 1 Critical（生产 docker-compose worker 缺 DEEPSEEK_* env）+ 3 Important（PROMPT_TEMPLATE.format 漏 catch / 状态机测试只验 1/3 / 并发测试可能假通过）| `fc3f007` + `70d4104` | 15 |
+| 1.C.1 monitor 模块（worker 软目标 4min + 飞书告警）| ✅ Claude 主开发 + codex 异源抓 1 Important（httpx.post 默认遇 5xx 不抛 → raise_for_status 修补）| `f228a6c` | 6 |
+
+**Sprint 1 收尾 metrics**：
+- 7 commit / 全套 pytest 281 passed / 2 failed（task-0.7 _FakeSegment tech-debt / 0 回归）
+- 双主驾两类协作模式都跑过：codex 主+Claude 审（task-1.A.2）/ Claude 主+codex 审（task-1.A.3 / 1.B.1 / 1.C.1）
+- codex 异源审 4 task 全抓到非平凡问题（spec 字段语义换 / distance_km 漂移 / format 漏 catch / httpx 5xx 静默）
+- **3 次同类 spec/契约偏离失职**（详见 2026-04-30 §7 升级）
+
+### 2026-04-30 §7 mental check 3 问 → 5 问升级
+
+**触发**：Sprint 1 内连续 3 次同类失职：
+1. task-1.A.2 service 偏离 spec §3.2.1 字段名/语义全换（codex 第一轮 + Claude 第一轮异源审都漏）
+2. task-1.A.3 决策点 2 拍"保留 distance"后只动代码不改 spec → codex 异源审才抓
+3. task-1.C.1 描述错把 monitor（运维监控）说成 progress detector（用户进步推送）
+
+**落地（commit `02261e4`）**：
+- §7 mental check 加第 4 问"承诺立刻动作落实"（来自 memory `feedback_promise_must_action.md`）
+- §7 mental check 加第 5 问"决策即同步 spec/task/文档"（来自 2026-04-30 task-1.A.3 失职）
+- CLAUDE.md 顶部 mental check 同步 3 问 → 5 问
+- 5 条翻车实证表沉淀（每个 mental check 问都有锚）
+- 2 条对应 memory 标记"已升级 §7"避免双轨漂移
+- 新增 memory `feedback_spec_drift_immediate_doc_fix.md`
 
 ### 2026-04-29 战略升级：双主驾协作架构 v2.0 ⭐
 
@@ -46,10 +69,16 @@
 - **C 议题**：memory → 文档升级机制——半自动 + agent 自决目标 + 翻译层问 Tim
 - **D 议题**：切换 trigger——按自然边界切 + 例外清单 + Tim 主权
 
-### 待办（2026-04-30 起）⭐ 新 session 必读
+### 待办（2026-05-01 起）⭐ 新 session 必读
 
-1. **A 叠加 D 计划**：先配 `docker-compose.dev.yml` + 种子数据（30-60min Claude 主驾）→ 然后 task-1.A.2 派 codex 主开发 + Claude 异源审 + 在新 docker stack 必跑命令验证（首次实战双主驾架构）
-2. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）
+1. **进入 Sprint 2**：数据成长主轴（5.A 个人页 / 5.C 即时反馈+功率曲线+进步推送）—— 5 个 task（2.A.1 / 2.B.1 / 2.C.1-3）
+2. **生产部署 v5 Sprint 1**：rebuild 生产 docker images（requirements.txt 加了 `openai>=1.0.0` / docker-compose.yml worker 加了 DEEPSEEK_API_KEY+MODEL / 加了 monitor 容器）
+3. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）
+
+**dev stack 已就绪**（task `3e9f50d` 落地）：
+- `docker compose -p velo-dev -f docker-compose.dev.yml up -d` 独立 project name 不撞生产
+- 端口 db:5435 / redis:16379 / api:8001 / monitor 容器同步生产
+- `python -m scripts.seed_dev_data` 写入 7 segments + 2 users + 60-tp activity + 乱序 efforts
 
 ### 关键决策
 

@@ -118,28 +118,30 @@ Sprint 4：收尾 (5-7 天，主 agent 主导)
 
 ## 29 个任务一览
 
-### Sprint 0：地基修补（依赖 — 无）
+### Sprint 0：地基修补 ✅ 全部完成
 
-| # | 任务名 | 预估 | 前置 | 修补什么 | 详情 |
-|---|--------|------|------|---------|------|
-| 0.1 | datetime 全局 tz-aware | 2-3d | — | 陷阱 #2 + B2B-2 | task-0.1.md |
-| 0.2 | ensure_valid_token 行锁注释化 | 1d | — | tech-debt | task-0.2.md |
-| 0.3 | ensure_valid_token 未绑定路径 | 0.5d | — | tech-debt | task-0.3.md |
-| 0.4 | SQLAlchemy legacy `.get()` 替换 | 0.5d | — | tech-debt | task-0.4.md |
-| 0.5 | scheduler Redis 连接复用 | 0.5d | 0.8 | tech-debt | task-0.5.md |
-| 0.6 | v5 主迁移（新字段 + 新表） | 0.5d | 0.1 | C11 | task-0.6.md |
-| 0.7 | 老数据回填脚本 | 0.5-1d | 0.6 | C11 | task-0.7.md |
-| 0.8 | app/queue.py 单一 Redis 源 | 1d | — | B3B-1 + R3-I4 | task-0.8.md |
+| # | 任务名 | 状态 | commit |
+|---|--------|------|--------|
+| 0.1 | datetime 全局 tz-aware | ✅ | `4a94097` |
+| 0.2 | ensure_valid_token 签名改造 + populate_existing | ✅ | `022e2b1` + `db7e475` |
+| 0.3 | ensure_valid_token 未绑定路径 + scheduler 兜底 | ✅ | `07327b1` |
+| 0.4 | SQLAlchemy legacy `.get()` 替换 | ✅ | `5e44c4f` |
+| 0.5 | scheduler Redis 复用（并入 0.8）| ✅ | `04bb17d` |
+| 0.6 | v5 主迁移（新字段 + 新表） | ✅ | `91a3691` |
+| 0.7 | 老数据回填脚本 + 生产部署 | ✅ | `daf6f1f` + `01caa5e` |
+| 0.8 | app/queue.py 单一 Redis 源 | ✅ | `04bb17d` |
 
-### Sprint 1：B 主轴 + worker 软目标（依赖 Sprint 0 closure）
+### Sprint 1：B 主轴 + worker 软目标 ✅ 全部完成 / 2026-04-30
 
-| # | 任务名 | 预估 | 前置 | 模块组 | 详情 |
-|---|--------|------|------|--------|------|
-| 1.A.1 | segment 模块：算法纯函数 + city/difficulty/max_gradient 字段 | 2d | 0.6 | A 串 | task-1.A.1.md |
-| 1.A.2 | segment service 扩展（搜索 + 即时反馈 + from-activity） | 3d | 1.A.1 | A 串 | task-1.A.2.md |
-| 1.A.3 | segment router 扩展 + 即时反馈 endpoint | 1d | 1.A.2 | A 串 | task-1.A.3.md |
-| 1.B.1 | agent 模块新建（segment_writer + tasks.py） | 2d | 0.8 | B 独立 | task-1.B.1.md |
-| 1.C.1 | monitor 模块新建（worker 软目标 + 飞书告警） | 2d | 0.8 | C 独立 | task-1.C.1.md |
+| # | 任务名 | 状态 | commit | 测试 |
+|---|--------|------|--------|------|
+| 1.A.1 | segment 模块：算法纯函数 + city/difficulty/max_gradient 字段 | ✅ | `a9c1bff` | 41 |
+| 1.A.2 | segment service 扩展（搜索 + 即时反馈 + from-activity） | ✅ 双主驾首战 + E1 修契约对齐 | `9b24465` | 13 |
+| 1.A.3 | segment router 扩展 + 即时反馈 endpoint | ✅ + doc fix `1a0631f`（distance_km 漂移）| `bbef245` | 11 |
+| 1.B.1 | agent 模块新建（DeepSeek + RQ + 状态机）| ✅ codex 抓 1 Critical + 3 Important | `fc3f007` + `70d4104` | 15 |
+| 1.C.1 | monitor 模块新建（worker 软目标 + 飞书告警） | ✅ codex 抓 1 Important（httpx 5xx）| `f228a6c` | 6 |
+| dev stack | docker-compose.dev.yml + 种子数据 | ✅（task 卡未列 / 计划外）| `3e9f50d` | — |
+| §7 升级 | mental check 3 问 → 5 问 | ✅（计划外 / Sprint 1 教训沉淀）| `02261e4` | — |
 
 ### Sprint 2：C 主轴 + A 主轴（依赖 Sprint 1）
 

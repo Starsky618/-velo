@@ -45,19 +45,19 @@
 - 视频内容
 - 电商 / 支付(v8+ 考虑,不在任何当前期)
 
-### 1.3 代码量基线(v4 end)
+### 1.3 代码量基线(v5 Sprint 1 end / 2026-04-30)
 
 | 层 | 行数 |
 |---|---|
-| 后端 Python | ~8927 |
+| 后端 Python | ~10500（+segment v5 扩展 / agent / monitor / common） |
 | 小程序前端 | ~2000 |
-| **总计** | **~10927** |
+| **总计** | **~12500** |
 
-⚠️ agent 注意: 当前期任何 PR 如果使后端行数超过 9500 行,触发健康度黄灯,需评估是否需要拆模块(CLAUDE.md 健康度自动巡检规则)。
+⚠️ agent 注意: 当前期 PR 评估健康度黄灯阈值更新为后端 11000 行(CLAUDE.md 健康度自动巡检规则)。
 
 ---
 
-## 2. 业务模块(6+1)
+## 2. 业务模块(8+1)
 
 ### 2.1 模块清单
 
@@ -65,11 +65,13 @@
 |---|---|---|---|---|
 | user | `app/user/` | 591 行 | v0 | 微信登录、JWT、个人资料、统计 |
 | activity | `app/activity/` | 1617 行 | v0 | 骑行活动 CRUD、异步解析调度 |
-| segment | `app/segment/` | 1843 行 | v0 | 赛段定义、匹配算法、排行榜 |
+| segment | `app/segment/` | ~2320 行 | v0 | 赛段定义、匹配算法、排行榜、即时反馈、from-activity（v5 +474 行）|
 | parsing | `app/parsing/` | 1802 行 | v1 | GPX/FIT/Strava 三源统一翻译层(纯函数) |
 | strava | `app/strava/` | 1996 行 | v2 | Strava OAuth/API/Webhook/tier1-2 导入 |
 | notification | `app/notification/` | 693 行 | v3 | PR/KOM/KOM_lost 事件检测、通知列表 |
-| agent | (未建) | 0 | v7+ | 预留槽位(见 ADR-009) |
+| **agent** | `app/agent/` | **252 行** | **v5** | **AI 赛段介绍生成（DeepSeek + RQ async）** |
+| **monitor** | `app/monitor/` | **138 行** | **v5** | **worker 软目标监控（4min 阈值 + 飞书告警）** |
+| **common** | `app/common/` | **61 行** | **v5** | **跨模块工具：地理函数 / haversine / city 推断** |
 
 ### 2.2 模块内部结构(统一约定)
 
@@ -84,14 +86,17 @@ app/<模块名>/
   README.md        # 模块画像(占位,逐模块补)
 ```
 
-实际模块文件清单(v4 end):
+实际模块文件清单(v5 Sprint 1 end):
 
 - `app/activity/`: models / schemas / router / service / worker / simplify / power_zones
-- `app/segment/`: models / schemas / router / service / auto_match / matcher / coord_convert / _geo_utils
+- `app/segment/`: models / schemas / router / service / auto_match / matcher / coord_convert / _geo_utils / **algorithms** (v5) / **exceptions** (v5)
 - `app/parsing/`: gpx_parser / fit_parser / strava_adapter / stats_calculator / coord_normalizer / geo_math / types
 - `app/strava/`: models / router / service / client / import_scheduler
 - `app/notification/`: models / schemas / router / service / detector(在 service 内部)
 - `app/user/`: models / schemas / router / service
+- **`app/agent/`** (v5): __init__ / segment_writer / tasks（DeepSeek + RQ）
+- **`app/monitor/`** (v5): __init__ / processing_health（cron 60s + 飞书告警）
+- **`app/common/`** (v5): __init__ / geo（haversine / infer_city_from_coords）
 
 ⚠️ agent 注意:
 - 新增模块必须遵守此结构,不得自创
@@ -128,7 +133,7 @@ app/<模块名>/
 
 ---
 
-## 3. 运行时容器(7)
+## 3. 运行时容器(8)
 
 ### 3.1 容器清单
 
@@ -136,9 +141,10 @@ app/<模块名>/
 |---|---|---|---|---|
 | caddy | `caddy:2-alpine` | 80, 443(外) | v0 | HTTPS 终结、证书续期、反向代理 |
 | api | `velo-api` | 8000(内) | v0 | FastAPI, 接用户请求 |
-| worker | `velo-worker` | - | v0 | rq worker,异步解析/匹配 |
+| worker | `velo-worker` | - | v0 | rq worker,异步解析/匹配（v5 起加 ai_drafts 队列） |
 | scheduler | `velo-scheduler` | - | **v4** | 每 30s 推进 Strava 导入(tier1/tier2) |
 | cleanup | `velo-cleanup` | - | v0 | 每 5min 扫 status=processing 超 10 分钟的 activity 置 failed |
+| **monitor** | `velo-monitor` | - | **v5** | **每 60s 扫 stuck 4min+ activity 推飞书告警（task-1.C.1）** |
 | db | `postgis/postgis:16-3.4` | 5432(内) | v0 | PostgreSQL 16 + PostGIS 3.4 |
 | redis | `redis:7-alpine` | 6379(内) | v0 | rq 队列 + OAuth state nonce + 限流计数 |
 
@@ -181,6 +187,14 @@ app/<模块名>/
 - 批量置 `failed`
 - 失败症状: 僵尸 activity 越积越多
 
+#### monitor(v5 task-1.C.1 新增)
+
+- 启动: `sh -c "while true; do python -m app.monitor.processing_health || true; sleep 60; done"`
+- 每 60s 扫: `SELECT * FROM activities WHERE status='processing' AND updated_at < now() - interval '4 minutes'`（软阈值，4min 是 cleanup 10min 硬上限的 80%）
+- 命中 → 推飞书机器人（`FEISHU_BOT_WEBHOOK` env / 没配则跳过推送）
+- 不写业务表 / 不改 status —— **只读 + 告警**，硬上限自愈仍走 cleanup
+- 失败症状: 用户上传 GPX 卡 4-10 分钟时我们三人收不到飞书
+
 #### db
 
 - 挂载 volume: `pgdata:/var/lib/postgresql/data`
@@ -216,19 +230,22 @@ app/<模块名>/
 
 ---
 
-## 4. 数据表(7)
+## 4. 数据表(10 / v5 +3)
 
 ### 4.1 表清单
 
 | 表 | 引入版本 | 量级预估 | 负责模块 |
 |---|---|---|---|
-| `users` | v0 | 1k-10k | user |
-| `activities` | v0 | 30k-300k | activity |
+| `users` | v0（v5 加 city / mute_notifications） | 1k-10k | user |
+| `activities` | v0（v5 加 activity_type） | 30k-300k | activity |
 | `trackpoints` | v0 | 3M-30M | activity |
-| `segments` | v0 | 30-500 | segment |
+| `segments` | v0（**v5 加 difficulty / max_gradient / city / elevation_loss / avg_gradient**） | 30-500 | segment |
 | `segment_efforts` | v0 | 5k-50k | segment |
 | `strava_imports` | v2 | 同 users | strava |
-| `notifications` | v3 | 5k-50k | notification |
+| `notifications` | v3（v5 加 payload JSONB） | 5k-50k | notification |
+| **`segment_ai_drafts`** | **v5** | **同 segments** | **agent**（pending→human_edited→approved/rejected 状态机）|
+| **`segment_curation_pool`** | **v5** | **30-500** | **segment**（admin 候选池 + 周期性脚本算分）|
+| **`progress_records`** | **v5** | **同 users × period** | **notification**（5W 进步推送幂等记录，task-0.6 建表 / 5.C.3 起用）|
 
 ### 4.2 表字段规格
 
@@ -513,15 +530,16 @@ Strava 导入路径:
 | GET | `/api/activities/{id}/timeseries` | 速度/心率/功率时间序列 |
 | GET | `/api/activities/{id}/status` | 轮询解析进度 |
 
-### 5.3 赛段(7)
+### 5.3 赛段(8 / v5 +1)
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/segments` | 创建赛段,admin only |
 | DELETE | `/api/segments/{id}` | 删,admin only |
-| GET | `/api/segments` | 赛段列表,支持 `?near=lat,lon&radius=5000` 附近搜索 |
-| GET | `/api/segments/{id}` | 详情 + TOP20 |
+| GET | `/api/segments` | 赛段列表，支持 `?near_lat&near_lon&radius` 附近搜索 + **v5 加 `?search&city&difficulty` 三筛选**（公开访问，PRD §B-P02）|
+| GET | `/api/segments/{id}` | 详情 + TOP20，**v5 响应字段加 `max_gradient` / `city` / `difficulty` / `avg_gradient`** |
 | GET | `/api/segments/{id}/leaderboard` | 完整排行榜 |
+| **GET** | **`/api/segments/{id}/efforts/me`** | **即时反馈对比 6 字段（current/last/pr/diff/is_pr/is_first）/ v5 task-1.A.3 新增** |
 | GET | `/api/user/efforts` | 我的所有赛段成绩(挂载在 user_effort_router) |
 | GET | `/api/activities/{id}/segments` | 此活动经过的赛段 + 成绩(activity_segment_router) |
 

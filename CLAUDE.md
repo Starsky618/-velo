@@ -359,9 +359,23 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 - ✅ Sprint 0 task-0.8（app/queue.py 单一 Redis 源）— commit `04bb17d`（Codex 跳过 / 工具基础设施版本不兼容；Claude code-reviewer 4 Important 全处理）
 - ✅ Sprint 0 task-0.5（scheduler Redis 复用）— **并入 task-0.8 commit `04bb17d`**，无独立 commit。task-0.8 时为便于测试 patch app.queue.redis_conn 已用局部 `from app.queue import redis_conn as r` 替代 Redis.from_url，task-0.5 目标"消除连接散点"实质已完成
 - ✅ Sprint 0 task-0.6（v5 主迁移 + ORM 同步）— commit `91a3691`（Codex 异源审抓到 2 Critical：event_type VARCHAR(20) 容不下 progress_monthly_summary、payload 字段被误判推迟；2 轮收敛。spec §2 修订补遗 5.5/5.6 全部落地：payload JSONB + uniq_progress_notification_per_activity 部分唯一索引）
-- ✅ Sprint 1 task-1.A.1（segment 算法纯函数 + common 包）— commit `a9c1bff`（Codex 异源审抓到 2 Critical：haversine 对跖点 ValueError 浮点累计 + spec §3.1 调用路径 import 失败；2 轮收敛。新建 app/common/__init__.py + geo.py + app/segment/algorithms.py + 41 测试。task 卡 step 4-5 model 字段已在 task-0.6 完成，本 task 实际做 step 1-3 + 测试。**偏离 spec 字面路径**：算法住 algorithms.py 不进 service.py（红灯保护），service.py 加转导出兼容字面调用路径）
-- ⏳ Sprint 0 task-0.7（老数据回填）— **现在可做**（前置 1.A.1 已完成 commit `a9c1bff`；脚本依赖的 `calculate_max_gradient` / `calculate_difficulty` / `infer_city_from_coords` 全部就位，可顶层 import 不再炸 load）
-- ⏳ Sprint 1 / 2 / 3 / 4 — 待执行（1.A.1 已提前做完）
+- ✅ Sprint 0 task-0.7（老数据回填）— commit `daf6f1f` + `01caa5e`（24 segments + 2 users 全部回填 / 双主驾首次互审 / codex 误用 ORM 实例属性 fix）
+
+**Sprint 1：赛段内容深化 ✅ 全部完成 / 2026-04-30**
+- ✅ task-1.A.1 算法纯函数 + common 包（41 测试）— `a9c1bff`（Codex 异源抓 2 Critical / haversine 对跖点 + spec import 路径偏离）
+- ✅ task-1.A.2 service 扩展（搜索 + 即时反馈 + from-activity）— `9b24465`（**双主驾首战**：codex 主开发 + Claude 异源审 2 轮收敛 I1 SQL seq 切片 / I2 elevation_loss 字段缺）+ E1 修（service 契约对齐 spec §3.2.1 / 第一轮把 6 字段对比类换成 4 字段排名类，重写）— 13 测试
+- ✅ task-1.A.3 router 扩展 + 即时反馈 endpoint — `bbef245` + doc fix `1a0631f`（distance_km → distance / 沿用 v4 字段名不破前端）— 11 测试
+- ✅ task-1.B.1 agent 模块（DeepSeek + RQ 异步 + 状态机）— `fc3f007` + `70d4104`（codex 异源抓 1 Critical：生产 docker-compose worker 缺 DEEPSEEK_* env / 3 Important 全修）— 15 测试
+- ✅ task-1.C.1 monitor 软目标（4min + 飞书告警）— `f228a6c`（codex 抓 1 Important：httpx.post 默认遇 5xx 不抛 / raise_for_status 修补）— 6 测试
+- ✅ dev stack 隔离 — `3e9f50d`（独立 project name `velo-dev` 不撞生产 / db:5435 redis:16379 api:8001）
+
+**2026-04-30 §7 升级（commit `02261e4`）**：mental check 3 问 → 5 问
+- 第 4 问"承诺立刻动作落实"
+- 第 5 问"决策即同步 spec/task/文档"
+- CLAUDE.md 顶部 + agent-collaboration.md §7 同步
+- 新增 memory `feedback_spec_drift_immediate_doc_fix.md`
+
+**当前位置**：Sprint 1 全闭环 / 进入 Sprint 2（数据成长主轴 / task-2.A.1 / 2.B.1 / 2.C.1-3）
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
 - DEEPSEEK_API_KEY ✅
