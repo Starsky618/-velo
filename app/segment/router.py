@@ -84,16 +84,20 @@ def create_segment(
     )
 
 
-@router.delete("/{segment_id}", status_code=204)
+# TODO(sunset 2026-11-03): 半年兼容期后删除旧路径，只保留 /api/admin/segments/{segment_id}。
+# 旧路径不引入 app.admin.dependencies.require_admin，避免 segment -> admin 反向依赖。
+# 权限由 service.delete_segment 内部兜底，普通用户 403 已由 tests/test_admin_router.py 覆盖。
+@router.delete("/{segment_id}", status_code=204, deprecated=True)
 def delete_segment(
     segment_id: int,
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    删除赛段——管理员专用。
+    删除赛段——管理员专用（deprecated，保留给旧工具兼容）。
 
-    删除赛段及其所有成绩记录。不可恢复。
+    新后台入口是 DELETE /api/admin/segments/{segment_id}。
+    旧路径兼容至 2026-11-03，避免已有内部脚本突然 404。
     """
     try:
         service.delete_segment(db, segment_id, user_id)

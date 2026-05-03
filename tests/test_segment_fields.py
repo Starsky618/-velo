@@ -11,26 +11,6 @@
 
 import pytest
 
-from app.user.models import User
-from app.user.service import create_token
-
-
-@pytest.fixture()
-def admin_user(db):
-    """创建一个管理员测试用户。"""
-    user = User(openid="admin_openid_999", is_admin=True)
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-@pytest.fixture()
-def admin_header(admin_user):
-    """生成管理员 JWT 请求头。"""
-    token = create_token(admin_user.id)
-    return {"Authorization": f"Bearer {token}"}
-
 
 def test_01_create_segment_new_fields(client, admin_header):
     """创建带海拔数据的赛段，验证新增字段正确计算。"""

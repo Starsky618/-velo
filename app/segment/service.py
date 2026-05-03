@@ -536,6 +536,10 @@ def delete_segment(db: Session, segment_id: int, user_id: int) -> None:
     好比拆掉一条赛道：赛道没了，上面的成绩自然作废。
     """
     user = db.query(User).filter_by(id=user_id).first()
+    # 注意：deprecated legacy DELETE /api/segments/{id} 兼容到 2026-11-03，
+    # 这段检查是旧路径的唯一 admin 防线；兼容期内不能删除。
+    # 期满后也建议保留——新 admin router 走 require_admin + 此处校验形成双重防御，
+    # 删除会让新路径降级为单层，且内部脚本直接调 service 时会裸奔。
     if not user or not user.is_admin:
         raise PermissionError("需要管理员权限")
 

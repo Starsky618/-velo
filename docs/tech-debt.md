@@ -85,6 +85,28 @@
 
 ---
 
+### 来源：task-1.C.1 收尾遗漏（2026-05-03 codex 异源审 task-3.A.1 时发现）
+
+**现状**：`app/middleware/__init__.py` + `app/middleware/rate_limit.py`（共 ~8500 字节）
+作为 untracked 文件存在于 working tree（创建时间 2026-04-30 task-1.C.1 飞书告警时期），但：
+- 从未 commit 进任何分支（`git log --all --oneline -- app/middleware/` 返回空）
+- 没有任何项目代码 import（grep `from app.middleware` 无结果；
+  `main.py` 那行 `fastapi.middleware.cors` 是 FastAPI 内置库无关）
+- `rate_limit.py` 含 httpx + 飞书 webhook 调用 + Redis 限速逻辑
+
+**性质**：Sprint 1 task-1.C.1 monitor 软目标可能漏 commit 的代码 / 或写完后被否决但未删
+
+**影响**：
+- working tree 持续 noise，未来任何 codex 异源审都会重新抓一次
+- 对 Sprint 3 commit 流程的实际风险：`git add .` 类宽范围 add 会误纳
+
+**下期动作**（待 Tim 单独裁决三选一）：
+- A. 补 Sprint 1 commit（先评审 7344 字节代码质量）
+- B. 删除（如果当时被否决）
+- C. 暂保 untracked（task-3.A.1 commit 时 Tim 拍此路径，本条登记后维持原状）
+
+---
+
 ### 来源：task-0.7 收尾遗漏（2026-04-30 dev stack 验证发现）
 
 **现状**：commit `01caa5e` 改 `scripts/backfill_phase5.py` 用

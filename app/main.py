@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.activity.router import router as activity_router
+from app.admin.router import router as admin_router
 from app.segment.router import (
     activity_segment_router,
     router as segment_router,
@@ -44,6 +45,7 @@ app.include_router(activity_router)
 app.include_router(segment_router)
 app.include_router(user_effort_router)
 app.include_router(activity_segment_router)
+app.include_router(admin_router)
 # Strava 集成模块——OAuth 授权、Webhook 回调、历史导入等
 app.include_router(strava_router)
 # 通知模块——PR/KOM 通知列表 + 用户荣誉表

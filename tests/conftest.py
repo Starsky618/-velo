@@ -261,6 +261,26 @@ def auth_header(test_user):
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture()
+def admin_user(db):
+    """
+    创建一个管理员测试用户。
+    3.A.x admin 系列任务共用，避免每个测试文件重复造管理员。
+    """
+    user = User(openid="test_admin", is_admin=True)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture()
+def admin_header(admin_user):
+    """生成管理员 JWT 请求头。"""
+    token = create_token(admin_user.id)
+    return {"Authorization": f"Bearer {token}"}
+
+
 # ==================== 统计测试数据 fixture ====================
 
 @pytest.fixture()

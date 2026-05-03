@@ -2460,17 +2460,24 @@ def scan_processing_health(db: Session) -> list[int]:
 ```python
 # app/admin/dependencies.py
 from fastapi import Depends, HTTPException, status
-from app.user.models import User
-from app.dependencies import get_current_user
+from sqlalchemy.orm import Session
 
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """is_admin dependency。沿用 users.is_admin 字段（app/user/models.py:62）"""
-    if not current_user.is_admin:
+from app.database import get_db
+from app.dependencies import get_current_user
+from app.user.models import User
+
+def require_admin(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """is_admin dependency。get_current_user 返回 user_id，再查 users.is_admin。"""
+    user = db.query(User).filter_by(id=user_id).first()
+    if not user or user.is_admin is not True:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="需要管理员权限"
         )
-    return current_user
+    return user
 ```
 
 #### POST /api/admin/ai/segment-drafts/{segment_id}/generate（新增 / 5.B.2）
@@ -2543,7 +2550,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 #### DELETE /api/admin/segments/{id}（沿用现有 app/segment/router.py:84）
 
-**改动**：迁移到 `app/admin/router.py`（保持 admin 路由前缀一致），但 service 调用沿用 `app/segment/service.py` 现有逻辑。级联删 segment_efforts 按 FK CASCADE 处理。
+**改动**：迁移到 `app/admin/router.py`（保持 admin 路由前缀一致），但 service 调用沿用 `app/segment/service.py` 现有逻辑。旧 `DELETE /api/segments/{id}` 保留 `deprecated=True` 半年兼容；实现采用双挂载到同一 service，不做重定向。
 
 #### POST /api/admin/segments/from-activity（新增 / 5.D.4）
 

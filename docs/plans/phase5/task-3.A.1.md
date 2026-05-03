@@ -18,7 +18,7 @@ task-2.C.2（user 模块完成，is_admin 字段使用方式确认）。
 | 文件 | 用途 |
 |---|---|
 | `app/admin/__init__.py` | 包 |
-| `app/admin/dependencies.py` | `require_admin(current_user) -> User` 抛 403 if not is_admin |
+| `app/admin/dependencies.py` | `require_admin(...) -> User` 抛 403 if not is_admin |
 | `app/admin/router.py` | `/api/admin/*` 前缀路由（骨架） |
 | `app/admin/service.py` | 空骨架（3.A.2+ 追加 enqueue / orchestration 逻辑） |
 
@@ -46,22 +46,32 @@ task-2.C.2（user 模块完成，is_admin 字段使用方式确认）。
 
 ```python
 from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.dependencies import get_current_user  # 沿用现有 JWT 解析，返回 user_id
 from app.user.models import User
-from app.user.dependencies import get_current_user  # 沿用现有 JWT 解析
 
 
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """确认 current_user 是 admin，否则抛 403。
+def require_admin(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """确认当前登录用户是 admin，否则抛 403。
     
     is_admin 字段只能手动改库（app/user/models.py:62 注释），
     避免 admin 提权风险。
+
+    实现修正：真实 get_current_user 返回 int user_id，不返回 User，
+    所以这里自查 users 表后再返回 User。
     """
-    if not current_user.is_admin:
+    user = db.query(User).filter_by(id=user_id).first()
+    if not user or user.is_admin is not True:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="需要管理员权限",
         )
-    return current_user
+    return user
 ```
 
 ### 3. `app/admin/router.py`（骨架）
@@ -114,11 +124,11 @@ app.include_router(admin_router)
 ### 6. 移除 `app/segment/router.py:84` DELETE endpoint
 
 ```python
-# 删除现有 @router.delete("/{segment_id}") 块
-# 或保留作为 deprecated 兼容（半年后移除）—— spec 实施时拍
+# 保留现有 @router.delete("/{segment_id}") 块
+# 加 deprecated=True，半年后移除
 ```
 
-> 兼容方案（推荐）：原 DELETE 保留但加 `deprecated=True` + 内部 302 转发到 /api/admin/segments/{id}。
+> 兼容方案（Tim 已拍板）：原 DELETE 保留但加 `deprecated=True`；实现采用“双挂载到同一 service”而不是重定向，少一跳且客户端无感。
 
 ## ✅ 测试
 
@@ -154,7 +164,7 @@ feat(admin): 任务 3.A.1 admin 模块框架
    → 是。3.A.2-3.A.5 每个 endpoint 都 Depends(require_admin)。骨架先建好这个 dep 函数复用。
 
 2. **DELETE 路径迁移兼容**：现有客户端（小程序 / 内部脚本）调 DELETE /api/segments/{id} 会 404 吗？  
-   → 用 deprecated + 内部转发兼容半年。spec 实施时 Tim 拍是直接删还是兼容（属产品决策但小型 admin 接口影响小，可以直接迁）。
+   → 用 deprecated + 双挂载兼容半年。Tim 已拍保留兼容，旧路径继续调用同一 service。
 
 3. **is_admin 提权风险**：require_admin 仅校验 User.is_admin 字段，无二次校验（如 IP 白名单）—— 接受吗？  
    → v5 接受。is_admin 只能手动改库，无 endpoint 提权路径。未来 v6+ 加 admin token / 双因素可选。
