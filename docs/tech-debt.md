@@ -159,7 +159,7 @@
 ### 后端相关
 - N+1 查询（排名计算循环发 SQL）—— 代码已标 TODO
 - trackpoints 表无分区策略（百万级用户后要加）
-- service.py 单文件已达 727 行（黄灯 >300 / 红灯 >500）—— 职责内聚暂保留，下次修改时评估拆分
+- ~~service.py 单文件 727 行~~ ✅ 已解决（task-pre-3.B / 2026-05-05 拆分为 service.py 189 + service_create.py 257 + service_query.py 380 / 详 commit）
 
 ---
 

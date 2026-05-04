@@ -16,7 +16,9 @@
 - coord_convert.py：GCJ-02 → WGS-84 坐标系转换（纯函数，确保赛段和轨迹在同一坐标系）
 - matcher.py：GPS 精确匹配算法（纯函数，Task 4.3）
 - auto_match.py：自动匹配引擎（Worker 调用，Task 4.4，从 service.py 拆出）
-- service.py：业务逻辑（创建赛段、查询列表/详情、排行榜、用户成绩）
+- service.py：业务逻辑主入口（保留 delete_segment / get_effort_rank / get_my_effort_with_compare + 转导出 service_create / service_query / algorithms）
+- service_create.py：创建赛段相关业务逻辑（create_segment + create_segment_from_activity，task-pre-3.B 拆出）
+- service_query.py：查询赛段相关业务逻辑（list / detail / leaderboard / user_efforts / activity_segments，task-pre-3.B 拆出）
 - router.py：API 路由（/api/segments/... + /api/user/efforts）
 - schemas.py：请求/响应格式
 
