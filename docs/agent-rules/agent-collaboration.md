@@ -35,6 +35,25 @@ agent 私有 memory（Claude `~/.claude/.../memory/` / Codex session history）*
 
 详见 §9 memory → 文档升级机制。
 
+### 经验沉淀三层路径
+
+任何"是否沉淀 / 沉淀到哪"判断按此分流（CLAUDE.md 决策反向索引指过来）：
+
+```text
+对方 agent 不可见会重蹈覆辙吗？
+├── y → 升 git docs（共识层 / Claude + Codex 同步）
+└── n → 仅本 agent 私有失败模式？
+        ├── y → 自己 memory（Claude memory / Codex session）
+        └── n → 纯对话不沉淀（防熵增）
+```
+
+判断锚点：本文 §4.0 互审五问表第 5 列。
+
+实证（2026-05-04 task-3.A.x 互审）：
+- "兼容期不反向依赖"：codex 不可见会重做 → 升 docs（本文 §4.0）
+- "Claude 长会话末端疲劳"：codex 不会犯同类错（不同 session 模式）→ 留 Claude memory
+- "互审节奏 / 失败模式漂移监测 / 撤回率指标"等周边经验：Tim 拍"先放着"→ 纯对话不沉淀（防熵增）
+
 ---
 
 ## §1 角色定位

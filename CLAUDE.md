@@ -91,6 +91,7 @@
 | 会话拥挤 / 长讨论收尾 / 换窗口 | `agent-collaboration.md` §10 工作交接桥梁 |
 | 给 Tim 提议 / 报告前 | `agent-collaboration.md` §7 翻译层句式 |
 | 代码审查（动 DB / 外部 API / 文件系统）| `agent-collaboration.md` §4 场景 B 必跑命令 |
+| 经验是否沉淀 / 沉淀到哪 | `agent-collaboration.md` §0 经验沉淀三层路径 |
 
 > **索引膨胀风险**：本表 ≤ 10 行硬约束（关联 §12 熵增警觉）。新增决策类型须 Tim 拍板 + 同时考虑合并/精简既有项。
 
@@ -201,6 +202,7 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 - **Activity 状态机**：`pending → processing → completed/failed`，禁止非法转换。Strava 导入用 `importing` 中间态。processing >10 分钟自动 failed
 - **SAVEPOINT 隔离**：循环里 flush 后可能 rollback 必须用 `db.begin_nested()`
 - **Alembic 迁移纪律**：改表结构必须 Alembic 生成迁移脚本，禁止手动 ALTER TABLE
+- **admin 类 PATCH endpoint**：用户可改字段必须 schema `extra="forbid"` 422 + 显式 Literal 枚举校验，防 admin 误改 distance / reference_line 等核心字段后看到 200 OK 假成功（v5 task-3.A.4 + 3.A.5 复利实证）
 
 ## 纯函数规则
 
