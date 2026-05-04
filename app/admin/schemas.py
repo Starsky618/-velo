@@ -3,9 +3,19 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 AiDraftStatus = Literal["pending", "human_edited", "approved", "rejected"]
+City = Literal[
+    "beijing",
+    "shanghai",
+    "hangzhou",
+    "shenzhen",
+    "chengdu",
+    "taiyuan",
+    "unknown",
+]
+Difficulty = Literal["easy", "medium", "hard", "extreme"]
 
 
 class CurationPoolItem(BaseModel):
@@ -62,3 +72,47 @@ class AiDraftPatchRequest(BaseModel):
 
     human_edited_text: str | None = None
     status: AiDraftStatus | None = None
+
+
+class AdminSegmentResponse(BaseModel):
+    """admin 批量管理列表的一行，含公开字段 + 内部运营状态。"""
+
+    id: int
+    name: str
+    description: str | None = None
+    distance: float
+    elevation_gain: float | None = None
+    elevation_loss: float | None = None
+    avg_gradient: float | None = None
+    max_gradient: float | None = None
+    difficulty: Difficulty
+    city: City
+    start_lat: float
+    start_lon: float
+    end_lat: float
+    end_lon: float
+    match_tolerance: float
+    min_match_ratio: float
+    created_at: datetime | None = None
+    draft_status: AiDraftStatus | None = None
+    pool_status: Literal["selected", "candidate"] | None = None
+
+
+class AdminSegmentListResponse(BaseModel):
+    """admin 批量管理分页响应。"""
+
+    items: list[AdminSegmentResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class AdminSegmentPatchRequest(BaseModel):
+    """admin 批量修正赛段元数据，只允许 4 个运营字段。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(None, min_length=1, max_length=128)
+    description: str | None = None
+    city: City | None = None
+    difficulty: Difficulty | None = None

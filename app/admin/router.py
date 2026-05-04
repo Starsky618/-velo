@@ -99,6 +99,44 @@ def update_ai_draft(
     return admin_service.update_ai_draft(db, draft_id, body, admin.id)
 
 
+@router.get("/segments", response_model=schemas.AdminSegmentListResponse)
+def list_segments_admin(
+    city: str | None = Query(
+        None,
+        pattern="^(beijing|shanghai|hangzhou|shenzhen|chengdu|taiyuan|unknown)$",
+    ),
+    difficulty: str | None = Query(
+        None,
+        pattern="^(easy|medium|hard|extreme)$",
+    ),
+    has_draft: bool | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """列出 admin 批量管理赛段。"""
+    return admin_service.list_segments_admin(
+        db,
+        city,
+        difficulty,
+        has_draft,
+        page,
+        page_size,
+    )
+
+
+@router.patch("/segments/{segment_id}", response_model=schemas.AdminSegmentResponse)
+def update_segment_admin(
+    segment_id: int,
+    body: schemas.AdminSegmentPatchRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """更新 admin 允许修正的赛段元数据字段。"""
+    return admin_service.update_segment_admin(db, segment_id, body)
+
+
 @router.delete("/segments/{segment_id}", status_code=204)
 def delete_segment_admin(
     segment_id: int,

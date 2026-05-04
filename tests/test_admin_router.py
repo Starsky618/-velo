@@ -567,3 +567,193 @@ def test_patch_ai_draft_not_exist_404(client, admin_header):
     )
 
     assert res.status_code == 404
+
+
+@pytest.fixture()
+def admin_segments(db, admin_user):
+    """创建批量管理测试数据：有草稿 / 无草稿 / 已入池三种组合。"""
+    taiyuan = _make_segment(
+        db,
+        "批量太原爬坡",
+        city="taiyuan",
+        difficulty="hard",
+        distance=1800.0,
+    )
+    beijing = _make_segment(
+        db,
+        "批量北京绕圈",
+        city="beijing",
+        difficulty="easy",
+        distance=900.0,
+    )
+    shanghai = _make_segment(
+        db,
+        "批量上海平路",
+        city="shanghai",
+        difficulty="medium",
+        distance=1500.0,
+    )
+    now = datetime.now(timezone.utc)
+    db.add_all(
+        [
+            SegmentAiDraft(
+                segment_id=taiyuan.id,
+                ai_draft_text="太原草稿",
+                status="pending",
+                created_at=now,
+                updated_at=now,
+            ),
+            SegmentCurationPool(
+                segment_id=taiyuan.id,
+                pool_score=99.0,
+                pool_reason="high_attempts",
+                selected_for_v5=True,
+                selected_by_user_id=admin_user.id,
+                selected_at=now,
+            ),
+            SegmentCurationPool(
+                segment_id=beijing.id,
+                pool_score=75.0,
+                pool_reason="difficulty_balance",
+                selected_for_v5=False,
+            ),
+        ]
+    )
+    db.commit()
+    return {
+        "taiyuan": taiyuan,
+        "beijing": beijing,
+        "shanghai": shanghai,
+    }
+
+
+def test_list_segments_admin_only(client, auth_header, admin_header, admin_segments):
+    """批量管理列表是 admin H5 内部工具，普通用户应被 403 拦下。"""
+    res = client.get("/api/admin/segments", headers=auth_header)
+    assert res.status_code == 403
+
+    res = client.get("/api/admin/segments", headers=admin_header)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total"] == 3
+    assert data["page"] == 1
+    assert data["page_size"] == 50
+    assert {item["name"] for item in data["items"]} == {
+        "批量太原爬坡",
+        "批量北京绕圈",
+        "批量上海平路",
+    }
+
+
+def test_list_segments_admin_includes_internal_statuses(
+    client,
+    admin_header,
+    admin_segments,
+):
+    """admin 视角比公开列表多 draft_status / pool_status，方便后台批量筛修。"""
+    res = client.get("/api/admin/segments?city=taiyuan", headers=admin_header)
+
+    assert res.status_code == 200
+    item = res.json()["items"][0]
+    assert item["id"] == admin_segments["taiyuan"].id
+    assert item["distance"] == 1.8
+    assert item["description"] == "批量太原爬坡 description"
+    assert item["draft_status"] == "pending"
+    assert item["pool_status"] == "selected"
+
+
+def test_list_segments_admin_filter_by_has_draft(client, admin_header, admin_segments):
+    """has_draft=True 只看已有 AI 草稿的赛段，False 只看还没草稿的赛段。"""
+    res = client.get("/api/admin/segments?has_draft=true", headers=admin_header)
+    assert res.status_code == 200
+    assert [item["name"] for item in res.json()["items"]] == ["批量太原爬坡"]
+
+    res = client.get("/api/admin/segments?has_draft=false", headers=admin_header)
+    assert res.status_code == 200
+    assert {item["name"] for item in res.json()["items"]} == {
+        "批量北京绕圈",
+        "批量上海平路",
+    }
+
+
+def test_list_segments_admin_filter_by_city_and_difficulty(
+    client,
+    admin_header,
+    admin_segments,
+):
+    """city / difficulty 应按 Segment 字段筛选，供 H5 后台快速定位脏元数据。"""
+    res = client.get(
+        "/api/admin/segments?city=beijing&difficulty=easy",
+        headers=admin_header,
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total"] == 1
+    assert data["items"][0]["name"] == "批量北京绕圈"
+    assert data["items"][0]["pool_status"] == "candidate"
+
+
+def test_patch_segment_admin_updates_only_allowed_fields(
+    client,
+    db,
+    admin_header,
+    admin_segments,
+):
+    """PATCH 只允许修 4 个运营字段，不能碰 reference_line / distance 等核心赛段定义。"""
+    target = admin_segments["shanghai"]
+
+    res = client.patch(
+        f"/api/admin/segments/{target.id}",
+        json={
+            "name": "上海平路修正版",
+            "description": "人工修正后的城市与难度",
+            "city": "hangzhou",
+            "difficulty": "hard",
+        },
+        headers=admin_header,
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["name"] == "上海平路修正版"
+    assert data["description"] == "人工修正后的城市与难度"
+    assert data["city"] == "hangzhou"
+    assert data["difficulty"] == "hard"
+    db.expire_all()
+    reloaded = db.get(Segment, target.id)
+    assert reloaded.distance == 1500.0
+    assert reloaded.reference_line is not None
+
+
+def test_patch_segment_admin_rejects_extra_field(client, admin_header, admin_segments):
+    """请求体出现 4 字段之外的 key 应 422，避免静默忽略造成管理员误判。"""
+    res = client.patch(
+        f"/api/admin/segments/{admin_segments['taiyuan'].id}",
+        json={"distance": 9999.0},
+        headers=admin_header,
+    )
+
+    assert res.status_code == 422
+
+
+def test_patch_segment_admin_invalid_city_422(client, admin_header, admin_segments):
+    """city 只能是 spec 枚举，拼错不应写进 segments。"""
+    res = client.patch(
+        f"/api/admin/segments/{admin_segments['taiyuan'].id}",
+        json={"city": "nanjing"},
+        headers=admin_header,
+    )
+
+    assert res.status_code == 422
+
+
+def test_patch_segment_admin_not_exist_404(client, admin_header):
+    """不存在的 segment_id 应返回 404，不让 None 继续 setattr。"""
+    res = client.patch(
+        "/api/admin/segments/999999",
+        json={"name": "不存在"},
+        headers=admin_header,
+    )
+
+    assert res.status_code == 404

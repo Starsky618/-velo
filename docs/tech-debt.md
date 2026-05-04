@@ -127,6 +127,27 @@
 
 ---
 
+### 来源：task-3.A.4 批量管理 endpoint 收尾（2026-05-04 Claude 复审）
+
+**现状**：
+- `tests/test_admin_router.py` 759 行红灯（>600），混合 4 个 endpoint domain：
+  segment delete / curation_pool / ai_drafts / admin_segments。
+- `app/admin/service.py` 346 行黄灯（>300），混合 3 个 admin 子领域：
+  pool / draft / segment admin。
+
+**性质**：
+- 当前职责仍集中在 admin 模块内，task-3.A.4 不顺手拆，避免把功能交付和测试结构治理混在一起。
+
+**触发条件**：
+- 再加 1 个 endpoint 系列（如 task-3.A.5 from-activity）导致 admin 测试或 service 继续膨胀时，升级为拆分任务。
+
+**下期动作**：
+- 拆 `tests/test_admin_router.py` → `tests/admin/test_curation_pool.py` /
+  `tests/admin/test_ai_drafts.py` / `tests/admin/test_admin_segments.py`。
+- 同步评估 `app/admin/service.py` 拆成 pool / draft / segment admin 子模块，保持 router 编排层不变。
+
+---
+
 ## P2（远期）
 
 ### 前端相关

@@ -223,3 +223,126 @@ def update_ai_draft(db: Session, draft_id: int, body, admin_id: int) -> dict:
     db.refresh(draft)
     segment = db.get(Segment, draft.segment_id)
     return _ai_draft_item(draft, segment.name)
+
+
+def _pool_status(pool: SegmentCurationPool | None) -> str | None:
+    """把候选池记录折成 admin 列表状态。"""
+    if pool is None:
+        return None
+    if pool.selected_for_v5 is True:
+        return "selected"
+    return "candidate"
+
+
+def _admin_segment_item(
+    segment: Segment,
+    draft_status: str | None,
+    pool: SegmentCurationPool | None,
+) -> dict:
+    """把 Segment + 内部运营状态合成 admin 批量管理列表项。"""
+    return {
+        "id": segment.id,
+        "name": segment.name,
+        "description": segment.description,
+        "distance": round(segment.distance / 1000.0, 2),
+        "elevation_gain": segment.elevation_gain,
+        "elevation_loss": segment.elevation_loss,
+        "avg_gradient": segment.avg_gradient,
+        "max_gradient": segment.max_gradient,
+        "difficulty": segment.difficulty,
+        "city": segment.city,
+        "start_lat": segment.start_lat,
+        "start_lon": segment.start_lon,
+        "end_lat": segment.end_lat,
+        "end_lon": segment.end_lon,
+        "match_tolerance": segment.match_tolerance,
+        "min_match_ratio": segment.min_match_ratio,
+        "created_at": segment.created_at,
+        "draft_status": draft_status,
+        "pool_status": _pool_status(pool),
+    }
+
+
+def list_segments_admin(
+    db: Session,
+    city: str | None,
+    difficulty: str | None,
+    has_draft: bool | None,
+    page: int,
+    page_size: int,
+) -> dict:
+    """列出 admin 批量管理赛段，带 draft / curation pool 内部状态。"""
+    # OUTER JOIN 安全前提：segment_ai_drafts.segment_id + segment_curation_pool.segment_id
+    # 都是 UNIQUE FK（spec §2.2），保证每 segment 最多一行。改 schema 时同步评估此处。
+    query = (
+        db.query(
+            Segment,
+            SegmentAiDraft.status.label("draft_status"),
+            SegmentCurationPool,
+        )
+        .outerjoin(SegmentAiDraft, SegmentAiDraft.segment_id == Segment.id)
+        .outerjoin(SegmentCurationPool, SegmentCurationPool.segment_id == Segment.id)
+    )
+    if city is not None:
+        query = query.filter(Segment.city == city)
+    if difficulty is not None:
+        query = query.filter(Segment.difficulty == difficulty)
+    if has_draft is True:
+        query = query.filter(SegmentAiDraft.id.isnot(None))
+    elif has_draft is False:
+        query = query.filter(SegmentAiDraft.id.is_(None))
+
+    total = query.count()
+    rows = (
+        query.order_by(Segment.created_at.desc(), Segment.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    return {
+        "items": [
+            _admin_segment_item(segment, draft_status, pool)
+            for segment, draft_status, pool in rows
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+def update_segment_admin(db: Session, segment_id: int, body) -> dict:
+    """更新 admin 允许人工修正的 4 个 Segment 元数据字段。"""
+    segment = db.get(Segment, segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail="赛段不存在")
+
+    if body.name is None and body.description is None and body.city is None and body.difficulty is None:
+        raise HTTPException(status_code=422, detail="请提供要更新的赛段字段")
+
+    if body.name is not None:
+        segment.name = body.name
+    if body.description is not None:
+        segment.description = body.description
+    if body.city is not None:
+        segment.city = body.city
+    if body.difficulty is not None:
+        segment.difficulty = body.difficulty
+
+    db.commit()
+    db.refresh(segment)
+    draft = (
+        db.query(SegmentAiDraft)
+        .filter(SegmentAiDraft.segment_id == segment.id)
+        .first()
+    )
+    pool = (
+        db.query(SegmentCurationPool)
+        .filter(SegmentCurationPool.segment_id == segment.id)
+        .first()
+    )
+    return _admin_segment_item(
+        segment,
+        draft.status if draft is not None else None,
+        pool,
+    )

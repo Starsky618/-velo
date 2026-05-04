@@ -112,7 +112,7 @@ feat(admin): 任务 3.A.4 批量管理 endpoint (5.D.3)
 ## 🔍 自检三问
 
 1. **字段白名单**：PATCH body 只允许 4 字段，schema 显式声明（不用 dict 直接 setattr）—— 防 admin 误改 reference_line / distance 等核心字段。  
-   → 是。AdminSegmentPatchRequest 只声明 4 optional 字段，FastAPI 自动忽略多余键。
+   → 是。AdminSegmentPatchRequest 只声明 4 optional 字段，并用 `extra="forbid"` 让多余键直接 422，避免管理员以为 distance/reference_line 等核心字段已被修改。
 
 2. **OUTER JOIN drafts 有重复行风险吗**：list segments outerjoin segment_ai_drafts—— 如果同 segment 有多个 drafts 行（理论上 segment_id UNIQUE 保证不会）。  
    → segment_ai_drafts.segment_id 是 UNIQUE FK（spec §2.2.3），不会有重复。

@@ -2544,7 +2544,7 @@ def require_admin(
 | 维度 | 内容 |
 |---|---|
 | 权限 | require_admin |
-| body | `{name?, description?, city?: enum, difficulty?: enum}`（其他字段不允许 admin 改）|
+| body | `{name?, description?, city?: enum, difficulty?: enum}`（其他字段 422 拒绝，不 silent ignore）|
 | 响应 | updated segment |
 | 错误 | 401 / 403 / 404 / 422 invalid enum |
 
