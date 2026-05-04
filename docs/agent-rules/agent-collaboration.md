@@ -23,6 +23,10 @@ Tim ↔ Claude ↔ Codex 协作时，遇分歧或漂移按下面顺序裁决：
 
 **核心**：平等的是 **agent 开发地位**，不是 **规则源地位**。规则源只有 1-3 层。
 
+### 用户点名 skill / workflow = 执行前硬门禁
+
+无论当前 agent 是否有自动 skill 触发机制（如 superpowers），只要 Tim 点名 workflow skill、审查 cadence、或"按某手册走"，主开发必须先加载并复述本轮门禁，再动代码。先写代码、后补流程 = 协议违规；若已漂移，立刻停下重来，不把流程债继续滚下去。
+
 ### 共识在 git，不在私有 memory
 
 agent 私有 memory（Claude `~/.claude/.../memory/` / Codex session history）**永远不自动同步**——Claude 学到的教训 Codex 看不见，反之亦然。
@@ -119,9 +123,15 @@ CLAUDE.md 标注的纯函数（不碰 DB / 不碰文件系统）：
 
 **§4.0 通用审查守则（所有 reviewer 适用 / Claude / Codex / 主 agent / subagent）**
 
-推方案 / 给修法建议前先读 caller / callee / worker / router / 未来 task 入口的真实调用链。审查者抓到 bug ≠ 审查者给出的修法天然正确；谁能给 file:line + 调用链证据，谁的方案优先。
+推方案 / 给修法建议前先读 caller / callee / worker / router / 未来 task 入口的真实调用链。reviewer 报告 Critical / Important 时必须二分：
+- **风险是否成立**：bug 是真的吗？
+- **修法是否成立**：会不会破坏其他模块、误伤其他入口、引入反向依赖？
+
+风险成立 ≠ 修法天然合理。修法仍要过调用链 grep；谁能给 file:line + 调用链证据，谁的方案优先。
 
 实证：2026-05-04 task-3.A.2 互审，Claude 异源审推"worker 加 selected_for_v5 守卫"路径，因未读 `app/agent/tasks.py` 实现 + task-3.A.3 手动入口语义，被 Codex 反驳"会误伤手动 generate"撤回，改 B 补偿回滚收敛。规则适用于所有审查方位置——Claude 推方案、Codex 推方案、主 agent 推方案皆同。
+
+兼容期 legacy 入口需要守卫时，不为临时兼容让老模块 import 新编排层。优先在原 service 层保留不变式 + 回归测试 + sunset TODO。实证：2026-05-04 task-3.A.1 legacy DELETE 安全模型不对称风险成立，但让 `app/segment/router.py` 依赖 `app/admin/dependencies.py` 会引入 segment → admin 反向依赖；最终用 `service.delete_segment` admin 不变式 + 普通用户 403 回归测试 + 2026-11-03 sunset TODO 收敛。
 
 ### 场景 A：写单元测试
 
@@ -497,6 +507,7 @@ Codex 比 Claude 便宜，但**不是免费**。
 5. 这次决策 / 评审是否引入 spec / task 卡 / 文档偏离？
    是 → **立刻** Edit 同步文档（先 git commit doc fix 也行），再动代码。
    不允许"代码先改、文档后补、文档不补"。
+   修补类 edit 完成后，必须 grep 旧符号全文残留；范围限定为 `CLAUDE.md` / `AGENTS.md` / `docs/spec-v*.md` / `docs/plans/**` / `docs/agent-rules/**`，避免把 `.git` / `__pycache__` / app 编译引用噪音混进 doc drift 检查。
 
 **光"知道规则"不够——必须动作 trigger 强制自查**。否则下次又翻车。
 
