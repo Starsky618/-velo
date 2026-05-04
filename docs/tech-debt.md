@@ -132,14 +132,15 @@
 **现状**：
 - `tests/test_admin_router.py` 759 行红灯（>600），混合 4 个 endpoint domain：
   segment delete / curation_pool / ai_drafts / admin_segments。
-- `app/admin/service.py` 346 行黄灯（>300），混合 3 个 admin 子领域：
+- `app/admin/service.py` 353 行黄灯（>300），混合 3 个 admin 子领域：
   pool / draft / segment admin。
 
 **性质**：
 - 当前职责仍集中在 admin 模块内，task-3.A.4 不顺手拆，避免把功能交付和测试结构治理混在一起。
 
 **触发条件**：
-- 再加 1 个 endpoint 系列（如 task-3.A.5 from-activity）导致 admin 测试或 service 继续膨胀时，升级为拆分任务。
+- task-3.A.5 已把 from-activity 新测试放到 `tests/admin/`，避免继续撑大
+  `tests/test_admin_router.py`；下一次 admin endpoint 系列继续膨胀时，升级为拆分任务。
 
 **下期动作**：
 - 拆 `tests/test_admin_router.py` → `tests/admin/test_curation_pool.py` /

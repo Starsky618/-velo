@@ -346,3 +346,8 @@ def update_segment_admin(db: Session, segment_id: int, body) -> dict:
         draft.status if draft is not None else None,
         pool,
     )
+
+
+def admin_segment_response(segment: Segment) -> dict:
+    """把刚创建的 Segment 转成 admin 响应；新赛段暂无 draft/pool 状态。"""
+    return _admin_segment_item(segment, None, None)

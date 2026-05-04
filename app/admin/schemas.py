@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 AiDraftStatus = Literal["pending", "human_edited", "approved", "rejected"]
 City = Literal[
@@ -116,3 +116,23 @@ class AdminSegmentPatchRequest(BaseModel):
     description: str | None = None
     city: City | None = None
     difficulty: Difficulty | None = None
+
+
+class FromActivityRequest(BaseModel):
+    """从已完成骑行轨迹裁剪赛段的 admin 请求。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    activity_id: int
+    name: str = Field(..., min_length=2, max_length=128)
+    start_index: int = Field(..., ge=0)
+    end_index: int = Field(..., gt=0)
+    city: City | None = None
+    difficulty: Difficulty | None = None
+
+    @model_validator(mode="after")
+    def end_must_gt_start(self):
+        """终点索引必须晚于起点索引，像剪绳子不能倒着剪。"""
+        if self.end_index <= self.start_index:
+            raise ValueError("end_index must > start_index")
+        return self

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.admin.dependencies import require_admin
 from app.admin import schemas, service as admin_service
 from app.database import get_db
+from app.segment.exceptions import InvalidSegmentRangeError, SegmentOverlapError
 from app.segment import service as segment_service
 from app.user.models import User
 
@@ -97,6 +98,41 @@ def update_ai_draft(
 ):
     """编辑 AI 草稿或更新审核状态。"""
     return admin_service.update_ai_draft(db, draft_id, body, admin.id)
+
+
+@router.post(
+    "/segments/from-activity",
+    response_model=schemas.AdminSegmentResponse,
+    status_code=201,
+)
+def create_segment_from_activity_admin(
+    body: schemas.FromActivityRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """从 activity 轨迹子序列创建赛段。"""
+    try:
+        segment = segment_service.create_segment_from_activity(
+            db,
+            activity_id=body.activity_id,
+            name=body.name,
+            start_index=body.start_index,
+            end_index=body.end_index,
+            city=body.city,
+            difficulty=body.difficulty,
+        )
+        db.commit()
+        db.refresh(segment)
+        return admin_service.admin_segment_response(segment)
+    except InvalidSegmentRangeError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except SegmentOverlapError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/segments", response_model=schemas.AdminSegmentListResponse)
