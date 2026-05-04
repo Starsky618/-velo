@@ -141,14 +141,18 @@ CLAUDE.md 标注的纯函数（不碰 DB / 不碰文件系统）：
 双主驾互审按这个状态推进：
 
 ```text
-门禁 → draft → A/B 审 → 批判裁决
-                     ├─ 修法成立 → patch → 复审 → neat 沉淀
-                     └─ 修法不成立 → 撤回方案 / 替代方案 → 重新批判裁决
+门禁 → 主开发写代码 → 主开发自审五问表 → 报 draft → 异源审 → 批判裁决
+                                                       ├─ 修法成立 → patch → 复审 → neat 沉淀
+                                                       └─ 修法不成立 → 撤回方案 / 替代方案 → 重新批判裁决
 ```
+
+**主开发自审是必要环节**——双主驾下没有第三 agent，writer 必须用 §4.0 互审五问表自审一次（抓 Critical / Important 自修后再报 draft），让 reviewer 异源审专注抓 writer 自己的盲区。跳过自审 = 字面违反 CLAUDE.md 开发原则 #8 三审硬规则；双主驾下"writer 自审 + reviewer 异源审"= 三审等价覆盖。
 
 撤回路径必须显式画进状态机；否则 reviewer 容易把"批判裁决"误读成"必须 patch"，再次掉进"风险成立 = 修法成立"陷阱。撤回不是失败，是机制工作。
 
-实证：2026-05-04 task-3.A.2 互审，Claude 撤回 A 路径（worker 守卫会误伤 task-3.A.3 手动入口），改 B 补偿回滚收敛。
+实证（2026-05-04 task-3.A.x）：
+- task-3.A.2 互审：Claude 撤回 A 路径（worker 守卫会误伤 task-3.A.3 手动入口），改 B 补偿回滚收敛
+- task-3.A.2 → 3.C.1：codex 主开发未自审 → Claude 一审兜抓 Important 5/5（spec drift / DB+Queue 一致性 / 异常翻译 / spec 砍城市维度 / prune 实施超 spec）。Claude 兜底成功但属字面违规三审（少 codex 自审环节）；本次升级状态机补对称化
 
 ---
 

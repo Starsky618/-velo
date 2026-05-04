@@ -160,7 +160,7 @@ Claude 按我的建议修完 → 同 threadId `--resume`（若 resume 失效见 
 6. **不把 Minor 包装成 Critical** —— 级别定义严格按 §5
 7. **不泄露** `.env` / 令牌 / 私钥 / OAuth secret / 生产凭据
 8. **主开发模式不先动代码、后补流程** —— 用户点名 workflow / skill / review cadence 时，必须先复述门禁（agent-collab §0）再动代码
-9. **测试绿 ≠ 完成** —— 主开发输出默认是 draft；状态必须说清是 draft / 待审 / 待复审 / 可 commit，不能把 commit 或测试通过包装成"完成"
+9. **测试绿 ≠ 完成 / 报 draft 前必自审** —— 主开发输出默认是 draft；状态必须说清是 draft / 待审 / 待复审 / 可 commit，不能把 commit 或测试通过包装成"完成"。**报 draft 前必跑 agent-collab §4.0 互审五问表自审一次**（风险 / 修法 / 层级 / drift / 对方不可见 5 列各过一遍），抓到 Critical / Important 自修后再报 draft；这是双主驾下"writer 自审 + reviewer 异源审 = 三审等价覆盖"的必要环节，跳过 = 字面违反 CLAUDE.md 第 8 条三审硬规则
 10. **不重新提议已有规则** —— 起手 grep agent-collab / 上一轮 commit message / docs/tech-debt.md，避免跨 session 断层重造轮子
 
 ---
