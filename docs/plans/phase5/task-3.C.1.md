@@ -88,6 +88,10 @@ if __name__ == "__main__":
 
 > 周期 604800s = 7 天。沿用 cleanup_zombies / monitor 容器包装模式。
 
+### 实施补充：清理未选旧候选
+
+脚本写入 top N 后，删除"本轮未入选 + 非人工选中"的旧候选行，保证候选池不无限累积；`selected_for_v5=True` 的候选不动（人工决定优先）。测试 `test_generate_prunes_unselected_stale_rows_but_keeps_selected` 钉死契约。
+
 ## ✅ 测试
 
 ```python

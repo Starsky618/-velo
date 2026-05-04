@@ -132,6 +132,18 @@ services:
       - db
       - redis
 
+  # ===== Curation Pool Cron：候选池每周刷新（v5 task-3.C.1）=====
+  # 每 7 天全表扫描 segments，按热度 + 难度分布写入 segment_curation_pool top 100
+  # 不挂 uploads 卷：脚本只读 segments/segment_efforts，UPSERT 候选池表
+  curation-pool-cron:
+    build: .
+    command: sh -c "while true; do python -m scripts.generate_curation_pool || true; sleep 604800; done"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
+    depends_on:
+      - db
+
   # ===== Caddy：反向代理 + 自动 HTTPS =====
   # 微信小程序强制要求 HTTPS，Caddy 自动申请 Let's Encrypt 证书
   caddy:

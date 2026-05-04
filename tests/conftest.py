@@ -20,7 +20,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Table, MetaData, JSON, Boolean
+from sqlalchemy import (
+    Boolean, Column, DateTime, Float, Integer, JSON, MetaData, String, Table,
+    Text, UniqueConstraint, create_engine,
+)
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -177,6 +180,7 @@ _segment_curation_pool_table = Table(
     Column("selected_by_user_id", Integer),
     Column("selected_at", DateTime(timezone=True)),
     Column("created_at", DateTime(timezone=True)),
+    UniqueConstraint("segment_id", name="uq_curation_pool_segment_id"),
 )
 
 # segment_ai_drafts 表（SQLite 简化版）
@@ -197,7 +201,6 @@ _segment_ai_drafts_table = Table(
 
 # 通知表（SQLite 简化版，省略外键和 CHECK 约束以避免 SQLite 兼容性问题）
 # 注意：必须保留 UniqueConstraint，否则幂等测试（IntegrityError 防重复）无法验证
-from sqlalchemy import UniqueConstraint
 _notifications_table = Table(
     "notifications",
     _test_metadata,
