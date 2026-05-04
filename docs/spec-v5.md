@@ -87,7 +87,7 @@
 - 进步阈值：5W（5min 最大平均功率涨 ≥ 5W）
 - worker 软目标：90% < 5min + 10 分钟 timeout 沿用 v4 不改
 - 看他人主页**默认公开** + settings 隐私开关
-- H5 admin 复用主站微信登录态
+- H5 admin 复用小程序生成的 JWT（PC 浏览器粘贴 token + 7 天 refresh，brainstorming v2 / 2026-05-05 拍。原"复用主站微信登录态"歧义——主站=小程序，PC 浏览器物理无法 share session）
 - RAG **留接口不实现**（建 app/agent/ 目录架构，无向量检索）
 - 防火墙破例 4 处：segments 加 difficulty + max_gradient + city / users 加 city
 
@@ -1966,14 +1966,18 @@ def get_user_profile_for_others(
 - 严格字段过滤（不含 strava_* / openid / mute_notifications / token）
 - 累计统计准确（活动数 + 距离 + 爬升）
 
-### §3.7 admin 工具系列（5.D.1 / 5.D.2 / 5.D.3 / 5.D.5）
+### §3.7 admin 工具系列（5.D.1 / 5.D.2 / 5.D.3 / 5.D.5 / 5.D.6 / 5.D.7）
+
+> **brainstorming v2 / 2026-05-05 修订**：5.D.5 范围调整 + 5.D.6 / 5.D.7 新增。原 task-3.B.1 "H5 admin 4 主页面"拆分为"3 主页面（admin H5）+ 1 独立工具（segment-creator.html 增强）"。理由详见 task-3.B.1 / task-3.A.6 / task-3.B.2 task 卡 brainstorming 决策落地段。
 
 **模块归属**：
 - 5.D.1 候选池脚本：`scripts/generate_curation_pool.py`（独立 offline 脚本，**不在 app/ 内**，定时跑）
 - 5.D.2 AI 草稿生成：`app/agent/segment_writer.py`（**新建 app/agent/ 模块**，按 ADR-009 + PRD 5.B.2 留接口）+ admin endpoint
 - 5.D.3 批量管理：admin endpoint 复用 `app/segment/service.py` public API
 - 5.D.4 from-activity：已在 §3.1.5 写完
-- 5.D.5 H5 admin：**独立前端项目**（不在 velo backend 仓库内，新建 `admin-h5/` 同级目录或独立 repo）
+- 5.D.5 H5 admin（task-3.B.1）：**独立 GitHub repo `admin-h5`**（R1 / 不在 velo backend 仓库内）/ Vite + React + TS + AntD / 仅 PC 浏览器（手机不优化）/ **3 主页面**（候选池 / AI 草稿 / 批量管理）/ 登录态走小程序复制 JWT + 7 天 refresh
+- 5.D.6 admin from-gpx endpoint（task-3.A.6 / 新增）：`POST /api/admin/segments/from-gpx`，复用 `segment.service.create_segment`（service 层已有 `is_admin` 守卫，双层防护）/ 老 `POST /api/segments` 标 deprecated + Sunset header，task-3.B.2 切完后删
+- 5.D.7 segment-creator.html 增强（task-3.B.2 / 新增）：现有 `tools/segment-creator.html` 加 "activity_id 模式"（除拖 GPX 外支持后端拉 trackpoints）+ 改调 5.D.6 admin endpoint + 搬到 `admin-h5/public/segment-creator.html` / 通过 `admin.velo.com/segment-creator.html` 访问 / 保留键盘 ±20m 微调精度交互
 
 **隔离边界**：
 - admin 路由前缀 `/api/admin/*`（新增）—— 跟用户端 `/api/*` 隔离
