@@ -63,6 +63,42 @@ def update_curation_pool(
     )
 
 
+@router.post("/ai/segment-drafts/{segment_id}/generate", status_code=202)
+def generate_ai_draft(
+    segment_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """手动触发 AI 草稿生成任务。"""
+    return admin_service.generate_ai_draft(db, segment_id)
+
+
+@router.get("/ai/segment-drafts", response_model=schemas.AiDraftListResponse)
+def list_ai_drafts(
+    status: str = Query(
+        "pending",
+        pattern="^(pending|human_edited|approved|rejected)$",
+    ),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """列出 AI 草稿审核台。"""
+    return admin_service.list_ai_drafts(db, status, page, page_size)
+
+
+@router.patch("/ai/segment-drafts/{draft_id}", response_model=schemas.AiDraftResponse)
+def update_ai_draft(
+    draft_id: int,
+    body: schemas.AiDraftPatchRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """编辑 AI 草稿或更新审核状态。"""
+    return admin_service.update_ai_draft(db, draft_id, body, admin.id)
+
+
 @router.delete("/segments/{segment_id}", status_code=204)
 def delete_segment_admin(
     segment_id: int,

@@ -179,6 +179,22 @@ _segment_curation_pool_table = Table(
     Column("created_at", DateTime(timezone=True)),
 )
 
+# segment_ai_drafts 表（SQLite 简化版）
+# 3.A.3 admin AI 草稿审核 endpoint 会通过 SegmentAiDraft ORM 查询这张表。
+# 测试环境只保留字段形状，CHECK / UNIQUE / FK 约束交给真 PG 集成测试覆盖。
+_segment_ai_drafts_table = Table(
+    "segment_ai_drafts",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("segment_id", Integer, nullable=False),
+    Column("ai_draft_text", Text, nullable=False),
+    Column("human_edited_text", Text),
+    Column("status", String(16), nullable=False, default="pending"),
+    Column("editor_user_id", Integer),
+    Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
+)
+
 # 通知表（SQLite 简化版，省略外键和 CHECK 约束以避免 SQLite 兼容性问题）
 # 注意：必须保留 UniqueConstraint，否则幂等测试（IntegrityError 防重复）无法验证
 from sqlalchemy import UniqueConstraint

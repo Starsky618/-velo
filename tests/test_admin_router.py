@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.segment.models import Segment, SegmentCurationPool
+from app.segment.models import Segment, SegmentAiDraft, SegmentCurationPool
 
 
 @pytest.fixture()
@@ -347,6 +347,222 @@ def test_update_pool_pool_not_exist_404(client, admin_header):
     res = client.patch(
         "/api/admin/curation-pool/999999",
         json={"selected_for_v5": True},
+        headers=admin_header,
+    )
+
+    assert res.status_code == 404
+
+
+@pytest.fixture()
+def ai_drafts(db, admin_user):
+    """创建 AI 草稿审核台测试数据，覆盖 pending / approved 两种列表状态。"""
+    pending_segment = _make_segment(db, "AI 草稿待审核", city="taiyuan")
+    approved_segment = _make_segment(db, "AI 草稿已通过", city="beijing")
+    now = datetime.now(timezone.utc)
+    drafts = [
+        SegmentAiDraft(
+            segment_id=pending_segment.id,
+            ai_draft_text="AI 第一稿：太原爬坡节奏鲜明。",
+            status="pending",
+            created_at=now,
+            updated_at=now,
+        ),
+        SegmentAiDraft(
+            segment_id=approved_segment.id,
+            ai_draft_text="AI 第一稿：北京绕圈适合训练。",
+            human_edited_text="人工定稿：北京绕圈适合节奏训练。",
+            status="approved",
+            editor_user_id=admin_user.id,
+            created_at=now,
+            updated_at=now,
+        ),
+    ]
+    db.add_all(drafts)
+    db.commit()
+    for draft in drafts:
+        db.refresh(draft)
+    return drafts
+
+
+def test_generate_ai_draft_admin_only_and_enqueues(
+    client,
+    auth_header,
+    admin_header,
+    curation_pool_items,
+    monkeypatch,
+):
+    """手动生成入口只允许 admin；通过后只 enqueue，不同步等 AI 返回。"""
+    fake_queue = MagicMock()
+    fake_job = MagicMock(id="job-3a3")
+    fake_queue.enqueue.return_value = fake_job
+    monkeypatch.setattr("app.admin.service.ai_drafts_queue", fake_queue)
+    segment_id = curation_pool_items[0].segment_id
+
+    res = client.post(
+        f"/api/admin/ai/segment-drafts/{segment_id}/generate",
+        headers=auth_header,
+    )
+    assert res.status_code == 403
+
+    res = client.post(
+        f"/api/admin/ai/segment-drafts/{segment_id}/generate",
+        headers=admin_header,
+    )
+
+    assert res.status_code == 202
+    assert res.json() == {
+        "job_id": "job-3a3",
+        "segment_id": segment_id,
+        "status": "enqueued",
+    }
+    fake_queue.enqueue.assert_called_once_with(
+        "app.agent.tasks.generate_segment_draft_task",
+        segment_id,
+        job_timeout=120,
+        retry={"max": 2, "interval": [30, 90]},
+    )
+
+
+def test_generate_ai_draft_missing_segment_404(client, admin_header, monkeypatch):
+    """不存在的 segment 要在 enqueue 前拦下，不把坏任务丢给 worker。"""
+    fake_queue = MagicMock()
+    monkeypatch.setattr("app.admin.service.ai_drafts_queue", fake_queue)
+
+    res = client.post(
+        "/api/admin/ai/segment-drafts/999999/generate",
+        headers=admin_header,
+    )
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "赛段不存在"
+    fake_queue.enqueue.assert_not_called()
+
+
+def test_generate_ai_draft_queue_failure_returns_503(
+    client,
+    admin_header,
+    curation_pool_items,
+    monkeypatch,
+):
+    """Redis/RQ 派发失败时返回 503，避免后台看到不明 500。"""
+    fake_queue = MagicMock()
+    fake_queue.enqueue.side_effect = RuntimeError("redis down")
+    monkeypatch.setattr("app.admin.service.ai_drafts_queue", fake_queue)
+    segment_id = curation_pool_items[0].segment_id
+
+    res = client.post(
+        f"/api/admin/ai/segment-drafts/{segment_id}/generate",
+        headers=admin_header,
+    )
+
+    assert res.status_code == 503
+    assert res.json()["detail"] == "AI 草稿任务派发失败，请稍后重试"
+
+
+def test_list_ai_drafts_filter_by_status(client, admin_header, ai_drafts):
+    """草稿审核台按 status 筛选，并返回关联 segment_name 供后台展示。"""
+    res = client.get(
+        "/api/admin/ai/segment-drafts?status=pending",
+        headers=admin_header,
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total"] == 1
+    assert data["items"][0]["id"] == ai_drafts[0].id
+    assert data["items"][0]["segment_name"] == "AI 草稿待审核"
+    assert data["items"][0]["ai_draft_text"] == "AI 第一稿：太原爬坡节奏鲜明。"
+    assert data["items"][0]["status"] == "pending"
+
+
+def test_list_ai_drafts_rejects_invalid_status(client, admin_header):
+    """status 只能是 4 个状态机值，拼错应在请求层 422。"""
+    res = client.get(
+        "/api/admin/ai/segment-drafts?status=published",
+        headers=admin_header,
+    )
+
+    assert res.status_code == 422
+
+
+def test_patch_ai_draft_human_edited_text(client, admin_header, ai_drafts):
+    """编辑人工稿应写入 editor_user_id，并把 pending 草稿推进到 human_edited。"""
+    res = client.patch(
+        f"/api/admin/ai/segment-drafts/{ai_drafts[0].id}",
+        json={"human_edited_text": "人工改稿：太原爬坡适合间歇训练。"},
+        headers=admin_header,
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["human_edited_text"] == "人工改稿：太原爬坡适合间歇训练。"
+    assert data["status"] == "human_edited"
+    assert data["editor_user_id"] is not None
+
+
+def test_patch_approved_draft_text_reopens_review(client, db, admin_header, ai_drafts):
+    """已通过草稿被再次编辑时，应退回 human_edited，等待重新 approved 后再发布。"""
+    approved_draft = ai_drafts[1]
+
+    res = client.patch(
+        f"/api/admin/ai/segment-drafts/{approved_draft.id}",
+        json={"human_edited_text": "二次改稿：北京绕圈加入补给提示。"},
+        headers=admin_header,
+    )
+
+    assert res.status_code == 200
+    assert res.json()["status"] == "human_edited"
+    db.expire_all()
+    segment = db.get(Segment, approved_draft.segment_id)
+    assert segment.description == "AI 草稿已通过 description"
+
+
+def test_patch_ai_draft_approved_syncs_segment_description(
+    client,
+    db,
+    admin_header,
+    ai_drafts,
+):
+    """approved 与 segments.description 必须同事务落库，避免草稿通过但前台仍旧文案。"""
+    res = client.patch(
+        f"/api/admin/ai/segment-drafts/{ai_drafts[0].id}",
+        json={
+            "human_edited_text": "人工定稿：太原爬坡适合周末挑战。",
+            "status": "approved",
+        },
+        headers=admin_header,
+    )
+
+    assert res.status_code == 200
+    assert res.json()["status"] == "approved"
+    db.expire_all()
+    segment = db.get(Segment, ai_drafts[0].segment_id)
+    assert segment.description == "人工定稿：太原爬坡适合周末挑战。"
+
+
+def test_patch_ai_draft_rejected_no_sync(client, db, admin_header, ai_drafts):
+    """rejected 是打回留档，不应该污染正式 segment.description。"""
+    res = client.patch(
+        f"/api/admin/ai/segment-drafts/{ai_drafts[0].id}",
+        json={
+            "human_edited_text": "这版暂不发布。",
+            "status": "rejected",
+        },
+        headers=admin_header,
+    )
+
+    assert res.status_code == 200
+    assert res.json()["status"] == "rejected"
+    db.expire_all()
+    segment = db.get(Segment, ai_drafts[0].segment_id)
+    assert segment.description == "AI 草稿待审核 description"
+
+
+def test_patch_ai_draft_not_exist_404(client, admin_header):
+    """不存在的 draft_id 应返回 404，而不是 db.get(None) 后继续改。"""
+    res = client.patch(
+        "/api/admin/ai/segment-drafts/999999",
+        json={"status": "rejected"},
         headers=admin_header,
     )
 
