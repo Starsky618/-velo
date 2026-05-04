@@ -117,6 +117,12 @@ CLAUDE.md 标注的纯函数（不碰 DB / 不碰文件系统）：
 
 每场景给：触发 / 调用方式 / prompt 骨架 / 期望输出 / 验收。
 
+**§4.0 通用审查守则（所有 reviewer 适用 / Claude / Codex / 主 agent / subagent）**
+
+推方案 / 给修法建议前先读 caller / callee / worker / router / 未来 task 入口的真实调用链。审查者抓到 bug ≠ 审查者给出的修法天然正确；谁能给 file:line + 调用链证据，谁的方案优先。
+
+实证：2026-05-04 task-3.A.2 互审，Claude 异源审推"worker 加 selected_for_v5 守卫"路径，因未读 `app/agent/tasks.py` 实现 + task-3.A.3 手动入口语义，被 Codex 反驳"会误伤手动 generate"撤回，改 B 补偿回滚收敛。规则适用于所有审查方位置——Claude 推方案、Codex 推方案、主 agent 推方案皆同。
+
 ### 场景 A：写单元测试
 
 **触发**：纯函数刚实现完 / 要补覆盖率 / 想加边界用例
@@ -205,6 +211,8 @@ Critical / Important / Minor 三档，每条：
 - 建议修法 1 句
 
 硬约束：每条带 file:line，证据分级 ✅ ⚠️ / 不复读已修项 / 不建议未来重构 / 诚实说"无新问题"比虚构强。
+
+（修法建议过 grep 的通用守则上提至 §4.0，所有 reviewer 适用——本场景不再重复。）
 ```
 
 **验收**：Codex 给清单 → 按 §6 可信度分级处理 → 修了再 `--resume` 复查 → 最多 3 轮收敛。
@@ -350,6 +358,12 @@ Codex 比 Claude 便宜，但**不是免费**。
 | **大文档撰写**（spec / plans / > 800 字 / > 1500 行）⭐**硬禁止** | codex CLI 单 task 输入+输出 > 50K token 几乎必卡（已知 bug 链 #13738/#14048/#18723 + spec-v5 实证卡死 30+ 分钟）。**默认路径**：主 agent 自己写（chunk by chunk）→ 写完派 codex review-only |
 
 **跳过了必须在 commit message 写理由**——留痕便于复盘。
+
+### §5.0 commit stage 门禁（2026-05-04 task-3.A.2 实证）
+
+**背景**：task-3.A.2 中 `app/admin/router.py` 新增 `from app.admin import schemas`，但新建的 `app/admin/schemas.py` 一度仍是 untracked；若 commit 漏掉它，干净 clone 会直接 ImportError。
+
+**硬规则**：commit 前必须看 `git status --short` + `git diff --cached --stat`。凡是 diff 里出现新增 import / router / schema / migration / test helper，必须确认对应新文件已 stage；无关 untracked（如临时 worktree / 孤儿目录）要明确排除，不混入任务 commit。
 
 ### §5.1 授权改动留痕（2026-04-29 task-0.7 实证）
 
