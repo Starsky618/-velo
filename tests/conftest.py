@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Table, MetaData, JSON
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Table, MetaData, JSON, Boolean
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -160,6 +160,22 @@ _segment_efforts_table = Table(
     Column("avg_power", Float),
     Column("start_index", Integer, nullable=False),
     Column("end_index", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True)),
+)
+
+# segment_curation_pool 表（SQLite 简化版）
+# 3.A.2 admin 候选池 endpoint 会通过真实 ORM 模型查询这张表。
+# 测试环境只需要字段形状一致，不启用 PostgreSQL 外键 / 索引细节。
+_segment_curation_pool_table = Table(
+    "segment_curation_pool",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("segment_id", Integer, nullable=False),
+    Column("pool_score", Float, nullable=False),
+    Column("pool_reason", String(64)),
+    Column("selected_for_v5", Boolean, nullable=False, default=False),
+    Column("selected_by_user_id", Integer),
+    Column("selected_at", DateTime(timezone=True)),
     Column("created_at", DateTime(timezone=True)),
 )
 

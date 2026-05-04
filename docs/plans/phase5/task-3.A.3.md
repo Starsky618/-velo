@@ -12,6 +12,10 @@
 - task-3.A.2（admin 框架 + curation-pool 已有）
 - task-1.B.1（agent 模块 + ai_drafts_queue 已 expose）
 
+## 🔗 前置契约
+
+`segment_ai_drafts` 与 `segment_curation_pool` **不强一致**：任意 segment 都可能通过 `POST .../generate` 手动生成草稿，也可能通过 `PATCH curation-pool` 勾选自动生成草稿。list endpoint 不假设草稿一定来自已选候选池，也不要求两张表同步。
+
 ## 📤 输出契约
 
 | 接口 | 用途 |

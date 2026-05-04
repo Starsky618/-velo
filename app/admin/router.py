@@ -1,9 +1,10 @@
 """admin 模块 API 路由骨架。"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.admin.dependencies import require_admin
+from app.admin import schemas, service as admin_service
 from app.database import get_db
 from app.segment import service as segment_service
 from app.user.models import User
@@ -17,6 +18,49 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # 3.A.5 追加：from-activity endpoint (POST /segments/from-activity)
 # 路由顺序约定：精确路径必须放在 /{id} 之前，避免 GET /segments/from-activity
 # 被未来的 GET /segments/{id} 吞掉后返回 422。
+
+
+@router.get("/curation-pool", response_model=schemas.CurationPoolListResponse)
+def list_curation_pool(
+    selected: bool | None = Query(None),
+    city: str | None = Query(
+        None,
+        pattern="^(beijing|shanghai|hangzhou|shenzhen|chengdu|taiyuan|unknown)$",
+    ),
+    difficulty: str | None = Query(
+        None,
+        pattern="^(easy|medium|hard|extreme)$",
+    ),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """列出候选池。"""
+    return admin_service.list_curation_pool(
+        db,
+        selected,
+        city,
+        difficulty,
+        page,
+        page_size,
+    )
+
+
+@router.patch("/curation-pool/{pool_id}", response_model=schemas.CurationPoolItem)
+def update_curation_pool(
+    pool_id: int,
+    body: schemas.CurationPoolPatchRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """更新候选池勾选状态。"""
+    return admin_service.update_curation_pool(
+        db,
+        pool_id,
+        body.selected_for_v5,
+        admin.id,
+    )
 
 
 @router.delete("/segments/{segment_id}", status_code=204)
