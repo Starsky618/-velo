@@ -117,6 +117,22 @@ CLAUDE.md 标注的纯函数（不碰 DB / 不碰文件系统）：
 
 ---
 
+## §3.5 双主驾互审状态机
+
+双主驾互审按这个状态推进：
+
+```text
+门禁 → draft → A/B 审 → 批判裁决
+                     ├─ 修法成立 → patch → 复审 → neat 沉淀
+                     └─ 修法不成立 → 撤回方案 / 替代方案 → 重新批判裁决
+```
+
+撤回路径必须显式画进状态机；否则 reviewer 容易把"批判裁决"误读成"必须 patch"，再次掉进"风险成立 = 修法成立"陷阱。撤回不是失败，是机制工作。
+
+实证：2026-05-04 task-3.A.2 互审，Claude 撤回 A 路径（worker 守卫会误伤 task-3.A.3 手动入口），改 B 补偿回滚收敛。
+
+---
+
 ## §4 调用场景模板
 
 每场景给：触发 / 调用方式 / prompt 骨架 / 期望输出 / 验收。
@@ -132,6 +148,16 @@ CLAUDE.md 标注的纯函数（不碰 DB / 不碰文件系统）：
 实证：2026-05-04 task-3.A.2 互审，Claude 异源审推"worker 加 selected_for_v5 守卫"路径，因未读 `app/agent/tasks.py` 实现 + task-3.A.3 手动入口语义，被 Codex 反驳"会误伤手动 generate"撤回，改 B 补偿回滚收敛。规则适用于所有审查方位置——Claude 推方案、Codex 推方案、主 agent 推方案皆同。
 
 兼容期 legacy 入口需要守卫时，不为临时兼容让老模块 import 新编排层。优先在原 service 层保留不变式 + 回归测试 + sunset TODO。实证：2026-05-04 task-3.A.1 legacy DELETE 安全模型不对称风险成立，但让 `app/segment/router.py` 依赖 `app/admin/dependencies.py` 会引入 segment → admin 反向依赖；最终用 `service.delete_segment` admin 不变式 + 普通用户 403 回归测试 + 2026-11-03 sunset TODO 收敛。
+
+reviewer 报告 Critical / Important 时按互审五问表过一遍；不是每条都要修，是每条都要做出明确判断。
+
+| 问题 | 目的 |
+|---|---|
+| 风险是否成立？ | 防误报 |
+| 修法是否成立？ | 防"风险成立 = 修法成立"滑坡 |
+| 问题在哪一层（spec / 代码 / 测试 / 协作规则 / 私有学习）？ | 防错层落点 |
+| 是否有旧符号残留要 grep？ | 防 doc drift（范围 5 类规则文件，详见 CLAUDE.md §7 mental check 第 5 问） |
+| 这条经验对另一个 agent 不可见会不会重蹈覆辙？ | 决定升 docs 还是留 memory |
 
 ### 场景 A：写单元测试
 
