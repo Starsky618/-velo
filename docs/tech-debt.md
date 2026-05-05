@@ -149,6 +149,25 @@
 
 ---
 
+### 来源：task-3.B.1 D.3 admin 草稿 reject 后 human_edited_text 残留（2026-05-05 集成审 reviewer 提出 / 超出 D.3 范围）
+
+**现状**：admin 编辑过草稿（写入 human_edited_text / status 自动转 human_edited）→ reject 时 backend 只改 status='rejected' / **不清 human_edited_text**。运营之后再 PATCH status='approved' 时，backend service.py:215 把残留的旧 human_edited_text 同步到 segments.description → 写入"已被运营丢弃"的旧文案。
+
+**真实业务影响**：
+- 运营场景：admin 编完决定 reject → 改主意再 approve → 旧编辑稿被静默发布到赛段介绍
+- D.3 前端 reject 走 `{ status: 'rejected' }` 不传 human_edited_text → backend 保留旧值 → 已是 D.3 工作流默认行为（前端不能在 reject 时清，因为 backend schema `human_edited_text?: string` 没有显式 null sentinel）
+
+**性质**：backend schema 演进任务 / 非 D.3 范围
+
+**下期动作**（Sprint 3 收尾或 Sprint 4 起手）：
+- 选项 A：`AiDraftPatchRequest.human_edited_text` 改为 `Optional[str | None]` + 显式 sentinel（如 `Field(... description="None=保留 / 空字符串=清空")`）/ 前端 reject 时显式传 `human_edited_text=""`
+- 选项 B：backend service.py:196-230 在 status 切到 rejected 时自动清 human_edited_text（保守）
+- 选项 C：admin H5 reject 时 modal.confirm 加"是否同时清空已编辑稿？"二选项
+
+**优先级**：低 / Sprint 3 admin 工具内部低频场景 / 真踩才修
+
+---
+
 ### 来源：task-3.A.6 admin from-gpx + Hausdorff 共享 helper（2026-05-05 reviewer 第二轮主动建议）
 
 **现状**：commit `1432fad` 加了 `_check_hausdorff_overlap(db, wkt)` 共享 helper（含 dialect 守卫），from-gpx + from-activity 两条创建路径都走 helper。但**所有相关测试都用 mock**（admin 套件惯例）→ 真 Hausdorff 行为没在 SQLite 单元测试覆盖（守卫让 SQLite 跳过，无法在 SQLite fixture 验"重叠时抛 SegmentOverlapError"）。
