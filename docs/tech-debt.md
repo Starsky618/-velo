@@ -149,6 +149,23 @@
 
 ---
 
+### 来源：task-3.A.6 admin from-gpx + Hausdorff 共享 helper（2026-05-05 reviewer 第二轮主动建议）
+
+**现状**：commit `1432fad` 加了 `_check_hausdorff_overlap(db, wkt)` 共享 helper（含 dialect 守卫），from-gpx + from-activity 两条创建路径都走 helper。但**所有相关测试都用 mock**（admin 套件惯例）→ 真 Hausdorff 行为没在 SQLite 单元测试覆盖（守卫让 SQLite 跳过，无法在 SQLite fixture 验"重叠时抛 SegmentOverlapError"）。
+
+**影响**：
+- 生产 PG 真行为在 commit 时没有真实证（dev stack 真 PG 集成测试缺）
+- 万一未来 helper 内部 SQL 写错 / 阈值调错 / 字段名漂移，单元测试都看不出来
+
+**性质**：单元测试 mock 充分 / 但缺集成测试一层
+
+**下期动作**（Sprint 3 收尾建议）：
+- dev stack 真 PG 启动 + admin POST 同样 GPX 两次 → 第一次 201 / 第二次 409
+- admin POST from-activity 同样 segment → 同样验
+- 若纳入 CI / 评估 testcontainers + 真 PG fixture，统一 admin 套件真路径覆盖
+
+---
+
 ## P2（远期）
 
 ### 前端相关
