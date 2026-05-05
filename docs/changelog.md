@@ -93,7 +93,7 @@
 - **C 议题**：memory → 文档升级机制——半自动 + agent 自决目标 + 翻译层问 Tim
 - **D 议题**：切换 trigger——按自然边界切 + 例外清单 + Tim 主权
 
-### Sprint 3：admin 工具 + admin H5（进行中 / 2026-05-05 batch A+B+C+D.1 完成）
+### Sprint 3：admin 工具 + admin H5（✅ 完成 / 2026-05-05 代码层 + 2026-05-06 生产部署）
 
 | 任务 | 状态 | commit | 备注 |
 |---|---|---|---|
@@ -104,37 +104,39 @@
 | 3.C.1 候选池脚本 + cron | ✅ | `6c14efa` | C 主轴 |
 | pre-3.B segment/service.py 拆分（红灯清理）| ✅ 793→189 | `1c70a02` | 元层 blocker / D.1 实施前必做 |
 | 3.B.1 D.1 admin H5 项目骨架 + 登录 + 路由壳 | ✅ vite build 262ms / 0 TS errors | admin-h5 repo `b8d4043` | 独立 repo / Vite + React 19 + TS + AntD 6 |
-| 3.B.1 D.2-D.5 / 3.B.2 segment-creator 集成 | ⏳ | - | 下一步 |
+| 3.B.1 D.2 候选池审查页 | ✅ | admin-h5 `772be83` | codex 主开发 + Claude 集成审 I1/I2/I3 整改 |
+| 3.B.1 D.3 AI 草稿审核页 | ✅ | admin-h5 `5047d98` | codex 主开发 / mutation 三泛型 + useRef 防 timer 泄漏 |
+| 3.B.1 D.4 批量管理页 + I1/I2 整改 | ✅ | admin-h5 `c7cbfcb` | 抽 `getErrorDetail` 公共 helper（3 处复利修补 / 双向异源审首次实证） |
+| 3.B.1 D.5 容器化部署文件 | ✅ | admin-h5 `7e736d4` + velo `c48ab8f` | Claude 主开发 Dockerfile/nginx.conf/docker-compose / codex 异源审 |
+| Sprint 1+2+3 一次性生产部署（39 commit / 12 周积压） | ✅ | velo `1f06155` (含 9 hotfix) | 详 `deployment-diary.md` "✅ Sprint 1+2+3 部署完成" 章节 |
+| 3.B.2 segment-creator.html 增强 | ⏳ | - | 下一步 / 真生产已就绪可起手 |
 
 **Sprint 3 元层升级（2026-05-05 本会话）**：
 - 全局 `~/.claude/CLAUDE.md` TL;DR + §2.1 加"元认知批判性思考（决策前必跑 / 区分合格 vs 顶级工程师的核心层）"为最高优先级锚点
 - velo CLAUDE.md 技术栈陷阱清单第 15 条（PostGIS `ST_*` 函数 SQLite 测试不可用 / 加 dialect 守卫）
 - memory 6 处升级（含元认知批判 / 视觉冲击 vs 真复杂度 / 读 diff 不只读报告 / pytest exit code 不可信 / Edit 全角标点 / untracked 待办列表 / 详 MEMORY.md）
 
-**Sprint 3 部分完成 metrics（截止 2026-05-05）**：
-- velo backend：5 commit（`cee436e` `1c70a02` `1432fad` `777ae79` `4796704`）/ admin endpoint 11 个 / admin pytest 17 passed
-- admin-h5 repo：1 commit（root-commit `b8d4043` / 22 files / 4891 行 / vite build 实证通过）
-- 三审分工实战：codex 主开发 + Claude 多轮审 模式实证（详 memory `feedback_main_agent_as_middle_manager.md` §3.5）
+**Sprint 3 完整 metrics（截止 2026-05-06 部署完成）**：
+- velo backend：~12 commit / admin endpoint 11 个 / admin pytest 17 passed / 9 hotfix（部署后真用回归暴露 / 详 deployment-diary）
+- admin-h5 repo：5 commit（D.1 → D.5 / Vite + React 19 + TS + AntD 6）
+- 一次性部署 Sprint 1+2+3 = 39 commit / 12 周积压清空 / 实际窗口 ~1h（image cache 复用 / 远低于 2.5h 预算）
+- **工作流核心收获**（本 Sprint 独有 / 已沉淀别处不重复）：
+  - codex 主开发 + Claude 多轮审 = 连续 4 次成功（D.2/D.3/D.4 codex 主 / D.5 Claude 主）
+  - **双向异源审硬规则升级**：Claude 主开发也必须 codex 异源审（Tim 拍"旁观者清"原则 / D.4 实证：Claude 写错 typing → codex 模仿 baseline 抄成 3 处复利 / 单向审查 = 盲区暴露 / 详 agent-collaboration §3.5）
+  - **真用回归 = final gate**：三审 + 单测 + Codex 全过 ≠ 生产工作 / 9 hotfix 中 5+ 个真用才暴露（详 memory `feedback_real_usage_vs_mock_blindspot.md`）
 
-### 待办（2026-05-05 起）⭐ 新 session 必读
+### 待办（2026-05-06 起）⭐ 新 session 必读
 
-1. **下一个 sub-task = task-3.B.1 D.2 候选池审查页**：
-   - 工作目录 `~/Desktop/admin-h5`（**不是** velo backend 仓库）
-   - 范围：src/api/curation.ts 新建 + src/pages/CurationPoolPage.tsx 重写（AntD Table + filter + 行内 Switch 即时 PATCH）
-   - 后端 endpoint 已就绪：GET / PATCH `/api/admin/curation-pool`
-   - 工时：~1 天 / 派 codex 主开发 + Claude 多轮审
-2. **生产部署 v5 Sprint 1 + Sprint 2**（之前积压）：rebuild 生产 docker images
-   - requirements.txt 加了 `openai>=1.0.0`
-   - docker-compose.yml worker 加了 DEEPSEEK_API_KEY+MODEL
-   - 加了 monitor 容器
-   - v5 新增 4 user endpoint 部署后用 OpenAPI `/api/docs` 验证
-3. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）/ 项目根 untracked 目录集中处理（`.claude/worktrees/` + `app/middleware/`）
+1. **下一个 sub-task = task-3.B.2 segment-creator.html 增强**（admin H5 收尾）：
+   - task 卡：`docs/plans/phase5/task-3.B.2.md`
+   - 前置都满足（D.1-D.5 完成 + 生产部署 + admin POST endpoints 已 hotfix 跑通）
+   - 起手第一动作：grep verify task 卡现状（task 卡 grep 数据普遍 stale / 详 memory `feedback_phase5_task_card_grep_stale.md`）
+2. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）/ 项目根 untracked 目录集中处理（`.claude/worktrees/` + `app/middleware/`）
 
 **新 session 起手必读顺序**（compact 后或 /clear 后）：
-1. CLAUDE.md（项目规则 + 进度 / **Sprint 3 D.1 完成** / 当前 = task-3.B.1 D.2 候选池审查页）
-2. 本 changelog 待办段（D.2 入口）
-3. `docs/plans/phase5/task-3.B.1.md`（D.2-D.5 sub-task 在 §5-§7 / 完整代码模板）
-4. memory 自动加载（25 条 / 含元认知批判 / 视觉冲击 vs 真复杂度 / 等）
+1. CLAUDE.md（项目规则 + 进度 / **Sprint 3 D.1-D.5 + 部署完成** / 下一个 = task-3.B.2）
+2. 本 changelog 待办段（task-3.B.2 入口）
+3. memory 自动加载（26 条 / 含元认知批判 / 双向异源审 / 真用回归 final gate / 等）
 **禁止**：读 spec-v5.md 全文（task 卡有 spec 行号引用，需要时只读那段）。
 
 **dev stack 已就绪**（task `3e9f50d` 落地）：
