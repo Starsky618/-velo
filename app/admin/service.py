@@ -6,6 +6,7 @@
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
+from rq import Retry
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -130,7 +131,7 @@ def enqueue_ai_draft_generation(segment_id: int):
         _AI_DRAFT_TASK,
         segment_id,
         job_timeout=120,
-        retry={"max": 2, "interval": [30, 90]},
+        retry=Retry(max=2, interval=[30, 90]),
     )
 
 

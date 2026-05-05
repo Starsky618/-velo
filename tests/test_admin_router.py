@@ -3,6 +3,8 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+from rq import Retry
+
 import pytest
 
 from app.segment.models import Segment, SegmentAiDraft, SegmentCurationPool
@@ -230,12 +232,13 @@ def test_update_pool_select_enqueues_ai_task(client, admin_header, curation_pool
     assert data["selected_for_v5"] is True
     assert data["selected_by_user_id"] is not None
     assert data["selected_at"] is not None
-    fake_queue.enqueue.assert_called_once_with(
-        "app.agent.tasks.generate_segment_draft_task",
-        pool.segment_id,
-        job_timeout=120,
-        retry={"max": 2, "interval": [30, 90]},
-    )
+    fake_queue.enqueue.assert_called_once()
+    args, kwargs = fake_queue.enqueue.call_args
+    assert args == ("app.agent.tasks.generate_segment_draft_task", pool.segment_id)
+    assert kwargs["job_timeout"] == 120
+    assert isinstance(kwargs["retry"], Retry)
+    assert kwargs["retry"].max == 2
+    assert kwargs["retry"].intervals == [30, 90]
 
 
 def test_update_pool_select_idempotent_no_double_enqueue(
@@ -415,12 +418,13 @@ def test_generate_ai_draft_admin_only_and_enqueues(
         "segment_id": segment_id,
         "status": "enqueued",
     }
-    fake_queue.enqueue.assert_called_once_with(
-        "app.agent.tasks.generate_segment_draft_task",
-        segment_id,
-        job_timeout=120,
-        retry={"max": 2, "interval": [30, 90]},
-    )
+    fake_queue.enqueue.assert_called_once()
+    args, kwargs = fake_queue.enqueue.call_args
+    assert args == ("app.agent.tasks.generate_segment_draft_task", segment_id)
+    assert kwargs["job_timeout"] == 120
+    assert isinstance(kwargs["retry"], Retry)
+    assert kwargs["retry"].max == 2
+    assert kwargs["retry"].intervals == [30, 90]
 
 
 def test_generate_ai_draft_missing_segment_404(client, admin_header, monkeypatch):
