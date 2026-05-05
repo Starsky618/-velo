@@ -207,6 +207,10 @@ Page({
     if (d.toDateString() === yesterday.toDateString()) {
       return '昨天 ' + hour + ':' + min
     }
+    // 跨年活动加年份（避免 2023年4月12日 和 2026年4月12日 看起来一样）
+    if (d.getFullYear() !== now.getFullYear()) {
+      return d.getFullYear() + '年' + month + '月' + day + '日 ' + hour + ':' + min
+    }
     return month + '月' + day + '日 ' + hour + ':' + min
   },
 })
