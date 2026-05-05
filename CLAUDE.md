@@ -415,15 +415,15 @@ B 主轴（admin H5）：
 - ✅ task-3.B.1 D.3 AI 草稿审核页（commit `5047d98` / admin-h5 repo）
 - ✅ task-3.B.1 D.4 批量管理页 + I1/I2 整改（commit `c7cbfcb` / admin-h5 repo / 抽 getErrorDetail 公共 helper）
 - ✅ task-3.B.1 D.5 容器化部署文件（admin-h5 commit `7e736d4` Dockerfile + nginx.conf + .dockerignore + README SOP / velo commit `c48ab8f` docker-compose 加 admin-h5 service / Claude 主开发 + codex 异源审通过）
-- ⏳ task-3.B.1 D.5 服务器部署执行 — **暂停 / 详 docs/deployment-diary.md "🚧 部署积压" 章节**
-- ⏳ task-3.B.2 segment-creator.html 增强（D.5 真部署完成后）
+- ✅ task-3.B.1 D.5 服务器部署执行（2026-05-05 / 详 `docs/deployment-diary.md` "✅ Sprint 1+2+3 部署完成" 章节 / 外网 9000 HTTP 200）
+- ⏳ task-3.B.2 segment-creator.html 增强（Sprint 4 时机）
 
 **Sprint 3 元层升级（2026-05-05 本会话）**：
 - 全局 ~/.claude/CLAUDE.md TL;DR + §2.1 加"元认知批判性思考（决策前必跑 / 区分合格 vs 顶级工程师的核心层）"为最高优先级锚点
 - velo CLAUDE.md 技术栈陷阱清单第 15 条（PostGIS `ST_*` 函数在 SQLite 测试 fixture 不可用 / 加 dialect 守卫）
 - memory 6 处升级（详 MEMORY.md / 含元认知批判 / 视觉冲击 vs 真复杂度 / 读 diff 不只读报告 / pytest exit code 不可信 / Edit 全角标点 / untracked 待办列表）
 
-**当前位置**：Sprint 3 admin H5 D.1 ~ D.5 **代码层全部完成**（admin-h5 repo 5 commit / velo backend 1 commit）。**生产部署执行暂停** —— 2026-05-05 D.5 起手发现 Sprint 1+2+3 全部 39 commit 未 push / 整 12 周开发量积压未上线 / Tim 拍暂停统一部署窗口（详 `docs/deployment-diary.md` "🚧 部署积压" 章节）。下一个 = 等 Tim 排"生产部署窗口"统一上线 backend + admin-h5。
+**当前位置**：Sprint 1+2+3 **代码层 + 生产部署全部完成（2026-05-05）**。整 40 commit 一次性部署成功 / 10 service stack（api / caddy / cleanup / curation-pool-cron / db / monitor / redis / scheduler / worker / admin-h5）全 Up / 外网 9000 端口 admin H5 HTTP 200。详 `docs/deployment-diary.md` "✅ Sprint 1+2+3 部署完成" 章节。下一个 = Sprint 4 规划（小程序前端 UI 接 Sprint 2 endpoint / 业务侧 admin H5 真用回归）。
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
 - DEEPSEEK_API_KEY ✅
@@ -435,10 +435,10 @@ B 主轴（admin H5）：
 - Sprint 1 启动条件实际是：DB schema 就位（0.6 已落地）+ 单一 Redis 源（0.8 已落地）+ tz-aware（0.1 已落地）。算法函数 1.A.1 写完后 0.7 立刻回填 = Sprint 1 内部第一动作。
 
 **新会话起手必读**（给下次 /clear 后的主 agent）：
-1. 本 CLAUDE.md（项目规则 + 进度 / **Sprint 3 admin H5 D.1 ~ D.5 代码层全部完成** / 但**生产部署积压 / 暂停服务器部署执行** / Tim 待排部署窗口）
-2. **`docs/deployment-diary.md` "🚧 部署积压" 章节**（必读 / 39 commit 未 push 清单 + 3 阶段部署顺序 + 风险点 + 凭证准备）
-3. **admin H5 工作目录** `~/Desktop/admin-h5`（独立 GitHub repo `Starsky618/admin-h5` private / 已 push origin/main / D.1-D.5 commit `7e736d4` 含 Dockerfile + nginx.conf）
+1. 本 CLAUDE.md（项目规则 + 进度 / **Sprint 1+2+3 代码 + 生产部署全部完成 2026-05-05** / 下一个 = Sprint 4 规划）
+2. **`docs/deployment-diary.md` "✅ Sprint 1+2+3 部署完成" 章节**（含 10 service stack / admin H5 deploy key 配置 / monitor 60s 探测循环 / pg_dump backup 路径）
+3. **admin H5 工作目录** `~/Desktop/admin-h5`（独立 GitHub repo `Starsky618/admin-h5` private / 服务器 ~/admin-h5 已 clone / Dockerfile + nginx.conf 已落地 / 容器映射 9000:80）
 4. **velo backend admin endpoint 全在** `/api/admin/*` 前缀（task-3.A.1 ~ 3.A.7 / 11 个 endpoint / 含 `/admin/whoami` 给 admin H5 登录用）
 5. memory（自动加载 / 25+ 条 / 含元认知批判性思考 + 双向异源审 + 三审 3 层兜底 + 等）
 **禁止**：读 spec-v5.md 全文（2879 行污染上下文）—— task 卡有 spec 行号引用，需要时只读那段。
-**D.2 起手第一动作**：派 codex 主开发 + Claude 多轮审 / codex prompt 强调"baseline 已就绪 / 不要 npm install / 只需写 src/api/curation.ts + src/pages/CurationPoolPage.tsx + 实证 npm run build / 不要 commit 让 Claude 多轮审"。
+**生产 admin token 签发**：服务器 `cd ~/velo && sudo docker compose exec -T api python -c "from app.user.service import create_token; print(create_token(1))"`（user_id=1 / 7 天有效）。

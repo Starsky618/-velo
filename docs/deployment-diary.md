@@ -170,9 +170,9 @@ sudo docker compose exec db psql -U velo
 sudo docker compose exec api python
 ```
 
-## 🚧 部署积压（截至 2026-05-05 / D.5 启动时发现）
+## ✅ Sprint 1+2+3 部署完成（2026-05-05）
 
-> **背景**：D.5 admin-h5 部署执行时（ssh 服务器准备 git clone）发现 `origin/main` HEAD 停在 `c36a204`（2026-04-29 Sprint 0 末尾），Mac 本地有 **39 个未 push commit**——整个 Sprint 1 + Sprint 2 + Sprint 3 所有开发都没上生产。Tim 拍：暂停 D.5 服务器部署，先把积压清单沉淀，未来抽时间统一部署。
+> **背景**：2026-05-05 D.5 admin-h5 部署执行时发现 `origin/main` HEAD 停在 `c36a204`（2026-04-29 Sprint 0 末尾），Mac 本地有 39 个未 push commit——整个 Sprint 1+2+3 所有开发都没上生产。Tim 当晚拍 5 决策点（窗口 2.5h / pg_dump 必备 / 独立 deploy key / 9000 安全组放行 / FEISHU 阶段 2 占位），分 3 阶段一次性上线。**整 40 commit / 12+ 周积压一次清空，单次部署窗口约 1 小时（远低于 2.5h 预算 / 因 image cache 复用瞬完成）。**
 
 ### 服务器现状（部署前 baseline）
 
@@ -254,9 +254,64 @@ FEISHU_BOT_WEBHOOK=<待 Tim 确认>    # Sprint 1.C.1 monitor 告警 / 没配则
 - [ ] 部署窗口预留 2-4 小时 / 含 backup（DB pg_dump）+ 回滚路径
 - [ ] 一阶段一阶段冒烟 / 不一次性全 up
 
-### 暂停理由
+### 实际执行记录（2026-05-05 21:28 ~ 23:18 / 约 1 小时 50 分钟）
 
-不应该一次性 push + 部署 12+ 周积压 —— 风险面太大 / 出错难定位 / Tim 拍"系统稳定性最高优先级"。先暂停，未来抽 4 小时窗口分阶段执行。
+**阶段 0：baseline + backup**（10 min）
+- 服务器 `c36a204` ✅ / 9 service Up（积压前已含 7 个）
+- alembic head = `phase5_v5_db_changes`（task-0.6 已迁 / Sprint 1+2+3 0 个新 migration）
+- pg_dump 备份：`~/velo/backup/pre-sprint123-20260505-2129.sql`（16M / 几秒完成）
+
+**阶段 1：backend 主体**（约 15 min / api+worker+scheduler+cleanup 重启）
+- Mac `git push origin main` → c36a204..3840d92（40 commit）
+- 服务器 `git pull` ✅ / `docker compose build api worker scheduler cleanup` ✅（含 openai-2.34.0 for DeepSeek SDK）
+- 4 service Recreated + Started 22s 内 stable
+- 冒烟：worker `*** Listening on velo, ai_drafts...` ✅（Sprint 1.B.1 多队列生效）/ curl /docs HTTP 200 / 103ms
+
+**阶段 2：monitor + curation-pool-cron**（约 5 min）
+- `.env` 加 `FEISHU_BOT_WEBHOOK=`（空占位 / 5B 决策）
+- `docker compose up -d monitor curation-pool-cron` ✅
+- curation-pool-cron 启动即跑：「写入 24 条候选池」
+- monitor 进程：`while true; do python -m app.monitor.processing_health || true; sleep 60; done`（无问题不打印 = 设计静默）
+
+**阶段 3：admin-h5**（约 10 min / 含 deploy key 配置 + Tim 控制台放行 9000）
+- 服务器生成 ed25519 deploy key `~/.ssh/admin-h5-deploy`
+- ssh config alias `github-admin-h5` 已配
+- Tim 在 GitHub admin-h5 repo Settings → Deploy keys 加公钥（read-only）
+- Tim 在腾讯云**轻量应用服务器（Lighthouse）防火墙**放行 TCP 9000（**关键修正**：之前误认为是 CVM / 实际是 Lighthouse / UI 路径完全不同）
+- 服务器 `~/admin-h5` git clone（前次尝试已遗留）/ HEAD = `7e736d4`（D.5 容器化部署）
+- Image build 全 cached（前次尝试已 build 过）
+- 容器 Up：`0.0.0.0:9000->80/tcp`
+- **冒烟**：外网 `curl http://114.132.190.245:9000/` HTTP 200 / 112ms ✅
+
+### 关键经验沉淀
+
+1. **腾讯云轻量服务器 ≠ CVM**——Lighthouse 控制台路径独立 / 安全组叫"防火墙" / UI 完全不同 / 部署文档之前误把它当 CVM（已修正）
+2. **Image cache 复利**：D.5 部署积压前的"试运行 build"留下完整 image / 真部署时全 cache 命中 / build 阶段从预估 5-10 分钟降到秒级
+3. **monitor 静默是设计**：4min 软目标超 + 飞书告警，无问题就不打印日志（避免日志噪音）/ 看 `docker compose top monitor` 验证进程在跑
+4. **admin token 签发**：admin = 普通 user JWT + DB `users.is_admin=true` / 没独立登录 endpoint / 容器内 `python -c "from app.user.service import create_token; print(create_token(1))"`（user_id=1 是 admin_prod / 7 天有效）
+
+### 当前生产 stack（10 service）
+
+```
+api / caddy / cleanup / curation-pool-cron / db / monitor / redis / scheduler / worker / admin-h5
+```
+
+### 待办（业务侧 / 不阻塞代码）
+
+- [ ] 小程序前端 UI 接 Sprint 2 endpoint（power-curve / heatmap / profile）—— 属于 Sprint 4
+- [ ] FEISHU_BOT_WEBHOOK 真配（建飞书机器人后改 `.env` + `docker compose up -d monitor` 重启 / 否则告警静默）
+- [ ] 老数据格式化 bug（如「累计爬升 549.4000000000001m」—— v4 老 bug / 进 tech-debt / 与本次部署无关）
+
+### 回滚路径（必要时）
+
+```
+# 数据回滚
+sudo docker compose exec -T db psql -U velo velo < ~/velo/backup/pre-sprint123-20260505-2129.sql
+
+# 代码回滚
+cd ~/velo && git reset --hard c36a204 && sudo docker compose up -d --build api worker scheduler cleanup
+sudo docker compose stop monitor curation-pool-cron admin-h5
+```
 
 ---
 
