@@ -177,3 +177,29 @@ class FromGpxRequest(BaseModel):
             if not (-180 <= lon <= 180):
                 raise ValueError(f"lon 越界: {lon}")
         return v
+
+
+class TrackpointItem(BaseModel):
+    """单个轨迹点的 admin 视图。
+
+    字段名沿用 model 的 timestamp / seq；lat/lon 简写与其他 segment endpoint 一致；
+    elevation 用全称避免与 ele 缩写在前端引发歧义。
+    """
+
+    seq: int
+    lat: float
+    lon: float
+    elevation: float | None = None
+    timestamp: datetime | None = None
+
+
+class AdminActivityTrackpointsResponse(BaseModel):
+    """admin 查任意活动 trackpoints 的响应。
+
+    给 segment-creator.html 工具用：admin 输入 activity_id 后拉全量轨迹点，
+    在浏览器里渲染海拔图 + 地图，再拖选起终点裁出赛段。
+    """
+
+    activity_id: int
+    total: int
+    trackpoints: list[TrackpointItem]

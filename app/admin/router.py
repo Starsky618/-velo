@@ -221,6 +221,26 @@ def update_segment_admin(
     return admin_service.update_segment_admin(db, segment_id, body)
 
 
+@router.get(
+    "/activities/{activity_id}/trackpoints",
+    response_model=schemas.AdminActivityTrackpointsResponse,
+)
+def get_activity_trackpoints_admin(
+    activity_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """admin 拉任意活动的全量 trackpoints。
+
+    给 segment-creator.html 工具用：admin 输入 activity_id 后浏览器拿到完整轨迹，
+    渲染海拔图 + 地图，再拖选起终点裁出赛段。不限 owner（与小程序自己的活动接口区别）。
+    """
+    try:
+        return admin_service.list_activity_trackpoints_admin(db, activity_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.delete("/segments/{segment_id}", status_code=204)
 def delete_segment_admin(
     segment_id: int,

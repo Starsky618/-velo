@@ -10,6 +10,7 @@ from rq import Retry
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.activity.models import Activity, Trackpoint
 from app.queue import ai_drafts_queue
 from app.segment.models import Segment, SegmentAiDraft, SegmentCurationPool
 
@@ -352,3 +353,37 @@ def update_segment_admin(db: Session, segment_id: int, body) -> dict:
 def admin_segment_response(segment: Segment) -> dict:
     """把刚创建的 Segment 转成 admin 响应；新赛段暂无 draft/pool 状态。"""
     return _admin_segment_item(segment, None, None)
+
+
+def list_activity_trackpoints_admin(db: Session, activity_id: int) -> dict:
+    """admin 拉任意活动的全量 trackpoints，给 segment-creator.html 工具用。
+
+    与小程序自己的活动 trackpoints 接口不同，这里不限 owner——admin 输入 activity_id
+    后能拿到完整轨迹，在浏览器渲染海拔图 + 地图，再拖选起终点裁出赛段。
+
+    activity 不存在 → 抛 ValueError，让 router 翻译成 404。
+    """
+    activity = db.query(Activity).filter_by(id=activity_id).first()
+    if activity is None:
+        raise ValueError("activity not found")
+
+    points = (
+        db.query(Trackpoint)
+        .filter_by(activity_id=activity_id)
+        .order_by(Trackpoint.seq)
+        .all()
+    )
+    return {
+        "activity_id": activity_id,
+        "total": len(points),
+        "trackpoints": [
+            {
+                "seq": p.seq,
+                "lat": p.latitude,
+                "lon": p.longitude,
+                "elevation": p.elevation,
+                "timestamp": p.timestamp,
+            }
+            for p in points
+        ],
+    }
