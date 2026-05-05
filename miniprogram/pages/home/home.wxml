@@ -109,6 +109,12 @@
 
   </view>
 
+  <!-- 加载更多 footer（v5 / onReachBottom 触发）-->
+  <view class="feed-footer" wx:if="{{rides.length > 0}}">
+    <text wx:if="{{loadingMore}}">加载中...</text>
+    <text wx:elif="{{!hasMore}}">— 没有更多了 —</text>
+  </view>
+
   <!-- 空状态 -->
   <view class="empty" wx:if="{{!loading && rides.length === 0}}">
     <text class="empty-icon">🚴</text>

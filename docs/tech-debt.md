@@ -199,6 +199,14 @@
   - 中期：admin 已通过的改稿当 few-shot examples（让 AI 学 admin 的口吻）
   - 长期：retrieval（赛段评论 / 骑友分享）做 RAG 输入
 
+**P1.PROD-5「活动列表索引筛选 / 像 Strava 按日期/距离/时长筛」**（UX + endpoint 扩展 / 非架构）
+- 现状：home.js 列表已支持加载更多（v5 commit / onReachBottom 翻页）/ 但**没有筛选**
+- 痛点：用户活动量大（实证 user_id=2 已 325 条 / 部分骑友更多）/ 翻页找老活动效率低
+- 未来方向（待 Sprint 4-5 PRD）：
+  - 后端：activity router 加 filter 参数（start_date_from/to / distance_min/max / duration_min/max）
+  - 前端：筛选弹窗 / 日期 picker / range slider / chip 选择
+- **配套硬规则**（写进未来 PRD 时考虑）：扩前端列表能力时（活动 / 排行榜 / 通知）应**统一引入分页 + 筛选模式** / 不要每页单独发明轮子（避免重复设计 + 用户体验割裂）
+
 **P1.PROD-3「信息源不全 / 需要小红书 / 抖音 / 微信聊天记录」**（数据基础）
 - 现状：admin 自己骑过 + 朋友讲述（Tim 当前的方式）/ 手头信息有限
 - 三层未来方向：

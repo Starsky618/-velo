@@ -190,6 +190,14 @@
   margin-bottom: 20rpx;
 }
 
+/* ── 加载更多 footer（v5 onReachBottom 触发）── */
+.feed-footer {
+  text-align: center;
+  padding: 32rpx 0;
+  font-size: 24rpx;
+  color: var(--color-text-3);
+}
+
 /* ── importing 状态卡片整体淡化（视觉对比 / 让"完成"和"解析中"一眼区分）── */
 .activity-card.is-pending {
   opacity: 0.65;

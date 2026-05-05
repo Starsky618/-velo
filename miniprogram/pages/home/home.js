@@ -25,6 +25,10 @@ Page({
     // 骑行卡片列表
     rides: [],
     loading: false,
+    // v5 新增：分页 / 加载更多状态（onReachBottom 触发）
+    currentPage: 1,
+    hasMore: true,
+    loadingMore: false,
     // v4 新增：未读通知数（控制铃铛红点显示）
     unreadCount: 0,
   },
@@ -101,10 +105,21 @@ Page({
       .catch(function () {})
   },
 
-  fetchRides() {
+  /**
+   * 拉骑行列表 / 支持分页（v5 加载更多）。
+   *
+   * @param {number} page 默认 1。
+   *   page=1：首屏 / 替换 rides + 重置 hasMore（onShow / 用户切回首页）
+   *   page>1：onReachBottom 触发 / append 到现有 rides
+   */
+  fetchRides(page) {
     var that = this
-    this.setData({ loading: true })
-    api.get('/api/activities?page=1&page_size=20')
+    if (page === undefined) page = 1
+    var isFirst = page === 1
+    if (isFirst) this.setData({ loading: true })
+    else this.setData({ loadingMore: true })
+
+    api.get('/api/activities?page=' + page + '&page_size=20')
       .then(function (data) {
         var list = (data.items || []).map(function (item) {
           // 获取用户昵称首字（头像用）
@@ -134,18 +149,43 @@ Page({
             segLoaded: false,
           }
         })
-        that.setData({ rides: list, loading: false })
 
-        // 对每条已完成的骑行，异步加载赛段匹配结果
+        // page=1 替换 / page>1 append（保持加载更多体验连续）
+        var rides = isFirst ? list : that.data.rides.concat(list)
+        var total = data.total || rides.length
+        var hasMore = rides.length < total
+
+        that.setData({
+          rides: rides,
+          loading: false,
+          loadingMore: false,
+          currentPage: page,
+          hasMore: hasMore,
+        })
+
+        // 对每条已完成的骑行 / 异步加载赛段匹配结果。
+        // startIdx 必须是该 page 在最终 rides 数组里的起点（page_size=20 hardcode）。
+        var startIdx = (page - 1) * 20
         list.forEach(function (ride, idx) {
           if (ride.status === 'completed') {
-            that.fetchSegments(ride.id, idx)
+            that.fetchSegments(ride.id, startIdx + idx)
           }
         })
       })
       .catch(function () {
-        that.setData({ loading: false })
+        that.setData({ loading: false, loadingMore: false })
       })
+  },
+
+  /**
+   * 滚动到底部触发 / 加载下一页。
+   * loadingMore lock 防重复触发；hasMore=false 直接忽略。
+   */
+  onReachBottom() {
+    if (!this.data.isLoggedIn) return
+    if (this.data.loadingMore) return
+    if (!this.data.hasMore) return
+    this.fetchRides(this.data.currentPage + 1)
   },
 
   /**
