@@ -529,12 +529,15 @@ Codex 比 Claude 便宜，但**不是免费**。
 |---|---|
 | 动 schema（alembic upgrade / 迁移）| ✅ pg_dump 备份 / ✅ 跑前 SQL snapshot / ✅ 跑后 schema 比对 |
 | 动生产数据（写脚本回填）| ✅ 真环境 dry-run / ✅ SAVEPOINT 隔离审 / ✅ 幂等验证（两次跑结果一致）|
+| **跨多条记录不可逆数据修改**（UPDATE/DELETE > 10 行）| ✅ **抽样 ≥30 条实证**（看分布是否同质 / 不能 N=3 sample 推断 user-level）/ ✅ **列影响范围给 Tim 拍**（"将清 X 条 / 保留 Y 条 / 边缘 Z 条 / y/n"）/ ✅ **用 helper 逐条判** / **禁止** `WHERE user_id=X` 粗粒度全清 |
 | 改 CLAUDE.md / agent-rules | ✅ 授权来源声明（§5.1）/ ✅ 不在 task 范围内禁改 |
 | commit + push | ✅ 跑测试 / ✅ git diff 自审 |
 
 不走 = 协议违规 = Tim 拒收。
 
 类比：飞机起飞前飞行员**强制 checklist 走完一遍**，无关主观信心。
+
+**反例（2026-05-06 PROD-4 hotfix）**：agent 抽 3 条 user_id=2 strava 活动 sample（41/44/45）/ 全 device_watts=False / 推断"user_id=2 全部都是手表估算" / SQL `UPDATE WHERE user_id=2 AND data_source='strava'` 全清 41 条（后 scheduler 又拉到 321 条共同被清）power/cadence/calories 字段。实证 Tim 历史用过 Garmin Forerunner 手表 + Edge 840 + iGPSPORT BSC300 等多设备 / **50% 实际是真功率器具数据** / 全清后必须写恢复脚本逐条重拉。教训：sample N=3 远不够 user-level 同质判断 / SQL WHERE 粗粒度全清是高危 / 必须 helper 逐条判 + Tim 拍范围。
 
 ### 最低限度不确定度自报
 
