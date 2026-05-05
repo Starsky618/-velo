@@ -229,9 +229,11 @@ Page({
           hasHrChart: !!data.heart_rates,
           hasCadenceChart: !!data.cadences,
         }, function () {
-          wx.nextTick(function () {
+          // wx.nextTick 在某些机型上仍早于 canvas 2d node 真正 ready，
+          // setTimeout 100ms 兜底等 canvas 节点彻底挂载（用户感知不到）
+          setTimeout(function () {
             that.bindTimeseriesCharts()
-          })
+          }, 100)
         })
       })
       .catch(function () {
