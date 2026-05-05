@@ -244,6 +244,16 @@ def _run_tier1(db, client: StravaClient, import_task: StravaImport) -> None:
         if strava_id is None:
             continue
 
+        # 解析 start_date 并立刻推进游标（**必须放在 dedupe 之前**）：
+        # 修复 v4 死循环 bug —— Strava 返回的活动**全部**已存在（dedupe 全跳过）时，
+        # 若 cursor_before 不更新，下次 tick 用同一 cursor 拉到同一批，再次全 dedupe，永远卡 importing。
+        # 把 oldest_start_date 挪到 dedupe 之前，dedupe 跳过的活动也推进游标，
+        # 让 cursor_before 总是向更老方向走，最终拉到真空 list 触发 tier1 完成。
+        start_date_str = act.get("start_date")
+        started_at = _parse_iso_date(start_date_str)
+        if started_at and (oldest_start_date is None or started_at < oldest_start_date):
+            oldest_start_date = started_at
+
         # 去重：先查有没有已导入的
         existing = (
             db.query(Activity)
@@ -252,10 +262,6 @@ def _run_tier1(db, client: StravaClient, import_task: StravaImport) -> None:
         )
         if existing:
             continue
-
-        # 解析 start_date
-        start_date_str = act.get("start_date")
-        started_at = _parse_iso_date(start_date_str)
 
         # 创建骨架 Activity
         activity = Activity(
@@ -282,10 +288,6 @@ def _run_tier1(db, client: StravaClient, import_task: StravaImport) -> None:
             nested.rollback()  # 只回滚这一条
             logger.info("跳过已存在的 Strava 活动 strava_id=%d", strava_id)
             continue
-
-        # 记录最老的 start_date 作为下一次的游标
-        if started_at and (oldest_start_date is None or started_at < oldest_start_date):
-            oldest_start_date = started_at
 
     # 更新进度（v4 双审 I-1 修复）：
     # 用 SQL 原子表达式 `tier1_completed = tier1_completed + n` 避免和
