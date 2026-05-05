@@ -183,6 +183,33 @@
 - admin POST from-activity 同样 segment → 同样验
 - 若纳入 CI / 评估 testcontainers + 真 PG fixture，统一 admin 套件真路径覆盖
 
+### 来源：Sprint 1+2+3 部署后真用回归 — 产品观察 backlog（2026-05-06 Tim admin H5 真用 + Strava 绑定后反馈）
+
+> **性质**：产品 feature 决策 / 非技术债 / 不阻塞 Sprint 4 排期 / Sprint 5+ PRD 时优先考虑。
+
+**P1.PROD-1「不是所有赛段都适合加介绍」**（功能开关 / admin 审稿状态机）
+- 现状：admin H5 草稿审核只有「通过 / 拒绝」/ 拒绝后 segment.description 依然空 / 但 admin 没法表达「永久跳过 / 不再生成」
+- 未来方向：审稿状态机加「skip」状态 → segment.description 永久空 / 不再 enqueue AI 重生
+
+**P1.PROD-2「AI 介绍很假 / 没特色 / admin 还得自己写」**（AI 输出质量）
+- 现状：DeepSeek prompt 只喂 metadata（坐标 / 距离 / 爬升 / 难度）+ 调性要求 / 没真实"地气"输入
+- 本质：metadata 写不出特色 / 活人感来自人 / AI 退化为格式补全工具
+- 三层未来方向（待 PRD 决策性价比）：
+  - 短期：admin 起草前先填「关键风味词」3-5 个 → AI 用补充输入再写
+  - 中期：admin 已通过的改稿当 few-shot examples（让 AI 学 admin 的口吻）
+  - 长期：retrieval（赛段评论 / 骑友分享）做 RAG 输入
+
+**P1.PROD-3「信息源不全 / 需要小红书 / 抖音 / 微信聊天记录」**（数据基础）
+- 现状：admin 自己骑过 + 朋友讲述（Tim 当前的方式）/ 手头信息有限
+- 三层未来方向：
+  - 短期：用户在 segment_efforts 写评论 / 项目内已有路径可补
+  - 中期：小红书 / 抖音 API 公开内容爬取 + LLM 语义提取
+  - 长期：微信聊天记录手工 ingest（隐私 + 操作复杂 / 性价比待评估）
+
+**下期动作**（Sprint 4 / 5 PRD 时评估）：
+- A 三点 PROD-1/2/3 优先级排序（性价比 vs 当前痛点）
+- B 是否合并出 'phase-N AI 草稿 v2' PRD：跳过状态 + 风味词补充 + 评论 RAG 一次性设计
+
 ---
 
 ## P2（远期）
