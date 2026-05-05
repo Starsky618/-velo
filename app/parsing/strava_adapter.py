@@ -47,6 +47,40 @@ class StravaAdapterError(Exception):
     pass
 
 
+# 黑名单：运动手表 / 非骑行专业设备（手腕加速度计估算的 power/cadence 不可信）
+# Tim 2026-05-06 实证：Garmin Forerunner 255（手表）+ device_watts=False / 但 streams.cadence 仍有数据 = 手表估算
+_WATCH_DEVICE_KEYWORDS = ("forerunner", "fenix", "epix", "vivoactive", "venu", "watch")
+
+
+def _has_real_cycling_sensors(activity_detail: dict) -> bool:
+    """
+    判断这条 Strava 活动是否有真骑行专业传感器（功率计 / 踏频器）。
+
+    设计依据（Tim 2026-05-06 拍 / 详见 docs/tech-debt.md PROD-4）:
+    - device_watts 是 Strava 官方 flag / true=真功率计 / false=Strava 估算
+    - Tim 洞察"踏频数据一般是功率计附带的"→ device_watts=False 推断没踏频器
+    - 黑名单运动手表（手腕加速度计估算的 power/cadence 不可信）作兜底
+
+    返回：
+        True 保留 power / cadence / calories / normalized_power 字段
+        False 强制清空（防 Strava 估算 / 手表估算的假数据干扰用户感知）
+
+    边缘 case：< 5% 用户有独立踏频器但没功率计 → 被误判（接受 / 待 user settings 逃生开关）
+    """
+    # 主判：Strava 官方 flag / device_watts=True 极强信号有真功率计
+    if activity_detail.get("device_watts") is True:
+        return True
+
+    # 兜底：device_watts=False 且 device_name 是运动手表 → 必假
+    device_name = (activity_detail.get("device_name") or "").lower()
+    if any(kw in device_name for kw in _WATCH_DEVICE_KEYWORDS):
+        return False
+
+    # device_watts=False 且 device_name 不在白名单 → 严格模式视为假
+    # 宁可漏 5% 真踏频用户 / 也不让 95% 用户被假数据干扰
+    return False
+
+
 def from_streams(
     streams: dict,
     activity_detail: dict,
@@ -66,6 +100,10 @@ def from_streams(
     """
     ftp = kwargs.get("ftp")
 
+    # 设备级判断：是否有真骑行专业传感器（Tim 2026-05-06 拍）
+    # 详见 _has_real_cycling_sensors 文档。无真传感器 → power / cadence 强制清空。
+    has_sensors = _has_real_cycling_sensors(activity_detail)
+
     # ===== 1. 提取 streams 数组（安全访问，缺失的返回 None）=====
     # 必需的三个数组：时间、距离、经纬度
     time_data = _extract_stream(streams, "time")
@@ -79,8 +117,9 @@ def from_streams(
     altitude_data = _extract_stream(streams, "altitude")
     speed_data = _extract_stream(streams, "velocity_smooth")
     hr_data = _extract_stream(streams, "heartrate")
-    cad_data = _extract_stream(streams, "cadence")
-    power_data = _extract_stream(streams, "watts")
+    # 无真骑行传感器 → power / cadence 强制 None（防 Strava 估算 / 手表估算干扰）
+    cad_data = _extract_stream(streams, "cadence") if has_sensors else None
+    power_data = _extract_stream(streams, "watts") if has_sensors else None
 
     # ===== 2. 解析起始时间 =====
     start_dt = _parse_start_date(activity_detail.get("start_date"))
@@ -131,17 +170,19 @@ def from_streams(
         elevation_gain=detail.get("total_elevation_gain", 0.0),
         avg_speed=detail.get("average_speed"),
         max_speed=detail.get("max_speed"),
-        avg_power=detail.get("average_watts"),
-        max_power=_safe_int(detail.get("max_watts")),
+        # 无真传感器 → 功率 / 踏频 / 卡路里 / 标准化功率全清（连带 calories
+        # 因 Strava 估算 calories 也基于估算功率 / 数据品质同链路）
+        avg_power=detail.get("average_watts") if has_sensors else None,
+        max_power=_safe_int(detail.get("max_watts")) if has_sensors else None,
         avg_hr=detail.get("average_heartrate"),
         max_hr=_safe_int(detail.get("max_heartrate")),
-        avg_cadence=detail.get("average_cadence"),
-        calories=detail.get("calories"),
+        avg_cadence=detail.get("average_cadence") if has_sensors else None,
+        calories=detail.get("calories") if has_sensors else None,
         started_at=start_dt,
         finished_at=(start_dt + timedelta(seconds=elapsed)
                      if start_dt and elapsed is not None else None),
         splits=calculate_splits(trackpoints),
-        normalized_power=detail.get("weighted_average_watts"),
+        normalized_power=detail.get("weighted_average_watts") if has_sensors else None,
     )
 
     # ===== 5. 轨迹简化（与 GPX 解析器一致）=====

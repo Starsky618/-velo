@@ -78,6 +78,10 @@ MOCK_DETAIL = {
     "average_cadence": 85.0,
     "calories": 1200.0,
     "weighted_average_watts": 220,
+    # device_watts=True 反映 mock 场景"有真功率计"(_has_real_cycling_sensors 返 True)
+    # 让 from_streams 保留 power / cadence / calories / normalized_power 数据
+    "device_watts": True,
+    "device_name": "Garmin Edge 530",
 }
 
 
@@ -260,6 +264,54 @@ class TestStravaAdapter:
         assert result.summary.finished_at is not None
         assert result.summary.finished_at == result.summary.started_at
         assert result.summary.duration == 0
+
+    def test_from_streams_strips_fake_sensors_when_device_watts_false(self):
+        """device_watts=False → power / cadence / calories / normalized_power 强制清空。
+
+        回归保护：Tim 2026-05-06 拍 PROD-4 / 详见 docs/tech-debt.md。
+        Strava 在没真功率计时会用算法估算 power / 手表也会估算 cadence。
+        我们用 device_watts=False 主判 + device_name 黑名单兜底识别假数据。
+        """
+        from app.parsing.strava_adapter import from_streams
+
+        # Tim 真实场景复现：Garmin Forerunner 255（手表）+ device_watts=False
+        # streams 仍有 cadence / watts 数据（Strava + 手表估算）/ 必须强制清空
+        fake_detail = dict(MOCK_DETAIL)
+        fake_detail["device_watts"] = False
+        fake_detail["device_name"] = "Garmin Forerunner 255"
+
+        result = from_streams(MOCK_STREAMS, fake_detail)
+
+        # summary 字段必须清空（防小程序前端用 avg_power 判 wx:if 误显示功率模块）
+        assert result.summary.avg_power is None
+        assert result.summary.max_power is None
+        assert result.summary.avg_cadence is None
+        assert result.summary.calories is None
+        assert result.summary.normalized_power is None
+        # trackpoints 字段也清空（防 timeseries endpoint 返假 power/cadence 数组）
+        for tp in result.trackpoints:
+            assert tp.power is None
+            assert tp.cad is None
+        # 心率不在守卫范围（手表测心率是真 / detail.average_heartrate 保留）
+        assert result.summary.avg_hr == 145.0
+        assert result.summary.max_hr == 175
+
+    def test_from_streams_keeps_real_sensors_when_device_watts_true(self):
+        """device_watts=True → 保留 power / cadence / calories（专业骑行设备）。"""
+        from app.parsing.strava_adapter import from_streams
+
+        # 专业场景：Garmin Edge 530（码表）+ device_watts=True
+        real_detail = dict(MOCK_DETAIL)
+        real_detail["device_watts"] = True
+        real_detail["device_name"] = "Garmin Edge 530"
+
+        result = from_streams(MOCK_STREAMS, real_detail)
+
+        # 全部保留
+        assert result.summary.avg_power == 200.0
+        assert result.summary.avg_cadence == 85.0
+        assert result.summary.calories == 1200.0
+        assert result.summary.normalized_power == 220
 
 
 # ==================== OAuth 路由测试 ====================
