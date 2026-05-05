@@ -45,15 +45,19 @@
 - 视频内容
 - 电商 / 支付(v8+ 考虑,不在任何当前期)
 
-### 1.3 代码量基线(v5 Sprint 2 全闭环 / 2026-04-30)
+### 1.3 代码量基线(v5 Sprint 3 D.1 完成 / 2026-05-05)
 
 | 层 | 行数 |
 |---|---|
-| 后端 Python | ~11200（+notification.progress_detector 210 / +user.service v5 全套 ~390 / +user.router v5 4 endpoint ~100 / +user.schemas v5 ~90 / +activity.power_zones v5 ~125 / +worker city hook ~35）|
+| 后端 Python | ~11600（+admin 模块 v5 全套 ~700 / +segment/service.py 拆分为 service_create.py 257 + service_query.py 380 + service.py 189 内转导出 / 净行数与拆分前等价 / 单文件红灯解除）|
 | 小程序前端 | ~2000 |
-| **总计** | **~13200** |
+| **admin H5（独立 repo `~/Desktop/admin-h5`）** | **~470 业务代码（src/）** + 22 文件 commit（含 vite scaffold + package-lock） |
+| **总计** | **~14100**（含 admin H5 业务代码） |
 
-⚠️ agent 注意: 当前期 PR 评估健康度黄灯阈值更新为后端 11000 行(CLAUDE.md 健康度自动巡检规则)。
+⚠️ agent 注意:
+- 后端单文件红灯阈值 >600 / segment/service.py 已从 793 降到 189（task-pre-3.B 拆分）/ strava + user service.py 仍红灯（待清 / tech-debt P1）
+- admin H5 独立 repo / vite build 实证通过 / 不计入后端行数 / 项目复杂度评估按 src/ 9 文件 470 行计（不是 ls -la 看到的 14 行视觉冲击 / 详 memory `feedback_project_health_dashboard_gap.md` § 视觉冲击 vs 真复杂度）
+- v5 admin endpoint 11 个全在 /api/admin/* 前缀（task-3.A.1 ~ 3.A.7 / 含 whoami / from-gpx / from-activity / curation-pool / ai/segment-drafts / segments）
 
 ---
 

@@ -93,24 +93,48 @@
 - **C 议题**：memory → 文档升级机制——半自动 + agent 自决目标 + 翻译层问 Tim
 - **D 议题**：切换 trigger——按自然边界切 + 例外清单 + Tim 主权
 
-### 待办（2026-05-01 起）⭐ 新 session 必读
+### Sprint 3：admin 工具 + admin H5（进行中 / 2026-05-05 batch A+B+C+D.1 完成）
 
-1. **下一个 task = Sprint 3（D 主轴 / admin 模块）**：
-   - 入口 = task-3.A.1（admin 模块框架 / dependencies + router 骨架 / ~1d）
-   - Sprint 3 路径：3.A.1 → 3.A.2（候选池 endpoint）→ 3.A.3（AI 草稿审核）→ 3.A.4（批量管理）→ 3.A.5（from-activity）+ 3.B.1（H5 admin 项目独立 repo）+ 3.C.1（候选池 cron 脚本）
-   - admin H5 独立部署（域名暂不买 / 先 IP）
-2. **生产部署 v5 Sprint 1 + Sprint 2**：rebuild 生产 docker images
+| 任务 | 状态 | commit | 备注 |
+|---|---|---|---|
+| 3.A.1-3.A.5 admin 模块框架 + 候选池 + 草稿 + 批量管理 + from-activity | ✅ | 多 commit | A 主轴 5 connection 串行 / 10 endpoint |
+| 3.A.6 admin from-gpx + 老 endpoint Sunset 2026-06-30 + Hausdorff 共享 helper | ✅ | `1432fad` | reviewer 抓 5 真问题全闭环 |
+| 3.A.6 follow-up dev stack 真 PG Hausdorff 集成测试 | ⏳ tech-debt | `777ae79` 记入 | 留 Sprint 3 收尾 |
+| 3.A.7 admin whoami endpoint | ✅ | `4796704` | C2 方案 C / admin H5 登录验证用 |
+| 3.C.1 候选池脚本 + cron | ✅ | `6c14efa` | C 主轴 |
+| pre-3.B segment/service.py 拆分（红灯清理）| ✅ 793→189 | `1c70a02` | 元层 blocker / D.1 实施前必做 |
+| 3.B.1 D.1 admin H5 项目骨架 + 登录 + 路由壳 | ✅ vite build 262ms / 0 TS errors | admin-h5 repo `b8d4043` | 独立 repo / Vite + React 19 + TS + AntD 6 |
+| 3.B.1 D.2-D.5 / 3.B.2 segment-creator 集成 | ⏳ | - | 下一步 |
+
+**Sprint 3 元层升级（2026-05-05 本会话）**：
+- 全局 `~/.claude/CLAUDE.md` TL;DR + §2.1 加"元认知批判性思考（决策前必跑 / 区分合格 vs 顶级工程师的核心层）"为最高优先级锚点
+- velo CLAUDE.md 技术栈陷阱清单第 15 条（PostGIS `ST_*` 函数 SQLite 测试不可用 / 加 dialect 守卫）
+- memory 6 处升级（含元认知批判 / 视觉冲击 vs 真复杂度 / 读 diff 不只读报告 / pytest exit code 不可信 / Edit 全角标点 / untracked 待办列表 / 详 MEMORY.md）
+
+**Sprint 3 部分完成 metrics（截止 2026-05-05）**：
+- velo backend：5 commit（`cee436e` `1c70a02` `1432fad` `777ae79` `4796704`）/ admin endpoint 11 个 / admin pytest 17 passed
+- admin-h5 repo：1 commit（root-commit `b8d4043` / 22 files / 4891 行 / vite build 实证通过）
+- 三审分工实战：codex 主开发 + Claude 多轮审 模式实证（详 memory `feedback_main_agent_as_middle_manager.md` §3.5）
+
+### 待办（2026-05-05 起）⭐ 新 session 必读
+
+1. **下一个 sub-task = task-3.B.1 D.2 候选池审查页**：
+   - 工作目录 `~/Desktop/admin-h5`（**不是** velo backend 仓库）
+   - 范围：src/api/curation.ts 新建 + src/pages/CurationPoolPage.tsx 重写（AntD Table + filter + 行内 Switch 即时 PATCH）
+   - 后端 endpoint 已就绪：GET / PATCH `/api/admin/curation-pool`
+   - 工时：~1 天 / 派 codex 主开发 + Claude 多轮审
+2. **生产部署 v5 Sprint 1 + Sprint 2**（之前积压）：rebuild 生产 docker images
    - requirements.txt 加了 `openai>=1.0.0`
    - docker-compose.yml worker 加了 DEEPSEEK_API_KEY+MODEL
    - 加了 monitor 容器
    - v5 新增 4 user endpoint 部署后用 OpenAPI `/api/docs` 验证
-3. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）
+3. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）/ 项目根 untracked 目录集中处理（`.claude/worktrees/` + `app/middleware/`）
 
 **新 session 起手必读顺序**（compact 后或 /clear 后）：
-1. CLAUDE.md（Sprint 进度块 / 当前 = Sprint 2 全闭环 / 下一个 = Sprint 3 task-3.A.1）
-2. 本 changelog 待办段（Sprint 3 入口 + 选择理由）
-3. `docs/plans/phase5/task-3.A.1.md`（task 卡 / 起手前 grep 验证现状 / memory `feedback_phase5_task_card_grep_stale.md` 已实证 5 次必查）
-4. memory 自动加载（含 SAVEPOINT 隔离 / grep stale / 三审 3 层兜底 / §7 升级标记）
+1. CLAUDE.md（项目规则 + 进度 / **Sprint 3 D.1 完成** / 当前 = task-3.B.1 D.2 候选池审查页）
+2. 本 changelog 待办段（D.2 入口）
+3. `docs/plans/phase5/task-3.B.1.md`（D.2-D.5 sub-task 在 §5-§7 / 完整代码模板）
+4. memory 自动加载（25 条 / 含元认知批判 / 视觉冲击 vs 真复杂度 / 等）
 **禁止**：读 spec-v5.md 全文（task 卡有 spec 行号引用，需要时只读那段）。
 
 **dev stack 已就绪**（task `3e9f50d` 落地）：

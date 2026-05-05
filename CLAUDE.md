@@ -255,6 +255,7 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 | 12 | **`with_for_update()` 单独不够 → 配 `populate_existing()`**（v5 task-0.2 codex 抓的） | 同 session identity map 返回旧 ORM 缓存——**行锁 SQL 拿到了但字段值是 stale 的**，并发场景下会读到过时 token / 状态导致逻辑误判 | `.with_for_update().populate_existing().first()` 强制刷新 identity map 里已有对象的 attributes，确保字段值 = 加锁后 DB 最新值 |
 | 13 | **跨模块场景 SAVEPOINT 隔离**（v5 task-2.A.1 实施时捕获 / 区别于 #8 循环场景）| 内层模块（detector / 通知写入器 / progress 检测器）被 worker / endpoint 调用时，若内部直接 `db.commit()` 成功会把外层未 commit 的改动一起提交（OK），但 `db.rollback()` 失败会把外层改动**一起回退**！worker 改的 `activity.status='completed'` 因 detector UNIQUE 冲突被回退 = worker 白干 | 内层用 `nested = db.begin_nested()` + `db.flush()` + `nested.commit()/nested.rollback()`，让失败只回退到嵌套点；外层 commit 由调用者统一做。详见 memory `feedback_savepoint_isolation_for_inner_modules.md` |
 | 14 | **DB 状态变更 + Queue/API 副作用不一致**（v5 task-3.A.2 实证） | `db.commit()` 后再 `queue.enqueue()` / 外部 API 调用，若副作用失败，DB 已显示成功；重试又被幂等守卫挡住，形成"已选中但无 task"这类死局 | 优先同事务内完成可回滚状态；若必须 commit 后调用外部依赖，必须写补偿路径 + 503/可重试错误 + 回归测试。复杂高频场景再升级 outbox / dispatcher |
+| 15 | **PostGIS `ST_*` 函数在 SQLite 测试 fixture 不可用**（v5 task-3.A.6 实证）| service 层加 PostGIS 查询（`ST_HausdorffDistance` / `ST_GeomFromText` 等）时，SQLite fixture 跑会 `OperationalError: no such function: ST_xxx` 让真路径单元测试 fail（task-3.A.6 加 from-gpx 查重时引发 `tests/test_segment_fields.py` 4 fail） | 加 dialect 守卫：`if db.bind.dialect.name == "postgresql":` 内层跑 PostGIS 查询；SQLite 跳过（视为"无重叠"让流程继续）/ 真 PG 才跑产品保护逻辑；MagicMock 测试用 `db.bind.dialect.name = "postgresql"` 显式 mock；dev stack 真 PG 集成测试补真行为。**共享逻辑识别**（CLAUDE.md spec 自审 #2）：跨调用方相同 PostGIS 业务规则必抽 helper（如 `_check_hausdorff_overlap`），守卫在 helper 内统一 |
 
 > **活文档**：每踩新陷阱在这加一条（不要回 architect skill 加——那里只留跨栈通用 3 条）。
 
@@ -397,7 +398,29 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 4. invalidate_power_curve_cache 真删 Redis
 5. 用户进个人页 → GET /api/user/me/power-curve / GET /api/user/me/heatmap / GET /api/user/{id}/profile
 
-**当前位置**：Sprint 2 全闭环 / 下一个 task = **Sprint 3 入口 task-3.A.1（admin 模块框架 / ~1d）**。Sprint 3 路径：3.A.1 → 3.A.2 → 3.A.3 → 3.A.4 → 3.A.5（A 严格串行）+ 3.B.1（H5 独立 repo）+ 3.C.1（候选池 cron）。
+**Sprint 3：admin 工具 + admin H5（进行中 / 2026-05-05 batch A+B+C+D.1 完成）**
+
+A 主轴（admin 后端 / 11 endpoint 全部 /api/admin/* 前缀）：
+- ✅ task-3.A.1 ~ 3.A.5 admin 框架 + 候选池 + 草稿 + 批量管理 + from-activity（5 connection 串行 / 10 endpoint）
+- ✅ task-3.A.6 admin from-gpx endpoint + 老 POST /api/segments Sunset 2026-06-30 deprecated + Hausdorff 共享 helper（commit `1432fad`）
+- ✅ task-3.A.7 admin whoami endpoint（commit `4796704` / admin H5 D.1 登录验证用）
+
+C 主轴（数据基础）：
+- ✅ task-3.C.1 候选池脚本 + cron（commit `6c14efa`）
+
+B 主轴（admin H5）：
+- ✅ task-pre-3.B segment/service.py 拆分（793 红灯 → service.py 189 + service_create.py 257 + service_query.py 380 / commit `1c70a02` / 元层 blocker）
+- ✅ task-3.B.1 D.1 admin H5 项目骨架 + JWT 登录 + 路由壳（独立 repo `~/Desktop/admin-h5` / GitHub `Starsky618/admin-h5` private / Vite + React 19 + TS + AntD 6 / vite build 262ms 0 TS errors / commit `b8d4043` 在 admin-h5 repo）
+- ⏳ task-3.B.1 D.2 候选池审查页（下一个 sub-task）
+- ⏳ task-3.B.1 D.3 草稿审核页 / D.4 批量管理页 / D.5 部署
+- ⏳ task-3.B.2 segment-creator.html 增强（D 全完成后）
+
+**Sprint 3 元层升级（2026-05-05 本会话）**：
+- 全局 ~/.claude/CLAUDE.md TL;DR + §2.1 加"元认知批判性思考（决策前必跑 / 区分合格 vs 顶级工程师的核心层）"为最高优先级锚点
+- velo CLAUDE.md 技术栈陷阱清单第 15 条（PostGIS `ST_*` 函数在 SQLite 测试 fixture 不可用 / 加 dialect 守卫）
+- memory 6 处升级（详 MEMORY.md / 含元认知批判 / 视觉冲击 vs 真复杂度 / 读 diff 不只读报告 / pytest exit code 不可信 / Edit 全角标点 / untracked 待办列表）
+
+**当前位置**：Sprint 3 D.1 完成 / 下一个 = **task-3.B.1 D.2（候选池审查页 / ~1 天 / 派 codex 主开发 + Claude 多轮审）**。
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
 - DEEPSEEK_API_KEY ✅
@@ -409,9 +432,10 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 - Sprint 1 启动条件实际是：DB schema 就位（0.6 已落地）+ 单一 Redis 源（0.8 已落地）+ tz-aware（0.1 已落地）。算法函数 1.A.1 写完后 0.7 立刻回填 = Sprint 1 内部第一动作。
 
 **新会话起手必读**（给下次 /clear 后的主 agent）：
-1. 本 CLAUDE.md（项目规则 + 进度 / Sprint 2 全闭环 / 当前 = Sprint 3 入口）
-2. `docs/plans/phase5/README.md`（29 张 task 索引 / Sprint 0/1/2 全 ✅ / 14 全局约定 + 符号索引）
-3. 当前要做的 `docs/plans/phase5/task-N.X.md` 单张（默认 = `task-3.A.1.md`）
-4. memory（已自动加载 / 含 SAVEPOINT 隔离 + grep stale 模式 + 三审 3 层兜底 + §7 升级标记）
-**禁止**：读 spec-v5.md 全文（2879 行污染上下文）—— task 卡里有 spec 行号引用，需要时只读那段。
-**起手第一动作**：grep 验证 task 卡"现状"块（已实证 6 次必查 / memory `feedback_phase5_task_card_grep_stale.md`）。
+1. 本 CLAUDE.md（项目规则 + 进度 / **Sprint 3 D.1 完成** / 当前 = `task-3.B.1` D.2 候选池审查页）
+2. `docs/plans/phase5/task-3.B.1.md`（D.2-D.5 sub-task 在 §5-§7 / 完整代码模板可直接抄改）
+3. **admin H5 工作目录** `~/Desktop/admin-h5`（独立 GitHub repo `Starsky618/admin-h5` private / Vite + React 19 + TS + AntD 6 / baseline 已就绪 / vite build 实证通过）
+4. **velo backend admin endpoint 全在** `/api/admin/*` 前缀（task-3.A.1 ~ 3.A.7 / 11 个 endpoint / 含 `/admin/whoami` 给 admin H5 登录用）
+5. memory（自动加载 / 25 条 / 含元认知批判性思考 + 视觉冲击 vs 真复杂度 + 三审 3 层兜底 + 等）
+**禁止**：读 spec-v5.md 全文（2879 行污染上下文）—— task 卡有 spec 行号引用，需要时只读那段。
+**D.2 起手第一动作**：派 codex 主开发 + Claude 多轮审 / codex prompt 强调"baseline 已就绪 / 不要 npm install / 只需写 src/api/curation.ts + src/pages/CurationPoolPage.tsx + 实证 npm run build / 不要 commit 让 Claude 多轮审"。
