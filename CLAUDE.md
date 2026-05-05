@@ -425,7 +425,7 @@ B 主轴（admin H5）：
 - velo CLAUDE.md 技术栈陷阱清单第 15 条（PostGIS `ST_*` 函数在 SQLite 测试 fixture 不可用 / 加 dialect 守卫）
 - memory 6 处升级（详 MEMORY.md / 含元认知批判 / 视觉冲击 vs 真复杂度 / 读 diff 不只读报告 / pytest exit code 不可信 / Edit 全角标点 / untracked 待办列表）
 
-**当前位置**：Sprint 1+2+3 **代码层 + 生产部署全部完成（2026-05-05）**。整 40 commit 一次性部署成功 / 10 service stack（api / caddy / cleanup / curation-pool-cron / db / monitor / redis / scheduler / worker / admin-h5）全 Up / 外网 9000 端口 admin H5 HTTP 200。详 `docs/deployment-diary.md` "✅ Sprint 1+2+3 部署完成" 章节。下一个 = Sprint 4 规划（小程序前端 UI 接 Sprint 2 endpoint / 业务侧 admin H5 真用回归）。
+**当前位置**：Sprint 1+2+3 **代码层 + 生产部署全部完成（2026-05-05）**。整 40 commit 一次性部署成功 / 10 service stack（api / caddy / cleanup / curation-pool-cron / db / monitor / redis / scheduler / worker / admin-h5）全 Up / 外网 9000 端口 admin H5 HTTP 200。详 `docs/deployment-diary.md` "✅ Sprint 1+2+3 部署完成" 章节。下一个 = **task-3.B.2 segment-creator.html 增强（Sprint 3 admin H5 收尾）** / 之后 Sprint 4 规划（小程序前端 UI 接 Sprint 2 endpoint / 业务侧 admin H5 真用回归）。
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
 - DEEPSEEK_API_KEY ✅
