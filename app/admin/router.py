@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # 3.A.3 追加：AI 草稿审核 endpoints
 # 3.A.4 追加：批量管理 endpoints (GET /segments, PATCH /segments/{id})
 # 3.A.5 追加：from-activity endpoint (POST /segments/from-activity)
+# 3.A.6 追加：from-gpx endpoint (POST /segments/from-gpx)
 # 路由顺序约定：精确路径必须放在 /{id} 之前，避免 GET /segments/from-activity
 # 被未来的 GET /segments/{id} 吞掉后返回 422。
 
@@ -133,6 +134,40 @@ def create_segment_from_activity_admin(
     except ValueError as e:
         db.rollback()
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post(
+    "/segments/from-gpx",
+    response_model=schemas.AdminSegmentResponse,
+    status_code=201,
+)
+def create_segment_from_gpx_admin(
+    body: schemas.FromGpxRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """从 admin 上传的 GPX 解析后坐标点创建赛段。"""
+    try:
+        segment = segment_service.create_segment(
+            db=db,
+            user_id=admin.id,
+            name=body.name,
+            reference_points=body.reference_points,
+            description=body.description,
+            match_tolerance=body.match_tolerance,
+            min_match_ratio=body.min_match_ratio,
+            coordinate_system=body.coordinate_system,
+        )
+        return admin_service.admin_segment_response(segment)
+    except PermissionError as e:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except SegmentOverlapError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e))
 
 
 @router.get("/segments", response_model=schemas.AdminSegmentListResponse)

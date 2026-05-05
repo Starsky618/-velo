@@ -221,6 +221,7 @@ def test_create_segment_too_short():
 def test_create_segment_overlap():
     """Hausdorff 查重命中时抛 SegmentOverlapError。"""
     db = MagicMock()
+    db.bind.dialect.name = "postgresql"  # task-3.A.6 N1：dialect 守卫只在 PG 真跑 Hausdorff
     activity_query = _FakeQuery(first_value=SimpleNamespace(id=1))
     tp_query = _FakeQuery(all_value=[
         SimpleNamespace(seq=0, latitude=37.0, longitude=112.0, elevation=10.0),

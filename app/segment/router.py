@@ -18,32 +18,45 @@
 """
 
 import json
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.segment import schemas, service
+from app.segment.exceptions import SegmentOverlapError
 from app.segment.models import Segment
 
 # 创建路由器，所有赛段相关接口都挂在 /api/segments 下
 router = APIRouter(prefix="/api/segments", tags=["segment"])
+logger = logging.getLogger(__name__)
 
 
-@router.post("", response_model=schemas.SegmentResponse)
+@router.post("", response_model=schemas.SegmentResponse, deprecated=True)
 def create_segment(
     req: schemas.SegmentCreateRequest,
+    response: Response,
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    创建赛段——管理员专用。
+    [DEPRECATED 2026-05-05] 创建赛段——迁到 POST /api/admin/segments/from-gpx。
 
     管理员提交一组 GPS 坐标点（至少 2 个），
     后端自动计算距离、爬升，生成 PostGIS 赛段线条。
     普通用户调用会收到 403 错误。
     """
+    # DEPRECATED: task-3.B.2 切完 segment-creator.html 后删除旧入口。
+    logger.warning(
+        "DEPRECATED endpoint POST /api/segments called by user_id=%s. "
+        "Migrate to /api/admin/segments/from-gpx.",
+        user_id,
+    )
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = "Tue, 30 Jun 2026 00:00:00 GMT"
+
     # 把 Pydantic 对象转成 dict 列表传给 service
     points = [p.model_dump() for p in req.reference_points]
 
@@ -62,6 +75,10 @@ def create_segment(
         raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except SegmentOverlapError as e:
+        # task-3.A.6 修补副作用：service 加 Hausdorff 查重后老 endpoint 也要翻译 409
+        # 否则 segment-creator.html 用户上传重复赛段会得 500（产品保护硬约束）
+        raise HTTPException(status_code=409, detail=str(e))
 
     # 距离：米 → 公里，保留 2 位小数（手动构造响应，避免 ORM 脏数据问题）
     # elevation_profile 存储为 JSON 字符串，返回前反序列化成列表

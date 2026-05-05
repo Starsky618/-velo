@@ -24,6 +24,39 @@ from app.segment.models import Segment
 from app.user.models import User
 
 
+# ==================== 共享：Hausdorff 重复检测（v5 task-3.A.6 / spec 自审 #2 共享逻辑识别）====================
+
+def _check_hausdorff_overlap(db: Session, wkt: str) -> bool:
+    """检查给定 WKT LINESTRING 是否与既有赛段高度重叠（Hausdorff 距离 < 0.0005°）。
+
+    类比：「拿一根新绳子比对已有的所有绳子」——如果新绳子整体形状和某根已有绳子贴得很近
+    （Hausdorff 距离衡量"两条线最远偏离点的距离"），就视为重复，避免同路段被反复建赛段。
+
+    陷阱警示：不用 ST_Intersection + ST_Length —— 它容易把局部交叉误判成整体重复。
+
+    dialect 守卫：仅 PostgreSQL/PostGIS 环境真跑——SQLite 测试 fixture 不支持
+    ST_HausdorffDistance / ST_GeomFromText。SQLite 直接返 False（视为"没重叠"让插入继续），
+    实际产品保护在生产真 PG 起作用。SQLite 单元测试不该验"查重"业务规则
+    （应在 dev stack 真 PG 集成测试验证 / 详 task-3.A.6 review N1 决策）。
+
+    返回：True = 已有重叠 / False = 没有重叠。
+    """
+    if db.bind.dialect.name != "postgresql":
+        return False
+    overlap = db.execute(
+        text(
+            """
+            SELECT id
+            FROM segments
+            WHERE ST_HausdorffDistance(reference_line, ST_GeomFromText(:wkt, 4326)) < :threshold
+            LIMIT 1
+            """
+        ),
+        {"wkt": wkt, "threshold": 0.0005},
+    ).first()
+    return overlap is not None
+
+
 # ==================== 创建赛段 ====================
 
 def create_segment(
@@ -132,6 +165,13 @@ def create_segment(
     segment.match_tolerance = match_tolerance if match_tolerance is not None else 50.0
     segment.min_match_ratio = min_match_ratio if min_match_ratio is not None else 0.8
 
+    # Hausdorff 查重：用共享 helper 跨 from-gpx + from-activity 两条创建路径（task-3.A.6 review N1）
+    _hausdorff_coords = ", ".join(
+        f"{p['lon']} {p['lat']}" for p in reference_points
+    )
+    if _check_hausdorff_overlap(db, f"LINESTRING({_hausdorff_coords})"):
+        raise SegmentOverlapError("新赛段与已有赛段高度重叠")
+
     db.add(segment)
     db.commit()
     db.refresh(segment)
@@ -202,22 +242,10 @@ def create_segment_from_activity(
         raise InvalidSegmentRangeError("赛段太短，至少 1 公里")
     avg_gradient = (elevation_gain - elevation_loss) / distance * 100 if distance > 0 else 0.0
 
-    # 4. Hausdorff 查重：比较两条线整体是否贴得太近，避免同一路段被重复建赛段。
-    # 陷阱警示：不用 ST_Intersection + ST_Length，它容易把局部交叉误判成整体重复。
+    # 4. Hausdorff 查重：用共享 helper（防御 / 跨 from-gpx + from-activity 一致 / dialect 守卫含 SQLite 兼容）
     coords = ", ".join(f"{p.longitude} {p.latitude}" for p in tps)
     wkt = f"LINESTRING({coords})"
-    overlap = db.execute(
-        text(
-            """
-            SELECT id
-            FROM segments
-            WHERE ST_HausdorffDistance(reference_line, ST_GeomFromText(:wkt, 4326)) < :threshold
-            LIMIT 1
-            """
-        ),
-        {"wkt": wkt, "threshold": 0.0005},
-    ).first()
-    if overlap is not None:
+    if _check_hausdorff_overlap(db, wkt):
         raise SegmentOverlapError("新赛段与已有赛段高度重叠")
 
     # 5. 自动推断城市和难度。调用方没填时，系统用起点和坡度尺自己判断。

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 AiDraftStatus = Literal["pending", "human_edited", "approved", "rejected"]
 City = Literal[
@@ -136,3 +136,33 @@ class FromActivityRequest(BaseModel):
         if self.end_index <= self.start_index:
             raise ValueError("end_index must > start_index")
         return self
+
+
+class FromGpxRequest(BaseModel):
+    """admin 从 GPX 解析后的坐标点创建赛段。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=2, max_length=128)
+    description: str | None = Field(None, max_length=2000)
+    reference_points: list[dict] = Field(..., min_length=2)
+    match_tolerance: float | None = Field(None, gt=0, le=200)
+    min_match_ratio: float | None = Field(None, ge=0, le=1)
+    coordinate_system: Literal["gcj02", "wgs84"] = "gcj02"
+
+    @field_validator("reference_points")
+    @classmethod
+    def validate_points(cls, v):
+        """每个点都要有经纬度，就像地址必须同时有街道和门牌。"""
+        for p in v:
+            if "lat" not in p or "lon" not in p:
+                raise ValueError("每个点必须含 lat/lon")
+            lat = p["lat"]
+            lon = p["lon"]
+            if not isinstance(lat, int | float) or not isinstance(lon, int | float):
+                raise ValueError("lat/lon 必须是数字")
+            if not (-90 <= lat <= 90):
+                raise ValueError(f"lat 越界: {lat}")
+            if not (-180 <= lon <= 180):
+                raise ValueError(f"lon 越界: {lon}")
+        return v

@@ -18,10 +18,11 @@
 | `POST /api/admin/segments/from-gpx` | admin 提交 reference_points → 创建赛段 | 新增 |
 | `POST /api/segments` | 老路径，segment-creator.html 临时仍调 | deprecated（task-3.B.2 切完后删） |
 
-## 🧱 现状（grep 已验证 2026-05-05）
+## 🧱 现状（grep 已验证 2026-05-05 / 含批次 B 拆分后）
 
-- `app/segment/service.py:49 create_segment()` 函数已存在
-- service 层守卫：第 70-72 行 `if not user or not user.is_admin: raise PermissionError("需要管理员权限")` ✅
+- `create_segment()` 函数现位于 `app/segment/service_create.py:29`（task-pre-3.B 拆分后 / commit `1c70a02`）
+- service.py 已转导出：调用方 `from app.segment.service import create_segment` 仍工作 ✅ admin endpoint 实施 import 路径不变
+- service 层守卫现在 `service_create.py:51-52`：`if not user or not user.is_admin: raise PermissionError("需要管理员权限")` ✅
 - `app/segment/router.py:34 POST /api/segments` 现存（segment-creator.html 调）
 - v5 admin 路径前缀：`/api/admin/*`（task-3.A.1 ~ 3.A.5 全部遵守，老 `/api/segments` 破坏一致性）
 
@@ -129,7 +130,7 @@ def create_segment(
         "DEPRECATED endpoint POST /api/segments called by user_id=%s. Migrate to /api/admin/segments/from-gpx.",
         user_id,
     )
-    response.headers["Sunset"] = "Wed, 30 Jun 2026 00:00:00 GMT"
+    response.headers["Sunset"] = "Tue, 30 Jun 2026 00:00:00 GMT"
     response.headers["Deprecation"] = "true"
     
     # 原逻辑保持不变（service 层已有 admin 守卫）
@@ -225,4 +226,4 @@ feat(admin): 任务 3.A.6 admin from-gpx endpoint (5.D.6)
    - 两层语义不同（authorization layer），都不能省
 
 3. **`SegmentOverlapError` 出现在 from-gpx 场景吗？**
-   → 是。`segment.service.create_segment` 内部走 Hausdorff 重复检测（task-1.A.2 实现）。admin 上传一个和已有赛段几乎重合的轨迹 → 409，避免赛段污染。
+   → 是。`segment.service.create_segment` 内部走 Hausdorff 重复检测（task-3.A.6 修补 / 复用 from-activity Hausdorff pattern）。admin 上传一个和已有赛段几乎重合的轨迹 → 409，避免赛段污染。
