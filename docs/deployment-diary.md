@@ -290,6 +290,12 @@ FEISHU_BOT_WEBHOOK=<待 Tim 确认>    # Sprint 1.C.1 monitor 告警 / 没配则
 3. **monitor 静默是设计**：4min 软目标超 + 飞书告警，无问题就不打印日志（避免日志噪音）/ 看 `docker compose top monitor` 验证进程在跑
 4. **admin token 签发**：admin = 普通 user JWT + DB `users.is_admin=true` / 没独立登录 endpoint / 容器内 `python -c "from app.user.service import create_token; print(create_token(1))"`（user_id=1 是 admin_prod / 7 天有效）
 
+5. **一次性脚本部署 3 次踩坑**（2026-05-06 R1 恢复脚本 / 跨项目通用教训）：
+   - **错 1**：`python -m scripts.x` 失败 / `No module named 'scripts.x'` —— scripts/ 目录没 `__init__.py` 不是 Python 包。**修**：用文件路径 `python scripts/x.py`
+   - **错 2**：`python scripts/x.py` 失败 / `No such file: /app/scripts/x.py` —— 服务器 git pull 拿到新脚本但 `velo-api` image 没 rebuild / 容器内 `/app/scripts/` 是旧 image 快照。**修**：`sudo docker compose build api && up -d api` 让 image 含新脚本
+   - **错 3**：rebuild 后跑 `python scripts/x.py` 失败 / `No module named 'app'` —— 脚本 `from app.xxx` 但 cwd `/app` 不在 `sys.path`（python 默认 sys.path[0] = 脚本所在目录 `/app/scripts`）。**修**：`docker compose exec -T -e PYTHONPATH=/app api python scripts/x.py`
+   - **永久修**（写新一次性脚本时）：脚本顶部加 `sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))`（参考 `cleanup_zombies.py` line 1 / 项目已有 pattern）/ 这样不需要 PYTHONPATH 也能跑
+
 ### 当前生产 stack（10 service）
 
 ```
