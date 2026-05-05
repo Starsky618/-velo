@@ -191,13 +191,88 @@
 - 现状：admin H5 草稿审核只有「通过 / 拒绝」/ 拒绝后 segment.description 依然空 / 但 admin 没法表达「永久跳过 / 不再生成」
 - 未来方向：审稿状态机加「skip」状态 → segment.description 永久空 / 不再 enqueue AI 重生
 
-**P1.PROD-2「AI 介绍很假 / 没特色 / admin 还得自己写」**（AI 输出质量）
+**P1.PROD-2「AI 介绍很假 / 没特色 / admin 还得自己写」**（AI 输出质量 / 2026-05-06 重新定义）
 - 现状：DeepSeek prompt 只喂 metadata（坐标 / 距离 / 爬升 / 难度）+ 调性要求 / 没真实"地气"输入
 - 本质：metadata 写不出特色 / 活人感来自人 / AI 退化为格式补全工具
-- 三层未来方向（待 PRD 决策性价比）：
-  - 短期：admin 起草前先填「关键风味词」3-5 个 → AI 用补充输入再写
-  - 中期：admin 已通过的改稿当 few-shot examples（让 AI 学 admin 的口吻）
-  - 长期：retrieval（赛段评论 / 骑友分享）做 RAG 输入
+
+### AI 角色重定义（2026-05-06 Tim 真用 + 7 条改写洞察）
+
+读 Tim 7 条 approved 改稿（segment_id 6/8/9/10/20/21/22）/ 提炼出**他的独家武器**：
+
+1. **致命点警告**（事故 / 安全）—— "已发生多起车祸事故！且旁边就是悬崖" / "切记提前减速！不可逆行" / "经常有汽车或摩托越线行驶"
+2. **实用补给情报** —— "终点旁边有补给，可买水、面皮和夹肉饼，约 10 元" / "藤原豆腐店（三岔路口左转上陡坡 500 米 / 平均 10%）"
+3. **跨 GEO 社交基准** —— "横岭被戏称为'太原妙峰山'" / "进阶爬坡手 45 分钟大关 / 40 分钟以内是…" / "整体强度类似北京戒台寺"
+
+**这三类 AI 永远编不出**：实地骑过 + 当地骑友口述 + 跨 GEO 横向语义网。AI 写出"教你做人""断腿前的最后一哆嗦""骨科预备役"语言节奏好但**全是空梗**（无真实事故 / 无补给 / 无基准）。
+
+**重新定义**：
+```
+Tim（人）= raw material 来源（实地 + 当地圈子 + 网络评价 + 微信聊天记录）
+AI       = 格式编辑器（不生成内容 / 只把散乱情报结构化 + 节奏化）
+```
+类比：Tim 是**现场记者** / AI 是**美编**。两者互补 / 不替代。
+
+### 形态 B 详细设计（Tim 2026-05-06 拍 / 待 Sprint 5+ PRD）
+
+**核心**：建 `segment_facts` 表存 raw 情报点 / AI 拼装时引用 / 事实可追溯到来源。
+
+**Schema 草案**：
+```sql
+CREATE TABLE segment_facts (
+  id SERIAL PRIMARY KEY,
+  segment_id INT NOT NULL REFERENCES segments(id) ON DELETE CASCADE,
+  fact_type VARCHAR(20) NOT NULL CHECK (fact_type IN (
+    'safety',      -- 致命点 / 事故警告
+    'supply',      -- 补给点 / 商家 / 价格
+    'benchmark',   -- 时间基准 / 跨 GEO 对标
+    'history',     -- 历史 / 文化梗
+    'condition',   -- 路况 / 季节性 / 时段
+    'misc'
+  )),
+  content TEXT NOT NULL,
+  source VARCHAR(20) NOT NULL CHECK (source IN (
+    'admin_field',     -- Tim 实地骑过 / 朋友讲述
+    'user_comment',    -- segment_efforts 评论
+    'web_scrape',      -- 小红书 / 微博 / 抖音 / 知乎爬虫
+    'wechat_log'       -- 微信聊天记录手工 ingest
+  )),
+  source_ref TEXT,         -- 来源 URL / 用户 ID / 聊天截图路径
+  weight INT DEFAULT 1,    -- 权重（admin_field 权重高 / web_scrape 低）
+  created_at TIMESTAMPTZ DEFAULT now(),
+  is_active BOOLEAN DEFAULT TRUE  -- admin 可关闭过时情报
+);
+```
+
+**AI 拼装 prompt 设计原则**：
+- 不让 AI 自己**编**安全警告 / 补给详情 / 时间基准（这三类必须**只**从 segment_facts 引用）
+- AI 只负责：组织顺序 + 段落分层 + 节奏润色
+- prompt 模板大致：
+  ```
+  这条赛段的 metadata：{distance}/{elevation}/{difficulty}/{city}
+  本地实测情报（必须保留 / 不可删 / 不可改事实）：
+  - 致命点：{safety_facts}
+  - 补给：{supply_facts}
+  - 时间基准：{benchmark_facts}
+  - 历史 / 梗：{history_facts}
+  请把上面情报组织成 100-200 字的段落 / 节奏自然 / 不堆砌 / 致命点放显眼位置。
+  ```
+
+**数据来源演进**：
+1. **短期（Sprint 5）**：admin H5 加 `segment_facts` CRUD UI / Tim 自己录 + 录的同时 AI 自动拼装 description
+2. **中期（Sprint 6+）**：用户骑完 segment 在 segment_efforts 写评论 / admin 审核高质量评论标 fact_type 入库
+3. **长期（Sprint 7+）**：网络爬虫（小红书 / 抖音 / 微博 / 知乎）+ LLM 语义提取 fact / admin 审入库
+4. **最长期（Sprint 8+）**：微信聊天记录手工 ingest（隐私敏感 / 性价比待评估 / 可能不做）
+
+**与 PROD-3 的关系**：PROD-3「信息源不全」是"raw material 哪里来" / PROD-2 形态 B 是"raw material 怎么用"。两者**配套**——PROD-3 解决供给端 / PROD-2 解决消费端。
+
+**为什么不现做**：
+- 当前 v5 admin H5 已经能让 Tim 手工写 description（活人感真情报已能进库 / 7 条实证）
+- 形态 B 是 scale 时的事（赛段 50 → 500 时手工写不动 / 才需要拼装机制）
+- 50 条规模手工写 OK / 500 条才需 AI 辅助拼装
+
+**触发条件 / 何时升级**：
+- 候选池 selected 数量 > 50 / 手工写吃不消时
+- 或 Tim 觉得"raw material 多了 / AI 拼装比手写省力"时
 
 **P1.PROD-5「活动列表索引筛选 / 像 Strava 按日期/距离/时长筛」**（UX + endpoint 扩展 / 非架构）
 - 现状：home.js 列表已支持加载更多（v5 commit / onReachBottom 翻页）/ 但**没有筛选**
