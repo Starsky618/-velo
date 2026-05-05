@@ -170,6 +170,96 @@ sudo docker compose exec db psql -U velo
 sudo docker compose exec api python
 ```
 
+## 🚧 部署积压（截至 2026-05-05 / D.5 启动时发现）
+
+> **背景**：D.5 admin-h5 部署执行时（ssh 服务器准备 git clone）发现 `origin/main` HEAD 停在 `c36a204`（2026-04-29 Sprint 0 末尾），Mac 本地有 **39 个未 push commit**——整个 Sprint 1 + Sprint 2 + Sprint 3 所有开发都没上生产。Tim 拍：暂停 D.5 服务器部署，先把积压清单沉淀，未来抽时间统一部署。
+
+### 服务器现状（部署前 baseline）
+
+```
+服务器 ~/velo HEAD = c36a204  ← 2026-04-29 Sprint 0 末尾（战略升级第 4 commit）
+docker stack 跑：api / caddy / cleanup / db / redis / scheduler / worker
+不在 stack：monitor / curation-pool-cron / admin-h5（这 3 个是积压期内新增）
+```
+
+### 积压范围
+
+**39 个未 push commit / 涵盖 12+ 周开发量**
+
+| Sprint | 范围 | 关键改动 |
+|---|---|---|
+| **Sprint 0 末尾**（已 push 到 c36a204）| 已上线 | task-0.1 ~ 0.8 全部部署 |
+| **Sprint 1**（赛段内容深化 / ~6 commit）| 未部署 | 新增 `app/agent/`（DeepSeek + RQ AI 草稿）/ `app/monitor/`（4min 软目标 + 飞书告警）/ segment 算法纯函数扩展 |
+| **Sprint 2**（数据成长 + 个人页 / ~7 commit）| 未部署 | 新增 `app/notification/progress_detector.py` / `app/segment/power_curve.py` / user.router 4 endpoint / city 字段防回退 / SAVEPOINT 升级 |
+| **Sprint 3**（admin 工具 + admin H5 / ~26 commit）| 未部署 | 新增 `app/admin/` 整模块（11 endpoint）/ `app/agent/segment_writer.py` / segment service 拆分（service.py + service_create.py + service_query.py）/ scripts/generate_curation_pool.py / admin-h5 docker service |
+
+### 容器 stack 增量（docker-compose.yml）
+
+需要新启动 3 个 service：
+1. **monitor**：worker 软目标监控 + 飞书告警（Sprint 1 task-1.C.1 / 依赖 `FEISHU_BOT_WEBHOOK` env）
+2. **curation-pool-cron**：候选池每周刷新（Sprint 3 task-3.C.1 / 依赖现有 DB env）
+3. **admin-h5**：管理员后台（Sprint 3 D.5 / build context `../admin-h5` / ports 9000:80 / 依赖 admin-h5 repo 服务器 clone）
+
+worker service 改动：`RQ_QUEUES: "velo,ai_drafts"` 多队列 + 加 `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` env（Sprint 1 task-1.B.1）
+
+### .env 新增变量（Tim 已配 ~/velo/.env / 2026-04-29 备份 ~/velo/.env.bak.20260429）
+
+```
+DEEPSEEK_API_KEY=<已配>             # Sprint 1.B.1 AI 草稿生成
+DEEPSEEK_MODEL=deepseek-chat       # Sprint 1.B.1 默认值
+FEISHU_BOT_WEBHOOK=<待 Tim 确认>    # Sprint 1.C.1 monitor 告警 / 没配则飞书告警静默
+```
+
+### Migration 改动
+
+**0 个未 push migration**（所有 migration 都在 origin/main 已含 / 含 phase5_v5_db_changes + phase5_tz_aware）。但要确认这些是否真在生产 PG 跑过 —— 部署前必跑 `sudo docker compose exec api python -m alembic current` 看 head version 对得上不。
+
+### 高风险点（部署前必 review）
+
+1. **DB schema 已迁但生产是否 alembic 当前 head**：phase5_v5_db_changes.py 引入了 segments 城市枚举 / segment_curation_pool / segment_ai_drafts / progress_notification 等表 + ALTER 多表 → 必须真跑过 / 且回滚路径已实证
+2. **worker 多队列**：从单 `velo` 队列扩到 `velo,ai_drafts` —— 旧 worker 重启拉新 RQ_QUEUES 才生效 / 部署时 worker 必须重启
+3. **scheduler 改动**（task-0.3 ensure_valid_token 兜底）—— scheduler 容器必须重启
+4. **admin endpoint 整模块新增**（11 endpoint 含 from-gpx 真 PG Hausdorff 查重 / 候选池 / AI 草稿 / segments PATCH+DELETE）—— 没在生产真 PG 实证过 / Sprint 3 收尾的 tech-debt 已记 dev stack 真 PG Hausdorff 集成测试缺失
+5. **service.py 拆分**（task-pre-3.B / 重命名 + re-export）—— 任何外部 caller 用 import 路径有变 / 但内部用 re-export 兼容 / 风险低但要 grep import 实证
+6. **3 个新 service 容器**：第一次起 / Dockerfile 共享 velo 主 Dockerfile（除 admin-h5 用 admin-h5 自己的 Dockerfile + nginx）→ 镜像 build 一次复用
+7. **腾讯云安全组**：admin-h5 需要放行 TCP 9000 入站（首次 9000 端口暴露）
+
+### 推荐部署顺序（分阶段 / 不一次性上）
+
+**阶段 1：backend 主体上线**（含 Sprint 1+2 + Sprint 3 admin endpoints）
+1. Mac `git push origin main`（一次性 39 个 commit）
+2. 服务器 `cd ~/velo && git pull`
+3. 服务器 `sudo docker compose build api worker scheduler cleanup`
+4. 服务器 `sudo docker compose exec api python -m alembic current` 看版本 / 如不到 head 跑 `alembic upgrade head`
+5. 服务器 `sudo docker compose up -d api worker scheduler cleanup`（重启已有 service）
+6. **冒烟**：curl 几个核心 endpoint（GET /api/users/me / GET /api/admin/whoami（先生成 admin token）/ GET /api/admin/curation-pool）
+
+**阶段 2：新 service 上线**（monitor + curation-pool-cron）
+7. 服务器 `sudo docker compose up -d monitor curation-pool-cron`
+8. **冒烟**：`docker compose logs monitor --tail 20`（看是否正常 4min 探测）
+
+**阶段 3：admin-h5 部署**（Sprint 3 D.5）
+9. **腾讯云控制台**：放行 TCP 9000 入站
+10. Mac `git push origin main`（admin-h5 repo / 已 push 但确认）
+11. 服务器 admin-h5 clone：因为服务器 SSH key 是 velo repo deploy key 不是账号级 → 必须用 ① HTTPS+PAT 或 ② 给 admin-h5 加 deploy key 或 ③ scp 备用方案（README 已写完整命令）
+12. 服务器 `cd ~/velo && sudo docker compose build admin-h5 && sudo docker compose up -d admin-h5`
+13. **冒烟**：`curl -I http://114.132.190.245:9000/`（期望 200）+ 浏览器粘贴 admin token 进候选池页
+
+### 部署窗口前 review 清单
+
+- [ ] 完整审 39 个 commit 的双审 / Codex 异源审记录（spot check 几个高风险 task：task-1.B.1 AI agent / task-2.A.1 SAVEPOINT 升级 / task-3.A.6 Hausdorff 查重 / task-pre-3.B service 拆分）
+- [ ] tech-debt.md 扫一遍 Sprint 3 期间记的所有 follow-up（如 Hausdorff dev stack 真 PG 集成测试 / admin 草稿 reject human_edited_text 残留）
+- [ ] .env 真有 DEEPSEEK_API_KEY 和 FEISHU_BOT_WEBHOOK
+- [ ] 准备 admin-h5 deploy 凭证（PAT 或 deploy key 或 scp 方案）
+- [ ] 部署窗口预留 2-4 小时 / 含 backup（DB pg_dump）+ 回滚路径
+- [ ] 一阶段一阶段冒烟 / 不一次性全 up
+
+### 暂停理由
+
+不应该一次性 push + 部署 12+ 周积压 —— 风险面太大 / 出错难定位 / Tim 拍"系统稳定性最高优先级"。先暂停，未来抽 4 小时窗口分阶段执行。
+
+---
+
 ## 给未来 Agent 的提醒
 
 1. **读这个文件和 deploy skill 再动手。** 不要自作主张用 git clone 或多行 SSH 命令。

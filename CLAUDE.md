@@ -411,16 +411,19 @@ C 主轴（数据基础）：
 B 主轴（admin H5）：
 - ✅ task-pre-3.B segment/service.py 拆分（793 红灯 → service.py 189 + service_create.py 257 + service_query.py 380 / commit `1c70a02` / 元层 blocker）
 - ✅ task-3.B.1 D.1 admin H5 项目骨架 + JWT 登录 + 路由壳（独立 repo `~/Desktop/admin-h5` / GitHub `Starsky618/admin-h5` private / Vite + React 19 + TS + AntD 6 / vite build 262ms 0 TS errors / commit `b8d4043` 在 admin-h5 repo）
-- ⏳ task-3.B.1 D.2 候选池审查页（下一个 sub-task）
-- ⏳ task-3.B.1 D.3 草稿审核页 / D.4 批量管理页 / D.5 部署
-- ⏳ task-3.B.2 segment-creator.html 增强（D 全完成后）
+- ✅ task-3.B.1 D.2 候选池审查页（commit `772be83` / admin-h5 repo）
+- ✅ task-3.B.1 D.3 AI 草稿审核页（commit `5047d98` / admin-h5 repo）
+- ✅ task-3.B.1 D.4 批量管理页 + I1/I2 整改（commit `c7cbfcb` / admin-h5 repo / 抽 getErrorDetail 公共 helper）
+- ✅ task-3.B.1 D.5 容器化部署文件（admin-h5 commit `7e736d4` Dockerfile + nginx.conf + .dockerignore + README SOP / velo commit `c48ab8f` docker-compose 加 admin-h5 service / Claude 主开发 + codex 异源审通过）
+- ⏳ task-3.B.1 D.5 服务器部署执行 — **暂停 / 详 docs/deployment-diary.md "🚧 部署积压" 章节**
+- ⏳ task-3.B.2 segment-creator.html 增强（D.5 真部署完成后）
 
 **Sprint 3 元层升级（2026-05-05 本会话）**：
 - 全局 ~/.claude/CLAUDE.md TL;DR + §2.1 加"元认知批判性思考（决策前必跑 / 区分合格 vs 顶级工程师的核心层）"为最高优先级锚点
 - velo CLAUDE.md 技术栈陷阱清单第 15 条（PostGIS `ST_*` 函数在 SQLite 测试 fixture 不可用 / 加 dialect 守卫）
 - memory 6 处升级（详 MEMORY.md / 含元认知批判 / 视觉冲击 vs 真复杂度 / 读 diff 不只读报告 / pytest exit code 不可信 / Edit 全角标点 / untracked 待办列表）
 
-**当前位置**：Sprint 3 D.1 完成 / 下一个 = **task-3.B.1 D.2（候选池审查页 / ~1 天 / 派 codex 主开发 + Claude 多轮审）**。
+**当前位置**：Sprint 3 admin H5 D.1 ~ D.5 **代码层全部完成**（admin-h5 repo 5 commit / velo backend 1 commit）。**生产部署执行暂停** —— 2026-05-05 D.5 起手发现 Sprint 1+2+3 全部 39 commit 未 push / 整 12 周开发量积压未上线 / Tim 拍暂停统一部署窗口（详 `docs/deployment-diary.md` "🚧 部署积压" 章节）。下一个 = 等 Tim 排"生产部署窗口"统一上线 backend + admin-h5。
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
 - DEEPSEEK_API_KEY ✅
@@ -432,10 +435,10 @@ B 主轴（admin H5）：
 - Sprint 1 启动条件实际是：DB schema 就位（0.6 已落地）+ 单一 Redis 源（0.8 已落地）+ tz-aware（0.1 已落地）。算法函数 1.A.1 写完后 0.7 立刻回填 = Sprint 1 内部第一动作。
 
 **新会话起手必读**（给下次 /clear 后的主 agent）：
-1. 本 CLAUDE.md（项目规则 + 进度 / **Sprint 3 D.1 完成** / 当前 = `task-3.B.1` D.2 候选池审查页）
-2. `docs/plans/phase5/task-3.B.1.md`（D.2-D.5 sub-task 在 §5-§7 / 完整代码模板可直接抄改）
-3. **admin H5 工作目录** `~/Desktop/admin-h5`（独立 GitHub repo `Starsky618/admin-h5` private / Vite + React 19 + TS + AntD 6 / baseline 已就绪 / vite build 实证通过）
+1. 本 CLAUDE.md（项目规则 + 进度 / **Sprint 3 admin H5 D.1 ~ D.5 代码层全部完成** / 但**生产部署积压 / 暂停服务器部署执行** / Tim 待排部署窗口）
+2. **`docs/deployment-diary.md` "🚧 部署积压" 章节**（必读 / 39 commit 未 push 清单 + 3 阶段部署顺序 + 风险点 + 凭证准备）
+3. **admin H5 工作目录** `~/Desktop/admin-h5`（独立 GitHub repo `Starsky618/admin-h5` private / 已 push origin/main / D.1-D.5 commit `7e736d4` 含 Dockerfile + nginx.conf）
 4. **velo backend admin endpoint 全在** `/api/admin/*` 前缀（task-3.A.1 ~ 3.A.7 / 11 个 endpoint / 含 `/admin/whoami` 给 admin H5 登录用）
-5. memory（自动加载 / 25 条 / 含元认知批判性思考 + 视觉冲击 vs 真复杂度 + 三审 3 层兜底 + 等）
+5. memory（自动加载 / 25+ 条 / 含元认知批判性思考 + 双向异源审 + 三审 3 层兜底 + 等）
 **禁止**：读 spec-v5.md 全文（2879 行污染上下文）—— task 卡有 spec 行号引用，需要时只读那段。
 **D.2 起手第一动作**：派 codex 主开发 + Claude 多轮审 / codex prompt 强调"baseline 已就绪 / 不要 npm install / 只需写 src/api/curation.ts + src/pages/CurationPoolPage.tsx + 实证 npm run build / 不要 commit 让 Claude 多轮审"。
