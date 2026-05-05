@@ -127,9 +127,9 @@ function LoginPage() {
   const setAuth = useAuthStore(s => s.setAuth);
   
   async function handleSubmit() {
-    // 校验 token：调一个轻量 endpoint（如 GET /api/users/me 看 is_admin）
+    // 校验 token：调 GET /api/admin/whoami（task-3.A.7 / Tim 2026-05-05 拍方案 C / 独立 admin endpoint 不污染 user 域）看 is_admin
     try {
-      const r = await axios.get('/api/users/me', {
+      const r = await axios.get('/api/admin/whoami', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!r.data.is_admin) {

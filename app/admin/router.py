@@ -22,6 +22,19 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # 被未来的 GET /segments/{id} 吞掉后返回 422。
 
 
+@router.get("/whoami", response_model=schemas.WhoamiResponse)
+def whoami_admin(
+    admin: User = Depends(require_admin),
+):
+    """返回当前管理员身份。"""
+    return schemas.WhoamiResponse(
+        user_id=admin.id,
+        nickname=admin.nickname,
+        is_admin=admin.is_admin,
+        created_at=admin.created_at,
+    )
+
+
 @router.get("/curation-pool", response_model=schemas.CurationPoolListResponse)
 def list_curation_pool(
     selected: bool | None = Query(None),

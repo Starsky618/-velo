@@ -18,6 +18,17 @@ City = Literal[
 Difficulty = Literal["easy", "medium", "hard", "extreme"]
 
 
+class WhoamiResponse(BaseModel):
+    """当前管理员身份响应。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: int
+    nickname: str | None = None
+    is_admin: bool
+    created_at: datetime
+
+
 class CurationPoolItem(BaseModel):
     """候选池列表的一行，给后台 H5 勾选精选赛段用。"""
 
