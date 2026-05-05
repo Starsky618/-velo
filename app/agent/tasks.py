@@ -30,6 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from app.agent.segment_writer import generate_segment_draft
 from app.database import SessionLocal
 from app.segment.models import Segment, SegmentAiDraft
+from app.user.models import User  # noqa: F401  worker 进程必须 import User 让 SQLAlchemy 注册 users 表 mapper / 否则 segment_ai_drafts.editor_user_id FK 解析时炸 NoReferencedTableError
 
 
 logger = logging.getLogger(__name__)
