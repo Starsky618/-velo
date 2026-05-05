@@ -154,6 +154,12 @@ CLAUDE.md 标注的纯函数（不碰 DB / 不碰文件系统）：
 - task-3.A.2 互审：Claude 撤回 A 路径（worker 守卫会误伤 task-3.A.3 手动入口），改 B 补偿回滚收敛
 - task-3.A.2 → 3.C.1：codex 主开发未自审 → Claude 一审兜抓 Important 5/5（spec drift / DB+Queue 一致性 / 异常翻译 / spec 砍城市维度 / prune 实施超 spec）。Claude 兜底成功但属字面违规三审（少 codex 自审环节）；本次升级状态机补对称化
 
+实证（2026-05-05 task-3.B.1 D.4 / 双向对称补全 / Tim 拍"旁观者清"原则）：
+- **场景**：codex 主开发 D.4 → Claude 集成审抓 2 Important（I1 typing 错误 + I2 modal 文案）→ 根因溯源是 Claude 在 D.2 整改时自己 Edit 写错的 typing `AxiosError<{ detail?: string }>`（FastAPI Pydantic 422 detail 实际是 `string | list[{loc, msg, type}]` union） → D.3 D.4 codex 主开发模仿 baseline pattern 抄了 → 三处复利
+- **整改**：Claude 主开发抽 `getErrorDetail` 公共 helper / 跨 D.2 D.3 D.4 三处统一切 → **派 codex 异源审 Claude 的整改**
+- **结果**：codex 异源审通过 0 Critical 0 Important / 评 "整体质量高于 baseline D.2/D.3 codex 主开发轮"
+- **教训**：双主驾互审必须**双向对称**——codex 主开发 → Claude 异源审（已实证）+ Claude 主开发 → codex 异源审（本次补）。Claude 错误也会被 codex "抄"成系统性盲区（baseline pattern 复利），单向审查只防 codex 错误，没防 Claude 错误传染 codex。**任一方向单审 = 盲区暴露**
+
 ---
 
 ## §4 调用场景模板

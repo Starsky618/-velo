@@ -144,6 +144,20 @@ services:
     depends_on:
       - db
 
+  # ===== admin-h5：管理员后台静态站 + /api 反代（v5 task-3.B.1 D.5）=====
+  # 静态文件（React + AntD build 产物）由内建 nginx serve
+  # /api/* 反代到 api 容器（同 docker network 内 hostname=api）→ 浏览器同源不需 CORS
+  # 暴露 9000:80 / 直接 IP+端口访问 / 不走 Caddy 主域（Tim 拍"先 IP 简化"）
+  # build context 指向同级 ../admin-h5 目录（独立 GitHub repo Starsky618/admin-h5）
+  # 部署 SOP：先在服务器 ~/ 下 git clone admin-h5 → cd ~/velo && docker compose build admin-h5 && up -d
+  admin-h5:
+    build: ../admin-h5
+    restart: unless-stopped
+    ports:
+      - "9000:80"  # 公网入口 / HTTP 明文 / admin token 走粘贴登录（无微信开放平台资质场景）
+    depends_on:
+      - api
+
   # ===== Caddy：反向代理 + 自动 HTTPS =====
   # 微信小程序强制要求 HTTPS，Caddy 自动申请 Let's Encrypt 证书
   caddy:
