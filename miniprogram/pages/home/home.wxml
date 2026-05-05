@@ -48,7 +48,7 @@
 <!-- ====== 骑行卡片流 ====== -->
 <view class="feed" wx:if="{{isLoggedIn}}">
 
-  <view class="activity-card" wx:for="{{rides}}" wx:key="id"
+  <view class="activity-card {{item.status !== 'completed' ? 'is-pending' : ''}}" wx:for="{{rides}}" wx:key="id"
     bindtap="openRide" data-id="{{item.id}}">
 
     <!-- 卡片头部：头像 + 昵称 + 时间 -->

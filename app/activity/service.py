@@ -202,7 +202,12 @@ def get_activity_list(db: Session, user_id: int, page: int, page_size: int) -> t
 
     items = (
         query
-        .order_by(Activity.created_at.desc())
+        # 按真实骑行时间倒序（不是 created_at = 导入到 DB 时间）。
+        # Tim 2026-05-06 真用回归发现：v4 时拉的 30 条 created_at 集中在 v4 测试日 / A1 后新拉
+        # 11 条 created_at 集中在 2026-05-05 / 但骑行时间是 2025-10 ~ 2026-05 混合的，
+        # 按 created_at 排会让所有 v4 老导入沉到底，违反"最近骑行"用户预期。
+        # nullslast() 兜底：极少数 strava 活动 started_at NULL 时降级到 created_at 排序。
+        .order_by(Activity.started_at.desc().nullslast(), Activity.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()

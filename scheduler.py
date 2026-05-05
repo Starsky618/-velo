@@ -29,8 +29,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# tick 间隔（秒）——Strava 每 15 分钟配额 100 请求，30s 一轮完全吃得消
-_TICK_INTERVAL_SECONDS = 30
+# tick 间隔（秒）——Strava 每 15 分钟配额 100 请求。
+# 15s 一轮：tier2 4 calls/min × 15min = 60 calls + tier1/manual_sync 余量 40 = 100 上限内安全。
+# 比 30s tick 提速 ×2（30 条活动 15→7.5 分钟）/ 配合前端 importing 状态卡片让等待感知消失。
+# Tim 2026-05-06 真用回归发现 30s tick 在生产体验不可接受 / Q1 改动。
+_TICK_INTERVAL_SECONDS = 15
 
 
 def main():
