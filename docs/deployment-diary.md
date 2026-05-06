@@ -328,3 +328,64 @@ sudo docker compose stop monitor curation-pool-cron admin-h5
 3. **Caddyfile 本地和服务器必须一致。** 当前是 `:80` 无域名模式。
 4. **.env 文件不在 tar 包里（被 exclude 了）。** 服务器的 .env 需要单独管理，不要覆盖。
 5. **Docker 命令前加 sudo。** ubuntu 用户没有 docker 组权限。
+
+---
+
+## ⚠️ 2026-05-06 admin H5 502 事故复盘（"token 过期"伪信号）
+
+### 现象
+Tim 真用 admin H5 (http://114.132.190.245:9000)，登录页粘 token 显示"token 无效或过期"。
+重新签发 token 仍失败。第一次以为是 JWT 过期问题，定位浪费 30 分钟。
+
+### Root cause（三层）
+
+**表层：前端误显示**
+- `LoginPage.tsx` 旧版 `} catch { messageApi.error('token 无效或过期') }` —— 把 401/403/5xx/网络错全吞成同一句
+- 实际后端返的是 502，被显示成"token 失效" → 整条排查方向走错
+
+**中层（真根因）：nginx + docker DNS 缓存**
+- admin-h5 nginx.conf 写 `proxy_pass http://api:8000`（hostname 直接出现在 proxy_pass 里）
+- nginx 启动时解析一次 `api` hostname 拿到 IP 缓存，之后不再解析
+- velo-api 容器某次重启（OOM 自愈 / 部署 / docker prune）拿到新 IP
+- admin-h5 nginx 仍连旧 IP → connection refused → 502
+- 时间戳证据：`docker compose ps` 看 admin-h5 启动 14h ago，api 启动 12h ago，2h 窗口内 api 重启过一次
+
+**深层：监测盲区**
+- `velo-monitor` 只盯 api 进程层（pending activities / scheduler stale）
+- 没有"admin H5 → api 反代是否通"的端到端探针
+- 真用打开页面才发现，监测系统沉默
+
+### 紧急止血
+```
+sudo docker compose restart admin-h5   # 让 admin-h5 nginx 重新解析 api hostname
+```
+
+### 长期修（已落地 / commit `<刚 commit 哈希>`）
+
+1. **`admin-h5/nginx.conf` 加 resolver 防止 DNS 缓存**：
+   ```nginx
+   resolver 127.0.0.11 valid=10s ipv6=off;   # docker 内置 DNS
+
+   location /api/ {
+       set $upstream_api http://api:8000;     # proxy_pass 变量化 → 不缓存
+       proxy_pass $upstream_api;
+       ...
+   }
+   ```
+   `proxy_pass` 出现变量时 nginx 强制每次连接前查 resolver。api 容器换 IP 最多 10 秒后 admin-h5 自动恢复，**不需要手动 restart admin-h5**。
+
+2. **`admin-h5/src/api/error.ts` 升级 `getErrorDetail` 单一真相源**：按状态码分流——网络断 / 5xx 后端挂 / 401 token 失效 / 403 不是 admin / 4xx 业务错。LoginPage + 4 个业务页面共用，零误导。
+
+3. **`admin-h5/src/api/client.ts` 修 interceptor 显式 token 被覆盖的 race**（codex 异源审抓到）：原版无条件用 store token 覆盖，导致 LoginPage 显式传新 token 时被 store 旧 token 顶替。改成"仅在请求未自带 Authorization 时才补"。
+
+### 需要部署后验证
+- 服务器 `cd ~/admin-h5 && git pull && sudo docker compose build admin-h5 && sudo docker compose up -d admin-h5`
+- 重新打开 http://114.132.190.245:9000/login，故意输错 token 看是否显示"token 已失效，请去小程序重新签发"而非"token 无效或过期"
+- 故意停掉 api 容器（`docker compose stop api`），看 LoginPage 是否显示"后端服务异常（HTTP 502）..."
+
+### 给未来 Agent 的硬规则
+
+1. **生产报错排查第一步永远是 `docker compose ps` + 看时间戳**，不是猜应用层（token / 权限 / DB）。容器栈状态错位（不同 service 启动时间相差 > 30 分钟）= 强信号有重启过 / 某个依赖容器换 IP。
+2. **任何 hostname-based proxy_pass 都要配 resolver + 变量化**，不论 nginx 还是 caddy。docker 容器 IP 不稳定是常态。
+3. **前端错误文案绝对不能 catch-all**——一句"操作失败"对运维来说等于 0 信息。轻则浪费时间，重则误导排查方向。**强制按 axios error 形态分流**（无 response = 网络层 / 5xx = 后端挂 / 4xx = 业务）。
+4. **部署 admin H5 类静态站时**，service 时间戳要和依赖的后端 service 一致。如果后端重启过，admin-h5 nginx 也跟着 restart 一次。这条加进部署 SOP。
