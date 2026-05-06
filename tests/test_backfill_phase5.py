@@ -23,7 +23,8 @@ class _Attr:
 
 
 class _FakeSegment:
-    pass
+    id = _Attr("id")
+    reference_line = _Attr("reference_line")
 
 
 class _FakeTrackpoint:
@@ -144,6 +145,13 @@ def _patch_models(monkeypatch):
         "func",
         SimpleNamespace(ST_DWithin=lambda *args: ("ST_DWithin", args)),
     )
+    # mock sqlalchemy.select 链（v5 task-0.7 后 backfill 行 57 用 select.scalar_subquery）
+    # 不 mock 会直接调真 sqlalchemy.select(_FakeSegment.reference_line) 类型校验失败
+    def _fake_select(*args):
+        return SimpleNamespace(
+            where=lambda *a: SimpleNamespace(scalar_subquery=lambda: ("subquery", args))
+        )
+    monkeypatch.setattr(backfill, "select", _fake_select)
 
 
 def test_backfill_segments_updates_each_segment_and_commits_once(monkeypatch):

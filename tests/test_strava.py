@@ -321,13 +321,19 @@ class TestOAuthRoutes:
     """Strava OAuth 相关路由的集成测试。"""
 
     @patch("app.strava.service.settings")
-    def test_authorize_url(self, mock_settings, client, auth_header):
+    def test_authorize_url(self, mock_settings, client, auth_header, monkeypatch):
         """GET /api/strava/authorize 应返回包含 state 参数的授权 URL。"""
         # 配置 mock settings，让 generate_authorize_url 不因为空配置报错
         mock_settings.STRAVA_CLIENT_ID = "test_client_id"
         mock_settings.STRAVA_CLIENT_SECRET = "test_secret"
         mock_settings.STRAVA_REDIRECT_URI = "https://example.com/callback"
         mock_settings.JWT_SECRET = "change-me-to-a-random-secret"
+
+        # mock _redis 避免本地无 Redis 时连接拒绝（同行 511-513 callback / status 测试 pattern）
+        from app.strava import router as strava_router
+        redis_mock = MagicMock()
+        redis_mock.setex.return_value = True
+        monkeypatch.setattr(strava_router, "_redis", redis_mock)
 
         resp = client.get("/api/strava/authorize", headers=auth_header)
         assert resp.status_code == 200
