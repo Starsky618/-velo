@@ -57,7 +57,7 @@
 @router.get("/{user_id}/power-curve", response_model=schemas.PowerCurveResponse)
 def get_user_power_curve_for_others(
     user_id: int,
-    period: schemas.PeriodEnum = schemas.PeriodEnum.last3months,
+    period: schemas.PowerCurvePeriod = schemas.PowerCurvePeriod.this_month,
     current_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -76,7 +76,7 @@ def get_user_power_curve_for_others(
 @router.get("/{user_id}/heatmap", response_model=schemas.HeatmapResponse)
 def get_user_heatmap_for_others(
     user_id: int,
-    city: schemas.CityEnum = schemas.CityEnum.auto,
+    city: schemas.UserCity,  # 必填 / 7 枚举 / 无 default（D17 / 详 schemas.py）
     current_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

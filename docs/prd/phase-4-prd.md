@@ -227,6 +227,11 @@ cat miniprogram/app.json | head -40
 | D13 | heatmap 时间窗：用户全部历史骑行数据（之前"半年内"改全部 / 真实"我的足迹"感更强） | Tim | 2026-05-06 | PRD v0.2 自审 |
 | D14 | 赛段详情页第一屏不展示难度评级 badge（仅 海拔曲线 + 城市 + 坡度 + 距离/爬升数字 / 难度评级算法可在 Sprint 5 细化）| Tim | 2026-05-06 | PRD v0.2 自审 |
 | D15 | 探索 tab 改造**未来方向**：批 2 ship 后真用反馈如积极，Sprint 5 升级"地图嵌入赛段"形态（类 Strava）/ 当前批 2 = 瀑布流形态 | Tim | 2026-05-06 | PRD v0.2 自审 |
+| D16 | power-curve `period` 真实枚举校正：`this_month / last_month / this_year / last_year / all_time`（PowerCurvePeriod / 默认 `this_month`）—— Sprint 4 baseline curl prod 实证 / Claude PRD 之前脑补 `last3months` 全错 | Codex 异源审 confirm + Tim | 2026-05-06 | Sprint 4 baseline 实证 |
+| D17 | heatmap `city` 真实 schema 校正：UserCity 7 枚举（6 城 + `unknown`）/ 必填 / 无 default —— Claude PRD 之前脑补 `auto` 全错 / 前端逻辑：profile.city 有值默认填 / 无值默认 `unknown` | Codex 异源审 confirm + Tim | 2026-05-06 | Sprint 4 baseline 实证 |
+| D18 | self profile schema 加 `city` 字段（`app/user/schemas.py` UserProfile）—— 跟看他人 UserProfileResponse `city` 字段对齐 / 让 4.1 city badge fallback 直接 `profile.city` 拿值不用多打 fetch | Codex 异源审 A 推荐 + Tim | 2026-05-06 | P1-3 codex 异源 |
+| D19 | 看他人 schema 砍 `ftp` 字段（`app/user/schemas.py` UserProfileResponse + `app/user/service.py` _PROFILE_RESPONSE_KEYS）—— Tim "默认公开"是页面层（路径任意人能看），不等于字段层（FTP 是骑手生理数据 / Strava 也允许独立隐私层）/ schemas.py 注释明写 D-P08 红线 | Codex 异源审 A 推荐 + Tim 拍 | 2026-05-06 | P1-4 codex 异源 |
+| D20 | 写 PRD/plans 提及 endpoint 字段 / 枚举值前必须 grep schemas.py + curl prod 实证 / Claude 自检三问完全没抓到 4 处 drift / memory `feedback_grep_endpoint_schema_before_specs.md` 沉淀 | Tim 强调"异源审重要 / 你经常出错且自己意识不到" | 2026-05-06 | Sprint 4 baseline 教训 |
 
 ---
 
@@ -306,14 +311,14 @@ cat miniprogram/app.json | head -40
 **4.2.A 功率曲线**：
 
 - profile.wxml 槽位接入 power_curve 折线图组件（建议用现有 detail 页 echart-canvas 模式或 wx-canvas）
-- profile.js fetchPowerCurve 调 `GET /api/user/me/power-curve?period=last3months`（period 默认 last3months / 可选 all / last6months）
+- profile.js fetchPowerCurve 调 `GET /api/user/me/power-curve?period=this_month`（**真实枚举 / Sprint 4 baseline 实证**）：默认 `this_month` / 5 档可选 `this_month / last_month / this_year / last_year / all_time`（PowerCurvePeriod / 详 `app/user/schemas.py`）
 - 渲染 4 条线：5s / 30s / 5min / 1h 各时段最大功率随时间变化
 - 状态：loading / 数据完整 / 数据空（"还没数据，多骑几次就有了"）/ fetch fail（toast）
 
 **4.2.B 热力图**：
 
 - profile.wxml 槽位接入 heatmap 组件（建议用 wx-map 或自定义 canvas + 网格涂色）
-- profile.js fetchHeatmap 调 `GET /api/user/me/heatmap?city=auto`（city 默认 auto / 可选 6 城枚举 / 时间窗 = 全部历史 / D13）
+- profile.js fetchHeatmap 调 `GET /api/user/me/heatmap?city=<city>`（**真实 schema / city 必填 / 无 default**）：UserCity 7 枚举 `beijing / shanghai / hangzhou / shenzhen / chengdu / taiyuan / unknown`（详 `app/user/schemas.py`）。前端逻辑：profile.city 有值 = 默认填该值；无值 = 默认 `unknown`（拿全部历史 / D13）
 - 渲染：地图 + 网格涂色（颜色深浅 = 该网格被骑过的次数密度）
 - 状态：loading / 数据完整 / 数据空（"还没骑过任何路线"）/ fetch fail（toast）
 
@@ -369,7 +374,7 @@ cat miniprogram/app.json | head -40
   - 累计骑行卡片（总里程 + 总次数 + 总爬升）
   - 功率曲线（看 ta 的）
   - 骑行热力图（看 ta 的）
-  - **不展示**：FTP / 体重 / W·kg（敏感生理数据）/ 我的荣誉跳转 / 设置跳转
+  - **不展示**：FTP / 体重 / W·kg（敏感生理数据 / Sprint 4 codex 异源审 2026-05-06 拍后端砍看他人 schema 的 ftp 字段 / D-P08 严格执行）/ 我的荣誉跳转 / 设置跳转
 - 调用 `GET /api/user/{user_id}/profile`（v5 Sprint 2 已有 / 字段白名单严格执行 / D-P08）
 
 **前置后端任务（subagent 必须先做）**：
@@ -378,8 +383,8 @@ cat miniprogram/app.json | head -40
 
 任务 4.3 启动前必须先补两个后端 endpoint：
 
-- `GET /api/user/{user_id}/power-curve?period=last3months` — 字段同 me 版本，权限 = 任意登录用户，复用现有 service.get_user_power_curve（service 层已支持 user_id 参数）
-- `GET /api/user/{user_id}/heatmap?city=auto` — 字段同 me 版本，权限 = 任意登录用户，复用现有 service.get_user_heatmap
+- `GET /api/user/{user_id}/power-curve?period=this_month` — period 用 PowerCurvePeriod 5 枚举（同 me 版本 / 默认 `this_month`），权限 = 任意登录用户，复用现有 service.get_user_power_curve
+- `GET /api/user/{user_id}/heatmap?city=<city>` — city 用 UserCity 7 枚举必填（同 me 版本 / 无 default），权限 = 任意登录用户，复用现有 service.get_user_heatmap
 
 注意：FastAPI 路由匹配 `/me/...` 静态路径优先（router.py 注释行 123 已说明），新加的 `/{user_id}/power-curve` 不会跟 `/me/power-curve` 冲突。后端任务工作量小（< 30 行 + 4 单测）。
 

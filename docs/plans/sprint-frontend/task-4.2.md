@@ -57,8 +57,9 @@
 - [ ] **A.1.1** 改 `miniprogram/utils/api.js` 加：
 
 ```js
-// 我的功率曲线 / period: last3months(默认) / last6months / all
-function getMyPowerCurve(period = 'last3months') {
+// 我的功率曲线 / period: this_month(默认) / last_month / this_year / last_year / all_time
+// （PowerCurvePeriod 5 枚举 / 详 app/user/schemas.py / D16）
+function getMyPowerCurve(period = 'this_month') {
   return request({
     url: `/api/user/me/power-curve?period=${period}`,
     method: 'GET'
@@ -74,7 +75,7 @@ exports.getMyPowerCurve = getMyPowerCurve
 ```js
 async fetchPowerCurve() {
   try {
-    const data = await api.getMyPowerCurve('last3months')
+    const data = await api.getMyPowerCurve('this_month')
     this.setData({ powerCurveData: data, powerCurveLoading: false })
   } catch (e) {
     console.error('fetchPowerCurve fail', e)
@@ -153,8 +154,9 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 - [ ] **B.1.1** 改 `miniprogram/utils/api.js` 加：
 
 ```js
-// 我的热力图 / city: auto(默认 / 自动用 profile.city) / 6 城枚举之一
-function getMyHeatmap(city = 'auto') {
+// 我的热力图 / city 必填 / UserCity 7 枚举（6 城 + 'unknown'）/ 无 'auto' default
+// （详 app/user/schemas.py / D17 / 前端逻辑：profile.city 有值默认填该值 / 无值默认 'unknown'）
+function getMyHeatmap(city) {  // 必填 / 调用方负责传 / 不能省略
   return request({
     url: `/api/user/me/heatmap?city=${city}`,
     method: 'GET'
@@ -164,6 +166,18 @@ exports.getMyHeatmap = getMyHeatmap
 ```
 
 #### Step B.2 - 改 profile.js fetchHeatmap 真实实现（同 A.2 结构）
+
+city 参数必填（D17）。前端逻辑：
+```js
+async fetchHeatmap() {
+  // profile 已 fetch / profile.city 现在含 city 字段（D18 后端加）
+  const city = this.data.profile.city || 'unknown'  // 无 city 默认 'unknown' = 全部历史
+  try {
+    const data = await api.getMyHeatmap(city)
+    // ...
+  }
+}
+```
 
 #### Step B.3 - 改 profile.wxml 槽位接 map（同 A.3 结构 / 但用 `<map>` 不是 `<canvas>`）
 

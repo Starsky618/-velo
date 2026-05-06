@@ -45,7 +45,7 @@ ls miniprogram/pages/profile/
 | profile.wxml 行数 | `wc -l miniprogram/pages/profile/profile.wxml` | 当前约 180 行（黄灯阈值 300） |
 | 现有 fetch 方法 | `grep -n "fetchUserData\|fetchStats" miniprogram/pages/profile/profile.js` | 应见 fetchUserData + 累计统计 fetch |
 | 现有跳转 | `grep -n "navigator\|switchTab" miniprogram/pages/profile/profile.wxml` | 应见 navigator → /pages/honor/honor 和 /pages/settings/settings |
-| profile.city 字段 | `grep -n "city" app/user/schemas.py` | UserProfile 应有 city 字段（v5 Sprint 2 已加） |
+| profile.city 字段 | `grep -n "city" app/user/schemas.py` | UserProfile 必须含 `city: Optional[str] = None`（**Sprint 4 baseline 加 / D18 codex 异源审 / 之前 v5 没加导致 4.1 city badge fallback 拿不到值**） |
 | 全局 token | `grep -n "globalData.token" miniprogram/app.js` | 应见登录后写 token |
 
 **任一不符** → 停下报 Tim，不擅自修复。
