@@ -191,13 +191,24 @@ app/<模块名>/
 - 批量置 `failed`
 - 失败症状: 僵尸 activity 越积越多
 
-#### monitor(v5 task-1.C.1 新增)
+#### monitor(v5 task-1.C.1 + 2026-05-06 task-monitor-admin-h5 增量)
 
-- 启动: `sh -c "while true; do python -m app.monitor.processing_health || true; sleep 60; done"`
-- 每 60s 扫: `SELECT * FROM activities WHERE status='processing' AND updated_at < now() - interval '4 minutes'`（软阈值，4min 是 cleanup 10min 硬上限的 80%）
-- 命中 → 推飞书机器人（`FEISHU_BOT_WEBHOOK` env / 没配则跳过推送）
-- 不写业务表 / 不改 status —— **只读 + 告警**，硬上限自愈仍走 cleanup
-- 失败症状: 用户上传 GPX 卡 4-10 分钟时我们三人收不到飞书
+- 启动: 主循环跑 2 个独立探针 / 退码独立 / 失败互不影响
+  ```
+  sh -c "while true; do
+    python -m app.monitor.processing_health || true;
+    python -m app.monitor.admin_h5_health || true;
+    sleep 60;
+  done"
+  ```
+- **processing_health**（task-1.C.1）：每 60s 扫 `status='processing' AND updated_at < now() - 4min`（软阈值 / cleanup 10min 硬上限的 80%）；命中 → 推飞书
+- **admin_h5_health**（2026-05-06）：每 60s 跑 2 个 HTTP 探测项
+  - `_probe_static_site`: GET `http://admin-h5/` 期望 200
+  - `_probe_api_proxy`: GET `http://admin-h5/api/admin/whoami`（无 token）期望 4xx（5xx = 反代挂 / 200 = SPA fallback 漏报）
+  - 失败 → Redis SETNX 5min 去抖（防 60 条/h 风暴）→ 推飞书
+- **D 决策（Tim 2026-05-06）**：生产 `~/velo/.env` 不配 `FEISHU_BOT_WEBHOOK` → fallback 到 logger.warning + main 退码 1 / 探针真生效但告警进 logs 不发通道。激活路径 = .env 加一行 / 0 行代码改动（详 `docs/plans/phase5/task-monitor-admin-h5.md` 顶部 D 决策块）
+- 不写业务表 / 不改 status —— **只读 + 告警**
+- depends_on: db / redis / admin-h5
 
 #### db
 
