@@ -48,6 +48,7 @@ class UserProfile(BaseModel):
     id: int
     nickname: Optional[str] = None
     avatar_url: Optional[str] = None
+    city: Optional[str] = None  # Sprint 4 codex 异源审拍加（P1-3 / 跟看他人 UserProfileResponse.city 字段对齐 / 默认公开 / 详 D9 fallback 2026-05-06）
     ftp: Optional[int] = None
     weight: Optional[float] = None
     bike_type: Optional[str] = None
@@ -189,12 +190,16 @@ class UserProfileResponse(BaseModel):
 
     与 service.get_user_profile_for_others 的 _PROFILE_RESPONSE_KEYS 字段集合**完全一致**。
     FastAPI 会把 service 返回 dict 里多余的 key 自动忽略，本 schema 是双重保险。
+
+    Sprint 4 codex 异源审 2026-05-06 砍 ftp（P1-4）：
+    - v5 期误放 ftp 公开 / Sprint 4 brainstorm Tim 拍"默认公开"是页面层（路径任意人能看）
+      不等于字段层（FTP 是骑手生理数据 / Strava 也允许独立隐私设置层）
+    - 砍配套：service.py _PROFILE_RESPONSE_KEYS 同步砍 ftp
     """
     id: int
     nickname: Optional[str] = None
     avatar_url: Optional[str] = None
     city: Optional[str] = None
-    ftp: Optional[int] = None
     bike_type: Optional[str] = None
     total_distance_km: float
     total_elevation_m: float

@@ -344,15 +344,16 @@ class TestGetUserProfileForOthers:
             user_id = user.id
 
             result = get_user_profile_for_others(db, user_id, requester_user_id=user_id)
+            # Sprint 4 codex 异源审 2026-05-06 砍 ftp（P1-4）
             allowed_keys = {
-                "id", "nickname", "avatar_url", "city", "ftp", "bike_type",
+                "id", "nickname", "avatar_url", "city", "bike_type",
                 "total_distance_km", "total_elevation_m", "activity_count",
                 "current_month_summary",
             }
             assert set(result.keys()) == allowed_keys
-            # 严格不返这些
+            # 严格不返这些（ftp 加入：codex 拍砍 / FTP 是骑手生理数据 / Strava 也允许独立隐私层）
             for forbidden in ("openid", "strava_access_token", "strava_refresh_token",
-                              "mute_notifications", "weekly_goal", "weight"):
+                              "mute_notifications", "weekly_goal", "weight", "ftp"):
                 assert forbidden not in result
         finally:
             _cleanup_db(db)
@@ -372,20 +373,20 @@ class TestGetUserProfileForOthers:
         """
         from app.user.service import _filter_profile_keys, _PROFILE_RESPONSE_KEYS
 
-        # 构造含 6 个敏感字段的 raw_response
+        # 构造含 7 个敏感字段的 raw_response（Sprint 4 codex 拍砍 ftp / +1）
         raw_with_sensitive = {
             # 白名单内（应保留）
             "id": 42,
             "nickname": "test",
             "avatar_url": "https://x",
             "city": "beijing",
-            "ftp": 200,
             "bike_type": "road",
             "total_distance_km": 100.0,
             "total_elevation_m": 500.0,
             "activity_count": 5,
             "current_month_summary": {"distance_km": 30.0},
             # ⚠ 敏感字段（应被过滤）
+            "ftp": 200,  # Sprint 4 codex 异源审拍砍（P1-4 / FTP 是骑手生理数据）
             "openid": "wx_secret_openid_xxx",
             "strava_access_token": "STRAVA_TOKEN_LEAK_RISK",
             "strava_refresh_token": "REFRESH_TOKEN_LEAK",
@@ -398,6 +399,7 @@ class TestGetUserProfileForOthers:
 
         # 敏感字段必须被过滤
         for forbidden in (
+            "ftp",  # Sprint 4 codex 异源审拍加（P1-4）
             "openid", "strava_access_token", "strava_refresh_token",
             "strava_token_expires_at", "mute_notifications", "weight",
         ):
@@ -418,6 +420,7 @@ class TestGetUserProfileForOthers:
         from app.user.service import _PROFILE_RESPONSE_KEYS
 
         forbidden_in_whitelist = {
+            "ftp",  # Sprint 4 codex 异源审 2026-05-06 拍加（P1-4 / FTP 是骑手生理数据）
             "openid", "strava_access_token", "strava_refresh_token",
             "strava_token_expires_at", "mute_notifications", "weight",
             "weekly_goal", "wechat_unionid",

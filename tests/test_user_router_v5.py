@@ -178,15 +178,15 @@ def test_get_profile_returns_whitelist_fields(client, auth_header):
         assert resp.status_code == 200
         body = resp.json()
 
-        # 严格白名单
-        allowed = {"id", "nickname", "avatar_url", "city", "ftp", "bike_type",
+        # 严格白名单（Sprint 4 codex 异源审 2026-05-06 砍 ftp / P1-4）
+        allowed = {"id", "nickname", "avatar_url", "city", "bike_type",
                    "total_distance_km", "total_elevation_m", "activity_count",
                    "current_month_summary"}
         assert set(body.keys()) == allowed
 
-        # 敏感字段绝对不应出现
+        # 敏感字段绝对不应出现（ftp 加入此列：Sprint 4 codex 拍砍 / FTP 是骑手生理数据）
         for forbidden in ("openid", "strava_access_token", "strava_refresh_token",
-                          "mute_notifications", "weight"):
+                          "mute_notifications", "weight", "ftp"):
             assert forbidden not in body, f"敏感字段 {forbidden} 泄漏！"
 
 

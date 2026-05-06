@@ -456,8 +456,10 @@ _VALID_USER_CITIES = {
 
 # 看他人主页严格白名单（PRD 5.A.2 / D-P08 红线 / spec R3-I3 强制生效）
 # 加新字段前先 review：是否泄漏 token / openid / mute_notifications / 任何隐私字段？
+# Sprint 4 codex 异源审 2026-05-06 砍 ftp（P1-4）：
+#     FTP 是骑手生理数据 / Strava 也允许独立隐私层 / Tim "默认公开"是页面层 ≠ 字段层
 _PROFILE_RESPONSE_KEYS = {
-    "id", "nickname", "avatar_url", "city", "ftp", "bike_type",
+    "id", "nickname", "avatar_url", "city", "bike_type",
     "total_distance_km", "total_elevation_m", "activity_count",
     "current_month_summary",
 }
