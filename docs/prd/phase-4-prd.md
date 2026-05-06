@@ -8,7 +8,7 @@
 > - UI/UX 只写页面结构 / 信息优先级 / 流程 / 状态，不写视觉参数
 >
 > **读者分层**：
-> - **§0-§5（前半 / Tim 必审）**：用户故事 + 4 tab 新结构 + 7 功能落点 + 拆 2 批节奏 + 决策记录
+> - **§0-§5（前半 / Tim 必审）**：用户故事 + 4 tab 新结构 + 6 功能落点 + 拆 2 批节奏 + 决策记录
 > - **§6-§12（后半 / subagent 必读 + Codex 异源审接住）**：5 个子任务卡 + admin H5 真用回归 ops 流程 + 验收标准
 >
 > **维护**：Tim + Claude 协作，最后更新 2026-05-06。版本 **v0.1**（首版）。
@@ -19,7 +19,7 @@
 
 **双主轴并行**：
 
-- **主轴 1 - 小程序 UI 重构 + 接 Sprint 2 endpoint**：5 tab → 4 tab，砍排行榜 tab，7 功能落地
+- **主轴 1 - 小程序 UI 重构 + 接 Sprint 2 endpoint**：5 tab → 4 tab，砍排行榜 tab，6 功能落地
 - **主轴 2 - admin H5 真用回归**：Tim/CCF/颜颜全 sprint 真用 admin 4 个工具收 bug，hotfix 模式修
 
 **开发哲学**：
@@ -96,8 +96,8 @@ cat miniprogram/app.json | head -40
 **周三晚上骑完车回来打开 velo 小程序**：
 
 1. 进**个人页**（最右 tab）→ 看到自己头像、累计骑行数据、**功率曲线图**（5s/30s/5min/1h 4 段进步线，最近 3 个月数据）
-2. 同一页往下滚 → **骑行热力图**，显示他过去半年骑过的区域分布（按颜色深浅表示密度）
-3. 名片右上角写着"北京"**city badge**（identity tag）
+2. 同一页往下滚 → **骑行热力图**，显示他过去所有骑过的区域分布（按颜色深浅表示密度）
+3. 名片右上角写着"北京"**city badge**（identity tag）可选城市可不选
 
 **周四中午刷动态 tab**：
 
@@ -110,55 +110,52 @@ cat miniprogram/app.json | head -40
 
 1. 进**探索 tab**（左二，原来"即将上线")→ 现在是赛段瀑布流卡片
 2. 顶部按城市筛选条选"北京" → 列表只剩北京赛段
-3. 看到一张卡片"妙峰山"右上角有 **NEW 标签**（说明刚被 admin 批准入库不久）
-4. 点"妙峰山" → 进**赛段详情页**（独立页 / 不在底部 tab）
-5. 第一屏：海拔曲线 + 难度评级 + 城市 + 距离/爬升数字
-6. 往下滚 → **AI 介绍**："海拔 1090m，下苇甸到上苇甸 12km……"
-7. 再往下 → **我的 PB**（如果他骑过这条）/ 如果没骑过 → 显示"还没骑过这条赛段，骑一次试试"
-8. 不展示全网排行榜（v0 设计被 Sprint 4 砍）
+3. 点"妙峰山" → 进**赛段详情页**（独立页 / 不在底部 tab）
+4. 第一屏：海拔曲线 + 城市 + 坡度 + 距离/爬升数字
+5. 往下滚 → **AI 介绍**："海拔 1090m，下苇甸到上苇甸 12km……"
+6. 再往下 → **我的记录**（如果他骑过这条）
+7. - **全网排行榜前端展示**（赛段详情页展示 top 10和我的排名）
 
 ### 2.3 新骑友小李（首次进 velo）
 
-1. 微信一键登录 → 个人页（空名片：FTP 待补 / 体重待补 / 城市待补）
+1. 微信一键登录 → 个人页（空名片：FTP 待补 / 体重待补）
 2. 切探索 tab → 看到候选池新赛段瀑布流
 3. 切动态 tab → 看到 Tim/CCF 的最近骑行
 4. 想找朋友 → 点 Tim 头像 → 看 Tim 的用户详情页
 
 ---
 
-## 3. 4 tab 新结构 + 7 功能落点（**Tim 必读**）
+## 3. 4 tab 新结构 + 6 功能落点（**Tim 必读**）
 
 ### 3.1 5 tab → 4 tab
 
 | 旧（5 tab） | 新（4 tab） | 备注 |
 |---|---|---|
 | 动态 (home) | 动态 (home) | 不变 |
-| 探索 (explore) | 探索 (explore) | **大改造**：占位 → 赛段瀑布流 + 城市筛选 + 候选池曝光 |
+| 探索 (explore) | 探索 (explore) | **大改造**：占位 → 赛段瀑布流 + 城市筛选 |
 | 上传 (upload) | 上传 (upload) | 不变 |
 | 赛段 (leaderboard) | **砍掉** | "完全没用 / 跟探索重合"（Tim 2026-05-06 拍） |
-| 个人 (profile) | 个人 (profile) | **改造**：加功率曲线 / 热力图 / city badge |
+| 个人 (profile) | 个人 (profile) | **改造**：加功率曲线 / 热力图 |
 
 **新增 2 个独立页**（不在底部 tab，从其他页跳转进入）：
 
 - **赛段详情页**（segment/[id]）：从探索 tab 卡片点击进入
 - **用户详情页**（user/[id]）：从动态 / 通知中心点击骑友头像进入
 
-### 3.2 7 功能落点
+### 3.2 6 功能落点
 
 | # | 功能 | 落点 | 数据来源 |
 |---|---|---|---|
 | 1 | 功率曲线 | 个人页 | `GET /api/user/me/power-curve`（已有） |
 | 2 | 骑行热力图 | 个人页 | `GET /api/user/me/heatmap`（已有） |
-| 3 | 城市标签 | 个人页（顶部名片角标） | `GET /api/user/profile`.city（已有） |
-| 4 | 看他人主页 | 新建用户详情页 | `GET /api/user/{user_id}/profile`（已有） |
-| 5 | AI 介绍 | 新建赛段详情页 | `GET /api/segments/{id}` 已有 introduction 字段 |
-| 6 | 城市筛选 | 探索 tab 顶部 | `GET /api/segments?city=xxx` 已有筛选参数 |
-| 7 | 候选池新赛段曝光 | 探索 tab 主体瀑布流 | `GET /api/segments?sort_by=approved_at`（**需补 sort 参数 / §6.4**）|
+| 3 | 看他人主页 | 新建用户详情页 | `GET /api/user/{user_id}/profile`（已有） |
+| 4 | AI 介绍 | 新建赛段详情页 | `GET /api/segments/{id}` 已有 introduction 字段 |
+| 5 | 城市筛选 | 探索 tab 顶部 | `GET /api/segments?city=xxx` 已有筛选参数 |
+| 6 | 候选池新赛段曝光 | 探索 tab 主体瀑布流 | `GET /api/segments?city=xxx`（默认 `order_by(created_at desc)` / 新赛段自然排前面 / 前端按 created_at < 30 天显示 NEW）|
 
 ### 3.3 砍掉的功能
 
 - **leaderboard tab 整体删除**（pages/leaderboard 目录 + app.json tabBar 配置 + 其他页面跳转引用）
-- **全网排行榜前端展示**（赛段详情页只展示"我的 PB"，不展示 top 10）
 - 后端 `GET /api/segments/{id}/leaderboard` endpoint **保留**（不影响 / 未来需要再开）
 
 ---
@@ -175,7 +172,7 @@ cat miniprogram/app.json | head -40
 
 **第二步（4 内容并行塞入）**：
 
-- 任务 4.2 个人页内容塞入（功率曲线 / 热力图 / 城市标签）— 3 个 subagent 并行
+- 任务 4.2 个人页内容塞入（功率曲线 / 热力图 / 城市标签（若有，若没有就不显示））— 3 个 subagent 并行
 - 任务 4.3 用户详情页新建
 
 **ship 后**：Tim/CCF/颜颜真用 1 周 → 反馈喂批 2 设计
@@ -186,8 +183,8 @@ cat miniprogram/app.json | head -40
 
 **任务**（可并行）：
 
-- 任务 4.4 探索 tab 改造（瀑布流 + 城市筛选 + 候选池曝光 + 砍 leaderboard tab + 跳转重映射）
-- 任务 4.5 赛段详情页新建（AI 介绍 + 我的 PB）
+- 任务 4.4 探索 tab 改造（瀑布流 + 城市筛选 + 候选池曝光 + 砍 leaderboard tab + 跳转重映射）（未来要改造升级为地图内嵌入赛段，类strava）
+- 任务 4.5 赛段详情页新建（AI 介绍 + 我的记录 + 全网 top 10 排行榜 + 我的排名 / D7 反转）
 
 **ship 后**：Tim/CCF/颜颜真用 1 周 → 收尾 + 决定是否进 Sprint 5
 
@@ -216,17 +213,20 @@ cat miniprogram/app.json | head -40
 | # | 决策 | 拍板者 | 时间 | 来源 |
 |---|---|---|---|---|
 | D1 | Sprint 4 = 小程序 UI + admin H5 真用回归（不含监测告警通道，已 D 决策搁置）| Tim | 2026-05-06 | brainstorm Q1 |
-| D2 | 范围宽（用户维度 4 + 赛段端 3 = 7 功能）| Tim | 2026-05-06 | brainstorm Q2 |
+| D2 | 范围宽（**v0.2 调整**：用户维度 2 + 看他人 1 + 赛段端 3 = 6 主功能 + city badge 顺带做 / brainstorm Q2 原拍 7 含 city badge / v0.2 把 city 降为非主任务）| Tim | 2026-05-06 | brainstorm Q2 + PRD v0.2 自审 |
 | D3 | 拆 2 批 ship + ship 后 1 周真用反馈喂下一批 | Tim | 2026-05-06 | brainstorm Q3 |
 | D4 | 批 1 第一步：先做空个人页框架，验证稳定后再塞内容 | Tim | 2026-05-06 | brainstorm post-Q3 |
 | D5 | 砍 leaderboard tab，5 tab 变 4 tab（"完全没用 / 跟探索重合"） | Tim | 2026-05-06 | brainstorm Q4 前置 |
 | D6 | 探索 tab 主体 = 单流瀑布流（不嵌内层 tab "发现/全部"） | Tim | 2026-05-06 | brainstorm Q4 |
-| D7 | 赛段详情页加"我的 PB"（个人维度），全网排行榜整体砍（前端不展示） | Tim | 2026-05-06 | brainstorm Q5 |
+| D7 | 赛段详情页加"我的记录"（个人维度）+ 全网排行榜 top 10 + 我的排名（**Tim 2026-05-06 在 PRD v0.1 → v0.2 自审时反转 / 之前砍前端展示，现确认展示**） | Tim | 2026-05-06 | PRD v0.2 自审 |
 | D8 | 看他人主页用新建独立页（不复用个人 tab + 切换） | Tim 接受 Claude 推荐 | 2026-05-06 | brainstorm post-Q3 |
-| D9 | city badge 暂只在个人页内显示（不在各处用户名旁加，跨页改造延后 sprint） | Tim 接受 Claude 推荐 | 2026-05-06 | brainstorm post-Q3 |
+| D9 | city 字段在 profile 内可选（不强制设置 / city 有值时名片角落自动显示 / 无值不显示 / 不做引导设置弹窗）—— **Tim PRD v0.2 自审改：城市标签从 7 主功能里砍掉 / 不作独立 4.2.C 任务 / 在 4.1 框架里作小细节顺带做** | Tim | 2026-05-06 | PRD v0.2 自审 |
 | D10 | 开发哲学：做完不好就删（每功能 ship 1 周真用 → 回收/重做） | Tim | 2026-05-06 | brainstorm post-Q2 |
-| D11 | 后端 `GET /api/segments/{id}/leaderboard` endpoint 保留不删（前端不展示但接口留着）| Tim 默认接受 | 2026-05-06 | PRD 写作 |
+| D11 | 后端 `GET /api/segments/{id}/leaderboard` endpoint 保留 + 前端 4.5 任务调用展示 top 10（D7 反转后此条作为执行配套）| Tim | 2026-05-06 | PRD v0.2 自审 |
 | D12 | admin H5 真用回归本周启动（不等批 1 ship）| Tim | 2026-05-06 | brainstorm Q3 配套 |
+| D13 | heatmap 时间窗：用户全部历史骑行数据（之前"半年内"改全部 / 真实"我的足迹"感更强） | Tim | 2026-05-06 | PRD v0.2 自审 |
+| D14 | 赛段详情页第一屏不展示难度评级 badge（仅 海拔曲线 + 城市 + 坡度 + 距离/爬升数字 / 难度评级算法可在 Sprint 5 细化）| Tim | 2026-05-06 | PRD v0.2 自审 |
+| D15 | 探索 tab 改造**未来方向**：批 2 ship 后真用反馈如积极，Sprint 5 升级"地图嵌入赛段"形态（类 Strava）/ 当前批 2 = 瀑布流形态 | Tim | 2026-05-06 | PRD v0.2 自审 |
 
 ---
 
@@ -236,19 +236,20 @@ cat miniprogram/app.json | head -40
 
 ## 6. 子任务 4.1 - 个人页框架改造（批 1 容器 / **第一步独立 ship**）
 
-**用户目标**：进个人 tab 不感觉"改了什么"——登录 / 累计统计 / 我的荣誉 / 设置全部和现在一样能用，但页面骨架已为后续塞入功率曲线 / 热力图 / 城市标签留好位置。
+**用户目标**：进个人 tab 不感觉"改了什么"——登录 / 累计统计 / 我的荣誉 / 设置全部和现在一样能用，但页面骨架已为后续塞入功率曲线 / 热力图留好位置。
 
 **使用场景**：日常打开个人 tab，看自己骑行数据 + 跳转其他页面。框架改造对用户不可见，但为下一周的内容塞入打地基。
 
 **功能范围**：
 
 - 现有 `pages/profile/profile.wxml` 拆分为 4 个区块：
-  - 用户信息名片（含登录态切换 + 头像 + 昵称 + ID + FTP/体重/W·kg + **城市 badge 槽位（空）**）
+  - 用户信息名片（含登录态切换 + 头像 + 昵称 + ID + FTP/体重/W·kg + **city 自动渲染**：profile.city 有值时名片角落显示 city badge / 无值时不显示 / 不引导设置弹窗 / D9）
   - 累计骑行卡片（不变）
   - **功率曲线槽位**（占位 placeholder："功能加载中"）
   - **骑行热力图槽位**（占位 placeholder："功能加载中"）
   - 导航卡片（我的荣誉 + 设置 / 不变）
-- profile.js 中预留 4 个 fetch 方法（fetchPowerCurve / fetchHeatmap / fetchCity / fetchProfileWithCity），先返回空对象 / `null`，等后续任务塞实际逻辑
+- profile.js 中预留 2 个 fetch 方法（fetchPowerCurve / fetchHeatmap），先返回空对象 / `null`，等后续任务塞实际逻辑
+- city 字段沿用现有 fetchUserData 拿（不需要专用 fetch 方法）
 - 不改 onShow 主流程（保持登录态判断 + fetchUserData 主路径）
 
 **用户流程**：
@@ -286,22 +287,21 @@ cat miniprogram/app.json | head -40
 
 - 不实现功率曲线渲染（4.2 做）
 - 不实现热力图渲染（4.2 做）
-- 不实现 city badge 真显示（4.2 做）
 - 不动用户详情页（4.3 做）
 
-**来源追溯**：D4（先做空框架）+ §3.2 / 用户故事 §2.1。
+**来源追溯**：D4（先做空框架）+ D9（city 顺带做）+ §3.2 / 用户故事 §2.1。
 
 ---
 
-## 7. 子任务 4.2 - 个人页内容塞入（批 1 内容 / **3 个并行**）
+## 7. 子任务 4.2 - 个人页内容塞入（批 1 内容 / **2 个并行**）
 
-**用户目标**：进个人 tab → 看到自己的功率曲线（4 段进步线）/ 骑行热力图（半年内骑过区域）/ 名片右上角"北京"city badge。这 3 个内容是骑手"看见自己"的核心。
+**用户目标**：进个人 tab → 看到自己的功率曲线（4 段进步线）/ 骑行热力图（用户全部历史骑行数据 / D13）。这 2 个内容是骑手"看见自己"的核心。city badge 已在 4.1 框架里顺带做（D9）。
 
 **使用场景**：参用户故事 §2.1（小明骑完车回来看自己进步）。
 
 **功能范围**：
 
-可拆 3 个 subagent 并行（互不依赖）：
+可拆 2 个 subagent 并行（互不依赖）：
 
 **4.2.A 功率曲线**：
 
@@ -313,15 +313,9 @@ cat miniprogram/app.json | head -40
 **4.2.B 热力图**：
 
 - profile.wxml 槽位接入 heatmap 组件（建议用 wx-map 或自定义 canvas + 网格涂色）
-- profile.js fetchHeatmap 调 `GET /api/user/me/heatmap?city=auto`（city 默认 auto / 可选 6 城枚举）
+- profile.js fetchHeatmap 调 `GET /api/user/me/heatmap?city=auto`（city 默认 auto / 可选 6 城枚举 / 时间窗 = 全部历史 / D13）
 - 渲染：地图 + 网格涂色（颜色深浅 = 该网格被骑过的次数密度）
 - 状态：loading / 数据完整 / 数据空（"还没骑过任何路线"）/ fetch fail（toast）
-
-**4.2.C 城市标签**：
-
-- profile.wxml 用户信息名片右上角加 city badge（一个圆角小标签，显示"北京"/"上海"/etc.）
-- profile.js 沿用现有 fetchUserData 拿到 profile.city 字段（v5 Sprint 2 已加）
-- 状态：city 有值（显示）/ city = null 或 'unknown'（显示"未设置"+ 点击跳转 settings 页设置）
 
 **用户流程**：
 
@@ -329,34 +323,32 @@ cat miniprogram/app.json | head -40
 
 **页面/状态**：
 
-- 个人页（已登录） → 框架渲染 + 3 槽位异步填充
+- 个人页（已登录） → 框架渲染 + 2 槽位异步填充
 - 注意 wx:if vs hidden 陷阱（CLAUDE.md 陷阱 #17）：canvas 类组件用 `hidden` 不用 `wx:if` / setData callback 用 `setTimeout` 替代 wx.nextTick
-- **3 个 fetch 失败不互相影响**（A 失败不挡 B/C 渲染）
+- **2 个 fetch 失败不互相影响**（A 失败不挡 B 渲染）
 
 **数据需求**：
 
 - `GET /api/user/me/power-curve`（已有 / v5 Sprint 2）
 - `GET /api/user/me/heatmap`（已有 / v5 Sprint 2）
-- `GET /api/user/profile`.city（已有 / v5 Sprint 2）
 
 **异常情况**：
 
 - 4 段功率曲线某段无数据（如新用户没有 1h 段）→ 该线不画 / 不报错
 - heatmap 地图组件加载失败 → 降级显示"地图加载失败"+ retry 按钮，不破其他槽位
-- city = null → 显示"设置城市"引导按钮 → 跳转 settings 页
 
 **验收标准**：
 
-- 真用回归：Tim/CCF/颜颜各自看自己的功率曲线 + 热力图能正常显示，city badge 准确
+- 真用回归：Tim/CCF/颜颜各自看自己的功率曲线 + 热力图能正常显示
 - 用 Strava 假数据账号（含至少 6 个月骑行）能看到完整 4 段曲线 + 热力图分布
-- 单测覆盖：4 个 fetch 路径（power-curve / heatmap / profile.city / fail-降级）
+- 单测覆盖：3 个 fetch 路径（power-curve / heatmap / fail-降级）
 - canvas 渲染在 90% 设备稳定（CLAUDE.md 陷阱 #17 / setTimeout 兜底）
 
 **不做项**：
 
 - 不做 power_curve 单条 vs 多条对比（"我 vs Tim"留 Sprint 5）
 - 不做 heatmap 跨城市切换（默认 auto / 6 城选项预留）
-- 不做 city badge 在动态 / 通知列表里跟用户名旁的展示（D9）
+- 不做 city 字段引导设置弹窗（D9 / 没值就不显示）
 
 **来源追溯**：§3.2 / 用户故事 §2.1。
 
@@ -364,7 +356,7 @@ cat miniprogram/app.json | head -40
 
 ## 8. 子任务 4.3 - 用户详情页新建（批 1 看他人）
 
-**用户目标**：从动态 / 通知中心点击别人头像 → 进对方主页看 ta 的功率曲线 / 热力图 / 城市 / 累计数据。隐私边界严格：看不到对方手机 / openid / Strava token。
+**用户目标**：从动态 / 通知中心点击别人头像 → 进对方主页看 ta 的功率曲线 / 热力图 / 累计数据 / city badge（if exists）。隐私边界严格：看不到对方手机 / openid / Strava token。
 
 **使用场景**：参用户故事 §2.1 周四中午（小明看 CCF 主页）。
 
@@ -373,7 +365,7 @@ cat miniprogram/app.json | head -40
 - 新建 `pages/user/user.wxml` + `user.js` + `user.json`（接受 query 参数 `?id=xxx`）
 - 注册到 `app.json` pages 数组（不在 tabBar）
 - 页面结构（**与个人页结构同步但只读 + 隐私白名单字段**）：
-  - 用户信息名片（头像 + 昵称 + ID + 城市 badge）
+  - 用户信息名片（头像 + 昵称 + ID + city badge if exists / D9 fallback 同 4.1）
   - 累计骑行卡片（总里程 + 总次数 + 总爬升）
   - 功率曲线（看 ta 的）
   - 骑行热力图（看 ta 的）
@@ -446,7 +438,7 @@ cat miniprogram/app.json | head -40
 
 - `pages/explore/explore.wxml` 现状（占位"即将上线"）→ 改造为：
   - 顶部城市筛选条（横向滚动 chip：北/上/杭/深/成/太 + 全部）
-  - 主体瀑布流卡片列表（每张卡 = 赛段名 + 距离 / 爬升 / 难度 / 城市 / NEW 标签 if 30 天内 approved / AI 介绍前 30 字）
+  - 主体瀑布流卡片列表（每张卡 = 赛段名 + 距离 / 爬升 / 难度 / 城市 / NEW 标签 if `created_at` < 30 天前 / AI 介绍前 30 字）
   - 点击卡片跳转 `pages/segment/segment?id={segment_id}`（4.5 新建赛段详情页）
 - explore.js 调 `GET /api/segments?city={city}&page={n}&page_size=20`
   - **后端默认排序**：经 grep `app/segment/service_query.py:82` 确认默认 `order_by(Segment.created_at.desc())`，新创建赛段自然排前面 / 不需要补 sort_by 参数
@@ -485,7 +477,7 @@ cat miniprogram/app.json | head -40
 
 **异常情况**：
 
-- 用户城市 = unknown → 默认显示"全部" / 或显示弹窗"先在个人页设置城市"
+- 用户城市 = null 或 unknown → 默认显示"全部"列表（D9 / 不弹窗引导设置）
 - segments 列表为空（极端 case，全砍）→ 空状态文案 + 引导贡献入口（暂不实现，Sprint 5+ 加）
 - 砍 leaderboard 后小程序底部导航因 tab 数变化导致 icon 错位 → 必须真机测试
 
@@ -509,7 +501,7 @@ cat miniprogram/app.json | head -40
 
 ## 10. 子任务 4.5 - 赛段详情页新建（批 2 独立页）
 
-**用户目标**：点探索 tab 卡片进入赛段详情 → 看到海拔曲线 + 难度 + 城市 + 距离 / 爬升数字 + AI 介绍 + 我的 PB（个人最佳）。这是骑手判断"这条值不值得骑"+"我跟自己比进步多少"的核心页面。
+**用户目标**：点探索 tab 卡片进入赛段详情 → 看到海拔曲线 + 城市 + 坡度 + 距离/爬升数字 + AI 介绍 + 我的记录 + 全网 top 10 排行榜 + 我的排名。这是骑手判断"这条值不值得骑"+"我跟自己比进步多少"+"我在全网什么位置"的核心页面。
 
 **使用场景**：参用户故事 §2.2（小张点妙峰山）。
 
@@ -518,12 +510,16 @@ cat miniprogram/app.json | head -40
 - 新建 `pages/segment/segment.wxml` + `segment.js` + `segment.json`（接受 query `?id=xxx`）
 - 注册 `app.json` pages（不在 tabBar）
 - 页面结构（**自上而下**）：
-  1. **第一屏**：海拔曲线 + 难度 badge + 城市 tag + 4 数字（距离 / 爬升 / 最大坡度 / 平均坡度）
+  1. **第一屏**：海拔曲线 + 城市 tag + 4 数字（距离 / 爬升 / 平均坡度 / 最大坡度）。**不展示难度评级 badge**（D14 / 难度算法 Sprint 5 细化）
   2. **AI 介绍 section**：标题"关于这条赛段" + 精选介绍（admin 审核过 / 50-100 字）+ 字数过长时支持展开/收起
-  3. **我的 PB section**：
-     - 用户骑过这条 → 显示 PB 时间 + 速度 + 哪天创下 + "你的进步：从 X 到 Y"
+  3. **我的记录 section**（D7 改文案 / 之前叫"我的 PB"）：
+     - 用户骑过这条 → 显示个人最快时间 + 速度 + 哪天创下 + "你的进步：从 X 到 Y"
      - 用户没骑过 → "还没骑过这条赛段，骑一次试试看"+ 引导文案
-- 调 `GET /api/segments/{id}` 拿赛段全字段（含 introduction）+ `GET /api/user/efforts?segment_id={id}` 拿用户 PB
+  4. **全网排行榜 section**（D7 反转 / v0.1 砍后 v0.2 改回展示）：
+     - top 10 列表（昵称 + 完成时间 + 头像 + 是否当前用户高亮）
+     - "我的排名"行（独立显示 / 即使在 top 10 之外也展示我排名第几）
+     - 未登录用户看到 top 10 但"我的排名"section 显示"登录后查看你的排名"
+- 调 `GET /api/segments/{id}` 拿赛段全字段（含 introduction）+ `GET /api/user/efforts?segment_id={id}` 拿用户成绩 + `GET /api/segments/{id}/leaderboard?limit=10` 拿全网 top 10
 
 **用户流程**：
 
@@ -531,40 +527,42 @@ cat miniprogram/app.json | head -40
 
 **页面/状态**：
 
-- loading（首次加载 / 双 fetch 并行）
-- 数据完整（赛段 + 用户 PB 都有）
-- 数据完整（赛段有，用户无 PB）
+- loading（首次加载 / 三 fetch 并行：segment + my efforts + leaderboard）
+- 数据完整（赛段 + 我的成绩 + leaderboard 都有）
+- 数据完整（赛段有，我无成绩，但有 leaderboard）
 - 数据完整（赛段有 introduction = null / 显示"暂无介绍" placeholder）
 - 404（segment_id 不存在 → 错误页 + 返回探索按钮）
-- 未登录看赛段详情 → 第一屏正常显示，"我的 PB" section 显示"登录后查看你的成绩"+ 登录按钮
+- 未登录看赛段详情 → 第一屏 + AI + leaderboard 正常显示，"我的记录"+"我的排名" section 显示"登录后查看你的成绩 / 排名"+ 登录按钮
 
 **数据需求**：
 
 - `GET /api/segments/{id}`（已有 / 含 introduction）
 - `GET /api/user/efforts?segment_id={id}`（已有 / 单条赛段成绩）
-- **不调** `GET /api/segments/{id}/leaderboard`（D7 / 全网排行榜不展示）
+- `GET /api/segments/{id}/leaderboard?limit=10`（已有 / D7 反转后调用 / 返回 top 10 + 当前用户排名）
 
 **异常情况**：
 
 - segment fetch 失败 → 全页错误状态 + retry
-- user efforts fetch 失败 → 我的 PB section 显示"成绩加载失败" / 不破赛段信息显示
+- user efforts fetch 失败 → "我的记录" section 显示"成绩加载失败" / 不破赛段信息显示
+- leaderboard fetch 失败 → "全网排行榜" section 显示"排行榜加载失败" / 不破赛段信息 + AI 介绍显示
 - introduction = "" 或 null → 显示 placeholder "暂无介绍"（不显示空白 section）
+- leaderboard 总人数 < 10（小赛段）→ 全部展示，标题改"全网排行榜（共 X 人）"
 
 **验收标准**：
 
-- 真用回归：Tim/CCF 各自骑过的赛段详情页能看到自己的 PB；没骑过的引导文案正常
-- 单测：4 个路径（数据齐 / 没 PB / 没 introduction / 404）
+- 真用回归：Tim/CCF 各自骑过的赛段详情页能看到自己的成绩 + 全网排名；没骑过的引导文案 + 仍能看到 leaderboard
+- 单测：5 个路径（数据齐 / 没成绩 / 没 introduction / 404 / leaderboard 不足 10 人）
 - 视觉沿用 v4 detail.wxml 海拔曲线同款形态（CLAUDE.md 陷阱 #17 wx:if 改 hidden）
 - 跳转链路：探索 tab → 赛段详情页 → 返回探索 tab 状态保持（瀑布流位置不重置）
 
 **不做项**：
 
-- 不展示全网 top 10 排行榜（D7 / Tim 砍）
+- 不在第一屏展示难度评级 badge（D14 / 难度算法 Sprint 5 细化）
 - 不做"我去过的次数"细粒度统计（efforts 单次记录够用）
 - 不做赛段评论 / 收藏（Sprint 5+）
 - 不做"附近赛段推荐"（Sprint 5+）
 
-**来源追溯**：§3.2 #5 / D7 / 用户故事 §2.2 步骤 4-7。
+**来源追溯**：§3.2 #5 / D7（反转）/ D14 / 用户故事 §2.2 步骤 4-7。
 
 ---
 
@@ -621,19 +619,19 @@ cat miniprogram/app.json | head -40
 
 **批 1 ship 后 1 周真用回归**：
 
-- Tim/CCF/颜颜各自看自己的功率曲线 + 热力图 + city badge 显示正常
+- Tim/CCF/颜颜各自看自己的功率曲线 + 热力图正常显示（city badge 有值则展示 / 无值不强制）
 - 三人互相看对方用户详情页能看到对方公开字段，看不到敏感字段
 - 真用反馈记录到 deployment-diary.md（即使没 bug 也要记"用了哪些场景 / 感受"）
 
 **批 2 ship 后 1 周真用回归**：
 
 - 探索 tab 瀑布流流畅 / 城市筛选准确 / NEW 标签合理
-- 赛段详情页 AI 介绍 + 我的 PB 显示正常
+- 赛段详情页 AI 介绍 + 我的记录 + 全网 top 10 排行榜 + 我的排名显示正常
 - 4 tab 切换流畅 / 无死链接 / 老用户切换习惯不破坏
 
 **Sprint 4 收尾时**：
 
-- 7 功能全部 ship + 真用过 / 不留半成品（哲学 D10）
+- 6 功能全部 ship + 真用过 / 不留半成品（哲学 D10 / city 字段顺带做不计独立功能）
 - admin H5 真用回归收的 bug 全部 P0/P1 hotfix 完成
 - 黑盒度三问通过（CLAUDE.md "防黑盒化"）
 - 刷新 architecture-guide.md / data-flow-guide.md（Sprint 4 新增 4 tab 结构 / 新增 2 独立页）
