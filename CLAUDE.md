@@ -445,12 +445,37 @@ D 主轴（admin H5 hotfix + 监测）：
 - velo CLAUDE.md 技术栈陷阱清单第 15 条（PostGIS `ST_*` 函数在 SQLite 测试 fixture 不可用 / 加 dialect 守卫）
 - memory 6 处升级（详 MEMORY.md / 含元认知批判 / 视觉冲击 vs 真复杂度 / 读 diff 不只读报告 / pytest exit code 不可信 / Edit 全角标点 / untracked 待办列表）
 
-**当前位置**：Sprint 1+2+3 **全部代码 + 生产部署 + 收尾 hotfix 完成（2026-05-06）**。task-3.B.2 segment-creator.html 增强 ✅ / 502 事故 hotfix ✅ / monitor-admin-h5 探针 ✅（D 决策 / log-only 模式）。10 service stack 全 Up / admin H5 公网正常 / monitor 容器自动跑 admin_h5_health 探针。
+**当前位置**：Sprint 1+2+3 全部完成（生产部署 + 收尾 hotfix / 详往下） + **Sprint 4 brainstorm + plans + baseline 全部完成（2026-05-06）**，**下一步 = task-4.1 个人页框架改造**。
 
-**下一个 = Sprint 4 整体 brainstorm**（独立新会话开 / 防上下文爆）：
-- 小程序前端 UI 接 Sprint 2 endpoint（power_curve / heatmap / city / profile）
-- 业务侧 admin H5 真用回归（你 / CCF / 颜颜真用候选池 / 草稿 / 管理 + 创建工具一周 → 收集真用 bug）
-- 监测告警通道（用户量到 1000 时再装 / D 决策 / 现阶段不做）
+**Sprint 4 = 小程序 4 tab 重构 + admin H5 真用回归（4 周 / 双主轴并行）**
+
+- PRD：`docs/prd/phase-4-prd.md`（v0.2 / commit `0c17e44` + `14eba8d` / D1-D20 决策入册 / 含 D7 反转 / D9 city badge fallback / D16-D20 baseline drift 修复）
+- Plans：`docs/plans/sprint-frontend/`（README + task-4.1 ~ 4.5 / commit `2ad2788` / 1555 行 / **临时目录命名**避免跟 phase5/task-4.1~4.4 v5 收尾撞名 / 整期收尾时 `mv` 重命名）
+- Baseline：commit `5dc4c33` (test fixture 修) + `cbe34ca` (后端 P1-3 加 self profile.city / P1-4 砍看他人 ftp) + `96e599f` (PRD/plans 4 处 drift 修) → **pytest 379 passed / 0 failed / 51 skipped**
+
+**Sprint 4 任务进度**：
+
+- ✅ 开工前技术 baseline：pytest 全过 + curl prod 7 endpoint 实证 + 修 4 处 drift（period 真实枚举 / city 必填 / self profile 加 city / 看他人砍 ftp）
+- ⏳ task-4.1 个人页框架改造（**下一步 / 批 1 第一步独立 ship / 2-3 天**）
+- ⏳ task-4.2 个人页内容塞入（功率曲线 + 热力图 / 2 并行 / 4-5 天）
+- ⏳ task-4.3 用户详情页新建（含前置后端补 2 endpoint / 4-5 天）
+- ⏳ task-4.4 探索 tab 改造 + 砍 leaderboard tab（5 → 4 tab / 5-6 天）
+- ⏳ task-4.5 赛段详情页新建（4 区块 / D7 反转后展示 top 10 / 5-6 天）
+- ⏳ admin H5 真用回归 ops（全 sprint 并行 / Tim/CCF/颜颜每天用 / hotfix 模式）
+
+**Sprint 4 关键决策摘要（详 phase-4-prd.md §5）**：
+- D5: 砍 leaderboard tab（5 → 4 tab）/ "完全没用"（Tim 拍）
+- D7: 全网排行榜前端展示 top 10 + 我的排名（赛段详情页 / D7 反转 v0.1 砍 → v0.2 改回展示）
+- D9: city 字段在 profile 内可选 / city badge 自动 fallback / 不强制设置
+- D10: 开发哲学 "做完不好就删"（每功能 ship 1 周真用 → 回收/重做）
+- D16/D17: power-curve period 真实枚举 + heatmap city 真实必填（codex 异源 confirm）
+- D18: self profile schema 加 city（已 ship `cbe34ca`）
+- D19: 看他人 schema 砍 ftp（codex 异源审拍 / 已 ship `cbe34ca`）
+- D20: 写 PRD/plans 提及 endpoint 字段/枚举值前必须 grep schemas.py 实证
+
+**下一步 = task-4.1 个人页框架改造**（subagent 启动只读 `docs/plans/sprint-frontend/README.md` + `task-4.1.md`，2 文件够）
+
+**v5 收尾 4 任务（phase5/task-4.1 ~ 4.4 占位卡）放 Sprint 4 整期末做**（不是先做 / Tim 2026-05-06 拍 / 详细论证：phase-4-prd.md §11 + brainstorm 顺序 push back）
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
 - DEEPSEEK_API_KEY ✅
@@ -461,11 +486,29 @@ D 主轴（admin H5 hotfix + 监测）：
 - 调整理由：原 closure 把 0.7 列必做，但 0.7 spec §2.6 顶层 import `app.segment.service.calculate_max_gradient` 等函数，这些函数在 1.A.1 才实现 → 0.7 现在写完连 Python load 都炸 → "占位脚本"无价值。
 - Sprint 1 启动条件实际是：DB schema 就位（0.6 已落地）+ 单一 Redis 源（0.8 已落地）+ tz-aware（0.1 已落地）。算法函数 1.A.1 写完后 0.7 立刻回填 = Sprint 1 内部第一动作。
 
-**新会话起手必读**（给下次 /clear 后的主 agent）：
-1. 本 CLAUDE.md（项目规则 + 进度 / **Sprint 1+2+3 代码 + 生产部署全部完成 2026-05-05** / 下一个 = Sprint 4 规划）
-2. **`docs/deployment-diary.md` "✅ Sprint 1+2+3 部署完成" 章节**（含 10 service stack / admin H5 deploy key 配置 / monitor 60s 探测循环 / pg_dump backup 路径）
-3. **admin H5 工作目录** `~/Desktop/admin-h5`（独立 GitHub repo `Starsky618/admin-h5` private / 服务器 ~/admin-h5 已 clone / Dockerfile + nginx.conf 已落地 / 容器映射 9000:80）
-4. **velo backend admin endpoint 全在** `/api/admin/*` 前缀（task-3.A.1 ~ 3.A.7 / 11 个 endpoint / 含 `/admin/whoami` 给 admin H5 登录用）
-5. memory（自动加载 / 25+ 条 / 含元认知批判性思考 + 双向异源审 + 三审 3 层兜底 + 等）
-**禁止**：读 spec-v5.md 全文（2879 行污染上下文）—— task 卡有 spec 行号引用，需要时只读那段。
-**生产 admin token 签发**：服务器 `cd ~/velo && sudo docker compose exec -T api python -c "from app.user.service import create_token; print(create_token(1))"`（user_id=1 / 7 天有效）。
+**新会话起手必读**（给下次 /clear 后的主 agent / Sprint 4 task-4.1 起手版）：
+1. 本 CLAUDE.md "**当前位置**"段（你正在看 / Sprint 4 brainstorm + plans + baseline 全部完成 / 下一步 task-4.1）
+2. **`docs/plans/sprint-frontend/README.md`**（Sprint 4 全局约定 + 任务依赖图 + 字段索引 / 不超过 200 行）
+3. **`docs/plans/sprint-frontend/task-4.1.md`**（你当前要执行的任务卡 / 不超过 230 行 / 含 grep 现状清单 + TDD 步骤 + commit 模板 + 自检三问）
+4. memory（自动加载 / 含 Sprint 4 沉淀的 2 条新：架构师 vs codex 开发分工 / endpoint 写前必 grep schemas.py / D20）
+
+**禁止**：读 spec-v5.md / phase-4-prd.md / 其他 task-4.X.md（污染上下文 / task 卡有引用，需要时只读那段）。
+
+**Sprint 4 关键 commit**（按时间倒序 / 不需要 git log 即可了解状态）：
+- `96e599f` docs: Sprint 4 baseline 4 处 drift 修复 + D16-D20 决策记录
+- `cbe34ca` feat(user): Sprint 4 baseline P1-3 + P1-4 — self profile 加 city / 看他人砍 ftp
+- `5dc4c33` test: 修 Sprint 4 baseline 3 fail（test fixture 漂移 / 非真 bug）
+- `2ad2788` docs(plans): sprint-frontend 实施计划首版（README + 5 task 卡 / 1555 行）
+- `14eba8d` docs(prd): phase-4-prd v0.1 → v0.2（Tim 自审反转 + Claude 同步后半）
+- `0c17e44` docs(prd): Sprint 4 战术 PRD - 小程序 4 tab 重构 + admin H5 真用回归
+
+**v5 期 Sprint 1+2+3 部署 + 收尾 hotfix 历史**（Sprint 4 task-4.1 不需要读，但万一需要查）：
+- `docs/deployment-diary.md` "✅ Sprint 1+2+3 部署完成" 章节
+- admin H5 工作目录 `~/Desktop/admin-h5`（独立 GitHub repo `Starsky618/admin-h5` private / 容器 9000:80）
+- velo backend admin endpoint 全在 `/api/admin/*` 前缀（task-3.A.1 ~ 3.A.7 / 11 endpoint）
+
+**生产 admin token 签发**（如需测后端）：
+```
+ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose exec -T api python -c \"from app.user.service import create_token; print(create_token(1))\""
+```
+（user_id=1 / 7 天有效 / token 不要进 commit / 不要写文档）
