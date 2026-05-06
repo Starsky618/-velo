@@ -106,13 +106,25 @@ services:
   # 不挂任何 volume：只读 DB + 推外部 webhook，不写文件系统
   monitor:
     build: .
-    command: sh -c "while true; do python -m app.monitor.processing_health || true; sleep 60; done"
+    # 主循环跑两个独立探针 / 退码独立 / 失败互不影响：
+    # 1. processing_health：扫 DB 卡住的 activity（worker 软目标）
+    # 2. admin_h5_health：探 admin H5 反代链路（2026-05-06 502 事故防御）
+    command: >
+      sh -c "while true;
+      do python -m app.monitor.processing_health || true;
+      python -m app.monitor.admin_h5_health || true;
+      sleep 60;
+      done"
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
       FEISHU_BOT_WEBHOOK: ${FEISHU_BOT_WEBHOOK}
+      # admin_h5_health 探针用 Redis SETNX 做告警去抖（5 分钟内同 sig 不重发飞书）
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       - db
+      - redis
+      - admin-h5
 
   # ===== Scheduler：Strava 导入调度器 =====
   # 每 30s 触发一次 run_import_tick，推进所有 active 用户的 tier1/tier2 导入
