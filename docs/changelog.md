@@ -1,5 +1,35 @@
 # VELO 开发变更日志
 
+## 2026-05-06 Sprint 1+2+3 收尾会话（task-3.B.2 + 502 hotfix + monitor 探针 + D 决策）
+
+### task-3.B.2 segment-creator.html 增强 + 搬到 admin-h5 repo
+- velo `c01b7fd` 后端新增 `GET /api/admin/activities/{id}/trackpoints`（require_admin / 不限 owner）+ 5 单测 + `tools/` 整目录删除
+- admin-h5 `71de031` HTML 加"从已上传活动"模式 / fetch URL 切到 admin from-gpx / API_BASE_URL 相对路径 / AppLayout 侧栏第 4 项"赛段创建工具"
+- Codex 异源审 Critical=0 / 2 Important 全修（parseInt 严格化 + AbortSignal.timeout）
+
+### 2026-05-06 admin H5 502 事故 hotfix
+现象：admin H5 公网 502 + 前端 toast 显示"token 无效或过期"。Tim 重签 token 仍失败 / 浪费 30 分钟。
+
+三层 root cause：
+1. 表层 — LoginPage catch-all 把 401/403/5xx/网络错全显示同一句"token 失效"
+2. 中层（真根因）— admin-h5 nginx `proxy_pass http://api:8000` 缓存 api 容器旧 IP / api 重启换 IP 后一直连旧 IP → 502
+3. 深层 — admin H5 没端到端监测探针 / 真用打开页面才发现
+
+修复（2026-05-06 双 commit）：
+- velo `f5c4cc2` deployment-diary 加事故复盘 + 4 条未来 agent 硬规则
+- admin-h5 `91ca336`：nginx.conf 加 resolver + 变量化 proxy_pass / src/api/error.ts 升级 getErrorDetail 单一真相源 / src/api/client.ts interceptor 修 race（codex 异源审抓到）
+
+### task-monitor-admin-h5 端到端监测探针 + D 决策
+- velo `6d6657f` 加 `app/monitor/admin_h5_health.py`（探静态站 + 反代到 api / 严格断言 4xx 防 SPA fallback 漏报 / Redis SETNX 5min 去抖 / 11 单测）
+- velo `357285f` D 决策（Tim 拍）：velo 现阶段告警通道暂不接通 / 探针 log-only / 飞书 webhook 代码沉淀 / .env 加一行可激活
+
+### 元层 lessons（已沉淀）
+- velo `CLAUDE.md` 技术栈陷阱清单加 #18（nginx + docker DNS 缓存）+ #19（第三方依赖激活状态 mock 测不到）
+- velo `CLAUDE.md` 已知风险表加 3 条全 🟢
+- memory 加 1 条 project（D 决策）+ 1 条 feedback（诊断顺序）+ 更新 1 条（mock 盲区第 5 类）
+
+---
+
 ## 2026-04-29 起 第 5 期：赛段内容深化 + 数据成长 + 个人页 + admin 工具（进行中）
 
 ### 启动期（2026-04-26 ~ 04-29）

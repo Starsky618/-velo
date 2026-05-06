@@ -258,6 +258,8 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 | 15 | **PostGIS `ST_*` 函数在 SQLite 测试 fixture 不可用**（v5 task-3.A.6 实证）| service 层加 PostGIS 查询（`ST_HausdorffDistance` / `ST_GeomFromText` 等）时，SQLite fixture 跑会 `OperationalError: no such function: ST_xxx` 让真路径单元测试 fail（task-3.A.6 加 from-gpx 查重时引发 `tests/test_segment_fields.py` 4 fail） | 加 dialect 守卫：`if db.bind.dialect.name == "postgresql":` 内层跑 PostGIS 查询；SQLite 跳过（视为"无重叠"让流程继续）/ 真 PG 才跑产品保护逻辑；MagicMock 测试用 `db.bind.dialect.name = "postgresql"` 显式 mock；dev stack 真 PG 集成测试补真行为。**共享逻辑识别**（CLAUDE.md spec 自审 #2）：跨调用方相同 PostGIS 业务规则必抽 helper（如 `_check_hausdorff_overlap`），守卫在 helper 内统一 |
 | 16 | **Strava API `before` 参数 inclusive 边界 / dedupe 全部时 cursor 不推进死循环**（v5 真用回归实证）| import_scheduler tier1 拉 page1 后 cursor_before = 最老活动 started_at；下次 tick `before=该 ts` Strava 仍返回**等于该时间戳**的边界活动（inclusive）；这些活动全已 created → dedupe 全 continue → oldest_start_date 不推进 → cursor 卡同一 ts → 死循环 → activity 永远卡 importing | tier1 循环里把 `oldest_start_date` 推进**移到 dedupe 之前**：先解析 start_date 推进游标，再做 dedupe。dedupe 跳过的活动也算游标推进 → cursor 持续向更老方向走，直到拉真空 list 触发 tier1 完成 |
 | 17 | **小程序 `wx:if` 控制 canvas 创建 → setData callback wx.nextTick 仍有 race**（v5 真用回归实证 / 90% 设备折线图不渲染）| home/detail 的速度/功率/心率/踏频 chart `<canvas>` 用 `wx:if="{{hasTimeseries}}"` 控制创建；setData 后 wx.nextTick 调 bindLineChart 时 canvas 2d node 在某些机型仍未 ready；selector 失败 → 静默 return → 图永远不画。海拔图无 wx:if（DOM 永远在）所以 100% 工作 = 对照组 | 1）改 `wx:if` → `hidden`（DOM 永远在 / canvas 一开始就 ready）2）setData callback 用 `setTimeout(fn, 100)` 替代 `wx.nextTick`（兜底极慢机型 canvas 2d 初始化）3）整个 section 的 wx:if 保留时（如踏频 section 控制是否显示标题）/ 内部 canvas 配 setTimeout 兜底 |
+| 18 | **nginx + docker hostname-based proxy_pass 缓存 IP**（2026-05-06 admin H5 502 事故实证）| `proxy_pass http://api:8000` 用 hostname 时 nginx 启动时解析一次就缓存；api 容器任何重启（OOM 自愈 / 部署 / docker prune）拿到新 IP → admin-h5 nginx 仍连旧 IP → 502。被 LoginPage catch-all "token 无效或过期"误显示 → 排查 30 分钟走错路径 | `resolver 127.0.0.11 valid=10s ipv6=off`（docker 内置 DNS）+ `set $upstream_api http://api:8000; proxy_pass $upstream_api;`（变量化 → nginx 不缓存 / 每次连接前重查）。10 秒内自动恢复，无需手动 restart 容器。**配套**：前端错误文案禁用 catch-all / 必须按状态码分流（401 / 403 / 5xx / 网络）|
+| 19 | **第三方依赖激活状态 mock 测试不到 / 真用才发现"喇叭没插电源"**（2026-05-06 task-monitor-admin-h5 实证）| 监测探针单测全 mock httpx + 11 测试通过；生产 .env 里 `FEISHU_BOT_WEBHOOK` 是空（Tim 从没用过飞书）→ 探测真生效但 webhook 推送进 logger.warning"未配置跳过"分支 / 告警进垃圾桶。Mock 测了"agent 调用了什么"，没测"通道真激活了"  | 部署高风险第三方依赖（飞书 / 微信 / SMTP / Stripe / Strava webhook 等）必须**有意激活回归**：部署后 24h 内 owner 故意触发一次失败场景，确认告警 / 回调 / 推送真到达。把激活状态写进 deployment-diary 防遗忘 |
 
 > **活文档**：每踩新陷阱在这加一条（不要回 architect skill 加——那里只留跨栈通用 3 条）。
 
@@ -312,6 +314,9 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 | status 字段无 CHECK 约束 | 🟡 | DB 层可写任意字符串 | 应用层校验 ⚠️ |
 | trackpoints 表无分区策略 | 🟡 | 百万级时在线加分区需锁表 | 未来事 ❌ |
 | 删 importing 中 activity | 🟡 | Worker 报外键错（脏日志，数据安全）| 未处理 ❌ |
+| admin-h5 nginx DNS 缓存 | 🟢 | api 容器重启换 IP 后 admin-h5 一直连旧 IP → 502 | resolver 127.0.0.11 + 变量化 proxy_pass ✅ admin-h5 commit `91ca336`（2026-05-06）|
+| admin H5 端到端监测盲区 | 🟢 | api/admin/* 反代挂时无主动告警 | monitor 容器加 admin_h5_health 探针（log-only / D 决策）✅ velo commit `6d6657f` |
+| 前端错误文案 catch-all | 🟢 | 401/403/5xx/网络错全显示同一句"token 无效"误导排查 | getErrorDetail 单一真相源按状态码分流 ✅ admin-h5 commit `91ca336` |
 
 ## 当前进度
 
@@ -418,14 +423,34 @@ B 主轴（admin H5）：
 - ✅ task-3.B.1 D.4 批量管理页 + I1/I2 整改（commit `c7cbfcb` / admin-h5 repo / 抽 getErrorDetail 公共 helper）
 - ✅ task-3.B.1 D.5 容器化部署文件（admin-h5 commit `7e736d4` Dockerfile + nginx.conf + .dockerignore + README SOP / velo commit `c48ab8f` docker-compose 加 admin-h5 service / Claude 主开发 + codex 异源审通过）
 - ✅ task-3.B.1 D.5 服务器部署执行（2026-05-05 / 详 `docs/deployment-diary.md` "✅ Sprint 1+2+3 部署完成" 章节 / 外网 9000 HTTP 200）
-- ⏳ task-3.B.2 segment-creator.html 增强（Sprint 4 时机）
+- ✅ task-3.B.2 segment-creator.html 增强 + 搬到 admin-h5 repo（2026-05-06 / velo commit `c01b7fd` + admin-h5 commit `71de031`）
+  - 后端新增 `GET /api/admin/activities/{id}/trackpoints`（require_admin / 不限 owner / 5 单测）
+  - HTML 加 activity_id 模式 + 切 admin from-gpx + API_BASE_URL 相对路径
+  - admin-h5 AppLayout 侧栏第 4 项"赛段创建工具"
+  - velo `tools/` 整目录删除
+
+D 主轴（admin H5 hotfix + 监测）：
+- ✅ 2026-05-06 admin H5 502 事故 hotfix（velo commit `f5c4cc2` + admin-h5 commit `91ca336`）
+  - admin-h5 nginx.conf 加 resolver + 变量化 proxy_pass（防 docker DNS 缓存让 admin-h5 一直连旧 api IP）
+  - admin-h5 src/api/error.ts 升级 getErrorDetail 单一真相源（401/403/5xx/网络分流 / 不再 catch-all 误显示"token 过期"）
+  - admin-h5 src/api/client.ts interceptor 修 race（仅在请求未自带 Authorization 时才补 store token / codex 异源审抓到）
+  - velo deployment-diary 加事故复盘 + 4 条未来 agent 硬规则
+- ✅ task-monitor-admin-h5 端到端监测探针（velo commit `6d6657f` + D 决策 commit `357285f`）
+  - app/monitor/admin_h5_health.py：探静态站 + 反代到 api（严格断言 4xx / SPA fallback 漏报防御）
+  - Redis SETNX 5 分钟去抖（codex 异源审抓的告警风暴）
+  - **D 决策（Tim 2026-05-06）**：velo 阶段告警通道暂不接通 / 探针 log-only 模式 / 飞书 webhook 代码沉淀 / .env 加一行可激活
 
 **Sprint 3 元层升级（2026-05-05 本会话）**：
 - 全局 ~/.claude/CLAUDE.md TL;DR + §2.1 加"元认知批判性思考（决策前必跑 / 区分合格 vs 顶级工程师的核心层）"为最高优先级锚点
 - velo CLAUDE.md 技术栈陷阱清单第 15 条（PostGIS `ST_*` 函数在 SQLite 测试 fixture 不可用 / 加 dialect 守卫）
 - memory 6 处升级（详 MEMORY.md / 含元认知批判 / 视觉冲击 vs 真复杂度 / 读 diff 不只读报告 / pytest exit code 不可信 / Edit 全角标点 / untracked 待办列表）
 
-**当前位置**：Sprint 1+2+3 **代码层 + 生产部署全部完成（2026-05-05）**。整 40 commit 一次性部署成功 / 10 service stack（api / caddy / cleanup / curation-pool-cron / db / monitor / redis / scheduler / worker / admin-h5）全 Up / 外网 9000 端口 admin H5 HTTP 200。详 `docs/deployment-diary.md` "✅ Sprint 1+2+3 部署完成" 章节。下一个 = **task-3.B.2 segment-creator.html 增强（Sprint 3 admin H5 收尾）** / 之后 Sprint 4 规划（小程序前端 UI 接 Sprint 2 endpoint / 业务侧 admin H5 真用回归）。
+**当前位置**：Sprint 1+2+3 **全部代码 + 生产部署 + 收尾 hotfix 完成（2026-05-06）**。task-3.B.2 segment-creator.html 增强 ✅ / 502 事故 hotfix ✅ / monitor-admin-h5 探针 ✅（D 决策 / log-only 模式）。10 service stack 全 Up / admin H5 公网正常 / monitor 容器自动跑 admin_h5_health 探针。
+
+**下一个 = Sprint 4 整体 brainstorm**（独立新会话开 / 防上下文爆）：
+- 小程序前端 UI 接 Sprint 2 endpoint（power_curve / heatmap / city / profile）
+- 业务侧 admin H5 真用回归（你 / CCF / 颜颜真用候选池 / 草稿 / 管理 + 创建工具一周 → 收集真用 bug）
+- 监测告警通道（用户量到 1000 时再装 / D 决策 / 现阶段不做）
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
 - DEEPSEEK_API_KEY ✅
