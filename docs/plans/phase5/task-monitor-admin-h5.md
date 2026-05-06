@@ -3,9 +3,25 @@
 > **2026-05-06 admin H5 502 事故的深层防御**（事故复盘见 `docs/deployment-diary.md`）
 > Sprint 1+2+3 收尾后的独立增量 / 不依赖 Sprint 4 整体规划
 
+> ## ⚠️ 2026-05-06 决策 D：告警通道暂不接通（log-only 模式）
+>
+> **背景**：探针写完后 Tim 真用回归才意识到他**从没用过飞书**——`FEISHU_BOT_WEBHOOK` 在生产 .env 里是空的，告警跑了等于白跑。
+>
+> **拍板**：velo 现阶段（3 人团队 + 100 用户量级 + admin H5 仅 Tim/CCF/颜颜内部用）告警 ROI 不够：
+> - admin H5 挂不影响真用户（小程序仍能跑）
+> - 故障频率低（这次 502 已加 nginx resolver 防御）
+> - Tim 日常工作流自带"探针"——打开 admin 一眼看出挂没挂
+> - 早上 6 点告警吵醒 = 负价值
+>
+> **现状**：探针代码 + Redis 去抖 + 飞书 webhook 调用**全部沉淀**，但生产 .env 不配 `FEISHU_BOT_WEBHOOK` → fallback 到 `logger.warning("FEISHU_BOT_WEBHOOK 未配置...")` + 跳过推送 → 失败列表仍写 log + main 退码 1（运维查 logs 时能看到历史）。
+>
+> **激活路径**（未来用户量到 1000 时）：在 `~/velo/.env` 加 `FEISHU_BOT_WEBHOOK=<URL>` → 重启 monitor 容器 → 自动接通。**0 行代码改动。**
+>
+> 不删代码的理由：探针真有用（代码生效 / 测试 11 条）+ 沉着没坏处 + 未来用户量起来直接激活，不要被动重写。
+
 ## 🎯 目标
 
-velo-monitor 容器里加一个新探针函数（与现有 `processing_health` 同级），每 60 秒探一次 admin H5 端到端链路。任何一项失败 → 飞书告警。
+velo-monitor 容器里加一个新探针函数（与现有 `processing_health` 同级），每 60 秒探一次 admin H5 端到端链路。**当前阶段失败只 log，不发告警**（见上方 D 决策）。
 
 **抓哪类故障**（这次踩的就是这种）：
 - admin-h5 容器挂了
