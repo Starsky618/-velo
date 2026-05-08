@@ -43,6 +43,22 @@
   gap: 24rpx;
 }
 
+/* city 徽章（D9 fallback / 名片右上角小标签 / Sprint 4 task-4.1） */
+.city-badge {
+  margin-left: auto;
+  background: var(--color-primary);
+  border-radius: 24rpx;
+  padding: 6rpx 18rpx;
+  flex-shrink: 0;
+}
+
+.city-badge-text {
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 500;
+  line-height: 1;
+}
+
 .avatar {
   width: 96rpx;
   height: 96rpx;
@@ -146,6 +162,22 @@
   font-size: 22rpx;
   color: var(--color-text-3);
   margin-top: 8rpx;
+}
+
+/* ── Sprint 4 task-4.1：功能槽位（task-4.2 塞功率曲线 / 热力图） ── */
+.power-curve-slot,
+.heatmap-slot {
+  margin: 0 24rpx 24rpx;
+  min-height: 200rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slot-placeholder {
+  font-size: 26rpx;
+  color: var(--color-text-3);
+  font-weight: 400;
 }
 
 /* ── v4 新增：菜单卡片（我的荣誉 / 设置） ── */
