@@ -143,6 +143,25 @@ admin H5 真用回归（全 sprint 并行 / ops）
 | `Segment.introduction` | TEXT NULL（admin 审核后填）| Sprint 1+3 已落地 |
 | `Segment.created_at` | TIMESTAMPTZ NOT NULL | 默认 NOW() / 用作 NEW 标签判断 |
 | 6 城枚举 | `beijing / shanghai / hangzhou / shenzhen / chengdu / taiyuan` | spec §3.1.3 |
+| **PowerCurvePeriod** | `last_30_days / last_90_days / last_180_days / last_365_days / all_time`（默认 `last_30_days`）| **D16 v0.3 / 滚动窗口型 / task-pre-4.2 升级** |
+
+### 组件化方向（D21 / task-pre-4.2 拍）
+
+Sprint 4 起一切前端"卡片型功能"默认建独立 component，**不**直接在 page wxml 内嵌：
+
+| component | 路径 | 谁用 |
+|---|---|---|
+| `power-curve-card` | `miniprogram/components/power-curve-card/` | 个人页 / 用户详情页（4.3）/ 未来扩展 |
+| `heatmap-card` | `miniprogram/components/heatmap-card/` | 个人页 / 用户详情页 / **未来地图 tab 整搬** |
+
+**props 设计**（4.3 复用关键）：
+- `userId`：number / 默认 0（看自己）/ 非 0（看他人 / 4.3 用）
+- 其他参数（period / city）由 component 自己暴露
+
+**好处三层复利**：
+1. 4.3 看他人 profile：`<power-curve-card userId="42" />` 一行引入 + component 内部 `userId !== 0` 分流到 4.3 新加的 `api.getUserPowerCurve` / 仅 API 路径分支 / 不动 wxml/wxss
+2. 未来地图 tab：`<heatmap-card />` 整体复制过去 = **0 拆代码**（这才是 0 拆代码场景）
+3. 数据流自治：page 不持有 component 数据 / 失败互不影响
 
 ---
 

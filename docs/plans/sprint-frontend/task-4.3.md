@@ -57,7 +57,7 @@
 @router.get("/{user_id}/power-curve", response_model=schemas.PowerCurveResponse)
 def get_user_power_curve_for_others(
     user_id: int,
-    period: schemas.PowerCurvePeriod = schemas.PowerCurvePeriod.this_month,
+    period: schemas.PowerCurvePeriod = schemas.PowerCurvePeriod.last_30_days,
     current_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

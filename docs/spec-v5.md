@@ -670,7 +670,7 @@ if __name__ == '__main__':
 
 4. 功率曲线（5.C.2）
    用户访问个人页 → 点功率曲线卡片
-       → GET /api/users/me/power-curve?period=this_month
+       → GET /api/users/me/power-curve?period=last_30_days
        → Redis cache lookup
        → cache miss → calculate_power_curve(trackpoints, [1,5,30,60,300,1200])
        → Redis SET TTL 1h
@@ -1367,15 +1367,20 @@ CACHE_TTL_SEC = 3600  # 1 小时
 def get_user_power_curve(
     db: Session,
     user_id: int,
-    period: str = 'this_month',
+    period: str = 'last_30_days',
 ) -> dict:
     """
     用户功率曲线（按 period 切片）+ Redis 缓存。
     
-    period 枚举：'this_month' / 'last_month' / 'this_year' / 'last_year' / 'all_time'
+    period 枚举（D16 v0.3 / Sprint 4 task-pre-4.2 升级 / 滚动窗口型）：
+    'last_30_days' / 'last_90_days' / 'last_180_days' / 'last_365_days' / 'all_time'
     
     缓存 key: power_curve:user_{user_id}:period_{period}，TTL 1h
     用户上传新 activity 时 service.invalidate_power_curve_cache(user_id) 清缓存。
+    
+    why 滚动窗口而非自然历法切片：
+    - 自然历法（this_month）：5 月 1 号那天看只有 1 天数据 / 5 月 31 号那天看 31 天，前后差距巨大
+    - 滚动窗口（last_30_days）：任何时间打开都是稳定 N 天 / 进步对比直观
     
     陷阱 #2（naive vs aware datetime）：用 datetime.now(timezone.utc)，不用 datetime.utcnow()
     """
@@ -1386,31 +1391,17 @@ def get_user_power_curve(
         # redis-py 7+ 默认返 bytes（陷阱 #5）
         return json.loads(cached.decode() if isinstance(cached, bytes) else cached)
     
-    # 2. 计算 period 时间范围（第三轮双审 R3-C3 修复：CLAUDE.md "时区"硬约定 —— 本周/本月按北京时间 UTC+8）
-    BJ_TZ = timezone(timedelta(hours=8))
+    # 2. 计算 period 时间范围（滚动窗口型 / D16 v0.3 / 时区不敏感 / 不需 BJ_TZ 划月）
     now_utc = datetime.now(timezone.utc)
-    now_bj = now_utc.astimezone(BJ_TZ)
-    if period == 'this_month':
-        start_bj = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        start = start_bj.astimezone(timezone.utc)
+    rolling_days = {
+        'last_30_days': 30,
+        'last_90_days': 90,
+        'last_180_days': 180,
+        'last_365_days': 365,
+    }
+    if period in rolling_days:
+        start = now_utc - timedelta(days=rolling_days[period])
         end = now_utc
-    elif period == 'last_month':
-        first_this_month_bj = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        end = first_this_month_bj.astimezone(timezone.utc)
-        if first_this_month_bj.month == 1:
-            start_bj = first_this_month_bj.replace(year=first_this_month_bj.year - 1, month=12)
-        else:
-            start_bj = first_this_month_bj.replace(month=first_this_month_bj.month - 1)
-        start = start_bj.astimezone(timezone.utc)
-    elif period == 'this_year':
-        start_bj = now_bj.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        start = start_bj.astimezone(timezone.utc)
-        end = now_utc
-    elif period == 'last_year':
-        first_this_year_bj = now_bj.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        end = first_this_year_bj.astimezone(timezone.utc)
-        start_bj = first_this_year_bj.replace(year=first_this_year_bj.year - 1)
-        start = start_bj.astimezone(timezone.utc)
     elif period == 'all_time':
         start = datetime(1970, 1, 1, tzinfo=timezone.utc)
         end = now_utc
@@ -2423,7 +2414,7 @@ def scan_processing_health(db: Session) -> list[int]:
 | 维度 | 内容 |
 |---|---|
 | 权限 | current_user |
-| 参数 | `period` enum: `this_month` / `last_month` / `this_year` / `last_year` / `all_time`，default `this_month` |
+| 参数 | `period` enum: `last_30_days` / `last_90_days` / `last_180_days` / `last_365_days` / `all_time`，default `last_30_days`（滚动窗口型 / D16 v0.3 / task-pre-4.2 升级） |
 | 响应 | `{period: str, buckets: {"1": float, "5": float, "30": float, "60": float, "300": float, "1200": float}}`（6 buckets 单位 W）|
 | 错误 | 401 / 422 invalid period |
 | 备注 | Redis 缓存 TTL 1h；FTP 为 NULL 用户返绝对 W |

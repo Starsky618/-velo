@@ -125,14 +125,17 @@ def get_stats(
 
 @router.get("/me/power-curve", response_model=schemas.PowerCurveResponse)
 def get_my_power_curve(
-    period: schemas.PowerCurvePeriod = schemas.PowerCurvePeriod.this_month,
+    period: schemas.PowerCurvePeriod = schemas.PowerCurvePeriod.last_30_days,
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     获取当前用户的功率曲线（按 period 切片）。
 
-    period 5 档：this_month / last_month / this_year / last_year / all_time（default this_month）。
+    period 5 档（滚动窗口型 / D16 v0.3）：
+    last_30_days / last_90_days / last_180_days / last_365_days / all_time
+    （default last_30_days）。
+
     Redis 缓存 1h，cache miss 时 100k trackpoints × 6 windows ≈ 32ms。
     """
     return service.get_user_power_curve(db, user_id, period.value)

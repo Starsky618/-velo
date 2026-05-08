@@ -1,5 +1,6 @@
 """
-v5 task-2.C.2 部分（power_curve service + invalidate）：真 PG + 真 Redis 测试。
+v5 task-2.C.2 + Sprint 4 task-pre-4.2（power_curve service + invalidate）：
+真 PG + 真 Redis 测试。
 
 走真 PG（PostGIS / tz-aware datetime / Activity ↔ Trackpoint 完整链路）+
 真 Redis（dev stack 的 redis:16379），不 mock，因为：
@@ -7,6 +8,9 @@ v5 task-2.C.2 部分（power_curve service + invalidate）：真 PG + 真 Redis 
 - 跨 activity per-window max 必须真 DB 查询验证
 
 测试内部用前缀清理避免污染开发种子数据。
+
+period 枚举（D16 v0.3 / 滚动窗口型 / Sprint 4 task-pre-4.2 升级）：
+last_30_days / last_90_days / last_180_days / last_365_days / all_time。
 """
 
 import json
@@ -28,7 +32,6 @@ from app.user.service import (
 
 
 _PREFIX = "[task-2.C.2 power]"
-_BJ_TZ = timezone(timedelta(hours=8))
 
 
 def _db_url() -> str:
@@ -128,19 +131,9 @@ def _make_activity(
     return activity
 
 
-def _this_month_utc() -> datetime:
-    now_bj = datetime.now(timezone.utc).astimezone(_BJ_TZ)
-    return now_bj.replace(day=15, hour=10, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
-
-
-def _last_month_utc() -> datetime:
-    now_bj = datetime.now(timezone.utc).astimezone(_BJ_TZ)
-    first_this_bj = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    if first_this_bj.month == 1:
-        last_bj = first_this_bj.replace(year=first_this_bj.year - 1, month=12, day=15)
-    else:
-        last_bj = first_this_bj.replace(month=first_this_bj.month - 1, day=15)
-    return last_bj.astimezone(timezone.utc)
+def _recent_utc(days_ago: int) -> datetime:
+    """返回今天往前数 days_ago 天的 UTC 时间（用于构造测试 activity 的 started_at）。"""
+    return datetime.now(timezone.utc) - timedelta(days=days_ago)
 
 
 # ───────────────────────────────────────────────────────────────────────
@@ -157,8 +150,8 @@ def test_no_activities_returns_zeros(pg_session_factory, real_redis):
         user_id = user.id
         _cleanup_redis(real_redis, user_id)
 
-        result = get_user_power_curve(db, user_id, "this_month")
-        assert result["period"] == "this_month"
+        result = get_user_power_curve(db, user_id, "last_30_days")
+        assert result["period"] == "last_30_days"
         # buckets 是 dict[int → float]，json round-trip 后 int key 变 str
         for v in result["buckets"].values():
             assert v == 0.0
@@ -177,23 +170,23 @@ def test_cache_hit_returns_redis_data(pg_session_factory, real_redis):
         _cleanup_db(db)
         user = _make_user(db, "cache_hit")
         _make_activity(
-            db, user, "this_month",
-            started_at=_this_month_utc(),
+            db, user, "recent",
+            started_at=_recent_utc(15),
             powers=[200] * 600,
         )
         db.commit()
         user_id = user.id
         _cleanup_redis(real_redis, user_id)
 
-        first = get_user_power_curve(db, user_id, "this_month")
+        first = get_user_power_curve(db, user_id, "last_30_days")
         # 验证 Redis 有写入
-        cached_raw = real_redis.get(f"power_curve:user_{user_id}:period_this_month")
+        cached_raw = real_redis.get(f"power_curve:user_{user_id}:period_last_30_days")
         assert cached_raw is not None
         cached = json.loads(cached_raw.decode() if isinstance(cached_raw, bytes) else cached_raw)
-        assert cached["period"] == "this_month"
+        assert cached["period"] == "last_30_days"
 
         # 第二次查应命中 cache，返回相同结果
-        second = get_user_power_curve(db, user_id, "this_month")
+        second = get_user_power_curve(db, user_id, "last_30_days")
         assert second == first
     finally:
         if user_id is not None:
@@ -209,22 +202,22 @@ def test_invalidate_cache_clears_all_periods(pg_session_factory, real_redis):
     try:
         _cleanup_db(db)
         user = _make_user(db, "invalidate")
-        _make_activity(db, user, "this", _this_month_utc(), [200] * 500)
-        _make_activity(db, user, "last", _last_month_utc(), [180] * 500)
+        _make_activity(db, user, "recent", _recent_utc(15), [200] * 500)
+        _make_activity(db, user, "older", _recent_utc(60), [180] * 500)
         db.commit()
         user_id = user.id
         _cleanup_redis(real_redis, user_id)
 
         # 写两个不同 period 的缓存
-        get_user_power_curve(db, user_id, "this_month")
-        get_user_power_curve(db, user_id, "last_month")
-        assert real_redis.get(f"power_curve:user_{user_id}:period_this_month") is not None
-        assert real_redis.get(f"power_curve:user_{user_id}:period_last_month") is not None
+        get_user_power_curve(db, user_id, "last_30_days")
+        get_user_power_curve(db, user_id, "last_90_days")
+        assert real_redis.get(f"power_curve:user_{user_id}:period_last_30_days") is not None
+        assert real_redis.get(f"power_curve:user_{user_id}:period_last_90_days") is not None
 
         # invalidate 清全部
         invalidate_power_curve_cache(user_id)
-        assert real_redis.get(f"power_curve:user_{user_id}:period_this_month") is None
-        assert real_redis.get(f"power_curve:user_{user_id}:period_last_month") is None
+        assert real_redis.get(f"power_curve:user_{user_id}:period_last_30_days") is None
+        assert real_redis.get(f"power_curve:user_{user_id}:period_last_90_days") is None
     finally:
         if user_id is not None:
             _cleanup_redis(real_redis, user_id)
@@ -241,21 +234,21 @@ def test_invalidate_does_not_touch_other_users(pg_session_factory, real_redis):
         _cleanup_db(db)
         user_a = _make_user(db, "user_a")
         user_b = _make_user(db, "user_b")
-        _make_activity(db, user_a, "a", _this_month_utc(), [200] * 500)
-        _make_activity(db, user_b, "b", _this_month_utc(), [220] * 500)
+        _make_activity(db, user_a, "a", _recent_utc(15), [200] * 500)
+        _make_activity(db, user_b, "b", _recent_utc(15), [220] * 500)
         db.commit()
         user_a_id = user_a.id
         user_b_id = user_b.id
         _cleanup_redis(real_redis, user_a_id)
         _cleanup_redis(real_redis, user_b_id)
 
-        get_user_power_curve(db, user_a_id, "this_month")
-        get_user_power_curve(db, user_b_id, "this_month")
+        get_user_power_curve(db, user_a_id, "last_30_days")
+        get_user_power_curve(db, user_b_id, "last_30_days")
 
         # 清 A 的缓存，B 不动
         invalidate_power_curve_cache(user_a_id)
-        assert real_redis.get(f"power_curve:user_{user_a_id}:period_this_month") is None
-        assert real_redis.get(f"power_curve:user_{user_b_id}:period_this_month") is not None
+        assert real_redis.get(f"power_curve:user_{user_a_id}:period_last_30_days") is None
+        assert real_redis.get(f"power_curve:user_{user_b_id}:period_last_30_days") is not None
     finally:
         if user_a_id is not None:
             _cleanup_redis(real_redis, user_a_id)
@@ -265,27 +258,28 @@ def test_invalidate_does_not_touch_other_users(pg_session_factory, real_redis):
         db.close()
 
 
-def test_period_this_month_picks_only_this_month_activities(pg_session_factory, real_redis):
-    """this_month 只统计本月（按 BJ_TZ）的 activity，不要把 last_month 的拉进来。"""
+def test_period_last_30_days_picks_only_recent_30_days(pg_session_factory, real_redis):
+    """last_30_days 只统计 30 天内的 activity，不要把 60 天前的拉进来。"""
     db = pg_session_factory()
     user_id = None
     try:
         _cleanup_db(db)
-        user = _make_user(db, "period_this")
-        # 上月：高功率 250W
-        _make_activity(db, user, "last_high", _last_month_utc(), [250] * 500)
-        # 本月：低功率 100W
-        _make_activity(db, user, "this_low", _this_month_utc(), [100] * 500)
+        user = _make_user(db, "period_30d")
+        # 60 天前：高功率 250W（在 last_90_days 内 / 在 last_30_days 外）
+        _make_activity(db, user, "older_high", _recent_utc(60), [250] * 500)
+        # 15 天前：低功率 100W（在 last_30_days 内）
+        _make_activity(db, user, "recent_low", _recent_utc(15), [100] * 500)
         db.commit()
         user_id = user.id
         _cleanup_redis(real_redis, user_id)
 
-        this_result = get_user_power_curve(db, user_id, "this_month")
-        # 5min（key=300）应该只反映本月的 100W，不拉到上月 250W
-        assert abs(this_result["buckets"]["300"] - 100.0) < 0.01
+        recent_result = get_user_power_curve(db, user_id, "last_30_days")
+        # 5min（key=300）应该只反映 15 天前的 100W，不拉到 60 天前的 250W
+        assert abs(recent_result["buckets"]["300"] - 100.0) < 0.01
 
-        last_result = get_user_power_curve(db, user_id, "last_month")
-        assert abs(last_result["buckets"]["300"] - 250.0) < 0.01
+        wider_result = get_user_power_curve(db, user_id, "last_90_days")
+        # last_90_days 包含 60 天前的，5min 取最高 250W
+        assert abs(wider_result["buckets"]["300"] - 250.0) < 0.01
     finally:
         if user_id is not None:
             _cleanup_redis(real_redis, user_id)
@@ -300,14 +294,14 @@ def test_period_all_time_includes_everything(pg_session_factory, real_redis):
     try:
         _cleanup_db(db)
         user = _make_user(db, "all_time")
-        _make_activity(db, user, "last", _last_month_utc(), [250] * 500)
-        _make_activity(db, user, "this", _this_month_utc(), [100] * 500)
+        _make_activity(db, user, "older", _recent_utc(60), [250] * 500)
+        _make_activity(db, user, "recent", _recent_utc(15), [100] * 500)
         db.commit()
         user_id = user.id
         _cleanup_redis(real_redis, user_id)
 
         result = get_user_power_curve(db, user_id, "all_time")
-        # all_time 5min 应该取上月的 250W（>100W）
+        # all_time 5min 应该取 60 天前的 250W（>100W）
         assert abs(result["buckets"]["300"] - 250.0) < 0.01
     finally:
         if user_id is not None:

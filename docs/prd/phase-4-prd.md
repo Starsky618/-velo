@@ -227,7 +227,9 @@ cat miniprogram/app.json | head -40
 | D13 | heatmap 时间窗：用户全部历史骑行数据（之前"半年内"改全部 / 真实"我的足迹"感更强） | Tim | 2026-05-06 | PRD v0.2 自审 |
 | D14 | 赛段详情页第一屏不展示难度评级 badge（仅 海拔曲线 + 城市 + 坡度 + 距离/爬升数字 / 难度评级算法可在 Sprint 5 细化）| Tim | 2026-05-06 | PRD v0.2 自审 |
 | D15 | 探索 tab 改造**未来方向**：批 2 ship 后真用反馈如积极，Sprint 5 升级"地图嵌入赛段"形态（类 Strava）/ 当前批 2 = 瀑布流形态 | Tim | 2026-05-06 | PRD v0.2 自审 |
-| D16 | power-curve `period` 真实枚举校正：`this_month / last_month / this_year / last_year / all_time`（PowerCurvePeriod / 默认 `this_month`）—— Sprint 4 baseline curl prod 实证 / Claude PRD 之前脑补 `last3months` 全错 | Codex 异源审 confirm + Tim | 2026-05-06 | Sprint 4 baseline 实证 |
+| D16 v0.2 | power-curve `period` 真实枚举校正：`this_month / last_month / this_year / last_year / all_time`（PowerCurvePeriod / 默认 `this_month`）—— Sprint 4 baseline curl prod 实证 / Claude PRD 之前脑补 `last3months` 全错 | Codex 异源审 confirm + Tim | 2026-05-06 | Sprint 4 baseline 实证 |
+| D16 v0.3 | power-curve `period` 改**滚动窗口型**：`last_30_days / last_90_days / last_180_days / last_365_days / all_time`（默认 `last_30_days`）—— v0.2 自然历法切片（this_month）的语义不直观（5 月 1 号那天看 this_month 只有 1 天数据）/ 滚动窗口对训练数据进步对比更稳定 / 详 task-pre-4.2 | Tim 提议 + Claude 调查 + 拍 | 2026-05-08 | task-pre-4.2 升级 |
+| D21 | **组件化 / 模块化 / 可迁移 / 可拓展哲学** —— 一切组件功能默认建独立 component 而非 page 内嵌（如 power-curve-card / heatmap-card）/ 每 component 自治数据流 + 自带 icon 资源 / 未来"意想不到的搬迁"（地图 tab 上线 / 看他人 profile 复用）成本 = 0 / 跟现有 §"防火墙式扩展"+§"防黑盒化"是同一哲学的不同侧面 | Tim 拍核心理念 + Claude task-4.2 component 化方向落实 | 2026-05-08 | task-pre-4.2 |
 | D17 | heatmap `city` 真实 schema 校正：UserCity 7 枚举（6 城 + `unknown`）/ 必填 / 无 default —— Claude PRD 之前脑补 `auto` 全错 / 前端逻辑：profile.city 有值默认填 / 无值默认 `unknown` | Codex 异源审 confirm + Tim | 2026-05-06 | Sprint 4 baseline 实证 |
 | D18 | self profile schema 加 `city` 字段（`app/user/schemas.py` UserProfile）—— 跟看他人 UserProfileResponse `city` 字段对齐 / 让 4.1 city badge fallback 直接 `profile.city` 拿值不用多打 fetch | Codex 异源审 A 推荐 + Tim | 2026-05-06 | P1-3 codex 异源 |
 | D19 | 看他人 schema 砍 `ftp` 字段（`app/user/schemas.py` UserProfileResponse + `app/user/service.py` _PROFILE_RESPONSE_KEYS）—— Tim "默认公开"是页面层（路径任意人能看），不等于字段层（FTP 是骑手生理数据 / Strava 也允许独立隐私层）/ schemas.py 注释明写 D-P08 红线 | Codex 异源审 A 推荐 + Tim 拍 | 2026-05-06 | P1-4 codex 异源 |
@@ -311,7 +313,7 @@ cat miniprogram/app.json | head -40
 **4.2.A 功率曲线**：
 
 - profile.wxml 槽位接入 power_curve 折线图组件（建议用现有 detail 页 echart-canvas 模式或 wx-canvas）
-- profile.js fetchPowerCurve 调 `GET /api/user/me/power-curve?period=this_month`（**真实枚举 / Sprint 4 baseline 实证**）：默认 `this_month` / 5 档可选 `this_month / last_month / this_year / last_year / all_time`（PowerCurvePeriod / 详 `app/user/schemas.py`）
+- profile.js fetchPowerCurve 调 `GET /api/user/me/power-curve?period=last_30_days`（**滚动窗口 / D16 v0.3 / task-pre-4.2 升级**）：默认 `last_30_days` / 5 档可选 `last_30_days / last_90_days / last_180_days / last_365_days / all_time`（PowerCurvePeriod / 详 `app/user/schemas.py`）
 - 渲染 4 条线：5s / 30s / 5min / 1h 各时段最大功率随时间变化
 - 状态：loading / 数据完整 / 数据空（"还没数据，多骑几次就有了"）/ fetch fail（toast）
 
@@ -383,7 +385,7 @@ cat miniprogram/app.json | head -40
 
 任务 4.3 启动前必须先补两个后端 endpoint：
 
-- `GET /api/user/{user_id}/power-curve?period=this_month` — period 用 PowerCurvePeriod 5 枚举（同 me 版本 / 默认 `this_month`），权限 = 任意登录用户，复用现有 service.get_user_power_curve
+- `GET /api/user/{user_id}/power-curve?period=last_30_days` — period 用 PowerCurvePeriod 5 枚举（同 me 版本 / 默认 `last_30_days` / 滚动窗口型 / D16 v0.3），权限 = 任意登录用户，复用现有 service.get_user_power_curve
 - `GET /api/user/{user_id}/heatmap?city=<city>` — city 用 UserCity 7 枚举必填（同 me 版本 / 无 default），权限 = 任意登录用户，复用现有 service.get_user_heatmap
 
 注意：FastAPI 路由匹配 `/me/...` 静态路径优先（router.py 注释行 123 已说明），新加的 `/{user_id}/power-curve` 不会跟 `/me/power-curve` 冲突。后端任务工作量小（< 30 行 + 4 单测）。

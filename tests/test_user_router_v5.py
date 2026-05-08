@@ -27,28 +27,28 @@ def test_power_curve_requires_auth(client):
 
 
 def test_power_curve_default_period(client, auth_header):
-    """默认 period=this_month / service 被调对参数。"""
-    fake_result = {"period": "this_month", "buckets": {"1": 800.0, "5": 700.0,
+    """默认 period=last_30_days / service 被调对参数（D16 v0.3 / 滚动窗口）。"""
+    fake_result = {"period": "last_30_days", "buckets": {"1": 800.0, "5": 700.0,
                    "30": 320.0, "60": 280.0, "300": 240.0, "1200": 200.0}}
     with patch("app.user.router.service.get_user_power_curve", return_value=fake_result) as mock_svc:
         resp = client.get("/api/user/me/power-curve", headers=auth_header)
         assert resp.status_code == 200
         body = resp.json()
-        assert body["period"] == "this_month"
+        assert body["period"] == "last_30_days"
         assert body["buckets"]["300"] == 240.0
         # service 调用参数验证
         args = mock_svc.call_args
-        assert args.args[2] == "this_month"  # period
+        assert args.args[2] == "last_30_days"  # period
 
 
-def test_power_curve_explicit_period_last_year(client, auth_header):
-    """传 period=last_year 透传给 service。"""
-    fake_result = {"period": "last_year", "buckets": {"1": 0.0, "5": 0.0,
+def test_power_curve_explicit_period_last_365_days(client, auth_header):
+    """传 period=last_365_days 透传给 service（D16 v0.3 / 滚动窗口）。"""
+    fake_result = {"period": "last_365_days", "buckets": {"1": 0.0, "5": 0.0,
                    "30": 0.0, "60": 0.0, "300": 0.0, "1200": 0.0}}
     with patch("app.user.router.service.get_user_power_curve", return_value=fake_result) as mock_svc:
-        resp = client.get("/api/user/me/power-curve?period=last_year", headers=auth_header)
+        resp = client.get("/api/user/me/power-curve?period=last_365_days", headers=auth_header)
         assert resp.status_code == 200
-        assert mock_svc.call_args.args[2] == "last_year"
+        assert mock_svc.call_args.args[2] == "last_365_days"
 
 
 def test_power_curve_invalid_period_422(client, auth_header):

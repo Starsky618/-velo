@@ -449,15 +449,16 @@ D 主轴（admin H5 hotfix + 监测）：
 
 **Sprint 4 = 小程序 4 tab 重构 + admin H5 真用回归（4 周 / 双主轴并行）**
 
-- PRD：`docs/prd/phase-4-prd.md`（v0.2 / commit `0c17e44` + `14eba8d` / D1-D20 决策入册 / 含 D7 反转 / D9 city badge fallback / D16-D20 baseline drift 修复）
+- PRD：`docs/prd/phase-4-prd.md`（v0.2 / commit `0c17e44` + `14eba8d` / D1-D21 决策入册 / 含 D7 反转 / D9 city badge fallback / D16-D20 baseline drift 修复 / **D16 v0.3 滚动窗口 + D21 component 化哲学** task-pre-4.2）
 - Plans：`docs/plans/sprint-frontend/`（README + task-4.1 ~ 4.5 / commit `2ad2788` / 1555 行 / **临时目录命名**避免跟 phase5/task-4.1~4.4 v5 收尾撞名 / 整期收尾时 `mv` 重命名）
 - Baseline：commit `5dc4c33` (test fixture 修) + `cbe34ca` (后端 P1-3 加 self profile.city / P1-4 砍看他人 ftp) + `96e599f` (PRD/plans 4 处 drift 修) → **pytest 379 passed / 0 failed / 51 skipped**
 
 **Sprint 4 任务进度**：
 
 - ✅ 开工前技术 baseline：pytest 全过 + curl prod 7 endpoint 实证 + 修 4 处 drift（period 真实枚举 / city 必填 / self profile 加 city / 看他人砍 ftp）
-- ⏳ task-4.1 个人页框架改造（**下一步 / 批 1 第一步独立 ship / 2-3 天**）
-- ⏳ task-4.2 个人页内容塞入（功率曲线 + 热力图 / 2 并行 / 4-5 天）
+- ✅ task-4.1 个人页框架改造（commit `1fd0c43` / 5 区块 + city badge fallback + 2 槽位 placeholder / 三审通过 / 真机验证）
+- ✅ task-pre-4.2 后端升级（power-curve period 改滚动窗口 5 档 `last_30_days/90/180/365/all_time` + 文档 4 处同步 + D21 component 化哲学入册）
+- ⏳ task-4.2 个人页内容塞入（功率曲线 + 热力图 / 2 并行 / **component 化** / 4-5 天）
 - ⏳ task-4.3 用户详情页新建（含前置后端补 2 endpoint / 4-5 天）
 - ⏳ task-4.4 探索 tab 改造 + 砍 leaderboard tab（5 → 4 tab / 5-6 天）
 - ⏳ task-4.5 赛段详情页新建（4 区块 / D7 反转后展示 top 10 / 5-6 天）
@@ -468,12 +469,15 @@ D 主轴（admin H5 hotfix + 监测）：
 - D7: 全网排行榜前端展示 top 10 + 我的排名（赛段详情页 / D7 反转 v0.1 砍 → v0.2 改回展示）
 - D9: city 字段在 profile 内可选 / city badge 自动 fallback / 不强制设置
 - D10: 开发哲学 "做完不好就删"（每功能 ship 1 周真用 → 回收/重做）
-- D16/D17: power-curve period 真实枚举 + heatmap city 真实必填（codex 异源 confirm）
+- D16 v0.2: power-curve period 自然历法切片（this_month / last_month / ...）/ Sprint 4 baseline 实证
+- D16 v0.3: power-curve period 改**滚动窗口型**（last_30_days / last_90_days / last_180_days / last_365_days / all_time / 默认 last_30_days）/ 任何时间打开都是稳定 N 天 / 进步对比直观 / task-pre-4.2 ship
+- D17: heatmap city 真实必填（codex 异源 confirm）
 - D18: self profile schema 加 city（已 ship `cbe34ca`）
 - D19: 看他人 schema 砍 ftp（codex 异源审拍 / 已 ship `cbe34ca`）
 - D20: 写 PRD/plans 提及 endpoint 字段/枚举值前必须 grep schemas.py 实证
+- D21: **组件化 / 模块化 / 可迁移 / 可拓展哲学** —— 一切组件功能默认建独立 component（power-curve-card / heatmap-card 等）/ 自治数据流 + 自带 icon 资源 / 未来意外搬迁成本 = 0 / task-4.2 落实
 
-**下一步 = task-4.1 个人页框架改造**（subagent 启动只读 `docs/plans/sprint-frontend/README.md` + `task-4.1.md`，2 文件够）
+**下一步 = task-4.2 个人页内容塞入**（subagent 启动只读 `docs/plans/sprint-frontend/README.md` + `task-4.2.md`，2 文件够 / **component 化方向已写进 task-4.2.md** / power-curve-card + heatmap-card 两个独立 component）
 
 **v5 收尾 4 任务（phase5/task-4.1 ~ 4.4 占位卡）放 Sprint 4 整期末做**（不是先做 / Tim 2026-05-06 拍 / 详细论证：phase-4-prd.md §11 + brainstorm 顺序 push back）
 
@@ -486,15 +490,16 @@ D 主轴（admin H5 hotfix + 监测）：
 - 调整理由：原 closure 把 0.7 列必做，但 0.7 spec §2.6 顶层 import `app.segment.service.calculate_max_gradient` 等函数，这些函数在 1.A.1 才实现 → 0.7 现在写完连 Python load 都炸 → "占位脚本"无价值。
 - Sprint 1 启动条件实际是：DB schema 就位（0.6 已落地）+ 单一 Redis 源（0.8 已落地）+ tz-aware（0.1 已落地）。算法函数 1.A.1 写完后 0.7 立刻回填 = Sprint 1 内部第一动作。
 
-**新会话起手必读**（给下次 /clear 后的主 agent / Sprint 4 task-4.1 起手版）：
-1. 本 CLAUDE.md "**当前位置**"段（你正在看 / Sprint 4 brainstorm + plans + baseline 全部完成 / 下一步 task-4.1）
+**新会话起手必读**（给下次 /clear 后的主 agent / Sprint 4 task-4.2 起手版）：
+1. 本 CLAUDE.md "**当前位置**"段（你正在看 / Sprint 4 task-4.1 + task-pre-4.2 全部完成 / 下一步 task-4.2）
 2. **`docs/plans/sprint-frontend/README.md`**（Sprint 4 全局约定 + 任务依赖图 + 字段索引 / 不超过 200 行）
-3. **`docs/plans/sprint-frontend/task-4.1.md`**（你当前要执行的任务卡 / 不超过 230 行 / 含 grep 现状清单 + TDD 步骤 + commit 模板 + 自检三问）
+3. **`docs/plans/sprint-frontend/task-4.2.md`**（你当前要执行的任务卡 / component 化 / 含 grep 现状清单 + commit 模板 + 自检三问）
 4. memory（自动加载 / 含 Sprint 4 沉淀的 2 条新：架构师 vs codex 开发分工 / endpoint 写前必 grep schemas.py / D20）
 
 **禁止**：读 spec-v5.md / phase-4-prd.md / 其他 task-4.X.md（污染上下文 / task 卡有引用，需要时只读那段）。
 
 **Sprint 4 关键 commit**（按时间倒序 / 不需要 git log 即可了解状态）：
+- `1fd0c43` feat(miniprogram): 任务4.1 个人页框架改造（5 区块 + city badge fallback + 2 槽位 placeholder）
 - `96e599f` docs: Sprint 4 baseline 4 处 drift 修复 + D16-D20 决策记录
 - `cbe34ca` feat(user): Sprint 4 baseline P1-3 + P1-4 — self profile 加 city / 看他人砍 ftp
 - `5dc4c33` test: 修 Sprint 4 baseline 3 fail（test fixture 漂移 / 非真 bug）

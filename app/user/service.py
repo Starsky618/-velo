@@ -296,41 +296,38 @@ def _get_redis_client():
 
 def _power_curve_period_window(period: str) -> tuple[datetime, datetime]:
     """
-    计算 period 时间窗口（按北京时间 UTC+8 划分 / CLAUDE.md 时区约定）。
+    计算 period 时间窗口 — 滚动窗口型（D16 v0.3 / Sprint 4 task-pre-4.2 升级）。
 
-    period 枚举：
-    - this_month / last_month / this_year / last_year / all_time
+    period 枚举（5 档 / PowerCurvePeriod）：
+    - last_30_days  → 今天往前数 30 天
+    - last_90_days  → 今天往前数 90 天
+    - last_180_days → 今天往前数 180 天
+    - last_365_days → 今天往前数 365 天（"近一年"）
+    - all_time      → 1970-01-01 起全部数据
+
     返回 (start_utc, end_utc) tuple，用于 DB 查询。
 
-    跨年特例：1 月 last_month 落到去年 12 月 / 1 月 last_year 落到去年。
+    why 滚动窗口而非自然历法切片：
+    - 自然历法（this_month）：5 月 1 号那天看只有 1 天数据 / 5 月 31 号那天看 31 天
+    - 滚动窗口（last_30_days）：任何时间打开都是稳定 N 天 / 进步对比直观
+
+    时区约定：start/end 都按 UTC 计算（datetime.now(UTC) - timedelta(days=N)），
+    不需要按北京时间划月——滚动窗口对时区不敏感（差 8 小时 vs N 天的尺度可忽略）。
     """
+    from datetime import timedelta
+
     now_utc = datetime.now(timezone.utc)
-    now_bj = now_utc.astimezone(BEIJING_TZ)
 
-    if period == "this_month":
-        start_bj = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        return start_bj.astimezone(timezone.utc), now_utc
+    rolling_days = {
+        "last_30_days": 30,
+        "last_90_days": 90,
+        "last_180_days": 180,
+        "last_365_days": 365,
+    }
 
-    if period == "last_month":
-        first_this_bj = now_bj.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        end = first_this_bj.astimezone(timezone.utc)
-        if first_this_bj.month == 1:
-            start_bj = first_this_bj.replace(year=first_this_bj.year - 1, month=12)
-        else:
-            start_bj = first_this_bj.replace(month=first_this_bj.month - 1)
-        return start_bj.astimezone(timezone.utc), end
-
-    if period == "this_year":
-        start_bj = now_bj.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        return start_bj.astimezone(timezone.utc), now_utc
-
-    if period == "last_year":
-        first_this_year_bj = now_bj.replace(
-            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
-        )
-        end = first_this_year_bj.astimezone(timezone.utc)
-        start_bj = first_this_year_bj.replace(year=first_this_year_bj.year - 1)
-        return start_bj.astimezone(timezone.utc), end
+    if period in rolling_days:
+        start = now_utc - timedelta(days=rolling_days[period])
+        return start, now_utc
 
     if period == "all_time":
         return datetime(1970, 1, 1, tzinfo=timezone.utc), now_utc
@@ -339,26 +336,27 @@ def _power_curve_period_window(period: str) -> tuple[datetime, datetime]:
 
 
 def get_user_power_curve(
-    db: Session, user_id: int, period: str = "this_month"
+    db: Session, user_id: int, period: str = "last_30_days"
 ) -> dict:
     """
     用户功率曲线（按 period 切片）+ Redis 缓存——"用户的训练成绩单"。
 
     把用户最近一段时间的所有骑行数据放在一起，算 6 档时长（1s / 5s / 30s / 1min / 5min / 20min）
-    各自的最佳平均功率。比如 5 分钟：上月你最好 5 分钟的平均输出多少瓦——这是衡量
+    各自的最佳平均功率。比如 5 分钟：最近 30 天内你最好 5 分钟的平均输出多少瓦——这是衡量
     持续输出能力的核心指标，也是用户拿来跟自己历史 / 跟朋友对比的"成绩单"。
 
-    period 切片按北京时间划分（CLAUDE.md 时区约定）。
+    period 切片是滚动窗口型（D16 v0.3 / Sprint 4 task-pre-4.2 升级）：
+    last_30_days / last_90_days / last_180_days / last_365_days / all_time。
     缓存 key: power_curve:user_{user_id}:period_{period}，TTL 1h。
 
     返回 dict：
-        {"period": "this_month", "buckets": {1: 850.0, 5: 720.0, ..., 1200: 220.0}}
+        {"period": "last_30_days", "buckets": {1: 850.0, 5: 720.0, ..., 1200: 220.0}}
 
     陷阱守卫：
     - redis-py 7+ 默认返 bytes（陷阱 #5）→ json.loads 前需 decode
     - 跨 activity 必须用 calculate_power_curve_from_activities 不要直接拼 trackpoints
       （陷阱：跨日合并出现虚假 5min 极值）
-    - 时区：用 BEIJING_TZ +8 划月 / 不用 datetime.utcnow（陷阱 #2）
+    - 时区：滚动窗口对时区不敏感 / 用 datetime.now(timezone.utc) 不用 utcnow（陷阱 #2）
     """
     # 1. Cache lookup
     cache_key = f"{_POWER_CURVE_CACHE_PREFIX}{user_id}:period_{period}"
@@ -416,14 +414,14 @@ def invalidate_power_curve_cache(user_id: int) -> None:
     """
     清除用户 power_curve 全部 period 缓存——"通知账房先生重新算账"。
 
-    场景：用户上传新 activity → 上月 / 本月最佳功率可能变化 → 缓存的曲线作废。
-    用 scan_iter 找所有 period（this_month / last_month / ... / all_time）
+    场景：用户上传新 activity → 最近 30/90/180/365 天最佳功率可能变化 → 缓存的曲线作废。
+    用 scan_iter 找所有 period（last_30_days / last_90_days / ... / all_time）
     对应的 key，逐个删。
 
     why scan_iter 不直接 keys：keys 命令在大 Redis 上会阻塞数十秒（生产事故级），
     scan_iter 是 cursor 模式不阻塞，对全库友好。
 
-    why 不只删几个固定 period：未来加 7_days / last_quarter 等新 period 时本函数
+    why 不只删几个固定 period：未来加新 period（如 last_7_days / last_quarter）时本函数
     自动覆盖；硬编码列表会漏。
     """
     pattern = f"{_POWER_CURVE_CACHE_PREFIX}{user_id}:*"

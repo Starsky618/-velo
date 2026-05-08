@@ -116,11 +116,16 @@ class StatsResponse(BaseModel):
 
 
 class PowerCurvePeriod(str, Enum):
-    """功率曲线 period 枚举（与 service 层 _power_curve_period_window 一致）。"""
-    this_month = "this_month"
-    last_month = "last_month"
-    this_year = "this_year"
-    last_year = "last_year"
+    """功率曲线 period 枚举 — 滚动窗口型（与 service 层 _power_curve_period_window 一致 / D16 v0.3 / Sprint 4 task-pre-4.2 升级）。
+
+    设计：从"自然历法切片"（this_month / last_month）改为"滚动窗口"（last_N_days），
+    解决"5 月 1 号那天看 this_month 只有 1 天数据"的语义不直观问题。
+    任何时间打开都是稳定 N 天，进步对比直观。
+    """
+    last_30_days = "last_30_days"
+    last_90_days = "last_90_days"
+    last_180_days = "last_180_days"
+    last_365_days = "last_365_days"
     all_time = "all_time"
 
 
