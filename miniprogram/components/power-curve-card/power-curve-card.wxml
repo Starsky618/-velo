@@ -1,0 +1,20 @@
+<!--
+  功率曲线 component（D21 模块化 / 个人页 + 看他人页 + 未来场景复用）
+
+  4 状态分支（loading / error / empty / 渲染）：
+  - 文字态用 wx:if/wx:elif（DOM 可以热插拔，开销低）
+  - canvas 态用 hidden（DOM 一开始就在，避免 wx:if 销毁重建导致 type="2d" 节点 ready 时序问题 / 详 CLAUDE.md 陷阱 #17 + F1）
+-->
+<view class="card power-curve-card">
+  <text class="card-title">功率曲线</text>
+  <text class="subtitle">{{subtitle}}</text>
+
+  <view wx:if="{{loading}}" class="loading-mini">加载中...</view>
+  <view wx:elif="{{error}}" class="error-mini" bindtap="_retryFetch">加载失败 · 点击重试</view>
+  <view wx:elif="{{isEmpty}}" class="empty-mini">还没数据，多骑几次就有了</view>
+
+  <!-- canvas 永远在 DOM 树里，只切换 hidden（防 type="2d" 节点 ready 时序坑） -->
+  <view class="chart-canvas-wrap" hidden="{{loading || error || isEmpty}}">
+    <canvas type="2d" id="powerCurveCanvas" class="chart-canvas"></canvas>
+  </view>
+</view>

@@ -1,0 +1,55 @@
+/**
+ * 功率曲线 component 样式
+ *
+ * 设计原则：
+ * - 沿用全局 .card 样式（app.wxss 已定义白底圆角阴影）+ 本地外边距
+ * - 标题 / 副标题字号层级跟个人页其他卡片对齐（28rpx 标题 / 24rpx 副标题）
+ * - canvas 容器固定高度 320rpx（4 条线展示空间够用，比 detail 页 280rpx 略高一点）
+ * - 4 状态文案统一居中、灰色（不抢主角）
+ */
+
+.power-curve-card {
+  margin: 0 24rpx 24rpx;
+}
+
+.card-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  display: block;
+  letter-spacing: -0.3rpx;
+}
+
+.subtitle {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+  display: block;
+  margin-top: 6rpx;
+  margin-bottom: 20rpx;
+}
+
+/* ── 4 状态文案：loading / error / empty 共享尺寸，颜色不同 ── */
+.loading-mini,
+.error-mini,
+.empty-mini {
+  font-size: 26rpx;
+  color: var(--color-text-3);
+  text-align: center;
+  padding: 80rpx 0;
+  line-height: 1.5;
+}
+
+.error-mini {
+  color: var(--color-primary);
+}
+
+/* ── canvas 容器：固定高度让 hidden 切换不撑塌布局 ── */
+.chart-canvas-wrap {
+  width: 100%;
+  height: 320rpx;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 100%;
+}

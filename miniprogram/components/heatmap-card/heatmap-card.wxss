@@ -1,0 +1,64 @@
+/*
+ * 骑行热力图 component 样式
+ *
+ * 设计原则：
+ * - 卡片外观沿用 profile.wxss 的 .card 系（margin / radius / 背景），
+ *   保持视觉统一——用户不会觉得"这块怎么和别人长得不一样"
+ * - 这里只补 component 自己独有的：标题、副标题、map 高度、3 个状态文案
+ *
+ * 注意：.card 类的 padding/border-radius/box-shadow 由全局 app.wxss 提供，
+ *       这里不重复定义，避免和全局样式打架。
+ */
+
+/* component 根容器外边距（和 profile 其他卡片对齐 24rpx） */
+.heatmap-card {
+  margin: 0 24rpx 24rpx;
+}
+
+/* 卡片标题 */
+.card-title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+  margin-bottom: 8rpx;
+}
+
+/* 卡片副标题 */
+.subtitle {
+  display: block;
+  font-size: 24rpx;
+  color: var(--color-text-3);
+  margin-bottom: 24rpx;
+}
+
+/*
+ * 3 个状态文案（loading / error / empty）共用一套居中样式
+ * min-height 让卡片有占位高度，不会因状态切换而高度跳变
+ */
+.loading-mini,
+.error-mini,
+.empty-mini {
+  min-height: 200rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  color: var(--color-text-3);
+}
+
+/* error 状态可点击重试，给一点视觉反馈 */
+.error-mini {
+  color: var(--color-primary);
+}
+
+/*
+ * map 容器：
+ * - 高度固定 480rpx，相当于一个"中等大小的窗口"，既不抢屏也能看清区域
+ * - 圆角和卡片其他部分对齐，保持视觉一致
+ */
+.heatmap-map {
+  width: 100%;
+  height: 480rpx;
+  border-radius: var(--radius-md);
+}

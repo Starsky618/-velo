@@ -30,7 +30,7 @@
 |------|------|---------|
 | `miniprogram/components/power-curve-card/` 独立 component（4 文件 / wxml + wxss + js + json）| 4.3 看他人 power-curve 直接复用 / 未来想搬别处也方便 | 4.3 / 未来 |
 | `miniprogram/components/heatmap-card/` 独立 component（4 文件）| 4.3 看他人 heatmap 直接复用 / 未来地图 tab 上线时整个搬过去 | 4.3 / 未来地图 tab |
-| `utils/api.js` 加 `getMyPowerCurve(period)` / `getMyHeatmap(city)` 方法 | 4.3 看他人 power-curve/heatmap 复用同结构（4.3 时再加 `getUserPowerCurve(userId, period)` 等）| 4.3 |
+| **utils/api.js 不加 wrapper**（component 内部直接 `api.get(url)` + `userId !== 0` 分流 / 详 Step A.1+B.1）| 4.3 看他人时 component 内部分流即可 | 4.3 |
 | profile.wxml + profile.json 引入 2 component（一行 `<power-curve-card />` / `<heatmap-card />`）| 个人页真实展示 | profile |
 
 ### Component props 设计（4.3 复用关键）
@@ -69,20 +69,18 @@
 
 ### 4.2.A 功率曲线 subagent
 
-#### Step A.1 — 加 API 方法
+#### Step A.1 — API 调用方式（实际 ship 时已接受 direct `api.get` / 不加 wrapper）
 
-- [ ] **A.1.1** 改 `miniprogram/utils/api.js` 加：
+> **2026-05-08 ship 时决策**：原 task 卡说"在 utils/api.js 加 getMyPowerCurve(period) 封装方法"，实际 component 内部直接调 `api.get(url)`，不加 wrapper。理由：(1) component 已用 `userId !== 0` 内部分流 self vs other 路径 / wrapper 没有去重价值；(2) 加 wrapper = 多一层抽象，违背 D21 "组件自治"哲学；(3) Codex 异源审 A1 advisory 接受。
 
+component 内部直接调用：
 ```js
-// 我的功率曲线 / period: last_30_days(默认) / last_90_days / last_180_days / last_365_days / all_time
-// （PowerCurvePeriod 5 枚举 / 滚动窗口型 / 详 app/user/schemas.py / D16 v0.3）
-function getMyPowerCurve(period = 'last_30_days') {
-  return request({
-    url: `/api/user/me/power-curve?period=${period}`,
-    method: 'GET'
-  })
-}
-exports.getMyPowerCurve = getMyPowerCurve
+// component 内
+const api = require('../../utils/api')
+const url = this.data.userId === 0
+  ? '/api/user/me/power-curve?period=' + this.data.period
+  : '/api/user/' + this.data.userId + '/power-curve?period=' + this.data.period
+api.get(url)
 ```
 
 #### Step A.2 — 建 `power-curve-card` component（D21 模块化）
@@ -112,7 +110,9 @@ lifetimes: {
 }
 ```
 
-- [ ] **A.2.4** `_fetchAndRender` 内部走分支：`userId === 0` → `api.getMyPowerCurve(this.data.period)` / `userId !== 0` → 4.3 加的 `api.getUserPowerCurve(userId, period)`（task-4.2 时还没有 / 4.3 加）
+- [ ] **A.2.4** `_fetchAndRender` 内部走分支（直接 `api.get` 拼 URL / 不走 wrapper）：
+  - `userId === 0` → `api.get('/api/user/me/power-curve?period=' + period)`
+  - `userId !== 0` → `api.get('/api/user/' + userId + '/power-curve?period=' + period)`（4.3 才补此 endpoint）
 
 #### Step A.3 — wxml 4 状态 + canvas（用 hidden 不用 wx:if / F1 陷阱）
 
@@ -173,7 +173,7 @@ git commit -m "feat(miniprogram): 任务4.2.A 功率曲线 component 化（D21 �
 
 - 新建 components/power-curve-card/（4 文件 / 自治 fetch + canvas 渲染）
 - props 设计：userId（默认 0 看自己 / 非 0 看他人 / 4.3 复用）+ period（默认 last_30_days）
-- utils/api.js 加 getMyPowerCurve(period)
+- utils/api.js 不动（component 内部直接 api.get(url) / 不加 wrapper）
 - profile.json + profile.wxml 引入 component 一行 <power-curve-card />
 - profile.js 删除 fetchPowerCurve 占位（component 自治）
 - 4 状态（loading / error / empty / 渲染）/ canvas hidden + setTimeout(100) 兜底（F1）
@@ -187,20 +187,17 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 
 ### 4.2.B 热力图 subagent
 
-#### Step B.1 — 加 API 方法
+#### Step B.1 — API 调用方式（同 Step A.1 / 不加 wrapper / 直接 `api.get(url)`）
 
-- [ ] **B.1.1** 改 `miniprogram/utils/api.js` 加：
-
+component 内部直接调用：
 ```js
-// 我的热力图 / city 必填 / UserCity 7 枚举（6 城 + 'unknown'）
-// 前端逻辑：profile.city 有值默认填该值 / 无值默认 'unknown'（详 D9 / D17）
-function getMyHeatmap(city) {  // 必填 / 调用方负责传 / 不能省略
-  return request({
-    url: `/api/user/me/heatmap?city=${city}`,
-    method: 'GET'
-  })
-}
-exports.getMyHeatmap = getMyHeatmap
+// component 内
+const api = require('../../utils/api')
+const cityToUse = this.data.city || 'unknown'
+const url = this.data.userId === 0
+  ? '/api/user/me/heatmap?city=' + cityToUse
+  : '/api/user/' + this.data.userId + '/heatmap?city=' + cityToUse
+api.get(url)
 ```
 
 #### Step B.2 — 建 `heatmap-card` component（D21 模块化 / 未来地图 tab 整体搬过去）
@@ -278,7 +275,7 @@ git commit -m "feat(miniprogram): 任务4.2.B 热力图 component 化（D21 模�
 
 - 新建 components/heatmap-card/（4 文件 + icons/ / 自治 fetch + grid→markers 转换）
 - props 设计：userId（默认 0 看自己 / 非 0 看他人）+ city（'' = 内部 fallback unknown）
-- utils/api.js 加 getMyHeatmap(city)
+- utils/api.js 不动（component 内部直接 api.get(url) / 不加 wrapper）
 - profile.json + profile.wxml 引入 <heatmap-card city='{{profile.city}}' />
 - profile.js 删除 fetchHeatmap 占位
 - 4 状态 + <map> + markers / 4 张 icon（grey/blue/orange/red 密度梯度）

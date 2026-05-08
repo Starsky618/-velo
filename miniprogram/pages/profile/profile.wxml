@@ -75,15 +75,15 @@
     </view>
   </view>
 
-  <!-- 区块 3：功率曲线槽位（task-4.2 替换为真实显示） -->
-  <view class="card power-curve-slot">
-    <text class="slot-placeholder">功率曲线 — 功能加载中</text>
-  </view>
+  <!-- 区块 3：功率曲线（task-4.2.A 接入 / power-curve-card 自治 component / D21 模块化） -->
+  <power-curve-card />
 
-  <!-- 区块 4：骑行热力图槽位（task-4.2 替换为真实显示） -->
-  <view class="card heatmap-slot">
-    <text class="slot-placeholder">骑行热力图 — 功能加载中</text>
-  </view>
+  <!-- 区块 4：骑行热力图（task-4.2.B 接入 / heatmap-card 自治 component / D21 模块化）
+       wx:if="{{profile}}" 等 profile fetch 完才挂载，防 profile=null 时 city='' attach 触发的 race condition：
+       - 旧设计：attached 时 profile=null / city='' / fallback unknown / 发 /heatmap?city=unknown
+       - profile 返回后 observer 再发真实 city 请求 / 旧 unknown 响应可能后到覆盖真值（Codex 异源审 I1）
+       - 修复：page 层等 profile 真值才挂载 component / 一发请求即真值 / 0 race -->
+  <heatmap-card wx:if="{{profile}}" city="{{profile.city}}" />
 
   <!-- 区块 5：导航卡片（我的荣誉 + 设置 / 不变） -->
   <view class="menu-card card">

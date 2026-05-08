@@ -164,22 +164,6 @@
   margin-top: 8rpx;
 }
 
-/* ── Sprint 4 task-4.1：功能槽位（task-4.2 塞功率曲线 / 热力图） ── */
-.power-curve-slot,
-.heatmap-slot {
-  margin: 0 24rpx 24rpx;
-  min-height: 200rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.slot-placeholder {
-  font-size: 26rpx;
-  color: var(--color-text-3);
-  font-weight: 400;
-}
-
 /* ── v4 新增：菜单卡片（我的荣誉 / 设置） ── */
 .menu-card {
   margin: 0 24rpx 24rpx;

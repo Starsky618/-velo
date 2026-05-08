@@ -1,0 +1,38 @@
+<!--
+  骑行热力图卡片 component（Sprint 4 task-4.2.B / D21 模块化）
+
+  功能：调用后端 GET /api/user/{me|id}/heatmap?city=xxx 拿到骑过的轨迹坐标，
+  在小程序原生 <map> 组件上铺一层 markers 标记骑过的位置。
+
+  4 状态（必须全部覆盖）：
+   1. loading：加载中文案
+   2. error：加载失败 + bindtap 重试
+   3. empty：还没数据 友好提示
+   4. 渲染：原生 map + markers
+
+  设计说明：
+  - 用原生 <map> 组件不用 canvas 涂色——小程序 map 性能好、稳定、自带缩放/拖动
+  - markers 数组在 component js 内部从 multipoint.coordinates 转换出来
+  - 4 状态用 wx:if/elif/else 串联，永远只渲染一种 → 不会出现 map 和 loading 同时显示
+
+  注意：未来地图 tab 上线时，整个 component 直接搬过去 = 0 拆代码（D21 哲学）。
+-->
+
+<view class="card heatmap-card">
+  <text class="card-title">骑行热力图</text>
+  <text class="subtitle">你骑过的全部区域</text>
+
+  <view wx:if="{{loading}}" class="loading-mini">加载中...</view>
+  <view wx:elif="{{error}}" class="error-mini" bindtap="_retryFetch">加载失败 · 点击重试</view>
+  <view wx:elif="{{isEmpty}}" class="empty-mini">还没骑过任何路线</view>
+
+  <map wx:else
+       class="heatmap-map"
+       latitude="{{center.lat}}"
+       longitude="{{center.lng}}"
+       markers="{{markers}}"
+       scale="11"
+       enable-rotate="{{false}}"
+       enable-3D="{{false}}">
+  </map>
+</view>

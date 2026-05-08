@@ -143,23 +143,7 @@ Page({
     })
   },
 
-  /**
-   * 占位方法 — 功率曲线数据获取（task-4.2 替换为真实调用）
-   *
-   * 当前返回 null，用于把 task-4.1 的"框架结构"先 ship 出去。
-   * task-4.2 时改为：return api.get('/api/user/me/power-curve?period=' + period)
-   */
-  fetchPowerCurve() {
-    return Promise.resolve(null)
-  },
-
-  /**
-   * 占位方法 — 热力图数据获取（task-4.2 替换为真实调用）
-   *
-   * 当前返回 null，用于把 task-4.1 的"框架结构"先 ship 出去。
-   * task-4.2 时改为：return api.get('/api/user/me/heatmap?city=' + city)
-   */
-  fetchHeatmap() {
-    return Promise.resolve(null)
-  },
+  // task-4.2 升级：functional 数据获取移入 component 自治（D21 模块化哲学）
+  // power-curve-card / heatmap-card 自己 attached 时 fetch + 自己持有 loading/error/empty/data 状态
+  // profile.js 不再持有任何 power-curve / heatmap 数据 / 失败互不影响 / 复用零拆代码
 })
