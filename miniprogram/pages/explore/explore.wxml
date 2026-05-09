@@ -1,12 +1,87 @@
-<!-- 探索页 — MVP 占位 -->
+<!--
+  探索页 — 赛段瀑布流（task-4.4 改造）
+
+  这个页面干什么：
+    给骑手一个"全国赛段大全目录"——浏览所有已上架赛段、按城市筛选、看到新上架的标签。
+    点击一张卡片跳进赛段详情页（task-4.5 / 已 ship 空架子）。
+
+  类比：像 App Store 的 App 列表——
+    顶部一排 tag 切换分类，下面是瀑布流卡片，滑到底部自动加载更多。
+
+  操作注意事项：
+    - segment-card 用 wx:for 列表渲染（CLAUDE.md 陷阱 #17：列表渲染不算 canvas，不需 hidden 兜底）
+    - NEW 标签判断：isNew 字段由 explore.js 计算（后端 SegmentListItem schema 不返 created_at，
+      暂用占位逻辑——所有 isNew=false / wxml 保留 NEW badge 元素结构以便后续 hotfix 直接生效）
+
+  数据流：
+    onLoad → fetchSegments(page=1, city='') → setData segments
+    切换城市 → switchCity → 重置 segments + page → refetch
+    onReachBottom → fetchSegments(page+1) → segments concat 追加
+-->
 
 <view class="page-header">
   <text class="subtitle">VELO</text>
   <text class="title">探索</text>
 </view>
 
-<view class="placeholder">
-  <text class="placeholder-icon">🗺️</text>
-  <text class="placeholder-title">即将上线</text>
-  <text class="placeholder-desc">发现附近的赛段和热门骑行路线</text>
+<!-- 顶部城市筛选条（横向滚动 / 6 城 + "全部"） -->
+<scroll-view scroll-x class="city-filter-scroll" enhanced show-scrollbar="{{false}}">
+  <view class="city-filter-list">
+    <view class="city-chip {{activeCity === '' ? 'active' : ''}}"
+          bindtap="switchCity" data-city="">
+      <text>全部</text>
+    </view>
+    <view class="city-chip {{activeCity === item.code ? 'active' : ''}}"
+          wx:for="{{cities}}" wx:key="code"
+          bindtap="switchCity" data-city="{{item.code}}">
+      <text>{{item.label}}</text>
+    </view>
+  </view>
+</scroll-view>
+
+<!-- 首屏 loading -->
+<view class="loading" wx:if="{{loading && segments.length === 0}}">
+  <text>加载中...</text>
+</view>
+
+<!-- 空态：当前城市无赛段 -->
+<view class="empty-state" wx:elif="{{!loading && segments.length === 0}}">
+  <text class="empty-emoji">🗺️</text>
+  <text class="empty-title">该区域暂无赛段</text>
+  <text class="empty-desc">试试切换其他城市</text>
+</view>
+
+<!-- 主体瀑布流 -->
+<view class="segment-list" wx:else>
+  <view class="segment-card" wx:for="{{segments}}" wx:key="id"
+        bindtap="goSegment" data-id="{{item.id}}">
+    <!-- 卡片头部：赛段名 + NEW 标签 -->
+    <view class="card-header">
+      <text class="seg-name">{{item.name}}</text>
+      <view class="new-badge" wx:if="{{item.isNew}}">
+        <text>NEW</text>
+      </view>
+    </view>
+
+    <!-- 主元数据：距离 / 爬升 / 城市 / 难度 -->
+    <view class="card-meta">
+      <text class="meta-item">{{item.distance}} km</text>
+      <text class="meta-item" wx:if="{{item.elevation_gain}}">↑{{item.elevation_gain}} m</text>
+      <text class="meta-item" wx:if="{{item.cityLabel}}">{{item.cityLabel}}</text>
+      <text class="meta-item difficulty difficulty-{{item.difficulty}}">{{item.difficultyLabel}}</text>
+    </view>
+
+    <!-- 副元数据：已挑战人数 -->
+    <view class="card-sub">
+      <text class="entries-text">{{item.entries}} 人挑战</text>
+    </view>
+  </view>
+</view>
+
+<!-- 分页加载状态 -->
+<view class="loading-more" wx:if="{{loadingMore}}">
+  <text>加载下一页...</text>
+</view>
+<view class="no-more" wx:elif="{{!hasMore && segments.length > 0}}">
+  <text>—— 没有更多赛段了 ——</text>
 </view>

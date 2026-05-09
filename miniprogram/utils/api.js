@@ -136,6 +136,105 @@ module.exports = {
   getUserProfile: function (userId) { return request('/api/user/' + userId + '/profile', 'GET') },
 
   /**
+   * 拉取赛段列表（task-4.4 explore tab 瀑布流用）
+   *
+   * 类比：就像翻一本"全国赛段大全目录"——
+   * 每页 20 条 / 可按城市筛选 / 默认按"上架时间"倒序（新赛段优先）。
+   *
+   * 后端契约（GET /api/segments）：
+   *   - city：6 城枚举（beijing/shanghai/hangzhou/shenzhen/chengdu/taiyuan）+ unknown / 不传则不筛
+   *   - page：从 1 起 / page_size：默认 20 / 上限 100
+   *   - 后端默认按 created_at desc 排序（新赛段在前）
+   *   - 真返字段（SegmentListItem schema 实证）：
+   *       id / name / distance / elevation_gain / avg_gradient / max_gradient
+   *       difficulty / city / start_lat / start_lon / end_lat / end_lon / entries
+   *   - 注意：schema 不含 created_at — 前端 NEW 标签暂用占位逻辑（后续 hotfix 再补）
+   *
+   * @param {object} params - { city?: string, page?: number, page_size?: number }
+   * @returns {Promise<object>} { items: SegmentListItem[], total, page, page_size }
+   */
+  getSegmentsList: function (params) {
+    if (!params) params = {}
+    var city = params.city || ''
+    var page = params.page || 1
+    var pageSize = params.page_size || 20
+    var query = []
+    if (city) query.push('city=' + encodeURIComponent(city))
+    query.push('page=' + page, 'page_size=' + pageSize)
+    return request('/api/segments?' + query.join('&'), 'GET')
+  },
+
+  /**
+   * 拉取赛段详情（task-4.5 第一屏 + AI 介绍区块用）
+   *
+   * 类比：就像翻"赛道说明书"——
+   * 这条赛段叫什么、几公里、爬升多少、admin 写过啥介绍。
+   *
+   * 后端契约（GET /api/segments/{id} / 不需登录）：
+   *   - 真返字段（SegmentDetailResponse schema 实证 app/segment/schemas.py:141）：
+   *       id / name / description（即"AI 介绍"落地字段，admin/service.py:222 写入） /
+   *       distance（公里 / service 已转换） / elevation_gain（米） /
+   *       avg_gradient / max_gradient（%） / difficulty（4 档枚举） /
+   *       city（6 城 + unknown） / start_lat/lon / end_lat/lon /
+   *       match_tolerance / min_match_ratio / created_at /
+   *       leaderboard（数组 / 含 rank/user_id/nickname/elapsed_time 等 / 前 20 名）
+   *   - 注意：本响应**不含 elevation_profile** — 海拔曲线区块降级 placeholder
+   *   - 404 segment 不存在 → reject({ code: 404, ... })
+   *
+   * @param {number} segmentId - 赛段 ID
+   * @returns {Promise<object>} 赛段详情对象
+   */
+  getSegmentDetail: function (segmentId) {
+    return request('/api/segments/' + segmentId, 'GET')
+  },
+
+  /**
+   * 拉取我在某赛段的"骑完看进步"对比（task-4.5 我的记录区块用）
+   *
+   * 类比：就像看自己的"成绩进步表"——
+   * 这次 26 分钟、上次 28 分钟、个人最好 25 分钟，让你直观感受进步。
+   *
+   * 后端契约（GET /api/segments/{id}/efforts/me / 需登录）：
+   *   - 真返 6 字段（EffortCompareResponse schema 实证 app/segment/schemas.py:169）：
+   *       current_attempt_elapsed_time / last_attempt_elapsed_time /
+   *       pr_elapsed_time / current_attempt_diff_to_last（正数=变快） /
+   *       current_attempt_is_pr / is_first_attempt（首次访问 = 6 字段全 None/False/True 兜底）
+   *   - 排序按 Activity.started_at desc（实际骑行时间，不是入库时间）
+   *   - 401 未登录 → reject / 404 segment 不存在 → reject
+   *   - 没骑过该赛段（is_first_attempt=true）也 200 返兜底，前端按 pr_elapsed_time 是否 null 分三态
+   *
+   * @param {number} segmentId - 赛段 ID
+   * @returns {Promise<object>} 6 字段对比对象
+   */
+  getMySegmentEffort: function (segmentId) {
+    return request('/api/segments/' + segmentId + '/efforts/me', 'GET')
+  },
+
+  /**
+   * 拉取赛段全网排行榜（task-4.5 全网排行榜区块用）
+   *
+   * 类比：就像马拉松成绩榜单——
+   * 第 1 名到第 N 名按用时排序、谁创下最快、我在第几。
+   *
+   * 后端契约（GET /api/segments/{id}/leaderboard / 不需登录）：
+   *   - query 参数：page（默认 1）/ page_size（默认 20，上限 100）/ bike_type（可选过滤）
+   *   - 真返字段（LeaderboardResponse schema 实证 app/segment/schemas.py:133）：
+   *       items（数组）/ total（总人数 / 即"共 N 人骑过"） / page / page_size
+   *   - items[i] 含：rank / user_id / nickname / avatar_url / elapsed_time / avg_speed / avg_power / bike_type / created_at
+   *   - **注意**：响应**不含** my_rank / my_elapsed_time —— 前端找 user_id == myUserId 的行即可
+   *     （我的排名 + 我的用时通过 getMySegmentEffort 的 pr_elapsed_time + 在 items 里 filter 算 rank 兜底）
+   *   - 404 segment 不存在 → reject
+   *
+   * @param {number} segmentId - 赛段 ID
+   * @param {number} pageSize - 拉前 N 名（默认 10 / 上限 100）
+   * @returns {Promise<object>} { items: [...], total, page, page_size }
+   */
+  getSegmentLeaderboard: function (segmentId, pageSize) {
+    var size = pageSize || 10
+    return request('/api/segments/' + segmentId + '/leaderboard?page=1&page_size=' + size, 'GET')
+  },
+
+  /**
    * 上传文件专用（GPX 上传走这个，不走普通 JSON 请求）
    *
    * @param {string} url - 上传接口路径
