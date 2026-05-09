@@ -100,6 +100,7 @@ class SegmentListItem(BaseModel):
     end_lat: float
     end_lon: float
     entries: int
+    created_at: Optional[datetime] = None    # 创建时间（Sprint 4 task-4.4 NEW 标签判断用 / 30 天内为 NEW）
 
 
 class SegmentListResponse(BaseModel):

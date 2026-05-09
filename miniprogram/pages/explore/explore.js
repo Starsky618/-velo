@@ -119,18 +119,17 @@ Page({
    * 前端补充字段：
    *   - cityLabel：city code → 中文（unknown → 空串）
    *   - difficultyLabel：difficulty code → 中文
-   *   - isNew：NEW 标签判断（后端不返 created_at，暂全 false / hotfix 后激活）
+   *   - isNew：NEW 标签判断（30 天内 created → true）
    */
   _enrichItem(item) {
     // distance 后端已是公里 / 但保留 1 位小数避免视觉杂乱
     const distance = typeof item.distance === 'number' ? item.distance.toFixed(1) : item.distance
     const elevation = item.elevation_gain != null ? Math.round(item.elevation_gain) : null
 
-    // NEW 标签：占位逻辑（后端 SegmentListItem 暂不返 created_at）
-    // 未来后端补字段后，把下面替换为：
-    //   const created = item.created_at ? new Date(item.created_at).getTime() : 0
-    //   const isNew = created > 0 && (Date.now() - created) < NEW_THRESHOLD_MS
-    const isNew = false
+    // NEW 标签：30 天内 created 显示
+    // 后端 SegmentListItem.created_at 是 ISO datetime 字符串（task-4.4 hotfix 补字段 / 2026-05-10）
+    const created = item.created_at ? new Date(item.created_at).getTime() : 0
+    const isNew = created > 0 && (Date.now() - created) < NEW_THRESHOLD_MS
 
     return {
       id: item.id,

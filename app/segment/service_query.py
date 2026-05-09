@@ -103,6 +103,7 @@ def get_segment_list(
             "end_lat": segment.end_lat,
             "end_lon": segment.end_lon,
             "entries": entries,
+            "created_at": segment.created_at,  # Sprint 4 task-4.4 NEW 标签判断（30 天内）
         })
 
     return items, total
