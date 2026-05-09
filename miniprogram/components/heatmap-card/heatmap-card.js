@@ -177,21 +177,20 @@ Component({
      * 类比：透明黄色马克笔在地图上多次描同一条路 → 自然变成更亮的黄
      */
     _convertToPolylines(tracks) {
-      // P1 hotfix v3（2026-05-09 真机回归 / split 长跨距点 / 修"虚假对角直线"）：
-      // 实测 simplified_track 源数据有 3-8km 跨距点（Douglas-Peucker 简化容差太大 + Strava 导入稀疏）
-      // 单条 track 内相邻 GPS 点距离 > MAX_SEGMENT_M 就切断 polyline 防虚假长直线
-      //
-      // 累积 hotfix：
+      // hotfix 链总结（2026-05-09 task-4.2 v3 polish 真用迭代）：
       // - v1 cap=8000 / 步长 21 → 网格状直线（失败）
       // - v2 cap=50000 / 步长 3 → 视觉接近原版但放大后仍有 km 级直线（部分修）
-      // - v3 加 segment split / 同 track 内 > 500m 切断（防源数据跳点 / 真修）
-      const MAX_TOTAL_POINTS = 50000
+      // - v3 加 segment split 500m → 切断 km 级跳点（修一半）
+      // - **v4 砍 cap**（当前 / Tim 拍 A）→ 恢复 v3 polish 第一次部署精度（30m 中位数）
+      //   理由：curl 实测 Tim 真实数据 P90=119m / cap=50000 步长 4 把 30m 中位数拉到 120m
+      //   → 拐弯严重失真（截图 #1 #2）/ 砍 cap 后 setData ~5MB / Tim 实测 v3 polish 第一次部署过 / OK
+      //
+      // 保留：MAX_SEGMENT_M segment split 防虚假长直线（hotfix v3 成果）
+      //      GCJ-02 转换（v3 polish）
+      //      Number.isFinite 防 NaN 静默通过（v3 polish Codex 异源审 Important）
+      //
+      // 山区 GPS 物理误差散网（截图 #3）= L1 物理限制 / 砍 cap 也救不了 / 必须 map matching / 留 Sprint 5/6
       const MAX_SEGMENT_M = 500  // 单条 polyline 内相邻两点距离上限 / 城市道路一个街区 ~200-500m
-      let totalRaw = 0
-      for (let i = 0; i < tracks.length; i++) {
-        if (Array.isArray(tracks[i])) totalRaw += tracks[i].length
-      }
-      const sampleStep = totalRaw > MAX_TOTAL_POINTS ? Math.ceil(totalRaw / MAX_TOTAL_POINTS) : 1
 
       // Haversine 球面距离（米）/ 用于 segment split 判断
       const distM = (a, b) => {
@@ -222,7 +221,7 @@ Component({
         if (!Array.isArray(track) || track.length < 2) continue
         let points = []
         let lastPoint = null
-        for (let j = 0; j < track.length; j += sampleStep) {
+        for (let j = 0; j < track.length; j++) {  // 不采样 / 完整渲染原始 simplified_track 点
           const c = track[j]
           if (!Array.isArray(c) || c.length < 2) continue
           const lon = c[0]
