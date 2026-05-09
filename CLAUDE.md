@@ -487,7 +487,12 @@ D 主轴（admin H5 hotfix + 监测）：
 - D31: **GCJ-02 坐标转换**（v3 polish）/ utils/coords.js 共享 / 修腾讯地图 200m 偏移 / 国外坐标自动跳过
 - D32: **power-curve period 切换 UI**（v3 polish）/ 5 档 segment control / currentPeriod 真相源
 
-**下一步 = task-4.2 个人页内容塞入**（subagent 启动只读 `docs/plans/sprint-frontend/README.md` + `task-4.2.md`，2 文件够 / **component 化方向已写进 task-4.2.md** / power-curve-card + heatmap-card 两个独立 component）
+**下一步 = task-4.3 用户详情页新建**（subagent 启动只读 `docs/plans/sprint-frontend/README.md` + `task-4.3.md`，2 文件够 / 含前置后端补 2 endpoint：`GET /api/user/{user_id}/power-curve` + `GET /api/user/{user_id}/heatmap` / component 复用：power-curve-card 和 heatmap-card 已建好 / 4.3 只需建用户详情页 page + 路由）
+
+**已知 v3 polish 遗留**（task-4.3 启动前可批量修 hotfix 或留 backlog）：
+- P1 setData 5MB 接近 1MB 上限（heatmap polylines 总点数没 cap / 5 行 hotfix）
+- P2 period 切换 tab 后状态丢失（小程序 storage persist / 留批 1 ship 后做）
+- 测试覆盖盲区 2 处：worker hook 触发 invalidate_heatmap_cache 回归测试 / 无 city 精确 key 被清验证（Codex --resume 列下轮 backlog）
 
 **v5 收尾 4 任务（phase5/task-4.1 ~ 4.4 占位卡）放 Sprint 4 整期末做**（不是先做 / Tim 2026-05-06 拍 / 详细论证：phase-4-prd.md §11 + brainstorm 顺序 push back）
 
@@ -500,15 +505,25 @@ D 主轴（admin H5 hotfix + 监测）：
 - 调整理由：原 closure 把 0.7 列必做，但 0.7 spec §2.6 顶层 import `app.segment.service.calculate_max_gradient` 等函数，这些函数在 1.A.1 才实现 → 0.7 现在写完连 Python load 都炸 → "占位脚本"无价值。
 - Sprint 1 启动条件实际是：DB schema 就位（0.6 已落地）+ 单一 Redis 源（0.8 已落地）+ tz-aware（0.1 已落地）。算法函数 1.A.1 写完后 0.7 立刻回填 = Sprint 1 内部第一动作。
 
-**新会话起手必读**（给下次 /clear 后的主 agent / Sprint 4 task-4.2 起手版）：
-1. 本 CLAUDE.md "**当前位置**"段（你正在看 / Sprint 4 task-4.1 + task-pre-4.2 全部完成 / 下一步 task-4.2）
+**新会话起手必读**（给下次 /clear 后的主 agent / Sprint 4 task-4.3 起手版）：
+1. 本 CLAUDE.md "**当前位置**"段（你正在看 / Sprint 4 task-4.1 + task-pre-4.2 + task-4.2 v1+v2+v3 polish 全部完成 / 下一步 task-4.3）
 2. **`docs/plans/sprint-frontend/README.md`**（Sprint 4 全局约定 + 任务依赖图 + 字段索引 / 不超过 200 行）
-3. **`docs/plans/sprint-frontend/task-4.2.md`**（你当前要执行的任务卡 / component 化 / 含 grep 现状清单 + commit 模板 + 自检三问）
-4. memory（自动加载 / 含 Sprint 4 沉淀的 2 条新：架构师 vs codex 开发分工 / endpoint 写前必 grep schemas.py / D20）
+3. **`docs/plans/sprint-frontend/task-4.3.md`**（你当前要执行的任务卡 / 用户详情页 + 前置后端补 2 endpoint）
+4. memory（自动加载 / 重要 5 条新沉淀：v2 polish 必派 subagent / 部署 5 步 SOP / D 决策风格 / GCJ-02 中国地图必转 / etc）
+
+**task-4.3 关键提示**：
+- power-curve-card 和 heatmap-card 已建好（v3 polish ship）/ 4.3 只 reuse / 不重写 component
+- component props.userId 已支持非 0 = 看他人 / 4.3 后端补 2 endpoint 即生效
+- 后端 endpoint 模式已定型：`GET /api/user/{user_id}/power-curve?period=...` + `GET /api/user/{user_id}/heatmap?city=...`（city 同 v3 polish 改可选）
+- 复用现有 `service.get_user_power_curve` 和 `service.get_user_heatmap`（看他人 = 同函数 + 不同 user_id）
 
 **禁止**：读 spec-v5.md / phase-4-prd.md / 其他 task-4.X.md（污染上下文 / task 卡有引用，需要时只读那段）。
 
 **Sprint 4 关键 commit**（按时间倒序 / 不需要 git log 即可了解状态）：
+- `f519170` feat(user/miniprogram): task-4.2 v3 polish — D30 city 可选 + D31 GCJ-02 + D32 period 切换 UI
+- `5d7cba9` feat(user/miniprogram): task-4.2 v2 polish — power-curve 7 档 + heatmap polylines + 4 D 决策入册
+- `81862e5` feat(miniprogram): 任务4.2 个人页内容塞入 — power-curve-card + heatmap-card 双 component（D21 落实）
+- `7396ea5` feat(user): task-pre-4.2 — power-curve period 改滚动窗口 + D21 component 化哲学入册
 - `1fd0c43` feat(miniprogram): 任务4.1 个人页框架改造（5 区块 + city badge fallback + 2 槽位 placeholder）
 - `96e599f` docs: Sprint 4 baseline 4 处 drift 修复 + D16-D20 决策记录
 - `cbe34ca` feat(user): Sprint 4 baseline P1-3 + P1-4 — self profile 加 city / 看他人砍 ftp
