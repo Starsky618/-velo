@@ -58,47 +58,53 @@
 def get_user_power_curve_for_others(
     user_id: int,
     period: schemas.PowerCurvePeriod = schemas.PowerCurvePeriod.last_30_days,
-    current_user_id: int = Depends(get_current_user),
+    requester_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """看他人功率曲线
-    
+
     权限：任意登录用户（D-P08 / 看他人主页默认公开）
-    路由匹配：FastAPI /me/... 静态路径优先匹配（line 123 注释），
-    本动态路径 /{user_id}/... 不会跟 /me/power-curve 冲突
+    路由匹配：FastAPI /me/... 静态路径优先 / 本动态路径 /{user_id}/... 后置不冲突
+    user 不存在 → service.get_user_by_id 抛 ValueError → 翻 404
+    （跟 router.py L220-223 /{user_id}/profile 同 pattern）
     """
-    user = service.get_user_by_id(db, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="user not found")
+    try:
+        service.get_user_by_id(db, user_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="用户不存在")
     return service.get_user_power_curve(db, user_id, period.value)
 
 
 @router.get("/{user_id}/heatmap", response_model=schemas.HeatmapResponse)
 def get_user_heatmap_for_others(
     user_id: int,
-    city: schemas.UserCity,  # 必填 / 7 枚举 / 无 default（D17 / 详 schemas.py）
-    current_user_id: int = Depends(get_current_user),
+    city: schemas.UserCity | None = None,  # D30 v3 polish 改可选 / 跟 /me/heatmap 同款
+    requester_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """看他人热力图（同上，权限 + 路由匹配说明）"""
-    user = service.get_user_by_id(db, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="user not found")
-    return service.get_user_heatmap(db, user_id, city.value)
+    """看他人热力图（同上，权限 + 路由匹配 + 404 翻译说明）
+
+    city 可选（D30）：不传 = 看 ta 全部足迹 / 传 = 按城市筛。
+    跟 /me/heatmap 写法一致（详 router.py L144-164 / schemas.py L156-166）。
+    """
+    try:
+        service.get_user_by_id(db, user_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return service.get_user_heatmap(db, user_id, city.value if city else None)
 ```
+
+> **关键 pattern 说明**：`service.get_user_by_id`（service.py L133-141）找不到 user 时**抛 ValueError 不返 None**。所以必须 try/except / 不能写 `if user is None` 判断（永远不触发 → 真路径 500）。Sprint 4 task-4.3.0 Claude 综合审 Critical-1 已抓此盲区。
 
 #### Step 0.2 - 写测试
 
-- [ ] **0.2.1** 在 `tests/test_user_router.py` 加 8 个 case：
-  - 看自己 power-curve（200 / 数据齐）
-  - 看他人 power-curve（200 / 数据齐）
-  - 看不存在用户 power-curve（404）
-  - 未登录看 power-curve（401）
-  - 同上 4 个 case 给 heatmap
+- [ ] **0.2.1** 在 `tests/test_user_router_v5.py` 加 8 个 case：
+  - power-curve：看他人（200 / 数据齐）/ 404 不存在用户 / 401 未登录 / 看自己用 user_id 路径（200 / 验证不撞 /me/）
+  - heatmap：看他人**不传 city**（200 / 全部足迹 / D30）/ 看他人传 city（200 / 按城市筛）/ 404 / 401
 
 #### Step 0.3 - 跑测试
 
-- [ ] **0.3.1** `pytest tests/test_user_router.py -v -k "power_curve or heatmap"`
+- [ ] **0.3.1** `pytest tests/test_user_router_v5.py -v -k "power_curve or heatmap"`
 - [ ] **0.3.2** 期望全 passed（含原有 me/... 测试 + 新增 8 个）
 
 #### Step 0.4 - 双审 + Codex 异源审 + commit（后端独立 commit）
@@ -107,7 +113,7 @@ def get_user_heatmap_for_others(
 - [ ] **0.4.2** commit：
 
 ```bash
-git add app/user/router.py tests/test_user_router.py
+git add app/user/router.py tests/test_user_router_v5.py
 git commit -m "feat(user): 任务4.3.0 加看他人 power-curve + heatmap endpoint
 
 - GET /api/user/{user_id}/power-curve（任意登录用户）
@@ -169,21 +175,28 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
     <!-- 总里程 / 总次数 / 总爬升 -->
   </view>
 
-  <!-- 功率曲线（看 ta 的） -->
-  <view class="card power-curve-card">
-    <text class="card-title">功率曲线</text>
-    <!-- 同 4.2.A 渲染逻辑 / 数据源 = getUserPowerCurve(userId) -->
-  </view>
+  <!-- 功率曲线（看 ta 的 / D21 component 复用 / 内部 props.userId !== 0 自动切到 /api/user/{userId}/power-curve）-->
+  <power-curve-card userId="{{userId}}" />
 
-  <!-- 骑行热力图（看 ta 的） -->
-  <view class="card heatmap-card">
-    <text class="card-title">骑行热力图</text>
-    <!-- 同 4.2.B 渲染逻辑 / 数据源 = getUserHeatmap(userId) -->
-  </view>
+  <!-- 骑行热力图（看 ta 的 / D21 component 复用 / 内部 props.userId !== 0 自动切到 /api/user/{userId}/heatmap / city 不传走全部足迹 D30）-->
+  <heatmap-card userId="{{userId}}" />
 
-  <!-- ❌ 不展示：导航卡片（我的荣誉 / 设置）-->
+  <!-- ❌ 不展示：导航卡片(我的荣誉 / 设置) / FTP / 体重 / W·kg -->
 </view>
 ```
+
+**对应 user.json**（usingComponents 注册 / D21）：
+
+```json
+{
+  "usingComponents": {
+    "power-curve-card": "/components/power-curve-card/power-curve-card",
+    "heatmap-card": "/components/heatmap-card/heatmap-card"
+  }
+}
+```
+
+> **D21 + D29 component 化哲学**：4.3 不重写功率曲线 / 热力图渲染逻辑。component 已建好（357 + 313 行 / 见 `miniprogram/components/power-curve-card/` 和 `heatmap-card/`），props.userId 分流逻辑也写好了（详 power-curve-card.js L70-180 / heatmap-card.js L52-114 注释明确写"task-4.3 才补 endpoint"）。本 task 只补后端 endpoint + page 引入 component 即生效。
 
 #### Step 1.4 - 实现 user.js
 
@@ -210,19 +223,17 @@ onLoad(options) {
 }
 ```
 
-- [ ] **1.4.2** 加 fetchAllData 并行 3 个 endpoint：
+- [ ] **1.4.2** 加 fetchProfile（D21：page 只拉 profile / power-curve+heatmap 由 component 自带数据流）：
 
 ```js
-async fetchAllData(userId) {
+async fetchProfile(userId) {
   try {
-    const [profile, powerCurve, heatmap] = await Promise.all([
-      api.getUserProfile(userId),  // GET /api/user/{userId}/profile
-      api.getUserPowerCurve(userId).catch(() => null),  // 失败不挡
-      api.getUserHeatmap(userId).catch(() => null)
-    ])
-    // city label 转换（沿用 4.1 同款 CITY_LABELS 常量 / 抽到 utils/city.js）
+    const profile = await api.getUserProfile(userId)
+    // city label 转换（沿用 4.1 同款 CITY_LABELS / 抽到 utils/city.js — 起手 grep 确认 4.1 现状）
     const cityLabel = CITY_LABELS[profile.city] || ''
-    this.setData({ profile, cityLabel, powerCurveData: powerCurve, heatmapData: heatmap, loading: false })
+    this.setData({ profile, cityLabel, loading: false })
+    // power-curve / heatmap 不在这拉 — component 内部基于 props.userId 自动 fetch（D21 自治数据流）
+    // 互不影响：profile 失败 → 全页错误 / power-curve 失败 → 该卡片自己显示加载失败 / heatmap 同
   } catch (e) {
     if (e.statusCode === 404) {
       this.setData({ notFound: true, loading: false })
@@ -234,14 +245,19 @@ async fetchAllData(userId) {
 }
 ```
 
-#### Step 1.5 - 加 utils/api.js 3 个新方法
+> **isMyId 实现**：`app.globalData.userId` 是登录后存的自己 user_id（subagent 起手 grep `globalData.userId\|globalData.user_id` 确认字段名 / 不脑补）。比较：`if (app.globalData.userId && app.globalData.userId === userId) { switchTab(...) }`。
 
-- [ ] **1.5.1** `getUserProfile(userId)` / `getUserPowerCurve(userId)` / `getUserHeatmap(userId)`
+#### Step 1.5 - 加 utils/api.js 1 个新方法
 
-#### Step 1.6 - 抽 CITY_LABELS 到 utils/city.js（避免 4.1 / 4.3 重复）
+- [ ] **1.5.1** `utils/api.js` 加 `getUserProfile(userId)` 一个方法（GET `/api/user/{userId}/profile`）
+- [ ] **1.5.2** ❌ 不需要加 `getUserPowerCurve` / `getUserHeatmap`：component 内部直接 wx.request 调（详 `power-curve-card.js` L175-185 / `heatmap-card.js` L107-115）
 
-- [ ] **1.6.1** 新建 `miniprogram/utils/city.js` export CITY_LABELS + getCityLabel(cityCode) 助手函数
-- [ ] **1.6.2** 改 4.1 的 profile.js 改为 `require('../../utils/city')`
+#### Step 1.6 - CITY_LABELS 公共常量处理（subagent 起手核实）
+
+- [ ] **1.6.1** **先 grep**：`grep -rn "CITY_LABELS\|cityLabels" miniprogram/` 看现有定义在哪几处
+- [ ] **1.6.2** 如果 4.1 profile.js 内联了 CITY_LABELS → 抽 `miniprogram/utils/city.js` + 同步改 4.1 引用
+- [ ] **1.6.3** 如果 4.1 已用别的公共方案（如 settings.js / app.js / 已有 utils）→ 复用现有，不新建
+- [ ] **1.6.4** 如果完全没定义 → 新建 utils/city.js + 4.3 直接用
 
 #### Step 1.7 - 接入头像点击跳转
 

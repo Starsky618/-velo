@@ -265,3 +265,176 @@ def test_get_profile_self_view_same_fields(client, auth_header, test_user):
         assert resp.status_code == 200
         # 看自己也走 get_user_profile_for_others（D-P08 不区分）
         assert resp.json()["id"] == test_user.id
+
+
+# ───────────────────────────────────────────────────────────────────────
+# task-4.3.0：GET /api/user/{user_id}/power-curve（看他人功率曲线）
+# ───────────────────────────────────────────────────────────────────────
+
+
+def test_user_power_curve_requires_auth(client):
+    """未登录看他人 power-curve → 401。"""
+    resp = client.get("/api/user/42/power-curve")
+    assert resp.status_code == 401
+
+
+def test_user_power_curve_returns_buckets(client, auth_header):
+    """看他人 power-curve 200 / service 调对参数（user_id + period）。
+
+    同时**隐式覆盖动态路由匹配**：user_id=42 走 /{user_id}/power-curve 不被 /me/... 截胡
+    （Claude 综合审 Important-2）。
+    """
+    fake_user = object()  # get_user_by_id 真路径返 ORM User / 这里只占位（不抛 ValueError 即可）
+    fake_result = {"period": "last_90_days", "buckets": {"0": 900.0, "3": 750.0,
+                   "30": 300.0, "60": 260.0, "300": 220.0, "1200": 180.0, "3600": 160.0}}
+    with patch("app.user.router.service.get_user_by_id", return_value=fake_user), \
+         patch("app.user.router.service.get_user_power_curve", return_value=fake_result) as mock_svc:
+        resp = client.get("/api/user/42/power-curve?period=last_90_days", headers=auth_header)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["period"] == "last_90_days"
+        assert body["buckets"]["3600"] == 160.0
+        # service 调用参数：(db, user_id=42, period="last_90_days")
+        args = mock_svc.call_args.args
+        assert args[1] == 42
+        assert args[2] == "last_90_days"
+
+
+def test_user_power_curve_user_not_found_404(client, auth_header):
+    """user 不存在 → service.get_user_by_id 抛 ValueError → router 翻 404 + service.get_user_power_curve 不被调用。
+
+    注意：mock 用 side_effect=ValueError 跟 service.get_user_by_id 真契约一致
+    （service.py L140 抛 ValueError，不返 None / Claude 审 Critical-2 验证后修）。
+    """
+    with patch("app.user.router.service.get_user_by_id",
+               side_effect=ValueError("用户不存在")), \
+         patch("app.user.router.service.get_user_power_curve") as mock_svc:
+        resp = client.get("/api/user/999999/power-curve", headers=auth_header)
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "用户不存在"
+        mock_svc.assert_not_called()
+
+
+def test_user_power_curve_route_not_collide_with_me(client, auth_header):
+    """路由匹配验证：/me/power-curve 静态优先 / 不会被 /{user_id}/... 截胡。
+
+    场景：尝试 GET /api/user/me/power-curve（非 user_id）应该走 me 路由不抛 422
+    （如果路由匹配错把 'me' 当 user_id 解析 → 422 string→int 失败）。
+    """
+    fake_result = {"period": "last_30_days", "buckets": {"0": 0.0, "3": 0.0,
+                   "30": 0.0, "60": 0.0, "300": 0.0, "1200": 0.0, "3600": 0.0}}
+    with patch("app.user.router.service.get_user_power_curve", return_value=fake_result):
+        resp = client.get("/api/user/me/power-curve", headers=auth_header)
+        # 静态优先匹配成功 → 200，不是 422（'me' 没被当成 user_id 解析）
+        assert resp.status_code == 200
+
+
+def test_user_power_curve_unexpected_exception_not_swallowed_as_404(client, auth_header):
+    """防御性测试（Codex 异源审 Important-1）：service.get_user_by_id 抛**非 ValueError** 异常时
+    不应被误翻译成 404 / 必须 propagate（FastAPI 翻 500）。
+
+    锁住未来如果 endpoint 改成 broad except / except Exception:，OperationalError /
+    TimeoutError 等真实故障会被静默吞成"用户不存在"的语义错误。
+
+    实现：TestClient 默认 raise_server_exceptions=True / 服务端未 catch 的异常会 propagate
+    到测试帧 → pytest.raises 抓住即证明 endpoint 没吞异常。如果 endpoint 错误吞了，
+    response 会正常返回（404 detail="用户不存在"）→ pytest.raises 不触发 → 测试 fail。
+    """
+    with patch("app.user.router.service.get_user_by_id",
+               side_effect=RuntimeError("database connection lost")):
+        with pytest.raises(RuntimeError):
+            client.get("/api/user/42/power-curve", headers=auth_header)
+
+
+# ───────────────────────────────────────────────────────────────────────
+# task-4.3.0：GET /api/user/{user_id}/heatmap（看他人热图）
+# ───────────────────────────────────────────────────────────────────────
+
+
+def test_user_heatmap_requires_auth(client):
+    """未登录 → 401。"""
+    resp = client.get("/api/user/42/heatmap")
+    assert resp.status_code == 401
+
+
+def test_user_heatmap_no_city_returns_all_tracks(client, auth_header):
+    """D30 v3 polish：不传 city → 200 / service 收到 None / 看 ta 全部足迹。"""
+    fake_user = object()
+    fake_result = {
+        "city": None,
+        "tracks": [[[116.4, 39.9], [116.41, 39.91]]],
+        "activity_count": 1,
+    }
+    with patch("app.user.router.service.get_user_by_id", return_value=fake_user), \
+         patch("app.user.router.service.get_user_heatmap", return_value=fake_result) as mock_svc:
+        resp = client.get("/api/user/42/heatmap", headers=auth_header)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["city"] is None
+        assert body["activity_count"] == 1
+        # service 第 3 参数 = None
+        assert mock_svc.call_args.args[1] == 42
+        assert mock_svc.call_args.args[2] is None
+
+
+def test_user_heatmap_with_city_filter(client, auth_header):
+    """传 city=beijing → service 收到 'beijing' / 按城市筛。
+
+    注：city=非法值（如 guangzhou）→ 422 已被 schemas.UserCity 枚举层拦下（同 me/heatmap 覆盖于 L92
+    `test_heatmap_invalid_city_422`）/ 看他人走同 schema 同处理 / 不重复补 case
+    （Claude 综合审 Important-3）。
+    """
+    fake_user = object()
+    fake_result = {
+        "city": "beijing",
+        "tracks": [[[116.4, 39.9], [116.41, 39.91]]],
+        "activity_count": 1,
+    }
+    with patch("app.user.router.service.get_user_by_id", return_value=fake_user), \
+         patch("app.user.router.service.get_user_heatmap", return_value=fake_result) as mock_svc:
+        resp = client.get("/api/user/42/heatmap?city=beijing", headers=auth_header)
+        assert resp.status_code == 200
+        assert resp.json()["city"] == "beijing"
+        assert mock_svc.call_args.args[2] == "beijing"
+
+
+def test_user_heatmap_user_not_found_404(client, auth_header):
+    """user 不存在 → service.get_user_by_id 抛 ValueError → router 翻 404 + service.get_user_heatmap 不被调用。
+
+    side_effect=ValueError 跟 service.get_user_by_id 真契约一致（同 power-curve 404 case）。
+    """
+    with patch("app.user.router.service.get_user_by_id",
+               side_effect=ValueError("用户不存在")), \
+         patch("app.user.router.service.get_user_heatmap") as mock_svc:
+        resp = client.get("/api/user/999999/heatmap?city=beijing", headers=auth_header)
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "用户不存在"
+        mock_svc.assert_not_called()
+
+
+def test_user_heatmap_route_not_collide_with_me(client, auth_header):
+    """对称性测试（Codex 异源审 Important-2 / 跟 power-curve 路由测试对称）：
+    /me/heatmap 静态路径优先 / 不会被 /{user_id}/... 截胡。
+
+    场景：GET /api/user/me/heatmap 应该走 me 路由 / 不抛 422（'me' 不被当 user_id）。
+    """
+    fake_result = {
+        "city": None,
+        "tracks": [],
+        "activity_count": 0,
+    }
+    with patch("app.user.router.service.get_user_heatmap", return_value=fake_result):
+        resp = client.get("/api/user/me/heatmap", headers=auth_header)
+        assert resp.status_code == 200
+
+
+def test_user_heatmap_unexpected_exception_not_swallowed_as_404(client, auth_header):
+    """防御性测试（Codex 异源审 Important-1 / 跟 power-curve 对称）：
+    service.get_user_by_id 抛**非 ValueError** 异常 → 不应被误翻 404 / 必须 propagate。
+
+    详 test_user_power_curve_unexpected_exception_not_swallowed_as_404 注释。
+    """
+    with patch("app.user.router.service.get_user_by_id",
+               side_effect=RuntimeError("database connection lost")):
+        with pytest.raises(RuntimeError):
+            client.get("/api/user/42/heatmap", headers=auth_header)

@@ -221,3 +221,62 @@ def get_user_profile(
         return service.get_user_profile_for_others(db, user_id, requester_user_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="用户不存在")
+
+
+# ========== task-4.3.0：看他人 power-curve / heatmap ==========
+#
+# Sprint 4 task-4.3 前置后端补：用户详情页要展示 ta 的功率曲线 + 热力图。
+# 复用现有 service.get_user_power_curve / get_user_heatmap（已支持任意 user_id 参数）。
+#
+# 路由匹配：静态 /me/... 在本文件上方 / 动态 /{user_id}/... 后置。
+# FastAPI 优先匹配静态路径 → 这两个新动态 endpoint 不会跟 /me/... 撞车。
+#
+# 权限（D-P08 / 看他人主页默认公开）：任意登录用户即可。
+
+
+@router.get("/{user_id}/power-curve", response_model=schemas.PowerCurveResponse)
+def get_user_power_curve_for_others(
+    user_id: int,
+    period: schemas.PowerCurvePeriod = schemas.PowerCurvePeriod.last_30_days,
+    requester_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    看他人功率曲线（D-P08 / 任意登录用户）。
+
+    period 5 档（滚动窗口型 / D16 v0.3 / 同 /me/power-curve）：
+    last_30_days / last_90_days / last_180_days / last_365_days / all_time。
+
+    user 不存在 → service.get_user_by_id 抛 ValueError → 翻译为 404
+    （跟 L220-223 /{user_id}/profile 同 pattern / Claude 综合审 Critical-1 验证后修）。
+    """
+    try:
+        service.get_user_by_id(db, user_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return service.get_user_power_curve(db, user_id, period.value)
+
+
+@router.get("/{user_id}/heatmap", response_model=schemas.HeatmapResponse)
+def get_user_heatmap_for_others(
+    user_id: int,
+    city: schemas.UserCity | None = None,
+    requester_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    看他人骑行热图（D-P08 / 任意登录用户）。
+
+    city 可选（D30 v3 polish / 同 /me/heatmap）：
+    - 不传 → 看 ta 全部足迹（不按起点城市筛 / response.city = None）。
+    - 传枚举值 → 按 simplified_track 起点城市筛。
+
+    user 不存在 → service.get_user_by_id 抛 ValueError → 翻译为 404
+    （跟 L220-223 /{user_id}/profile 同 pattern / Claude 综合审 Critical-1 验证后修）。
+    Redis 缓存 1h（同 /me/heatmap / cache key 跟 user_id 走 / 不区分 self/others）。
+    """
+    try:
+        service.get_user_by_id(db, user_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return service.get_user_heatmap(db, user_id, city.value if city else None)
