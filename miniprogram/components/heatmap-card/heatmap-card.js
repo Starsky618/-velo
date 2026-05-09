@@ -177,12 +177,22 @@ Component({
      * 类比：透明黄色马克笔在地图上多次描同一条路 → 自然变成更亮的黄
      */
     _convertToPolylines(tracks) {
+      // P1 hotfix（v3 polish 自审 / Tim 实测 236 条 ~5MB 接近 1MB setData 上限 / 大用户必爆）：
+      // 全局总点数 cap 8000 / 跨 polyline 均匀采样 / 视觉上 8000 点足够看出多城市路网
+      // 165000 → 8000 = 步长 ~20 / 每 20 个 trackpoint 取 1 个 / 视觉差几乎不可见（city 级缩放）
+      const MAX_TOTAL_POINTS = 8000
+      let totalRaw = 0
+      for (let i = 0; i < tracks.length; i++) {
+        if (Array.isArray(tracks[i])) totalRaw += tracks[i].length
+      }
+      const sampleStep = totalRaw > MAX_TOTAL_POINTS ? Math.ceil(totalRaw / MAX_TOTAL_POINTS) : 1
+
       const polylines = []
       for (let i = 0; i < tracks.length; i++) {
         const track = tracks[i]
         if (!Array.isArray(track) || track.length < 2) continue
         const points = []
-        for (let j = 0; j < track.length; j++) {
+        for (let j = 0; j < track.length; j += sampleStep) {  // 步长采样 / 防 setData 1MB 上限
           const c = track[j]
           if (!Array.isArray(c) || c.length < 2) continue
           const lon = c[0]
