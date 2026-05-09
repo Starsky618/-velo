@@ -1,0 +1,17 @@
+<!--
+  赛段详情页 — 看某条赛段的全貌（task-4.5 / 现为占位空架子）
+
+  这个文件干什么的：
+    用户在探索 tab 看到一张赛段卡片（如"妙峰山"）→ 点进来看详情。
+    完整 4 区块（task-4.5 step 2-7 实施时填）：
+    - 第一屏：海拔曲线 + 城市 + 4 数字（距离 / 爬升 / 平均坡度 / 最大坡度）
+    - AI 介绍：admin 审核过的 50-100 字介绍
+    - 我的记录：个人最佳成绩 + 进步对比
+    - 全网排行榜：top 10 + 我的排名
+
+  当前状态：占位空架子（让 task-4.4 explore tab 改造能跳转 / step 1 已 ship 后续填内容）
+-->
+<view class="placeholder">
+  <text class="seg-id">赛段 #{{segmentId}}</text>
+  <text class="hint">详情功能开发中（task-4.5 step 2-7）</text>
+</view>

@@ -9,7 +9,8 @@
     "pages/notification/notification",
     "pages/honor/honor",
     "pages/settings/settings",
-    "pages/user/user"
+    "pages/user/user",
+    "pages/segment/segment"
   ],
   "window": {
     "navigationBarBackgroundColor": "#ffffff",
