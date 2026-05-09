@@ -385,15 +385,26 @@ def get_user_power_curve(
         .all()
     )
 
+    # P0 hotfix（2026-05-09 / 修 N+1 + 大数据传输）：
+    # 旧版：236 个 activity × 单独 SQL 查 trackpoints = N+1 = 24 秒（all_time）
+    # 新版：1 次 IN 查询 + only 查 calculate_power_curve 用到的 3 字段（activity_id / seq / power）
+    # - SQL 数量：237 → 2（拿 ids + 拿 trackpoints）
+    # - 数据量：每行 200 字节（全字段）→ ~16 字节（3 字段）/ 减 92%
+    # - 预期延迟：all_time 24s → 1-2s
+    flat_act_ids = [aid for (aid,) in activity_ids]
     activities_trackpoints = []
-    for (act_id,) in activity_ids:
-        tps = (
-            db.query(Trackpoint)
-            .filter(Trackpoint.activity_id == act_id)
-            .order_by(Trackpoint.seq)
+    if flat_act_ids:
+        from itertools import groupby
+        # ORDER BY activity_id, seq —— 让 groupby 按 activity_id 分组 + 组内已 seq 升序
+        all_tps = (
+            db.query(Trackpoint.activity_id, Trackpoint.seq, Trackpoint.power)
+            .filter(Trackpoint.activity_id.in_(flat_act_ids))
+            .order_by(Trackpoint.activity_id, Trackpoint.seq)
             .all()
         )
-        activities_trackpoints.append(tps)
+        # SQLAlchemy Row 对象支持属性访问（.seq / .power）/ calculate_power_curve 不需改
+        for _, group_iter in groupby(all_tps, key=lambda r: r.activity_id):
+            activities_trackpoints.append(list(group_iter))
 
     # 4. 计算（每 activity 独立算后取 per-window max）
     # calculate_power_curve_from_activities 返 dict[int → float]
