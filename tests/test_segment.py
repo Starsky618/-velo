@@ -447,6 +447,80 @@ def test_13d_leaderboard_logged_in_pr_with_multiple_efforts(client, db, test_use
     assert data["my_elapsed_time"] == 200
 
 
+def test_13e_leaderboard_my_rank_out_of_top_page(client, db, test_user, auth_header):
+    """D7 hotfix 核心动机回归（Codex 异源审 I2-a）：
+    用户排在 page 之外仍能精确返回 my_rank（不是 # 占位 / 不是 None）。
+
+    场景：4 个 effort（user2:50, user3:80, user4:120, test_user:200）+ page_size=3
+    → items 含前 3 / 我（test_user）排第 4 不在 items 里 / my_rank=4 / my_elapsed_time=200
+    """
+    seg_id = _insert_segment(db)
+    act_id = _insert_activity(db, test_user.id)
+
+    from app.user.models import User
+    user2 = User(openid="d7_top_out_2")
+    user3 = User(openid="d7_top_out_3")
+    user4 = User(openid="d7_top_out_4")
+    db.add_all([user2, user3, user4])
+    db.commit()
+    db.refresh(user2)
+    db.refresh(user3)
+    db.refresh(user4)
+    act_id2 = _insert_activity(db, user2.id, "B")
+    act_id3 = _insert_activity(db, user3.id, "C")
+    act_id4 = _insert_activity(db, user4.id, "D")
+
+    _insert_effort(db, seg_id, act_id2, user2.id, elapsed_time=50)
+    _insert_effort(db, seg_id, act_id3, user3.id, elapsed_time=80)
+    _insert_effort(db, seg_id, act_id4, user4.id, elapsed_time=120)
+    _insert_effort(db, seg_id, act_id, test_user.id, elapsed_time=200)
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard?page_size=3", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    # items 只 3 条（前 3 名）/ 我不在
+    assert len(data["items"]) == 3
+    assert all(item["user_id"] != test_user.id for item in data["items"])
+    # 真 my_rank=4（不是 # 占位 / 不是 None）
+    assert data["my_rank"] == 4
+    assert data["my_elapsed_time"] == 200
+
+
+def test_13f_leaderboard_bike_type_filter_no_match(client, db, test_user, auth_header):
+    """D7 hotfix bike_type filter 边界（Codex 异源审 I2-b）：
+    ?bike_type=road 而用户无 road effort → my_rank=None / my_elapsed_time=None。
+
+    场景：user2 bike_type=road 骑了 / test_user bike_type=None（默认）骑了
+    → ?bike_type=road 时 / items 只含 user2 / 我的 PR query JOIN User 后被
+    bike_type=road filter 排除 → my_rank=None
+    """
+    seg_id = _insert_segment(db)
+    act_id = _insert_activity(db, test_user.id)
+
+    from app.user.models import User
+    user2 = User(openid="d7_bike_road_user", bike_type="road")
+    db.add(user2)
+    db.commit()
+    db.refresh(user2)
+    act_id2 = _insert_activity(db, user2.id, "RoadRide")
+
+    _insert_effort(db, seg_id, act_id2, user2.id, elapsed_time=100)
+    _insert_effort(db, seg_id, act_id, test_user.id, elapsed_time=200)
+
+    resp = client.get(
+        f"/api/segments/{seg_id}/leaderboard?bike_type=road",
+        headers=auth_header,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    # items 只含 road 用户（user2）/ 不含 test_user
+    assert len(data["items"]) == 1
+    assert data["items"][0]["user_id"] == user2.id
+    # test_user 没 road effort → my_rank=None
+    assert data["my_rank"] is None
+    assert data["my_elapsed_time"] is None
+
+
 def test_14_user_efforts(client, db, test_user, auth_header):
     """用户赛段成绩：返回所有赛段成绩 + 正确排名"""
     seg_id = _insert_segment(db)

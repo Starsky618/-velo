@@ -138,6 +138,15 @@ class LeaderboardResponse(BaseModel):
     Sprint 4 D7 hotfix（2026-05-10）：加 my_rank + my_elapsed_time 字段，
     让登录用户在前端能精确显示"我在这个赛段排第几 / 我的 PR 用时"，
     无论是否在 top 10 内。未登录或没骑过 → 两字段为 None。
+
+    已知语义边界（tied PR / 双 review I1 backlog 跟 D33 一起做）：
+    多用户 elapsed_time 完全相等时，my_rank 算法 count(elapsed_time < my_pr) + 1
+    与主榜 enumerate rank（无二级排序键）可能错位 1：
+    - my_rank 取"tied 群里最小可能 rank"（下界）
+    - items rank 由 enumerate 决定 / 同 elapsed_time 时顺序未定
+    百级用户量 tied 概率 < 1%，未来用户量大或 D33 一起补：
+    主榜 ORDER BY 加二级键 (elapsed_time, effort_id) +
+    my_rank 算法配套 count(elapsed_time < pr OR (= pr AND id < my_id)) + 1。
     """
     items: list[LeaderboardEntry]
     total: int
