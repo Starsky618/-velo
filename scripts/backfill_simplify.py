@@ -29,6 +29,7 @@ import sys
 from app.activity.models import Activity, Trackpoint
 from app.activity.simplify import simplify_track
 from app.database import SessionLocal
+from app.user.models import User  # noqa: F401  # 注册 ORM mapper / Activity.user_id FK 引用 users 表必须 import
 
 
 logger = logging.getLogger(__name__)
