@@ -148,10 +148,10 @@ def get_my_heatmap(
     db: Session = Depends(get_db),
 ):
     """
-    获取当前用户在指定城市的骑行热图。
+    获取当前用户在指定城市的骑行热图（D27 v2 polish）。
 
     city 7 枚举（6 主城 + unknown）/ 必填。
-    返回 GeoJSON MultiPoint（坐标顺序 [lon, lat]）+ activity_count。
+    返回 tracks: list[list[[lon, lat]]]（保留 activity 边界 / 每个 activity 一条独立轨迹 / 前端画 polyline）+ activity_count。
     Redis 缓存 1h。
     """
     return service.get_user_heatmap(db, user_id, city.value)

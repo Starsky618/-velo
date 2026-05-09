@@ -139,8 +139,12 @@ def _get_zone_index(power_w: int, ftp: int) -> int:
 # 各自接现成的格式，不互相强转换。
 # ═══════════════════════════════════════════════════════════════════════════
 
-# 6 档时长档位（行业标准 / Strava）：1s / 5s / 30s / 1min / 5min / 20min
-_DEFAULT_POWER_CURVE_WINDOWS = [1, 5, 30, 60, 300, 1200]
+# 7 档时长档位（D26 v2 polish / Sprint 4 task-4.2 v2）：
+# 0s 瞬时最大 / 3s / 30s / 1min / 5min / 20min / 1h
+# - 0s 语义：单点最大瞬时功率（max of powers）/ 不走 sliding window
+# - 其他档：sliding window N 秒平均的最大值
+# 跟之前 6 档（1/5/30/60/300/1200）的差异：替换 1s+5s 为 0s+3s / 加 1h（3600s）/ 跟骑行训练长距离指标对齐
+_DEFAULT_POWER_CURVE_WINDOWS = [0, 3, 30, 60, 300, 1200, 3600]
 
 
 def calculate_power_curve(
@@ -168,7 +172,8 @@ def calculate_power_curve(
     参数：
         trackpoints: list[Trackpoint] 单个 activity 内、按 seq / created_at 升序，
             含 power（int|None，单位 W）属性。可空。
-        windows_sec: list[int] 时长档位（秒）。None 用默认 6 档 [1,5,30,60,300,1200]。
+        windows_sec: list[int] 时长档位（秒）。None 用默认 7 档 [0,3,30,60,300,1200,3600]。
+            window=0 特殊语义：单点最大瞬时功率（max of all powers）/ 不走 sliding window。
 
     返回：
         dict[int → float] window_sec → max_avg_power_W。空入参或全 None 返全 0。
@@ -195,6 +200,12 @@ def calculate_power_curve(
 
     result = {}
     for window in windows_sec:
+        # window=0 特殊语义（D26 v2 polish）：单点最大瞬时功率
+        # 不走 sliding window / 直接 max of all powers / 0W 也算合法（max([0,0,0])=0）
+        if window == 0:
+            result[window] = float(max(powers))
+            continue
+
         if window > n:
             # 数据点不足一个 window → fallback 用全部数据平均
             # 例：只有 30 秒数据但要算 1200 秒 window，就算这 30 秒的整体平均
@@ -230,7 +241,7 @@ def calculate_power_curve_from_activities(
     参数：
         activities_trackpoints: list[list[Trackpoint]]，每个内层 list 是
             **单 activity** 的 trackpoints（绝不允许内层是多 activity 拼接）
-        windows_sec: list[int] 时长档位（秒）。None 用默认 6 档。
+        windows_sec: list[int] 时长档位（秒）。None 用默认 7 档 [0,3,30,60,300,1200,3600]。
 
     返回：
         dict[int → float] window_sec → max_avg_power_W（取所有 activity 的 per-window max）

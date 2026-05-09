@@ -268,7 +268,7 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
 
 # ========== task-2.C.2：功率曲线 service + Redis 缓存 ==========
 #
-# 用户视角：进个人主页"功率曲线"卡片 → 看到"5min 最佳 240W"等 6 档时长。
+# 用户视角：进个人主页"功率曲线"卡片 → 看到"5min 最佳 240W"等 7 档时长（D26 v2 polish）。
 # 后端路径：
 #   1. cache 命中 → 直接返（毫秒级）
 #   2. cache miss → 查 period 内 activities → 跨 activity 算曲线 → 写 cache → 返
@@ -341,8 +341,9 @@ def get_user_power_curve(
     """
     用户功率曲线（按 period 切片）+ Redis 缓存——"用户的训练成绩单"。
 
-    把用户最近一段时间的所有骑行数据放在一起，算 6 档时长（1s / 5s / 30s / 1min / 5min / 20min）
-    各自的最佳平均功率。比如 5 分钟：最近 30 天内你最好 5 分钟的平均输出多少瓦——这是衡量
+    把用户最近一段时间的所有骑行数据放在一起，算 7 档时长（D26 v2 polish）：
+    0s 瞬时最大 / 3s / 30s / 1min / 5min / 20min / 1h —— 各自的最佳平均功率。
+    比如 5 分钟：最近 30 天内你最好 5 分钟的平均输出多少瓦——这是衡量
     持续输出能力的核心指标，也是用户拿来跟自己历史 / 跟朋友对比的"成绩单"。
 
     period 切片是滚动窗口型（D16 v0.3 / Sprint 4 task-pre-4.2 升级）：
@@ -486,9 +487,14 @@ def get_user_heatmap(db: Session, user_id: int, city: str) -> dict:
     """
     用户在指定城市的骑行热图——"我在这座城里去过哪些地方"。
 
-    把用户在该城市的所有骑行轨迹点位聚合成 GeoJSON MultiPoint，
-    前端拿来铺色块——骑得越多的地方颜色越深。
+    把用户在该城市的所有骑行轨迹**保留 activity 边界**返回 list of tracks，
+    前端拿来画 polyline 路径线（每条 activity 一条线）+ 多条 opacity 0.5 重叠
+    自然形成"骑过越多越亮"的热力效果。
     城市筛选基于 simplified_track 起点（activity 表无 start_lat/lon 字段）。
+
+    D27 v2 polish（Sprint 4 task-4.2 v2）：从扁平 multipoint.coordinates
+    改为 tracks: list[list[[lon,lat]]] —— 保留 activity 边界让前端画 polyline，
+    不再用 markers 点 / 视觉接近 ride.fitcard.app 80%。
 
     Redis 缓存 TTL 1h（用户上传新活动后 update_user_city 不会触发清缓存——
     清缓存职责由 worker hook 或 update_user_city 承担）。
@@ -500,7 +506,11 @@ def get_user_heatmap(db: Session, user_id: int, city: str) -> dict:
     返回结构：
         {
           "city": "beijing",
-          "multipoint": {"type": "MultiPoint", "coordinates": [[lon, lat], ...]},
+          "tracks": [
+            [[lon, lat], [lon, lat], ...],  # activity 1 的轨迹
+            [[lon, lat], [lon, lat], ...],  # activity 2 的轨迹
+            ...
+          ],
           "activity_count": 12
         }
     """
@@ -533,19 +543,27 @@ def get_user_heatmap(db: Session, user_id: int, city: str) -> dict:
         if _infer_city_from_coords(lat, lon) == city:
             filtered.append(a)
 
-    # 聚合所有点位（GeoJSON 顺序 [lon, lat]，不是 [lat, lon]）
-    points = []
+    # 保留 activity 边界 / 每个 activity 输出一条独立轨迹（D27 v2 polish）
+    # 前端画 polyline 时一条 activity 一条 polyline / 多条重叠 opacity 0.5 自然成热力
+    # ⚠ 单点 activity 跳过：polyline 至少 2 点才能成线 / 单点会被前端 _convertToPolylines 跳过
+    # 后端同步过滤防"activity_count > 0 但 polylines 空 / 用户看到地图无线条"假象（Codex 异源审 Important）
+    tracks = []
+    valid_count = 0
     for a in filtered:
+        track_points = []
         for pt in a.simplified_track:
             lat = pt.get("lat")
             lon = pt.get("lon")
             if lat is not None and lon is not None:
-                points.append([lon, lat])
+                track_points.append([lon, lat])  # GeoJSON 顺序 [lon, lat]
+        if len(track_points) >= 2:  # 至少 2 点才能成 polyline
+            tracks.append(track_points)
+            valid_count += 1
 
     result = {
         "city": city,
-        "multipoint": {"type": "MultiPoint", "coordinates": points},
-        "activity_count": len(filtered),
+        "tracks": tracks,
+        "activity_count": valid_count,  # 跟 tracks 长度一致 / 不数被跳过的单点 activity
     }
 
     redis_client.setex(cache_key, _HEATMAP_CACHE_TTL_SEC, _json.dumps(result))

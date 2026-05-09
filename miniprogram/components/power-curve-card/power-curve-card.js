@@ -4,7 +4,8 @@
  * ─── 这个组件是干什么的 ─────────────────────────────
  * 在用户个人页展示"我最近 30 天 / 90 天 / 半年 / 一年 / 全部历史"
  * 内的功率曲线（不同时长下的最佳平均功率），用一条折线展示
- * 5s / 30s / 5min / 20min 4 个关键档的功率数值。
+ * 7 个关键档的功率数值（D26 v2 polish）：
+ *   瞬时（0s 单点最大）/ 3s（无氧爆发）/ 30s / 1min / 5min / 20min / 1h
  *
  * 4.3 看他人 profile 时复用本 component：传 userId !== 0 即切到看他人路径。
  * 未来想在别的 tab 展示也直接 `<power-curve-card />` 一行引入。
@@ -13,9 +14,9 @@
  *   attached lifetime → _fetchAndRender()
  *     ├ userId === 0 → GET /api/user/me/power-curve?period=xxx
  *     └ userId !== 0 → GET /api/user/{userId}/power-curve?period=xxx（4.3 加 endpoint）
- *   后端返回 { period, buckets: { "1": W, "5": W, "30": W, "60": W, "300": W, "1200": W } }
+ *   后端返回 { period, buckets: { "0": W, "3": W, "30": W, "60": W, "300": W, "1200": W, "3600": W } }
  *     ├ 全 0 / 空 → setData isEmpty=true（显示"还没数据"）
- *     └ 有值 → setData hasData=true → setTimeout(100) → _renderCanvas() 画 4 条
+ *     └ 有值 → setData hasData=true → setTimeout(100) → _renderCanvas() 画 1 条折线连 7 点
  *
  * ─── 状态机 ─────────────────────────────────────
  *   loading（初始 true）→ error / isEmpty / hasData
@@ -30,18 +31,26 @@
 const api = require('../../utils/api')
 
 /**
- * 横坐标用的 4 档（从后端 6 档里挑这 4 档展示）
- * - 5s（无氧爆发）/ 30s（短冲）/ 5min（VO2max）/ 20min（FTP 接近值）
- * - bucketKey 是后端返回的字符串 key（秒）/ label 是图上 X 轴标签
+ * 横坐标 7 档（D26 v2 polish / Sprint 4 task-4.2 v2 / 全部展示，不跳过）
+ * - 0s 瞬时最大功率（单点 max / 短时爆发力极限）
+ * - 3s（无氧爆发起步）
+ * - 30s（短冲）
+ * - 1min（极短无氧）
+ * - 5min（VO2max）
+ * - 20min（FTP 接近值）
+ * - 1h（长距离耐力）
  *
- * 后端 buckets 实际有 6 档（"1" / "5" / "30" / "60" / "300" / "1200"），
- * 1s / 1min 跳过：1s 噪声大；1min 在 30s/5min 之间没那么有信息量。
+ * 后端 buckets 7 档（"0"/"3"/"30"/"60"/"300"/"1200"/"3600"）/ 全部展示对应 ride.fitcard 风格
+ * Tim 拍：去掉 5s / 加 0s 瞬时 + 1h 长距离 / 6+1=7 个数据点连成曲线
  */
 const DISPLAY_BUCKETS = [
-  { key: '5', label: '5s' },
+  { key: '0', label: '瞬时' },
+  { key: '3', label: '3s' },
   { key: '30', label: '30s' },
+  { key: '60', label: '1min' },
   { key: '300', label: '5min' },
   { key: '1200', label: '20min' },
+  { key: '3600', label: '1h' },
 ]
 
 /**
@@ -82,7 +91,7 @@ Component({
     loading: true,
     error: false,
     isEmpty: false,
-    subtitle: '最近 30 天 · 5s / 30s / 5min / 20min',
+    subtitle: '最近 30 天 · 瞬时 / 3s / 30s / 1min / 5min / 20min / 1h',
     // 内部标记：attached 之后才允许 observer 触发 fetch（防 properties 默认值
     // 初始化时 observer 已触发一次 fetch，attached 又触发一次重复请求）
     _mounted: false,
@@ -105,7 +114,7 @@ Component({
      */
     _buildSubtitle: function (period) {
       const periodText = PERIOD_LABEL[period] || '最近 30 天'
-      return periodText + ' · 5s / 30s / 5min / 20min'
+      return periodText + ' · 瞬时 / 3s / 30s / 1min / 5min / 20min / 1h'
     },
 
     /**

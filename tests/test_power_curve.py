@@ -26,9 +26,9 @@ def _tp(seq: int, power):
 
 class TestCalculatePowerCurve:
     def test_empty_trackpoints_returns_all_zero(self):
-        """空 trackpoints → 所有 window 返 0.0（默认 6 档）。"""
+        """空 trackpoints → 所有 window 返 0.0（默认 7 档 / D26 v2 polish）。"""
         result = calculate_power_curve([])
-        assert result == {1: 0.0, 5: 0.0, 30: 0.0, 60: 0.0, 300: 0.0, 1200: 0.0}
+        assert result == {0: 0.0, 3: 0.0, 30: 0.0, 60: 0.0, 300: 0.0, 1200: 0.0, 3600: 0.0}
 
     def test_all_none_power_treated_as_zero(self):
         """所有 tp.power = None → 累加和全 0 → 所有 window 返 0。"""
@@ -53,14 +53,17 @@ class TestCalculatePowerCurve:
             assert abs(value - 200.0) < 0.01, f"window={window} 偏离 200: {value}"
 
     def test_spike_1200w_one_second(self):
-        """单点 1200W spike + 周围 200W → window=1 ≈ 1200, window=5 被稀释到 ≈ 240。"""
+        """单点 1200W spike + 周围 200W → window=0 单点最大=1200, window=5 被稀释到 ≈ 400。"""
         # 先稳定 200W 共 60 点 → spike 1200W 1 点 → 再 200W 60 点
         tps = (
             [_tp(i, 200) for i in range(60)]
             + [_tp(60, 1200)]
             + [_tp(i, 200) for i in range(61, 121)]
         )
-        result = calculate_power_curve(tps)
+        # 自定义 windows / 跳过默认 7 档限制 / 也覆盖旧版有的 1/5 档
+        result = calculate_power_curve(tps, windows_sec=[0, 1, 5, 30])
+        # window=0：单点最大 = 1200（D26 v2 polish 新增语义）
+        assert abs(result[0] - 1200.0) < 0.01
         # window=1：spike 单点本身 = 1200
         assert abs(result[1] - 1200.0) < 0.01
         # window=5：连续 5 个里有 1 个 1200 + 4 个 200 → 平均 (1200+800)/5 = 400
@@ -79,19 +82,34 @@ class TestCalculatePowerCurve:
         # 50 个 0W + 50 个 100W → 5 秒最大平均应该是连续 5 个 100W = 100
         # 不应被当 None 跳过 0 段然后只算 100W 段（那就漏了 0 是合法这个语义验证）
         tps_mixed = [_tp(i, 0) for i in range(50)] + [_tp(i + 50, 100) for i in range(50)]
-        result = calculate_power_curve(tps_mixed)
+        result = calculate_power_curve(tps_mixed, windows_sec=[5])
         assert abs(result[5] - 100.0) < 0.01
 
     def test_unsorted_input_gets_sorted(self):
         """输入未按 seq 排序时，函数内部排序保险——结果不受影响。"""
         # 倒序输入 0..49 全 200W
         tps = [_tp(49 - i, 200) for i in range(50)]
-        result = calculate_power_curve(tps)
+        result = calculate_power_curve(tps, windows_sec=[5])
         # 排序后等价 50 个 200W，window=5 应等于 200
         assert abs(result[5] - 200.0) < 0.01
 
+    def test_window_zero_returns_max_single_point_power(self):
+        """window=0 特殊语义：单点最大瞬时功率（D26 v2 polish / 不走 sliding window）。"""
+        # 50 点 200W + 1 点 1500W spike + 49 点 200W → 单点 max = 1500
+        tps = (
+            [_tp(i, 200) for i in range(50)]
+            + [_tp(50, 1500)]
+            + [_tp(i, 200) for i in range(51, 100)]
+        )
+        result = calculate_power_curve(tps, windows_sec=[0, 5])
+        # window=0 = 单点 max（不被 sliding window 稀释）
+        assert abs(result[0] - 1500.0) < 0.01
+        # window=5 = 5s sliding window max（spike 被稀释）
+        # 连续 5 个里有 1 个 1500 + 4 个 200 → (1500 + 800)/5 = 460
+        assert abs(result[5] - 460.0) < 0.01
+
     def test_custom_windows_sec(self):
-        """自定义 windows_sec 参数生效，不强制走默认 6 档。"""
+        """自定义 windows_sec 参数生效，不强制走默认 7 档（D26 v2 polish）。"""
         tps = [_tp(i, 100) for i in range(20)]
         result = calculate_power_curve(tps, windows_sec=[3, 7])
         assert set(result.keys()) == {3, 7}
@@ -106,9 +124,9 @@ class TestCalculatePowerCurve:
 
 class TestCalculatePowerCurveFromActivities:
     def test_empty_list_returns_all_zero(self):
-        """空 list of list → 所有 window 返 0。"""
+        """空 list of list → 所有 window 返 0（默认 7 档 / D26 v2 polish）。"""
         result = calculate_power_curve_from_activities([])
-        assert result == {1: 0.0, 5: 0.0, 30: 0.0, 60: 0.0, 300: 0.0, 1200: 0.0}
+        assert result == {0: 0.0, 3: 0.0, 30: 0.0, 60: 0.0, 300: 0.0, 1200: 0.0, 3600: 0.0}
 
     def test_single_activity_equiv_calculate_power_curve(self):
         """list of 1 activity → 等价直接调 calculate_power_curve。"""
@@ -157,14 +175,14 @@ class TestCalculatePowerCurveFromActivities:
     def test_empty_inner_lists_skipped(self):
         """内层 list 为空 → 跳过，不影响其他 activity 的曲线计算。"""
         tps_a = [_tp(i, 200) for i in range(100)]
-        result = calculate_power_curve_from_activities([[], tps_a, []])
+        result = calculate_power_curve_from_activities([[], tps_a, []], windows_sec=[5])
         assert abs(result[5] - 200.0) < 0.01
 
     def test_each_inner_list_independent_different_windows(self):
-        """A 在 window=1 称王 / B 在 window=300 称王 → 各 window 各取最高。
+        """A 在 window=0 单点最大称王 / B 在 window=300 称王 → 各 window 各取最高。
         即 max 是 per-window 独立的，不强制取同一 activity。
         """
-        # A：1 个 1200W spike + 周围 200W（window=1 称王）
+        # A：1 个 1200W spike + 周围 200W（window=0 单点最大称王）
         tps_a = (
             [_tp(i, 200) for i in range(50)]
             + [_tp(50, 1200)]
@@ -172,9 +190,9 @@ class TestCalculatePowerCurveFromActivities:
         )
         # B：稳定 250W 共 600 点（window=300 称王）
         tps_b = [_tp(i, 250) for i in range(600)]
-        result = calculate_power_curve_from_activities([tps_a, tps_b])
-        # window=1：A 的 1200 应胜出
-        assert abs(result[1] - 1200.0) < 0.01
+        result = calculate_power_curve_from_activities([tps_a, tps_b], windows_sec=[0, 300])
+        # window=0：A 的单点 1200 应胜出（B 单点最大 250）
+        assert abs(result[0] - 1200.0) < 0.01
         # window=300：B 的 250 应胜出（A 在 300s 里被稀释）
         assert abs(result[300] - 250.0) < 0.01
 

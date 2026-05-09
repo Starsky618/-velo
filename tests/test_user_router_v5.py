@@ -27,24 +27,26 @@ def test_power_curve_requires_auth(client):
 
 
 def test_power_curve_default_period(client, auth_header):
-    """默认 period=last_30_days / service 被调对参数（D16 v0.3 / 滚动窗口）。"""
-    fake_result = {"period": "last_30_days", "buckets": {"1": 800.0, "5": 700.0,
-                   "30": 320.0, "60": 280.0, "300": 240.0, "1200": 200.0}}
+    """默认 period=last_30_days / service 被调对参数 / 7 档 buckets（D26 v2 polish）。"""
+    fake_result = {"period": "last_30_days", "buckets": {"0": 1000.0, "3": 850.0,
+                   "30": 320.0, "60": 280.0, "300": 240.0, "1200": 200.0, "3600": 180.0}}
     with patch("app.user.router.service.get_user_power_curve", return_value=fake_result) as mock_svc:
         resp = client.get("/api/user/me/power-curve", headers=auth_header)
         assert resp.status_code == 200
         body = resp.json()
         assert body["period"] == "last_30_days"
         assert body["buckets"]["300"] == 240.0
+        assert body["buckets"]["3600"] == 180.0  # 1h 档（D26 新增）
+        assert body["buckets"]["0"] == 1000.0    # 瞬时最大档（D26 新增）
         # service 调用参数验证
         args = mock_svc.call_args
         assert args.args[2] == "last_30_days"  # period
 
 
 def test_power_curve_explicit_period_last_365_days(client, auth_header):
-    """传 period=last_365_days 透传给 service（D16 v0.3 / 滚动窗口）。"""
-    fake_result = {"period": "last_365_days", "buckets": {"1": 0.0, "5": 0.0,
-                   "30": 0.0, "60": 0.0, "300": 0.0, "1200": 0.0}}
+    """传 period=last_365_days 透传给 service（D16 v0.3 / 滚动窗口 + D26 v2 polish 7 档）。"""
+    fake_result = {"period": "last_365_days", "buckets": {"0": 0.0, "3": 0.0,
+                   "30": 0.0, "60": 0.0, "300": 0.0, "1200": 0.0, "3600": 0.0}}
     with patch("app.user.router.service.get_user_power_curve", return_value=fake_result) as mock_svc:
         resp = client.get("/api/user/me/power-curve?period=last_365_days", headers=auth_header)
         assert resp.status_code == 200
@@ -78,10 +80,14 @@ def test_heatmap_invalid_city_422(client, auth_header):
     assert resp.status_code == 422
 
 
-def test_heatmap_valid_returns_geojson(client, auth_header):
+def test_heatmap_valid_returns_tracks(client, auth_header):
+    """heatmap 返回 tracks 列表（每个 activity 一条轨迹 / D27 v2 polish）。"""
     fake_result = {
         "city": "beijing",
-        "multipoint": {"type": "MultiPoint", "coordinates": [[116.4, 39.9], [116.41, 39.91]]},
+        "tracks": [
+            [[116.4, 39.9], [116.41, 39.91], [116.42, 39.92]],   # activity 1
+            [[116.45, 39.95], [116.46, 39.96]],                   # activity 2
+        ],
         "activity_count": 2,
     }
     with patch("app.user.router.service.get_user_heatmap", return_value=fake_result):
@@ -89,8 +95,9 @@ def test_heatmap_valid_returns_geojson(client, auth_header):
         assert resp.status_code == 200
         body = resp.json()
         assert body["city"] == "beijing"
-        assert body["multipoint"]["type"] == "MultiPoint"
-        assert len(body["multipoint"]["coordinates"]) == 2
+        assert len(body["tracks"]) == 2
+        assert len(body["tracks"][0]) == 3  # activity 1 有 3 个点
+        assert len(body["tracks"][1]) == 2  # activity 2 有 2 个点
         assert body["activity_count"] == 2
 
 

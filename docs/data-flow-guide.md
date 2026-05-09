@@ -1174,10 +1174,10 @@ scan_iter 是 cursor 模式，不阻塞，对全库友好。
      ↓ activities = SELECT Activity WHERE user_id=? AND status='completed'
                     AND simplified_track IS NOT NULL
      ↓ filtered = [a for a in activities if infer_city_from_coords(a.simplified_track[0]) == city]
-     ↓ points = [[lon, lat] for a in filtered for pt in a.simplified_track]
-     ↓ result = {"city", "multipoint": {"type": "MultiPoint", "coordinates": points}, "activity_count"}
+     ↓ tracks = [[[lon, lat] for pt in a.simplified_track] for a in filtered]  # D27 v2 polish 保留 activity 边界
+     ↓ result = {"city", "tracks": tracks, "activity_count"}
      ↓ redis_conn.setex(cache_key, 3600, json.dumps(result))
-  ↓ return GeoJSON
+  ↓ return tracks（前端画 polyline / 多条 opacity 重叠自然热力效果）
 ```
 
 性能：500 用户 × 30 activity × 80 simplified 点 = 1.2M 点。聚合后端单次 < 1s（按 user_id 索引筛）。Redis 缓存 TTL 1h。

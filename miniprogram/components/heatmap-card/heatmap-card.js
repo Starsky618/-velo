@@ -19,18 +19,18 @@
  *
  * 4 状态机：
  *   loading → error（网络炸） / 渲染 / empty
- *   渲染态 = multipoint.coordinates 非空 且 activity_count > 0
+ *   渲染态 = tracks 非空 且 activity_count > 0（D27 v2 polish）
  *
  * 数据流：
  *   attached / props 变化 → _fetchAndRender → setData(loading)
- *   → api.get → 成功 → _convertToMarkers → setData(markers + center)
+ *   → api.get → 成功 → _convertToPolylines → setData(polylines + center)
  *                  → 失败 → setData(error)
  *
  * 注意（坑预防）：
- *   1. 后端 multipoint.coordinates 是 GeoJSON 约定的 [lon, lat] 顺序，
+ *   1. 后端 tracks 是 list of list / 每条轨迹是 [[lon, lat], ...] GeoJSON 约定 lon 在前，
  *      小程序 marker 要的是 latitude / longitude，转换时别搞反！
  *   2. props 变化不会自动触发 attached，需要 observers 监听重新 fetch
- *   3. 当前后端 multipoint 返回的只是坐标列表，没有 count 字段；
+ *   3. tracks 保留 activity 边界让前端画 polyline / 多条 opacity 重叠形成自然热力（不需 count 字段）；
  *      所以"按 count 排序、颜色越深"是未来事，本期所有 marker 用同一个 grey icon
  */
 
@@ -74,7 +74,7 @@ Component({
     loading: true,         // 初始进入就是 loading 态
     error: false,          // 网络/接口报错
     isEmpty: false,        // 数据空（无活动记录）
-    markers: [],           // 小程序 map 接受的 markers 数组
+    polylines: [],         // 小程序 map 接受的 polylines 数组（D27 v2 polish / 每 activity 一条）
     center: { lat: 39.9042, lng: 116.4074 },  // map 中心（默认北京）
   },
 
@@ -107,7 +107,7 @@ Component({
      * 流程：
      *   1. setData 进入 loading 态
      *   2. 根据 userId 选择 endpoint（看自己 vs 看他人）
-     *   3. 拿到响应后判空 → 转 markers → setData 渲染态
+     *   3. 拿到响应后判空 → 转 polylines → setData 渲染态
      *   4. 任何步骤报错 → setData error 态
      */
     _fetchAndRender() {
@@ -125,12 +125,13 @@ Component({
 
       api.get(url)
         .then((data) => {
-          // 后端契约：{city, multipoint: {type, coordinates: [[lon,lat],...]}, activity_count}
-          const coords = (data && data.multipoint && data.multipoint.coordinates) || []
+          // 后端契约（D27 v2 polish）：{city, tracks: [[[lon,lat],...], ...], activity_count}
+          // tracks 是 list of list / 保留 activity 边界 / 每个 activity 一条独立轨迹
+          const tracks = (data && data.tracks) || []
           const activityCount = (data && data.activity_count) || 0
 
           // 空状态判定：任一为空都算空（防御式判定）
-          if (coords.length === 0 || activityCount === 0) {
+          if (tracks.length === 0 || activityCount === 0) {
             this.setData({
               loading: false,
               error: false,
@@ -139,15 +140,15 @@ Component({
             return
           }
 
-          // 转 markers + 算中心
-          const markers = this._convertToMarkers(coords)
-          const center = this._computeCenter(coords, cityToUse)
+          // 转 polylines + 算中心
+          const polylines = this._convertToPolylines(tracks)
+          const center = this._computeCenter(tracks, cityToUse)
 
           this.setData({
             loading: false,
             error: false,
             isEmpty: false,
-            markers: markers,
+            polylines: polylines,
             center: center,
           })
         })
@@ -169,71 +170,72 @@ Component({
     },
 
     /**
-     * 把后端 GeoJSON coordinates 数组转成小程序 markers 数组
+     * 把后端 tracks 数组转成小程序 polylines 数组（D27 v2 polish）
      *
-     * 输入：[[lon, lat], [lon, lat], ...]   GeoJSON 约定 lon 在前
-     * 输出：[{id, latitude, longitude, iconPath, width, height}, ...]
+     * 输入：[[[lon, lat], [lon, lat], ...], ...] / 每内层 list 是一个 activity 的轨迹
+     * 输出：[{points: [{latitude, longitude}, ...], color, width, ...}, ...]
      *
-     * 当前简化版：所有 marker 用同一个 grey icon——后端 multipoint 还没返回 count 字段，
-     *           按 count 上色是未来事（task 卡 Step B.4 提到但本期不做，避免伪造数据）。
+     * 视觉策略：
+     * - 每条 activity 一条独立 polyline / 黄色 #FFD700（接近 ride.fitcard.app 风格）
+     * - opacity 0.5 让多条 polyline 重叠时颜色叠加变深 → 自然热力效果（骑得越多越亮）
+     * - 不需要后端聚合 count / 重叠次数自带视觉梯度
      *
-     * 类比：先把所有"骑过的点"用同样的灰点标出来，
-     *       未来后端如果改成返回 grid + count，这里再升级"红橙蓝"梯度。
+     * 类比：透明黄色马克笔在地图上多次描同一条路 → 自然变成更亮的黄
      */
-    _convertToMarkers(coords) {
-      // 真机回归实证（2026-05-08）：生产 server city=unknown 返回 ~14000 个坐标点
-      // 14000 个 markers 每个 ~50 字节 ≈ 700KB / 接近小程序 setData 1MB 硬限制
-      // 后果：setData 静默截断或渲染异常（Tim 真机看到"蓝色海面无 markers"）
-      // 修复：均匀采样到 MAX_MARKERS / 视觉上 200-500 已足够看出"骑过哪些区域"
-      // 未来 task：后端做 grid 聚合返回 grid+count（task 卡 Step B.4 提到 / 当前不做）
-      const MAX_MARKERS = 200
-      const step = coords.length > MAX_MARKERS ? Math.ceil(coords.length / MAX_MARKERS) : 1
-
-      const markers = []
-      for (let i = 0; i < coords.length; i += step) {
-        const c = coords[i]
-        // 防御：坐标格式不对就跳过这个点（不让一个坏点搞挂整个图）
-        if (!Array.isArray(c) || c.length < 2) continue
-        const lon = c[0]
-        const lat = c[1]
-        if (typeof lon !== 'number' || typeof lat !== 'number') continue
-
-        markers.push({
-          id: i,                       // 小程序 markers 必须有唯一 id
-          latitude: lat,               // 小程序要 latitude（注意和 GeoJSON 反着！）
-          longitude: lon,
-          iconPath: '/components/heatmap-card/icons/grey.png',
-          width: 16,
-          height: 16,
+    _convertToPolylines(tracks) {
+      const polylines = []
+      for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i]
+        if (!Array.isArray(track) || track.length < 2) continue
+        const points = []
+        for (let j = 0; j < track.length; j++) {
+          const c = track[j]
+          if (!Array.isArray(c) || c.length < 2) continue
+          const lon = c[0]
+          const lat = c[1]
+          if (typeof lon !== 'number' || typeof lat !== 'number') continue
+          points.push({ latitude: lat, longitude: lon })
+        }
+        if (points.length < 2) continue  // 单点不能成 polyline / 跳过
+        polylines.push({
+          points: points,
+          color: '#FFD700CC',           // 亮黄 + 80% alpha 让重叠色叠加（CC = 204/255 ≈ 80%）
+          width: 4,
+          arrowLine: false,
+          dottedLine: false,
         })
       }
-      return markers
+      return polylines
     },
 
     /**
-     * 计算 map 中心点
+     * 计算 map 中心点（接 tracks 输入 / D27 v2 polish）
      *
      * 策略：
-     *   - 坐标非空 → 取中位数（mean）作为中心，让 map 大致对准用户活动范围
-     *   - 坐标空 → 用 city 默认中心兜底（理论上这条永不触发，因为空坐标已进 isEmpty 分支）
+     *   - tracks 非空 → 扁平化所有点取均值，让 map 大致对准用户活动范围
+     *   - tracks 空 → 用 city 默认中心兜底（理论上不触发，空 tracks 已进 isEmpty 分支）
      *
      * 为什么用平均值不用边界中心：边界中心会被一两个偏远点拉偏，
      * 平均值更能代表"用户主要骑哪儿"。
      */
-    _computeCenter(coords, cityToUse) {
-      if (!coords || coords.length === 0) {
+    _computeCenter(tracks, cityToUse) {
+      if (!tracks || tracks.length === 0) {
         return CITY_DEFAULT_CENTER[cityToUse] || CITY_DEFAULT_CENTER.unknown
       }
       let sumLon = 0
       let sumLat = 0
       let n = 0
-      for (let i = 0; i < coords.length; i++) {
-        const c = coords[i]
-        if (!Array.isArray(c) || c.length < 2) continue
-        if (typeof c[0] !== 'number' || typeof c[1] !== 'number') continue
-        sumLon += c[0]
-        sumLat += c[1]
-        n += 1
+      for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i]
+        if (!Array.isArray(track)) continue
+        for (let j = 0; j < track.length; j++) {
+          const c = track[j]
+          if (!Array.isArray(c) || c.length < 2) continue
+          if (typeof c[0] !== 'number' || typeof c[1] !== 'number') continue
+          sumLon += c[0]
+          sumLat += c[1]
+          n += 1
+        }
       }
       if (n === 0) {
         return CITY_DEFAULT_CENTER[cityToUse] || CITY_DEFAULT_CENTER.unknown

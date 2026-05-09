@@ -93,7 +93,7 @@
 
 #### Spec 层工程决策
 
-- 时长分桶 buckets：**6 档**（1s / 5s / 30s / 1min / 5min / 20min，Strava 行业标准）
+- 时长分桶 buckets：**7 档**（0s 瞬时最大 / 3s / 30s / 1min / 5min / 20min / 1h，D26 v2 polish）
 - AI 草稿审核状态机：pending / human_edited / approved / rejected
 - segments.difficulty 枚举：'easy' / 'medium' / 'hard' / 'extreme'
 - segments.city / users.city 枚举：'beijing' / 'shanghai' / 'hangzhou' / 'shenzhen' / 'chengdu' / 'taiyuan' / 'unknown'
@@ -672,9 +672,9 @@ if __name__ == '__main__':
    用户访问个人页 → 点功率曲线卡片
        → GET /api/users/me/power-curve?period=last_30_days
        → Redis cache lookup
-       → cache miss → calculate_power_curve(trackpoints, [1,5,30,60,300,1200])
+       → cache miss → calculate_power_curve(trackpoints, [0,3,30,60,300,1200,3600])  # D26 v2 polish 7 档
        → Redis SET TTL 1h
-       → API 响应（6 buckets × period）
+       → API 响应（7 buckets × period / D26 v2 polish）
 
 5. 进步推送（5.C.3）
    activity processing 完成（worker）
@@ -688,9 +688,9 @@ if __name__ == '__main__':
        → GET /api/users/me/heatmap?city=<city>
        → Redis cache lookup
        → cache miss → 查 activities WHERE user_id 且 simplified_track 起点在 <city> 范围
-       → PostGIS multipoint 聚合
+       → 保留 activity 边界 / 输出 tracks: list[list[[lon, lat]]]（D27 v2 polish / 每 activity 一条轨迹）
        → Redis SET TTL 1h
-       → API 响应（GeoJSON multipoint）
+       → API 响应（{city, tracks, activity_count} / 前端画 polyline 自然热力效果）
 
 7. 看他人主页（5.A.2）
    用户从排行榜/通知/群聊昵称跳转
@@ -1239,7 +1239,7 @@ def calculate_power_curve(
     """
     时长分桶最大平均功率曲线。
     
-    Strava 行业标准 6 buckets：1s / 5s / 30s / 1min / 5min / 20min。
+    D26 v2 polish 7 buckets：0s 瞬时最大 / 3s / 30s / 1min / 5min / 20min / 1h。
     
     算法：对每个 window 秒，找连续 N 个 trackpoints（N ≈ window）的最大平均功率。
     假设：trackpoints 大致 1Hz 采样（GPX 标准）。非均匀采样精度受影响。
@@ -1253,12 +1253,14 @@ def calculate_power_curve(
     
     参数：
         trackpoints: list[Trackpoint] 单个 activity 内、按 seq / created_at 升序，含 power（int|None，单位 W）
-        windows_sec: list[int] 时长档位（秒）。None 用默认 6 档
+        windows_sec: list[int] 时长档位（秒）。None 用默认 7 档（D26 v2 polish）。
+            window=0 特殊语义：单点最大瞬时功率（max of all powers）/ 不走 sliding window。
     返回：
         dict[int → float] window_sec → max_avg_power_W
     """
     if windows_sec is None:
-        windows_sec = [1, 5, 30, 60, 300, 1200]
+        # 7 档 / D26 v2 polish / Sprint 4 task-4.2 v2：替换 1s+5s 为 0s+3s / 加 1h
+        windows_sec = [0, 3, 30, 60, 300, 1200, 3600]
     
     if not trackpoints:
         return {w: 0.0 for w in windows_sec}
@@ -1278,6 +1280,10 @@ def calculate_power_curve(
     
     result = {}
     for window in windows_sec:
+        # window=0 特殊语义（D26）：单点最大瞬时功率 / 不走 sliding window
+        if window == 0:
+            result[window] = float(max(powers))
+            continue
         if window > n:
             # 数据不足 window → 用全部数据平均
             result[window] = prefix[n] / n if n > 0 else 0.0
@@ -1293,13 +1299,14 @@ def calculate_power_curve(
     return result
 ```
 
-**单元测试要求**（≥ 5 case）：
-- 空 trackpoints → 全 0
+**单元测试要求**（≥ 6 case / D26 v2 polish 7 档）：
+- 空 trackpoints → 全 0（默认 7 档）
 - 全 None power → 全 0
-- 单点 → window=1 等于该点，其他 window 等于该点（数据不足走 fallback）
+- 单点 → window=0 单点最大 / 其他 window 等于该点（数据不足走 fallback）
 - 标准 200W 平均 → 全 buckets 接近 200
-- 极端高瓦数 1200W spike 1s → window=1 ~1200, window=5 ~240（被平均稀释）
+- 极端高瓦数 1500W spike 1s → window=0 = 1500（单点最大不稀释）/ window=5 ≈ 460（被 5s 平均稀释）
 - power=0 合法（休息段）不被当 None
+- window=0 特殊语义 max(powers) 不走 sliding window
 
 #### 3.3.1.1 calculate_power_curve_from_activities（新增纯函数 / codex E1 C6 反馈环级修复）
 
@@ -1322,12 +1329,12 @@ def calculate_power_curve_from_activities(
     
     参数：
         activities_trackpoints: list[list[Trackpoint]]，每个内层 list 是**单 activity** 的 trackpoints
-        windows_sec: list[int] 时长档位（秒）。None 用默认 6 档
+        windows_sec: list[int] 时长档位（秒）。None 用默认 7 档（D26 v2 polish）
     返回:
         dict[int → float] window_sec → max_avg_power_W（取所有 activity 的 max）
     """
     if windows_sec is None:
-        windows_sec = [1, 5, 30, 60, 300, 1200]
+        windows_sec = [0, 3, 30, 60, 300, 1200, 3600]
     
     if not activities_trackpoints:
         return {w: 0.0 for w in windows_sec}
@@ -1730,12 +1737,12 @@ def get_user_heatmap(
     city: str,
 ) -> dict:
     """
-    返回用户在指定城市的骑行热图（GeoJSON multipoint 聚合）。
+    返回用户在指定城市的骑行热图（保留 activity 边界 / D27 v2 polish）。
     
     逻辑：
     1. Redis cache lookup
     2. 查该用户所有 activity（status=completed）的 simplified_track 起点在 city 范围内的
-    3. 提取所有 simplified_track 点位 → multipoint 聚合
+    3. 保留 activity 边界 / 每个 activity 输出一条独立轨迹（前端画 polyline）
     4. Redis SET TTL 1h
     
     陷阱 #5（redis-py 返 bytes）：cached.decode() if isinstance(cached, bytes) else cached
@@ -1768,22 +1775,22 @@ def get_user_heatmap(
         ) == city
     ]
     
-    # 聚合所有 simplified_track 点
-    points = []
+    # 保留 activity 边界（D27 v2 polish）/ 每个 activity 一条独立轨迹
+    tracks = []
     for a in filtered:
         track = a.simplified_track  # JSONB list of {lat, lon, ele}
         if not track:
             continue
+        track_points = []
         for pt in track:
             if pt.get('lat') is not None and pt.get('lon') is not None:
-                points.append([pt['lon'], pt['lat']])  # GeoJSON 顺序 [lon, lat]
+                track_points.append([pt['lon'], pt['lat']])  # GeoJSON 顺序 [lon, lat]
+        if track_points:
+            tracks.append(track_points)
     
     result = {
         'city': city,
-        'multipoint': {
-            'type': 'MultiPoint',
-            'coordinates': points,
-        },
+        'tracks': tracks,
         'activity_count': len(filtered),
     }
     
@@ -2415,7 +2422,7 @@ def scan_processing_health(db: Session) -> list[int]:
 |---|---|
 | 权限 | current_user |
 | 参数 | `period` enum: `last_30_days` / `last_90_days` / `last_180_days` / `last_365_days` / `all_time`，default `last_30_days`（滚动窗口型 / D16 v0.3 / task-pre-4.2 升级） |
-| 响应 | `{period: str, buckets: {"1": float, "5": float, "30": float, "60": float, "300": float, "1200": float}}`（6 buckets 单位 W）|
+| 响应 | `{period: str, buckets: {"0": float, "3": float, "30": float, "60": float, "300": float, "1200": float, "3600": float}}`（**7 buckets** 单位 W / D26 v2 polish / 0s 瞬时最大 + 3s/30s/1min/5min/20min/1h）|
 | 错误 | 401 / 422 invalid period |
 | 备注 | Redis 缓存 TTL 1h；FTP 为 NULL 用户返绝对 W |
 
@@ -2425,7 +2432,7 @@ def scan_processing_health(db: Session) -> list[int]:
 |---|---|
 | 权限 | current_user |
 | 参数 | `city` enum: 6 城 + unknown，default user.city（NULL 时返 400）|
-| 响应 | `{city: str, multipoint: {"type": "MultiPoint", "coordinates": [[lon, lat], ...]}, activity_count: int}` |
+| 响应 | `{city: str, tracks: [[[lon, lat], ...], ...], activity_count: int}`（D27 v2 polish / 每 activity 一条轨迹 / 前端画 polyline）|
 | 错误 | 401 / 400 city 未指定且 user.city is NULL / 422 invalid city |
 | 备注 | Redis 缓存 TTL 1h |
 

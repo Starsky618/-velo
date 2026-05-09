@@ -133,8 +133,8 @@ def _this_month_utc() -> datetime:
 
 
 class TestGetUserHeatmap:
-    def test_no_activities_returns_empty_multipoint(self, pg_session_factory, real_redis):
-        """无 activity → 返 0 点位。"""
+    def test_no_activities_returns_empty_tracks(self, pg_session_factory, real_redis):
+        """无 activity → 返 tracks 空列表（D27 v2 polish）。"""
         db = pg_session_factory()
         user_id = None
         try:
@@ -146,8 +146,7 @@ class TestGetUserHeatmap:
 
             result = get_user_heatmap(db, user_id, "beijing")
             assert result["city"] == "beijing"
-            assert result["multipoint"]["type"] == "MultiPoint"
-            assert result["multipoint"]["coordinates"] == []
+            assert result["tracks"] == []
             assert result["activity_count"] == 0
         finally:
             if user_id is not None:
@@ -155,8 +154,8 @@ class TestGetUserHeatmap:
             _cleanup_db(db)
             db.close()
 
-    def test_aggregates_points_in_correct_city(self, pg_session_factory, real_redis):
-        """所有北京活动起点的 simplified_track 点都被聚合（GeoJSON [lon, lat] 顺序）。"""
+    def test_aggregates_tracks_preserving_activity_boundary(self, pg_session_factory, real_redis):
+        """北京 2 活动各自一条独立轨迹（D27 v2 polish / 保留 activity 边界）。"""
         db = pg_session_factory()
         user_id = None
         try:
@@ -169,13 +168,16 @@ class TestGetUserHeatmap:
             _cleanup_redis(real_redis, user_id)
 
             result = get_user_heatmap(db, user_id, "beijing")
-            # 2 活动 × 3 点 = 6 个点
+            # 2 活动 → 2 条独立轨迹（不再扁平合并）
             assert result["activity_count"] == 2
-            assert len(result["multipoint"]["coordinates"]) == 6
+            assert len(result["tracks"]) == 2
+            # 每条轨迹各 3 个点
+            assert len(result["tracks"][0]) == 3
+            assert len(result["tracks"][1]) == 3
             # 验证 GeoJSON 顺序 [lon, lat]
-            first = result["multipoint"]["coordinates"][0]
-            assert first[0] > 100  # lon 在中国是 73-135
-            assert first[1] < 60   # lat 在中国是 18-54
+            first_point = result["tracks"][0][0]
+            assert first_point[0] > 100  # lon 在中国是 73-135
+            assert first_point[1] < 60   # lat 在中国是 18-54
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -183,7 +185,7 @@ class TestGetUserHeatmap:
             db.close()
 
     def test_filters_by_city(self, pg_session_factory, real_redis):
-        """查 shanghai 不应返回 beijing 起点的活动。"""
+        """查 shanghai 不应返回 beijing 起点的活动（D27 v2 polish / tracks 字段）。"""
         db = pg_session_factory()
         user_id = None
         try:
@@ -196,7 +198,7 @@ class TestGetUserHeatmap:
 
             result = get_user_heatmap(db, user_id, "shanghai")
             assert result["activity_count"] == 0
-            assert result["multipoint"]["coordinates"] == []
+            assert result["tracks"] == []
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)

@@ -2,6 +2,16 @@
 
 > **批 1 第二步**——4.1 框架 ship 后，4.2 把功率曲线 / 热力图真实显示塞进 4.1 留的 2 个槽位。**4.2.A 和 4.2.B 互不依赖，可以 2 个 subagent 并行**。
 >
+> ---
+>
+> **task-4.2 v2 polish**（2026-05-08 / 真机回归后 polish / 跟 v1 同一 task / 不另开任务）：
+> - **D26 power-curve 7 档**：`[0, 3, 30, 60, 300, 1200, 3600]`（0s 瞬时最大 + 3s/30s/1min/5min/20min/1h）替换原 6 档；前端折线图 7 个数据点连线（不再跳过 / 全部展示）
+> - **D27 heatmap markers→polylines**：后端 schema multipoint→tracks（保留 activity 边界 list of list）；前端 `<map polyline>` 黄色 #FFD700 + 80% alpha / 多条重叠自然热力效果 / 视觉接近 ride.fitcard.app 80%；删 4 张 PNG marker icon
+> - **D28 修订**：未来地图 tab 用高德地图（不是 Leaflet+OSM / 测绘法合规要求）/ Sprint 5/6 实施 / 当前 task-4.2 v2 仍用腾讯地图 polyline 撑过
+> - **D29 双 component 路线**：当前 `heatmap-card`（小卡片 / 腾讯 native）+ 未来 `heatmap-fullscreen-card`（全屏 / 高德 webview）/ 共享 props 接口 / 内部渲染各自最优
+>
+> ---
+>
 > **task-pre-4.2 已升级**（2026-05-08）：
 > 1. 后端 power-curve period 改滚动窗口（5 档：`last_30_days / last_90_days / last_180_days / last_365_days / all_time`，default `last_30_days`）
 > 2. **component 化方向**（D21 决策 / 模块化哲学）：本任务建 `power-curve-card` + `heatmap-card` 两个独立 component / profile.wxml 一行引入 / **未来地图 tab 上线**：`<heatmap-card />` 整体复制过去 = 0 拆代码 / **task-4.3 看他人 profile 复用**：用 `<power-curve-card userId="42" />` 一行引入 + component 内部分流（`userId !== 0` 调 task-4.3 新加的 `api.getUserPowerCurve(userId, period)`）= 少量 API 分支不动 wxml/wxss
@@ -53,7 +63,7 @@
 | 后端 power-curve endpoint | `grep -n "me/power-curve" app/user/router.py` | 应见 `@router.get("/me/power-curve")` + `period: schemas.PowerCurvePeriod = schemas.PowerCurvePeriod.last_30_days`（task-pre-4.2 升级） |
 | 后端 heatmap endpoint | `grep -n "me/heatmap" app/user/router.py` | 应见 `@router.get("/me/heatmap")` + `city: schemas.UserCity` 必填 |
 | power-curve schema | `grep -n "PowerCurveResponse\|PowerCurvePeriod" app/user/schemas.py` | period 5 档 `last_30_days / last_90_days / last_180_days / last_365_days / all_time` |
-| heatmap schema | `grep -n "HeatmapResponse" app/user/schemas.py` | 字段：city / multipoint / activity_count |
+| heatmap schema | `grep -n "HeatmapResponse" app/user/schemas.py` | 字段：city / tracks（list of list / D27 v2 polish）/ activity_count |
 | 现有 component 用法参考 | `ls miniprogram/components/ 2>/dev/null` | 当前可能没有 components 目录 / 4.2 是首批 component |
 | 现有 canvas 用法参考 | `grep -rn "type=\"2d\"\|wx.createSelectorQuery" miniprogram/pages/detail/` | detail 页有 echart-canvas 样例可仿 |
 
@@ -116,12 +126,12 @@ lifetimes: {
 
 #### Step A.3 — wxml 4 状态 + canvas（用 hidden 不用 wx:if / F1 陷阱）
 
-- [ ] **A.3.1** `power-curve-card.wxml`：
+- [ ] **A.3.1** `power-curve-card.wxml`（D26 v2 polish 7 档展示）：
 
 ```xml
 <view class="card power-curve-card">
   <text class="card-title">功率曲线</text>
-  <text class="subtitle">最近 30 天 / 5s · 30s · 5min · 1h 进步</text>
+  <text class="subtitle">最近 30 天 · 瞬时 / 3s / 30s / 1min / 5min / 20min / 1h</text>
 
   <view wx:if="{{loading}}" class="loading-mini">加载中...</view>
   <view wx:elif="{{error}}" class="error-mini" bindtap="_retryFetch">加载失败 · 点击重试</view>
@@ -136,7 +146,7 @@ lifetimes: {
 
 - [ ] **A.4.1** component js 加 `_renderCanvas()` 方法
 - [ ] **A.4.2** 在 setData 数据 callback 里用 `setTimeout(fn, 100)` 触发 render（**F1 陷阱兜底**）
-- [ ] **A.4.3** 渲染 4 条线（5s / 30s / 5min / 1h）
+- [ ] **A.4.3** 渲染 1 条折线连 7 个点（瞬时 / 3s / 30s / 1min / 5min / 20min / 1h / D26 v2 polish）
 
 #### Step A.5 — profile 引入 component
 
@@ -217,16 +227,16 @@ properties: {
 }
 ```
 
-- [ ] **B.2.3** component attached 触发 fetch + 内部 grid → markers 转换
+- [ ] **B.2.3** component attached 触发 fetch + 内部 tracks → polylines 转换（D27 v2 polish）
 
-#### Step B.3 — wxml 4 状态 + map（用原生 `<map>` 组件 + markers）
+#### Step B.3 — wxml 4 状态 + map（D27 v2 polish / 用原生 `<map>` 组件 + polyline 路径线）
 
-- [ ] **B.3.1** `heatmap-card.wxml`：
+- [ ] **B.3.1** `heatmap-card.wxml`（D27 polyline 替代 markers）：
 
 ```xml
 <view class="card heatmap-card">
   <text class="card-title">骑行热力图</text>
-  <text class="subtitle">你骑过的全部区域 / 颜色越深 = 骑得越多</text>
+  <text class="subtitle">你骑过的全部区域</text>
 
   <view wx:if="{{loading}}" class="loading-mini">加载中...</view>
   <view wx:elif="{{error}}" class="error-mini" bindtap="_retryFetch">加载失败 · 点击重试</view>
@@ -236,7 +246,7 @@ properties: {
        class="heatmap-map"
        latitude="{{center.lat}}"
        longitude="{{center.lng}}"
-       markers="{{markers}}"
+       polyline="{{polylines}}"
        scale="11"
        enable-rotate="{{false}}"
        enable-3D="{{false}}">
@@ -244,12 +254,14 @@ properties: {
 </view>
 ```
 
-#### Step B.4 — 数据转换 grid 为 markers
+#### Step B.4 — 数据转换 tracks 为 polylines（D27 v2 polish）
 
-- [ ] **B.4.1** component js 加 `_convertToMarkers(grids)` 纯函数：
-  - 按 count 排序 / count 越高 markers iconPath 颜色越深
-  - 计算 center（grids 中位数）
-- [ ] **B.4.2** 备 4 张 marker icon（grey / blue / orange / red）放 `miniprogram/components/heatmap-card/icons/`（component 自治 / icon 跟着 component 一起搬）
+- [ ] **B.4.1** component js 加 `_convertToPolylines(tracks)` 纯函数：
+  - 每个 activity 一条 polyline / 黄色 #FFD700CC（80% alpha）
+  - width: 4 / 多条重叠时 opacity 自然叠加 → 骑得越多越亮（自然热力效果）
+  - 跳过单点 activity（track.length < 2 / polyline 至少 2 点）
+- [ ] **B.4.2** component js 加 `_computeCenter(tracks)` 纯函数：扁平所有点取经纬度均值 / 空时 fallback CITY_DEFAULT_CENTER（7 城映射）
+- [ ] **B.4.3** **不需 marker icon 资源**（D27 改用 polyline / 不再用 markers / 删除 v1 时的 icons/ 目录）
 
 #### Step B.5 — profile 引入 component
 

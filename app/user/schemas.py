@@ -142,7 +142,7 @@ class UserCity(str, Enum):
 
 class PowerCurveResponse(BaseModel):
     """
-    功率曲线响应——"6 档时长各自的最佳平均功率"。
+    功率曲线响应——"7 档时长各自的最佳平均功率"（D26 v2 polish / 0s 瞬时 + 3s/30s/1min/5min/20min/1h）。
 
     buckets 是 dict[str, float]：window_sec → max_avg_power_W
     （service 层 JSON 序列化保证 key 是 str，与前端 JSON 协议一致）
@@ -151,20 +151,18 @@ class PowerCurveResponse(BaseModel):
     buckets: dict[str, float]
 
 
-class _MultiPoint(BaseModel):
-    """GeoJSON MultiPoint 子结构。"""
-    type: str
-    coordinates: list[list[float]]
-
-
 class HeatmapResponse(BaseModel):
     """
-    个人热图响应——"我在某城市去过的所有点位"。
+    个人热图响应——"我在某城市去过的所有轨迹"（D27 v2 polish / Sprint 4 task-4.2 v2）。
 
-    multipoint 是 GeoJSON MultiPoint（坐标顺序 [lon, lat]）。
+    tracks 是 list of list of [lon, lat]：保留 activity 边界 / 每个 activity 一条轨迹。
+    前端画 polyline（一条 activity 一条线）+ 多条 opacity 0.5 重叠形成热力效果。
+
+    旧版（v1）用 multipoint 扁平所有点 + markers 渲染 → 视觉差（粗灰圆点）。
+    新版（v2）用 tracks 保留边界 + polyline 渲染 → 视觉接近 ride.fitcard.app 80%。
     """
     city: str
-    multipoint: _MultiPoint
+    tracks: list[list[list[float]]]
     activity_count: int
 
 

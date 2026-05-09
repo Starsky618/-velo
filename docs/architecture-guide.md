@@ -532,8 +532,8 @@ Strava 导入路径:
 | GET | `/api/user/profile` | 个人资料 |
 | PUT | `/api/user/profile` | 更新个人资料（ftp/weight/bike_type/weekly_goal） |
 | GET | `/api/user/stats` | 骑行统计(总里程等) |
-| **GET** | **`/api/user/me/power-curve`** | **功率曲线（period 5 枚举 + Redis 缓存 / v5 task-2.C.3）** |
-| **GET** | **`/api/user/me/heatmap`** | **个人骑行热图（city 7 枚举 + GeoJSON MultiPoint / v5 task-2.C.3）** |
+| **GET** | **`/api/user/me/power-curve`** | **功率曲线（period 5 枚举滚动窗口 + buckets 7 档 [0,3,30,60,300,1200,3600] / v5 task-2.C.3 + Sprint 4 task-pre-4.2 + v2 polish D26）** |
+| **GET** | **`/api/user/me/heatmap`** | **个人骑行热图（city 7 枚举 + tracks: list of list of [lon,lat] 保留 activity 边界 / v5 task-2.C.3 + Sprint 4 task-4.2 v2 polish D27）** |
 | **PATCH** | **`/api/user/me`** | **改 settings（v5 只 city / 与 PUT /profile 分开 / B2B-6 设计）** |
 | **GET** | **`/api/user/{user_id}/profile`** | **看他人主页（D-P08 红线白名单 / v5 task-2.C.3）** |
 

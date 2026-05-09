@@ -1,21 +1,23 @@
 <!--
-  骑行热力图卡片 component（Sprint 4 task-4.2.B / D21 模块化）
+  骑行热力图卡片 component（Sprint 4 task-4.2.B v2 polish / D21 模块化 / D27 polyline）
 
-  功能：调用后端 GET /api/user/{me|id}/heatmap?city=xxx 拿到骑过的轨迹坐标，
-  在小程序原生 <map> 组件上铺一层 markers 标记骑过的位置。
+  功能：调用后端 GET /api/user/{me|id}/heatmap?city=xxx 拿到 tracks 列表（每个 activity 一条轨迹），
+  在小程序原生 <map> 组件上铺一层 polylines 描出骑过的路径线。
 
   4 状态（必须全部覆盖）：
    1. loading：加载中文案
    2. error：加载失败 + bindtap 重试
    3. empty：还没数据 友好提示
-   4. 渲染：原生 map + markers
+   4. 渲染：原生 map + polylines
 
-  设计说明：
+  设计说明（D27 v2 polish / 替换 v1 markers）：
   - 用原生 <map> 组件不用 canvas 涂色——小程序 map 性能好、稳定、自带缩放/拖动
-  - markers 数组在 component js 内部从 multipoint.coordinates 转换出来
+  - polylines 数组：每条 activity 一条 polyline / 黄色 #FFD700 + 80% alpha
+  - 多条重叠 opacity 叠加 → 自然热力效果（骑得越多越亮 / 视觉接近 ride.fitcard.app 80%）
   - 4 状态用 wx:if/elif/else 串联，永远只渲染一种 → 不会出现 map 和 loading 同时显示
 
-  注意：未来地图 tab 上线时，整个 component 直接搬过去 = 0 拆代码（D21 哲学）。
+  注意：未来地图 tab 上线时（Sprint 5/6 / D28 修订），切到 webview + 高德 H5 SDK 暗色底图，
+  本 component 是个人页小卡片版本 / "未来地图 tab"是独立全屏 component（heatmap-fullscreen-card）。
 -->
 
 <view class="card heatmap-card">
@@ -30,7 +32,7 @@
        class="heatmap-map"
        latitude="{{center.lat}}"
        longitude="{{center.lng}}"
-       markers="{{markers}}"
+       polyline="{{polylines}}"
        scale="11"
        enable-rotate="{{false}}"
        enable-3D="{{false}}">
