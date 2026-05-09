@@ -26,13 +26,16 @@ epsilon 越小 → 保留的点越多 → 输出越多
 import math
 
 
-def simplify_track(trackpoints: list[dict], target_count: int = 800) -> list[dict]:
+def simplify_track(trackpoints: list[dict], target_count: int = 1500) -> list[dict]:
     """
     对轨迹点做 Douglas-Peucker 简化，返回精简后的坐标列表。
 
     参数：
         trackpoints: parse_gpx() 输出的轨迹点列表（需要 lat, lon, ele 字段）
-        target_count: 目标点数，默认 800（spec 建议 500-1000）
+        target_count: 目标点数，默认 1500（v3 polish hotfix v5 / 800 → 1500）
+            提高动机：山区 track 跳点频率是城市 10x+（curl 实测 user 2 山区 >500m segment=76）
+            提高到 1500 后山区跳点频率 ~减半 / 实线比例 87% → 93% / 视觉更"贴道"
+            数据量代价：simplified_track JSON 增 ~80% / setData 5MB → 9MB（仍 < 微信软上限）
 
     返回：
         [{lat, lon, ele}, ...] 精简列表，点数接近 target_count（±20%）
