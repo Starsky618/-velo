@@ -31,6 +31,10 @@ Page({
     segmentId: 0,
     loading: true,
     notFound: false,
+    // segmentLoadFailed：segment fetch 非 404 失败（500 / 网络）时的独立状态
+    // 跟 notFound 分开避免误显示"赛段不存在"（同 user.js Critical-2 同 pattern）
+    // Claude 综合审 I2 修：原版 segment fetch 非 404 失败时主页面渲染但 segment=null → 黑屏
+    segmentLoadFailed: false,
 
     // 登录态 + 当前用户 ID（用作排行榜高亮 / 真字段 globalData.userInfo.id）
     isLoggedIn: false,
@@ -137,8 +141,9 @@ Page({
           this.setData({ notFound: true, loading: false })
           throw new Error('__notFound__')
         }
-        wx.showToast({ title: '加载失败', icon: 'none' })
-        this.setData({ loading: false })
+        // Claude 综合审 I2 修：500 / 网络错走独立 segmentLoadFailed 状态 / 不再黑屏
+        wx.showToast({ title: '加载失败 请稍后重试', icon: 'none' })
+        this.setData({ loading: false, segmentLoadFailed: true })
         throw new Error('__segmentFail__')
       }),
       tasks[1],
@@ -324,7 +329,12 @@ Page({
     if (!this.data.isLoggedIn) return
     this.setData({ myEffortError: false })
     api.getMySegmentEffort(this.data.segmentId)
-      .then((data) => this.applyMyEffort(data))
+      .then((data) => {
+        this.applyMyEffort(data)
+        // Claude 综合审 I3 修：重试 myEffort 成功后必须重算 leaderboard.myRankRow
+        // 否则首次 myEffort 失败 + 当时不在 top 10 → 重试成功后独立行永远不出现 → D7 反转失效
+        if (this.data.leaderboard) this.applyLeaderboard(this.data.leaderboard)
+      })
       .catch((err) => {
         if (err && err.code === 404) {
           this.setData({ notFound: true })

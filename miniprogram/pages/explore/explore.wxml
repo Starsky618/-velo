@@ -10,8 +10,8 @@
 
   操作注意事项：
     - segment-card 用 wx:for 列表渲染（CLAUDE.md 陷阱 #17：列表渲染不算 canvas，不需 hidden 兜底）
-    - NEW 标签判断：isNew 字段由 explore.js 计算（后端 SegmentListItem schema 不返 created_at，
-      暂用占位逻辑——所有 isNew=false / wxml 保留 NEW badge 元素结构以便后续 hotfix 直接生效）
+    - NEW 标签判断：isNew 字段由 explore.js 计算（30 天内 created_at → true / 后端 SegmentListItem
+      已含 created_at 字段 / commit 9250106 hotfix 激活 / wxml NEW badge 由 isNew 真值控制显示）
 
   数据流：
     onLoad → fetchSegments(page=1, city='') → setData segments

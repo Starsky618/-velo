@@ -33,6 +33,12 @@
   <view class="btn btn-primary" bindtap="goBack">返回</view>
 </view>
 
+<!-- 加载失败（500 / 网络断 / Claude 综合审 I2 拆独立状态防黑屏）-->
+<view wx:elif="{{segmentLoadFailed}}" class="error-page">
+  <text class="error-text">网络或服务异常 请稍后重试</text>
+  <view class="btn btn-primary" bindtap="goBack">返回</view>
+</view>
+
 <view wx:else class="page">
   <!-- ============ 区块 1：第一屏（赛段名 + 城市 + 海拔图占位 + 4 数字） ============ -->
   <view class="card hero-card">
@@ -104,8 +110,9 @@
       <text>加载失败 · 点击重试</text>
     </view>
 
-    <!-- 三态 3：登录且没骑过（is_first_attempt=true / pr_elapsed_time 为 null） -->
-    <view wx:elif="{{!myEffort || !myEffort.pr_elapsed_time}}" class="empty-record">
+    <!-- 三态 3：登录但没骑过（is_first_attempt=true / pr_elapsed_time 为 null）
+         Claude 综合审 I1 修：严格判存在 / 不用 truthiness（CLAUDE.md 陷阱 #1 / 跟 segment.js L303 双标修正）-->
+    <view wx:elif="{{!myEffort || myEffort.pr_elapsed_time === null || myEffort.pr_elapsed_time === undefined}}" class="empty-record">
       <text>还没骑过这条赛段，去骑一次试试</text>
     </view>
 

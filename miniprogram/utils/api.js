@@ -145,10 +145,10 @@ module.exports = {
    *   - city：6 城枚举（beijing/shanghai/hangzhou/shenzhen/chengdu/taiyuan）+ unknown / 不传则不筛
    *   - page：从 1 起 / page_size：默认 20 / 上限 100
    *   - 后端默认按 created_at desc 排序（新赛段在前）
-   *   - 真返字段（SegmentListItem schema 实证）：
+   *   - 真返字段（SegmentListItem schema 实证 / commit 9250106 加 created_at）：
    *       id / name / distance / elevation_gain / avg_gradient / max_gradient
-   *       difficulty / city / start_lat / start_lon / end_lat / end_lon / entries
-   *   - 注意：schema 不含 created_at — 前端 NEW 标签暂用占位逻辑（后续 hotfix 再补）
+   *       difficulty / city / start_lat / start_lon / end_lat / end_lon / entries / created_at
+   *   - NEW 标签：前端 30 天判断（30 天内 created_at → true）
    *
    * @param {object} params - { city?: string, page?: number, page_size?: number }
    * @returns {Promise<object>} { items: SegmentListItem[], total, page, page_size }
