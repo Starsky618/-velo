@@ -24,7 +24,17 @@
     </view>
     <view class="notif-body">
       <text class="notif-title">{{item.titleText}}</text>
-      <text class="notif-sub">{{item.subText}}</text>
+      <!-- task-4.3：sub 拆 3 段渲染 / rivalNickname 非空时可点击跳骑友主页 / catchtap 防冒泡到外层赛段跳转 -->
+      <view class="notif-sub">
+        <text wx:if="{{item.subPrefix}}">{{item.subPrefix}}</text>
+        <text
+          wx:if="{{item.rivalNickname}}"
+          class="notif-rival"
+          catchtap="goUserDetail"
+          data-userid="{{item.rivalUserId}}"
+        >{{item.rivalNickname}}</text>
+        <text>{{item.subSuffix}}</text>
+      </view>
     </view>
     <text class="notif-time">{{item.timeText}}</text>
   </view>

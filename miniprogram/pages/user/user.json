@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "骑友主页",
+  "usingComponents": {
+    "power-curve-card": "/components/power-curve-card/power-curve-card",
+    "heatmap-card": "/components/heatmap-card/heatmap-card"
+  }
+}

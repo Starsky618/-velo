@@ -210,11 +210,12 @@ def get_user_profile(
     看他人主页（PRD 5.A.2 / D-P08 红线）。
 
     返回严格白名单字段（与 service._PROFILE_RESPONSE_KEYS 一致）：
-    - id / nickname / avatar_url / city / ftp / bike_type
+    - id / nickname / avatar_url / city / bike_type
     - total_distance_km / total_elevation_m / activity_count
     - current_month_summary（distance_km / elevation_m / avg_power_w）
 
-    严格不返：efforts / activities / heatmap / strava_* / openid / mute_notifications / 任何 token。
+    严格不返：efforts / activities / heatmap / strava_* / openid / mute_notifications / 任何 token /
+    **ftp**（Sprint 4 codex 异源审 P1-4 砍 / FTP 是骑手生理数据 / 跟 weight 一起属敏感）/ weight / W·kg。
     "看自己 ID 跟看他人字段一致"——不区分 self/others。
     """
     try:

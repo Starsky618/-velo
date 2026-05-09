@@ -51,7 +51,9 @@
   <view class="activity-card {{item.status !== 'completed' ? 'is-pending' : ''}}" wx:for="{{rides}}" wx:key="id"
     bindtap="openRide" data-id="{{item.id}}">
 
-    <!-- 卡片头部：头像 + 昵称 + 时间 -->
+    <!-- 卡片头部：头像 + 昵称 + 时间
+         home 流当前是单人（后端 ActivitySummary schema 不返 user_id）/ 头像跳转暂不接
+         未来后端开放多人 home 流（关注流 / city 推荐流）时一起做（task-4.3 评审 2026-05-10 拍删） -->
     <view class="card-header">
       <view class="card-avatar">
         <text>{{item.initial}}</text>

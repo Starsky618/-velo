@@ -10,23 +10,8 @@
  */
 
 const api = require('../../utils/api')
+const { getCityLabel } = require('../../utils/city')
 const app = getApp()
-
-/**
- * 城市枚举 → 中文标签映射（Sprint 4 task-4.1 / 与后端 UserCity 6 城枚举对齐）
- *
- * 后端字段值是英文枚举（beijing / shanghai / ...），WXML 模板不擅长做枚举映射，
- * 所以在 JS 层算好中文标签放进 cityLabel，模板里直接显示。
- * 城市枚举对应 spec §3.1.3：beijing / shanghai / hangzhou / shenzhen / chengdu / taiyuan。
- */
-const CITY_LABELS = {
-  beijing: '北京',
-  shanghai: '上海',
-  hangzhou: '杭州',
-  shenzhen: '深圳',
-  chengdu: '成都',
-  taiyuan: '太原',
-}
 
 Page({
   data: {
@@ -101,10 +86,8 @@ Page({
         const wpkg = (data.ftp && data.weight)
           ? (data.ftp / data.weight).toFixed(1)
           : null
-        // city 中文标签：city 有值且不是 'unknown' 才映射，否则空串（模板 wx:if 不显示 badge）
-        const cityLabel = (data.city && data.city !== 'unknown')
-          ? (CITY_LABELS[data.city] || '')
-          : ''
+        // city 中文标签：抽 utils/city.js 公共函数（task-4.3 用户详情页复用 / D9 fallback 逻辑统一）
+        const cityLabel = getCityLabel(data.city)
         this.setData({ profile: data, wpkg: wpkg, cityLabel: cityLabel })
       })
       .catch((err) => {

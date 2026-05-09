@@ -61,6 +61,12 @@ page {
   white-space: nowrap;
 }
 
+/* task-4.3：可点击的 rival nickname / kom_lost 通知里超越者昵称 / 蓝色提示可点 */
+.notif-rival {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
 .notif-time {
   font-size: 24rpx;
   color: #999;

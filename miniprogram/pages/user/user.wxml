@@ -1,0 +1,91 @@
+<!--
+  用户详情页 — 看骑友主页（不是看自己）
+  4 状态：loading / 404 / 数据齐 / 看自己跳个人 tab（user.js onLoad 里直接 switchTab，不走渲染）
+
+  D-P08 严格隐私白名单：
+    展示：昵称 / 头像首字母 / city / 累计骑行 / 功率曲线 / 热力图
+    不展示：FTP / 体重 / W·kg / 我的荣誉 / 设置 / 退出登录 / 任何敏感字段
+
+  D21 + D29 component 化哲学：
+    功率曲线 + 热力图直接复用 power-curve-card / heatmap-card
+    传 userId props（非 0 = 看他人 / component 内部自动切到 /api/user/{userId}/... endpoint）
+-->
+
+<!-- 加载中 -->
+<view wx:if="{{loading}}" class="loading-page">
+  <text>加载中...</text>
+</view>
+
+<!-- 404 用户不存在（专给真 404 用 / 不混 401/500/网络错）-->
+<view wx:elif="{{notFound}}" class="error-page">
+  <text class="error-emoji">👤</text>
+  <text class="error-title">用户不存在</text>
+  <text class="error-sub">这位骑友可能已注销或 ID 错误</text>
+  <view class="back-btn" bindtap="goBack">
+    <text>返回</text>
+  </view>
+</view>
+
+<!-- 加载失败（500 / 网络断 / 后端故障 / Codex 异源审 Critical-2 拆分独立状态）-->
+<view wx:elif="{{loadFailed}}" class="error-page">
+  <text class="error-emoji">📡</text>
+  <text class="error-title">加载失败</text>
+  <text class="error-sub">网络或服务异常，请稍后重试</text>
+  <view class="back-btn" bindtap="goBack">
+    <text>返回</text>
+  </view>
+</view>
+
+<!-- 数据齐 / 正常渲染 -->
+<view wx:else>
+  <!-- ====== 区块 1：用户信息名片（只读 / 不显示 FTP / 体重 / W·kg / D-P08） ====== -->
+  <view class="user-card card">
+    <view class="user-header">
+      <view class="avatar">
+        <text class="avatar-text">{{profile.nickname ? profile.nickname[0] : '骑'}}</text>
+      </view>
+      <view class="user-info">
+        <text class="user-name">{{profile.nickname || '骑行者'}}</text>
+        <text class="user-id">ID: {{profile.id}}</text>
+      </view>
+      <!-- city badge / 严格 fallback：null / "" / "unknown" 都不显示 / 跟个人页同款（D9）-->
+      <view class="city-badge" wx:if="{{cityLabel}}">
+        <text class="city-badge-text">{{cityLabel}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 区块 2：累计骑行（只读 / 公开数据）====== -->
+  <view class="stats-card card">
+    <text class="stats-title">累计骑行</text>
+    <view class="stats-grid">
+      <view class="stat-item">
+        <text class="stat-value">{{stats ? stats.distance : 0}}</text>
+        <text class="stat-unit">km</text>
+        <text class="stat-label">总里程</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-value">{{stats ? stats.rides : 0}}</text>
+        <text class="stat-unit">次</text>
+        <text class="stat-label">总骑行</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-value">{{stats ? stats.elevation_gain : 0}}</text>
+        <text class="stat-unit">m</text>
+        <text class="stat-label">总爬升</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 区块 3：功率曲线（D21 component 复用 / userId !== 0 自动切看他人 endpoint）======
+       不加 wx:if 守卫 / 不加 hidden / 不依赖 profile fetch 完成（CLAUDE.md 陷阱 #17 反面教材）
+       page 已在 onLoad setData userId（fetchProfile 之前）→ component attached 时立刻能拿到
+       userId props → 内部自动 fetch + setTimeout 100ms 兜底 canvas 创建 race（component 自治）
+       3 个 fetch 真互不影响：profile 失败 → 全页错误 / power-curve / heatmap 失败 → 自己 card 错 -->
+  <power-curve-card userId="{{userId}}" />
+
+  <!-- ====== 区块 4：骑行热力图（D21 component 复用 / userId !== 0 自动切看他人 endpoint）====== -->
+  <heatmap-card userId="{{userId}}" />
+
+  <!-- D-P08 红线：不展示导航卡片（我的荣誉 / 设置 / 退出登录）/ 不展示 FTP / 体重 / W·kg -->
+</view>

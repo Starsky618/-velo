@@ -116,13 +116,22 @@ Page({
     }
 
     var segName = n.segment_name || '已失效赛段'
-    var sub
-    if (n.event_type === 'kom_lost' && n.rival_nickname) {
-      sub = n.rival_nickname + ' 在 "' + segName + '" 超越了你'
+    // task-4.3 接入骑友头像跳转：
+    // kom_lost 类型把 sub 拆成 3 段（rivalNickname / rivalUserId / restText）
+    // 模板里 rivalNickname 渲染成可点击文本（catchtap=goUserDetail）/ 跳到对方主页
+    // pr / kom 类型 rivalNickname 留空字符串 / 模板 wx:if 不显示该 span（行为完全不变）
+    var rivalNickname = ''
+    var rivalUserId = 0
+    var subPrefix = ''  // rivalNickname 之前的文案（kom_lost 留空 / 其他类型留空）
+    var subSuffix  // rivalNickname 之后的文案（最常见的 sub 主体）
+    if (n.event_type === 'kom_lost' && n.rival_nickname && n.rival_user_id) {
+      rivalNickname = n.rival_nickname
+      rivalUserId = n.rival_user_id
+      subSuffix = ' 在 "' + segName + '" 超越了你'
     } else if (n.rank) {
-      sub = segName + ' · #' + n.rank
+      subSuffix = segName + ' · #' + n.rank
     } else {
-      sub = segName
+      subSuffix = segName
     }
 
     return {
@@ -133,10 +142,26 @@ Page({
       is_read: true,
       iconText: iconMap[n.event_type] || '📢',
       titleText: titleMap[n.event_type] || '通知',
-      subText: sub,
+      // task-4.3：sub 拆成 3 段供模板分别渲染（rivalNickname 可点击）
+      subPrefix: subPrefix,
+      rivalNickname: rivalNickname,
+      rivalUserId: rivalUserId,
+      subSuffix: subSuffix,
       timeText: formatRelativeTime(n.created_at),
       segment_id: n.segment_id,  // null 时点击不跳
     }
+  },
+
+  /**
+   * 点击 rival_nickname 跳到对方主页（task-4.3 头像跳转入口 / kom_lost 类型才显示）
+   *
+   * catchtap 阻止冒泡到外层 onTapItem（不让点对方昵称也打开赛段排行榜）。
+   * data-userid 来自 decorate 装饰（rivalUserId / 仅 kom_lost && rival_user_id 存在时非 0）。
+   */
+  goUserDetail(e) {
+    var userId = e.currentTarget.dataset.userid
+    if (!userId) return
+    wx.navigateTo({ url: '/pages/user/user?id=' + userId })
   },
 
   /**

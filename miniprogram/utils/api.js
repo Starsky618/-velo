@@ -120,6 +120,22 @@ module.exports = {
   del: function (url) { return request(url, 'DELETE') },
 
   /**
+   * 看他人 profile（task-4.3 用户详情页 / D-P08 严格白名单）
+   *
+   * 后端契约（GET /api/user/{user_id}/profile）：
+   *   - 只返公开字段：id / nickname / city / 累计统计
+   *   - 不返敏感字段：phone / openid / strava_token / ftp / weight
+   *   - user 不存在 → 404 → reject({ code: 404, ... })
+   *
+   * 注意：getUserPowerCurve / getUserHeatmap 不在这里加 — component 内部直接调
+   * （详 components/power-curve-card/power-curve-card.js _fetchAndRender / heatmap-card 同）
+   *
+   * @param {number} userId - 目标用户 ID
+   * @returns {Promise<object>} { id, nickname, city, ... 累计统计 }
+   */
+  getUserProfile: function (userId) { return request('/api/user/' + userId + '/profile', 'GET') },
+
+  /**
    * 上传文件专用（GPX 上传走这个，不走普通 JSON 请求）
    *
    * @param {string} url - 上传接口路径

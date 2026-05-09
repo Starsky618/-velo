@@ -1,0 +1,149 @@
+/* 用户详情页样式 / 仿 profile.wxss 同款（卡片 / 头像 / 城市徽章 / 统计宫格） */
+
+/* ── 加载中 ── */
+.loading-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 240rpx 0;
+  color: var(--color-text-3);
+  font-size: 28rpx;
+}
+
+/* ── 404 用户不存在 ── */
+.error-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 160rpx 48rpx 0;
+}
+
+.error-emoji {
+  font-size: 96rpx;
+  margin-bottom: 32rpx;
+}
+
+.error-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+  margin-bottom: 12rpx;
+}
+
+.error-sub {
+  font-size: 26rpx;
+  color: var(--color-text-3);
+  margin-bottom: 48rpx;
+}
+
+.back-btn {
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 28rpx;
+  padding: 20rpx 64rpx;
+  border-radius: 48rpx;
+}
+
+/* ── 用户信息卡片（仿 profile.wxss / 不带体能参数行 / D-P08）── */
+.user-card {
+  margin: 32rpx 24rpx 24rpx;
+}
+
+.user-header {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+
+/* city 徽章（D9 fallback / 跟个人页同款）*/
+.city-badge {
+  margin-left: auto;
+  background: var(--color-primary);
+  border-radius: 24rpx;
+  padding: 6rpx 18rpx;
+  flex-shrink: 0;
+}
+
+.city-badge-text {
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 48rpx;
+  background: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.avatar-text {
+  color: #ffffff;
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.user-name {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+}
+
+.user-id {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+}
+
+/* ── 累计统计卡片（同 profile）── */
+.stats-card {
+  margin: 0 24rpx 24rpx;
+}
+
+.stats-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text-2);
+  display: block;
+  margin-bottom: 24rpx;
+}
+
+.stats-grid {
+  display: flex;
+  justify-content: space-around;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-value {
+  font-size: 48rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  line-height: 1;
+}
+
+.stat-unit {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+  margin-left: 4rpx;
+}
+
+.stat-label {
+  font-size: 22rpx;
+  color: var(--color-text-3);
+  margin-top: 8rpx;
+}
