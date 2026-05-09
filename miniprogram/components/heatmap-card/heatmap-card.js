@@ -1,21 +1,22 @@
 /**
- * 骑行热力图 component（Sprint 4 task-4.2.B / D21 模块化）
+ * 骑行热力图 component（Sprint 4 task-4.2.B / D21 模块化 / v3 polish）
  *
- * 这是个"自给自足的小卡片"：profile 页面只需要一行 <heatmap-card city="xxx" />
- * 就能让用户看到自己骑过的区域。所有数据获取、状态切换、坐标转换都在
- * component 内部消化，page 层完全不用管。
+ * 这是个"自给自足的小卡片"：profile 页面只需要一行 <heatmap-card />（自己）
+ * 或 <heatmap-card userId="{{otherId}}" />（看他人）就能让用户看到骑过的区域。
+ * 所有数据获取、状态切换、坐标转换都在 component 内部消化，page 层完全不用管。
  *
  * 类比：就像把"显示天气"这件事打包成一个独立小部件——
  * 你不需要知道它怎么取数据、怎么渲染图标，把它放到页面上就完事了。
+ *
+ * ─── v3 polish 关键改动（2026-05-08）───────────────
+ * 1. 砍 city props：后端 v3 city 已可选，前端不再强制传 / 直接拉用户全部活动轨迹
+ * 2. 内部 GCJ-02 转换：WGS-84 GPS → GCJ-02 中国地图坐标 / 防偏移 100-700 米
+ *    转换时机：_convertToPolylines 和 _computeCenter 都在塞给小程序 map 之前转
  *
  * props 设计（4.3 复用关键）：
  *   - userId: Number 默认 0
  *       0 = 看自己，调用 GET /api/user/me/heatmap
  *       非 0 = 看他人，调用 GET /api/user/{userId}/heatmap（task-4.3 才补该 endpoint）
- *   - city: String 默认 ''
- *       '' = component 内部 fallback 'unknown'
- *       城市必须是后端 UserCity 7 枚举之一：
- *       beijing / shanghai / hangzhou / shenzhen / chengdu / taiyuan / unknown
  *
  * 4 状态机：
  *   loading → error（网络炸） / 渲染 / empty
@@ -23,7 +24,7 @@
  *
  * 数据流：
  *   attached / props 变化 → _fetchAndRender → setData(loading)
- *   → api.get → 成功 → _convertToPolylines → setData(polylines + center)
+ *   → api.get → 成功 → _convertToPolylines（含 GCJ-02 转换）→ setData(polylines + center)
  *                  → 失败 → setData(error)
  *
  * 注意（坑预防）：
@@ -31,37 +32,27 @@
  *      小程序 marker 要的是 latitude / longitude，转换时别搞反！
  *   2. props 变化不会自动触发 attached，需要 observers 监听重新 fetch
  *   3. tracks 保留 activity 边界让前端画 polyline / 多条 opacity 重叠形成自然热力（不需 count 字段）；
- *      所以"按 count 排序、颜色越深"是未来事，本期所有 marker 用同一个 grey icon
+ *      所以"按 count 排序、颜色越深"是未来事，本期所有 polyline 用同一个透明黄色
+ *   4. GCJ-02 转换：只在塞给小程序 map 之前转 / 后端 tracks 永远是 WGS-84（数据真相源不动）
  */
 
 const api = require('../../utils/api')
+const { wgs84ToGcj02 } = require('../../utils/coords')
 
-// 城市默认中心点（坐标列表为空时的兜底中心，避免 map 显示在大洋上）
-// 数据来源：百度地图各市政府所在地经纬度近似值
-const CITY_DEFAULT_CENTER = {
-  beijing: { lat: 39.9042, lng: 116.4074 },
-  shanghai: { lat: 31.2304, lng: 121.4737 },
-  hangzhou: { lat: 30.2741, lng: 120.1551 },
-  shenzhen: { lat: 22.5431, lng: 114.0579 },
-  chengdu: { lat: 30.5728, lng: 104.0668 },
-  taiyuan: { lat: 37.8706, lng: 112.5489 },
-  unknown: { lat: 39.9042, lng: 116.4074 },  // 未知城市兜底为北京
-}
+// 兜底中心点（轨迹空时让 map 别飘到大洋上 / 默认北京天安门）
+const DEFAULT_CENTER = { lat: 39.9042, lng: 116.4074 }
 
 Component({
   /**
    * 外部传入的属性（properties）
    * 类比：就像组装家具时的螺丝接口——告诉外面"我接受什么参数"
+   *
+   * v3 polish 砍掉 city props：后端 v3 city 已可选，不再需要强制传
    */
   properties: {
     userId: {
       type: Number,
       value: 0,
-      observer: '_onPropsChange',
-    },
-    city: {
-      type: String,
-      value: '',
       observer: '_onPropsChange',
     },
   },
@@ -107,7 +98,7 @@ Component({
      * 流程：
      *   1. setData 进入 loading 态
      *   2. 根据 userId 选择 endpoint（看自己 vs 看他人）
-     *   3. 拿到响应后判空 → 转 polylines → setData 渲染态
+     *   3. 拿到响应后判空 → 转 polylines（含 GCJ-02）→ setData 渲染态
      *   4. 任何步骤报错 → setData error 态
      */
     _fetchAndRender() {
@@ -115,13 +106,11 @@ Component({
       // 进入 loading 态（清掉上次的 error/empty 状态）
       this.setData({ loading: true, error: false, isEmpty: false })
 
-      // city fallback：'' → 'unknown'（D9 / D17 严守）
-      const cityToUse = this.data.city || 'unknown'
-
       // userId === 0 调 me / 非 0 调 user/{id}（task-4.3 后端补）
+      // v3 polish：不再传 city query / 后端拉用户全部轨迹
       const url = this.data.userId === 0
-        ? '/api/user/me/heatmap?city=' + cityToUse
-        : '/api/user/' + this.data.userId + '/heatmap?city=' + cityToUse
+        ? '/api/user/me/heatmap'
+        : '/api/user/' + this.data.userId + '/heatmap'
 
       api.get(url)
         .then((data) => {
@@ -140,9 +129,9 @@ Component({
             return
           }
 
-          // 转 polylines + 算中心
+          // 转 polylines + 算中心（两步内部都做 GCJ-02 转换）
           const polylines = this._convertToPolylines(tracks)
-          const center = this._computeCenter(tracks, cityToUse)
+          const center = this._computeCenter(tracks)
 
           this.setData({
             loading: false,
@@ -170,15 +159,20 @@ Component({
     },
 
     /**
-     * 把后端 tracks 数组转成小程序 polylines 数组（D27 v2 polish）
+     * 把后端 tracks 数组转成小程序 polylines 数组（D27 v2 polish / v3 加 GCJ-02）
      *
-     * 输入：[[[lon, lat], [lon, lat], ...], ...] / 每内层 list 是一个 activity 的轨迹
-     * 输出：[{points: [{latitude, longitude}, ...], color, width, ...}, ...]
+     * 输入：[[[lon, lat], [lon, lat], ...], ...] / 每内层 list 是一个 activity 的 WGS-84 轨迹
+     * 输出：[{points: [{latitude, longitude}, ...], color, width, ...}, ...] / 已转 GCJ-02
      *
      * 视觉策略：
      * - 每条 activity 一条独立 polyline / 黄色 #FFD700（接近 ride.fitcard.app 风格）
      * - opacity 0.5 让多条 polyline 重叠时颜色叠加变深 → 自然热力效果（骑得越多越亮）
      * - 不需要后端聚合 count / 重叠次数自带视觉梯度
+     *
+     * 坐标系（v3 polish 关键）：
+     * - 后端存的是 WGS-84（GPS 国际标准）
+     * - 小程序 <map> 在中国大陆显示要用 GCJ-02（中国加密坐标）
+     * - 不转直接传 → 轨迹偏移 100-700 米（明明骑大马路，地图上画到小区里）
      *
      * 类比：透明黄色马克笔在地图上多次描同一条路 → 自然变成更亮的黄
      */
@@ -193,8 +187,13 @@ Component({
           if (!Array.isArray(c) || c.length < 2) continue
           const lon = c[0]
           const lat = c[1]
-          if (typeof lon !== 'number' || typeof lat !== 'number') continue
-          points.push({ latitude: lat, longitude: lon })
+          // Number.isFinite 防 NaN/Infinity 静默通过（Codex 异源审 Important / typeof NaN === 'number' 是 true 坑）
+          if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue
+          // WGS-84 → GCJ-02（国外坐标在 wgs84ToGcj02 内部自动跳过转换）
+          const [gcjLat, gcjLng] = wgs84ToGcj02(lat, lon)
+          // 转换后再次校验防异常算法返回 NaN
+          if (!Number.isFinite(gcjLat) || !Number.isFinite(gcjLng)) continue
+          points.push({ latitude: gcjLat, longitude: gcjLng })
         }
         if (points.length < 2) continue  // 单点不能成 polyline / 跳过
         polylines.push({
@@ -209,18 +208,23 @@ Component({
     },
 
     /**
-     * 计算 map 中心点（接 tracks 输入 / D27 v2 polish）
+     * 计算 map 中心点（接 tracks 输入 / D27 v2 polish / v3 加 GCJ-02）
      *
      * 策略：
-     *   - tracks 非空 → 扁平化所有点取均值，让 map 大致对准用户活动范围
-     *   - tracks 空 → 用 city 默认中心兜底（理论上不触发，空 tracks 已进 isEmpty 分支）
+     *   - tracks 非空 → 扁平化所有点取均值，再转 GCJ-02 让 map 大致对准用户活动范围
+     *   - tracks 空 → 用默认北京中心兜底（理论上不触发，空 tracks 已进 isEmpty 分支）
      *
      * 为什么用平均值不用边界中心：边界中心会被一两个偏远点拉偏，
      * 平均值更能代表"用户主要骑哪儿"。
+     *
+     * 为什么"先求均值再转 GCJ-02"而不是"先转每点再求均值"：
+     * - GCJ-02 偏移在小区域（< 50km）内是接近线性的近似常量
+     * - 先平均后转换 = 1 次 GCJ-02 计算（O(1)）/ 先转后平均 = N 次（O(N)）
+     * - 视觉结果几乎一样（差 < 10 米 / map scale 11 看不出来）
      */
-    _computeCenter(tracks, cityToUse) {
+    _computeCenter(tracks) {
       if (!tracks || tracks.length === 0) {
-        return CITY_DEFAULT_CENTER[cityToUse] || CITY_DEFAULT_CENTER.unknown
+        return DEFAULT_CENTER
       }
       let sumLon = 0
       let sumLat = 0
@@ -231,18 +235,23 @@ Component({
         for (let j = 0; j < track.length; j++) {
           const c = track[j]
           if (!Array.isArray(c) || c.length < 2) continue
-          if (typeof c[0] !== 'number' || typeof c[1] !== 'number') continue
+          // Number.isFinite 防 NaN/Infinity 污染 sumLon/sumLat（Codex 异源审 Important）
+          if (!Number.isFinite(c[0]) || !Number.isFinite(c[1])) continue
           sumLon += c[0]
           sumLat += c[1]
           n += 1
         }
       }
       if (n === 0) {
-        return CITY_DEFAULT_CENTER[cityToUse] || CITY_DEFAULT_CENTER.unknown
+        return DEFAULT_CENTER
       }
+      // 求 WGS-84 均值后转 GCJ-02（map center 必须给 GCJ-02 才不偏移）
+      const avgLat = sumLat / n
+      const avgLon = sumLon / n
+      const [gcjLat, gcjLng] = wgs84ToGcj02(avgLat, avgLon)
       return {
-        lat: sumLat / n,
-        lng: sumLon / n,
+        lat: gcjLat,
+        lng: gcjLng,
       }
     },
   },

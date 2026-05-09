@@ -483,21 +483,29 @@ def _filter_profile_keys(raw_response: dict) -> dict:
     return {k: v for k, v in raw_response.items() if k in _PROFILE_RESPONSE_KEYS}
 
 
-def get_user_heatmap(db: Session, user_id: int, city: str) -> dict:
+def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict:
     """
-    用户在指定城市的骑行热图——"我在这座城里去过哪些地方"。
+    用户骑行热图——"我去过哪些地方"。
 
-    把用户在该城市的所有骑行轨迹**保留 activity 边界**返回 list of tracks，
+    把用户的所有骑行轨迹**保留 activity 边界**返回 list of tracks，
     前端拿来画 polyline 路径线（每条 activity 一条线）+ 多条 opacity 0.5 重叠
     自然形成"骑过越多越亮"的热力效果。
-    城市筛选基于 simplified_track 起点（activity 表无 start_lat/lon 字段）。
+
+    city 参数（v3 polish / Sprint 4 task-4.2 v3）：
+    - city is None → 返回该用户**所有** completed activities 的轨迹（不按城市筛 /
+      response.city 也是 None）。前端"全部"视图走这条路径，一次性看跨城市足迹。
+    - city 有值 → 保留旧行为：按 simplified_track 起点城市筛
+      （infer_city_from_coords 是 common.geo 纯函数 / spec §1.3）。
 
     D27 v2 polish（Sprint 4 task-4.2 v2）：从扁平 multipoint.coordinates
     改为 tracks: list[list[[lon,lat]]] —— 保留 activity 边界让前端画 polyline，
     不再用 markers 点 / 视觉接近 ride.fitcard.app 80%。
 
-    Redis 缓存 TTL 1h（用户上传新活动后 update_user_city 不会触发清缓存——
-    清缓存职责由 worker hook 或 update_user_city 承担）。
+    Redis 缓存 TTL 1h，**两套独立 cache key**：
+    - 无 city 路径：`heatmap:user_{user_id}` （新增 / v3 polish）
+    - 有 city 路径：`heatmap:user_{user_id}:city_{city}` （保留旧 key 不变 / 兼容）
+    update_user_city 清缓存只清 `heatmap:user_{id}:*` 形态——无 city 的 key 不被影响
+    （它的内容与 user.city 设置无关 / 1h 自然过期足够）。
 
     陷阱守卫：
     - 陷阱 #5（redis-py 7+ 默认返 bytes）→ json.loads 前 decode
@@ -505,7 +513,7 @@ def get_user_heatmap(db: Session, user_id: int, city: str) -> dict:
 
     返回结构：
         {
-          "city": "beijing",
+          "city": "beijing" | None,        # 透传入参 / 不传时为 None
           "tracks": [
             [[lon, lat], [lon, lat], ...],  # activity 1 的轨迹
             [[lon, lat], [lon, lat], ...],  # activity 2 的轨迹
@@ -514,7 +522,13 @@ def get_user_heatmap(db: Session, user_id: int, city: str) -> dict:
           "activity_count": 12
         }
     """
-    cache_key = f"{_HEATMAP_CACHE_PREFIX}{user_id}:city_{city}"
+    # cache key 设计：city is None 走"无 city 后缀"的独立 key —— 与按 city 筛的 key 形态
+    # 不同（`heatmap:user_{id}` vs `heatmap:user_{id}:city_{city}`），
+    # 让 update_user_city 的 `heatmap:user_{id}:*` 失效 pattern 不会误命中无 city 的 key。
+    if city is None:
+        cache_key = f"{_HEATMAP_CACHE_PREFIX}{user_id}"
+    else:
+        cache_key = f"{_HEATMAP_CACHE_PREFIX}{user_id}:city_{city}"
     redis_client = _get_redis_client()
     cached = redis_client.get(cache_key)
     if cached is not None:
@@ -531,11 +545,16 @@ def get_user_heatmap(db: Session, user_id: int, city: str) -> dict:
         .all()
     )
 
-    # 起点城市筛（infer_city_from_coords 是 common.geo 纯函数 / spec §1.3 / B2A-2 修复反向依赖）
+    # 城市筛分支：
+    # - city is None → 不筛 / 全部 completed activities（含 simplified_track）都算
+    # - city 有值 → 按起点城市筛（B2A-2 修复反向依赖 / infer_city_from_coords 纯函数）
     filtered = []
     for a in activities:
         track = a.simplified_track
         if not track or len(track) == 0:
+            continue
+        if city is None:
+            filtered.append(a)
             continue
         first_pt = track[0]
         lat = first_pt.get("lat")
@@ -598,13 +617,34 @@ def update_user_city(db: Session, user_id: int, city) -> User:
     user.city = city
     db.commit()
 
-    # 失效该用户所有 city 的热图缓存（pattern: heatmap:user_{id}:*）
-    pattern = f"{_HEATMAP_CACHE_PREFIX}{user_id}:*"
-    redis_client = _get_redis_client()
-    for key in redis_client.scan_iter(match=pattern):
-        redis_client.delete(key)
+    # 失效该用户所有 heatmap 缓存（含按 city 和无 city 两种 key 形态 / D27 v3 polish 修 Critical）
+    invalidate_heatmap_cache(user_id)
 
     return user
+
+
+def invalidate_heatmap_cache(user_id: int) -> None:
+    """
+    清掉用户全部 heatmap 缓存——"通知账房先生热图重算"。
+
+    覆盖两种 cache key 形态（D27 v3 polish 加无 city 路径后必须双删 / Codex 异源审 Critical 修）：
+    1. `heatmap:user_{id}` —— 无 city 路径（v3 新增 / 显示用户全部 activity 轨迹）
+    2. `heatmap:user_{id}:city_{city}` —— 按 city 路径（v2 保留 / 兼容旧）
+
+    场景：
+    - 用户上传新 activity completed → worker hook 调本函数 → 下次刷个人页拿最新轨迹
+    - 用户改主城（update_user_city）→ 调本函数 → 防旧 city 缓存延续
+
+    why scan_iter 配合 delete：scan_iter 不阻塞 / delete 单 key 直删 / 两者组合覆盖两种 key 形态。
+    """
+    redis_client = _get_redis_client()
+    # 1. 无 city 路径直接 delete（不需 scan / key 形态固定）
+    no_city_key = f"{_HEATMAP_CACHE_PREFIX}{user_id}"
+    redis_client.delete(no_city_key)
+    # 2. 按 city 路径用 scan_iter（多个 city 各一个 key）
+    pattern = f"{_HEATMAP_CACHE_PREFIX}{user_id}:*"
+    for key in redis_client.scan_iter(match=pattern):
+        redis_client.delete(key)
 
 
 def get_user_profile_for_others(

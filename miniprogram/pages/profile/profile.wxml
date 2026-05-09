@@ -78,12 +78,11 @@
   <!-- 区块 3：功率曲线（task-4.2.A 接入 / power-curve-card 自治 component / D21 模块化） -->
   <power-curve-card />
 
-  <!-- 区块 4：骑行热力图（task-4.2.B 接入 / heatmap-card 自治 component / D21 模块化）
-       wx:if="{{profile}}" 等 profile fetch 完才挂载，防 profile=null 时 city='' attach 触发的 race condition：
-       - 旧设计：attached 时 profile=null / city='' / fallback unknown / 发 /heatmap?city=unknown
-       - profile 返回后 observer 再发真实 city 请求 / 旧 unknown 响应可能后到覆盖真值（Codex 异源审 I1）
-       - 修复：page 层等 profile 真值才挂载 component / 一发请求即真值 / 0 race -->
-  <heatmap-card wx:if="{{profile}}" city="{{profile.city}}" />
+  <!-- 区块 4：骑行热力图（task-4.2.B 接入 / heatmap-card 自治 component / D21 模块化 / v3 polish 砍 city props）
+       v3 polish：heatmap-card 砍掉 city props / 直接调 /api/user/me/heatmap（无参数）/ 后端 v3 city 已可选
+       → 显示用户全部 activity 轨迹（不论城市 / 包括国外）/ Tim 拍"用户视角是我所有足迹不是某城市"
+       wx:if="{{profile}}" 仍保留：等 profile fetch 完才挂载（避免 race + 防 attached 时 profile.id 还没写入）-->
+  <heatmap-card wx:if="{{profile}}" />
 
   <!-- 区块 5：导航卡片（我的荣誉 + 设置 / 不变） -->
   <view class="menu-card card">

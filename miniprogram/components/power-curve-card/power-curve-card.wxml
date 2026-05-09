@@ -4,9 +4,24 @@
   4 状态分支（loading / error / empty / 渲染）：
   - 文字态用 wx:if/wx:elif（DOM 可以热插拔，开销低）
   - canvas 态用 hidden（DOM 一开始就在，避免 wx:if 销毁重建导致 type="2d" 节点 ready 时序问题 / 详 CLAUDE.md 陷阱 #17 + F1）
+
+  v3 polish 加 period 切换 UI：
+  - 5 档 segment control（30天 / 90天 / 半年 / 1年 / 全部）
+  - 当前选中档高亮（主色调红 #FF2D55）
+  - bindtap 触发 _onPeriodTap 切档 + 重 fetch + 重绘 canvas
 -->
 <view class="card power-curve-card">
   <text class="card-title">功率曲线</text>
+
+  <!-- v3 polish: period 切换 segment control -->
+  <view class="period-tabs">
+    <view class="period-tab {{currentPeriod === 'last_30_days' ? 'active' : ''}}" bindtap="_onPeriodTap" data-period="last_30_days">30天</view>
+    <view class="period-tab {{currentPeriod === 'last_90_days' ? 'active' : ''}}" bindtap="_onPeriodTap" data-period="last_90_days">90天</view>
+    <view class="period-tab {{currentPeriod === 'last_180_days' ? 'active' : ''}}" bindtap="_onPeriodTap" data-period="last_180_days">半年</view>
+    <view class="period-tab {{currentPeriod === 'last_365_days' ? 'active' : ''}}" bindtap="_onPeriodTap" data-period="last_365_days">1年</view>
+    <view class="period-tab {{currentPeriod === 'all_time' ? 'active' : ''}}" bindtap="_onPeriodTap" data-period="all_time">全部</view>
+  </view>
+
   <text class="subtitle">{{subtitle}}</text>
 
   <view wx:if="{{loading}}" class="loading-mini">加载中...</view>

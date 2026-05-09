@@ -28,6 +28,35 @@
   margin-bottom: 20rpx;
 }
 
+/* ── v3 polish: period 切换 segment control ──
+ * 5 档均分 / 默认灰字 / 当前档主色调红高亮
+ * 设计参考 iOS segment control 风格：圆角胶囊 + 浅红背景 + 红字加粗
+ */
+.period-tabs {
+  display: flex;
+  flex-direction: row;
+  margin-top: 12rpx;
+  margin-bottom: 4rpx;
+  gap: 8rpx;
+}
+
+.period-tab {
+  flex: 1;
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--color-text-3);
+  padding: 10rpx 0;
+  border-radius: 16rpx;
+  background-color: rgba(0, 0, 0, 0.04);
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.period-tab.active {
+  color: var(--color-primary);
+  background-color: rgba(255, 45, 85, 0.1);
+  font-weight: 600;
+}
+
 /* ── 4 状态文案：loading / error / empty 共享尺寸，颜色不同 ── */
 .loading-mini,
 .error-mini,

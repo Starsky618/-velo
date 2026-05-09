@@ -69,13 +69,28 @@ def test_heatmap_requires_auth(client):
     assert resp.status_code == 401
 
 
-def test_heatmap_city_required_422(client, auth_header):
-    """不传 city → 422（FastAPI 自动校验必填）。"""
-    resp = client.get("/api/user/me/heatmap", headers=auth_header)
-    assert resp.status_code == 422
+def test_heatmap_city_optional_returns_200(client, auth_header):
+    """v3 polish：不传 city → 200（不再是 422 必填）+ service 收到 None。"""
+    fake_result = {
+        "city": None,
+        "tracks": [
+            [[116.4, 39.9], [116.41, 39.91]],
+        ],
+        "activity_count": 1,
+    }
+    with patch("app.user.router.service.get_user_heatmap", return_value=fake_result) as mock_svc:
+        resp = client.get("/api/user/me/heatmap", headers=auth_header)
+        assert resp.status_code == 200
+        body = resp.json()
+        # response.city 透传 None
+        assert body["city"] is None
+        assert len(body["tracks"]) == 1
+        # service 第三个位置参数（city）应为 None
+        assert mock_svc.call_args.args[2] is None
 
 
 def test_heatmap_invalid_city_422(client, auth_header):
+    """传非枚举 city 仍 422（保留旧行为 / 防误传 'guangzhou' 等无效值）。"""
     resp = client.get("/api/user/me/heatmap?city=guangzhou", headers=auth_header)
     assert resp.status_code == 422
 
@@ -90,7 +105,7 @@ def test_heatmap_valid_returns_tracks(client, auth_header):
         ],
         "activity_count": 2,
     }
-    with patch("app.user.router.service.get_user_heatmap", return_value=fake_result):
+    with patch("app.user.router.service.get_user_heatmap", return_value=fake_result) as mock_svc:
         resp = client.get("/api/user/me/heatmap?city=beijing", headers=auth_header)
         assert resp.status_code == 200
         body = resp.json()
@@ -99,6 +114,31 @@ def test_heatmap_valid_returns_tracks(client, auth_header):
         assert len(body["tracks"][0]) == 3  # activity 1 有 3 个点
         assert len(body["tracks"][1]) == 2  # activity 2 有 2 个点
         assert body["activity_count"] == 2
+        # 走旧路径 / service 收到 "beijing" 字符串（不是 None）
+        assert mock_svc.call_args.args[2] == "beijing"
+
+
+def test_heatmap_no_city_returns_all_tracks(client, auth_header):
+    """v3 polish：不传 city → service 透传 None / 返回多 city 混合 tracks。
+    本测试 mock service 返"跨北京/上海"混合数据，验证 router 不做城市筛。"""
+    fake_result = {
+        "city": None,
+        "tracks": [
+            [[116.4, 39.9], [116.41, 39.91]],     # 北京起点
+            [[121.47, 31.23], [121.48, 31.24]],   # 上海起点
+            [[120.15, 30.27], [120.16, 30.28]],   # 杭州起点
+        ],
+        "activity_count": 3,
+    }
+    with patch("app.user.router.service.get_user_heatmap", return_value=fake_result) as mock_svc:
+        resp = client.get("/api/user/me/heatmap", headers=auth_header)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["city"] is None
+        assert body["activity_count"] == 3
+        assert len(body["tracks"]) == 3
+        # 关键：router 必须把 None 透传给 service（不是 'unknown' 不是空串）
+        assert mock_svc.call_args.args[2] is None
 
 
 # ───────────────────────────────────────────────────────────────────────

@@ -2432,7 +2432,8 @@ def scan_processing_health(db: Session) -> list[int]:
 |---|---|
 | 权限 | current_user |
 | 参数 | `city` enum: 6 城 + unknown，default user.city（NULL 时返 400）|
-| 响应 | `{city: str, tracks: [[[lon, lat], ...], ...], activity_count: int}`（D27 v2 polish / 每 activity 一条轨迹 / 前端画 polyline）|
+| 参数 | `city`: UserCity 7 枚举可选（v3 polish D30 / 不传 = 返回用户全部 activity 轨迹 / 传 = 按起点城市筛旧行为）|
+| 响应 | `{city: str \| None, tracks: [[[lon, lat], ...], ...], activity_count: int}`（D27 v2 polish + D30 v3 polish / 每 activity 一条轨迹 / 前端画 polyline / city Optional 不传时 = None）|
 | 错误 | 401 / 400 city 未指定且 user.city is NULL / 422 invalid city |
 | 备注 | Redis 缓存 TTL 1h |
 

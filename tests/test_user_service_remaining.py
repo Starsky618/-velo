@@ -127,6 +127,34 @@ def _this_month_utc() -> datetime:
     return now_bj.replace(day=15, hour=10, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
 
 
+def _make_activity_in_shanghai(
+    db, user: User, suffix: str, started_at: datetime, distance: float = 1000.0
+) -> Activity:
+    """构造一条 simplified_track 起点在上海的活动（31.2N / 121.5E 是上海市区核心圈）。
+    用于 v3 polish 跨城市测试 —— city is None 时该活动也应入选。"""
+    activity = Activity(
+        user_id=user.id,
+        title=f"{_PREFIX} {suffix}",
+        status="completed",
+        distance=distance,
+        duration=1800,
+        elevation_gain=30.0,
+        started_at=started_at,
+        finished_at=started_at + timedelta(seconds=1800),
+        data_source="gpx",
+        activity_type="cycling",
+        simplified_track=[
+            {"lat": 31.20, "lon": 121.47, "ele": 5.0},
+            {"lat": 31.21, "lon": 121.48, "ele": 5.5},
+            {"lat": 31.22, "lon": 121.49, "ele": 6.0},
+        ],
+        avg_power=170.0,
+    )
+    db.add(activity)
+    db.flush()
+    return activity
+
+
 # ───────────────────────────────────────────────────────────────────────
 # get_user_heatmap
 # ───────────────────────────────────────────────────────────────────────
@@ -226,6 +254,71 @@ class TestGetUserHeatmap:
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
+            _cleanup_db(db)
+            db.close()
+
+    def test_no_city_returns_all_tracks_across_cities(self, pg_session_factory, real_redis):
+        """v3 polish：city=None → 返回该用户所有 completed activities 的轨迹（不按城市筛）。
+        构造北京 + 上海 2 个 activity，期望都返回。"""
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "no_city_all")
+            _make_activity_in_beijing(db, user, "bj", _this_month_utc())
+            _make_activity_in_shanghai(db, user, "sh", _this_month_utc())
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            result = get_user_heatmap(db, user_id, None)
+            # 不按城市筛 → 北京 + 上海 2 条都进来
+            assert result["city"] is None
+            assert result["activity_count"] == 2
+            assert len(result["tracks"]) == 2
+            # 顺序无保证 / 验证两组起点都出现（北京 lon~116 / 上海 lon~121）
+            first_lons = [tr[0][0] for tr in result["tracks"]]
+            assert any(115 < lon < 118 for lon in first_lons), "缺北京轨迹"
+            assert any(120 < lon < 122 for lon in first_lons), "缺上海轨迹"
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
+            _cleanup_db(db)
+            db.close()
+
+    def test_no_city_redis_key_no_city_suffix(self, pg_session_factory, real_redis):
+        """v3 polish：city=None 走独立 cache key `heatmap:user_{id}` —— 不带 city_ 后缀。
+        验证：① 无 city 路径写入的 key 是 `heatmap:user_{id}`
+        ② 不会撞上按 city 筛的 `heatmap:user_{id}:city_{city}` key 形态。"""
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "no_city_key")
+            _make_activity_in_beijing(db, user, "act", _this_month_utc())
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            # 走无 city 路径
+            get_user_heatmap(db, user_id, None)
+
+            # 期望 key（无后缀）存在
+            no_city_key = f"heatmap:user_{user_id}"
+            assert real_redis.get(no_city_key) is not None, (
+                f"期望 cache key {no_city_key} 存在 / 无 city 路径写入失败"
+            )
+
+            # 期望按 city 筛的 key 不应被同时写入（独立 key）
+            city_key = f"heatmap:user_{user_id}:city_beijing"
+            assert real_redis.get(city_key) is None, (
+                f"无 city 路径不应写入按 city 筛的 key {city_key}"
+            )
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
+                # 额外清理无后缀 key（_cleanup_redis 用 `:*` pattern 不命中）
+                real_redis.delete(f"heatmap:user_{user_id}")
             _cleanup_db(db)
             db.close()
 

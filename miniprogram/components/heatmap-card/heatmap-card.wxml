@@ -1,7 +1,7 @@
 <!--
   骑行热力图卡片 component（Sprint 4 task-4.2.B v2 polish / D21 模块化 / D27 polyline）
 
-  功能：调用后端 GET /api/user/{me|id}/heatmap?city=xxx 拿到 tracks 列表（每个 activity 一条轨迹），
+  功能：调用后端 GET /api/user/{me|id}/heatmap（v3 polish 不传 city / 拉用户全部 activity 轨迹）拿到 tracks 列表（每个 activity 一条轨迹），
   在小程序原生 <map> 组件上铺一层 polylines 描出骑过的路径线。
 
   4 状态（必须全部覆盖）：

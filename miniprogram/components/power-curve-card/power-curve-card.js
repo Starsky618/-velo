@@ -75,13 +75,18 @@ Component({
         if (this.data._mounted) this._fetchAndRender()
       },
     },
-    // 时间窗：5 档枚举（默认 last_30_days）
+    // 时间窗 prop（外部传入的初始值 / v3 polish 之后真相源是 data.currentPeriod）
+    // 监听 prop 变化时同步到 currentPeriod / 让父组件控制初始档仍然生效
     period: {
       type: String,
       value: 'last_30_days',
       observer: function (newVal) {
-        // period 变化重新 fetch + 同步副标题
-        this.setData({ subtitle: this._buildSubtitle(newVal) })
+        // 父组件改 prop → 同步到 currentPeriod 真相源 + 重 fetch
+        if (newVal === this.data.currentPeriod) return
+        this.setData({
+          currentPeriod: newVal,
+          subtitle: this._buildSubtitle(newVal),
+        })
         if (this.data._mounted) this._fetchAndRender()
       },
     },
@@ -92,6 +97,11 @@ Component({
     error: false,
     isEmpty: false,
     subtitle: '最近 30 天 · 瞬时 / 3s / 30s / 1min / 5min / 20min / 1h',
+    // v3 polish 加 period 切换 UI 后的"真相源"：
+    // - 用户点 segment control 改的是 currentPeriod（不改 props）
+    // - properties.period 仅作为初始值 / 父组件想强制切档时用
+    // - _fetchAndRender 永远读 currentPeriod
+    currentPeriod: 'last_30_days',
     // 内部标记：attached 之后才允许 observer 触发 fetch（防 properties 默认值
     // 初始化时 observer 已触发一次 fetch，attached 又触发一次重复请求）
     _mounted: false,
@@ -99,9 +109,11 @@ Component({
 
   lifetimes: {
     attached() {
-      // 初始化副标题（用真实 period prop 值，覆盖 data 默认）
+      // 初始化：用真实 period prop 值同步到 currentPeriod + 副标题
+      const initPeriod = this.data.period || 'last_30_days'
       this.setData({
-        subtitle: this._buildSubtitle(this.data.period),
+        currentPeriod: initPeriod,
+        subtitle: this._buildSubtitle(initPeriod),
         _mounted: true,
       })
       this._fetchAndRender()
@@ -125,6 +137,26 @@ Component({
     },
 
     /**
+     * period 切换入口（v3 polish 新加 / segment control bindtap 触发）
+     *
+     * 流程：
+     *   1. 点同档不重 fetch（防止用户连点浪费请求 + canvas 重绘闪烁）
+     *   2. 点新档 → 改 currentPeriod 真相源 + 同步副标题 → 触发重 fetch
+     *
+     * 类比：换电视频道——点当前频道遥控按了也没事，
+     * 点新频道才真切过去再加载新节目。
+     */
+    _onPeriodTap: function (e) {
+      const period = e.currentTarget.dataset.period
+      if (!period || period === this.data.currentPeriod) return  // 同档跳过
+      this.setData({
+        currentPeriod: period,
+        subtitle: this._buildSubtitle(period),
+      })
+      this._fetchAndRender()
+    },
+
+    /**
      * 主流程：拉数据 + 判断状态 + 触发渲染
      *
      * 类比：去厨房做菜——
@@ -141,8 +173,9 @@ Component({
       this.setData({ loading: true, error: false, isEmpty: false })
 
       // userId === 0 看自己 / 非 0 看他人（看他人 endpoint task-4.3 才补 / 现在留分支）
+      // v3 polish：period 真相源是 currentPeriod（用户切档改这个 / props.period 仅作初始值）
       const userId = this.data.userId
-      const period = this.data.period
+      const period = this.data.currentPeriod || this.data.period || 'last_30_days'
       const url = userId === 0
         ? '/api/user/me/power-curve?period=' + period
         : '/api/user/' + userId + '/power-curve?period=' + period

@@ -459,8 +459,9 @@ D 主轴（admin H5 hotfix + 监测）：
 - ✅ task-4.1 个人页框架改造（commit `1fd0c43` / 5 区块 + city badge fallback + 2 槽位 placeholder / 三审通过 / 真机验证）
 - ✅ task-pre-4.2 后端升级（power-curve period 改滚动窗口 5 档 `last_30_days/90/180/365/all_time` + 文档 4 处同步 + D21 component 化哲学入册）
 - ✅ task-4.2 v1 个人页内容塞入（commit `81862e5` / 2 component / markers + grey + 6 档展示 4 档 / 三审通过）
-- ✅ **task-4.2 v2 polish**（commit 待定 / **D26 power-curve 7 档** `[0,3,30,60,300,1200,3600]` 含瞬时最大 + 1h / **D27 heatmap markers→polylines** 黄色路径线接近 ride.fitcard 视觉 + 删 PNG icon / **D28 修订** 未来地图 tab 用高德地图不是 OSM/Mapbox 合规 / **D29 双 component 路线** 替代单 component mode 切换）
-- ⏳ Tim 部署生产（cbe34ca + 7396ea5 + 81862e5 + v2 polish commit / 4 个 commit 后端 + 前端）+ 真机重测
+- ✅ task-4.2 v2 polish（commit `5d7cba9` / D26 7 档 + D27 polylines + D28 修订高德地图 + D29 双 component 路线）
+- ✅ task-4.2 v3 polish（commit 待定 / **D30 heatmap city 改可选**（前端砍 props 拉全部 / 后端 city Optional 兼容 / Redis cache key 双版 + invalidate_heatmap_cache 工具函数 + worker hook 双清）/ **D31 GCJ-02 坐标转换**（utils/coords.js 共享 / 修腾讯地图 200m 偏移）/ **D32 power-curve period 切换 UI**（5 档 segment control / currentPeriod 真相源））
+- ⏳ Tim 真机重测（v3 polish 部署后）+ 真用 1 周决定下一步
 - ⏳ task-4.3 用户详情页新建（含前置后端补 2 endpoint / 4-5 天）
 - ⏳ task-4.4 探索 tab 改造 + 砍 leaderboard tab（5 → 4 tab / 5-6 天）
 - ⏳ task-4.5 赛段详情页新建（4 区块 / D7 反转后展示 top 10 / 5-6 天）
@@ -482,6 +483,9 @@ D 主轴（admin H5 hotfix + 监测）：
 - D27: **heatmap markers→polylines** 后端 multipoint→tracks 保留 activity 边界 / 前端黄色 polyline 重叠自然热力 / 视觉接近 ride.fitcard.app 80%
 - D28 修订: **未来地图 tab 用高德地图**（不是 Leaflet+OSM）/ OSM 测绘法不合规 + Mapbox 中国停服 / 高德是国内合规且功能齐全（dark + polyline + heatmap layer）/ Sprint 5/6 实施
 - D29: **双 component 路线**（替代单 component mode 切换）/ 个人页 `heatmap-card`（腾讯 native）+ 未来地图 tab `heatmap-fullscreen-card`（高德 webview）/ 共享 props 接口 / 内部渲染各自最优
+- D30: **heatmap city 改可选**（v3 polish）/ 不传 = 显示用户全部足迹（用户视角"我所有"）/ 传 = 兼容旧按城市筛 / cache key 双版本 + invalidate_heatmap_cache 双清
+- D31: **GCJ-02 坐标转换**（v3 polish）/ utils/coords.js 共享 / 修腾讯地图 200m 偏移 / 国外坐标自动跳过
+- D32: **power-curve period 切换 UI**（v3 polish）/ 5 档 segment control / currentPeriod 真相源
 
 **下一步 = task-4.2 个人页内容塞入**（subagent 启动只读 `docs/plans/sprint-frontend/README.md` + `task-4.2.md`，2 文件够 / **component 化方向已写进 task-4.2.md** / power-curve-card + heatmap-card 两个独立 component）
 

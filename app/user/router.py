@@ -143,18 +143,25 @@ def get_my_power_curve(
 
 @router.get("/me/heatmap", response_model=schemas.HeatmapResponse)
 def get_my_heatmap(
-    city: schemas.UserCity,
+    city: schemas.UserCity | None = None,
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    获取当前用户在指定城市的骑行热图（D27 v2 polish）。
+    获取当前用户的骑行热图（D27 v2 polish / v3 polish city 改可选）。
 
-    city 7 枚举（6 主城 + unknown）/ 必填。
-    返回 tracks: list[list[[lon, lat]]]（保留 activity 边界 / 每个 activity 一条独立轨迹 / 前端画 polyline）+ activity_count。
-    Redis 缓存 1h。
+    city 参数：
+    - 不传 → 返回该用户所有 completed activities 的轨迹（不按起点城市筛 / response.city = None）。
+      前端"全部"视图走这条路径——一次性看用户在所有城市的足迹。
+    - 传枚举值（6 主城 + unknown）→ 保留旧行为：按 simplified_track 起点城市筛。
+
+    返回 tracks: list[list[[lon, lat]]]（保留 activity 边界 / 每个 activity 一条独立轨迹 / 前端画 polyline）
+    + activity_count（与 tracks 长度一致 / 单点 activity 自动跳过不计数）。
+
+    Redis 缓存 1h，无 city 与按 city 走两套独立 cache key（前者 `heatmap:user_{id}`，
+    后者 `heatmap:user_{id}:city_{city}`），互不干扰。
     """
-    return service.get_user_heatmap(db, user_id, city.value)
+    return service.get_user_heatmap(db, user_id, city.value if city else None)
 
 
 @router.patch("/me", response_model=schemas.UserProfile)
