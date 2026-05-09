@@ -177,24 +177,52 @@ Component({
      * 类比：透明黄色马克笔在地图上多次描同一条路 → 自然变成更亮的黄
      */
     _convertToPolylines(tracks) {
-      // P1 hotfix v2（2026-05-09 真机回归 / cap=8000 步长 21 → 网格状直线视觉灾难 / 调高到 50000）：
-      // - cap=8000 时 sampleStep=21 / 每条 700 点 → 33 点 / 间隔 100-200m / 道路弯曲全丢失成网格
-      // - cap=50000 时 sampleStep=3 / 每条 700 点 → 233 点 / 间隔 15-30m / 视觉接近原版无失真
-      // - setData 估算 ~1.5MB / 接近 1MB 软上限但 Tim 实测 5MB 也工作（小程序软上限非硬截断）
-      // 165000 → 50000 = 步长 ~3 / 城市级缩放下视觉几乎不可见失真
+      // P1 hotfix v3（2026-05-09 真机回归 / split 长跨距点 / 修"虚假对角直线"）：
+      // 实测 simplified_track 源数据有 3-8km 跨距点（Douglas-Peucker 简化容差太大 + Strava 导入稀疏）
+      // 单条 track 内相邻 GPS 点距离 > MAX_SEGMENT_M 就切断 polyline 防虚假长直线
+      //
+      // 累积 hotfix：
+      // - v1 cap=8000 / 步长 21 → 网格状直线（失败）
+      // - v2 cap=50000 / 步长 3 → 视觉接近原版但放大后仍有 km 级直线（部分修）
+      // - v3 加 segment split / 同 track 内 > 500m 切断（防源数据跳点 / 真修）
       const MAX_TOTAL_POINTS = 50000
+      const MAX_SEGMENT_M = 500  // 单条 polyline 内相邻两点距离上限 / 城市道路一个街区 ~200-500m
       let totalRaw = 0
       for (let i = 0; i < tracks.length; i++) {
         if (Array.isArray(tracks[i])) totalRaw += tracks[i].length
       }
       const sampleStep = totalRaw > MAX_TOTAL_POINTS ? Math.ceil(totalRaw / MAX_TOTAL_POINTS) : 1
 
+      // Haversine 球面距离（米）/ 用于 segment split 判断
+      const distM = (a, b) => {
+        const R = 6371000
+        const dLat = (b.latitude - a.latitude) * Math.PI / 180
+        const dLng = (b.longitude - a.longitude) * Math.PI / 180
+        const lat1 = a.latitude * Math.PI / 180
+        const lat2 = b.latitude * Math.PI / 180
+        const aa = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+        return R * 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa))
+      }
+
       const polylines = []
+      // 抽出"把 points 数组打包成 polyline 对象"逻辑 / split 后多次调用
+      const flushPolyline = (points) => {
+        if (points.length < 2) return  // 单点不能成 polyline
+        polylines.push({
+          points: points,
+          color: '#FFD700CC',
+          width: 4,
+          arrowLine: false,
+          dottedLine: false,
+        })
+      }
+
       for (let i = 0; i < tracks.length; i++) {
         const track = tracks[i]
         if (!Array.isArray(track) || track.length < 2) continue
-        const points = []
-        for (let j = 0; j < track.length; j += sampleStep) {  // 步长采样 / 防 setData 1MB 上限
+        let points = []
+        let lastPoint = null
+        for (let j = 0; j < track.length; j += sampleStep) {
           const c = track[j]
           if (!Array.isArray(c) || c.length < 2) continue
           const lon = c[0]
@@ -205,16 +233,17 @@ Component({
           const [gcjLat, gcjLng] = wgs84ToGcj02(lat, lon)
           // 转换后再次校验防异常算法返回 NaN
           if (!Number.isFinite(gcjLat) || !Number.isFinite(gcjLng)) continue
-          points.push({ latitude: gcjLat, longitude: gcjLng })
+          const newPoint = { latitude: gcjLat, longitude: gcjLng }
+          // segment split：相邻两点距离 > MAX_SEGMENT_M 就切断当前 polyline 开新段
+          // （防 simplified_track 源数据 km 级跳点画出虚假长直线 / Tim 真机看到的网格 bug）
+          if (lastPoint && distM(lastPoint, newPoint) > MAX_SEGMENT_M) {
+            flushPolyline(points)
+            points = []
+          }
+          points.push(newPoint)
+          lastPoint = newPoint
         }
-        if (points.length < 2) continue  // 单点不能成 polyline / 跳过
-        polylines.push({
-          points: points,
-          color: '#FFD700CC',           // 亮黄 + 80% alpha 让重叠色叠加（CC = 204/255 ≈ 80%）
-          width: 4,
-          arrowLine: false,
-          dottedLine: false,
-        })
+        flushPolyline(points)  // 收尾 / 把当前 track 最后一段刷到 polylines
       }
       return polylines
     },
