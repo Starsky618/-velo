@@ -460,8 +460,15 @@ D 主轴（admin H5 hotfix + 监测）：
 - ✅ task-pre-4.2 后端升级（power-curve period 改滚动窗口 5 档 `last_30_days/90/180/365/all_time` + 文档 4 处同步 + D21 component 化哲学入册）
 - ✅ task-4.2 v1 个人页内容塞入（commit `81862e5` / 2 component / markers + grey + 6 档展示 4 档 / 三审通过）
 - ✅ task-4.2 v2 polish（commit `5d7cba9` / D26 7 档 + D27 polylines + D28 修订高德地图 + D29 双 component 路线）
-- ✅ task-4.2 v3 polish（commit 待定 / **D30 heatmap city 改可选**（前端砍 props 拉全部 / 后端 city Optional 兼容 / Redis cache key 双版 + invalidate_heatmap_cache 工具函数 + worker hook 双清）/ **D31 GCJ-02 坐标转换**（utils/coords.js 共享 / 修腾讯地图 200m 偏移）/ **D32 power-curve period 切换 UI**（5 档 segment control / currentPeriod 真相源））
-- ⏳ Tim 真机重测（v3 polish 部署后）+ 真用 1 周决定下一步
+- ✅ task-4.2 v3 polish（commit `f519170` / **D30 city 改可选** / **D31 GCJ-02 坐标转换** / **D32 power-curve period 切换 UI**）
+- ✅ **task-4.2 真闭环**（6 次 hotfix 链：cap 8000→50000→split→砍 cap→N+1 性能修→分层虚实线 + simplify 1500 + backfill）/ Tim 真机 final gate 通过 "基本 ok"
+  - 性能：power-curve all_time 24s → 5s（commit `9f7d9b7` IN 查询 + only 字段）
+  - 视觉：山区 segment >500m 1263 → 443（-65%）/ 中位数 30m → 21m（commit `bb94a4e + 5c8228c` 分层虚实线 + simplify 1500 + backfill）
+- ⏳ task-4.3 用户详情页起步（component 已建好 / 4.3 reuse + 后端补 2 endpoint）
+
+**v3 polish backlog（Sprint 5/6 跟 D28 高德 webview 一起做）**：
+- **D33 map matching**：真根治山区 GPS 物理误差散网（OSRM 容器 或高德 navigation match API）/ 1-3 天工程
+- 测试覆盖盲区：worker hook 触发 invalidate_heatmap_cache 回归测试 / 无 city 精确 key 清验证
 - ⏳ task-4.3 用户详情页新建（含前置后端补 2 endpoint / 4-5 天）
 - ⏳ task-4.4 探索 tab 改造 + 砍 leaderboard tab（5 → 4 tab / 5-6 天）
 - ⏳ task-4.5 赛段详情页新建（4 区块 / D7 反转后展示 top 10 / 5-6 天）
