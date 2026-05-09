@@ -1,20 +1,357 @@
-/* task-4.5 step 1 占位样式 / step 2-7 实施时替换为完整 4 区块 */
+/* 赛段详情页样式 — 4 区块完整版（task-4.5）
+ *
+ * 视觉沿用 v4 detail.wxml 同款卡片风格 + miniprogram/pages/profile/profile.wxss 同款颜色变量。
+ * 4 区块顶部留 24rpx 间距，每个 card 独立 white 背景 + 圆角 + 轻阴影，
+ * 让用户视觉上能区分"赛段元信息 / AI 介绍 / 我的成绩 / 全网榜"4 个独立板块。
+ */
 
-.placeholder {
-  padding: 80rpx 40rpx;
+page {
+  background: #F2F2F7;
+  min-height: 100vh;
+}
+
+.page {
+  padding: 24rpx;
+  padding-bottom: 100rpx;  /* 底部留白让最后一个 card 不贴 tabBar */
+}
+
+/* ========== 加载 / 错误 / 通用 ========== */
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  color: #86868B;
+  font-size: 28rpx;
+}
+
+.error-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32rpx;
+  height: 100vh;
+  padding: 0 40rpx;
+}
+
+.error-text {
+  color: #86868B;
+  font-size: 30rpx;
+}
+
+.error-mini {
+  text-align: center;
+  padding: 32rpx 0;
+  color: #FF2D55;
+  font-size: 26rpx;
+}
+
+.empty-mini {
+  text-align: center;
+  padding: 40rpx 0;
+}
+
+.placeholder-text {
+  color: #86868B;
+  font-size: 26rpx;
+}
+
+/* ========== Card 公共样式 ========== */
+
+.card {
+  background: #FFFFFF;
+  border-radius: 16rpx;
+  padding: 32rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+
+.card-title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1D1D1F;
+  margin-bottom: 24rpx;
+}
+
+/* ========== 区块 1：第一屏 ========== */
+
+.hero-card .seg-name {
+  display: block;
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #1D1D1F;
+  margin-bottom: 16rpx;
+}
+
+.seg-tags {
+  margin-bottom: 24rpx;
+}
+
+.city-tag {
+  display: inline-block;
+  padding: 4rpx 16rpx;
+  background: #F2F2F7;
+  color: #1D1D1F;
+  font-size: 24rpx;
+  border-radius: 8rpx;
+}
+
+/* 海拔曲线占位区（hidden canvas + placeholder 共存） */
+.elevation-wrap {
+  position: relative;
+  width: 100%;
+  height: 240rpx;
+  margin-bottom: 24rpx;
+  background: #F2F2F7;
+  border-radius: 12rpx;
+  overflow: hidden;
+}
+
+.elevation-chart {
+  width: 100%;
+  height: 100%;
+}
+
+.elevation-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 4 数字 grid */
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16rpx;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 16rpx 0;
+}
+
+.meta-value {
+  display: block;
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1D1D1F;
+  line-height: 1.2;
+}
+
+.meta-label {
+  display: block;
+  font-size: 22rpx;
+  color: #86868B;
+  margin-top: 8rpx;
+}
+
+/* ========== 区块 2：AI 介绍 ========== */
+
+.intro-text {
+  display: block;
+  font-size: 28rpx;
+  color: #1D1D1F;
+  line-height: 1.6;
+}
+
+.intro-text.collapsed {
+  /* 折叠态：3 行截断 */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.intro-text.expanded {
+  /* 展开态：完整显示 */
+  display: block;
+}
+
+.expand-btn {
+  margin-top: 16rpx;
+  text-align: center;
+}
+
+.expand-btn text {
+  font-size: 26rpx;
+  color: #FF2D55;
+}
+
+/* ========== 区块 3：我的记录 ========== */
+
+.empty-record {
+  text-align: center;
+  padding: 40rpx 0;
+  color: #86868B;
+  font-size: 28rpx;
+}
+
+.login-hint {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 24rpx;
+  padding: 24rpx 0;
 }
 
-.seg-id {
-  font-size: 36rpx;
-  color: var(--color-primary, #FF2D55);
+.hint-text {
+  color: #86868B;
+  font-size: 28rpx;
+}
+
+.record-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+.record-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24rpx 0;
+}
+
+.record-label {
+  font-size: 24rpx;
+  color: #86868B;
+  margin-bottom: 8rpx;
+}
+
+.record-time {
+  font-size: 56rpx;
+  font-weight: 700;
+  color: #1D1D1F;
+  font-variant-numeric: tabular-nums;  /* 等宽数字 / 时间显示更稳 */
+}
+
+.record-progress {
+  text-align: center;
+}
+
+.progress-text {
+  font-size: 26rpx;
+  color: #1D1D1F;
+}
+
+.record-pr-flag {
+  text-align: center;
+  padding: 16rpx;
+  background: #FFF5F5;
+  border-radius: 8rpx;
+}
+
+.record-pr-flag text {
+  color: #FF2D55;
+  font-size: 26rpx;
   font-weight: 600;
 }
 
-.hint {
-  font-size: 28rpx;
+/* ========== 区块 4：全网排行榜 ========== */
+
+.subtitle {
+  display: block;
+  font-size: 24rpx;
   color: #86868B;
+  margin-top: -16rpx;
+  margin-bottom: 16rpx;
+}
+
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.leaderboard-row {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 16rpx;
+  border-bottom: 1rpx solid #F2F2F7;
+}
+
+.leaderboard-row:last-child {
+  border-bottom: none;
+}
+
+.leaderboard-row .rank {
+  width: 80rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1D1D1F;
+}
+
+.leaderboard-row .nickname {
+  flex: 1;
+  font-size: 28rpx;
+  color: #1D1D1F;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-row .time {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1D1D1F;
+  font-variant-numeric: tabular-nums;
+}
+
+/* "我"高亮（top 10 内 + top 10 外独立行 共用 .me 类） */
+.leaderboard-row.me {
+  background: #FFF5F5;
+}
+
+.leaderboard-row.me .rank {
+  color: #FF2D55;
+}
+
+.leaderboard-row.me .nickname {
+  color: #FF2D55;
+  font-weight: 600;
+}
+
+.leaderboard-row.me .time {
+  color: #FF2D55;
+}
+
+/* top 10 与"我的排名"独立行之间的虚线分隔 */
+.my-rank-divider {
+  height: 1rpx;
+  border-top: 2rpx dashed #E5E5EA;
+  margin: 16rpx 0;
+}
+
+.my-rank-row {
+  border-bottom: none;
+}
+
+.login-hint-inline {
+  text-align: center;
+  padding: 24rpx 0;
+  color: #86868B;
+  font-size: 26rpx;
+  border-top: 1rpx solid #F2F2F7;
+  margin-top: 8rpx;
+}
+
+/* ========== 公共按钮 ========== */
+
+.btn {
+  padding: 16rpx 48rpx;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  text-align: center;
+}
+
+.btn-primary {
+  background: #FF2D55;
+  color: #FFFFFF;
 }

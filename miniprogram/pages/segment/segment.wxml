@@ -1,17 +1,175 @@
 <!--
-  赛段详情页 — 看某条赛段的全貌（task-4.5 / 现为占位空架子）
+  赛段详情页 — 看某条赛段的全貌（task-4.5 / 4 区块完整版）
 
   这个文件干什么的：
     用户在探索 tab 看到一张赛段卡片（如"妙峰山"）→ 点进来看详情。
-    完整 4 区块（task-4.5 step 2-7 实施时填）：
-    - 第一屏：海拔曲线 + 城市 + 4 数字（距离 / 爬升 / 平均坡度 / 最大坡度）
-    - AI 介绍：admin 审核过的 50-100 字介绍
-    - 我的记录：个人最佳成绩 + 进步对比
-    - 全网排行榜：top 10 + 我的排名
+    完整 4 区块（自上而下）：
+    - 区块 1 第一屏：赛段名 + 城市 tag + 海拔曲线（暂未支持/降级 placeholder）+ 4 数字（距离/爬升/平均坡度/最大坡度）
+    - 区块 2 AI 介绍：admin 审过的 description（50-100 字 / 长文展开收起）
+    - 区块 3 我的记录：基于 EffortCompareResponse 6 字段（PR / 这次 / 上次 / 进步对比 / 三态）
+    - 区块 4 全网排行榜：top 10 + 我的排名（D7 反转 / top 10 内高亮 / 外单独行）
 
-  当前状态：占位空架子（让 task-4.4 explore tab 改造能跳转 / step 1 已 ship 后续填内容）
+  红线（task-4.5.md §红线）：
+    - 第一屏不展示难度 badge（D14 / Tim 砍了）
+    - 我的记录文案不叫 PB（D7 / 必须叫"我的记录"）
+    - 全网排行榜必须展示 top 10 + 我的排名（D7 反转）
+    - 海拔曲线 canvas 用 hidden 不 wx:if（CLAUDE.md 陷阱 #17）
+    - 三 fetch 独立 catch（segment / myEffort / leaderboard 互不影响）
+    - 未登录降级（第一屏 + AI + leaderboard 正常 / 我的记录 + 我的排名 引导登录）
+
+  字段实证（grep ground truth）：
+    - segment.description（admin AI 介绍落地字段 / app/admin/service.py:222）
+    - leaderboard.items / leaderboard.total（不是 top / total_count）
+    - 海拔曲线 elevation_profile 不在 detail response → 区块降级 placeholder
 -->
-<view class="placeholder">
-  <text class="seg-id">赛段 #{{segmentId}}</text>
-  <text class="hint">详情功能开发中（task-4.5 step 2-7）</text>
+
+<!-- 加载中 / 404 / 主体 三态 -->
+<view wx:if="{{loading}}" class="loading">
+  <text>加载中...</text>
+</view>
+
+<view wx:elif="{{notFound}}" class="error-page">
+  <text class="error-text">赛段不存在或已下架</text>
+  <view class="btn btn-primary" bindtap="goBack">返回</view>
+</view>
+
+<view wx:else class="page">
+  <!-- ============ 区块 1：第一屏（赛段名 + 城市 + 海拔图占位 + 4 数字） ============ -->
+  <view class="card hero-card">
+    <text class="seg-name">{{segment.name}}</text>
+
+    <!-- 城市 tag（fallback：unknown / null / undefined 都不显示 / 不展示难度 badge / D14） -->
+    <view class="seg-tags" wx:if="{{cityLabel}}">
+      <text class="city-tag">{{cityLabel}}</text>
+    </view>
+
+    <!-- 海拔曲线占位区
+         注意：当前后端 SegmentDetailResponse **不返 elevation_profile**，
+         所以 hasElevationProfile 永远 false → canvas 永远 hidden（保留节点供未来扩展）。
+         CLAUDE.md 陷阱 #17：用 hidden 不用 wx:if（防 canvas 创建 race） -->
+    <view class="elevation-wrap">
+      <canvas type="2d" id="elevationCanvas" class="elevation-chart" hidden="{{!hasElevationProfile}}"></canvas>
+      <view class="elevation-placeholder" wx:if="{{!hasElevationProfile}}">
+        <text class="placeholder-text">海拔曲线暂未生成</text>
+      </view>
+    </view>
+
+    <!-- 4 数字（距离 / 爬升 / 平均坡度 / 最大坡度） -->
+    <view class="meta-grid">
+      <view class="meta-item">
+        <text class="meta-value">{{segment.distance}}</text>
+        <text class="meta-label">公里</text>
+      </view>
+      <view class="meta-item">
+        <text class="meta-value">{{elevationGainText}}</text>
+        <text class="meta-label">米爬升</text>
+      </view>
+      <view class="meta-item">
+        <text class="meta-value">{{avgGradientText}}</text>
+        <text class="meta-label">平均坡度</text>
+      </view>
+      <view class="meta-item">
+        <text class="meta-value">{{maxGradientText}}</text>
+        <text class="meta-label">最大坡度</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ============ 区块 2：AI 介绍（segment.description） ============ -->
+  <view class="card intro-card">
+    <text class="card-title">关于这条赛段</text>
+    <view wx:if="{{segment.description}}">
+      <text class="intro-text {{introExpanded ? 'expanded' : 'collapsed'}}">{{segment.description}}</text>
+      <view class="expand-btn" wx:if="{{shouldShowExpand}}" bindtap="toggleIntro">
+        <text>{{introExpanded ? '收起' : '展开'}}</text>
+      </view>
+    </view>
+    <view wx:else class="empty-mini">
+      <text class="placeholder-text">暂无介绍</text>
+    </view>
+  </view>
+
+  <!-- ============ 区块 3：我的记录（D7 文案 / 不叫 PB） ============ -->
+  <view class="card my-record-card">
+    <text class="card-title">我的记录</text>
+
+    <!-- 三态 1：未登录引导 -->
+    <view wx:if="{{!isLoggedIn}}" class="login-hint">
+      <text class="hint-text">登录后查看你的成绩</text>
+      <view class="btn btn-primary" bindtap="goLogin">微信登录</view>
+    </view>
+
+    <!-- 三态 2：登录但加载失败 / 加载中 -->
+    <view wx:elif="{{myEffortError}}" class="error-mini" bindtap="fetchMyEffort">
+      <text>加载失败 · 点击重试</text>
+    </view>
+
+    <!-- 三态 3：登录且没骑过（is_first_attempt=true / pr_elapsed_time 为 null） -->
+    <view wx:elif="{{!myEffort || !myEffort.pr_elapsed_time}}" class="empty-record">
+      <text>还没骑过这条赛段，去骑一次试试</text>
+    </view>
+
+    <!-- 三态 4：有成绩 -->
+    <view wx:else class="record-content">
+      <!-- 主成绩：PR 用时（个人最佳） -->
+      <view class="record-main">
+        <text class="record-label">最快用时</text>
+        <text class="record-time">{{myEffortDisplay.prTime}}</text>
+      </view>
+
+      <!-- 进步对比（这次 vs 上次 / 仅当有 last 时显示） -->
+      <view class="record-progress" wx:if="{{myEffortDisplay.progressText}}">
+        <text class="progress-text">{{myEffortDisplay.progressText}}</text>
+      </view>
+
+      <!-- 这次刚破 PR 的提示 -->
+      <view class="record-pr-flag" wx:if="{{myEffort.current_attempt_is_pr && !myEffort.is_first_attempt}}">
+        <text>这次创下新纪录</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ============ 区块 4：全网排行榜（D7 反转 / top 10 + 我的排名） ============ -->
+  <view class="card leaderboard-card">
+    <text class="card-title">全网排行榜</text>
+    <text class="subtitle" wx:if="{{leaderboard && leaderboard.total > 0}}">共 {{leaderboard.total}} 人骑过</text>
+
+    <!-- 加载失败 + 重试 -->
+    <view wx:if="{{leaderboardError}}" class="error-mini" bindtap="fetchLeaderboard">
+      <text>排行榜加载失败 · 点击重试</text>
+    </view>
+
+    <!-- 还没人骑 -->
+    <view wx:elif="{{!leaderboardItems || leaderboardItems.length === 0}}" class="empty-mini">
+      <text class="placeholder-text">还没人骑过这条赛段</text>
+    </view>
+
+    <view wx:else class="leaderboard-list">
+      <!-- top 10 列表（item.user_id == myUserId 高亮 me） -->
+      <view
+        class="leaderboard-row {{item.isMe ? 'me' : ''}}"
+        wx:for="{{leaderboardItems}}"
+        wx:key="user_id"
+      >
+        <text class="rank">{{item.rank}}</text>
+        <text class="nickname">{{item.nickname || '匿名骑手'}}</text>
+        <text class="time">{{item.timeFormatted}}</text>
+      </view>
+
+      <!-- 我的排名独立行（top 10 之外才显示 / D7 反转：即使在 top 10 外也展示）-->
+      <block wx:if="{{isLoggedIn && myRankOutOfTop && myRankRow}}">
+        <view class="my-rank-divider"></view>
+        <view class="leaderboard-row me my-rank-row">
+          <text class="rank">{{myRankRow.rank}}</text>
+          <text class="nickname">我</text>
+          <text class="time">{{myRankRow.timeFormatted}}</text>
+        </view>
+      </block>
+
+      <!-- 未登录时排行榜底部加引导 -->
+      <view class="login-hint-inline" wx:if="{{!isLoggedIn}}">
+        <text>登录后查看你的排名</text>
+      </view>
+    </view>
+  </view>
 </view>
