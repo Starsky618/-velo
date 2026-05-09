@@ -492,4 +492,16 @@ Page({
   goBack: function () {
     wx.navigateBack()
   },
+
+  /**
+   * 点击"途经赛段"行：跳赛段详情页（task-4.4 砍 leaderboard 后改向）。
+   *
+   * 改向历史：原 leaderboard tab 没了；赛段详情和全网排行榜都搬到
+   * /pages/segment/segment 页（task-4.5 实施）。
+   */
+  goSegment: function (e) {
+    var id = e.currentTarget.dataset.id
+    if (!id) return
+    wx.navigateTo({ url: '/pages/segment/segment?id=' + id })
+  },
 })

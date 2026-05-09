@@ -76,11 +76,14 @@ Page({
   },
 
   /**
-   * 点击一条荣誉条目：跳对应赛段排行榜。
+   * 点击一条荣誉条目：跳对应赛段详情页（task-4.5 / 含全网排行榜区块）。
+   *
+   * 改向历史：原跳 leaderboard tab；task-4.4 砍 leaderboard 后，全网排行榜
+   * 整合进赛段详情页"全网排行榜"区块，所以改向 segment 详情页。
    */
   goSegment(e) {
     wx.navigateTo({
-      url: '/pages/leaderboard/leaderboard?segment_id=' + e.currentTarget.dataset.id,
+      url: '/pages/segment/segment?id=' + e.currentTarget.dataset.id,
     })
   },
 })
@@ -88,7 +91,7 @@ Page({
 
 /**
  * 秒数 → "M:SS" 或 "H:MM:SS" 格式。
- * 和 leaderboard.js 的 formatTime 同款逻辑（保持一致体验）。
+ * 项目里多处通用的"秒数格式化"逻辑（保持一致体验）。
  */
 function formatHMS(seconds) {
   if (!seconds) return '-'

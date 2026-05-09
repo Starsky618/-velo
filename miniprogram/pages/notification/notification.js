@@ -165,7 +165,10 @@ Page({
   },
 
   /**
-   * 点击一条通知：跳对应赛段的排行榜页；segment_id 为 null 时提示失效。
+   * 点击一条通知：跳对应赛段详情页（task-4.5 / 含全网排行榜区块）；segment_id 为 null 时提示失效。
+   *
+   * 改向历史：原跳 leaderboard tab；task-4.4 砍 leaderboard 后，赛段详情和全网排行榜
+   * 都整合到 /pages/segment/segment 页，所以这里也改向。
    */
   onTapItem(e) {
     var segmentId = e.currentTarget.dataset.segment
@@ -173,8 +176,7 @@ Page({
       wx.showToast({ title: '该记录已失效', icon: 'none' })
       return
     }
-    // 用 leaderboard 页接收 segment_id 参数——这是项目现有路由习惯
-    wx.navigateTo({ url: '/pages/leaderboard/leaderboard?segment_id=' + segmentId })
+    wx.navigateTo({ url: '/pages/segment/segment?id=' + segmentId })
   },
 })
 

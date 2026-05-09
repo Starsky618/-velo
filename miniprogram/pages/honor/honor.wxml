@@ -47,8 +47,8 @@
   <view class="empty" wx:if="{{!loading && currentList.length === 0}}">
     <text class="empty-emoji">🚴</text>
     <text class="empty-title">还没有{{currentTab === 'kom' ? ' KOM' : '前十'}}成绩</text>
-    <navigator url="/pages/leaderboard/leaderboard" class="empty-btn">
-      <text>去排行榜看看</text>
+    <navigator url="/pages/explore/explore" open-type="switchTab" class="empty-btn">
+      <text>去探索赛段</text>
     </navigator>
   </view>
 </view>

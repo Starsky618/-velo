@@ -46,7 +46,8 @@
       <text class="segment-count">{{segments.length}} 个</text>
     </view>
     <view class="segment-list">
-      <view class="segment-item {{item.isPr ? 'segment-pr' : ''}}" wx:for="{{segments}}" wx:key="segment_id">
+      <view class="segment-item {{item.isPr ? 'segment-pr' : ''}}" wx:for="{{segments}}" wx:key="segment_id"
+            bindtap="goSegment" data-id="{{item.segment_id}}">
         <view class="segment-left">
           <text class="segment-name">{{item.name}}</text>
           <view class="segment-meta">

@@ -3,7 +3,6 @@
     "pages/home/home",
     "pages/explore/explore",
     "pages/upload/upload",
-    "pages/leaderboard/leaderboard",
     "pages/profile/profile",
     "pages/detail/detail",
     "pages/notification/notification",
@@ -42,12 +41,6 @@
         "text": "上传",
         "iconPath": "assets/icons/upload.png",
         "selectedIconPath": "assets/icons/upload-active.png"
-      },
-      {
-        "pagePath": "pages/leaderboard/leaderboard",
-        "text": "赛段",
-        "iconPath": "assets/icons/leaderboard.png",
-        "selectedIconPath": "assets/icons/leaderboard-active.png"
       },
       {
         "pagePath": "pages/profile/profile",
