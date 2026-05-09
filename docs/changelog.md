@@ -1,5 +1,77 @@
 # VELO 开发变更日志
 
+## 2026-05-09 Sprint 4 小程序 4 tab 重构 + D7 hotfix ✅ 全部完成
+
+> v5 期末 / 主轴 = 小程序 5 → 4 tab 重构 + admin H5 真用回归 / 期间发现 6 hotfix 链 + D7 真排名后端补强。
+
+### Sprint 4 baseline（开工前修 4 处文档 drift）
+
+- `5dc4c33` test fixture 漂移修（period 真实枚举 / city 必填 / self profile 加 city / 看他人砍 ftp）
+- `cbe34ca` 后端 P1-3 + P1-4：self profile schema 加 city / 看他人 schema 砍 ftp
+- `96e599f` PRD/plans 4 处 drift 修复 + D16-D20 决策记录
+- 入册记忆 `feedback_grep_endpoint_schema_before_specs.md`（写 PRD/plans 前必 grep schemas.py 实证）
+
+### task-4.1 个人页框架改造
+
+- `1fd0c43` 5 区块 + city badge fallback + 2 槽位 placeholder / 三审通过 + 真机验证
+
+### task-pre-4.2 后端 power-curve 滚动窗口升级
+
+- `7396ea5` period 5 档自然历法 → 滚动窗口 `last_30_days/90/180/365/all_time` / 文档 4 处同步 / D21 component 化哲学入册
+
+### task-4.2 个人页内容塞入 + v2/v3 polish + 真闭环（6 次 hotfix 链）
+
+- `81862e5` v1 双 component 路线（power-curve-card + heatmap-card / D21 落实）
+- `5d7cba9` v2 polish — power-curve 7 档 [0,3,30,60,300,1200,3600] + heatmap polylines（marker→polyline / D26 + D27 + D28 + D29）
+- `f519170` v3 polish — D30 city 改可选 + D31 GCJ-02 坐标转换 + D32 power-curve period 切换 UI
+- `e232604` hotfix v3-1 heatmap-card polyline 总点数 cap 8000（防 setData 1MB 上限）
+- `3321c46` hotfix v3-2 heatmap polyline cap 8000 → 50000（修网格状直线视觉灾难）
+- `46a4fc0` hotfix v3-3 heatmap segment split / 修虚假对角长直线
+- `b0c1799` hotfix v3-4 heatmap 砍 cap / 恢复 v3 polish 第一次部署精度
+- `9f7d9b7` hotfix v3-5 power-curve N+1 修 / 24s → 1-2s（IN 查询 + only 字段）
+- `bb94a4e` + `5c8228c` hotfix v3-6 heatmap 分层虚实线 + simplify 1500 + backfill（修山区物理 GPS 误差散网 / 中位数 30m → 21m / >500m segment 1263 → 443）
+- `faba98f` task-4.2 真闭环总结 + D33 map matching backlog 入册（Sprint 5/6 跟 D28 高德 webview 一起做）
+
+### task-4.3 用户详情页（看他人主页）
+
+- `5de9f40` 后端补 2 endpoint：`GET /api/user/{user_id}/power-curve` + `GET /api/user/{user_id}/heatmap`（同 self 函数 + 不同 user_id / city 同 v3 polish 改可选）
+- `203ed44` 小程序新建用户详情页 page + 头像跳转入口（notification only / D-P09 范围）/ component reuse（power-curve-card + heatmap-card 已建好 / 4.3 不重写）
+
+### task-4.4 explore tab 改造 + 砍 leaderboard tab（5 → 4 tab）
+
+- `224f22f` explore tab 瀑布流 + 6 城筛选 + NEW 标签（30 天判断）
+- `4d0ab12` 砍 leaderboard tab + 跳转改向（D5 决策 / "完全没用"）
+- `9250106` hotfix - SegmentListItem 加 created_at 让 NEW 标签生效
+
+### task-4.5 赛段详情页（4 区块）
+
+- `813e96d` step 1 空架子（让 task-4.4 能跳转）
+- `958c5bd` 4 区块完整 ship（含全网排行榜 top 10 + 我的排名 / D7 反转后展示）
+
+### review fixup + D7 真排名 hotfix
+
+- `9b558af` batch 2 review fixup（3 Important + 1 Nice）
+- `33212a1` D7 hotfix - LeaderboardResponse 加 my_rank + my_elapsed_time（后端真排名 / 前端可直接用）
+- `5062793` D7 hotfix fixup - 补 2 边界测试 + tied 语义文档（tied PR my_rank off-by-one 留 backlog）
+
+### Sprint 4 元层升级（2026-05-08 ~ 05-10）
+
+- memory `feedback_v2_polish_must_dispatch_subagent.md`（v2 polish 类任务必派 subagent / 元认知偷懒"自己快"是错觉 / 实证 77 min）
+- memory `feedback_deploy_must_curl_verify_not_just_docker_ps.md`（部署后必须 curl 真 endpoint 验证 / 三次踩坑实证 / 部署 SOP 5 步）
+- D33 map matching backlog（山区 GPS 散网根治 / OSRM 容器或高德 navigation match API）
+- **2026-05-10 Tim 升级硬规则（双向适用）**：codex 异源审 + Claude 双审 + 主 agent commit 前自审 / 全部必须**先读真 git diff** / 不只读 agent 报告。派 codex / Claude reviewer 时 prompt 第一动作必须强制 `git show <commit>` / `git diff HEAD <files>` / **禁止预先告诉 agent "改动内容摘要"**（误导源 / agent 跳过 diff 走推断 / 假阳性 + 漏关键盲区）。memory `feedback_three_review_pipeline.md` § 2026-05-10 升级硬规则双向适用。实证：D7 hotfix 第二轮 codex 抓 2 真 Important + 1 Nice 全是基于真 diff（vs 信息框架推断会全漏）/ task-4.1 文档刷新双 review 抓 5 Critical+Important（subagent 黑盒化脑补）反向证明硬规则 ROI。
+
+---
+
+## 2026-05-09 task-4.1 文档刷新（v5 收尾索引刷新）
+
+- `docs/architecture-guide.md`：加 v5 4 新模块（common / agent / monitor / admin）+ 模块依赖图新边 + 数据表 9 / API 总路由 41 / 9.1 已修 12 + 9.2 删 Sprint 0 已修 P1 5 项 + 附录 C 加 v5 收尾体检
+- `docs/data-flow-guide.md`：加链路 15（赛段创建 admin from-gpx + from-activity）+ 链路 16（即时反馈对比 6 字段）/ 链路 14 加 task-4.3 看他人 power-curve + heatmap 扩展段
+- `docs/changelog.md`：追加 Sprint 4 完整 task 清单（含 6 hotfix 链 + D7 真排名）+ 本次刷新条目
+- `docs/tech-debt.md`：移除 Sprint 0 已修 P1 5 项（datetime / ensure_valid_token 行锁 / 未绑定路径 / .get() / scheduler Redis 复用）+ 新增 v5 实施期发现的 4 项（D33 map matching / tied PR my_rank / AI 角色重定义 / app/admin/service.py 拆分）
+
+---
+
 ## 2026-05-06 Sprint 1+2+3 收尾会话（task-3.B.2 + 502 hotfix + monitor 探针 + D 决策）
 
 ### task-3.B.2 segment-creator.html 增强 + 搬到 admin-h5 repo

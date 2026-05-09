@@ -57,7 +57,7 @@
 ⚠️ agent 注意:
 - 后端单文件红灯阈值 >600 / segment/service.py 已从 793 降到 189（task-pre-3.B 拆分）/ strava + user service.py 仍红灯（待清 / tech-debt P1）
 - admin H5 独立 repo / vite build 实证通过 / 不计入后端行数 / 项目复杂度评估按 src/ 9 文件 470 行计（不是 ls -la 看到的 14 行视觉冲击 / 详 memory `feedback_project_health_dashboard_gap.md` § 视觉冲击 vs 真复杂度）
-- v5 admin endpoint 11 个全在 /api/admin/* 前缀（task-3.A.1 ~ 3.A.7 / 含 whoami / from-gpx / from-activity / curation-pool / ai/segment-drafts / segments）
+- v5 admin endpoint 12 个全在 /api/admin/* 前缀（task-3.A.1 ~ 3.A.7 / 含 whoami / from-gpx / from-activity / curation-pool / ai/segment-drafts / segments / activities/{id}/trackpoints）
 
 ---
 
@@ -67,15 +67,16 @@
 
 | 模块 | 文件夹 | 代码量 | 引入版本 | 核心职责 |
 |---|---|---|---|---|
-| user | `app/user/` | ~750 行 | v0 | 微信登录、JWT、个人资料、统计、**v5: power_curve service + Redis 缓存**（task-2.C.2 部分） |
+| user | `app/user/` | ~750 行 | v0 | 微信登录、JWT、个人资料、统计、**v5: power_curve / heatmap / 看他人 profile + Redis 缓存**（task-2.C.2/C.3 + task-4.3 看他人 endpoint）|
 | activity | `app/activity/` | ~1750 行 | v0 | 骑行活动 CRUD、异步解析调度、**v5: power_curve 算法**（task-2.B.1 加 calculate_power_curve / _from_activities）|
-| segment | `app/segment/` | ~2320 行 | v0 | 赛段定义、匹配算法、排行榜、即时反馈、from-activity（v5 +474 行）|
+| segment | `app/segment/` | ~2320 行 | v0 | 赛段定义、匹配算法、排行榜、即时反馈、from-activity（v5 +474 行 / pre-3.B 已拆 service.py 793→189 + service_create.py 257 + service_query.py 380）|
 | parsing | `app/parsing/` | 1802 行 | v1 | GPX/FIT/Strava 三源统一翻译层(纯函数) |
 | strava | `app/strava/` | 1996 行 | v2 | Strava OAuth/API/Webhook/tier1-2 导入 |
 | notification | `app/notification/` | ~903 行 | v3 | PR/KOM/KOM_lost 事件检测、通知列表、**v5: 5min 功率进步检测**（task-2.A.1 / progress_detector.py 210 行）|
-| **agent** | `app/agent/` | **252 行** | **v5** | **AI 赛段介绍生成（DeepSeek + RQ async）** |
-| **monitor** | `app/monitor/` | **138 行** | **v5** | **worker 软目标监控（4min 阈值 + 飞书告警）** |
-| **common** | `app/common/` | **61 行** | **v5** | **跨模块工具：地理函数 / haversine / city 推断** |
+| **agent** | `app/agent/` | **295 行** | **v5** | **AI 赛段介绍生成（DeepSeek + RQ async）/ 叶子节点 / 不反向 import 业务模块的 service/router（models 注册 mapper 例外）** |
+| **monitor** | `app/monitor/` | **350 行** | **v5** | **worker 软目标监控（processing_health 4min + 飞书告警）+ admin H5 端到端探针（admin_h5_health 静态站 + 反代）** |
+| **common** | `app/common/` | **80 行** | **v5** | **跨模块工具：地理函数 / haversine / city 推断 / 单向依赖最下方（任意业务模块可向下用）** |
+| **admin** | `app/admin/` | **885 行** | **v5** | **管理后台 12 endpoint（whoami / curation-pool / ai/segment-drafts / segments admin CRUD / from-activity / from-gpx / activities/{id}/trackpoints）/ 编排其他模块 service / require_admin 依赖把关** |
 
 ### 2.2 模块内部结构(统一约定)
 
@@ -99,8 +100,9 @@ app/<模块名>/
 - `app/notification/`: models / schemas / router / service / detector(PR/KOM 同步检测) / **progress_detector**（**v5 task-2.A.1** / 5min 功率进步异步检测）
 - `app/user/`: models / schemas / router / service（**v5 task-2.C.2 部分** 加 `get_user_power_curve` + `invalidate_power_curve_cache` + Redis 缓存）
 - **`app/agent/`** (v5): __init__ / segment_writer / tasks（DeepSeek + RQ）
-- **`app/monitor/`** (v5): __init__ / processing_health（cron 60s + 飞书告警）
+- **`app/monitor/`** (v5): __init__ / processing_health（worker 软目标 4min）/ admin_h5_health（端到端探针 / 静态站 + 反代 / Redis SETNX 5min 去抖）
 - **`app/common/`** (v5): __init__ / geo（haversine / infer_city_from_coords）
+- **`app/admin/`** (v5): __init__ / dependencies（require_admin）/ schemas / router（12 endpoint）/ service（编排候选池 + AI 草稿 + segment / 含 _check_hausdorff_overlap 共享 helper）
 
 ⚠️ agent 注意:
 - 新增模块必须遵守此结构,不得自创
@@ -110,30 +112,41 @@ app/<模块名>/
 ### 2.3 模块依赖图
 
 ```
-             parsing(纯函数层)
-             ↑          ↑
-             │          │
+                         ┌───── admin ─────┐  (v5：编排层 / 依赖 segment + activity + agent)
+                         ↓                 ↓
+             parsing(纯函数层)             agent (v5：叶子 / 仅读 segment.models / 写 segment_ai_drafts)
+             ↑          ↑                  ↑
+             │          │                  │
     user ← activity ← segment ← notification
-              ↑          ↑
-              │          │
-              └── strava ┘
-              (strava 依赖 user/activity/segment/parsing,
-               通过 import_scheduler 写入 activities + segment_efforts + notifications)
+              ↑          ↑          ↑
+              │          │          │
+              └── strava ┘   monitor (v5：探活 / 仅读 activity.models / 不写业务表)
+                  │
+                  └─── common (v5：最下方 / 任意业务模块可向下依赖 / 自己不依赖任何业务模块)
 ```
 
-**实际依赖**(grep 验证,v4 end):
+**实际依赖**(grep 验证,v5 end):
 
-- `user`: 无业务模块依赖
+- `common`: 不 import 任何业务模块（单向依赖最下方 / haversine / infer_city_from_coords 等纯工具）
+- `user`: 主路径无业务模块依赖；v5 power-curve / heatmap 例外 import `activity.models.Activity, Trackpoint` + `activity.power_zones.calculate_power_curve_from_activities` + `common.geo`（user/service.py:280-281, 458-459 / 例外路径 architect 信条 9 已论证 / 历史 v4 user → activity 一直存在）
 - `parsing`: 纯函数层,不 import 任何业务模块
 - `activity`: 依赖 `user` + `parsing`
-- `segment`: 依赖 `user` + `activity`(通过 trackpoints 查询)
+- `segment`: 依赖 `user` + `activity`(通过 trackpoints 查询) + `common.geo`
 - `notification`: 依赖 `user` + `activity` + `segment`
-- `strava`: 依赖 `user` + `activity` + `segment` + `parsing`(`import_scheduler.py` import `activity.models.Activity` / `activity.worker.save_parse_result` / `segment.models.SegmentEffort` / `segment.auto_match.match_activity_against_segments`)
+- `strava`: 依赖 `user` + `activity` + `segment` + `parsing`
+- `agent` (v5): **叶子节点** / 只读 `segment.models.Segment, SegmentAiDraft` + `user.models.User`（后者为 SQLAlchemy mapper 注册必须 import / agent/tasks.py:32-33）+ 写 `segment_ai_drafts` / 不反向 import segment.service / router / 通过参数 dict 输入（ADR-009 边界）
+- `monitor` (v5): 只读 `activity.models.Activity`（processing_health）+ 调外部 webhook + admin H5 反代探活 / **不写任何业务表**
+- `admin` (v5): 直 import `segment.service` + `activity.models`；通过 RQ 字符串 `"app.agent.tasks.generate_segment_draft_task"` 运行时绑定 `agent.tasks`（admin/service.py:18 / 不直接 import agent / 避免循环）。admin 是用户路径之上的"上层应用" / 只 require_admin 用户才能访问
 
 ⚠️ agent 注意:
 - strava **不是**"独立只出不入"——它反向消费 activity/segment 的 model 和 worker 函数,这是当前写入 Strava 导入活动的必经之路
 - 违反核心依赖方向(user ← activity ← segment ← notification)= 循环 import = FastAPI 启动崩溃
 - strava 反向 import activity/segment 不构成循环(activity/segment 不 import strava),但新增时必须确认单向
+- **v5 新增 4 模块的边界硬约束**：
+  - `agent` 不反向 import 业务模块的 service / router（只读 `segment.models` + `user.models` 注册 SQLAlchemy mapper 的例外 / 入参 dict / 出参 INSERT segment_ai_drafts）
+  - `monitor` 不写任何业务表（只读 activities + 调外部 webhook）
+  - `admin` 必须经 require_admin 依赖（用户路径永久禁止访问 /api/admin/*）
+  - `common` 不 import 任何业务模块（只读 stdlib / 第三方）/ 否则就是循环依赖
 
 ---
 
@@ -245,7 +258,7 @@ app/<模块名>/
 
 ---
 
-## 4. 数据表(10 / v5 +3)
+## 4. 数据表(9 / v5 +2)
 
 ### 4.1 表清单
 
@@ -257,10 +270,11 @@ app/<模块名>/
 | `segments` | v0（**v5 加 difficulty / max_gradient / city / elevation_loss / avg_gradient**） | 30-500 | segment |
 | `segment_efforts` | v0 | 5k-50k | segment |
 | `strava_imports` | v2 | 同 users | strava |
-| `notifications` | v3（v5 加 payload JSONB） | 5k-50k | notification |
-| **`segment_ai_drafts`** | **v5** | **同 segments** | **agent**（pending→human_edited→approved/rejected 状态机）|
-| **`segment_curation_pool`** | **v5** | **30-500** | **segment**（admin 候选池 + 周期性脚本算分）|
-| **`progress_records`** | **v5** | **同 users × period** | **notification**（5W 进步推送幂等记录，task-0.6 建表 / 5.C.3 起用）|
+| `notifications` | v3（**v5 加 payload JSONB + 部分唯一索引 uniq_progress_notification_per_activity**） | 5k-50k | notification |
+| **`segment_ai_drafts`** | **v5** | **同 segments** | **agent**（pending→human_edited→approved/rejected 状态机 / segment_id UNIQUE FK）|
+| **`segment_curation_pool`** | **v5** | **30-500** | **segment**（admin 候选池 + 周期性脚本算分 / segment_id UNIQUE FK）|
+
+> **`progress_records` 没建独立表**：spec 早期版本提过，task-2.A.1 实施时改用 `notifications.payload` JSONB + 部分唯一索引 `uniq_progress_notification_per_activity` 实现幂等推送（spec §2 修订补遗 5.5/5.6 / commit `91a3691`）。如果未来文档误引用 `progress_records`，按本表为准。
 
 ### 4.2 表字段规格
 
@@ -524,7 +538,7 @@ Strava 导入路径:
 
 ## 5. API 汇总
 
-### 5.1 用户(8 / v5 +4)
+### 5.1 用户(10 / v5 +6)
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -536,6 +550,8 @@ Strava 导入路径:
 | **GET** | **`/api/user/me/heatmap`** | **个人骑行热图（city 7 枚举 + tracks: list of list of [lon,lat] 保留 activity 边界 / v5 task-2.C.3 + Sprint 4 task-4.2 v2 polish D27）** |
 | **PATCH** | **`/api/user/me`** | **改 settings（v5 只 city / 与 PUT /profile 分开 / B2B-6 设计）** |
 | **GET** | **`/api/user/{user_id}/profile`** | **看他人主页（D-P08 红线白名单 / v5 task-2.C.3）** |
+| **GET** | **`/api/user/{user_id}/power-curve`** | **看他人功率曲线（同 self 函数 + 不同 user_id / v5 Sprint 4 task-4.3）** |
+| **GET** | **`/api/user/{user_id}/heatmap`** | **看他人热图（city 可选 / v5 Sprint 4 task-4.3 + v3 polish D30）** |
 
 ### 5.2 活动(7)
 
@@ -582,7 +598,34 @@ Strava 导入路径:
 | POST | `/api/strava/sync` | 手动触发同步,联动 tier1_completed |
 | GET | `/api/strava/import-progress` | 进度,含 `view_status`: `none/active/stalled/paused/completed`,Redis 1s/user 限速 |
 
-**API 总路由数: 29**(user 8 + activity 7 + segment 5 + user_effort 1 + activity_segment 1 + notification 2 + honor 1 + strava 7 − 1(`/api/user/efforts` 归 segment 一组统计)= 29 / v5 +4 user endpoint）。
+### 5.6 Admin(12 / v5 全新)
+
+> 全部 `/api/admin/*` 前缀 + `require_admin` 依赖 / 用户路径永久禁止访问。
+
+| 方法 | 路径 | 任务 | 说明 |
+|---|---|---|---|
+| GET | `/api/admin/whoami` | 3.A.7 | admin H5 登录验证用 |
+| GET | `/api/admin/curation-pool` | 3.A.2 | 候选池列表（按 pool_score 降序）|
+| PATCH | `/api/admin/curation-pool/{pool_id}` | 3.A.2 | 标记 selected_for_v5 + 触发 AI 草稿 |
+| POST | `/api/admin/ai/segment-drafts/{segment_id}/generate` | 3.A.3 | 202 Accepted + RQ enqueue |
+| GET | `/api/admin/ai/segment-drafts` | 3.A.3 | 草稿列表（filter status / 分页）|
+| PATCH | `/api/admin/ai/segment-drafts/{draft_id}` | 3.A.3 | 改 human_edited_text / status 状态机迁移 / approved 时同步到 segments.description |
+| POST | `/api/admin/segments/from-gpx` | 3.A.6 | 上传 GPX 子段建赛段（multipart）+ Hausdorff 重叠校验 |
+| POST | `/api/admin/segments/from-activity` | 3.A.5 | 选已有 activity trackpoint 范围建赛段 + advisory lock |
+| GET | `/api/admin/segments` | 3.A.4 | 批量管理 list（含 v5 全字段 + filter）|
+| PATCH | `/api/admin/segments/{segment_id}` | 3.A.4 | 改 city / difficulty / 等（schema extra="forbid" 防误改 distance/reference_line）|
+| GET | `/api/admin/activities/{activity_id}/trackpoints` | 3.B.2 | segment-creator 工具内取轨迹点（不限 owner）|
+| DELETE | `/api/admin/segments/{segment_id}` | 3.A.4 | 删赛段（连带清成绩）|
+
+⚠️ 老 `POST /api/segments` 与 `DELETE /api/segments/{id}` v5 起 deprecated（router 顶部 `deprecated=True`）/ Sunset 2026-06-30。
+
+**API 总路由数: 47**（grep `@router.*` 实证 / 2026-05-10 task-4.1 双 review 修订）：
+- 主 router：user 10 + activity 7 + segment 6 + strava 7 + admin 12 + notification 2 + honor 1 = **45**
+- alias router：segment/router.py 内 `user_effort_router` 1（`/api/user/efforts`）+ `activity_segment_router` 1（`/api/activities/{id}/segments`）= **2**
+- 总计 45 + 2 = **47**
+- 其中 deprecated 2 个（老 segment POST/DELETE / `deprecated=True` / Sunset 2026-06-30）/ 仍可访问
+
+**v5 新增 endpoint**：admin 12 全新 + user 6 新（power-curve/heatmap/PATCH me/{id}/profile/{id}/power-curve/{id}/heatmap）+ segment 1 新（efforts/me）= **+19 净增 v5**（不与 deprecated 抵 / deprecated 不影响净增数）。
 
 ⚠️ agent 注意:
 - 完整 OpenAPI schema: `/api/docs`(FastAPI 自动生成)
@@ -732,17 +775,26 @@ v7+ 的 agent 模块与主 SaaS 通过**薄接口**连接,不共享 session / �
 | scheduler 不跑 | 独立容器启动 | v4 |
 | mark-all-read 非幂等 | 改为幂等 | v4 |
 | datetime tz 不一致(strava_imports.updated_at) | 改 tz-aware | v4 |
+| **datetime tz 全栈不一致**（activities / notifications / users 全部）| **5 表 12 列改 tz-aware + Python 用 `datetime.now(UTC)`** | **v5 task-0.1** |
+| **ensure_valid_token 行锁约束只在注释** | **签名改 `(db, user_id) -> tuple[User, str]` + populate_existing 修 stale ORM** | **v5 task-0.2** |
+| **ensure_valid_token 未绑定用户脆弱路径** | **入口 `if user.strava_refresh_token is None: raise ValueError` + scheduler 兜底** | **v5 task-0.3** |
+| **SQLAlchemy legacy `.get()` deprecated** | **批量替换为 `db.get()` / pytest 8 处全清** | **v5 task-0.4** |
+| **scheduler Redis 连接每次新建** | **复用 `app/queue.py:redis_conn` 单一源** | **v5 task-0.5 + 0.8** |
+| **`with_for_update()` 单独不够（陷阱 #12）** | **配 `populate_existing()` 强刷 identity map** | **v5 task-0.2 db7e475** |
+| **跨模块场景 SAVEPOINT（陷阱 #13）** | **内层 `db.begin_nested()` 防 rollback 炸外层 / detector + worker city hook 两次实证** | **v5 task-2.A.1 + 2.C.2** |
+| **PostGIS `ST_*` 在 SQLite fixture 不可用（陷阱 #15）**| **`_check_hausdorff_overlap` 加 dialect 守卫 + mock dialect.name="postgresql"** | **v5 task-3.A.6** |
+| **Strava tier1 死循环（陷阱 #16）**| **dedupe 前先推进 oldest_start_date 游标 / 防 inclusive 边界卡同 ts** | **v5 hotfix `db073b6`** |
+| **小程序 chart canvas wx:if race（陷阱 #17）**| **`wx:if`→`hidden` + setTimeout 100ms 替代 nextTick** | **v5 hotfix `bcc2ee1`** |
+| **nginx + docker hostname-based proxy_pass DNS 缓存（陷阱 #18）**| **resolver 127.0.0.11 + 变量化 proxy_pass** | **v5 admin-h5 repo `91ca336`**（hash 在 admin-h5 独立 repo 不在 velo / `git rev-parse` 在 velo 内查无） |
+| **第三方依赖激活状态测不到（陷阱 #19 / "喇叭没插电源"）**| **部署后有意激活回归 + 写进 deployment-diary** | **v5 task-monitor-admin-h5 D 决策** |
+| **admin H5 端到端监测盲区** | **monitor 容器加 admin_h5_health 探针（log-only / D 决策）** | **v5 commit `6d6657f`** |
+| **前端错误文案 catch-all 误导排查** | **getErrorDetail 单一真相源按状态码分流（401/403/5xx/网络）** | **v5 admin-h5 repo `91ca336`**（hash 在 admin-h5 独立 repo 不在 velo / `git rev-parse` 在 velo 内查无） |
 
 ### 9.2 待修(🟡 / 🔴,tech-debt)
 
 | 风险 | 级别 | 状态 |
 |---|---|---|
-| datetime tz 不一致(activities/notifications 其他字段) | 🟡 P1 | tech-debt #1 |
-| ensure_valid_token 行锁约束 | 🟡 P1 | tech-debt #2 |
-| ensure_valid_token 未绑定用户路径 | 🟡 P1 | tech-debt #3 |
-| SQLAlchemy legacy .get() | 🟢 低 | tech-debt #4 |
-| scheduler Redis 连接每次新建 | 🟡 P1 | tech-debt #5 |
-| N+1 查询(排名循环) | 🟡 | 代码 TODO |
+| N+1 查询(排名循环) | 🟡 | 代码 TODO（v5 task-4.2 power-curve N+1 已修 / 排名循环未修）|
 | 孤儿文件清理 | 🟡 | 无机制 |
 | 匹配断裂静默跳过 | 🟡 | 无回溯 |
 | trackpoints 无 UNIQUE(activity_id, seq) | 🟡 | 缺 DB 约束 |
@@ -750,6 +802,12 @@ v7+ 的 agent 模块与主 SaaS 通过**薄接口**连接,不共享 session / �
 | trackpoints 无分区策略 | 🟡 | 未来事 |
 | 删 importing 中 activity 外键报错 | 🟡 | 未处理 |
 | strava token 明文存储 | 🟡 | 未加密 |
+| **D33 map matching**（v5 v3 polish 遗留）| 🟡 | 山区 GPS 物理误差散网 / OSRM 容器或高德 navigation match API / 1-3 天 |
+| **tied PR my_rank off-by-one**（v5 D7 双 review I1）| 🟡 | 百级 tied 概率 < 1% / 跟 D33 一起补 / 主榜加 (elapsed_time, effort_id) 二级排序键 |
+| **AI 角色重定义 / segment_facts 形态 B**（v5 PROD-2 / Tim 2026-05-06 7 条改写洞察）| 🟡 | Sprint 5+ PRD / 待赛段 50 → 500 时 |
+| **app/admin/service.py 353 行黄灯 + tests/test_admin_router.py 759 行红灯**（v5 task-3.A.4）| 🟡 | 待 admin 系列再膨胀时升级拆分 |
+| **app/middleware/ untracked**（task-1.C.1 残留）| 🟢 | 待 Tim 单独裁决 A/B/C |
+| **v5 backfill _FakeSegment mock 缺 reference_line**（task-0.7 dev stack）| 🟢 | 测试 fixture / 生产已实证 24 segments + 2 users 回填成功 |
 
 ⚠️ agent 注意: 新期开工前**必须扫 tech-debt.md**,新期 spec 不允许依赖还在 tech-debt 清单里的功能(CLAUDE.md 防黑盒化机制 3)。
 
@@ -804,10 +862,21 @@ v7+ 的 agent 模块与主 SaaS 通过**薄接口**连接,不共享 session / �
 | GPX 解析 | 自研 + gpxpy |
 | 坐标转换 | xyconvert + numpy(GCJ-02 ↔ WGS-84) |
 
-## 附录 C: 收尾体检(v4)
+## 附录 C: 收尾体检
 
+### v4
 - 10 分钟能给陌生人讲清系统 ✅
 - 画清典型用户操作全链路 ✅
 - 文件 / 函数 30 秒可读 ⚠️ 2 处待清理(strava/service.py handle_callback, import_scheduler.py _run_tier1)
+
+### v5（task-4.1 文档刷新通过 / task-4.2 黑盒度三问体检前）
+
+- 4 新模块 init.py 一句话画像（common / agent / monitor / admin）✅
+- 模块依赖图加新边 + agent 叶子节点 / admin 上层应用边界 ✅
+- 7 条新数据流（10-16）章节齐 ✅
+- API 总路由 29 → 41（含 admin 11 + user 10 + strava 7 等）✅
+- 数据表 7 → 9（segment_ai_drafts + segment_curation_pool / progress_records 没建表 = JSONB 路线）✅
+- v5 已修风险 12 条全标 🟢（含 5 条新陷阱 #15-#19）✅
+- 红灯文件 ⚠️ admin/service.py 353 / tests/test_admin_router.py 759 待 Sprint 5+ 拆 / segment/service.py 已拆（pre-3.B / 793 → 189）✅
 
 下期必答的收尾三问(CLAUDE.md 防黑盒化机制)。

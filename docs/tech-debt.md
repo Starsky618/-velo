@@ -4,61 +4,17 @@
 
 ---
 
-## 第 5 期（下期）P1 清单 — 开工前必评估
+## 第 4 期遗留 P1（v5 Sprint 0 已全部清理 ✅）
 
-### 来源：第 4 期批 1-6 双审判（2026-04-17）
+> **2026-05-09 task-4.1 文档刷新时移除**：v5 Sprint 0 task 0.1-0.5 / 0.8 已闭环 5 项 P1。详见 `docs/changelog.md` 2026-04-29 起 Sprint 0 章节。
 
-#### 1. datetime 栈内不一致（naive vs aware）
-
-**现状**：
-- `strava_imports.updated_at` 已是 `DateTime(timezone=True)`（task-7.1）
-- `activities.started_at` / `activities.updated_at` / `notifications.expires_at` 仍是 naive `DateTime`
-- `app/notification/service.py:69-71, 124, 202, 316` 用 `datetime.utcnow()`（naive + Python 3.12+ Deprecation）
-
-**风险**：
-- 任何跨这两种字段的减法 → TypeError
-- Python 3.14 彻底移除 `datetime.utcnow()` 后编译失败
-
-**下期动作**：
-- 把全项目 `datetime.utcnow()` 替换成 `datetime.now(timezone.utc)`
-- 把所有 `DateTime` 字段迁移成 `DateTime(timezone=True)`（Alembic 迁移 + 老数据 `AT TIME ZONE 'UTC'`）
-
-#### 2. `ensure_valid_token` 行锁约束只在注释里
-
-**现状**（`app/strava/service.py`）：
-- task-7.6 I8 给函数入口加 `SELECT FOR UPDATE`
-- 但 caller `StravaClient._request` 在刷 token 后仍持有入参 `self.user` 引用
-- 约束只靠注释："调用方只用返回的 token 字符串，不写 user 字段"
-- 未来有人改 client.py 会静默失效
-
-**下期动作**：
-- 把 `ensure_valid_token` 签名改为 `(db, user_id: int) -> tuple[User, str]` 返回行锁 user + token
-- 或封装成 `refresh_token_atomically(db, user_id) -> str` 彻底不传 user 对象
-- caller 显式用返回的 user 做后续操作
-
-#### 3. `ensure_valid_token` 对未绑定用户路径脆弱
-
-**现状**：
-- `user.strava_token_expires_at is None` 时进入刷新分支
-- 用 `refresh_token=None` 请求 Strava → 400 → 抛"Strava 授权已失效"
-- Race condition：sync 进行中另一个请求调 401 清 token → sync 的下一次 API 调用会触发此脆弱路径
-
-**下期动作**：
-- 函数入口加 `if user.strava_refresh_token is None: raise ValueError("Strava 未绑定")`
-
-#### 4. SQLAlchemy legacy `.get()` 用法
-
-**现状**：`tests/test_notification.py` 多处 `Session.query().get()`（Deprecated since 2.0）
-
-**下期动作**：批量替换为 `session.get()`
-
-#### 5. scheduler 的 Redis 连接每次新建
-
-**现状**（`app/strava/import_scheduler.py:187-198`）：
-- 每次空返回都 `Redis.from_url(settings.REDIS_URL)` 新建连接
-- 应复用全局 `_redis` 客户端（`app/strava/client.py:59`）
-
-**下期动作**：refactor 用全局 `_redis`
+| # | 项 | 修复 commit |
+|---|---|---|
+| 1 | datetime 栈内不一致 | task-0.1 `4a94097`（5 表 12 列改 tz-aware + Python `datetime.now(UTC)`）|
+| 2 | `ensure_valid_token` 行锁约束只在注释 | task-0.2 `022e2b1` + `db7e475`（签名改造 + populate_existing）|
+| 3 | `ensure_valid_token` 未绑定用户路径 | task-0.3 `07327b1`（入口校验 + scheduler 兜底）|
+| 4 | SQLAlchemy legacy `.get()` | task-0.4 `5e44c4f`（批量替换 8 处）|
+| 5 | scheduler Redis 连接每次新建 | task-0.5 + 0.8 `04bb17d`（并入 app/queue.py 单一源）|
 
 ---
 
@@ -303,9 +259,79 @@ CREATE TABLE segment_facts (
 - 微信服务消息推送（spec §9.3，独立大任务）
 
 ### 后端相关
-- N+1 查询（排名计算循环发 SQL）—— 代码已标 TODO
+- N+1 查询（排名计算循环发 SQL）—— 代码已标 TODO；**v5 task-4.2 已修 power-curve N+1（24s → 1-2s）/ 排名循环未修**
 - trackpoints 表无分区策略（百万级用户后要加）
 - ~~service.py 单文件 727 行~~ ✅ 已解决（task-pre-3.B / 2026-05-05 拆分为 service.py 189 + service_create.py 257 + service_query.py 380 / 详 commit）
+
+---
+
+## 来源：v5 Sprint 4 task-4.2 v3 polish 遗留（2026-05-09）
+
+### D33 map matching（v5 真闭环 6 hotfix 链遗留）
+
+**现状**：heatmap 山区赛段（如太原西山片区）有真物理 GPS 误差散网——单 segment >500m 跳点 1263 条。task-4.2 v3 polish 用"分层虚实线 + simplify 1500 + backfill"hack 修了 65%（1263 → 443 / 中位数 30m → 21m），但根本问题是 GPS 物理误差不是软件能完全修的。
+
+**未来方向**：
+- A. OSRM 容器（开源 / 自建 / 用 OpenStreetMap road network）/ trackpoint 喂进去 snap 到最近道路
+- B. 高德 navigation match API（国内合规 / 速度快 / 但要 API 配额）
+- 工程量 1-3 天 / 性价比中
+
+**触发条件**：Sprint 5/6 跟 D28 高德 webview（探索 tab 用高德地图渲染）一起做 / 不单独立项
+
+**优先级**：低 / 当前 hack 已让 90% 用户满意 / 真根治留 v6+
+
+### tied PR my_rank off-by-one（D7 双 review I1）
+
+**现状**：task-4.5 D7 真排名 hotfix（commit `33212a1`）给 LeaderboardResponse 加 my_rank + my_elapsed_time。算法基于 `(elapsed_time, created_at)` 排序，**tied PR**（相同 elapsed_time）场景下 my_rank 可能 off-by-one（用户看到第 4 实际是第 3-4 并列）。
+
+**真实业务影响**：百级用户量 tied 概率 < 1% / 出现不影响数据正确性 / 视觉差 1 名
+
+**下期动作**（跟 D33 一起补）：
+- 主榜加 `(elapsed_time, effort_id)` 二级排序键 / effort_id 是单调递增 → 永远稳定 tie-break
+- 测试加"两 effort 同 elapsed_time 不同 effort_id 的 my_rank 计算"边界
+
+**优先级**：低 / 真踩才修
+
+### 测试覆盖盲区 2 处（v3 polish ship 后批 review）
+
+- worker hook 触发 invalidate_heatmap_cache 回归测试（heatmap city 改可选后双 cache key 是否真清）
+- 无 city 精确 key 被清验证
+
+**下期动作**：Codex --resume 时列下轮 backlog / 不阻塞当前 ship
+
+---
+
+## 来源：v5 PROD-2 AI 角色重定义（Tim 2026-05-06 真用 + 7 条改写洞察）
+
+### 现状
+admin H5 草稿审核生产真用 / Tim 改稿 7 条 approved（segment_id 6/8/9/10/20/21/22）/ 提炼三类"独家武器"AI 永远编不出：致命点警告 / 实用补给情报 / 跨 GEO 社交基准。
+
+### 形态 B 详细设计已沉淀（见本文件上方"### 形态 B 详细设计"段）
+
+### 触发条件
+- 候选池 selected 数量 > 50 / 手工写吃不消时
+- 或 Tim 觉得"raw material 多了 / AI 拼装比手写省力"时
+
+### 优先级
+中 / Sprint 5+ PRD 时考虑 / 当前 50 条规模手工写 OK
+
+---
+
+## 来源：v5 Sprint 3 task-3.A.4 admin 模块红灯（待再膨胀时升级）
+
+### 现状
+- `tests/test_admin_router.py` 759 行红灯（>600）/ 混合 4 个 endpoint domain
+- `app/admin/service.py` 353 行黄灯（>300）/ 混合 3 个子领域
+
+### 触发条件
+- 下一次 admin endpoint 系列继续膨胀时（task-3.A.5 已把 from-activity 测试放 `tests/admin/` 部分缓解）
+
+### 下期动作
+- 拆 `tests/test_admin_router.py` → `tests/admin/test_curation_pool.py` / `tests/admin/test_ai_drafts.py` / `tests/admin/test_admin_segments.py`
+- 同步评估 `app/admin/service.py` 拆 pool / draft / segment admin 子模块
+
+### 优先级
+低 / 当前 admin 系列稳定 / 真撑大再拆
 
 ---
 

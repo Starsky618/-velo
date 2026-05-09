@@ -18,8 +18,15 @@
 7. [链路 7: 骑行详情页数据聚合](#7-链路-7-骑行详情页数据聚合)
 8. [链路 8: 赛段详情与排行榜](#8-链路-8-赛段详情与排行榜)
 9. [链路 9: cleanup 僵尸扫描](#9-链路-9-cleanup-僵尸扫描)
-10. [全局不变式](#10-全局不变式)
-11. [未实现链路(易踩坑)](#11-未实现链路易踩坑)
+10. [链路 10: AI 草稿生成 (v5)](#链路-10ai-草稿生成v5-task-1b1--5b2)
+11. [链路 11: worker 软目标监控 (v5)](#链路-11worker-软目标监控v5-task-1c1--571)
+12. [链路 12: 用户功率曲线查询 + 缓存 (v5)](#链路-12用户功率曲线查询--缓存v5-task-2c2--5c2)
+13. [链路 13: 城市热图 + PATCH 改 city (v5)](#链路-13城市热图--patch-改-cityv5-task-2c2c3--5a1)
+14. [链路 14: 看他人主页 (v5)](#链路-14看他人主页v5-task-2c3--5a2)
+15. [链路 15: 赛段创建 (v5 admin from-gpx + from-activity)](#链路-15赛段创建v5-task-3a5--3a6--5b1--5d4--5d6)
+16. [链路 16: 即时反馈 (v5 赛段详情页对比 6 字段)](#链路-16即时反馈v5-task-1a3--5c1)
+17. [全局不变式](#全局不变式)
+18. [未实现链路(易踩坑)](#未实现链路易踩坑)
 
 ---
 
@@ -1291,6 +1298,127 @@ efforts / activities 列表 / heatmap / strava_access_token / strava_refresh_tok
 - `_PROFILE_RESPONSE_KEYS` 集合本身不应包含敏感字段名（元防回退测试）
 - 改白名单字段时**必须同步**：service `_PROFILE_RESPONSE_KEYS` ↔ schema `UserProfileResponse` 字段
 - BJ_TZ 划"本月"（与 link 12 power_curve / link 1.4.5 detector 一致）
+
+### 14.7 v5 task-4.3 扩展：看他人 power-curve / heatmap
+
+Sprint 4 task-4.3（commit `5de9f40` + `203ed44`）加 2 个看他人 endpoint：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/user/{user_id}/power-curve?period=` | 复用 `service.get_user_power_curve` / 看他人 = 同函数 + 不同 user_id |
+| GET | `/api/user/{user_id}/heatmap?city=` | 复用 `service.get_user_heatmap` / city 同 v3 polish 改可选 |
+
+合规：上面"严格不返字段"是 profile schema 的 D-P08 红线；power-curve / heatmap 不属 profile，
+看自己看他人字段集合一致 → 设计上即"公开" → 直接放行。
+
+---
+
+## 链路 15：赛段创建（v5 task-3.A.5 + 3.A.6 / 5.B.1 + 5.D.4 + 5.D.6）
+
+### 15.1 触发
+
+admin H5 三个入口：
+- POST `/api/admin/segments/from-gpx` — 上传 GPX 子段 → 计算 → 入库（task-3.A.6 / commit `1432fad`）
+- POST `/api/admin/segments/from-activity` — 选已有 activity 的 trackpoint 范围 → 入库（task-3.A.5 / commit `8be37e3`）
+- segment-creator.html 工具内调上面两个 endpoint（task-3.B.2 / 搬到 admin-h5 repo / commit `c01b7fd` + admin-h5 `71de031`）
+
+老 endpoint `POST /api/segments` 与 `DELETE /api/segments/{id}` 已 deprecated（router.py 顶部 `deprecated=True` / Sunset 2026-06-30 / 沉淀 tech-debt）。
+
+### 15.2 from-gpx 序列（task-3.A.6）
+
+```
+[admin H5]  前端 segment-creator.html 用 gpxpy 解析 .gpx 文件 → 提取 trackpoints
+            POST /api/admin/segments/from-gpx
+            JSON body: { name, description, reference_points: list[{lat, lon}], coordinate_system }
+  ↓ require_admin 依赖
+  ↓ admin.service.create_from_gpx(db, body):
+     ↓ 接收前端解析后的 trackpoints（不在后端跑 gpxpy / 后端不收 .gpx 文件）
+     ↓ 计算字段（app/segment/algorithms.py 纯函数）：
+        - distance（haversine 累计）
+        - elevation_gain / elevation_loss
+        - avg_gradient / max_gradient（100m 滑窗）
+        - elevation_profile（80 点采样）
+        - difficulty（4 档枚举）
+        - city（infer_city_from_coords / common.geo）
+     ↓ wkt = build_linestring(...)
+     ↓ _check_hausdorff_overlap(db, wkt) ✨ 共享 helper（task-3.A.6 抽 / from-gpx + from-activity 共用）
+        ✨ dialect 守卫：if db.bind.dialect.name == "postgresql"
+        ✨ ST_HausdorffDistance(reference_line, ST_GeomFromText(?, 4326)::geography) < 100
+        ⚡ 命中 → raise SegmentOverlapError("已有 segment id=N 高度重叠") → router 翻 409
+        ⚠️ SQLite 测试 fixture 跳过（陷阱清单 #15）
+     ↓ INSERT segments（含全部 v5 字段）
+     ↓ db.commit() → segment_id
+  ↓ 返 201 + SegmentResponse
+```
+
+### 15.3 from-activity 序列（task-3.A.5）
+
+```
+[admin H5]  POST /api/admin/segments/from-activity body={activity_id, start_index, end_index, name, ...}
+  ↓ require_admin
+  ↓ admin.service.create_from_activity:
+     ↓ 🔒 advisory lock：pg_advisory_xact_lock(hashtext('segment-create-from-activity'))（**全局 hash 字符串** / service_create.py:201 / 全 from-activity 调用串行 / 不是 per-activity）
+     ↓ tps = SELECT Trackpoint WHERE activity_id=? AND seq BETWEEN start AND end ORDER BY seq
+     ↓ if len(tps) < 10 → InvalidSegmentRangeError → router 翻 422
+     ↓ 同 from-gpx 算字段
+     ↓ 同 from-gpx 跑 _check_hausdorff_overlap（共享 helper）
+     ↓ INSERT segments（advisory lock 自动随事务释放）
+  ↓ 返 201
+```
+
+### 15.4 关键陷阱
+
+| # | 陷阱 | 防御 |
+|---|------|------|
+| 1 | PostGIS `ST_*` 在 SQLite fixture 不可用（陷阱 #15）| `_check_hausdorff_overlap` 加 dialect 守卫 + 单测 mock dialect.name = "postgresql" |
+| 2 | from-activity 并发 → 多 segment 并发写 | pg_advisory_xact_lock(hashtext('segment-create-from-activity')) **全局串行**所有 from-activity 调用 / 不是 per-activity / 简单稳妥 |
+| 3 | 双路径重复算字段 = 复制粘贴风险 | 算法函数全在 `app/segment/algorithms.py` 纯函数 + 共享 helper |
+| 4 | GCJ-02 vs WGS-84 坐标系混 | gpx 默认 WGS-84 / activity trackpoint 也是 WGS-84 / 入库前不转 |
+
+### 15.5 不变式
+
+- 全部 admin 创建路径走 require_admin 依赖（用户路径**永久禁止**创建 segment）
+- 算字段函数纯函数 / 不碰 DB / 测试不挂 fixture
+- Hausdorff 阈值 100m（spec §3.7 拍）/ 改阈值同时改测试 + 文档
+
+---
+
+## 链路 16：即时反馈（v5 task-1.A.3 / 5.C.1）
+
+### 16.1 触发
+
+用户在小程序赛段详情页打开某条赛段 → 前端调 `GET /api/segments/{segment_id}/efforts/me` → 展示"上次 vs PR vs 本次差值"6 字段。
+
+### 16.2 序列
+
+```
+[api]  GET /api/segments/{segment_id}/efforts/me  Auth: Bearer JWT
+  ↓ get_current_user 解 JWT → user_id
+  ↓ router 显式查 segment 不存在 → 404（防 service 静默返 None）
+  ↓ segment.service.get_my_effort_with_compare(db, segment_id, user_id):
+     ↓ efforts = SELECT SegmentEffort WHERE segment_id=? AND user_id=?
+                 ORDER BY created_at DESC LIMIT 100
+     ↓ if not efforts → return {"current": None, "last": None, "pr": None,
+                                 "diff_seconds": None, "is_pr": False, "is_first": True}
+     ↓ current = efforts[0]
+     ↓ last = efforts[1] if len(efforts) >= 2 else None
+     ↓ pr = min(efforts, key=lambda e: e.elapsed_time)
+     ↓ diff_seconds = current.elapsed_time - last.elapsed_time if last else None
+     ↓ is_pr = (current.elapsed_time == pr.elapsed_time and len(efforts) >= 2)
+     ↓ is_first = len(efforts) == 1
+     ↓ return EffortCompareResponse 6 字段
+```
+
+### 16.3 spec 漂移修补痕
+
+- task-1.A.2 codex 第一轮把 6 字段对比类（current / last / pr / diff / is_pr / is_first）误换成 4 字段排名类（my_best / my_latest / rank / total_riders）→ task-1.A.3 主开发发现 + 重写 + 沉淀 memory `feedback_three_review_pipeline.md`
+- task-1.A.3 决策点 2 修：spec 写 `distance_km` → 现有 router 契约已用 `distance` → doc fix `1a0631f` 同步 spec（不破前端）
+
+### 16.4 不变式
+
+- 先查 segment 存在性再查 effort（避免 segment_id 不存在时静默返"is_first=True"误导用户）
+- 单次查询限 100 条 effort（防超长历史用户）
+- 字段名 `elapsed_time` 不是 `time`（陷阱 #10 / 不脑补）
 
 ---
 
