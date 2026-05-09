@@ -299,17 +299,30 @@ Page({
     // 找我在 top 10 里的位置
     const meInTop = items.find((row) => row.isMe)
 
-    // 我有成绩但不在 top 10 → 显示独立行
+    // 我有成绩但不在 top 10 → 显示独立行（D7 hotfix 2026-05-10 后端补真 my_rank）
+    // 后端 LeaderboardResponse 现在直接返 my_rank + my_elapsed_time
+    // 优先用后端真值 / fallback 到 myEffort.pr_elapsed_time（防 leaderboard 拿到但 my 字段 null）
     let myRankOutOfTop = false
     let myRankRow = null
     if (this.data.isLoggedIn && !meInTop) {
-      // 我有 PR 但不在 top 10 内 → 显示独立行（只展示 PR 时间，rank 用 # 占位）
-      const myEffort = this.data.myEffort
-      if (myEffort && myEffort.pr_elapsed_time !== null && myEffort.pr_elapsed_time !== undefined) {
+      const myRank = leaderboard.my_rank
+      const myTime = leaderboard.my_elapsed_time
+      if (myRank !== null && myRank !== undefined && myTime !== null && myTime !== undefined) {
+        // 后端真 my_rank：精确显示"#23"等
         myRankOutOfTop = true
         myRankRow = {
-          rank: '#',  // 后端无 my_rank 字段 / 暂用 # 占位（防误显示具体名次）
-          timeFormatted: formatTime(myEffort.pr_elapsed_time),
+          rank: '#' + myRank,
+          timeFormatted: formatTime(myTime),
+        }
+      } else {
+        // fallback：myEffort 兜底（后端 my_rank=None 但 myEffort 有 PR 的罕见路径）
+        const myEffort = this.data.myEffort
+        if (myEffort && myEffort.pr_elapsed_time !== null && myEffort.pr_elapsed_time !== undefined) {
+          myRankOutOfTop = true
+          myRankRow = {
+            rank: '#',  // 后端 my_rank 缺失 / 用 # 占位（罕见路径 / 防误显示具体名次）
+            timeFormatted: formatTime(myEffort.pr_elapsed_time),
+          }
         }
       }
     }

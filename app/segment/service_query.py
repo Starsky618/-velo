@@ -189,15 +189,23 @@ def get_leaderboard(
     page: int,
     page_size: int,
     bike_type: str | None = None,
-) -> tuple[list[dict], int]:
+    current_user_id: int | None = None,
+) -> tuple[list[dict], int, int | None, int | None]:
     """
-    获取某赛段的完整排行榜（分页，支持车型过滤）。
+    获取某赛段的完整排行榜（分页，支持车型过滤 / 可选登录用户的 my_rank）。
 
     与 get_segment_detail 里的 TOP20 不同，这个函数支持：
     - 分页翻阅完整排行榜（不只前 20 名）
     - 按车型过滤（只看公路车、砾石车等）
+    - Sprint 4 D7 hotfix：登录用户传 current_user_id → 算 my_rank + my_elapsed_time
+      （让前端在 top 10 外也能精确展示"我排第几"，不用 # 占位）
 
     rank 的计算考虑了分页偏移：第 2 页第 1 条的 rank 不是 1 而是 page_size+1。
+
+    返回 4 元组：(items, total, my_rank, my_elapsed_time)
+    - my_rank：登录用户在该赛段的排名（基于 PR / 比我快的 effort 数 + 1 / 跟主榜升序一致）
+    - my_elapsed_time：登录用户的 PR 用时（秒）
+    - 未登录 / 没骑过 / bike_type filter 排除了我的车型 → 两字段为 None
     """
     segment = db.query(Segment).filter_by(id=segment_id).first()
     if segment is None:
@@ -251,7 +259,37 @@ def get_leaderboard(
             "created_at": row.created_at,
         })
 
-    return items, total
+    # Sprint 4 D7 hotfix：算登录用户的 my_rank + my_elapsed_time
+    my_rank = None
+    my_elapsed_time = None
+    if current_user_id is not None:
+        # 我的 PR：MIN(elapsed_time WHERE user_id=me, segment_id=X)
+        # bike_type filter 跟主榜一致：如果筛了车型 / 我的 PR 也只看该车型 effort
+        # （现实场景：用户骑公路车 + 看公路车榜 / 我的 PR 应基于公路车 effort）
+        my_pr_query = (
+            db.query(SegmentEffort.elapsed_time)
+            .filter(SegmentEffort.segment_id == segment_id)
+            .filter(SegmentEffort.user_id == current_user_id)
+        )
+        if bike_type is not None:
+            # JOIN User 看 bike_type；如果用户车型不匹配 / 查不到 effort / my_pr=None
+            my_pr_query = my_pr_query.join(User, User.id == SegmentEffort.user_id).filter(User.bike_type == bike_type)
+        my_pr_row = my_pr_query.order_by(SegmentEffort.elapsed_time.asc()).first()
+
+        if my_pr_row is not None:
+            my_elapsed_time = my_pr_row[0]
+            # rank = (比我快的 effort 总数) + 1
+            # 注意：跟主榜逻辑一致 / 不去重 / 同一用户多个 effort 都算（跟现有 leaderboard 行展示一致）
+            rank_query = (
+                db.query(func.count(SegmentEffort.id))
+                .filter(SegmentEffort.segment_id == segment_id)
+                .filter(SegmentEffort.elapsed_time < my_elapsed_time)
+            )
+            if bike_type is not None:
+                rank_query = rank_query.join(User, User.id == SegmentEffort.user_id).filter(User.bike_type == bike_type)
+            my_rank = rank_query.scalar() + 1
+
+    return items, total, my_rank, my_elapsed_time
 
 
 # ==================== 用户赛段成绩（Task 4.5） ====================

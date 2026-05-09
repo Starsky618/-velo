@@ -49,3 +49,24 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="无效凭证")
 
     return user_id
+
+
+def get_optional_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+) -> int | None:
+    """
+    从请求头中提取并验证 JWT，返回 user_id；无 token 或 token 无效时返回 None。
+
+    用法：公开接口需要"如果登录则识别用户"场景使用。
+    e.g. leaderboard 公开（任何人能看 top）/ 但登录用户能多看到自己的 my_rank。
+
+    与 get_current_user 区别：
+    - get_current_user：必须登录 / 无 token 或 token 无效 → 401
+    - get_optional_user：登录可选 / 无 token 或 token 无效 → 返回 None / 不抛 401
+    """
+    if credentials is None:
+        return None
+    try:
+        return decode_token(credentials.credentials)
+    except (ExpiredSignatureError, JWTError, ValueError):
+        return None

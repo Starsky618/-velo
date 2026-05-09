@@ -132,11 +132,19 @@ class LeaderboardEntry(BaseModel):
 
 
 class LeaderboardResponse(BaseModel):
-    """排行榜分页响应——Task 4.5 独立排行榜接口用"""
+    """
+    排行榜分页响应——Task 4.5 独立排行榜接口用。
+
+    Sprint 4 D7 hotfix（2026-05-10）：加 my_rank + my_elapsed_time 字段，
+    让登录用户在前端能精确显示"我在这个赛段排第几 / 我的 PR 用时"，
+    无论是否在 top 10 内。未登录或没骑过 → 两字段为 None。
+    """
     items: list[LeaderboardEntry]
     total: int
     page: int
     page_size: int
+    my_rank: Optional[int] = None             # 登录用户在该赛段的真排名（基于 PR / 比我快的 effort 数 + 1）
+    my_elapsed_time: Optional[int] = None     # 登录用户的 PR 用时（秒）/ 用于前端独立行展示
 
 
 class SegmentDetailResponse(BaseModel):

@@ -373,6 +373,80 @@ def test_13_leaderboard_not_found(client):
     assert resp.status_code == 404
 
 
+# ========== Sprint 4 D7 hotfix：my_rank + my_elapsed_time ==========
+
+
+def test_13a_leaderboard_no_auth_my_rank_none(client, db):
+    """未登录访问 leaderboard → my_rank / my_elapsed_time 为 None（不抛 401）"""
+    seg_id = _insert_segment(db)
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["my_rank"] is None
+    assert data["my_elapsed_time"] is None
+
+
+def test_13b_leaderboard_logged_in_no_effort_my_rank_none(client, db, test_user, auth_header):
+    """登录但没骑过该赛段 → my_rank=None / my_elapsed_time=None"""
+    seg_id = _insert_segment(db)
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["my_rank"] is None
+    assert data["my_elapsed_time"] is None
+
+
+def test_13c_leaderboard_logged_in_with_pr_returns_rank(client, db, test_user, auth_header):
+    """登录用户骑过该赛段 → my_rank+my_elapsed_time 正确（基于 PR / 比我快的 effort 数 + 1）"""
+    seg_id = _insert_segment(db)
+    act_id = _insert_activity(db, test_user.id, "骑行A")
+
+    # 创建另外两个用户都更快（比我快）
+    from app.user.models import User
+    user2 = User(openid="d7_test_user_2")
+    user3 = User(openid="d7_test_user_3")
+    db.add(user2)
+    db.add(user3)
+    db.commit()
+    db.refresh(user2)
+    db.refresh(user3)
+    act_id2 = _insert_activity(db, user2.id, "骑行B")
+    act_id3 = _insert_activity(db, user3.id, "骑行C")
+
+    # user2: 100 秒 / user3: 150 秒 / test_user: 300 秒（PR）
+    _insert_effort(db, seg_id, act_id2, user2.id, elapsed_time=100)
+    _insert_effort(db, seg_id, act_id3, user3.id, elapsed_time=150)
+    _insert_effort(db, seg_id, act_id, test_user.id, elapsed_time=300)
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    # 我的 PR=300 / 比我快的 effort 有 2 个（100 + 150）/ 我的 rank=3
+    assert data["my_rank"] == 3
+    assert data["my_elapsed_time"] == 300
+    # 验证跟 items 里同 user_id 的 rank 一致（top 内场景）
+    me_in_items = next(item for item in data["items"] if item["user_id"] == test_user.id)
+    assert me_in_items["rank"] == 3
+
+
+def test_13d_leaderboard_logged_in_pr_with_multiple_efforts(client, db, test_user, auth_header):
+    """登录用户对同赛段有多次 effort → my_elapsed_time 取最快（PR）/ my_rank 基于 PR 计算"""
+    seg_id = _insert_segment(db)
+    act_id = _insert_activity(db, test_user.id)
+
+    # 我的 3 次 effort：250 / 200 / 280 → PR=200
+    _insert_effort(db, seg_id, act_id, test_user.id, elapsed_time=250)
+    _insert_effort(db, seg_id, act_id, test_user.id, elapsed_time=200)
+    _insert_effort(db, seg_id, act_id, test_user.id, elapsed_time=280)
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    # 我的 PR=200 / 没有比我更快的 effort（不算我自己的 250/280）/ rank=1
+    assert data["my_rank"] == 1
+    assert data["my_elapsed_time"] == 200
+
+
 def test_14_user_efforts(client, db, test_user, auth_header):
     """用户赛段成绩：返回所有赛段成绩 + 正确排名"""
     seg_id = _insert_segment(db)

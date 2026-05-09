@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_optional_user
 from app.segment import schemas, service
 from app.segment.exceptions import SegmentOverlapError
 from app.segment.models import Segment
@@ -200,6 +200,7 @@ def get_leaderboard(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     bike_type: str | None = Query(None),
+    current_user_id: int | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     """
@@ -207,11 +208,15 @@ def get_leaderboard(
 
     比详情接口的 TOP20 更完整：支持翻页查看所有成绩，
     还能按车型过滤（只看公路车、砾石车等）。
-    不需要登录——排行榜公开。
+    不需要登录——排行榜公开（任何人能看 top）。
+
+    Sprint 4 D7 hotfix：登录用户额外返 my_rank + my_elapsed_time，
+    让前端在 top 10 外也能精确展示"我排第几"，不用 # 占位。
+    用 get_optional_user 而不是 get_current_user：未登录不抛 401 / 走 None 分支。
     """
     try:
-        items, total = service.get_leaderboard(
-            db, segment_id, page, page_size, bike_type,
+        items, total, my_rank, my_elapsed_time = service.get_leaderboard(
+            db, segment_id, page, page_size, bike_type, current_user_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -220,6 +225,8 @@ def get_leaderboard(
         total=total,
         page=page,
         page_size=page_size,
+        my_rank=my_rank,
+        my_elapsed_time=my_elapsed_time,
     )
 
 
