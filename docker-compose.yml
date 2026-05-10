@@ -100,19 +100,44 @@ services:
     volumes:
       - uploads:/app/uploads
 
+  # ===== DB-backup：pg_dump 自动备份（Sprint 5 task-1）=====
+  # 每 24h 跑一次 pg_dump → gzip → 写到 ./backups/velo_YYYYMMDD_HHMMSS.sql.gz
+  # 调度：sleep 86400（启动相对周期 / 跟现有 cleanup/monitor/curation-pool-cron 同 polling 模式）
+  #     部署时机决定首次跑的 wallclock 时间 / 之后每 24h / 不强制凌晨窗口
+  #     原因：100 用户量级 + log-only 告警 + pg_dump 用 MVCC 不锁表 → 中午跑也不影响业务
+  #     未来加 alpine crond 真凌晨调度留 backlog（codex 异源审 2026-05-10 提 / Tim 拍架构一致优先）
+  # 滚动保留 7 天 / 老文件按 mtime > 7 天自动删
+  # 用 postgres:16-alpine 镜像（自带 pg_dump 客户端 / 不污染主 velo 镜像）
+  # 不连主应用代码 / 只挂 scripts:ro + backups 卷
+  # 异地备份留 Sprint 5 backlog（scp / 七牛 / 阿里云 OSS）—— Tim 2026-05-10 拍 MVP 先本地
+  db-backup:
+    image: postgres:16-alpine
+    command: sh -c "while true; do /scripts/backup_db.sh || true; sleep 86400; done"
+    restart: unless-stopped
+    environment:
+      # 用 PGPASSWORD env 自动认证 / 不写密码到命令行（防 ps -ef 泄露）
+      PGPASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./scripts:/scripts:ro       # 备份脚本只读挂载
+      - ./backups:/backups          # 备份文件输出目录（host 路径 ~/velo/backups/）
+    depends_on:
+      - db
+
   # ===== Monitor：worker 软目标监控 + 飞书告警（v5 task-1.C.1）=====
   # 每 60 秒扫一次 activities 表，发现 status='processing' 卡超 4 分钟的就推飞书
   # 沿用 cleanup_zombies 的"while true; sleep N"包装模式，周期更密（60s vs 300s）
-  # 不挂任何 volume：只读 DB + 推外部 webhook，不写文件系统
+  # Sprint 5 task-1：加挂 ./backups:/backups:ro 给 backup_freshness 探针只读访问
   monitor:
     build: .
-    # 主循环跑两个独立探针 / 退码独立 / 失败互不影响：
+    # 主循环跑三个独立探针 / 退码独立 / 失败互不影响：
     # 1. processing_health：扫 DB 卡住的 activity（worker 软目标）
     # 2. admin_h5_health：探 admin H5 反代链路（2026-05-06 502 事故防御）
+    # 3. backup_freshness：探 /backups 最新文件 mtime > 30h log warning（Sprint 5 task-1 / log-only D 决策）
     command: >
       sh -c "while true;
       do python -m app.monitor.processing_health || true;
       python -m app.monitor.admin_h5_health || true;
+      python -m app.monitor.backup_freshness || true;
       sleep 60;
       done"
     restart: unless-stopped
@@ -121,6 +146,8 @@ services:
       FEISHU_BOT_WEBHOOK: ${FEISHU_BOT_WEBHOOK}
       # admin_h5_health 探针用 Redis SETNX 做告警去抖（5 分钟内同 sig 不重发飞书）
       REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backups:/backups:ro  # backup_freshness 只读访问 / 不写
     depends_on:
       - db
       - redis

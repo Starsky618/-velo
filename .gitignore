@@ -26,6 +26,9 @@ Thumbs.db
 caddy_data/
 caddy_config/
 
+# DB 备份目录（Sprint 5 task-1 / 生产 host 路径 ~/velo/backups/）
+backups/
+
 # Superpowers 工具内部文件
 .superpowers/
 docker-compose.override.yml
