@@ -23,6 +23,8 @@ GPX 解析器（v2）——"第一个翻译官"。
 - 坐标系检测只影响 metadata 标记，实际转换由 coord_normalizer 完成
 """
 
+from datetime import timedelta, timezone
+
 import gpxpy
 import gpxpy.gpx
 
@@ -37,6 +39,15 @@ from app.parsing.types import (
     ParseResult,
     Trackpoint,
 )
+
+
+# 北京时区（UTC+8）/ 中国主用户群假设
+# Sprint 5 task-2 day 1 部署 verify 发现 GPX timezone bug：
+# 326 GPX 上传 started_at 19:40:23+00 / Strava 同骑行 11:40:23+00 = 差 8h
+# 根因：GPX 文件 trkpt timestamp 不带时区 / gpxpy 解析后是 naive datetime /
+# SQLAlchemy 把 naive 当 UTC 直接存 → 实际是北京时间被错误标记 UTC。
+# 修法：parser 内 normalize naive → 假设北京时间 → astimezone(UTC)
+BEIJING_TZ = timezone(timedelta(hours=8))
 
 
 # ==================== 常量 ====================
@@ -125,6 +136,15 @@ class GPXParser:
                 f"轨迹点过多（{len(raw_points)}），上限 {_MAX_TRACKPOINTS}"
             )
 
+        # ===== 2.5 时区 normalize（Sprint 5 task-2 day 1 实证修）=====
+        # GPX 文件 trkpt timestamp 标准是 UTC（ISO 8601 带 Z），但实际很多设备/导出工具用 local time
+        # （无时区信息） → gpxpy.parse 返回 naive datetime → SQLAlchemy 把 naive 当 UTC 存 → 实际差 N 小时
+        # 修法：naive → 假设北京时间（中国主用户群 100% 量级 / 海外极少）→ 转 UTC
+        #      aware → 标准化到 UTC（防 +08:00 直接进 DB 后再比较时被 SQLAlchemy 当 UTC 误判）
+        # 实证：326 上传时 started_at 错存 19:40:23+00 / Strava 同骑行 103 是 11:40:23+00（真 UTC）
+        # → 时差 8h / dedupe 算法 5min 容差外漏判
+        _normalize_naive_times_to_utc(raw_points)
+
         # ===== 3. 提取元数据 =====
         creator = gpx.creator if hasattr(gpx, "creator") else None
         coord_system = _detect_coord_system(creator)
@@ -174,6 +194,34 @@ class GPXParser:
 
 
 # ==================== 内部函数 ====================
+
+
+def _normalize_naive_times_to_utc(points: list) -> None:
+    """
+    把 gpxpy 解析出来的 trackpoint.time 标准化到 tz-aware UTC。
+
+    设计思路：
+    - GPX 文件 trkpt timestamp 标准（Topografix GPX 1.1）应是 UTC + ISO 8601 + Z 后缀，
+      但实际很多设备/软件导出的是 local time（无时区）→ gpxpy 解析后是 naive datetime
+    - 主用户群在中国（100% 量级），naive timestamp 假设北京时间（UTC+8）→ 转 UTC
+    - 带 tzinfo 的 timestamp（aware）也 .astimezone(UTC) 标准化（防 +08:00 后续被当 UTC 误判）
+
+    类比国际机场航班板：本地时间 vs 当地时间 vs UTC，必须统一显示语种才能比较。
+
+    踩坑实证（2026-05-11 / Sprint 5 task-2 day 1 部署 verify）：
+    - 326 上传 started_at 19:40:23+00 / Strava 同骑行 103 是 11:40:23+00（真 UTC）
+    - 时差 8h / dedupe 算法 5min 容差外漏判 / 326 误判为独立活动
+    - 跟 task-0.1（DB 列 tz-aware）配合：DB 列已正确 / 但数据进 DB 前没 normalize
+    """
+    for p in points:
+        if p.time is None:
+            continue
+        if p.time.tzinfo is None:
+            # naive → 假设北京时间（中国主用户群 / 海外用户极少）
+            p.time = p.time.replace(tzinfo=BEIJING_TZ).astimezone(timezone.utc)
+        else:
+            # aware → 标准化到 UTC
+            p.time = p.time.astimezone(timezone.utc)
 
 
 def _decode_content(content: bytes) -> str:

@@ -436,6 +436,59 @@ class TestGPXParser:
         with pytest.raises(GPXParseError, match="无轨迹数据"):
             parser.parse(gpx_bytes)
 
+    def test_naive_timestamp_assumed_beijing_converted_to_utc(self):
+        """
+        Sprint 5 task-2 day 1：naive timestamp（无时区）应被假设为北京时间 / 转 UTC。
+        实证 326 GPX 上传 19:40:23 应该 -8h 后存 11:40:23 UTC。
+        """
+        from datetime import timezone
+        # 构造无时区 timestamp 的 GPX
+        gpx_naive = b'''<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test"><trk><trkseg>
+<trkpt lat="37.85" lon="112.55"><time>2024-12-21T19:40:23</time></trkpt>
+<trkpt lat="37.851" lon="112.551"><time>2024-12-21T19:40:33</time></trkpt>
+</trkseg></trk></gpx>'''
+        parser = GPXParser()
+        result = parser.parse(gpx_naive)
+
+        first_time = result.trackpoints[0].time
+        # 应该被解释为北京时间 19:40:23 → UTC 11:40:23
+        assert first_time.tzinfo is not None
+        assert first_time.utcoffset().total_seconds() == 0  # UTC
+        assert first_time.hour == 11  # 19 - 8 = 11
+        assert first_time.minute == 40
+
+    def test_aware_timestamp_with_utc_z_preserved(self):
+        """带 Z 后缀（UTC）的 timestamp 应保持不变。"""
+        gpx_utc = b'''<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test"><trk><trkseg>
+<trkpt lat="37.85" lon="112.55"><time>2024-12-21T11:40:23Z</time></trkpt>
+<trkpt lat="37.851" lon="112.551"><time>2024-12-21T11:40:33Z</time></trkpt>
+</trkseg></trk></gpx>'''
+        parser = GPXParser()
+        result = parser.parse(gpx_utc)
+
+        first_time = result.trackpoints[0].time
+        assert first_time.utcoffset().total_seconds() == 0
+        assert first_time.hour == 11  # 不变
+        assert first_time.minute == 40
+
+    def test_aware_timestamp_with_plus8_normalized_to_utc(self):
+        """带 +08:00 时区的 timestamp 应转到 UTC（防 SQLAlchemy 误判）。"""
+        gpx_plus8 = b'''<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test"><trk><trkseg>
+<trkpt lat="37.85" lon="112.55"><time>2024-12-21T19:40:23+08:00</time></trkpt>
+<trkpt lat="37.851" lon="112.551"><time>2024-12-21T19:40:33+08:00</time></trkpt>
+</trkseg></trk></gpx>'''
+        parser = GPXParser()
+        result = parser.parse(gpx_plus8)
+
+        first_time = result.trackpoints[0].time
+        # +08:00 19:40:23 → UTC 11:40:23
+        assert first_time.utcoffset().total_seconds() == 0
+        assert first_time.hour == 11
+        assert first_time.minute == 40
+
 
 # ==================== coord_normalizer.py 测试 ====================
 
