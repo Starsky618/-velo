@@ -150,7 +150,7 @@ app/<模块名>/
 
 ---
 
-## 3. 运行时容器(8)
+## 3. 运行时容器(10)
 
 ### 3.1 容器清单
 
@@ -161,7 +161,9 @@ app/<模块名>/
 | worker | `velo-worker` | - | v0 | rq worker,异步解析/匹配（v5 起加 ai_drafts 队列） |
 | scheduler | `velo-scheduler` | - | **v4** | 每 30s 推进 Strava 导入(tier1/tier2) |
 | cleanup | `velo-cleanup` | - | v0 | 每 5min 扫 status=processing 超 10 分钟的 activity 置 failed |
-| **monitor** | `velo-monitor` | - | **v5** | **每 60s 扫 stuck 4min+ activity 推飞书告警（task-1.C.1）** |
+| **monitor** | `velo-monitor` | - | **v5** | **每 60s 扫 stuck 4min+ activity + admin H5 端到端探针 / 推飞书告警（task-1.C.1 + task-monitor-admin-h5）** |
+| **curation-pool-cron** | `velo-api` | - | **v5** | **每 7 天跑 `scripts/generate_curation_pool.py` 全表扫 segments 按热度 + 难度分布写入 segment_curation_pool top 100（task-3.C.1）** |
+| **admin-h5** | `admin-h5:latest` | 9000(外) | **v5** | **管理后台 H5 静态站 + nginx 反代 /api/admin/* 到 api 容器（task-3.B.1 D.5 / 独立 GitHub repo Starsky618/admin-h5 private / 容器 9000:80）** |
 | db | `postgis/postgis:16-3.4` | 5432(内) | v0 | PostgreSQL 16 + PostGIS 3.4 |
 | redis | `redis:7-alpine` | 6379(内) | v0 | rq 队列 + OAuth state nonce + 限流计数 |
 

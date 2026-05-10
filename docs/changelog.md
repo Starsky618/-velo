@@ -63,6 +63,40 @@
 
 ---
 
+## 2026-05-10 task-4.2 黑盒度三问体检（v5 收尾防黑盒化）
+
+主 agent 自我体检（CLAUDE.md "防黑盒化"硬要求 / 每期收尾必跑）：
+
+### 第一问：10 分钟讲全貌 — 通过 / 1 处补强
+
+主 agent 对 architecture-guide.md 不查文档讲：v5 4 主轴（B/C/A/D）+ 8 业务模块 + common 共享层
++ 9 张表（v5 +2: segment_ai_drafts / segment_curation_pool）+ 核心反馈环 + 容器拓扑。能 10 min 内讲清。
+
+**补强**：architecture-guide §3.1 容器清单 8 → 10（加 curation-pool-cron + admin-h5 / 之前 task-4.1 文档刷新漏了 / 真 docker-compose 10 个 service 实证）
+
+### 第二问：16 条数据流复述 — 通过
+
+不查文档 mental check 复述：
+- v0-v4 9 条：核心反馈环 / Strava OAuth / Strava 历史导入 / Strava Webhook / 微信登录 / 通知 / 详情聚合 / 赛段排行榜 / cleanup 僵尸扫描
+- v5 新增 7 条：AI 草稿 / monitor 探针 / power-curve + 缓存 / heatmap + city / 看他人主页 / 赛段创建 (from-gpx + from-activity) / 即时反馈 (EffortCompareResponse)
+
+链路 4 Strava Webhook + 链路 8 赛段排行榜的具体 SQL / 校验细节模糊 / 但 data-flow-guide.md 已写清 / 不算"卡壳"（任何 reviewer 都需要查文档看细节）。
+
+### 第三问：30 秒读懂任意文件 — 抽 5 个 / 1 处补强
+
+抽样：
+- ✅ `app/agent/tasks.py`：开头"AI 草稿 RQ 异步任务入口" + 干啥用 + 操作注意（3 项）/ 30 秒懂
+- ✅ `app/monitor/admin_h5_health.py`：开头"admin H5 端到端监测探针 / 2026-05-06 事故防御" + 干啥用 + 操作注意（5 项）/ 30 秒懂
+- ✅ `app/common/geo.py`：开头"GPS → 城市的查表器" + 生活类比（前台中英名牌）+ "为什么矩形不多边形" / 30 秒懂
+- ✅ `app/segment/service_create.py`：4 行说明（来历 + 行为不变）/ 30 秒懂
+- ❌ → ✅ `app/admin/dependencies.py`：原顶部仅 1 行 `"""admin 模块依赖函数。"""`不达标 → **本次补强为完整 docstring**："管理后台门口的保安"+ 干啥用 + 类比（办公楼保安）+ 操作注意（6 项）+ 输入输出
+
+### 整体结论：**通过 / 防黑盒化达标**
+
+下次任何新 subagent / 新人打开任意文件秒懂"这个文件干啥的 / 改它什么坑"。下个 v6 期可基于此架构图扩展，不会因黑盒化重构。
+
+---
+
 ## 2026-05-09 task-4.1 文档刷新（v5 收尾索引刷新）
 
 - `docs/architecture-guide.md`：加 v5 4 新模块（common / agent / monitor / admin）+ 模块依赖图新边 + 数据表 9 / API 总路由 41 / 9.1 已修 12 + 9.2 删 Sprint 0 已修 P1 5 项 + 附录 C 加 v5 收尾体检
