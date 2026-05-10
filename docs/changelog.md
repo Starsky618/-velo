@@ -1,5 +1,71 @@
 # VELO 开发变更日志
 
+## 2026-05-11 Sprint 5 task-3: 探索 tab 骑友 section ✅ ship
+
+### 背景
+
+v5 task-4.3 commit `5de9f40` 加了 `/api/user/{id}/profile` + 看他人 power-curve / heatmap 后端能力 / 但前端唯一进入路径是通知中心 kom_lost 头像跳转 = **后端写完前端没消化**（v4 task-7.x 同款病）。Sprint 5 task-3 让能力真活起来。
+
+### 2 commit 链（codex 1 轮 review 收敛）
+
+| commit | 摘要 |
+|---|---|
+| `82086f9` | task-3 ship：后端 GET /api/user/active + 前端 explore tab 骑友 section + 9 case 测试 |
+| `f001a4d` | codex review 3 项收口：NULLS LAST + 前端 ISO→人话 + endpoint limit 边界测试 |
+
+### 后端实现
+
+| 维度 | 决策 |
+|---|---|
+| endpoint | `GET /api/user/active?limit=10` / 跟 task-2.C.3 拍的 /api/user 单数前缀一致 |
+| schema | `ActiveUserItem` + `ActiveUsersResponse` / 精简字段防过度暴露 |
+| 排序 | `ORDER BY MAX(started_at) DESC NULLS LAST` / codex 抓防 PG/SQLite NULL 行为不一致 |
+| 过滤 | INNER JOIN activities + status='completed' + duplicate_of IS NULL + is_admin=False + 排除自己 |
+| 防御 | limit < 1 或 > 50 → 兜底 reset 10（防恶意大 limit 拖 DB） |
+
+### 前端实现
+
+| 维度 | 决策 |
+|---|---|
+| 位置 | explore tab 城市筛选**之后** / 赛段瀑布流**之前**（社交优先） |
+| UI | 横向 scroll-view / 96rpx 圆头像 + nickname + city + 总里程 + "X 天前活跃" |
+| 隐私处理 | last_activity_at ISO timestamp → "今天/昨天/X 天前/X 周前" 人话渲染 / 不暴露具体到分钟 |
+| 跳转 | 点头像 wx.navigateTo `/pages/user/user?id=X` / 复用 task-4.3 看他人 profile 路径 |
+| 0 用户态 | wx:if 整 section 隐藏 / 不强出空态 |
+| 失败处理 | API 失败静默 / 不阻断赛段瀑布流主功能 |
+
+### 部署 verify
+
+```
+HTTP 200
+{"items": []}
+```
+
+当前 prod 只有 user 1=Admin（被 is_admin 过滤）+ user 2=Tim（被 token 排除自己）→ 0 候选 / 骑友 section 隐藏。**符合预期**。CCF / 颜颜注册上传 GPX 后自动出现。
+
+### Codex review 1 轮 / Critical=0
+
+- Critical=0
+- Important 2：last_activity_at 暴露但前端没用（已修：渲染人话） + ORDER BY NULL 排序漂移（已修：NULLS LAST）
+- Nice 1：limit 边界端到端测（已修：加 2 case）
+
+新 review 规则（feedback_review_agent_must_read_diff_not_prompt）继续起作用 — codex 自由探索抓到 schema/前端协议不对齐 + DB 行为差异。
+
+### 测试覆盖
+
+- `tests/test_user_active.py`：11 case（service 7 + endpoint 4）
+- 全套 443 + 11 - 9（已计入） = **445 passed**
+
+### 下一步
+
+**Sprint 5 task-3 ✅ ship**。Sprint 5 进度：
+- ✅ task-1 pg_dump 备份 MVP
+- ✅ task-2 GPX dedupe MVP + parser timezone fix
+- ✅ task-3 探索 tab 骑友 section
+- 待选：加更多赛段（持续动作）/ admin H5 hotfix loop（按需）/ 1 周真用回归收集痛点
+
+---
+
 ## 2026-05-11 Sprint 5 task-2: GPX 语义级 dedupe MVP ✅ + parser timezone bug 顺手修
 
 ### 触发
