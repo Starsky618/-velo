@@ -66,10 +66,42 @@ Page({
     loading: false,       // 首屏 loading
     loadingMore: false,   // 分页 loading（底部小提示）
     hasMore: true,        // 是否还有下一页
+    activeUsers: [],      // Sprint 5 task-3：骑友 section（最近活跃用户 / 横向 scroll）
   },
 
   onLoad() {
+    // 并行拉赛段 + 骑友（Promise.all 不串行 / 减少首屏感知延迟）
     this.fetchSegments(1, '')
+    this.fetchActiveUsers()
+  },
+
+  /**
+   * 拉最近活跃骑友（Sprint 5 task-3 / 探索 tab 骑友 section）。
+   *
+   * 设计：
+   * - 默认 limit=10 / 横向 scroll 一屏 6 个 + 滑动看后 4 个
+   * - 失败静默 / 不阻断赛段瀑布流（社交 section 是辅助 / 不应让主功能不可用）
+   * - 0 用户场景（你们三人都没活动时）→ activeUsers=[] / wxml wx:if 整 section 隐藏
+   */
+  fetchActiveUsers() {
+    api.get('/api/user/active?limit=10')
+      .then((data) => {
+        this.setData({ activeUsers: data.items || [] })
+      })
+      .catch(() => {
+        // 静默失败 / 不影响赛段瀑布流主功能
+        this.setData({ activeUsers: [] })
+      })
+  },
+
+  /**
+   * 点骑友头像跳到 user 主页（看他人 profile）。
+   * 复用现有 /pages/user/user?id=X 路径（task-4.3 已有 / 通知中心 kom_lost 也用此路径）。
+   */
+  onTapRiderAvatar(e) {
+    const userId = e.currentTarget.dataset.id
+    if (!userId) return
+    wx.navigateTo({ url: '/pages/user/user?id=' + userId })
   },
 
   /**

@@ -210,3 +210,29 @@ class UserProfileResponse(BaseModel):
     total_elevation_m: float
     activity_count: int
     current_month_summary: _MonthSummary
+
+
+# ===== Sprint 5 task-3：探索 tab 骑友 section =====
+
+
+class ActiveUserItem(BaseModel):
+    """
+    探索 tab 骑友 section 单条用户摘要。
+
+    精简字段（不全等于 UserProfileResponse）：
+    - 列表场景只需要"能让用户决定要不要点头像看详情"的最少信息
+    - 头像 + 昵称 + 城市 + 总里程 = 4 维社交识别
+    - 不返 ftp / bike_type / current_month_summary 等详情字段（需要点进 profile 看）
+    """
+    id: int
+    nickname: Optional[str] = None
+    avatar_url: Optional[str] = None
+    city: Optional[str] = None
+    total_distance_km: float
+    activity_count: int
+    last_activity_at: Optional[datetime] = None  # 最近骑行时间（用于排序 + 前端"X 天前"显示）
+
+
+class ActiveUsersResponse(BaseModel):
+    """探索 tab 骑友 section 列表响应 / 按 last_activity_at desc 排序。"""
+    items: list[ActiveUserItem]

@@ -123,6 +123,30 @@ def get_stats(
 # 静态路径（/me/...）vs 动态路径（/{user_id}/...）共存：FastAPI 优先匹配静态
 
 
+@router.get("/active", response_model=schemas.ActiveUsersResponse)
+def get_active_users(
+    limit: int = 10,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    探索 tab 骑友 section（Sprint 5 task-3）。
+
+    返回最近活跃用户列表（按最近骑车时间倒序），排除：
+    - admin 后台账号（is_admin=True）
+    - 当前登录用户自己
+    - 无任何 completed activity 的用户（INNER JOIN 自动过滤）
+    - dedupe 重复的 activity（duplicate_of IS NOT NULL）
+
+    路径用 /api/user/active 单数（跟 task-2.C.3 拍的 /api/user 单数前缀一致）。
+    limit 默认 10 / 前端横向 scroll 用 6-10 个就够。
+    """
+    if limit < 1 or limit > 50:
+        limit = 10  # 防御性兜底（极端 query 参数）
+    items = service.get_active_users(db, exclude_user_id=user_id, limit=limit)
+    return {"items": items}
+
+
 @router.get("/me/power-curve", response_model=schemas.PowerCurveResponse)
 def get_my_power_curve(
     period: schemas.PowerCurvePeriod = schemas.PowerCurvePeriod.last_30_days,

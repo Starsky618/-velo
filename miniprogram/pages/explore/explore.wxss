@@ -46,6 +46,82 @@ page {
   font-weight: 600;
 }
 
+/* ====== Sprint 5 task-3：骑友 section ====== */
+.riders-section {
+  background: #ffffff;
+  padding: 24rpx 0 16rpx;
+  border-bottom: 1rpx solid #ECECEC;
+}
+
+.riders-section-title {
+  padding: 0 24rpx 16rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1c1c1e;
+}
+
+.riders-scroll {
+  white-space: nowrap;
+  padding: 0 24rpx 16rpx;
+}
+
+.riders-list {
+  display: inline-flex;
+  gap: 24rpx;
+}
+
+.rider-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  width: 140rpx;
+  padding: 16rpx 8rpx;
+  border-radius: 16rpx;
+  background: #F8F8FA;
+  transition: transform 0.15s;
+}
+
+.rider-card:active {
+  transform: scale(0.96);
+}
+
+.rider-avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: #E5E5E7;
+}
+
+.rider-name {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #1c1c1e;
+  max-width: 124rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rider-meta {
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: #8e8e93;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rpx;
+}
+
+.rider-city {
+  text-transform: capitalize;
+}
+
+.rider-distance {
+  font-weight: 500;
+  color: #FF2D55;
+}
+
 /* ====== 首屏 loading ====== */
 .loading {
   text-align: center;

@@ -39,6 +39,25 @@
   </view>
 </scroll-view>
 
+<!-- Sprint 5 task-3：骑友 section（最近活跃用户横向 scroll）-->
+<!-- 0 用户场景隐藏整个 section（你们三人都没活动 / 或 API 失败）-->
+<view class="riders-section" wx:if="{{activeUsers.length > 0}}">
+  <view class="riders-section-title">骑友</view>
+  <scroll-view scroll-x class="riders-scroll" enhanced show-scrollbar="{{false}}">
+    <view class="riders-list">
+      <view class="rider-card" wx:for="{{activeUsers}}" wx:key="id"
+            data-id="{{item.id}}" bindtap="onTapRiderAvatar">
+        <image class="rider-avatar" src="{{item.avatar_url || '/assets/default-avatar.png'}}" mode="aspectFill"></image>
+        <view class="rider-name">{{item.nickname || '匿名骑友'}}</view>
+        <view class="rider-meta">
+          <text wx:if="{{item.city}}" class="rider-city">{{item.city}}</text>
+          <text class="rider-distance">{{item.total_distance_km}} km</text>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>
+
 <!-- 首屏 loading -->
 <view class="loading" wx:if="{{loading && segments.length === 0}}">
   <text>加载中...</text>

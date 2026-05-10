@@ -741,3 +741,67 @@ def get_user_profile_for_others(
     }
     # 白名单严格生效（R3-I3 防回退 / 防止未来手滑加敏感字段静默泄漏）
     return _filter_profile_keys(raw_response)
+
+
+# ===== Sprint 5 task-3：探索 tab 骑友 section service =====
+
+
+def get_active_users(db: Session, exclude_user_id: int, limit: int = 10) -> list[dict]:
+    """
+    返回最近活跃用户列表（按 last_activity_at desc）。
+
+    设计思路：
+    - INNER JOIN activities：自然过滤无 activity 用户（不需 LEFT JOIN + HAVING IS NOT NULL）
+    - duplicate_of IS NULL：跟其他列表查询一致 / 跳过 dedup 重复
+    - is_admin = False：admin 后台账号不出现在骑友列表
+    - exclude_user_id：当前用户自己不显示在自己的"骑友"section
+    - GROUP BY 用户字段：每个 user 一条聚合（不是 N×M 笛卡尔）
+    - ORDER BY MAX(started_at) DESC：最近骑车的在前
+
+    类比朋友圈"最近活跃" —— 看到谁刚刚动态多就放在前面。
+
+    参数：
+        db: SQLAlchemy Session
+        exclude_user_id: 当前登录用户 id（排除自己）
+        limit: 返回条数上限（默认 10 / 前端横向 scroll 6-10 个就够）
+
+    返回：
+        list[dict]：每条含 id / nickname / avatar_url / city / total_distance_km / activity_count / last_activity_at
+    """
+    from sqlalchemy import desc
+
+    rows = (
+        db.query(
+            User.id,
+            User.nickname,
+            User.avatar_url,
+            User.city,
+            _func.coalesce(_func.sum(_Activity.distance), 0).label("total_distance_m"),
+            _func.count(_Activity.id).label("activity_count"),
+            _func.max(_Activity.started_at).label("last_activity_at"),
+        )
+        .join(_Activity, _Activity.user_id == User.id)
+        .filter(
+            User.is_admin.is_(False),
+            User.id != exclude_user_id,
+            _Activity.status == "completed",
+            _Activity.duplicate_of.is_(None),
+        )
+        .group_by(User.id, User.nickname, User.avatar_url, User.city)
+        .order_by(desc("last_activity_at"))
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        {
+            "id": r.id,
+            "nickname": r.nickname,
+            "avatar_url": r.avatar_url,
+            "city": r.city,
+            "total_distance_km": round(float(r.total_distance_m) / 1000.0, 1),
+            "activity_count": r.activity_count,
+            "last_activity_at": r.last_activity_at,
+        }
+        for r in rows
+    ]
