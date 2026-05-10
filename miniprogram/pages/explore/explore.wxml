@@ -52,6 +52,7 @@
         <view class="rider-meta">
           <text wx:if="{{item.city}}" class="rider-city">{{item.city}}</text>
           <text class="rider-distance">{{item.total_distance_km}} km</text>
+          <text wx:if="{{item.lastActivityLabel}}" class="rider-last-active">{{item.lastActivityLabel}}</text>
         </view>
       </view>
     </view>

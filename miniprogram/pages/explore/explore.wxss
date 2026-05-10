@@ -122,6 +122,12 @@ page {
   color: #FF2D55;
 }
 
+.rider-last-active {
+  font-size: 18rpx;
+  color: #c7c7cc;
+  margin-top: 2rpx;
+}
+
 /* ====== 首屏 loading ====== */
 .loading {
   text-align: center;

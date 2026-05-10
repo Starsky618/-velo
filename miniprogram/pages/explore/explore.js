@@ -86,12 +86,34 @@ Page({
   fetchActiveUsers() {
     api.get('/api/user/active?limit=10')
       .then((data) => {
-        this.setData({ activeUsers: data.items || [] })
+        // 把 last_activity_at（ISO 时间戳）渲染成"今天活跃 / X 天前活跃"等人话
+        // 防纯时间戳暴露过精确隐私（codex review Important / 用上字段才合理）
+        const items = (data.items || []).map((u) => ({
+          ...u,
+          lastActivityLabel: this._renderLastActiveLabel(u.last_activity_at),
+        }))
+        this.setData({ activeUsers: items })
       })
       .catch(() => {
         // 静默失败 / 不影响赛段瀑布流主功能
         this.setData({ activeUsers: [] })
       })
+  },
+
+  /**
+   * ISO timestamp → 人话："今天活跃" / "X 天前" / "X 周前" / "很久前"
+   * 防过精确隐私暴露（不展示具体到分钟的 last_activity_at）
+   */
+  _renderLastActiveLabel(isoTime) {
+    if (!isoTime) return ''
+    const t = new Date(isoTime).getTime()
+    if (isNaN(t)) return ''
+    const days = Math.floor((Date.now() - t) / (24 * 3600 * 1000))
+    if (days <= 0) return '今天'
+    if (days === 1) return '昨天'
+    if (days < 7) return days + ' 天前'
+    if (days < 30) return Math.floor(days / 7) + ' 周前'
+    return '30 天前'
   },
 
   /**

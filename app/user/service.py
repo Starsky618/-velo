@@ -770,6 +770,8 @@ def get_active_users(db: Session, exclude_user_id: int, limit: int = 10) -> list
     """
     from sqlalchemy import desc
 
+    last_activity_label = _func.max(_Activity.started_at).label("last_activity_at")
+
     rows = (
         db.query(
             User.id,
@@ -778,7 +780,7 @@ def get_active_users(db: Session, exclude_user_id: int, limit: int = 10) -> list
             User.city,
             _func.coalesce(_func.sum(_Activity.distance), 0).label("total_distance_m"),
             _func.count(_Activity.id).label("activity_count"),
-            _func.max(_Activity.started_at).label("last_activity_at"),
+            last_activity_label,
         )
         .join(_Activity, _Activity.user_id == User.id)
         .filter(
@@ -788,7 +790,10 @@ def get_active_users(db: Session, exclude_user_id: int, limit: int = 10) -> list
             _Activity.duplicate_of.is_(None),
         )
         .group_by(User.id, User.nickname, User.avatar_url, User.city)
-        .order_by(desc("last_activity_at"))
+        # ORDER BY MAX(started_at) DESC NULLS LAST：codex 抓的 Important 防 PG/SQLite NULL 排序行为不一致
+        # 虽 INNER JOIN + status=completed 隐含 started_at NOT NULL（completed activity 一定有起骑时间），
+        # 但 nullable=True 列上加 NULLS LAST 是防御性兜底，未来 schema 改动不会突然引入排序漂移
+        .order_by(desc(last_activity_label).nullslast())
         .limit(limit)
         .all()
     )

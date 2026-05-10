@@ -172,3 +172,34 @@ def test_endpoint_requires_auth(client):
     """无 token → 401。"""
     r = client.get("/api/user/active")
     assert r.status_code == 401
+
+
+def test_endpoint_limit_zero_falls_back_to_default(client, auth_header, db, test_user):
+    """?limit=0 → endpoint 兜底 reset 为 default 10（防御性）/ 仍返 200 不 422（codex Nice 抓的边界）。"""
+    base = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
+    other = User(openid="limit_zero_other", is_admin=False, nickname="Rider")
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+    _insert_activity(db, other.id, started_at=base)
+
+    r = client.get("/api/user/active?limit=0", headers=auth_header)
+    assert r.status_code == 200
+    assert len(r.json()["items"]) == 1  # 默认 10 / 这里只有 1 条数据 / 1 个返回
+
+
+def test_endpoint_limit_above_50_falls_back_to_default(client, auth_header, db, test_user):
+    """?limit=51 → endpoint 兜底 reset 为 default 10（防恶意大 limit 拖 DB）。"""
+    base = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
+    # 插 12 个用户每个 1 活动
+    for i in range(12):
+        u = User(openid=f"big_u{i}", is_admin=False, nickname=f"Rider{i}")
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+        _insert_activity(db, u.id, started_at=base - timedelta(days=i))
+
+    r = client.get("/api/user/active?limit=51", headers=auth_header)
+    assert r.status_code == 200
+    # 51 > 50 → reset 10 / 12 候选只返 10
+    assert len(r.json()["items"]) == 10
