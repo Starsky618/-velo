@@ -127,15 +127,27 @@ ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose exec db-backup gunz
 ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose logs monitor --tail 20"  # 应该看到 backup_freshness 跑
 ```
 
-## ✅ 验收
+## ✅ 验收（全部 ✅ / 2026-05-10 23:05 ship / commit `e5c71d0`）
 
-- [ ] `scripts/backup_db.sh` 写完 + 本地 dry-run（仅检查语法）
-- [ ] `app/monitor/backup_freshness.py` 写完 + pytest 4 case 通过
-- [ ] `docker-compose.yml` 加 `db-backup` 服务 + monitor 挂 `./backups:/backups:ro` + monitor command 加探针
-- [ ] Claude code-reviewer subagent 审过（Critical=0）
-- [ ] codex 异源审过（生产配置改动 / codex 甜区）
-- [ ] 部署 + 手动跑 verify + monitor 探针 log 看到
-- [ ] 容器全 Up + 11 容器（10 + db-backup）
+- [x] `scripts/backup_db.sh` 写完 + 含 pg_isready 等待 + pg_dump 拆 pipe（codex round-1 抓 Critical 闭环）
+- [x] `app/monitor/backup_freshness.py` 写完 + pytest **7 case 通过**（5 主路径 + 2 边界 case / codex round-2 Nice 闭环）
+- [x] `docker-compose.yml` 加 `db-backup`（postgres:16-alpine）+ monitor 挂 `./backups:/backups:ro` + monitor command 加 backup_freshness 探针（第 3 个）
+- [x] Claude 主 agent 自审 + 抓 1 Critical（pg_dump|gzip pipe 退码陷阱）+ 修闭环
+- [x] codex 异源审 2 轮收敛（round-1 1 Critical + 1 Important + 1 Nice / round-2 全闭环 Critical=0）
+- [x] 部署 + 手动跑 verify（28.2 MB 备份 / gunzip 头部真 pg_dump 16.13 + PostGIS schema）+ monitor 探针 log 健康路径 silent
+- [x] **生产 11 容器全 Up**（cleanup / curation-pool-cron / db / **db-backup** / redis / scheduler / worker / monitor / api / admin-h5 / caddy）
+
+**真实 verify 数据**（生产服务器 ubuntu@114.132.190.245 / 23:04 SSH 实证）：
+```
+ls -lh ~/velo/backups/
+-rw-r--r-- 1 root root 29M May 10 23:04 velo_20260510_150351.sql.gz  ← 容器自启动时跑
+-rw-r--r-- 1 root root 29M May 10 23:04 velo_20260510_150409.sql.gz  ← 我手动跑
+```
+
+backup 8 秒完成 / 文件 29M / 含 PostgreSQL 16.4 + PostGIS tiger schema + 全表 dump。restore 命令（未来真灾难时）：
+```bash
+gunzip -c ~/velo/backups/velo_<TS>.sql.gz | sudo docker compose exec -T db psql -U velo -d velo
+```
 
 ## 📝 commit
 

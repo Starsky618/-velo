@@ -1,5 +1,86 @@
 # VELO 开发变更日志
 
+## 2026-05-10 Sprint 5 task-1: pg_dump 自动备份 MVP ✅ ship
+
+> v5 期 closure 后 Sprint 5 第一项 / tech-debt 顶部 P0 / 也是 task-4.3 §2 alembic 双向解锁前置。
+
+### 触发
+
+task-4.3 part-3 完成 / Tim 拍"开 Sprint 5"+ 7 个 brainstorm 决策（详 task 卡 §1）。
+
+### 核心实现
+
+| 文件 | 干啥 |
+|---|------|
+| `scripts/backup_db.sh` | 备份脚本 / pg_isready 等待 / pg_dump 拆 pipe / 7 天滚动 |
+| `app/monitor/backup_freshness.py` | 监测探针 / 30h 阈值 / log-only 告警 / 健康路径 silent |
+| `tests/test_backup_freshness.py` | 7 case（5 主路径 + 2 边界）/ 全过 |
+| `docker-compose.yml` | 加 `db-backup` 服务（postgres:16-alpine）+ monitor 加第 3 探针 + `./backups:/backups` 卷 |
+| `.gitignore` | `backups/` |
+| `docs/plans/sprint-5/task-1-pg-dump-backup.md` | 任务卡 + 7 个决策入册 |
+
+### Tim brainstorm 7 拍（详 task 卡 §1）
+
+1. **范围 = MVP 本地**（异地留 backlog / 100 用户量级 + log-only + 服务器物理炸概率极低）
+2. **触发 = 每 24h 启动相对周期**（不强制凌晨 / 跟现有 cleanup/monitor/curation-pool-cron 同 while-true 模式 / 100 用户量级 + pg_dump MVCC 不锁表 → 中午跑也不影响）
+3. **告警 = log-only**（D 决策 / 不接通飞书 webhook）
+4. **路径 = ~/velo/backups/**
+5. **检查 = monitor backup_freshness 探针**（log-only / 跟 admin_h5_health 同路线）
+6. **首次 = 部署完手动跑**
+7. **不开整期 PRD**
+
+### 双审 + Codex 异源审 2 轮收敛
+
+- **主 agent 自审抓 1 Critical**：原 backup_db.sh 用 `pg_dump | gzip > file` pipe / sh 默认只看 gzip 退码 / pg_dump 失败时 gzip 写空文件成功退 0 → freshness 探针被骗。修：拆 pipe / 先 pg_dump 到 .sql 临时文件 / 成功才 gzip。
+- **Codex round-1**：抓 1 Critical + 1 Important + 1 Nice
+  - Critical（cron 时间漂移 spec drift）→ push back 一半 / 改文档消 drift / 保 while-true 架构一致
+  - Important（depends_on 不等 PG ready）→ 加 `pg_isready` 等待循环
+  - Nice（30h 边界 case 缺）→ 加 2 个边界测试
+- **Codex round-2**：3 处 fix 全闭环 / Critical=0 / 唯一 Nice 是注释精度（"60s" 实际最坏 ~115s）→ 改注释精确化
+
+### 部署 verify（生产 ubuntu@114.132.190.245）
+
+```
+NAME                        STATUS
+velo-db-backup-1            Up 16 seconds   ← 新增
+velo-monitor-1              Up 15 seconds   ← 重建挂卷 + 第 3 探针
+velo-api-1                  Up 16 seconds   ← depends_on 链路触发 recreate
+velo-admin-h5-1             Up 16 seconds   ← depends_on 链路触发 recreate
+... 其余 7 容器无变化
+```
+
+手动跑 backup_db.sh：8 秒完成 / 29 MB 文件 / `gunzip | head` 看到真实 PostgreSQL 16.4 + PostGIS tiger schema dump 头。
+
+monitor backup_freshness 探针：容器启动初期有 1 条"backup dir 为空"日志（race / monitor 比 db-backup 先跑探针）/ 之后健康路径 silent（按设计不打日志）。
+
+### 配套文档同步
+
+- `docs/changelog.md`（本条目）
+- `docs/plans/sprint-5/task-1-pg-dump-backup.md` 验收清单 ✅
+- `CLAUDE.md` 当前位置段更新（task-1 ship / 下一步 Sprint 5 待 Tim 选第 2 项）
+
+### 兜底（未来真灾难时 restore 步骤）
+
+```bash
+ssh ubuntu@114.132.190.245
+ls -lh ~/velo/backups/   # 找最新 dump
+cd ~/velo
+gunzip -c ~/velo/backups/velo_<TS>.sql.gz | sudo docker compose exec -T db psql -U velo -d velo
+```
+
+注意：restore 会**完全覆盖**当前 DB 状态 / 真灾难时再用 / 平时不要瞎跑。
+
+### 下一步
+
+**Sprint 5 task-1 ✅ / 待 Tim 选第 2 项**。Sprint 5 backlog 候选（按 ROI 排序）：
+- D33 map matching（赛段匹配精度 / 太原西山外骑行也能匹配）/ 1-3 天
+- task-4.3 §2 alembic 真 PG 双向（v5 task-1 解锁前置已完成）/ 30 分钟
+- D28 高德地图未来 tab（2-3 天）
+- tied PR my_rank off-by-one fix（半天）
+- admin H5 真用回归 hotfix（按需 / Tim/CCF/颜颜每天用时触发）
+
+---
+
 ## 2026-05-10 task-4.3 part-3: 真 E2E 走通 ✅ / v5 期完全 closure 🎯
 
 ### 触发
