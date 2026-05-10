@@ -82,38 +82,25 @@ def test_no_candidates_returns_none(db, test_user):
     assert new.duplicate_of is None
 
 
-def test_existing_higher_score_marks_new(db, test_user):
+def test_finds_duplicate_marks_new(db, test_user):
     """
-    existing 数据全（带功率心率）/ new 只轨迹 → new 标 duplicate_of=existing。
-    模拟真实场景：先 Strava 同步了带传感器版本，用户后传 GPX 简化版。
+    new 跟 existing 4 维匹配 → 永远 new 标 duplicate_of=existing（修法 A：旧的为主 / 不比 score）。
     """
     base_at = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
-    # existing：Strava 同步 / 带功率心率 / 4000 点
-    existing_id = _insert_activity(
-        db, test_user.id,
-        started_at=base_at,
-        avg_power=200, avg_hr=150, avg_cadence=88,
-        track_count=400,  # SQLite Text 存 4000 点会大 / 100 量级足够分高低
-    )
-    # new：纯 GPX / 无传感器 / 100 点 / 4 维全在容差内（同时间 / 同距离 / 同时长 / 同起点）
-    new_id = _insert_activity(
-        db, test_user.id,
-        started_at=base_at + timedelta(seconds=15),
-        track_count=100,
-    )
+    existing_id = _insert_activity(db, test_user.id, started_at=base_at)
+    new_id = _insert_activity(db, test_user.id, started_at=base_at + timedelta(seconds=15))
     new = _get_activity_via_orm(db, new_id)
 
     result = find_and_mark_duplicate(db, new)
 
-    # new 标 duplicate（new 数据 < existing）
+    # new 标 duplicate / 不管 new 数据是否更全 / existing 始终是主
     assert new.duplicate_of == existing_id
     assert result == new_id
 
 
-def test_new_higher_score_marks_existing(db, test_user):
+def test_new_with_more_data_still_marked_as_duplicate(db, test_user):
     """
-    new 数据全 / existing 旧的简化版 → existing 标 duplicate_of=new。
-    模拟：先用户传简化 GPX，后 Strava 同步带传感器全数据。
+    new 数据更全（带功率心率）也标 new duplicate / 旧的不让位（修法 A 关键 trade-off / 验证语义）。
     """
     base_at = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
     existing_id = _insert_activity(db, test_user.id, started_at=base_at, track_count=100)
@@ -125,13 +112,12 @@ def test_new_higher_score_marks_existing(db, test_user):
     )
     new = _get_activity_via_orm(db, new_id)
 
-    result = find_and_mark_duplicate(db, new)
+    find_and_mark_duplicate(db, new)
 
-    # existing 标 duplicate（new 数据 > existing）
-    assert result == existing_id
+    # 即使 new 带功率心率 / 仍标 new duplicate / existing 不让位
+    assert new.duplicate_of == existing_id
     existing = _get_activity_via_orm(db, existing_id)
-    assert existing.duplicate_of == new_id
-    assert new.duplicate_of is None
+    assert existing.duplicate_of is None  # existing 不被标
 
 
 def test_already_duplicate_candidate_skipped(db, test_user):
@@ -195,29 +181,24 @@ def test_different_user_not_match(db, test_user, admin_user):
     assert new.duplicate_of is None
 
 
-def test_new_higher_score_migrates_efforts_to_new(db, test_user):
+def test_existing_efforts_not_migrated(db, test_user):
     """
-    new 胜出场景 + existing 已有 SegmentEffort → 应迁移到 new（防 segment 排行榜双计 / Critical 修）。
+    修法 A 验证：existing 已有 efforts → new 标 duplicate 时 efforts 仍属于 existing（不迁移 / 不动）。
+    防误改：避免未来有人重新引入"new 胜出迁移"的复杂路径。
     """
     base_at = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
-    existing_id = _insert_activity(db, test_user.id, started_at=base_at, track_count=100)
+    existing_id = _insert_activity(db, test_user.id, started_at=base_at)
+    # 即使 new 数据更全
     new_id = _insert_activity(
         db, test_user.id,
         started_at=base_at + timedelta(seconds=15),
-        avg_power=200, avg_hr=150, avg_cadence=88,
-        track_count=400,
+        avg_power=200, avg_hr=150, track_count=400,
     )
-    # 给 existing 插一条 SegmentEffort（模拟 v0 期已 segment 匹配）
     from tests.conftest import _segment_efforts_table
     db.execute(
         _segment_efforts_table.insert().values(
-            segment_id=1,
-            activity_id=existing_id,
-            user_id=test_user.id,
-            elapsed_time=600,
-            avg_speed=20.0,
-            start_index=0,
-            end_index=50,
+            segment_id=1, activity_id=existing_id, user_id=test_user.id,
+            elapsed_time=600, avg_speed=20.0, start_index=0, end_index=50,
         )
     )
     db.commit()
@@ -226,49 +207,10 @@ def test_new_higher_score_migrates_efforts_to_new(db, test_user):
     find_and_mark_duplicate(db, new)
     db.commit()
 
-    # SegmentEffort.activity_id 应迁移到 new（不再属于 existing / 防排行榜双计）
+    # effort 仍属 existing / 没被迁移
     from app.segment.models import SegmentEffort
     effort = db.query(SegmentEffort).filter_by(segment_id=1).first()
-    assert effort is not None
-    assert effort.activity_id == new_id, "效率 effort 应迁移到 new / 防排行榜双计"
-
-
-def test_new_higher_score_migrates_notifications_to_new(db, test_user):
-    """
-    new 胜出 + existing 已有 Notification → 迁移到 new（防通知跳转链指向已隐藏的 existing）。
-    """
-    base_at = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
-    existing_id = _insert_activity(db, test_user.id, started_at=base_at, track_count=100)
-    new_id = _insert_activity(
-        db, test_user.id,
-        started_at=base_at + timedelta(seconds=15),
-        avg_power=200, avg_hr=150, avg_cadence=88,
-        track_count=400,
-    )
-    # 给 existing 插一条 Notification（模拟 v3 期已 PR 触发）
-    from tests.conftest import _notifications_table
-    db.execute(
-        _notifications_table.insert().values(
-            user_id=test_user.id,
-            event_type="pr",
-            segment_id=1,
-            activity_id=existing_id,
-            elapsed_time=600,
-            rank=1,
-            expires_at=base_at + timedelta(days=30),
-            created_at=base_at,
-        )
-    )
-    db.commit()
-
-    new = _get_activity_via_orm(db, new_id)
-    find_and_mark_duplicate(db, new)
-    db.commit()
-
-    from app.notification.models import Notification
-    notif = db.query(Notification).filter_by(event_type="pr").first()
-    assert notif is not None
-    assert notif.activity_id == new_id, "通知应迁移到 new / 防跳转链指向已隐藏 existing"
+    assert effort.activity_id == existing_id, "修法 A 不迁移 efforts / 跟 worker.py 守卫一致"
 
 
 def test_advisory_lock_skipped_on_sqlite(db, test_user):

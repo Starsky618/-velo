@@ -1,25 +1,26 @@
 """
-GPX dedupe service 层（Sprint 5 task-2 / Day 1）。
+GPX dedupe service 层（Sprint 5 task-2 / Day 1 / 修法 A 简化版）。
 
 干啥用：
 - 调 app/activity/dedupe.py 纯函数 + DB 读写。
 - 新 activity 解析完成后，从 DB 找时间窗内的同用户 candidates，
-  4 维 signature 比对，找到重复则比 completeness score，标 duplicate_of。
+  4 维 signature 比对，找到重复则**永远把 new 标 duplicate_of=existing**（不比 score）。
 
 操作注意：
 - **DB 读写在本层 / 算法在 dedupe.py 纯函数层**——分离让算法可独立单测
 - **caller 必须包 SAVEPOINT**：本函数 db.flush() 写 duplicate_of / 失败不应阻断
-  caller（如 worker.py parse_activity）已 set 的 activity.status='completed'
+  caller 已 set 的 activity.status='completed'
 - **不查已是 duplicate 的 candidate**：WHERE duplicate_of IS NULL，避免链式判断
-  （A 跟 B 重复 / B 已标 duplicate_of=A → 新来的 C 只跟 A 比，不跟 B 比）
-- **score 比较语义**：
-  - new 高 → existing 标 duplicate_of=new（new 成新主）
-  - new <= existing → new 标 duplicate_of=existing（existing 仍主 / 含相等场景：保守不动）
+- **永远旧的为主 / 新的标 duplicate**（修法 A / Tim 2026-05-11 拍）：
+  - 简单语义 / existing 一直是主（已有 efforts / 通知 / segment 排行榜不变）
+  - 新版本 hide / 不引入 efforts 迁移 / notifications 迁移 / 字段重算等深层耦合
+  - trade-off：新 GPX 数据更全（如带功率）也被隐藏 / 但实际场景 Strava 同步通常在前 / 后传 GPX 隐藏不损失什么
+  - completeness score 公式保留在 dedupe.py（未来历史回扫脚本用 / 当前 service 不调）
 
 数据流：
 - 入：Session + 新 Activity ORM
-- 中：构造 ActivitySig → 时间窗查 candidates → 4 维比对 → 比 score → 标 duplicate_of
-- 出：Optional[int] 被标的那一行 ID（None 表示无重复）
+- 中：advisory lock per-user → 构造 ActivitySig → 时间窗查 candidates → 4 维比对 → 标 new.duplicate_of=existing.id
+- 出：Optional[int] 找到重复则返 new_activity.id，否则 None
 """
 
 import logging
@@ -31,14 +32,10 @@ from sqlalchemy.orm import Session
 
 from app.activity.dedupe import (
     DEFAULT_TIME_TOLERANCE_SEC,
-    ActivityScoreData,
     ActivitySig,
-    compute_completeness_score,
     is_potential_duplicate,
 )
 from app.activity.models import Activity
-from app.notification.models import Notification
-from app.segment.models import SegmentEffort
 
 
 logger = logging.getLogger(__name__)
@@ -79,22 +76,6 @@ def _build_sig(activity: Activity) -> Optional[ActivitySig]:
     )
 
 
-def _build_score(activity: Activity) -> ActivityScoreData:
-    """
-    从 Activity ORM 构造 ActivityScoreData。
-
-    trackpoint_count 用 simplified_track 长度（不是 trackpoints 表 COUNT(*)）。
-    Why：simplified_track 是固定数据源 / 已在 ORM 上 / 不用额外 DB 查询。
-    """
-    track_count = len(activity.simplified_track or [])
-    return ActivityScoreData(
-        avg_power=activity.avg_power,
-        avg_hr=activity.avg_hr,
-        avg_cadence=activity.avg_cadence,
-        trackpoint_count=track_count,
-    )
-
-
 def find_and_mark_duplicate(db: Session, new_activity: Activity) -> Optional[int]:
     """
     新 activity 解析完成后，找 dedupe candidate / 找到则标 duplicate_of。
@@ -103,20 +84,17 @@ def find_and_mark_duplicate(db: Session, new_activity: Activity) -> Optional[int
     - 时间窗预筛：candidates 必在 ± DEFAULT_TIME_TOLERANCE_SEC 起骑时间窗内
       （减少 O(N) 扫描 / 100 用户量级单次查询 < 10 行）
     - 4 维比对：调 dedupe.is_potential_duplicate（纯函数）
-    - score 比较：调 dedupe.compute_completeness_score（纯函数）
-    - 短路：找到一个重复就标 + 返回（极少出现 1 个新 activity 跟多个旧 activity 都重复）
+    - 永远旧的为主 / 新的标 duplicate（修法 A 简化版）：找到第一个匹配就标 + 返回
 
-    类比交警查重号车牌 —— 限定时间窗 + 多维比对 + 找到立刻处理。
+    类比交警查重号车牌 —— 限定时间窗 + 多维比对 + 找到立刻按"先来先到"处理。
 
     参数：
         db: SQLAlchemy Session
         new_activity: 已解析完成、status='completed' 但未 commit 的 Activity
 
     返回：
-        None: 没找到重复
-        int: 找到重复，被标 duplicate_of 那一行的 ID
-            - 可能是 new_activity.id（new 数据较少 / 标自己）
-            - 也可能是 existing.id（new 数据更全 / 标旧的）
+        None: 没找到重复（new 是独立活动）
+        int: 找到重复，固定返回 new_activity.id（new 被标 duplicate_of=existing.id）
 
     异常：
         - DB 查询失败 / 字段缺失 → caller SAVEPOINT 兜底
@@ -161,7 +139,7 @@ def find_and_mark_duplicate(db: Session, new_activity: Activity) -> Optional[int
     if not candidates:
         return None
 
-    # 第 3 步：对每个 candidate 跑 4 维比对（纯函数）
+    # 第 3 步：对每个 candidate 跑 4 维比对（纯函数）/ 找到第一个匹配就标
     for c in candidates:
         c_sig = _build_sig(c)
         if c_sig is None:
@@ -169,41 +147,11 @@ def find_and_mark_duplicate(db: Session, new_activity: Activity) -> Optional[int
         if not is_potential_duplicate(new_sig, c_sig):
             continue
 
-        # 第 4 步：找到重复 / 比 score 决定标谁
-        new_score = compute_completeness_score(_build_score(new_activity))
-        c_score = compute_completeness_score(_build_score(c))
-
-        if new_score > c_score:
-            # new 数据更全 → existing 让位 / 标 duplicate_of=new（new 成新主）
-            # 关键：迁移 existing 已有的 SegmentEffort + Notification 到 new
-            # 不迁移会导致 → existing 隐藏 / 但旧 efforts/通知挂在 existing 下 / 用户看不到 + segment 排行榜显示已被隐藏的活动
-            # 迁移后 → 旧 segment 成绩归属 new（用户看到完整数据）+ 通知跳转链指向 new（详情可看）
-            # 注意：worker 会继续给 new 跑 segment 匹配 / matcher 内置 UNIQUE(segment_id, activity_id) +
-            #      auto_match.py:141 existing 检查防 dup IntegrityError → 已迁移过来的 effort 会被 continue 跳过 / 不会重复写
-            migrated_efforts = (
-                db.query(SegmentEffort)
-                .filter(SegmentEffort.activity_id == c.id)
-                .update({SegmentEffort.activity_id: new_activity.id}, synchronize_session=False)
-            )
-            migrated_notifs = (
-                db.query(Notification)
-                .filter(Notification.activity_id == c.id)
-                .update({Notification.activity_id: new_activity.id}, synchronize_session=False)
-            )
-            c.duplicate_of = new_activity.id
-            logger.info(
-                f"dedupe mark: existing activity {c.id} → duplicate_of new activity {new_activity.id} "
-                f"(new score {new_score:.2f} > existing {c_score:.2f}) / "
-                f"migrated {migrated_efforts} efforts + {migrated_notifs} notifications to new"
-            )
-            return c.id
-        else:
-            # new 数据 <= existing → new 标 duplicate_of=existing（existing 仍主）
-            new_activity.duplicate_of = c.id
-            logger.info(
-                f"dedupe mark: new activity {new_activity.id} → duplicate_of existing activity {c.id} "
-                f"(new score {new_score:.2f} <= existing {c_score:.2f})"
-            )
-            return new_activity.id
+        # 第 4 步：找到重复 / 永远旧的为主 / new 标 duplicate_of=existing
+        new_activity.duplicate_of = c.id
+        logger.info(
+            f"dedupe mark: new activity {new_activity.id} → duplicate_of existing activity {c.id}"
+        )
+        return new_activity.id
 
     return None

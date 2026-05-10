@@ -412,6 +412,25 @@ def _run_tier2(
         save_parse_result(db, activity, parse_result)
 
         activity.status = "completed"
+
+        # ===== Sprint 5 task-2 GPX 语义级 dedupe（Strava 路径集成）=====
+        # codex 第 2 轮 review Critical 1 抓的：worker.py（GPX/FIT 路径）已集成 dedupe / 但
+        # Strava import 路径独立调用 / 之前完全漏接 → 用户先 GPX 后 Strava 同步场景下 dedupe 失效。
+        # SAVEPOINT 隔离 / 失败不阻断 activity 已 set 的 status='completed'。
+        is_duplicate = False
+        try:
+            from app.activity.dedupe_service import find_and_mark_duplicate
+            nested_dedup = db.begin_nested()
+            try:
+                find_and_mark_duplicate(db, activity)
+                db.flush()
+                nested_dedup.commit()
+                is_duplicate = activity.duplicate_of is not None
+            except Exception:
+                nested_dedup.rollback()
+        except Exception:
+            pass
+
         db.commit()
     except Exception as e:
         db.rollback()
@@ -421,21 +440,22 @@ def _run_tier2(
         db.commit()
         return
 
-    # ---- 赛段匹配（尽力而为）----
-    try:
-        from app.segment.auto_match import match_activity_against_segments
-        # auto_match 内部已对 new_efforts 逐个调用 detect_events（两条路径共用，
-        # GPX 上传 worker.py 和 Strava 导入 scheduler 都走这里）。
-        # 历史原注释误以为 auto_match 只服务 GPX 路径，本期双审判纠正：
-        # 这里不要再调一次 detect_events，否则 30 条活动导入时会 30× 放大
-        # 排名查询和 SAVEPOINT 嵌套，UNIQUE 约束兜住但日志刷屏。
-        match_activity_against_segments(activity.id, db)
-    except Exception:
-        db.rollback()
-        logger.warning(
-            "赛段匹配失败 activity_id=%d strava_id=%d import_id=%d",
-            activity.id, strava_id, import_task.id,
-        )
+    # ---- 赛段匹配（尽力而为 / Sprint 5 task-2 守卫：duplicate 跳过防 effort 重复）----
+    if not is_duplicate:
+        try:
+            from app.segment.auto_match import match_activity_against_segments
+            # auto_match 内部已对 new_efforts 逐个调用 detect_events（两条路径共用，
+            # GPX 上传 worker.py 和 Strava 导入 scheduler 都走这里）。
+            # 历史原注释误以为 auto_match 只服务 GPX 路径，本期双审判纠正：
+            # 这里不要再调一次 detect_events，否则 30 条活动导入时会 30× 放大
+            # 排名查询和 SAVEPOINT 嵌套，UNIQUE 约束兜住但日志刷屏。
+            match_activity_against_segments(activity.id, db)
+        except Exception:
+            db.rollback()
+            logger.warning(
+                "赛段匹配失败 activity_id=%d strava_id=%d import_id=%d",
+                activity.id, strava_id, import_task.id,
+            )
 
     # 更新进度
     import_task.tier2_completed = (import_task.tier2_completed or 0) + 1
