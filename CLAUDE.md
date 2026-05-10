@@ -458,6 +458,7 @@ D 主轴（admin H5 hotfix + 监测）：
 - ✅ task-4.3 part-4 alembic 双向 + restore 演练（v5 期最后一项遗留 / 4 step 全过 + restore 用新 db 隔离 + backfill_phase5 恢复 24 segments / **v5 期 100% 完结 🏁**）
 - ✅ Sprint 5 task-2 GPX 语义级 dedupe MVP + parser timezone fix（5 commit `853bd5b..a4df6d5` / Codex 4 轮 review 收敛 / 修法 A 简化 / Strava 路径集成 / 部署 verify 326→103 完整闭环 / 详 changelog 2026-05-11 段）
 - ✅ Sprint 5 task-3 探索 tab 骑友 section（2 commit `82086f9..f001a4d` / 后端 GET /api/user/active + 前端横向 scroll 骑友卡片 / Codex 1 轮收敛 Critical=0 / 部署 verify 200 / 0 候选符合预期 / CCF 颜颜来时自动出现）
+- ✅ Sprint 5 task-3 真用回归 hotfix：统一搜索框（赛段+骑友）（3 commit `106e19f..720a705` / Codex 2 轮抓 2 真 Critical 验证新 review 规则 / segment 已有 search + /api/user/active 加 q 参数 + 前端 debounce + wildcard escape / verify search=西山 真返结果）
 - **下一步**：Sprint 5 候选（加更多赛段持续 / admin H5 hotfix 按需 / 1 周真用回归收集痛点）
 
 **Sprint 4 = 小程序 4 tab 重构 + admin H5 真用回归（4 周 / 双主轴并行）**
