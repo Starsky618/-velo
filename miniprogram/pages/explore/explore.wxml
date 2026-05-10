@@ -158,7 +158,7 @@
       <view class="search-section-title">赛段 ({{searchSegments.length}})</view>
       <view class="segment-list">
         <view class="segment-card" wx:for="{{searchSegments}}" wx:key="id"
-              data-id="{{item.id}}" bindtap="onTapSegment">
+              data-id="{{item.id}}" bindtap="goSegment">
           <view class="card-header">
             <text class="segment-name">{{item.name}}</text>
             <view class="new-badge" wx:if="{{item.isNew}}">

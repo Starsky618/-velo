@@ -241,6 +241,39 @@ def test_endpoint_q_param_returns_filtered(client, auth_header, db, test_user):
     assert items[0]["nickname"] == "MatchedUser"
 
 
+def test_search_wildcard_percent_treated_as_literal(db, test_user):
+    """search='%' 应被 escape 当字面字符 / 不当 wildcard 匹配所有 nickname（codex Important 抓的安全）。"""
+    base = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
+    u1 = User(openid="u_p1", is_admin=False, nickname="Alice")
+    u2 = User(openid="u_p2", is_admin=False, nickname="100% Pure")
+    db.add_all([u1, u2])
+    db.commit()
+    db.refresh(u1); db.refresh(u2)
+    _insert_activity(db, u1.id, started_at=base)
+    _insert_activity(db, u2.id, started_at=base)
+
+    # search='%' 应只匹配真含 '%' 字符的 nickname / 不是匹配所有
+    result = get_active_users(db, exclude_user_id=test_user.id, search="%")
+    assert len(result) == 1
+    assert result[0]["nickname"] == "100% Pure"
+
+
+def test_search_wildcard_underscore_treated_as_literal(db, test_user):
+    """search='_' 应被 escape 当字面字符 / 不当任意单字符 wildcard。"""
+    base = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
+    u1 = User(openid="u_u1", is_admin=False, nickname="Alice")
+    u2 = User(openid="u_u2", is_admin=False, nickname="user_name")
+    db.add_all([u1, u2])
+    db.commit()
+    db.refresh(u1); db.refresh(u2)
+    _insert_activity(db, u1.id, started_at=base)
+    _insert_activity(db, u2.id, started_at=base)
+
+    result = get_active_users(db, exclude_user_id=test_user.id, search="_")
+    assert len(result) == 1
+    assert result[0]["nickname"] == "user_name"
+
+
 def test_endpoint_q_too_long_falls_back_to_no_filter(client, auth_header, db, test_user):
     """?q=<65 字以上> → 当无搜索（防恶意大 string）/ 返全部。"""
     base = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)

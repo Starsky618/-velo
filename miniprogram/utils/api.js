@@ -156,10 +156,13 @@ module.exports = {
   getSegmentsList: function (params) {
     if (!params) params = {}
     var city = params.city || ''
+    var search = params.search || ''
     var page = params.page || 1
     var pageSize = params.page_size || 20
     var query = []
     if (city) query.push('city=' + encodeURIComponent(city))
+    // Sprint 5 task-3 真用回归 / codex 抓 Critical 修：search 参数之前漏拼 / 搜赛段形同虚设
+    if (search) query.push('search=' + encodeURIComponent(search))
     query.push('page=' + page, 'page_size=' + pageSize)
     return request('/api/segments?' + query.join('&'), 'GET')
   },

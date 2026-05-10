@@ -799,9 +799,12 @@ def get_active_users(
         )
     )
 
-    # search 过滤（nickname ILIKE %q% / 跟 segment search 同 pattern / 防注入用 SQLAlchemy 参数化）
+    # search 过滤（nickname ILIKE %q% / 跟 segment search 同 pattern）
+    # codex review Important 修：escape SQL wildcard（% 和 _）防用户输入 % 匹配所有 nickname / _ 匹配任意单字符
+    # SQLAlchemy ilike 不自动 escape wildcard / 必须显式处理 + 配 escape='\'
     if search:
-        query = query.filter(User.nickname.ilike(f"%{search}%"))
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.filter(User.nickname.ilike(f"%{escaped}%", escape="\\"))
 
     rows = (
         query
