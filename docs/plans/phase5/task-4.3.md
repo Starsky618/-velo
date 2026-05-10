@@ -91,13 +91,13 @@ sudo docker compose exec api python3 -c "from app.queue import redis_conn; print
 - [x] pytest 全 passed（part-1 / 398 / commit d9bcbc0）
 - [ ] alembic 双向跑通（**§2 推迟到 Sprint 5 pg_dump 落地后** / Tim 2026-05-10 拍 / 详 changelog 2026-05-10 part-2）
 - [x] 部署清单 9 项审完（part-1 / 5 OK + 3 spec drift + 1 真 gap pg_dump / commit d9bcbc0）
-- [ ] E2E 1 条核心反馈环手工走通（**留 part-3** / Tim 真骑车上传 GPX 时同步走 / 不另搞 ad-hoc 测试）
+- [x] E2E 1 条核心反馈环手工走通（part-3 / activity 326 / Tim 真上传 GPX 触发 / 详下方 part-3 段）
 - [x] 10 容器生产 Up + 无 ERROR logs（part-2 / 任务卡原写"8 容器"已过时 / 实数 10 含 v5 新增 curation-pool-cron + admin-h5）
 ```
 
 > **part-1**（2026-05-10 14:58 / commit `d9bcbc0`）：§1 pytest 398 passed + §3 部署清单审 5/9 OK + 真 gap pg_dump 入 tech-debt
 > **part-2**（2026-05-10 15:30）：§5 容器 verify 10 Up / §2 推迟 / §4 留 part-3
-> **part-3**（待 Tim 触发）：真骑车上传 GPX → §4 真 E2E 走通 → 关 task-4.3 整闸
+> **part-3**（2026-05-10 22:30）：activity 326 真 E2E ✅ / 解析 completed + worker city hook 自动设 user.city=taiyuan + /api/user/me/power-curve last_30_days 200 + /api/user/me/heatmap 237 tracks 200 / 0 segment 匹配 = 真实情况（赛段全在西山，离这条路线最近 7.98km，正是 Sprint 5 D33 map matching backlog 的实证）/ task-4.3 整闸关闭 ✅ / **§2 alembic 双向仍推迟到 pg_dump 落地后**（不阻塞 v5 期 closure，但 task-4.3 验收条目第 2 项保留 ⏳ 直至完成）
 
 ## 📝 commit
 

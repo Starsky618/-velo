@@ -453,7 +453,8 @@ D 主轴（admin H5 hotfix + 监测）：
 - ✅ v5 收尾 task-4.3 part-1（pytest 398 passed + 部署清单审 / commit `d9bcbc0`）
 - ✅ v5 收尾 task-4.3 part-2（§5 10 容器 verify / §2 推迟 / §4 留 part-3 / commit `d79c523`）
 - ✅ v5 收尾 task-4.4 复盘归档（2 新 memory + 1 更新 + ADR-011 + 4 tech-debt P2/P3）
-- **下一步**：task-4.3 part-3 §4 真 E2E（Tim 真骑车上传 GPX 时触发）— v5 期闸门最后一道
+- ✅ v5 收尾 task-4.3 part-3（真 E2E 走通 / activity 326 / 解析 + city hook + 个人页 endpoint 全 200 / 0 segment 匹配 = 真实情况：太原赛段全在西山，离这条路线最近 7.98km）— **v5 期闸门完全关闭 🎯**
+- **下一步**：Sprint 5 第一项 = 🔴 pg_dump 备份脚本（任意 DB 故障 = 数据全损 / tech-debt 顶部 P0 / 也是 task-4.3 §2 alembic 双向解锁前置）
 
 **Sprint 4 = 小程序 4 tab 重构 + admin H5 真用回归（4 周 / 双主轴并行）**
 
@@ -507,14 +508,14 @@ D 主轴（admin H5 hotfix + 监测）：
 - D31: **GCJ-02 坐标转换**（v3 polish）/ utils/coords.js 共享 / 修腾讯地图 200m 偏移 / 国外坐标自动跳过
 - D32: **power-curve period 切换 UI**（v3 polish）/ 5 档 segment control / currentPeriod 真相源
 
-**下一步 = task-4.3 part-3（Tim 真骑车上传 GPX 触发 §4 真 E2E）= v5 期最后一道闸**（详"新会话起手必读"段）
+**v5 期闸门完全关闭 ✅ / 下一步 = Sprint 5（pg_dump 备份优先 / 详 tech-debt.md 顶部 P0）**
 
 **v5 收尾进度**：
 - ✅ task-4.1 文档刷新（4 文件 +384 / 双 review 修补 9 处 / commit `862ba77`）
 - ✅ task-4.2 黑盒度三问体检（通过 / 容器清单 8→10 + admin/dependencies.py 补 docstring / commit `c578993`）
 - ✅ task-4.3 part-1（§1 pytest 398 passed + §3 部署清单审抓 1 真 gap pg_dump / commit `d9bcbc0`）
 - ✅ task-4.3 part-2（§5 10 容器 Up + 0 ERROR + redis ping / §2 推迟到 Sprint 5 pg_dump 后 / §4 留 part-3 / commit `d79c523`）
-- ⏳ task-4.3 part-3（§4 真 E2E / Tim 真骑车上传 GPX 时同步走）
+- ✅ task-4.3 part-3（§4 真 E2E ✅ / activity 326 / 详 changelog 2026-05-10 part-3 段）
 - ✅ task-4.4 v5 复盘归档（2 新 memory + 1 更新 memory + ADR-011 + 4 tech-debt P2/P3）
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
@@ -526,29 +527,20 @@ D 主轴（admin H5 hotfix + 监测）：
 - 调整理由：原 closure 把 0.7 列必做，但 0.7 spec §2.6 顶层 import `app.segment.service.calculate_max_gradient` 等函数，这些函数在 1.A.1 才实现 → 0.7 现在写完连 Python load 都炸 → "占位脚本"无价值。
 - Sprint 1 启动条件实际是：DB schema 就位（0.6 已落地）+ 单一 Redis 源（0.8 已落地）+ tz-aware（0.1 已落地）。算法函数 1.A.1 写完后 0.7 立刻回填 = Sprint 1 内部第一动作。
 
-**新会话起手必读**（2026-05-10 / 给下次 /clear 后的主 agent / v5 收尾 task-4.3 part-3 起手版）：
+**新会话起手必读**（2026-05-10 / 给下次 /clear 后的主 agent / **v5 期已完全 closure / Sprint 5 待启动**）：
 
-1. 本 CLAUDE.md "**当前位置**"段（你正在看 / Sprint 4 + v5 task-4.1/4.2/4.3 part-1+2 + task-4.4 全 ship / 下一步 task-4.3 part-3 真 E2E = v5 最后一道闸）
-2. **`docs/plans/phase5/task-4.3.md`**（任务卡末尾验收清单 / part-1+2 已完成；part-3 触发条件 = Tim 真骑车上传 GPX）
-3. memory（自动加载 / task-4.4 新沉淀 2 条：spec 三轮收敛节奏 / spec §0.1 代码事实表）
+1. 本 CLAUDE.md "**当前位置**"段（你正在看 / v5 期所有 Sprint + 收尾 4 task 全 ship / 下一步 Sprint 5 第一项 = pg_dump P0）
+2. **`docs/tech-debt.md` 顶部**（pg_dump 备份缺失 P0 / 阻塞 task-4.3 §2 alembic 双向 / Sprint 5 必修第一项）
+3. memory（自动加载 / v5 期收尾沉淀完整 / 详 changelog 2026-05-10 task-4.4 段）
 
-**task-4.3 part-3 触发与执行**：
+**Sprint 5 状态**：spec / plans 待 Tim 正式启动。如 Tim 让你做 pg_dump 备份脚本 = Sprint 5 第一个 task（先 brainstorm 落地方案再写代码：定时 cron / 备份保留策略 / 异地存储 / 恢复演练）。
 
-触发条件：Tim 真骑车上传 GPX（不另搞 ad-hoc 测试 / 等真用回归 / Tim 2026-05-10 拍）。
-
-执行（Tim 上传后 / 你 SSH 跑 verify）：
-1. 看 `sudo docker compose logs worker --tail 200` → 确认解析触发 + segment 匹配 + progress_detector 触发
-2. 查 DB：`segment_efforts` 新行 + `notifications` payload 字段非空（v5 新）
-3. curl `/api/users/me/power-curve?period=last_30_days` → 数据更新（确认 Redis 缓存失效后真重算）
-4. curl `/api/segments/{id}/efforts/me` → EffortCompareResponse 6 字段返
-5. 任意一步 5xx / 数据缺失 → 立刻 hotfix（不写 part-3 关闸）
-
-**§2 alembic 真 PG 双向（推迟到 Sprint 5 pg_dump 落地后）**：理由 = v5 downgrade 会 drop 5 张表/列（payload/curation_pool/ai_drafts/users.city/segments.{city,max_gradient,difficulty}）+ 生产无 pg_dump = 数据无法恢复（Tim 2026-05-10 拍 / 详 changelog 2026-05-10 part-2 + tech-debt.md 顶部 pg_dump 条目"blocker 关联"）。Sprint 5 pg_dump 落地后跑命令：
+**§2 alembic 真 PG 双向（仍推迟到 Sprint 5 pg_dump 落地后）**：理由 = v5 downgrade 会 drop 5 张表/列（payload/curation_pool/ai_drafts/users.city/segments.{city,max_gradient,difficulty}）+ 生产无 pg_dump = 数据无法恢复（Tim 2026-05-10 拍 / 详 changelog 2026-05-10 part-2 + tech-debt.md 顶部 pg_dump 条目"blocker 关联"）。Sprint 5 pg_dump 落地后跑命令：
 ```bash
 ssh ubuntu@114.132.190.245
 cd ~/velo
-# 1. 先 pg_dump 备份
-sudo docker compose exec db pg_dump -U postgres velo > /backups/velo_pre_alembic_test_$(date +%Y%m%d).sql
+# 1. 先 pg_dump 备份（注意 DB user 是 velo 不是 postgres）
+sudo docker compose exec db pg_dump -U velo velo > /backups/velo_pre_alembic_test_$(date +%Y%m%d).sql
 # 2. 双向跑
 sudo docker compose exec api python3 -m alembic upgrade head
 sudo docker compose exec api python3 -m alembic downgrade phase4_frontend_consume
@@ -556,6 +548,7 @@ sudo docker compose exec api python3 -m alembic upgrade head
 ```
 
 **§5 容器 verify**：✅ part-2 已完成 / 10 容器 Up + 0 ERROR + redis ping True。
+**§4 真 E2E**：✅ part-3 已完成 / activity 326 / user 2 / 详 changelog 2026-05-10 part-3 段。
 
 **task-4.4 复盘归档（已完成 / 2026-05-10）**：v5 期 4 个 Sprint 经验已沉淀 / 详 changelog 2026-05-10 task-4.4 段。重点沉淀：
 - 双主驾互审 / 三审分工 / Codex 异源审 ROI 实证

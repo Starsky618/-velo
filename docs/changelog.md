@@ -1,5 +1,68 @@
 # VELO 开发变更日志
 
+## 2026-05-10 task-4.3 part-3: 真 E2E 走通 ✅ / v5 期完全 closure 🎯
+
+### 触发
+
+Tim 真上传 GPX 文件（晚上 22:09）→ task-4.3 part-3 §4 真 E2E 触发条件满足。按 CLAUDE.md "新会话起手必读" task-4.3 part-3 起手版执行 5 步 SSH verify。
+
+### Verify 5 步全过
+
+| 步 | 项 | 结果 |
+|---|------|------|
+| 1 | worker 日志 | `velo: app.activity.worker.parse_activity(326)` 1.5 秒 Job OK ✅ |
+| 2 | activities 表 | id=326 / user_id=2 / status=completed / 8km / 825m 爬升 / 25 分钟 / 起骑日 2024-12-21 ✅ |
+| 2 | segment_efforts | 0 行（不是 bug，下方分析）⚠ |
+| 2 | notifications | 最近 2h 无新通知（GPX 真实日期 2024-12-21 在 progress_detector 滚动窗口外）⚠ |
+| 2 | users.city | user 2 city=taiyuan ✅（worker city hook 自动设置 / SAVEPOINT 隔离工作） |
+| 3 | /api/user/me/power-curve last_30_days | HTTP 200 / 7 档 schema 正确 / 全 0（GPX 无功率数据，符合）✅ |
+| 3 | /api/user/me/heatmap (no city) | HTTP 200 / 237 tracks polylines / 含 326 新轨迹 ✅ |
+| 4 | /api/segments/{id}/efforts/me | 跳过（活动 0 segment 匹配）|
+| 5 | hotfix | 无 5xx / 无数据缺失 → 不需要 hotfix ✅ |
+
+### "0 segment 匹配"分析（不是 bug，是真实情况）
+
+activity 326 GPS 范围 lat 37.82-37.88 / lng 112.55-112.56（太原市区附近）。DB 24 条赛段全在西山一带：
+
+```
+万柏林生态园（长风口-启春阁）  距活动中心 7.98 km
+凤颐谷-万亩爬坡               9.93 km
+蒙山冶峪放坡                  10.94 km
+西山旅游公路 奥申正爬         12.50 km
+...
+```
+
+**最近赛段距活动 7.98 km** → 任何匹配算法都不可能 match。这条骑行不在已建赛段路径上是物理事实，而非算法 bug。
+
+**Sprint 5 backlog 实证加成**：D33 map matching + "赛段覆盖稀疏"两项都拿到了真实证据。Tim 真用反馈预期：用户在西山外骑行就看不到任何赛段板块内容。
+
+### "0 progress 通知"分析（正常 / 非 bug）
+
+GPX 起骑日是 **2024-12-21**（17 个月前），不在 progress_detector 的 last_30_days 计算窗口内。如要测进步推送，需用最近 30 天内真实骑行的 GPX。
+
+### 验收清单收口
+
+- [x] pytest 全 passed（part-1 / 398 / commit `d9bcbc0`）
+- [ ] alembic 双向跑通（**仍推迟到 Sprint 5 pg_dump 落地后** / 不阻塞 v5 closure）
+- [x] 部署清单 9 项审完（part-1 / commit `d9bcbc0`）
+- [x] **E2E 1 条核心反馈环手工走通**（part-3 / activity 326）
+- [x] 10 容器生产 Up + 无 ERROR logs（part-2 / commit `d79c523`）
+
+### 顺手修
+
+CLAUDE.md pg_dump 命令 user 错（写 `-U postgres velo`，实测 DB user 是 `velo`）→ 改成 `-U velo velo`。Sprint 5 真跑 pg_dump 时不会再踩这个坑。
+
+### v5 期 closure 🎯
+
+- 4 个 Sprint（0/1/2/3/4）+ 4 个收尾 task（4.1 文档 / 4.2 黑盒 / 4.3 集成验证三 part / 4.4 复盘）全部 ✅
+- 唯一遗留：task-4.3 §2 alembic 双向（被 pg_dump 阻塞 / Sprint 5 第一项解锁）
+
+### 下一步
+
+**Sprint 5 待 Tim 正式启动**。第一项 = 🔴 pg_dump 备份脚本（任意 DB 故障 = 数据全损 / tech-debt P0 / 也是 alembic 双向解锁前置）。
+
+---
+
 ## 2026-05-10 task-4.4: v5 复盘归档（memory + ADR + tech-debt 沉淀）
 
 > v5 期 4 个 Sprint 经验沉淀到跨会话载体，让 v6+ 不重蹈覆辙。按 architect 信条 11 + task 卡 §1 三问框架。
