@@ -261,7 +261,9 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
         "period": period,
         "distance": distance_km,
         "rides": rides,
-        "elevation_gain": elevation_gain,  # 爬升单位是米，直接返回，不做转换
+        # 爬升单位是米，但浮点 SUM 后会出 73205.29999999999 这种尾巴 / 必须 round 1 位
+        # 防回退：曾经修过 / 又出现过 / 加注释锁住未来 reviewer 不要再误删
+        "elevation_gain": round(elevation_gain, 1),
         "duration": duration,
         "weekly_goal": weekly_goal,
         "goal_percent": goal_percent,
