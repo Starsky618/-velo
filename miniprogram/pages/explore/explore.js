@@ -184,7 +184,9 @@ Page({
 
     const segmentsPromise = api
       .getSegmentsList({ search: keyword, page: 1, page_size: 20 })
-      .then((data) => data.items || [])
+      // codex 第 2 轮 Nice：搜索结果走 _enrichItem 派生 isNew/cityLabel/difficultyLabel
+      // 否则 wxml 卡片显示城市标签 / NEW 标签都是空（跟默认列表展示不一致）
+      .then((data) => (data.items || []).map(this._enrichItem))
       .catch(() => [])
 
     const usersPromise = api

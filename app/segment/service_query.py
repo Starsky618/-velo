@@ -54,7 +54,10 @@ def get_segment_list(
     # v5 搜索筛选：这些条件像在赛段目录上叠三张透明筛网。
     # 注意用 is not None，空字符串也是调用方明确传入的搜索值，不用 truthiness 猜语义。
     if search is not None:
-        filters.append(Segment.name.ilike(f"%{search}%"))
+        # Sprint 5 task-3 真用 codex 第 2 轮 review Important：escape SQL wildcard（% _）
+        # 跟 app/user/service.py get_active_users 同 pattern / 防用户输 % 匹配所有 segment
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        filters.append(Segment.name.ilike(f"%{escaped}%", escape="\\"))
     if city is not None:
         filters.append(Segment.city == city)
     if difficulty is not None:
