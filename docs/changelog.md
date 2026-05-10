@@ -1,5 +1,61 @@
 # VELO 开发变更日志
 
+## 2026-05-10 task-4.3 part-2: §5 容器 verify ✅ / §2 + §4 推迟（Tim 拍）
+
+### §5 生产容器 verify — 通过
+
+```
+sudo docker compose ps  # 10 容器全 Up
+velo-admin-h5-1            Up 3 days     admin-h5
+velo-api-1                 Up 13 hours   api
+velo-caddy-1               Up 3 weeks    caddy
+velo-cleanup-1             Up 4 days     cleanup
+velo-curation-pool-cron-1  Up 4 days     curation-pool-cron
+velo-db-1                  Up 3 weeks    db
+velo-monitor-1             Up 3 days     monitor
+velo-redis-1               Up 3 weeks    redis
+velo-scheduler-1           Up 16 hours   scheduler
+velo-worker-1              Up 16 hours   worker
+```
+
+api / worker logs 无 ERROR / Traceback / redis ping True。10 容器 = task-4.2 黑盒度补强后实数（含 v5 新增 curation-pool-cron + admin-h5 / 任务卡 §5 写的"8 容器"是旧值已过时）。
+
+### §2 alembic 真 PG 双向 — 推迟到 Sprint 5 pg_dump 落地后
+
+Tim 2026-05-10 拍：
+
+**风险盘点**（读 v5 downgrade 脚本实证）：
+- `phase5_v5_db_changes` downgrade 会 drop：
+  - `notifications.payload` 列（v5 进度推送 payload 数据全失）
+  - `segment_curation_pool` 整表（候选池清空）
+  - `segment_ai_drafts` 整表（AI 草稿清空）
+  - `users.city` 列（city 数据失）
+  - `segments.{city, max_gradient, difficulty}` 列（24 赛段 v5 数据失）
+- 脚本内置警告：`progress_monthly_summary`（24 字符）VARCHAR 缩 20 → truncation 报错
+- 加上**生产无 pg_dump**（part-1 抓的真 gap），裸跑 downgrade 万一挂没法恢复
+
+**推迟逻辑**：
+- 生产 upgrade 已实证稳定（Sprint 1+2+3 部署 2026-05-05 / 4 天稳定运行 / 0 ERROR）
+- downgrade 只在真回滚紧急场景需要 → 该场景下必须先有 pg_dump 兜底
+- 无备份裸跑 = 数据无法恢复风险 ≫ 双向验证收益
+
+**等待**：Sprint 5 pg_dump 备份脚本 + cron 容器落地后再跑 §2，关联记入 tech-debt.md 顶部 pg_dump 条目"blocker 关联"。
+
+### §4 真 E2E — 留 part-3 单独跑
+
+Tim 2026-05-10 拍：part-3 单独跑（Tim 下次真骑车上传 GPX 时同步走，不另搞 ad-hoc 测试 GPX）。
+
+verify 路径（part-3 跑时）：worker 日志 → segment_efforts 写入 → progress_detector 触发 → notification.payload → power-curve 缓存失效 → 重新拉曲线 → /api/segments/{id}/efforts/me 即时反馈对比。
+
+### 整体 part-2 结论
+
+- §5 容器 verify ✅ 10 容器 Up + 0 ERROR + redis OK
+- §2 推迟 / 关联到 tech-debt.md pg_dump 条目
+- §4 留 part-3 / 等真用回归同步
+- task-4.3 卡可关 part-2 闸；part-3 触发条件 = Tim 真上传 GPX
+
+---
+
 ## 2026-05-09 Sprint 4 小程序 4 tab 重构 + D7 hotfix ✅ 全部完成
 
 > v5 期末 / 主轴 = 小程序 5 → 4 tab 重构 + admin H5 真用回归 / 期间发现 6 hotfix 链 + D7 真排名后端补强。

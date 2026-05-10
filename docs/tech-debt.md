@@ -21,6 +21,8 @@ velo 生产已 ship 半年（v0 至 v5 / 100 活跃用户 / 数据库每日增�
 
 **优先级**：🔴 高（数据安全 / 任何 db 故障都是不可逆 / 已 ship 半年才发现 = 持续暴露）
 
+**blocker 关联**：task-4.3 §2 alembic downgrade 真 PG 双向验证推迟到 pg_dump 落地后再跑（v5 downgrade 会 drop `segment_ai_drafts` / `segment_curation_pool` 整表 + `notifications.payload` / `users.city` / `segments.{city,max_gradient,difficulty}` 列 = 数据全失；无备份不能裸跑 / Tim 2026-05-10 拍）
+
 来源：task-4.3 part-1 §3 部署清单审 grep `scripts/` + `docker-compose.yml` 0 hits 实证（commit d9bcbc0）
 
 ---
