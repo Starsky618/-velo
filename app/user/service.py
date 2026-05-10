@@ -215,6 +215,7 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
                 FROM activities
                 WHERE user_id = :user_id
                   AND status = 'completed'
+                  AND duplicate_of IS NULL
                   AND started_at >= :period_start
             """)
             row = db.execute(sql, {"user_id": user_id, "period_start": period_start}).fetchone()
@@ -229,6 +230,7 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
                 FROM activities
                 WHERE user_id = :user_id
                   AND status = 'completed'
+                  AND duplicate_of IS NULL
             """)
             row = db.execute(sql, {"user_id": user_id}).fetchone()
 
