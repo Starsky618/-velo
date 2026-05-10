@@ -63,6 +63,49 @@
 
 ---
 
+## 2026-05-10 task-4.3 part-1: 集成测试 + 部署清单审（§1 + §3 完成 / §2/4/5 待 Tim 明天）
+
+### §1 全单元 + 集成测试 — 通过
+
+```bash
+python3 -m pytest tests/ --no-header -q
+398 passed, 53 skipped, 0 failed in 3.24s
+```
+
+实际测试数 398（远超 spec 预期 250 / v4 期 181 + v5 新增 217）/ 53 skipped 主要是真 PG 测试（dialect 守卫 SQLite 不跑）+ 网络调用 mock-only 场景。
+
+### §3 部署前 9 项清单审 — 5 项 ✅ / 3 项 spec drift（不阻塞）/ 1 项真 gap
+
+| # | spec 要求 | 实际 | 状态 |
+|---|---|---|---|
+| 1 | requirements.txt 含 anthropic | 用 **deepseek**（Tim 2026-04-29 拍 / 国产 + 国内访问稳 / 极便宜）| ⚠ spec drift（已落地 / spec 没刷）|
+| 2 | env: ANTHROPIC + FEISHU + RQ_QUEUES | ✅ DEEPSEEK_API_KEY + FEISHU_BOT_WEBHOOK + RQ_QUEUES="velo,ai_drafts"（实证）| ✅ |
+| 3 | worker --scale 3 部署 | 实际**单 worker**（用户量级满足 / 100 活跃 ≪ 3 worker 必要量）| ⚠ spec drift（不阻塞）|
+| 4 | alembic 真 PG 跑通 | **留 §2 / 待 Tim 明天 SSH 跑** | ⏳ |
+| 5 | backfill_phase5 unknown < 30% | ✅ commit daf6f1f + 5c8228c / 24 segments + 2 users 全回填 / unknown 占比 0% | ✅ |
+| 6 | admin.velo.com 域名 + Caddyfile | 实际 **IP + 9000 端口**（Tim 暂不买域名 / Sprint 3 D.5 决策）| ⚠ spec drift（不阻塞）|
+| 7 | DeepSeek API 连通 | ✅ Sprint 1 task-1.B.1 ship 时已验证 / 生产 .env 已配 | ✅ |
+| 8 | 飞书 webhook 连通 | ✅ **D 决策（Tim 2026-05-06）**：生产 .env 不配 webhook / log-only 模式 / 探针真生效 | ✅ D 决策落地 |
+| 9 | pg_dump 备份范围 | 🔴 **scripts/ 0 hits / 完全没备份脚本**（已 ship 半年生产 / 真 gap） | 🔴 tech-debt |
+
+### 真 gap：生产无 pg_dump 备份脚本
+
+velo 生产已 ship 半年（v0 至 v5 / 100 活跃用户 / 数据库每日增长）/ 但 `scripts/` 里**完全没有备份脚本**。pg_dump / volume snapshot / cron 全无。
+
+任意场景命中 = 数据全损：
+- db 容器 OOM / docker prune / 磁盘故障 / 误删 → users / activities / segments / segment_efforts / strava_imports 等核心表全丢
+- v5 新加 segment_ai_drafts / segment_curation_pool 也无保护
+
+**修法**：写 scripts/backup_pg.sh + cron 容器（每天 pg_dump 写到 /backups volume / 留最近 30 天）/ 简单 sh 脚本 + 30 行 docker-compose / 0.5d 工作。**进 tech-debt 高优先级 / Sprint 5 必修**。
+
+### 整体 part-1 结论
+
+§1 测试全过 / §3 5 项 OK + 3 项 spec drift（不阻塞 production / spec 待刷）+ 1 项真 gap（备份脚本 / Sprint 5 修）。
+
+**待 Tim 明天**：§2 真 PG alembic 双向（SSH 服务器跑）+ §4 真 E2E（Tim 真机上传 GPX 走核心反馈环）+ §5 部署 verify 8/10 容器 Up（已 partial verify / 完整跑一次）。
+
+---
+
 ## 2026-05-10 task-4.2 黑盒度三问体检（v5 收尾防黑盒化）
 
 主 agent 自我体检（CLAUDE.md "防黑盒化"硬要求 / 每期收尾必跑）：
