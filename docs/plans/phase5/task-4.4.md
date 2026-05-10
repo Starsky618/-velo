@@ -76,16 +76,19 @@ type: feedback
 - P2: 候选池脚本周一次跑，新赛段最长 7 天才进候选池（spec §7 限定）
 - P3: AI 草稿质量依赖人工审核（PRD D-P10）
 
-## ✅ 验收
+## ✅ 验收（2026-05-10 完成）
 
 ```markdown
 ### v5 复盘归档（task 4.4）
 
-- 新增 memory：N 条
-- 更新 memory：N 条
-- 新增 ADR：N 个（编号）
-- tech-debt 新增：N 条 P2/P3
+- 新增 memory：2 条（feedback_spec_three_round_review_convergence + feedback_spec_pre_grep_code_facts_table）
+- 更新 memory：1 条（feedback_three_review_pipeline 加 codex 甜区 vs 不擅长段）
+- 新增 ADR：1 份（ADR-011 app/common 共享工具层）
+- tech-debt 新增：4 条（v5-1 power_curve 1Hz / v5-2 city 跨省海外 / v5-3 候选池周一次 / v5-4 AI 草稿人审）
+- 不写：候选 ADR-012 AI 草稿走 RQ 异步（是 ADR-002+009 的应用，不引入新 pattern）
 ```
+
+**Q1/Q2/Q3 三问处理路径**：详 changelog 2026-05-10 task-4.4 段。
 
 ## 📝 commit
 

@@ -1,5 +1,57 @@
 # VELO 开发变更日志
 
+## 2026-05-10 task-4.4: v5 复盘归档（memory + ADR + tech-debt 沉淀）
+
+> v5 期 4 个 Sprint 经验沉淀到跨会话载体，让 v6+ 不重蹈覆辙。按 architect 信条 11 + task 卡 §1 三问框架。
+
+### 新增 memory（2 条 / 真正新模式）
+
+- `feedback_spec_three_round_review_convergence.md` —— 大型 spec 双审多轮收敛节奏（v5 Critical 14→8→3→0 实证）/ 每轮 reviewer prompt focus 升级（自洽→边界→跨模块）/ 按 batch 隔离 / Critical=0 才停
+- `feedback_spec_pre_grep_code_facts_table.md` —— spec §0.1 代码事实表写法 / [查询] 标 file:line / [推断] 标推断逻辑 / v5 实证把"现有代码事实错"占 Critical 比例从 71% → 12% → 0%
+
+### 更新 memory（1 条 / 加 v5 实证段）
+
+- `feedback_three_review_pipeline.md` —— 新增 § Codex 异源审甜区 vs 不擅长（甜区：纯函数边界 / 数据流跨模块 / API 契约 / 第三方库行为 / 生产配置 vs spec；不擅长：spec 自洽 / 命名风格 / 中文文档语义 / 跨 commit 历史决策追溯 / UI/UX / 业务规则正当性）+ 派 codex prompt focus 模板
+
+### 新增 ADR（1 份）
+
+- `docs/adr/011-为什么抽-app-common-层.md` —— v5 task-1.A.1 第二轮 spec 双审抓的反向依赖问题 / 解法 = `app/common/` 独立层 / 任意业务模块向下依赖 / common 不反向 import 业务模块 / 准入规则 + 失败边界 / 触发重评估条件
+- ADR README v1.0 → v1.1 / 总表 10 → 11 / 下个编号 ADR-012
+
+### 更新 tech-debt（4 条 P2/P3）
+
+- v5-1 `power_curve` 1Hz 采样假设（P2 / spec §7 限定）
+- v5-2 `infer_city_from_coords` 跨省 / 海外起点不准（P2 / 靠 admin 人工修）
+- v5-3 候选池脚本周一次跑（P2 / 新赛段最长 7 天进候选池）
+- v5-4 AI 草稿质量依赖人工审核（P3 / PRD D-P10 拍）
+
+每条都标"重评估触发"条件，防 v6+ agent 主动优化没必要的项。
+
+### 候选 ADR-012（AI 草稿走 RQ 异步）— 不写
+
+理由：是 ADR-002（rq + Redis 异步队列）+ ADR-009（agent 层独立）的具体应用，不引入新架构 pattern。如果未来真出现"是否改同步阻塞"的争议，再开 ADR-012。
+
+### Q1/Q2/Q3 三问复盘的处理路径
+
+- Q1 新 bug 模式：v5 主要新 bug 模式都已在 v5 期内入 CLAUDE.md 技术栈陷阱清单（#11-#19 共 9 条）+ memory（SAVEPOINT / Python UnboundLocal 等）/ 不二次沉淀
+- Q2 设计判断：spec 三轮收敛节奏 + 代码事实表 = 本次 2 条新 memory；其余如"主 agent 中层管理" / "codex 不可用 3 层兜底" / "真用回归 vs mock 盲区" 已存
+- Q3 流程改进：双向异源审 / git diff 强制 / 部署 5 步 SOP 全在 feedback_three_review_pipeline.md + feedback_deploy_must_curl_verify_not_just_docker_ps.md
+
+### v5 期 spec drift 项（保留状态 / 不再追平）
+
+- requirements 用 deepseek 不是 spec 写的 anthropic（Tim 2026-04-29 拍 / 已落地）
+- 单 worker 不是 spec 写的 --scale 3（用户量级满足）
+- admin 走 IP + 9000 不是 admin.velo.com 域名（Tim 暂不买）
+- pg_dump 备份脚本缺失（Sprint 5 必修 / tech-debt.md 顶部）
+
+### 自检三问（task 卡 §3）
+
+- 诚实：写了 v5 期 4 fail 一次性堆的 hotfix 链 / subagent 越界 / spec drift / 不美化
+- 可复用：每条 memory 都通过 v6+ 场景测试（spec 双审收敛适用任何大型 spec / 代码事实表适用任何 spec writer 派工 / codex 甜区适用所有 codex 派审）
+- 可执行：每条都有具体执行点（"派 codex 时 prompt 加 X" / "spec writer prompt 强制 §0.1" / "tech-debt 重评估触发条件"）
+
+---
+
 ## 2026-05-10 task-4.3 part-2: §5 容器 verify ✅ / §2 + §4 推迟（Tim 拍）
 
 ### §5 生产容器 verify — 通过
