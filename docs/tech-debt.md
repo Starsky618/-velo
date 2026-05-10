@@ -4,6 +4,27 @@
 
 ---
 
+## 🔴 真 gap：生产无 pg_dump 备份脚本（Sprint 5 必修 / task-4.3 part-1 抓到）
+
+velo 生产已 ship 半年（v0 至 v5 / 100 活跃用户 / 数据库每日增长）/ `scripts/` 0 hits 备份脚本（grep `pg_dump\|backup` 全无）。
+
+**风险**：任意场景命中 = 数据全损
+- db 容器 OOM / docker prune / 磁盘故障 / 误删
+- users / activities / segments / segment_efforts / strava_imports / segment_ai_drafts / segment_curation_pool 全丢
+- v5 新加 2 表也无保护
+
+**修法**（Sprint 5 / 0.5d 工作量）：
+1. 写 `scripts/backup_pg.sh`：`pg_dump -F c -f /backups/velo_$(date +%Y%m%d).dump`
+2. docker-compose 加 backup-cron 容器：每天 02:00 跑 / 留最近 30 天 / 自动清理超期
+3. backup volume 挂到 host 或单独磁盘
+4. 真用回归：故意 docker-compose down db + up → 用 backup 恢复 → 数据完整
+
+**优先级**：🔴 高（数据安全 / 任何 db 故障都是不可逆 / 已 ship 半年才发现 = 持续暴露）
+
+来源：task-4.3 part-1 §3 部署清单审 grep `scripts/` + `docker-compose.yml` 0 hits 实证（commit d9bcbc0）
+
+---
+
 ## 第 4 期遗留 P1（v5 Sprint 0 已全部清理 ✅）
 
 > **2026-05-09 task-4.1 文档刷新时移除**：v5 Sprint 0 task 0.1-0.5 / 0.8 已闭环 5 项 P1。详见 `docs/changelog.md` 2026-04-29 起 Sprint 0 章节。

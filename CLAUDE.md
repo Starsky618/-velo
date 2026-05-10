@@ -445,7 +445,13 @@ D 主轴（admin H5 hotfix + 监测）：
 - velo CLAUDE.md 技术栈陷阱清单第 15 条（PostGIS `ST_*` 函数在 SQLite 测试 fixture 不可用 / 加 dialect 守卫）
 - memory 6 处升级（详 MEMORY.md / 含元认知批判 / 视觉冲击 vs 真复杂度 / 读 diff 不只读报告 / pytest exit code 不可信 / Edit 全角标点 / untracked 待办列表）
 
-**当前位置**：Sprint 1+2+3 全部完成（生产部署 + 收尾 hotfix / 详往下） + **Sprint 4 brainstorm + plans + baseline 全部完成（2026-05-06）**，**下一步 = task-4.1 个人页框架改造**。
+**当前位置**（2026-05-10 凌晨 4 点更新）：
+- ✅ v5 期 Sprint 0/1/2/3 全 ship + 生产部署
+- ✅ Sprint 4 小程序 4 tab 重构整期 ship（task-4.1 框架 / task-pre-4.2 后端 / task-4.2 v1+v2+v3 polish + 真闭环 / task-4.3 用户详情页 / task-4.4 explore + 砍 leaderboard / task-4.5 赛段详情页 / 后端 NEW 标签 hotfix / D7 真排名 hotfix）
+- ✅ v5 收尾 task-4.1 文档刷新（双 review 修补 9 处 / commit `862ba77`）
+- ✅ v5 收尾 task-4.2 黑盒度三问体检（通过 / 2 处补强 / commit `c578993`）
+- ✅ v5 收尾 task-4.3 part-1（pytest 398 passed + 部署清单审 / commit `d9bcbc0`）
+- **下一步**：task-4.3 §2 alembic 真 PG 双向 + §4 真 E2E + §5 容器 verify + task-4.4 复盘归档（详 "新会话起手必读"段）
 
 **Sprint 4 = 小程序 4 tab 重构 + admin H5 真用回归（4 周 / 双主轴并行）**
 
@@ -464,15 +470,20 @@ D 主轴（admin H5 hotfix + 监测）：
 - ✅ **task-4.2 真闭环**（6 次 hotfix 链：cap 8000→50000→split→砍 cap→N+1 性能修→分层虚实线 + simplify 1500 + backfill）/ Tim 真机 final gate 通过 "基本 ok"
   - 性能：power-curve all_time 24s → 5s（commit `9f7d9b7` IN 查询 + only 字段）
   - 视觉：山区 segment >500m 1263 → 443（-65%）/ 中位数 30m → 21m（commit `bb94a4e + 5c8228c` 分层虚实线 + simplify 1500 + backfill）
-- ⏳ task-4.3 用户详情页起步（component 已建好 / 4.3 reuse + 后端补 2 endpoint）
+- ✅ **task-4.3 用户详情页**（commit `5de9f40` + `203ed44` / 后端看他人 power-curve + heatmap endpoint + 用户详情页 page / D-P08 严格隐私白名单 / 通知中心 kom_lost 头像跳转）
+- ✅ **task-4.4 explore + 砍 leaderboard**（commit `224f22f` + `4d0ab12` / 瀑布流 + 6 城筛选 + NEW 标签 / 5→4 tab / 5 处引用全改向）
+- ✅ **task-4.5 赛段详情页 4 区块**（commit `813e96d` 空架子 + `958c5bd` 完整 / 第一屏 + AI 介绍 + 我的记录 + 全网排行榜 / D7 反转 + D14 不展示难度 badge）
+- ✅ **后端 NEW 标签 hotfix**（commit `9250106` / SegmentListItem 加 created_at + 前端 30 天判断激活）
+- ✅ **D7 真排名 hotfix**（commit `33212a1` + `5062793` / LeaderboardResponse 加 my_rank + my_elapsed_time / get_optional_user / 6 测试 case）
+- ✅ **batch 2 review fixup**（commit `9b558af` / I1+I2+I3+N2 三审抓的 4 项）
 
-**v3 polish backlog（Sprint 5/6 跟 D28 高德 webview 一起做）**：
-- **D33 map matching**：真根治山区 GPS 物理误差散网（OSRM 容器 或高德 navigation match API）/ 1-3 天工程
+**v5 + Sprint 5 backlog（备案下来后真用回归 + Sprint 5 必修）**：
+- **🔴 生产无 pg_dump 备份脚本**（task-4.3 part-1 抓 / scripts/ 0 hits / 已 ship 半年 / 任意 db 故障 = 数据全损 / Sprint 5 必修 / 详 tech-debt.md 顶部）
+- **D33 map matching**：山区 GPS 物理误差散网（OSRM 容器 或高德 navigation match API）/ 1-3 天工程
+- **tied PR my_rank off-by-one**（双 review I1 / 跟 D33 一起补 / 主榜加 (elapsed_time, effort_id) 二级排序键 + my_rank 算法配套）
+- **D28 高德地图 webview**（未来地图 tab / Sprint 5/6）
 - 测试覆盖盲区：worker hook 触发 invalidate_heatmap_cache 回归测试 / 无 city 精确 key 清验证
-- ⏳ task-4.3 用户详情页新建（含前置后端补 2 endpoint / 4-5 天）
-- ⏳ task-4.4 探索 tab 改造 + 砍 leaderboard tab（5 → 4 tab / 5-6 天）
-- ⏳ task-4.5 赛段详情页新建（4 区块 / D7 反转后展示 top 10 / 5-6 天）
-- ⏳ admin H5 真用回归 ops（全 sprint 并行 / Tim/CCF/颜颜每天用 / hotfix 模式）
+- ⏳ admin H5 真用回归 ops（备案后全 sprint 并行 / Tim/CCF/颜颜每天用 / hotfix 模式）
 
 **Sprint 4 关键决策摘要（详 phase-4-prd.md §5）**：
 - D5: 砍 leaderboard tab（5 → 4 tab）/ "完全没用"（Tim 拍）
@@ -494,14 +505,14 @@ D 主轴（admin H5 hotfix + 监测）：
 - D31: **GCJ-02 坐标转换**（v3 polish）/ utils/coords.js 共享 / 修腾讯地图 200m 偏移 / 国外坐标自动跳过
 - D32: **power-curve period 切换 UI**（v3 polish）/ 5 档 segment control / currentPeriod 真相源
 
-**下一步 = task-4.3 用户详情页新建**（subagent 启动只读 `docs/plans/sprint-frontend/README.md` + `task-4.3.md`，2 文件够 / 含前置后端补 2 endpoint：`GET /api/user/{user_id}/power-curve` + `GET /api/user/{user_id}/heatmap` / component 复用：power-curve-card 和 heatmap-card 已建好 / 4.3 只需建用户详情页 page + 路由）
+**下一步 = v5 收尾 task-4.3 §2/4/5 + task-4.4**（详"新会话起手必读"段）
 
-**已知 v3 polish 遗留**（task-4.3 启动前可批量修 hotfix 或留 backlog）：
-- P1 setData 5MB 接近 1MB 上限（heatmap polylines 总点数没 cap / 5 行 hotfix）
-- P2 period 切换 tab 后状态丢失（小程序 storage persist / 留批 1 ship 后做）
-- 测试覆盖盲区 2 处：worker hook 触发 invalidate_heatmap_cache 回归测试 / 无 city 精确 key 被清验证（Codex --resume 列下轮 backlog）
-
-**v5 收尾 4 任务（phase5/task-4.1 ~ 4.4 占位卡）放 Sprint 4 整期末做**（不是先做 / Tim 2026-05-06 拍 / 详细论证：phase-4-prd.md §11 + brainstorm 顺序 push back）
+**v5 收尾进度**：
+- ✅ task-4.1 文档刷新（4 文件 +384 / 双 review 修补 9 处 / commit `862ba77`）
+- ✅ task-4.2 黑盒度三问体检（通过 / 容器清单 8→10 + admin/dependencies.py 补 docstring / commit `c578993`）
+- ✅ task-4.3 part-1（§1 pytest 398 passed + §3 部署清单审抓 1 真 gap pg_dump / commit `d9bcbc0`）
+- ⏳ task-4.3 part-2（§2 alembic 真 PG 双向 SSH 跑 + §4 真 E2E + §5 8/10 容器 verify）
+- ⏳ task-4.4 v5 复盘归档（memory + ADR / 1d）
 
 **生产环境配置**（Tim 已配 ~/velo/.env）：
 - DEEPSEEK_API_KEY ✅
@@ -512,19 +523,36 @@ D 主轴（admin H5 hotfix + 监测）：
 - 调整理由：原 closure 把 0.7 列必做，但 0.7 spec §2.6 顶层 import `app.segment.service.calculate_max_gradient` 等函数，这些函数在 1.A.1 才实现 → 0.7 现在写完连 Python load 都炸 → "占位脚本"无价值。
 - Sprint 1 启动条件实际是：DB schema 就位（0.6 已落地）+ 单一 Redis 源（0.8 已落地）+ tz-aware（0.1 已落地）。算法函数 1.A.1 写完后 0.7 立刻回填 = Sprint 1 内部第一动作。
 
-**新会话起手必读**（给下次 /clear 后的主 agent / Sprint 4 task-4.3 起手版）：
-1. 本 CLAUDE.md "**当前位置**"段（你正在看 / Sprint 4 task-4.1 + task-pre-4.2 + task-4.2 v1+v2+v3 polish 全部完成 / 下一步 task-4.3）
-2. **`docs/plans/sprint-frontend/README.md`**（Sprint 4 全局约定 + 任务依赖图 + 字段索引 / 不超过 200 行）
-3. **`docs/plans/sprint-frontend/task-4.3.md`**（你当前要执行的任务卡 / 用户详情页 + 前置后端补 2 endpoint）
-4. memory（自动加载 / 重要 5 条新沉淀：v2 polish 必派 subagent / 部署 5 步 SOP / D 决策风格 / GCJ-02 中国地图必转 / etc）
+**新会话起手必读**（2026-05-10 凌晨 4 点 / 给下次 /clear 后的主 agent / v5 收尾 task-4.3 part-2 + task-4.4 起手版）：
 
-**task-4.3 关键提示**：
-- power-curve-card 和 heatmap-card 已建好（v3 polish ship）/ 4.3 只 reuse / 不重写 component
-- component props.userId 已支持非 0 = 看他人 / 4.3 后端补 2 endpoint 即生效
-- 后端 endpoint 模式已定型：`GET /api/user/{user_id}/power-curve?period=...` + `GET /api/user/{user_id}/heatmap?city=...`（city 同 v3 polish 改可选）
-- 复用现有 `service.get_user_power_curve` 和 `service.get_user_heatmap`（看他人 = 同函数 + 不同 user_id）
+1. 本 CLAUDE.md "**当前位置**"段（你正在看 / Sprint 4 + v5 task-4.1/4.2/4.3 part-1 全 ship / 下一步 task-4.3 §2/4/5 + task-4.4）
+2. **`docs/plans/phase5/task-4.3.md`**（你当前要执行的任务卡 / §2 + §4 + §5 / part-1 已完成详 changelog 2026-05-10）
+3. **`docs/plans/phase5/task-4.4.md`**（v5 复盘归档 / task-4.3 完成后做）
+4. memory（自动加载 / 今晚新沉淀 3 条：subagent 文档刷新必 grep ground truth / 双 subagent utils 共享文件归属 / feedback_three_review_pipeline 升级实证段）
 
-**禁止**：读 spec-v5.md / phase-4-prd.md / 其他 task-4.X.md（污染上下文 / task 卡有引用，需要时只读那段）。
+**task-4.3 part-2 关键提示**：
+
+§2 alembic 真 PG 双向（SSH 跑）：
+```bash
+ssh ubuntu@114.132.190.245
+cd ~/velo && sudo docker compose down
+sudo docker compose up -d db redis
+sudo docker compose exec api python3 -m alembic upgrade head
+sudo docker compose exec api python3 -m alembic downgrade phase4_frontend_consume
+sudo docker compose exec api python3 -m alembic upgrade head
+```
+
+§4 真 E2E（Tim 真机 / 你 verify）：上传 GPX → 看 worker 日志 / segment_efforts 写入 / progress_detector 触发 / notification.payload / 个人页 power-curve 失效 → 重新拉 / 即时反馈 EffortCompareResponse 返。
+
+§5 容器 verify：`sudo docker compose ps` 应见 10 容器（含 curation-pool-cron + admin-h5 / 详 architecture-guide §3.1 / 不是 8）/ logs 看 ERROR 0。
+
+**task-4.4 关键提示**：v5 期 4 个 Sprint 经验复盘 / 写 memory + ADR + tech-debt 同步。重点沉淀：
+- 双主驾互审 / 三审分工 / Codex 异源审 ROI 实证
+- subagent 越界 + 文档黑盒化脑补防御
+- SAVEPOINT 跨模块 pattern / D 决策（飞书 log-only / city 可选 / GCJ-02 / 等）
+- v5 spec drift 项（anthropic→deepseek / 单 worker / 无域名 / 备份缺失）
+
+**禁止**：读 spec-v5.md / phase-4-prd.md / 其他 task-X.md（污染上下文 / task 卡有引用，需要时只读那段）。
 
 **Sprint 4 关键 commit**（按时间倒序 / 不需要 git log 即可了解状态）：
 - `f519170` feat(user/miniprogram): task-4.2 v3 polish — D30 city 可选 + D31 GCJ-02 + D32 period 切换 UI
