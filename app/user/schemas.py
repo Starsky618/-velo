@@ -106,7 +106,7 @@ class StatsResponse(BaseModel):
     period: str
     distance: float
     rides: int
-    elevation_gain: float
+    elevation_gain: int  # 米 / Tim 2026-05-11 拍整数显示 / int 而非 float 防 JSON 73205.0 .0 尾巴
     duration: int
     weekly_goal: float
     goal_percent: int

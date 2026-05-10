@@ -261,9 +261,10 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
         "period": period,
         "distance": distance_km,
         "rides": rides,
-        # 爬升单位是米，但浮点 SUM 后会出 73205.29999999999 这种尾巴 / 必须 round 1 位
-        # 防回退：曾经修过 / 又出现过 / 加注释锁住未来 reviewer 不要再误删
-        "elevation_gain": round(elevation_gain, 1),
+        # 爬升单位是米 / 浮点 SUM 后会出 73205.29999999999 这种尾巴 / round 后转 int 真整数
+        # Tim 2026-05-11 拍 / schema 配套从 float → int 才能 JSON 真返 73205 不带 .0
+        # 防回退：曾经因 schema float 漏改 / 还显示 .0 / 锁住未来 reviewer 不要回退
+        "elevation_gain": int(round(elevation_gain)),
         "duration": duration,
         "weekly_goal": weekly_goal,
         "goal_percent": goal_percent,
