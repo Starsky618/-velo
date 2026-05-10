@@ -195,6 +195,95 @@ def test_different_user_not_match(db, test_user, admin_user):
     assert new.duplicate_of is None
 
 
+def test_new_higher_score_migrates_efforts_to_new(db, test_user):
+    """
+    new 胜出场景 + existing 已有 SegmentEffort → 应迁移到 new（防 segment 排行榜双计 / Critical 修）。
+    """
+    base_at = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
+    existing_id = _insert_activity(db, test_user.id, started_at=base_at, track_count=100)
+    new_id = _insert_activity(
+        db, test_user.id,
+        started_at=base_at + timedelta(seconds=15),
+        avg_power=200, avg_hr=150, avg_cadence=88,
+        track_count=400,
+    )
+    # 给 existing 插一条 SegmentEffort（模拟 v0 期已 segment 匹配）
+    from tests.conftest import _segment_efforts_table
+    db.execute(
+        _segment_efforts_table.insert().values(
+            segment_id=1,
+            activity_id=existing_id,
+            user_id=test_user.id,
+            elapsed_time=600,
+            avg_speed=20.0,
+            start_index=0,
+            end_index=50,
+        )
+    )
+    db.commit()
+
+    new = _get_activity_via_orm(db, new_id)
+    find_and_mark_duplicate(db, new)
+    db.commit()
+
+    # SegmentEffort.activity_id 应迁移到 new（不再属于 existing / 防排行榜双计）
+    from app.segment.models import SegmentEffort
+    effort = db.query(SegmentEffort).filter_by(segment_id=1).first()
+    assert effort is not None
+    assert effort.activity_id == new_id, "效率 effort 应迁移到 new / 防排行榜双计"
+
+
+def test_new_higher_score_migrates_notifications_to_new(db, test_user):
+    """
+    new 胜出 + existing 已有 Notification → 迁移到 new（防通知跳转链指向已隐藏的 existing）。
+    """
+    base_at = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
+    existing_id = _insert_activity(db, test_user.id, started_at=base_at, track_count=100)
+    new_id = _insert_activity(
+        db, test_user.id,
+        started_at=base_at + timedelta(seconds=15),
+        avg_power=200, avg_hr=150, avg_cadence=88,
+        track_count=400,
+    )
+    # 给 existing 插一条 Notification（模拟 v3 期已 PR 触发）
+    from tests.conftest import _notifications_table
+    db.execute(
+        _notifications_table.insert().values(
+            user_id=test_user.id,
+            event_type="pr",
+            segment_id=1,
+            activity_id=existing_id,
+            elapsed_time=600,
+            rank=1,
+            expires_at=base_at + timedelta(days=30),
+            created_at=base_at,
+        )
+    )
+    db.commit()
+
+    new = _get_activity_via_orm(db, new_id)
+    find_and_mark_duplicate(db, new)
+    db.commit()
+
+    from app.notification.models import Notification
+    notif = db.query(Notification).filter_by(event_type="pr").first()
+    assert notif is not None
+    assert notif.activity_id == new_id, "通知应迁移到 new / 防跳转链指向已隐藏 existing"
+
+
+def test_advisory_lock_skipped_on_sqlite(db, test_user):
+    """
+    SQLite fixture 不支持 pg_advisory_xact_lock → dedupe_service 内 dialect 守卫应跳过 / 不报 OperationalError。
+    生产 PG 环境下会真加锁（无法在单测里直接验证 / 留 prod verify）。
+    """
+    base_at = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
+    new_id = _insert_activity(db, test_user.id, started_at=base_at)
+    new = _get_activity_via_orm(db, new_id)
+    # 不应抛 OperationalError（如果 dialect 守卫漏写 / SQLite 跑 pg_advisory_xact_lock 会爆）
+    result = find_and_mark_duplicate(db, new)
+    assert result is None  # 没 candidate / 正常返 None / dialect 守卫真生效
+
+
 def test_missing_simplified_track_returns_none(db, test_user):
     """new 缺 simplified_track（解析失败 / 早期数据）→ 跳过 dedupe / 不报错。"""
     base_at = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)

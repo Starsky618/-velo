@@ -26,6 +26,7 @@ import logging
 from datetime import timedelta
 from typing import Optional
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.activity.dedupe import (
@@ -36,9 +37,18 @@ from app.activity.dedupe import (
     is_potential_duplicate,
 )
 from app.activity.models import Activity
+from app.notification.models import Notification
+from app.segment.models import SegmentEffort
 
 
 logger = logging.getLogger(__name__)
+
+
+# advisory lock namespace（与 segment-create-from-activity 命名风格一致）
+# 用 hashtext('dedupe-activity') 作为 namespace key + user_id 作为 instance key
+# = pg_advisory_xact_lock(namespace, user_id) 双 key 形式
+# 同 user dedupe 串行 / 不同 user 并发 OK / 事务结束自动释放
+_DEDUPE_LOCK_NAMESPACE_SQL = "hashtext('dedupe-activity')"
 
 
 def _build_sig(activity: Activity) -> Optional[ActivitySig]:
@@ -112,6 +122,17 @@ def find_and_mark_duplicate(db: Session, new_activity: Activity) -> Optional[int
         - DB 查询失败 / 字段缺失 → caller SAVEPOINT 兜底
         - new_activity sig 构造失败（缺数据）→ 直接返 None
     """
+    # 第 0 步：per-user advisory lock 防多 worker 并发 race
+    # 场景：未来 docker compose --scale worker=3 时 / 同一用户的两份重复 GPX 同时被两 worker 解析 →
+    #     各自 SELECT 看不到对方未提交的 status='completed' → 双双 miss dedupe → 用户得到两份独立活动
+    # 修法：同 user dedupe 串行 / 锁在事务结束自动释放（pg_advisory_xact_lock 而非 pg_advisory_lock）
+    # SQLite fixture 不支持 pg_advisory_xact_lock → 用 dialect.name 守卫（CLAUDE.md 陷阱 #15 同款 pattern）
+    if db.bind.dialect.name == "postgresql":
+        db.execute(
+            text(f"SELECT pg_advisory_xact_lock({_DEDUPE_LOCK_NAMESPACE_SQL}, :user_id)"),
+            {"user_id": new_activity.user_id},
+        )
+
     # 第 1 步：构造 new sig（缺数据则跳过）
     new_sig = _build_sig(new_activity)
     if new_sig is None:
@@ -153,11 +174,27 @@ def find_and_mark_duplicate(db: Session, new_activity: Activity) -> Optional[int
         c_score = compute_completeness_score(_build_score(c))
 
         if new_score > c_score:
-            # new 数据更全 → existing 标 duplicate_of=new（new 成新主）
+            # new 数据更全 → existing 让位 / 标 duplicate_of=new（new 成新主）
+            # 关键：迁移 existing 已有的 SegmentEffort + Notification 到 new
+            # 不迁移会导致 → existing 隐藏 / 但旧 efforts/通知挂在 existing 下 / 用户看不到 + segment 排行榜显示已被隐藏的活动
+            # 迁移后 → 旧 segment 成绩归属 new（用户看到完整数据）+ 通知跳转链指向 new（详情可看）
+            # 注意：worker 会继续给 new 跑 segment 匹配 / matcher 内置 UNIQUE(segment_id, activity_id) +
+            #      auto_match.py:141 existing 检查防 dup IntegrityError → 已迁移过来的 effort 会被 continue 跳过 / 不会重复写
+            migrated_efforts = (
+                db.query(SegmentEffort)
+                .filter(SegmentEffort.activity_id == c.id)
+                .update({SegmentEffort.activity_id: new_activity.id}, synchronize_session=False)
+            )
+            migrated_notifs = (
+                db.query(Notification)
+                .filter(Notification.activity_id == c.id)
+                .update({Notification.activity_id: new_activity.id}, synchronize_session=False)
+            )
             c.duplicate_of = new_activity.id
             logger.info(
                 f"dedupe mark: existing activity {c.id} → duplicate_of new activity {new_activity.id} "
-                f"(new score {new_score:.2f} > existing {c_score:.2f})"
+                f"(new score {new_score:.2f} > existing {c_score:.2f}) / "
+                f"migrated {migrated_efforts} efforts + {migrated_notifs} notifications to new"
             )
             return c.id
         else:
