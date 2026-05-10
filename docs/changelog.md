@@ -1,5 +1,58 @@
 # VELO 开发变更日志
 
+## 2026-05-10 task-4.3 §2: alembic 双向 + restore 演练 ✅ / v5 期 100% 完结 🏁
+
+> v5 期最后一项遗留 / Sprint 5 task-1 pg_dump 解锁后立即跑 / 完整闭环验证备份-恢复路径真 work。
+
+### 触发
+
+Sprint 5 task-1 pg_dump 备份 ✅ ship → task-4.3 §2 alembic 双向解锁前置满足 → Tim 拍"完整闭环（双向 + restore 演练 / 45 分钟）"。
+
+### 5 step 全过
+
+| Step | 操作 | 结果 |
+|---|------|------|
+| 1 | `docker compose exec db-backup /scripts/backup_db.sh` | marker backup `velo_20260510_151014.sql.gz` / 28.2 MB / 8 秒 ✅ |
+| 2 | `alembic current` + `upgrade head` | current=`phase5_v5_db_changes (head)` / upgrade no-op ✅ |
+| 3 | `alembic downgrade phase4_frontend_consume` | 跑 2 步：v5_db_changes → tz_aware → phase4 / verify users.city + segments.{city/max_gradient/difficulty} + segment_curation_pool/ai_drafts 全消失 ✅ |
+| 4 | `alembic upgrade head` | 跑 2 步重建 / verify schema 回 + 数据 NULL/server_default（city='unknown' difficulty='medium' max_gradient NULL）✅ |
+| 5 | restore 演练（用新 db `velo_test_restore` 隔离 / 不污染 prod） | create db → gunzip backup → psql restore → verify users.city=taiyuan + segments 4 字段完整 + 行数对齐 prod（users 2 / segments 24 / activities 326 / efforts 121）→ drop velo_test_restore ✅ |
+
+### prod 恢复（backfill_phase5）
+
+restore 演练验证了 backup 真可用 / 但 prod v5 字段仍 NULL/server_default（downgrade 副作用）。Tim 拍"backfill_phase5（推荐 / 5 分钟 / 零风险）"恢复路径。
+
+实测：
+- segments 阶段：success=24 / failed=0 / 16 分钟跑完（PostGIS 距离查询 + max_gradient 算法慢）
+- users.city 阶段：updated=1 / unchanged_null=1 / failed=0
+
+**user 1 (Admin)**: city 仍 NULL（无 activity / 算法无法推断 / 预期）
+**user 2**: city = 'shenzhen'（**与 prod 之前 'taiyuan' 不一致**）
+
+### user 2 city 推断算法差异（设计差异 / 不 bug / Tim 拍接受）
+
+| 路径 | 算法 | user 2 结果 |
+|---|------|-------|
+| `worker.py` city hook（每次上传 GPX 后跑） | latest activity 起点 | latest_act 2026-05-03 在太原 → 'taiyuan' |
+| `backfill_phase5.py backfill_users_city`（一次性 / 跳过式幂等） | first activity 起点 | first_act 2022-04-24 在深圳 → 'shenzhen' |
+
+两种合理推断 / `backfill_users_city` 设计文档明确说"首次推断 / 不覆盖人工值"。Tim 拍接受 / 下次上传 GPX 时 worker hook 会自然改回 latest（不会因 city 已存在跳过 / worker hook 是覆盖式）。
+
+### v5 期 100% 完结 🏁
+
+- 4 个 Sprint（0/1/2/3/4）+ 4 个收尾 task（4.1 文档 / 4.2 黑盒 / 4.3 part-1/2/3/4 / 4.4 复盘）全部 ✅
+- 0 遗留项
+
+### 下一步
+
+**Sprint 5 task-2 待 Tim 选**。backlog 候选（按 ROI 排序）：
+- D33 map matching（赛段匹配精度 / 1-3 天）
+- D28 高德地图未来 tab（2-3 天）
+- tied PR my_rank off-by-one fix（半天）
+- admin H5 真用回归 hotfix（按需）
+
+---
+
 ## 2026-05-10 Sprint 5 task-1: pg_dump 自动备份 MVP ✅ ship
 
 > v5 期 closure 后 Sprint 5 第一项 / tech-debt 顶部 P0 / 也是 task-4.3 §2 alembic 双向解锁前置。
