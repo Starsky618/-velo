@@ -67,6 +67,12 @@ Page({
     loadingMore: false,   // 分页 loading（底部小提示）
     hasMore: true,        // 是否还有下一页
     activeUsers: [],      // Sprint 5 task-3：骑友 section（最近活跃用户 / 横向 scroll）
+    // ===== Sprint 5 task-3 真用回归：统一搜索 =====
+    searchKeyword: '',    // 当前搜索框内容
+    isSearching: false,   // 是否处于搜索状态（true → 隐藏默认 view 显示搜索结果）
+    searchLoading: false, // 搜索请求 loading
+    searchSegments: [],   // 搜索赛段结果
+    searchUsers: [],      // 搜索骑友结果
   },
 
   onLoad() {
@@ -124,6 +130,80 @@ Page({
     const userId = e.currentTarget.dataset.id
     if (!userId) return
     wx.navigateTo({ url: '/pages/user/user?id=' + userId })
+  },
+
+  /**
+   * 搜索框输入触发（Sprint 5 task-3 真用回归）。
+   *
+   * 设计：
+   * - debounce 300ms 防频繁请求（用户连续打字时只末次请求生效）
+   * - 输入空 → 退出搜索状态 / 恢复默认 view
+   * - 输入有值 → 进入搜索状态 / 并行调 segments + users 搜索
+   */
+  onSearchInput(e) {
+    const value = (e.detail.value || '').trim()
+    this.setData({ searchKeyword: value })
+    // 清空 debounce
+    if (this._searchTimer) clearTimeout(this._searchTimer)
+    if (!value) {
+      // 输入清空 → 退出搜索状态
+      this.setData({
+        isSearching: false,
+        searchSegments: [],
+        searchUsers: [],
+        searchLoading: false,
+      })
+      return
+    }
+    // debounce 300ms
+    this._searchTimer = setTimeout(() => this._fetchSearch(value), 300)
+  },
+
+  /**
+   * 清空搜索框 → 退出搜索状态 / 恢复默认 view。
+   */
+  onClearSearch() {
+    if (this._searchTimer) clearTimeout(this._searchTimer)
+    this.setData({
+      searchKeyword: '',
+      isSearching: false,
+      searchSegments: [],
+      searchUsers: [],
+      searchLoading: false,
+    })
+  },
+
+  /**
+   * 真发起搜索请求（debounce 后调用）。
+   *
+   * 并行调赛段 + 骑友 endpoint / Promise.all 减少首屏感知延迟。
+   * 任一失败不阻断另一类（独立 catch）。
+   */
+  _fetchSearch(keyword) {
+    this.setData({ isSearching: true, searchLoading: true })
+
+    const segmentsPromise = api
+      .getSegmentsList({ search: keyword, page: 1, page_size: 20 })
+      .then((data) => data.items || [])
+      .catch(() => [])
+
+    const usersPromise = api
+      .get('/api/user/active?limit=20&q=' + encodeURIComponent(keyword))
+      .then((data) => (data.items || []).map((u) => ({
+        ...u,
+        lastActivityLabel: this._renderLastActiveLabel(u.last_activity_at),
+      })))
+      .catch(() => [])
+
+    Promise.all([segmentsPromise, usersPromise]).then(([segs, users]) => {
+      // 用户在 setTimeout 触发后立刻清空搜索 → 不要覆盖
+      if (this.data.searchKeyword !== keyword) return
+      this.setData({
+        searchSegments: segs,
+        searchUsers: users,
+        searchLoading: false,
+      })
+    })
   },
 
   /**

@@ -17,6 +17,111 @@ page {
 }
 
 /* ====== 顶部城市筛选条 ====== */
+/* ====== Sprint 5 task-3 真用回归：搜索框 ====== */
+.search-bar {
+  padding: 16rpx 24rpx;
+  background: #ffffff;
+}
+
+.search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 24rpx;
+  background: #F2F1F6;
+  border-radius: 32rpx;
+}
+
+.search-icon {
+  font-size: 28rpx;
+  color: #8e8e93;
+}
+
+.search-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #1c1c1e;
+}
+
+.search-clear {
+  font-size: 28rpx;
+  color: #8e8e93;
+  padding: 0 8rpx;
+}
+
+.search-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 120rpx 24rpx;
+  font-size: 28rpx;
+  color: #8e8e93;
+}
+
+.search-empty-hint {
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  color: #c7c7cc;
+}
+
+.search-section {
+  background: #ffffff;
+  margin-bottom: 16rpx;
+  padding: 16rpx 0;
+}
+
+.search-section-title {
+  padding: 0 24rpx 16rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #8e8e93;
+}
+
+.search-users-list {
+  padding: 0 24rpx;
+}
+
+.search-user-row {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #F2F1F6;
+  transition: opacity 0.15s;
+}
+
+.search-user-row:active {
+  opacity: 0.6;
+}
+
+.search-user-avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background: #E5E5E7;
+  flex-shrink: 0;
+}
+
+.search-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-user-name {
+  font-size: 30rpx;
+  font-weight: 500;
+  color: #1c1c1e;
+}
+
+.search-user-meta {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #8e8e93;
+  display: flex;
+  gap: 12rpx;
+}
+
+/* ====== 城市筛选条 ====== */
 .city-filter-scroll {
   white-space: nowrap;
   padding: 16rpx 24rpx 24rpx;

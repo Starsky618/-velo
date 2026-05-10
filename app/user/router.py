@@ -126,11 +126,12 @@ def get_stats(
 @router.get("/active", response_model=schemas.ActiveUsersResponse)
 def get_active_users(
     limit: int = 10,
+    q: str | None = None,
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    探索 tab 骑友 section（Sprint 5 task-3）。
+    探索 tab 骑友 section + 搜索（Sprint 5 task-3 / 真用回归加 q 参数）。
 
     返回最近活跃用户列表（按最近骑车时间倒序），排除：
     - admin 后台账号（is_admin=True）
@@ -138,12 +139,23 @@ def get_active_users(
     - 无任何 completed activity 的用户（INNER JOIN 自动过滤）
     - dedupe 重复的 activity（duplicate_of IS NOT NULL）
 
+    q 参数（可选）：nickname 模糊搜索关键词（≥ 1 字 / ≤ 64 字 / 防注入 SQLAlchemy 参数化）。
+    搜索时仍按活跃度排序（不按相关性 / MVP 简化）。
+
     路径用 /api/user/active 单数（跟 task-2.C.3 拍的 /api/user 单数前缀一致）。
-    limit 默认 10 / 前端横向 scroll 用 6-10 个就够。
     """
     if limit < 1 or limit > 50:
         limit = 10  # 防御性兜底（极端 query 参数）
-    items = service.get_active_users(db, exclude_user_id=user_id, limit=limit)
+    # q 长度防御：> 64 字直接当无搜索（防恶意大 string）
+    search_keyword = q.strip() if q else None
+    if search_keyword and (len(search_keyword) < 1 or len(search_keyword) > 64):
+        search_keyword = None
+    items = service.get_active_users(
+        db,
+        exclude_user_id=user_id,
+        limit=limit,
+        search=search_keyword,
+    )
     return {"items": items}
 
 

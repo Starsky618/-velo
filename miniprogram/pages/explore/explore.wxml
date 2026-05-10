@@ -24,6 +24,21 @@
   <text class="title">探索</text>
 </view>
 
+<!-- Sprint 5 task-3 真用回归：统一搜索框（赛段 + 骑友） -->
+<view class="search-bar">
+  <view class="search-input-wrap">
+    <text class="search-icon">🔍</text>
+    <input class="search-input"
+           placeholder="搜索赛段 / 骑友"
+           value="{{searchKeyword}}"
+           bindinput="onSearchInput"
+           confirm-type="search" />
+    <text wx:if="{{searchKeyword}}" class="search-clear" bindtap="onClearSearch">✕</text>
+  </view>
+</view>
+
+<!-- 默认状态（无搜索）：城市筛 + 骑友 section + 赛段瀑布流 -->
+<block wx:if="{{!isSearching}}">
 <!-- 顶部城市筛选条（横向滚动 / 6 城 + "全部"） -->
 <scroll-view scroll-x class="city-filter-scroll" enhanced show-scrollbar="{{false}}">
   <view class="city-filter-list">
@@ -105,3 +120,58 @@
 <view class="no-more" wx:elif="{{!hasMore && segments.length > 0}}">
   <text>—— 没有更多赛段了 ——</text>
 </view>
+</block>
+
+<!-- 搜索状态：显示搜索结果（赛段 + 骑友 两 section） -->
+<block wx:if="{{isSearching}}">
+  <view class="loading" wx:if="{{searchLoading}}">
+    <text>搜索中...</text>
+  </view>
+
+  <view class="search-empty" wx:elif="{{!searchLoading && searchSegments.length === 0 && searchUsers.length === 0}}">
+    <text>未找到 "{{searchKeyword}}" 相关</text>
+    <text class="search-empty-hint">试试其他关键词</text>
+  </view>
+
+  <block wx:else>
+    <!-- 搜索骑友结果 -->
+    <view class="search-section" wx:if="{{searchUsers.length > 0}}">
+      <view class="search-section-title">骑友 ({{searchUsers.length}})</view>
+      <view class="search-users-list">
+        <view class="search-user-row" wx:for="{{searchUsers}}" wx:key="id"
+              data-id="{{item.id}}" bindtap="onTapRiderAvatar">
+          <image class="search-user-avatar" src="{{item.avatar_url || '/assets/default-avatar.png'}}" mode="aspectFill"></image>
+          <view class="search-user-info">
+            <view class="search-user-name">{{item.nickname || '匿名骑友'}}</view>
+            <view class="search-user-meta">
+              <text wx:if="{{item.city}}">{{item.city}}</text>
+              <text>{{item.total_distance_km}} km</text>
+              <text wx:if="{{item.lastActivityLabel}}">{{item.lastActivityLabel}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 搜索赛段结果 -->
+    <view class="search-section" wx:if="{{searchSegments.length > 0}}">
+      <view class="search-section-title">赛段 ({{searchSegments.length}})</view>
+      <view class="segment-list">
+        <view class="segment-card" wx:for="{{searchSegments}}" wx:key="id"
+              data-id="{{item.id}}" bindtap="onTapSegment">
+          <view class="card-header">
+            <text class="segment-name">{{item.name}}</text>
+            <view class="new-badge" wx:if="{{item.isNew}}">
+              <text>NEW</text>
+            </view>
+          </view>
+          <view class="card-meta">
+            <text class="meta-item">{{item.distance}} km</text>
+            <text class="meta-item" wx:if="{{item.elevation_gain}}">↑{{item.elevation_gain}} m</text>
+            <text class="meta-item" wx:if="{{item.cityLabel}}">{{item.cityLabel}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+</block>

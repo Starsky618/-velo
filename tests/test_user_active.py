@@ -188,6 +188,75 @@ def test_endpoint_limit_zero_falls_back_to_default(client, auth_header, db, test
     assert len(r.json()["items"]) == 1  # 默认 10 / 这里只有 1 条数据 / 1 个返回
 
 
+def test_search_filters_by_nickname(db, test_user):
+    """search 参数按 nickname ILIKE 过滤 / 不区分大小写。"""
+    base = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
+    u1 = User(openid="u1_search", is_admin=False, nickname="Alice")
+    u2 = User(openid="u2_search", is_admin=False, nickname="Bob")
+    u3 = User(openid="u3_search", is_admin=False, nickname="aliceWonder")
+    db.add_all([u1, u2, u3])
+    db.commit()
+    db.refresh(u1); db.refresh(u2); db.refresh(u3)
+    _insert_activity(db, u1.id, started_at=base)
+    _insert_activity(db, u2.id, started_at=base)
+    _insert_activity(db, u3.id, started_at=base)
+
+    # 大小写不敏感 / 模糊匹配
+    result = get_active_users(db, exclude_user_id=test_user.id, search="alice")
+
+    nicknames = sorted(r["nickname"] for r in result)
+    assert nicknames == ["Alice", "aliceWonder"]
+
+
+def test_search_empty_returns_all(db, test_user):
+    """search=None 或空字符串 → 不过滤 / 返全部活跃用户。"""
+    base = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
+    other = User(openid="other_empty_search", is_admin=False, nickname="Xyz")
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+    _insert_activity(db, other.id, started_at=base)
+
+    # search=None
+    assert len(get_active_users(db, exclude_user_id=test_user.id, search=None)) == 1
+    # search="" (空字符串 / 走 falsy 分支)
+    assert len(get_active_users(db, exclude_user_id=test_user.id, search="")) == 1
+
+
+def test_endpoint_q_param_returns_filtered(client, auth_header, db, test_user):
+    """endpoint /api/user/active?q=xxx 真过滤 + 200。"""
+    base = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
+    matched = User(openid="ep_match", is_admin=False, nickname="MatchedUser")
+    not_matched = User(openid="ep_no_match", is_admin=False, nickname="OtherName")
+    db.add_all([matched, not_matched])
+    db.commit()
+    db.refresh(matched); db.refresh(not_matched)
+    _insert_activity(db, matched.id, started_at=base)
+    _insert_activity(db, not_matched.id, started_at=base)
+
+    r = client.get("/api/user/active?q=match", headers=auth_header)
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert len(items) == 1
+    assert items[0]["nickname"] == "MatchedUser"
+
+
+def test_endpoint_q_too_long_falls_back_to_no_filter(client, auth_header, db, test_user):
+    """?q=<65 字以上> → 当无搜索（防恶意大 string）/ 返全部。"""
+    base = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
+    other = User(openid="long_q_other", is_admin=False, nickname="ShortName")
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+    _insert_activity(db, other.id, started_at=base)
+
+    long_q = "x" * 100  # 100 字超过 64 字上限
+    r = client.get(f"/api/user/active?q={long_q}", headers=auth_header)
+    assert r.status_code == 200
+    # 长 q 被 reset 为 None / 返所有活跃用户（这里 1 个）
+    assert len(r.json()["items"]) == 1
+
+
 def test_endpoint_limit_above_50_falls_back_to_default(client, auth_header, db, test_user):
     """?limit=51 → endpoint 兜底 reset 为 default 10（防恶意大 limit 拖 DB）。"""
     base = datetime(2026, 5, 11, 10, 0, 0, tzinfo=timezone.utc)
