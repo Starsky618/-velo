@@ -456,7 +456,8 @@ D 主轴（admin H5 hotfix + 监测）：
 - ✅ v5 收尾 task-4.3 part-3（真 E2E 走通 / activity 326 / 解析 + city hook + 个人页 endpoint 全 200 / 0 segment 匹配 = 真实情况：太原赛段全在西山，离这条路线最近 7.98km）— **v5 期闸门完全关闭 🎯**
 - ✅ Sprint 5 task-1 pg_dump 自动备份 MVP（commit `e5c71d0` / 11 容器全 Up + db-backup 新增 + monitor 加 backup_freshness 探针 / 29 MB 备份 verify 通过 / codex 异源审 2 轮收敛）
 - ✅ task-4.3 part-4 alembic 双向 + restore 演练（v5 期最后一项遗留 / 4 step 全过 + restore 用新 db 隔离 + backfill_phase5 恢复 24 segments / **v5 期 100% 完结 🏁**）
-- **下一步**：Sprint 5 待 Tim 选第 2 项（候选：D33 map matching / D28 高德地图 / tied PR my_rank fix / admin H5 真用回归 hotfix）
+- ✅ Sprint 5 task-2 GPX 语义级 dedupe MVP + parser timezone fix（5 commit `853bd5b..a4df6d5` / Codex 4 轮 review 收敛 / 修法 A 简化 / Strava 路径集成 / 部署 verify 326→103 完整闭环 / 详 changelog 2026-05-11 段）
+- **下一步**：Sprint 5 task-3 待 Tim 选（候选：探索 tab 加骑友 section / 加更多赛段 / admin H5 hotfix loop）
 
 **Sprint 4 = 小程序 4 tab 重构 + admin H5 真用回归（4 周 / 双主轴并行）**
 

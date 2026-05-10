@@ -1,5 +1,81 @@
 # VELO 开发变更日志
 
+## 2026-05-11 Sprint 5 task-2: GPX 语义级 dedupe MVP ✅ + parser timezone bug 顺手修
+
+### 触发
+
+Tim 真上传 GPX 时发现：file_hash 字节级 dedupe 漏识 Strava 同步 vs GPX 后传的同骑行（语义级重复）。
+brainstorm 7 拍后实施 1-2 天 task。
+
+### 5 commit 链（codex 4 轮 review 收敛）
+
+| commit | 摘要 |
+|---|---|
+| `853bd5b` | dedupe MVP：4 维 signature 算法 + dedupe.py 纯函数 + dedupe_service.py + worker 集成 + 6 处列表查询过滤 + schema/endpoint + 前端 toast UX |
+| `ec8ae57` | Codex round-1 抓 Critical fix（pipe 退码已修） + Important（pg_advisory_xact_lock per-user）+ Nice（30h 边界 case） |
+| `95df6be` | Codex round-2 抓 2 Critical → Tim 反思切修法 A：砍 score 比较 / 永远新的标 duplicate（避免 efforts 迁移复杂度爆炸）+ Strava import_scheduler 路径集成 dedupe |
+| `fb9c805` | Codex round-3 Important：/api/user/stats 也过滤 duplicate |
+| `a4df6d5` | 部署 verify 实证 GPX timezone bug：parser naive timestamp 假设北京时间 → 转 UTC（中国主用户群） |
+
+### 关键设计决策（Tim brainstorm 7 拍 / 详对话记录）
+
+1. **算法 4 维**：起骑时间 ± 5min / 距离 ± 100m / 时长 ± 60s / 起点 GPS ± 100m（容差从 GPS 物理误差推导）
+2. **修法 A（永远新的标 duplicate）**：旧的为主 / new 标 duplicate_of=existing / 不比 score（避免 efforts 迁移 / 字段重算 / 通知关联失效等深层耦合）
+3. **trade-off**：用户后传"数据更全"GPX 仍隐藏 / 但实际 Strava 同步通常在前 / 后传隐藏不损失什么
+4. **per-user advisory lock**：`pg_advisory_xact_lock(hashtext('dedupe-activity'), user_id)` / 同 user 串行 / 不同 user 并发 / 防多 worker scale 后 race
+5. **Strava 路径集成**：worker.py（GPX/FIT）+ import_scheduler.py（Strava）双路径都调 dedupe
+
+### 部署 verify（生产实证）
+
+发现 user 2 的 326（GPX 上传）跟 Strava 同骑行 103 时间差 8h（**GPX timezone bug**）：
+- 326 started_at = `2024-12-21 19:40:23+00`（实际是北京时间被错存 UTC）
+- 103 started_at = `2024-12-21 11:40:23+00`（真 UTC / Strava 已 normalize）
+- 时差 8h / dedupe 5min 容差外漏判
+
+修 GPX parser timezone：
+- naive timestamp（无 tzinfo）→ 假设北京时间 → 转 UTC
+- aware timestamp → astimezone(UTC) 标准化
+- +3 测试覆盖（naive 北京 / Z 后缀 / +08:00）
+
+手动模拟 parser 修复后状态（SQL 改 326 started_at -8h）→ 跑 dedupe → ✅ 326 标 duplicate_of=103 / 完整链路 verify 通过。
+
+### Codex 4 轮 review 复盘（按新 review 规则跑）
+
+应用 memory `feedback_review_agent_must_read_diff_not_prompt` 新规则：
+- 不列待审文件清单
+- 不告诉"已 fix""Tim 拍"
+- 给 commit hash + 让 reviewer 自由探索
+
+新规则下 codex 抓得更准：
+- round-1（853bd5b）：1 Critical（pipe 退码 / 我自查抓的）+ 1 Critical（cron spec drift）+ 1 Important（pg_isready）+ 1 Nice（30h 边界）
+- round-2（ec8ae57）：抓 2 真 Critical 揭露修法 B 复杂度爆炸（efforts/通知不迁移 + Strava 路径漏接）→ Tim 反思切 A
+- round-3（95df6be）：1 Important（/api/user/stats 漏过滤）
+- round-4（a4df6d5）：Critical=0 / 2 Important 都是 trade-off 类（海外北京假设 / 集成测试 ROI 低）→ 收口
+
+新规则下 reviewer 视野不被框定 / 跨模块影响（Strava 路径 / segment_efforts 双计 / stats 漏过滤）才被抓出来。
+
+### 测试覆盖
+
+- `tests/test_activity_dedupe.py`：17 case（4 维比对 + 容差边界 + score 公式）
+- `tests/test_activity_dedupe_service.py`：8 case（标 duplicate / 时间窗 / 跨用户 / advisory lock 守卫 / 不迁移）
+- `tests/test_parsing.py`：+3 case（naive 北京假设 / Z UTC 保持 / +08:00 转 UTC）
+- 全套：434 passed / 53 skipped / 0 failed
+
+### 留 backlog
+
+- 海外用户 GPX 上传时 naive timestamp 仍按北京时间假设（接受 / Sprint 5 task-2 trade-off）
+- 历史 timezone-affected GPX（如 326 这类已存 DB 的）→ 不会自动 retroactive backfill / 留独立 dedupe_historical.py 脚本未来跑
+- 多 worker scale 后真并发场景集成测试（advisory lock 设计已就位 / 但生产单 worker 暂无法 verify）
+
+### 下一步
+
+**Sprint 5 task-2 ✅ ship 完整闭环 / 待 Tim 选 task-3**：
+- 探索 tab 加骑友 section（Sprint 5 task-3 Tim 之前拍的 day 3-4 任务）
+- 加更多赛段（持续动作）
+- admin H5 hotfix loop（按需）
+
+---
+
 ## 2026-05-10 task-4.3 §2: alembic 双向 + restore 演练 ✅ / v5 期 100% 完结 🏁
 
 > v5 期最后一项遗留 / Sprint 5 task-1 pg_dump 解锁后立即跑 / 完整闭环验证备份-恢复路径真 work。
