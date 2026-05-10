@@ -179,4 +179,5 @@ def get_activity_status(
     return schemas.ActivityStatusResponse(
         status=activity.status,
         error_message=activity.error_message,
+        duplicate_of=activity.duplicate_of,  # Sprint 5 task-2 dedupe：前端轮询看到非 None → 跳合并目标 + toast
     )

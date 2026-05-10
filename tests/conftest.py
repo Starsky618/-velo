@@ -117,6 +117,7 @@ _activities_table = Table(
     Column("data_source", String(20)),     # 第 1 期新增：数据来源标记
     Column("activity_type", String(20), default="cycling"),  # 第 4 期新增：活动类型
     Column("strava_activity_id", Integer), # 第 2 期新增：Strava 活动去重 ID
+    Column("duplicate_of", Integer),         # Sprint 5 task-2：语义级 dedupe 自引用 FK
     Column("created_at", DateTime(timezone=True)),
     Column("updated_at", DateTime(timezone=True)),
 )

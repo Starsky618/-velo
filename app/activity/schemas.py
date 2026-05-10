@@ -76,6 +76,7 @@ class ActivityDetail(BaseModel):
     simplified_track: Optional[Any] = None   # JSONB: [{lat, lon, ele}, ...]
     splits: Optional[Any] = None             # JSONB: [{km, avg_speed, ...}, ...]
     power_zones: Optional[Any] = None        # JSONB: [{zone, name, ...}, ...]
+    duplicate_of: Optional[int] = None       # Sprint 5 task-2 dedupe：非 None = 本活动是 dedup 重复 / 前端按需显示提示
     created_at: Optional[datetime] = None
 
     class Config:
@@ -99,6 +100,7 @@ class ActivityStatusResponse(BaseModel):
     """解析状态轮询响应"""
     status: str
     error_message: Optional[str] = None
+    duplicate_of: Optional[int] = None  # Sprint 5 task-2 dedupe：上传后前端轮询看到非 None → 跳到合并目标 + toast
 
 
 # ========== 时序数据（供前端画速度/功率/心率曲线） ==========

@@ -161,27 +161,54 @@ def _do_parse(db, activity_id: int) -> None:
     # ===== 步骤 10：标记完成 =====
     activity.status = "completed"
 
+    # ===== 步骤 10.4：GPX 语义 dedupe（Sprint 5 task-2 / Day 1）=====
+    # Why 在这一步：要在 detector / city hook / segment 匹配之前跑
+    #   - detector 跑在 duplicate 上 = 重复发 PR/KOM 通知（用户体验差）
+    #   - segment 匹配跑在 duplicate 上 = segment_efforts 重复行
+    #   - cache invalidate 跑在 duplicate 上无副作用（重新计算时 WHERE duplicate_of IS NULL 自动过滤）
+    # SAVEPOINT 隔离（CLAUDE.md 陷阱 #13 / 与 city hook 同 pattern）：
+    #   dedupe 内部 db.flush() 失败不阻断外层 activity 已 set 的 status='completed'
+    is_duplicate = False
+    try:
+        from app.activity.dedupe_service import find_and_mark_duplicate
+
+        nested_dedup = db.begin_nested()
+        try:
+            marked_id = find_and_mark_duplicate(db, activity)
+            db.flush()  # SAVEPOINT 内 flush 让 duplicate_of 字段写到 DB
+            nested_dedup.commit()
+            # 缓存到本地变量供后续 step 守卫
+            # marked_id 可能是 new 也可能是 existing；这里只关心"new 是否被标"
+            is_duplicate = activity.duplicate_of is not None
+        except Exception:
+            nested_dedup.rollback()  # SAVEPOINT 回退 / 不影响外层 activity.status
+    except Exception:
+        # 最外层兜底：begin_nested / 模块 import 极端失败
+        pass
+
     # ===== 步骤 10.5：5min 功率进步检测（v5 task-2.A.1 / spec §3.4）=====
     # hook 落在 status='completed' 赋值后、db.commit 前——这样 detector 写的
     # notification 与 activity.status 在同一 transaction 提交（一致性 OK）。
     # detector 内部用 SAVEPOINT 隔离，写失败不会回退 activity.status。
     # try/except 兜底：detector 任何异常都不影响 activity 已经 completed 的事实。
-    try:
-        from app.notification.progress_detector import detect_5min_power_progress
-        from app.user.service import invalidate_power_curve_cache, invalidate_heatmap_cache
+    # Sprint 5 task-2 守卫：activity 是 duplicate 时跳过（避免重复发 PR/KOM 通知）。
+    if not is_duplicate:
+        try:
+            from app.notification.progress_detector import detect_5min_power_progress
+            from app.user.service import invalidate_power_curve_cache, invalidate_heatmap_cache
 
-        detect_5min_power_progress(db, activity.user_id, activity.id)
-        # invalidate_power_curve_cache 是 task-2.A.1 stub / task-2.C.2 已替换为真实现
-        # 上传新 activity 后清缓存让下次查 power_curve 走真实计算
-        invalidate_power_curve_cache(activity.user_id)
-        # invalidate_heatmap_cache（D27 v3 polish 新增 / Codex 异源审 Critical 修）
-        # 新 activity completed 后必须清 heatmap 缓存（含无 city + 按 city 两种 key）
-        # 否则用户下次查"全部"路径仍是旧轨迹列表 / 新骑行最长 1h 看不到
-        invalidate_heatmap_cache(activity.user_id)
-    except Exception:
-        # 进步检测失败静默跳过，不影响 activity 已经 completed 的事实
-        # 失败场景：power_curve / heatmap 算法异常 / DB 临时网络抖动 / Redis 不可用
-        pass
+            detect_5min_power_progress(db, activity.user_id, activity.id)
+            # invalidate_power_curve_cache 是 task-2.A.1 stub / task-2.C.2 已替换为真实现
+            # 上传新 activity 后清缓存让下次查 power_curve 走真实计算
+            invalidate_power_curve_cache(activity.user_id)
+            # invalidate_heatmap_cache（D27 v3 polish 新增 / Codex 异源审 Critical 修）
+            # 新 activity completed 后必须清 heatmap 缓存（含无 city + 按 city 两种 key）
+            # 否则用户下次查"全部"路径仍是旧轨迹列表 / 新骑行最长 1h 看不到
+            invalidate_heatmap_cache(activity.user_id)
+        except Exception:
+            # 进步检测失败静默跳过，不影响 activity 已经 completed 的事实
+            # 失败场景：power_curve / heatmap 算法异常 / DB 临时网络抖动 / Redis 不可用
+            pass
 
     # ===== 步骤 10.6：首次上传自动推断主城市（v5 task-2.C.2 / spec §3.5）=====
     # 用户没填 city 时，从首条骑行起点反推主城市（北京/上海/...等 6 主城 / 'unknown'）。
@@ -191,37 +218,39 @@ def _do_parse(db, activity_id: int) -> None:
     # city hook 内任何 DB 异常（如 SELECT FOR UPDATE 死锁 / 事务 rollback-only）会让外层
     # session 进入 invalid 状态，导致 worker 后续 db.commit() 一起失败 → activity 卡 processing。
     # 用 begin_nested() 让失败只回退 SAVEPOINT，外层 activity.status / notification 不受影响。
-    try:
-        # User 已在文件顶部 import（line 37）—— 这里不能再 import：
-        # Python 函数作用域规则下，函数内任何位置 `from ... import User`
-        # 会让整个函数内 User 视为局部变量，导致前面 step 2.5 之后第 124 行
-        # `db.query(User)` 触发 UnboundLocalError（实测踩过 / 2026-04-30）
-        from app.common.geo import infer_city_from_coords
-
-        nested_city = db.begin_nested()
+    # Sprint 5 task-2 守卫：duplicate 跳过（city hook 设计上幂等无副作用，但跳过更省事）。
+    if not is_duplicate:
         try:
-            user = (
-                db.query(User)
-                .filter(User.id == activity.user_id)
-                .with_for_update()  # 行锁，并发请求串行（spec R3-Minor 修）
-                .populate_existing()  # CLAUDE.md 陷阱 #12：刷新 identity map 避免读到 stale city
-                .first()
-            )
-            if user is not None and user.city is None and activity.simplified_track:
-                track = activity.simplified_track
-                if len(track) > 0:
-                    first_pt = track[0]
-                    lat = first_pt.get("lat")
-                    lon = first_pt.get("lon")
-                    if lat is not None and lon is not None:
-                        user.city = infer_city_from_coords(lat, lon)
-            db.flush()  # 强制把 user.city 改动 flush 到 DB（SAVEPOINT 内）
-            nested_city.commit()
+            # User 已在文件顶部 import（line 37）—— 这里不能再 import：
+            # Python 函数作用域规则下，函数内任何位置 `from ... import User`
+            # 会让整个函数内 User 视为局部变量，导致前面 step 2.5 之后第 124 行
+            # `db.query(User)` 触发 UnboundLocalError（实测踩过 / 2026-04-30）
+            from app.common.geo import infer_city_from_coords
+
+            nested_city = db.begin_nested()
+            try:
+                user = (
+                    db.query(User)
+                    .filter(User.id == activity.user_id)
+                    .with_for_update()  # 行锁，并发请求串行（spec R3-Minor 修）
+                    .populate_existing()  # CLAUDE.md 陷阱 #12：刷新 identity map 避免读到 stale city
+                    .first()
+                )
+                if user is not None and user.city is None and activity.simplified_track:
+                    track = activity.simplified_track
+                    if len(track) > 0:
+                        first_pt = track[0]
+                        lat = first_pt.get("lat")
+                        lon = first_pt.get("lon")
+                        if lat is not None and lon is not None:
+                            user.city = infer_city_from_coords(lat, lon)
+                db.flush()  # 强制把 user.city 改动 flush 到 DB（SAVEPOINT 内）
+                nested_city.commit()
+            except Exception:
+                nested_city.rollback()  # SAVEPOINT 回退 / 不影响外层 activity.status
         except Exception:
-            nested_city.rollback()  # SAVEPOINT 回退 / 不影响外层 activity.status
-    except Exception:
-        # 最外层兜底：begin_nested 失败 / 模块 import 失败等极端场景
-        pass
+            # 最外层兜底：begin_nested 失败 / 模块 import 失败等极端场景
+            pass
 
     db.commit()
 
@@ -229,12 +258,14 @@ def _do_parse(db, activity_id: int) -> None:
     # 活动已标记 completed 并 commit，现在触发赛段自动匹配。
     # 匹配是"尽力而为"：失败不影响活动状态（status 已经是 completed）。
     # 单独 try/except 隔离，防止匹配异常被上层 _mark_failed 捕获而误改活动状态。
-    try:
-        from app.segment.auto_match import match_activity_against_segments
-        match_activity_against_segments(activity_id, db)
-    except Exception:
-        # 赛段匹配失败静默跳过，活动状态不受影响
-        db.rollback()
+    # Sprint 5 task-2 守卫：duplicate 跳过（避免 segment_efforts 重复行）。
+    if not is_duplicate:
+        try:
+            from app.segment.auto_match import match_activity_against_segments
+            match_activity_against_segments(activity_id, db)
+        except Exception:
+            # 赛段匹配失败静默跳过，活动状态不受影响
+            db.rollback()
 
 
 def save_parse_result(db, activity, result) -> None:

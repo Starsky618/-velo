@@ -197,7 +197,8 @@ def get_activity_list(db: Session, user_id: int, page: int, page_size: int) -> t
     返回 (活动列表, 总条数)。
     距离单位转换（米→公里）在这里做，router 层拿到的就是最终数据。
     """
-    query = db.query(Activity).filter_by(user_id=user_id)
+    # Sprint 5 task-2 dedupe：列表查询过滤掉已标 duplicate 的（个人页只显示主活动 / 详情查询不过滤）
+    query = db.query(Activity).filter_by(user_id=user_id).filter(Activity.duplicate_of.is_(None))
     total = query.count()
 
     items = (

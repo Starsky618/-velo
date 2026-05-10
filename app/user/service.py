@@ -379,6 +379,7 @@ def get_user_power_curve(
         .filter(
             Activity.user_id == user_id,
             Activity.status == "completed",
+            Activity.duplicate_of.is_(None),  # Sprint 5 task-2 dedupe：power-curve 跳过 duplicate
             Activity.started_at >= start,
             Activity.started_at < end,
         )
@@ -546,11 +547,13 @@ def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict
         return _json.loads(cached.decode() if isinstance(cached, bytes) else cached)
 
     # 查该用户所有 completed activities + 有 simplified_track 的
+    # Sprint 5 task-2 dedupe：跳过 duplicate 防 heatmap 同轨迹双显
     activities = (
         db.query(_Activity)
         .filter(
             _Activity.user_id == user_id,
             _Activity.status == "completed",
+            _Activity.duplicate_of.is_(None),
             _Activity.simplified_track.isnot(None),
         )
         .all()
@@ -693,6 +696,7 @@ def get_user_profile_for_others(
         .filter(
             _Activity.user_id == target_user_id,
             _Activity.status == "completed",
+            _Activity.duplicate_of.is_(None),  # Sprint 5 task-2 dedupe：profile stats 跳过 duplicate
         )
         .first()
     )
@@ -711,6 +715,7 @@ def get_user_profile_for_others(
         .filter(
             _Activity.user_id == target_user_id,
             _Activity.status == "completed",
+            _Activity.duplicate_of.is_(None),  # Sprint 5 task-2 dedupe：月度 stats 跳过 duplicate
             _Activity.started_at >= first_of_month_utc,
         )
         .first()

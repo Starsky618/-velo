@@ -108,6 +108,19 @@ class Activity(Base):
     # nullable=True：非 Strava 来源的活动（GPX/FIT 上传）此字段为 NULL
     strava_activity_id = Column(BigInteger, unique=True, nullable=True)
 
+    # ===== 语义级 dedupe（Sprint 5 task-2）=====
+    # 若非 NULL → 本 activity 是 duplicate_of 引用那条的"语义重复"（同骑行不同导出格式）
+    # 现有 file_hash UNIQUE 只防字节级重传 / 但 Strava 同步 vs 用户后传 GPX 字节肯定不同 → 漏判
+    # 4 维 signature 比对（时间+距离+时长+起点 GPS）+ completeness score 决定哪份保留
+    # 列表查询全部 WHERE duplicate_of IS NULL 过滤 / 详情查询不过滤（用户能看 duplicate）
+    # FK ondelete=SET NULL：被引用的主活动删时不连带删 / 本行 duplicate_of 改 NULL（视为独立）
+    duplicate_of = Column(
+        Integer,
+        ForeignKey("activities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # ===== JSONB 字段（结构化数据，存为 JSON 格式）=====
 
     # 简化轨迹：Douglas-Peucker 算法压缩后的坐标点列表

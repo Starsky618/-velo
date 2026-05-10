@@ -127,8 +127,24 @@ Page({
       api.get('/api/activities/' + activityId + '/status')
         .then(function (data) {
           if (data.status === 'completed') {
-            // 解析完成，获取完整详情
             clearInterval(timer)
+            // Sprint 5 task-2 dedupe：检测到与已有骑行重复 → toast + 跳转到主活动
+            // duplicate_of 非空表示后端 dedupe 算法判定本上传是重复（同时间 / 同轨迹 / 同地点）
+            // 主活动是数据更全的那份（带功率/心率/踏频或数据点更多），用户体验上看一条更优
+            if (data.duplicate_of) {
+              wx.showToast({
+                title: '已合并到已有骑行',
+                icon: 'none',
+                duration: 2500,
+              })
+              setTimeout(function () {
+                wx.redirectTo({
+                  url: '/pages/detail/detail?id=' + data.duplicate_of,
+                })
+              }, 1500)
+              return
+            }
+            // 解析完成，获取完整详情
             that.setData({ statusText: '解析完成，加载数据...' })
             that.fetchResult(activityId)
           } else if (data.status === 'failed') {
