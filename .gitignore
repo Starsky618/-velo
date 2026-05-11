@@ -35,3 +35,6 @@ docker-compose.override.yml
 
 # Claude Code 本地权限配置（本机专属 allow 列表，不跨机共享）
 .claude/settings.local.json
+
+# Claude Code superpowers worktree 临时目录（本机会话产物，不进版本库）
+.claude/worktrees/
