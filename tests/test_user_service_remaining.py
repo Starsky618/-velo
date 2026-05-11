@@ -466,7 +466,7 @@ class TestGetUserProfileForOthers:
         - 把 _PROFILE_RESPONSE_KEYS 加敏感字段（白名单本身污染）
         → 本测试立即抓。
         """
-        from app.user.service import _filter_profile_keys, _PROFILE_RESPONSE_KEYS
+        from app.user.service_social import _filter_profile_keys, _PROFILE_RESPONSE_KEYS
 
         # 构造含 7 个敏感字段的 raw_response（Sprint 4 codex 拍砍 ftp / +1）
         raw_with_sensitive = {
@@ -512,7 +512,7 @@ class TestGetUserProfileForOthers:
     def test_response_keys_whitelist_does_not_contain_sensitive_names(self):
         """⚠ 元防回退：_PROFILE_RESPONSE_KEYS 集合本身**不应**包含敏感字段名。
         即使有人误把 'strava_access_token' 加到白名单，本测试也立即抓。"""
-        from app.user.service import _PROFILE_RESPONSE_KEYS
+        from app.user.service_social import _PROFILE_RESPONSE_KEYS
 
         forbidden_in_whitelist = {
             "ftp",  # Sprint 4 codex 异源审 2026-05-06 拍加（P1-4 / FTP 是骑手生理数据）
