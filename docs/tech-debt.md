@@ -411,6 +411,37 @@ admin H5 草稿审核生产真用 / Tim 改稿 7 条 approved（segment_id 6/8/9
 
 ---
 
+## 🟢 P3：限流 middleware 写完未接入任何 router（2026-04-30 写 / 2026-05-11 收编）
+
+### 现状
+- `app/middleware/rate_limit.py` 172 行 + `app/middleware/__init__.py` 20 行 / 2026-04-30 写完
+- 完整功能：`check_rate_limit_by_user` / `check_rate_limit_by_ip` + X-Forwarded-For 解析 + Redis 不可用降级放行 + 飞书告警（每日去抖）
+- **grep 全库 0 调用** —— 无任何 router import / 死代码挂在树上
+
+### 风险
+- 当前 100 用户量级 + 内测阶段无真实攻击 = 0 实际风险
+- 未来公测 / 用户量上来 = OAuth state CSRF / 上传刷脚本 / 登录暴力 都没拦防
+
+### 修法（< 1d）
+- 接入 3 个关键端点：
+  - `app/strava/router.py` OAuth callback（IP 限流 / 防 CSRF state 撞码）
+  - `app/activity/router.py` upload（user 限流 / 防刷上传）
+  - `app/user/router.py` login（IP 限流 / 防暴力破解）
+- 配套真用回归：故意 6 秒内请求 11 次 → 第 11 次 429
+- 改 7 个 router 文件 / 配 limit + window_sec / 加 e2e 测试
+
+### 触发条件
+- Tim 拍开专门 task 接入
+- 或公测 / 用户量过 500 时
+- 或第一次出限流相关事故（CSRF / 暴力破解）
+
+### 优先级
+低 / 当前内测期 0 攻击 / 工具已写好待开槽
+
+来源：2026-05-11 v5 收尾大扫除发现 untracked 时收编（commit TBD）
+
+---
+
 ## 清理节奏
 
 > 每期 10-20% 时间处理 P1，P2 评估性价比再决定。
