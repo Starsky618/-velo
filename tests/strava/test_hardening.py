@@ -66,7 +66,7 @@ def _make_user(db, strava_athlete_id=99001, access_token="at",
 # ==================== I7：401 → pause imports ====================
 
 
-@patch("app.strava.service.httpx.post")
+@patch("app.strava.service_token.httpx.post")
 def test_token_refresh_401_pauses_active_imports(
     mock_post, db, strava_imports_table
 ):
@@ -145,7 +145,7 @@ def test_ensure_valid_token_uses_row_lock(db, strava_imports_table):
 # ==================== v5 task-0.2：返回 (User, token) 元组 ====================
 
 
-@patch("app.strava.service.httpx.post")
+@patch("app.strava.service_token.httpx.post")
 def test_ensure_valid_token_returns_locked_user_instance(
     mock_post, db, strava_imports_table
 ):

@@ -42,3 +42,31 @@ class InsufficientScopeError(Exception):
     - **绑定状态不持久化**（在校验失败前不写 user.strava_*），用户可立即重试
     """
     pass
+
+
+class InvalidStateError(Exception):
+    """OAuth state 异常：已使用 / 过期 / 跨用户冲突等。
+
+    触发场景：
+    - Strava 回调带回的 state 在 Redis 已不存在（过期 10min / 已被消费 / 伪造）
+    - state 对应的 user_id 格式异常（被外部篡改）
+
+    调用方行为：
+    - router 层 catch 后返 400 HTML 错误页 + 提示"授权已过期，请重新点击绑定"
+    - **不写任何 user.strava_* 字段**（fail-secure / state 校验是绑定前的第一道闸）
+    """
+    pass
+
+
+class BoundByOtherUserError(Exception):
+    """该 Strava 账号已被其他 VELO 账号绑定（UNIQUE 冲突）。
+
+    触发场景：
+    - 用户 A 已绑 Strava athlete_id=X，用户 B 也尝试绑同一个 athlete_id=X
+    - 在 handle_callback 第 4 步 UNIQUE 冲突检测时拒绝 / 注意：检测必须在
+      `_cleanup_old_athlete_activities` 之前，否则会误清自家数据后再被 UNIQUE 挡
+
+    调用方行为：
+    - router 层 catch 后返 409 HTML 错误页 + 提示"该 Strava 账号已被他人绑定"
+    """
+    pass

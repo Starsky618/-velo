@@ -320,10 +320,10 @@ class TestStravaAdapter:
 class TestOAuthRoutes:
     """Strava OAuth 相关路由的集成测试。"""
 
-    @patch("app.strava.service.settings")
+    @patch("app.strava.service_oauth.settings")
     def test_authorize_url(self, mock_settings, client, auth_header, monkeypatch):
         """GET /api/strava/authorize 应返回包含 state 参数的授权 URL。"""
-        # 配置 mock settings，让 generate_authorize_url 不因为空配置报错
+        # 配置 mock settings，让 build_authorize_url 不因为空配置报错
         mock_settings.STRAVA_CLIENT_ID = "test_client_id"
         mock_settings.STRAVA_CLIENT_SECRET = "test_secret"
         mock_settings.STRAVA_REDIRECT_URI = "https://example.com/callback"

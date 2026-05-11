@@ -108,7 +108,7 @@ def strava_imports_table(db):
 class TestHandleCallback:
     """handle_callback 的综合测试。"""
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_first_time_bind(self, mock_post, db, redis_mock, strava_imports_table):
         """首次绑定（happy path）：用户未绑定 → 绑定成功 + 创建 active import 任务。"""
         user = _make_user(db, strava_athlete_id=None)
@@ -135,7 +135,7 @@ class TestHandleCallback:
         assert imp.status == "active"
         assert imp.strava_athlete_id == 99001
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_rebind_reuses_active_task(self, mock_post, db, redis_mock, strava_imports_table):
         """重复绑定：已有 active 任务 → 复用，不新建。"""
         user = _make_user(db, strava_athlete_id=99001)
@@ -162,7 +162,7 @@ class TestHandleCallback:
         assert imports[0].id == initial_import_id
         assert imports[0].status == "active"
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_rebind_reactivates_paused(self, mock_post, db, redis_mock, strava_imports_table):
         """paused → active：若上次导入因 token 失效被 paused，重新 callback 应自动激活。"""
         user = _make_user(db, strava_athlete_id=99001)
@@ -183,7 +183,7 @@ class TestHandleCallback:
         imp = db.query(StravaImport).filter_by(user_id=user.id).first()
         assert imp.status == "active"  # paused → active
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_switch_athlete_cleans_old(self, mock_post, db, redis_mock, strava_imports_table):
         """换号：athlete_id 变了 → 清理旧 athlete 的 importing 活动（completed 不动）。"""
         user = _make_user(db, strava_athlete_id=99001)
@@ -208,7 +208,7 @@ class TestHandleCallback:
         assert _get_activity_status(db, old_act_id) == "failed"       # 被清理
         assert _get_activity_status(db, done_act_id) == "completed"   # 不动
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_athlete_owned_by_other_user_rejects(self, mock_post, db, redis_mock,
                                                   strava_imports_table):
         """UNIQUE 冲突：目标 athlete 已被他人绑定 → BoundByOtherUserError，受害者 token 不被写。"""
@@ -229,7 +229,7 @@ class TestHandleCallback:
         assert victim.strava_athlete_id is None
         assert victim.strava_access_token is None
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_unique_check_before_cleanup(self, mock_post, db, redis_mock,
                                           strava_imports_table):
         """
@@ -266,7 +266,7 @@ class TestHandleCallbackScopeValidation:
     velo 必须在 callback 阶段拦截，防止持久化"半残绑定"状态。
     """
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_callback_rejects_when_scope_missing_read_all(
         self, mock_post, db, redis_mock, strava_imports_table
     ):
@@ -291,7 +291,7 @@ class TestHandleCallbackScopeValidation:
         # httpx.post 不应被调到（scope 校验先于换 token）
         mock_post.assert_not_called()
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_callback_rejects_when_scope_empty(
         self, mock_post, db, redis_mock, strava_imports_table
     ):
@@ -308,7 +308,7 @@ class TestHandleCallbackScopeValidation:
             )
         mock_post.assert_not_called()
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_callback_accepts_when_scope_contains_read_all(
         self, mock_post, db, redis_mock, strava_imports_table
     ):
@@ -324,7 +324,7 @@ class TestHandleCallbackScopeValidation:
         assert result["bound"] is True
         assert result["athlete_id"] == 99001
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_callback_rejects_when_token_response_scope_is_null(
         self, mock_post, db, redis_mock, strava_imports_table
     ):
@@ -353,7 +353,7 @@ class TestHandleCallbackScopeValidation:
         db.refresh(user)
         assert user.strava_athlete_id is None
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_callback_rejects_when_token_response_scope_is_list(
         self, mock_post, db, redis_mock, strava_imports_table
     ):
@@ -379,7 +379,7 @@ class TestHandleCallbackScopeValidation:
                 granted_scope="read,activity:read_all",
             )
 
-    @patch("app.strava.service.httpx.post")
+    @patch("app.strava.service_oauth.httpx.post")
     def test_callback_rejects_when_token_response_scope_missing(
         self, mock_post, db, redis_mock, strava_imports_table
     ):
@@ -426,7 +426,7 @@ class TestCallbackRouteScopeTampering:
         redis_mock.getdel.return_value = str(user.id).encode()
         monkeypatch.setattr(strava_router, "_redis", redis_mock)
 
-        with patch("app.strava.service.httpx.post") as mock_post:
+        with patch("app.strava.service_oauth.httpx.post") as mock_post:
             # Strava token response 真实 granted scope 不含 _all（用户取消勾选）
             _mock_strava_token_response(
                 mock_post, athlete_id=99001, scope="read activity:read"
@@ -465,7 +465,7 @@ class TestCallbackRouteScopeTampering:
         redis_mock.getdel.return_value = str(user.id).encode()
         monkeypatch.setattr(strava_router, "_redis", redis_mock)
 
-        with patch("app.strava.service.httpx.post") as mock_post:
+        with patch("app.strava.service_oauth.httpx.post") as mock_post:
             _mock_strava_token_response(
                 mock_post, athlete_id=99002, scope="read activity:read_all"
             )
