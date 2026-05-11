@@ -442,7 +442,7 @@ def build_authorize_url(user_id: int, redis: Redis) -> str:
         f'&response_type=code'
         f'&redirect_uri={settings.STRAVA_REDIRECT_URI}'
         f'&approval_prompt=auto'
-        f'&scope=read,activity:read'
+        f'&scope=read,activity:read'  # ⚠️ 历史档案 / 2026-05-11 已升级 read_all / 见 changelog
         f'&state={nonce}'   # 直接 nonce 明文
     )
 

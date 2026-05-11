@@ -79,14 +79,17 @@ def generate_authorize_url(user_id: int) -> str:
     state = jwt.encode(state_payload, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
 
     # 拼装 Strava 授权 URL
-    # scope=read,activity:read 表示只请求读取权限（不修改用户的 Strava 数据）
+    # scope=read,activity:read_all 表示请求读取权限，**含私密活动（Only You）+ privacy zone data**
+    # 反例（**禁止改回**）：旧值 "activity:read"（不含 _all）会让 Strava API 默默过滤
+    # 所有 visibility=Only You 活动 → 私密骑行永远同步不进来。
+    # 重大事故实证：2026-05-11 用户私密活动同步事故 / 详 CLAUDE.md 陷阱清单 #20
     # response_type=code 表示用授权码模式（最标准的 OAuth2 流程）
     # 用 urlencode 确保 redirect_uri 等参数中的特殊字符被正确编码
     params = urlencode({
         "client_id": settings.STRAVA_CLIENT_ID,
         "redirect_uri": settings.STRAVA_REDIRECT_URI,
         "response_type": "code",
-        "scope": "read,activity:read",
+        "scope": "read,activity:read_all",
         "state": state,
     })
     url = f"{STRAVA_AUTHORIZE_URL}?{params}"
@@ -140,7 +143,9 @@ def build_authorize_url(user_id: int, redis: Redis) -> str:
         f"&response_type=code"
         f"&redirect_uri={settings.STRAVA_REDIRECT_URI}"
         f"&approval_prompt=auto"
-        f"&scope=read,activity:read"
+        # scope=read,activity:read_all：含私密活动（Only You）+ privacy zone data
+        # 详 CLAUDE.md 陷阱清单 #20（2026-05-11 私密活动同步事故）
+        f"&scope=read,activity:read_all"
         f"&state={nonce}"
     )
 
@@ -221,34 +226,62 @@ def _cleanup_old_athlete_activities(db: Session, user_id: int, old_athlete_id: i
     return count
 
 
-def handle_callback(db: Session, code: str, state: str, redis: Redis) -> dict:
+def handle_callback(
+    db: Session,
+    code: str,
+    state: str,
+    redis: Redis,
+    granted_scope: str = "",
+) -> dict:
     """
     Strava OAuth 回调处理。v4 重构要点：
 
     1. state 一次性消费（verify_state_and_consume）
-    2. user 行锁（避免并发 callback 竞态）
-    3. **UNIQUE 冲突检测必须在清理旧活动之前**（顺序不能换，否则会误伤自家数据）
-    4. 换号清理（_cleanup_old_athlete_activities）
-    5. StravaImport 防重复：覆盖 active + paused 两种未完成态
+    2. scope 校验（必须含 activity:read_all，否则拒绝绑定 / 2026-05-11 加固）
+    3. user 行锁（避免并发 callback 竞态）
+    4. **UNIQUE 冲突检测必须在清理旧活动之前**（顺序不能换，否则会误伤自家数据）
+    5. 换号清理（_cleanup_old_athlete_activities）
+    6. StravaImport 防重复：覆盖 active + paused 两种未完成态
 
     Args:
         db: SQLAlchemy session
         code: Strava 回调带回的 authorization_code
         state: 本次授权的 state（nonce）
         redis: Redis 客户端
+        granted_scope: Strava callback URL 带回的 `scope` 参数（逗号分隔字符串），
+                       例如 "read,activity:read_all"。默认 ""（fail-secure：缺省视为
+                       授权页用户取消勾选所有权限，必拒绝）。详 CLAUDE.md 陷阱清单 #20。
 
     Returns:
         {"bound": True, "athlete_id": int}
 
     Raises:
         InvalidStateError: state 失效
+        InsufficientScopeError: granted_scope 缺少 activity:read_all（私密活动拉不到）
         ValueError: 用户不存在 / Strava 响应异常
         BoundByOtherUserError: 该 athlete 已被他人绑定
     """
+    from app.strava.exceptions import InsufficientScopeError
     from app.strava.models import StravaImport
 
     # ---- Step 1：一次性消费 state ----
     user_id = verify_state_and_consume(state, redis)
+
+    # ---- Step 1.5：scope 校验（fail-secure / 早拒绝 / 不换 token 不写 DB）----
+    # Strava OAuth 授权页**允许用户手动取消勾选** activity:read_all 复选框。
+    # 取消后 callback 返回的 scope 不含 activity:read_all → 私密活动永远拉不到。
+    # 必须在换 token 之前拦截：避免持久化"半残绑定"状态让用户误以为绑定成功。
+    granted_scopes = {s.strip() for s in granted_scope.split(",") if s.strip()}
+    if "activity:read_all" not in granted_scopes:
+        logger.warning(
+            "Strava OAuth scope 不足 user_id=%d granted=%r 缺 activity:read_all",
+            user_id, granted_scope,
+        )
+        raise InsufficientScopeError(
+            "授权 scope 不足：缺少 activity:read_all 权限。"
+            "请重新点击'绑定 Strava'，并在 Strava 授权页**保留所有权限勾选**"
+            "（'View data about your private activities' 必须勾选）。"
+        )
 
     # ---- Step 2：换 token（内联，不抽新函数——参考现有流程）----
     try:
@@ -284,6 +317,37 @@ def handle_callback(db: Session, code: str, state: str, redis: Redis) -> dict:
     for key in ("access_token", "refresh_token", "expires_at"):
         if key not in data:
             raise ValueError(f"Strava 返回数据缺少 {key} 字段")
+
+    # ---- Step 2.5：token response 二次校验 scope（防 callback query 篡改）----
+    # 攻击场景：用户在 Strava 授权页取消勾选 read_all → Strava 跳回 callback URL（query 含
+    # 真实 granted scope）→ 用户**手动修改** URL 加 "&scope=read,activity:read_all" → 我们
+    # 第一道闸 Step 1.5 只看 query string 会被绕过。
+    # 根本防御：Strava token exchange response 也含 `scope` 字段（**空格分隔**，granted 不是 requested），
+    # 官方文档明确建议 "Apps should check which scopes a user has accepted."
+    # 这里二次校验：token response 才是 Strava 真实表态，query string 不可信。
+    # 详 CLAUDE.md 陷阱清单 #20 + 2026-05-11 事故 codex round-2 review。
+    # 类型安全：Strava 返回畸形（key 存在但值为 null / 列表 / 缺失）时直接拒收
+    # （codex round-3 抓：raw_scope.split 假设字符串会 None.split → 500 而非 clean 403）
+    raw_scope = data.get("scope")
+    if not isinstance(raw_scope, str) or not raw_scope:
+        logger.warning(
+            "Strava token response scope 字段畸形 user_id=%d type=%s value=%r",
+            user_id, type(raw_scope).__name__, raw_scope,
+        )
+        raise InsufficientScopeError(
+            "Strava 授权响应异常：缺少 scope 字段或格式错误。请重新点击'绑定 Strava'。"
+        )
+    response_scopes = {s for s in raw_scope.split(" ") if s}
+    if "activity:read_all" not in response_scopes:
+        logger.warning(
+            "Strava token response scope 不足 user_id=%d response_scope=%r 缺 activity:read_all",
+            user_id, raw_scope,
+        )
+        raise InsufficientScopeError(
+            "Strava 返回的授权 scope 不足：缺少 activity:read_all 权限。"
+            "请重新点击'绑定 Strava'，并在 Strava 授权页**保留所有权限勾选**"
+            "（'View data about your private activities' 必须勾选）。"
+        )
 
     new_athlete_id = athlete["id"]
 

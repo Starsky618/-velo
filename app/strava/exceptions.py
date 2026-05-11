@@ -26,3 +26,19 @@ class UnboundStravaError(Exception):
       其他用户的导入轮转（v5 task-0.3 已在 import_scheduler._do_tick 实施）
     """
     pass
+
+
+class InsufficientScopeError(Exception):
+    """用户在 Strava 授权页未授予必需的 `activity:read_all` scope。
+
+    触发场景：
+    - 用户在 Strava 授权页**手动取消勾选** "View data about your private activities"
+    - velo 收到 callback 带 granted_scope 缺少 activity:read_all
+    - 没有此 scope 私密活动（visibility=Only You）永远拉不到，OAuth 升级形同虚设
+      （详 CLAUDE.md 陷阱清单 #20 / 2026-05-11 私密活动同步事故）
+
+    调用方行为：
+    - router 层 catch 后返 403 HTML 错误页 + 提示用户重新点击"绑定 Strava"并不要取消任何权限勾选
+    - **绑定状态不持久化**（在校验失败前不写 user.strava_*），用户可立即重试
+    """
+    pass

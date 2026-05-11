@@ -849,6 +849,10 @@ STRAVA_REDIRECT_URI: str       # 回调地址（开发：localhost，生产：�
 
 ### scope 权限
 
+> ⚠️ **历史档案 / 勿照抄** — 已于 2026-05-11 升级到 `activity:read_all`（含私密活动）。
+> 详 `docs/changelog.md` 2026-05-11 hotfix 段 + `CLAUDE.md` 陷阱清单 #20。
+> 任何新代码 / agent 默认参考 `app/strava/service.py` 当前实现，不要从本节复制粘贴。
+
 `scope=read,activity:read`（读取用户信息 + 活动数据，不需要写入权限）
 
 ---

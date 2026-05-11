@@ -35,6 +35,24 @@ def test_build_authorize_url_contains_nonce():
     assert call_args[0][2] == "42"
 
 
+def test_build_authorize_url_requests_read_all_scope():
+    """task-hotfix-2026-05-11 / CLAUDE.md 陷阱清单 #20 回归。
+
+    authorize URL 必须申请 `activity:read_all` scope（不是 `activity:read`），
+    否则用户的私密活动（visibility=Only You）永远拉不到。
+    """
+    redis = MagicMock()
+    url = build_authorize_url(user_id=42, redis=redis)
+
+    # scope 参数必须包含 activity:read_all（防止反向改回 activity:read）
+    assert "scope=read,activity:read_all" in url, (
+        f"authorize URL 缺少 activity:read_all scope; url={url}"
+    )
+    # 显式断言不含弱 scope（防止半残升级）
+    assert "scope=read,activity:read&" not in url
+    assert "scope=read,activity:read " not in url
+
+
 def test_verify_state_happy_path():
     """state 存在时返回对应 user_id。"""
     redis = MagicMock()

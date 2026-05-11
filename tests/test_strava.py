@@ -344,6 +344,10 @@ class TestOAuthRoutes:
         assert "strava.com/oauth/authorize" in url
         assert "client_id=test_client_id" in url
         assert "state=" in url
+        # scope 必须含 activity:read_all（拉私密活动 / CLAUDE.md 陷阱清单 #20 回归）
+        assert "scope=read,activity:read_all" in url, (
+            f"authorize URL 缺少 activity:read_all scope; url={url}"
+        )
 
     def test_strava_status_not_connected(self, client, auth_header, db, test_user):
         """GET /api/strava/status 未绑定 Strava 时返回 connected=false。"""

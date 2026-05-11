@@ -27,7 +27,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.strava import service
 from app.strava.client import _redis
-from app.strava.exceptions import UnboundStravaError
+from app.strava.exceptions import InsufficientScopeError, UnboundStravaError
 from app.strava.service import (
     BoundByOtherUserError,
     InvalidStateError,
@@ -105,12 +105,20 @@ def strava_callback(
     返回 HTML 页面而不是 JSON，因为用户在浏览器里直接看到这个页面。
     """
     try:
-        handle_callback(db, code, state, _redis)
+        handle_callback(db, code, state, _redis, granted_scope=scope)
     except InvalidStateError as e:
         logger.warning("OAuth state 验证失败: %s", e)
         return HTMLResponse(
             content=_ERROR_HTML_TEMPLATE.format(message=html.escape(str(e))),
             status_code=400,
+        )
+    except InsufficientScopeError as e:
+        # scope 不足：用户在 Strava 授权页取消勾选了 activity:read_all。
+        # 私密活动永远拉不到，必须 reject 让用户重新授权（详 CLAUDE.md 陷阱清单 #20）。
+        logger.warning("Strava OAuth scope 不足: %s", e)
+        return HTMLResponse(
+            content=_ERROR_HTML_TEMPLATE.format(message=html.escape(str(e))),
+            status_code=403,
         )
     except BoundByOtherUserError as e:
         logger.warning("Strava 账号已被占用: %s", e)

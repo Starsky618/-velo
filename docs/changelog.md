@@ -1,5 +1,58 @@
 # VELO 开发变更日志
 
+## 2026-05-11 hotfix: Strava OAuth scope 升级 `activity:read_all`（私密活动同步事故）✅ ship
+
+### 事故复盘
+
+用户在 Strava 上传"仅自己可见"活动 → velo 永远拉不到 → 用户报"看不到新活动" → agent **跳过 grep `scope=` + 跳过读 Strava 官方文档**，直奔 webhook → scheduler → token → cursor → dedupe → 跑 SQL 改 `strava_imports` 表 5 层中间链路 debug 30+ 分钟，连续给出 5 个错误根因（含"webhook 链路从来没生效""Strava 那边没你今天的活动"反向误导），用户被错误"严重事故"叙事**情绪崩溃**。
+
+### 真根因（5 秒 grep 锁定）
+
+Strava 官方文档原话：
+- `activity:read` — 只读 Everyone / Followers 可见活动
+- `activity:read_all` — **同时含**私密活动（Only You）+ privacy zone data
+- API endpoint 明确："**Only Me activities will be filtered out** unless requested by a token with activity:read_all."
+
+velo OAuth 默认申请 `read,activity:read` → Strava API **静默过滤**所有 Only You 活动（不报错 / 列表少一条无任何提示）。
+
+### 修复
+
+| 文件 | 改动 |
+|---|---|
+| `app/strava/service.py:89` | `generate_authorize_url` 旧版 / `scope=read,activity:read_all` |
+| `app/strava/service.py:143` | `build_authorize_url` v4 版 / `scope=read,activity:read_all` + 注释补 |
+| `CLAUDE.md` 顶部 | 新增 "🔍 调试/排查硬规则" 段 / 4 步强制顺序 / 红线条款 / 压过"行动优先" |
+| `CLAUDE.md` 陷阱清单 | #20 Strava scope 入册 |
+
+### 升级后必要动作
+
+- ✅ 所有已绑定 Strava 的用户**必须重新 OAuth 一次**——旧 token 没有 `read_all` scope，Strava 强制重新授权流程
+- ✅ 重新授权完成后 scheduler 会自动跑 tier1 拉新可见活动（包括所有历史私密活动）
+- ✅ 部署前确认生产 `.env` 的 `STRAVA_CLIENT_ID/SECRET` 不变（OAuth app 注册时申请 scope 是 user 授权时确认，不是 app 端配置）
+
+### 沉淀
+
+- CLAUDE.md "调试/排查硬规则" — 用户报"X 看不到/不工作"前 4 步强制顺序（grep 配置 → 读官方文档 → 验证源头 → 才能动中间链路）
+- CLAUDE.md 陷阱清单 #20 — Strava scope 字面陷阱
+- 历史档案 sunset 注释：`docs/spec-v2.md:852` / `spec-v4.md:445` / `plans/phase4/task-7.2.md:91`（不删原值 / 加"⚠️ 历史档案 / 勿照抄"标记防未来 agent 误抄）
+
+### Codex 第 2 轮异源审补强（2 真 Critical + 1 Important + 1 Nice → 全修）
+
+- **C1 query string tampering 防御**：用户在 Strava 授权页取消勾选 `read_all` 后**手动篡改** callback URL 加 `scope=read,activity:read_all` 可绕过 Step 1.5 query 校验 → 加 Step 2.5 用 Strava token response 里的 `data["scope"]` 字段（**空格分隔的 granted scope** / Strava 官方文档明确建议校验）二次拦截
+- **C2 老用户 forced reauth**：当前真实老 token 用户**仅 Tim 一人** + 升级后立刻重新 OAuth = 隐含修复 / 不做 `needs_reauth` 字段 + migration（违反防火墙式扩展 / YAGNI）/ 写 tech-debt P2 由颜颜 / CCF 接入时再做
+- **I1 route-level tampering 测试**：`tests/strava/test_callback.py` 新增 `TestCallbackRouteScopeTampering` 2 case — query 篡改场景 + 合规授权场景，通过 TestClient + monkeypatch _redis + mock httpx.post 真走 router 防回归
+- **N1**：`app/strava/exceptions.py` docstring 半角全角引号统一
+
+### Codex review 收敛节奏（symbolic / 验证三审分工有效）
+
+| 轮 | Critical | Important | Nice | 收敛信号 |
+|---|---|---|---|---|
+| 第 1 轮 | 5 | 2 | 1 | 初审广撒网 |
+| 第 2 轮 | 2 | 1 | 1 | Critical 递减 5→2 / 焦点上升到攻击面 + 产品级影响 |
+| 第 3 轮 | 待跑 | — | — | 目标 Critical=0 收敛
+
+---
+
 ## 2026-05-11 Sprint 5 task-3: 探索 tab 骑友 section ✅ ship
 
 ### 背景

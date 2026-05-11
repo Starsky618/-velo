@@ -25,6 +25,21 @@
 
 **附加门禁（每次 commit 前必跑）**：`git status --short && git diff --cached --stat`。有新增 import / router / schema / migration / test helper 文件时，必须确认对应 untracked 新文件已 stage；否则干净 clone 会 ImportError 或迁移缺文件。详见 `docs/agent-rules/agent-collaboration.md §5.0`。
 
+## 🔍 调试 / 排查硬规则（2026-05-11 重大事故拍 / 每次 debug 必跑 / 压过"行动优先"）
+
+用户报"看不到 X / 同步失败 / X 不工作"前，**禁止直接推测中间链路**。强制顺序：
+
+1. **grep 本地配置** — `scope` / `permission` / `role` / env var / 白名单 / token 字段权限；**5 秒能锁定的事不许跳**
+2. **读官方文档源头** — 第三方 API 的 scope 语义 / 过滤规则 / 可见性约束；WebSearch + WebFetch 真官方页，**禁止凭印象 / 凭训练数据**。**网络不可达时**：标该步骤为 `🟡 未验证`，继续走 Step 3（非破坏性验证 / read-only），但 Step 4 改 DB / 派 subagent / 跑 SQL 仍**强制阻断**直到文档可读再放行
+3. **验证最远源头是否真包含目标对象** — 数据 / token / scope 够吗
+4. **才能动中间链路**（webhook / scheduler / dedupe / token refresh / SQL 改 DB）
+
+**违反代价**：错误根因 + 错误叙事 → 用户信任崩塌 → 整个 debug 体系全废 → 项目不可维护。
+
+**实证（2026-05-11 Strava 私密活动事故）**：用户报"Strava 上传后 velo 看不到"，agent 直奔 webhook → subscription → token → cursor → dedupe → 跑 SQL 改 strava_imports，连续给出 5 个错误根因（含"webhook 链路从来没生效""Strava 那边没你今天的活动"反向误导用户），用户被错误的"严重事故"叙事**情绪崩溃**。**真根因 = OAuth scope `activity:read` 过滤 Only You 活动，5 秒 grep `scope=` 锁定**（详陷阱清单 #20）。
+
+**红线**：第 2 次诊断仍未锁根因 / 想改 DB / 派 subagent / 跑 raw SQL 前——**强制回 Step 1 重跑**。
+
 ## 📐 任务规模预算（防 v4 复杂度失控）
 
 - 一期任务数 **≤ 6**——写到第 7 个停下自问"该拆下期吗？"
@@ -260,6 +275,7 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 | 17 | **小程序 `wx:if` 控制 canvas 创建 → setData callback wx.nextTick 仍有 race**（v5 真用回归实证 / 90% 设备折线图不渲染）| home/detail 的速度/功率/心率/踏频 chart `<canvas>` 用 `wx:if="{{hasTimeseries}}"` 控制创建；setData 后 wx.nextTick 调 bindLineChart 时 canvas 2d node 在某些机型仍未 ready；selector 失败 → 静默 return → 图永远不画。海拔图无 wx:if（DOM 永远在）所以 100% 工作 = 对照组 | 1）改 `wx:if` → `hidden`（DOM 永远在 / canvas 一开始就 ready）2）setData callback 用 `setTimeout(fn, 100)` 替代 `wx.nextTick`（兜底极慢机型 canvas 2d 初始化）3）整个 section 的 wx:if 保留时（如踏频 section 控制是否显示标题）/ 内部 canvas 配 setTimeout 兜底 |
 | 18 | **nginx + docker hostname-based proxy_pass 缓存 IP**（2026-05-06 admin H5 502 事故实证）| `proxy_pass http://api:8000` 用 hostname 时 nginx 启动时解析一次就缓存；api 容器任何重启（OOM 自愈 / 部署 / docker prune）拿到新 IP → admin-h5 nginx 仍连旧 IP → 502。被 LoginPage catch-all "token 无效或过期"误显示 → 排查 30 分钟走错路径 | `resolver 127.0.0.11 valid=10s ipv6=off`（docker 内置 DNS）+ `set $upstream_api http://api:8000; proxy_pass $upstream_api;`（变量化 → nginx 不缓存 / 每次连接前重查）。10 秒内自动恢复，无需手动 restart 容器。**配套**：前端错误文案禁用 catch-all / 必须按状态码分流（401 / 403 / 5xx / 网络）|
 | 19 | **第三方依赖激活状态 mock 测试不到 / 真用才发现"喇叭没插电源"**（2026-05-06 task-monitor-admin-h5 实证）| 监测探针单测全 mock httpx + 11 测试通过；生产 .env 里 `FEISHU_BOT_WEBHOOK` 是空（Tim 从没用过飞书）→ 探测真生效但 webhook 推送进 logger.warning"未配置跳过"分支 / 告警进垃圾桶。Mock 测了"agent 调用了什么"，没测"通道真激活了"  | 部署高风险第三方依赖（飞书 / 微信 / SMTP / Stripe / Strava webhook 等）必须**有意激活回归**：部署后 24h 内 owner 故意触发一次失败场景，确认告警 / 回调 / 推送真到达。把激活状态写进 deployment-diary 防遗忘 |
+| 20 | **Strava OAuth scope `activity:read` 不返回私密活动**（2026-05-11 重大事故实证）| velo OAuth 默认申请 `read,activity:read` → Strava API 对 visibility="Only You" 活动**一律静默过滤**（不报错 / 列表少一条）；用户改成"公开"后是否立刻同步**官方文档无承诺**（可能 Strava 后端缓存 / indexing lag）；事故中 agent **跳过 grep `scope=`** 直奔 webhook / scheduler / token / dedupe 5 层中间链路 debug 30+ 分钟 + 给出错误"事故"叙事吓崩用户 | OAuth URL `scope=read,activity:read_all`（read_all 含 activity:read + 私密活动 + privacy zone data，Strava 官方文档原话）；**切换 scope 后用户必须在小程序重新点"绑定 Strava"一次**（旧 token 不会自动升级 scope，Strava 强制重新授权流程）；改完代码两处：`app/strava/service.py` build_authorize_url 旧版 + v4 版都要改 |
 
 > **活文档**：每踩新陷阱在这加一条（不要回 architect skill 加——那里只留跨栈通用 3 条）。
 

@@ -27,6 +27,44 @@ velo 生产已 ship 半年（v0 至 v5 / 100 活跃用户 / 数据库每日增�
 
 ---
 
+## 🟡 P2：Strava 老用户无 `needs_reauth` 状态机（2026-05-11 Strava scope 事故 codex round-2 抓）
+
+velo 升级 OAuth scope `activity:read` → `activity:read_all` 后（commit TBD），老用户的 token 还在 DB 里挂着但 scope 不足：
+- `app/strava/service.py:412` `get_strava_status` 只看 `strava_athlete_id IS NOT NULL` → 老用户显示 connected ✅
+- `app/strava/service.py:537` `ensure_valid_token` refresh 时不校验 scope
+- 老用户视角：小程序显示"已绑定 Strava" / 但私密活动**永远拉不到** / 表现为"我上传了为啥看不到"
+- 后端无 schema 字段记录 granted scope / 无 needs_reauth 标志 / 无前端 UX 提示
+
+**当前为何 P2 不是 P0**：
+- 真实老 token 用户**只有 Tim 一人**（user_id=2）
+  - 生产 DB 实证（2026-05-11 21:05 北京 / ssh 跑 SQL）：
+    ```
+     id | nickname | has_strava | strava_token_expires_at
+    ----+----------+------------+-------------------------
+      1 | Admin    | f          |
+      2 |          | t          | 2026-05-05 21:47:41+00
+    (2 rows)
+    ```
+  - `SELECT COUNT(*) FROM users WHERE strava_athlete_id IS NOT NULL;` = **1**（仅 Tim）
+  - colleagues（CCF / 颜颜）暂未注册 velo 账号 / 未触发 OAuth
+- Tim 升级后会立刻重新 OAuth = 隐含修复
+- 新代码 `app/strava/service.py:285` Step 2.5 token response 二次校验**已堵住未来任何限权 token 写入 DB**
+- = 这条 debt 只对"想象中的未来老用户"敞口 / YAGNI
+
+**升级 trigger（任一即开工）**：
+- 颜颜 / CCF / 其他真用户**接入并完成首次 OAuth 后**，velo 再升级 scope 第 N 次（再来一次同类事故）
+- 或加入第 3 个真实用户前预防性修
+
+**修法**（0.5-1 天工程 / 真有用户时再做）：
+1. `users` 表加 `strava_scope` VARCHAR 列 + Alembic 迁移（回填 NULL = 老 token）
+2. `handle_callback` Step 2.5 后写入 `user.strava_scope = response_scope`
+3. `get_strava_status` 加 `needs_reauth` 字段：`strava_scope IS NULL OR not contains activity:read_all`
+4. 小程序前端：`needs_reauth=true` 时 banner 提示"请重新授权 Strava 同步私密活动"
+
+**来源**：codex round-2 review C2（2026-05-11 / agent `a37a362755e5446ee`）/ Tim 拍 A 进 tech-debt
+
+---
+
 ## v5 实施期发现 P2/P3（task-4.4 复盘归档 / 2026-05-10）
 
 > 不阻塞生产，但日积月累会变 P1。每条都有 spec §7 限定 + 触发重评估的条件。
