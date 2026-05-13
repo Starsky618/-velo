@@ -1,42 +1,41 @@
 #!/usr/bin/env python3
 """
-velo 周报生成器——让 Tim 感受到 agentic engineering 进化。
+velo 周报生成器——给 agent 自己看的协作复盘。
 
 干啥用：
     每周一首次开会话时自动跑（由 session_start.py 触发）。
-    扫一遍项目当下状态（代码量 / 红灯 / debt / memory），跟上周报告对比，
-    生成 markdown 报告写到 docs/agent-weekly/YYYY-WNN.md，并算一个进化指数。
+    扫上周对话历史 jsonl，找 Tim 否定我的瞬间（"看不懂"/"我说了"/"别"/"等等"等），
+    生成 markdown 报告写到 docs/agent-weekly/YYYY-WNN.md。
+
+    报告核心目的：让本周 agent 看到上周 agent 犯的错 → 强制做归因分析 →
+    必要时沉淀新规则到 memory。这才是真"agentic engineering 进化"。
 
 类比：
-    家里每周一早晨自动盘点——上周乱在哪 / 这周清了哪些 / 跟上周比好了还是糟了。
-    一个进化指数 = "这家整体活得比上周好"的单一数字。
+    家里每周一上"复盘会"——agent 翻自己上周笔记，看 Tim 哪几次发火 / 啥原因 / 哪些是
+    重复犯老错 / 哪些是没沉淀的新坑。看完必须沉淀新经验 / 不能光说"知道了"。
 
 数据来源：
-    - git log（commit 数 / 改动行数 / 按 feat/fix/refactor 分类）
-    - app/**/*.py（红灯黄灯文件 / 总代码量）
-    - memory 目录（本周新增 / 总数）
-    - docs/tech-debt.md（行数 / 条目数）
-    - 上次周报（对比基准）
+    - ~/.claude/projects/-Users-macbookair-Desktop-velo/*.jsonl（对话 transcript）
+    - 项目辅助数据：git log / 代码红黄灯 / debt / memory（次段 / 缩短）
 
 报告结构：
-    - 本周做了啥（commit 分类 + 总行数变化）
-    - 跟上周比（数字对比表 + 红绿箭头）
-    - 本周新学（新 memory 列表）
-    - 翻车统计（fix commit 数）
-    - 进化指数（0-10 / 综合红灯/debt/翻车）
-    - 下周提醒（debt top 3）
+    1. 上周 Tim 否定信号统计（关键词 + 次数 + 样本）→ 主段
+    2. agent 必看必做 checklist（强制行为指令）
+    3. 项目数据辅助（commit / 红灯 / debt 简化）
+    4. 跟上周对比
 
 注意事项：
-    - cold start（第一次跑没有上周报告）→ 输出 baseline / 不算对比
-    - 所有外部命令 try/except / 失败用 N/A 占位 / 不挂 hook
-    - ISO 周编号（YYYY-WNN）= 周一起算
+    - jsonl 解析所有异常吞掉（schema 变化不挂报告）
+    - 关键词宽泛抓（agent 看完自己判断哪些是真否定 / 哪些是中性）
+    - 报告写文件 + stdout 摘要
 
 用法：
     单跑: python3 scripts/weekly_report.py
-    自动: 由 scripts/session_start.py 在距上次报告 ≥ 7 天时触发
+    自动: 由 scripts/session_start.py 在本周 W-id.md 未生成时触发
 """
 
 import datetime
+import json
 import re
 import subprocess
 import sys
@@ -47,103 +46,208 @@ WEEKLY_DIR = ROOT / "docs" / "agent-weekly"
 APP_DIR = ROOT / "app"
 TECH_DEBT = ROOT / "docs" / "tech-debt.md"
 MEM_DIR = Path.home() / ".claude" / "projects" / "-Users-macbookair-Desktop-velo" / "memory"
+TRANSCRIPT_DIR = Path.home() / ".claude" / "projects" / "-Users-macbookair-Desktop-velo"
+
+# Tim 否定 / 不满 / 修正信号关键词（宽泛抓 / agent 看完判断真假）
+NEGATIVE_KEYWORDS = {
+    "看不懂": "沟通格式失败（§2.3 堆术语 / 没说人话）",
+    "我说了": "重复信号未接住（§2.1 重复信号 ≥ 2 次）",
+    "我已经说过": "重复信号未接住",
+    "我不要": "拍板后还驳回（§2.1 重复信号护栏）",
+    "别": "不听指令（§2.1 行动优先反例）",
+    "停": "agent 越界 / 钻牛角尖",
+    "等等": "agent 跑偏 / 需 Tim 拉回",
+    "我他妈": "情绪爆发（沟通严重失败）",
+    "为啥": "Tim 困惑 / 解释不清",
+    "重新": "agent 输出被否 / 要重做",
+    "又": "重复犯老错",
+    "看不到": "缺事实核对（§3.1 凭印象说）",
+}
 
 
 def _safe_run(cmd: list[str], cwd: Path = ROOT) -> str:
-    """跑命令，挂了返回空串，不抛异常。hook 内 robust。"""
+    """跑命令 / 异常返回空串 / hook 内 robust。"""
     try:
         return subprocess.check_output(cmd, text=True, cwd=cwd, stderr=subprocess.DEVNULL)
     except Exception:
         return ""
 
 
-def collect_git_stats(days: int = 7) -> dict:
-    """近 N 天 git log：commit 数 + 改动行数 + 按 conventional commit 前缀分类。"""
-    since = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
-    log = _safe_run(["git", "log", f"--since={since}", "--pretty=format:COMMIT::%s", "--shortstat"])
-    if not log:
-        return {"commit_count": 0, "insertions": 0, "deletions": 0, "categories": {}}
-
-    commits = []
-    current_msg = None
-    for line in log.split("\n"):
-        if line.startswith("COMMIT::"):
-            current_msg = line[len("COMMIT::"):].strip()
-            commits.append({"msg": current_msg, "ins": 0, "del": 0})
-        elif "insertion" in line or "deletion" in line:
-            if not commits:
-                continue
-            ins_m = re.search(r"(\d+) insertion", line)
-            del_m = re.search(r"(\d+) deletion", line)
-            if ins_m:
-                commits[-1]["ins"] = int(ins_m.group(1))
-            if del_m:
-                commits[-1]["del"] = int(del_m.group(1))
-
-    categories = {"feat": 0, "fix": 0, "docs": 0, "refactor": 0, "chore": 0, "test": 0, "other": 0}
-    for c in commits:
-        msg = c["msg"]
-        matched = False
-        for k in list(categories.keys())[:-1]:
-            if re.match(rf"^{k}(\(|:)", msg):
-                categories[k] += 1
-                matched = True
-                break
-        if not matched:
-            categories["other"] += 1
-
-    return {
-        "commit_count": len(commits),
-        "insertions": sum(c["ins"] for c in commits),
-        "deletions": sum(c["del"] for c in commits),
-        "categories": categories,
-        "commits": commits,
-    }
+def iso_week_id(d: datetime.datetime | None = None) -> str:
+    d = d or datetime.datetime.now()
+    iso = d.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
 
 
-def collect_health_stats() -> dict:
-    """红黄灯文件 + 后端总代码量。"""
-    if not APP_DIR.exists():
-        return {"total_lines": 0, "red_count": 0, "yellow_count": 0, "red_files": []}
-    red, yellow, total = [], [], 0
-    for f in APP_DIR.rglob("*.py"):
+# ============ 主段：扫上周对话历史找否定信号 ============
+
+def _extract_user_text(record: dict) -> str:
+    """从 jsonl record 提取 user 消息文本。schema 变化 robust。"""
+    msg = record.get("message", {})
+    if not isinstance(msg, dict):
+        return ""
+    content = msg.get("content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        texts = []
+        for c in content:
+            if isinstance(c, dict) and c.get("type") == "text":
+                texts.append(c.get("text", ""))
+        return "\n".join(texts)
+    return ""
+
+
+def scan_negative_signals(days: int = 7) -> list[dict]:
+    """
+    扫近 N 天的 jsonl / 找 user 消息含否定关键词 / 返回 [{keyword, text, file, ts}]。
+
+    过滤规则：
+    - 只看 type=user 且 message.role=user 的真用户消息（不算 tool_result）
+    - 跳过系统注入（slash command stdout / system-reminder 文字）—— 这些是 user 角色但不是 Tim 真话
+    """
+    if not TRANSCRIPT_DIR.exists():
+        return []
+    cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
+    signals = []
+    for jsonl in TRANSCRIPT_DIR.glob("*.jsonl"):
+        # mtime 过滤（性能优化 / 老文件跳过）
+        if datetime.datetime.fromtimestamp(jsonl.stat().st_mtime) < cutoff:
+            continue
         try:
-            lines = sum(1 for _ in f.open(encoding="utf-8", errors="ignore"))
+            with jsonl.open(encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    try:
+                        rec = json.loads(line)
+                    except Exception:
+                        continue
+                    if rec.get("type") != "user":
+                        continue
+                    text = _extract_user_text(rec)
+                    if not text or len(text) > 500:
+                        # 太长大概率是注入的 tool result / system reminder / 跳过
+                        continue
+                    # 跳过系统注入
+                    if any(skip in text for skip in (
+                        "<system-reminder>",
+                        "<local-command",
+                        "tool_use_error",
+                        "Caveat: The messages",
+                        "Result of calling",
+                    )):
+                        continue
+                    for kw, label in NEGATIVE_KEYWORDS.items():
+                        if kw in text:
+                            signals.append({
+                                "keyword": kw,
+                                "label": label,
+                                "text": text.strip()[:200],
+                                "file": jsonl.name,
+                                "ts": rec.get("timestamp", ""),
+                            })
+                            break  # 一条消息只算一次（避免"看不懂 + 我说了"双计）
         except Exception:
             continue
-        total += lines
-        rel = str(f.relative_to(ROOT))
-        if lines > 600:
-            red.append((rel, lines))
-        elif lines > 300:
-            yellow.append((rel, lines))
-    return {
-        "total_lines": total,
-        "red_count": len(red),
-        "yellow_count": len(yellow),
-        "red_files": red,
-        "yellow_files": yellow,
-    }
+    return signals
 
 
-def collect_memory_stats(days: int = 7) -> dict:
-    """本周新增 / 总数。MEMORY.md 索引不算条目。"""
-    if not MEM_DIR.exists():
-        return {"total": 0, "new_this_week": []}
-    cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
-    new_files = []
-    total = 0
-    for f in MEM_DIR.glob("*.md"):
-        if f.name == "MEMORY.md":
+def render_negative_section(signals: list[dict]) -> list[str]:
+    """否定信号主段渲染。"""
+    lines = ["## 🚨 上周 Tim 否定我的瞬间", ""]
+    if not signals:
+        lines.append("- ✅ 0 次否定 / 协作顺滑")
+        return lines
+
+    # 按 keyword 聚合
+    by_kw: dict[str, list[dict]] = {}
+    for s in signals:
+        by_kw.setdefault(s["keyword"], []).append(s)
+
+    lines.append("| 关键词 | 次数 | 对应规则违反 | 最强 1 个样本 |")
+    lines.append("|---|---|---|---|")
+    for kw in sorted(by_kw.keys(), key=lambda k: -len(by_kw[k])):
+        items = by_kw[kw]
+        # 选最长样本作代表（信息密度最高）
+        rep = max(items, key=lambda i: len(i["text"]))
+        sample = rep["text"][:80].replace("\n", " ").replace("|", "丨")
+        lines.append(f'| "{kw}" | {len(items)} | {rep["label"]} | "{sample}..." |')
+
+    lines.append("")
+    lines.append(f"**总否定信号：{len(signals)} 次**（涉及 {len(by_kw)} 类关键词）")
+    return lines
+
+
+def render_agent_checklist(signals: list[dict]) -> list[str]:
+    """强制 agent 行为指令——这才是周报真正的价值。"""
+    lines = [
+        "",
+        "## 🤖 agent 必看 + 必做（看完报告本会话起手强制跑）",
+        "",
+        "> 这份报告不是给 Tim 看的项目数据 / 是给你（本周 agent）看的协作错误教训。",
+        "> 上周那个 agent 犯的错你不能重犯——必须做完下面 3 步才算【看完报告】。",
+        "",
+        "### Step 1：归因分析（必跑）",
+        "",
+        "- 把上面【否定信号表】每行拿来 grep memory 目录看是否已有对应规则",
+        "  - 命令：`grep -l \"<关键词上下文>\" ~/.claude/projects/-Users-macbookair-Desktop-velo/memory/*.md`",
+        "- 已有规则 → 标记【重复违反】 / 警惕本周别再犯",
+        "- 没有规则 → 候选【新沉淀模式】 / 进 Step 2",
+        "",
+        "### Step 2：沉淀候选（agent 自填）",
+        "",
+        "- 列出本周可能要沉淀的新错误模式（≥ 1 条 或 写【无】）",
+        "- 每条含：错误模式描述 / 触发场景 / 推荐沉淀去向（memory / CLAUDE.md / vault concept）",
+        "- 提议给 Tim 等他拍 / 不要擅自写 memory",
+        "",
+        "### Step 3：高频违反规则提醒（开 session 时主动 grep）",
+        "",
+        "- 本周高频违反的 TOP3 规则 → 起手时主动 grep 对应 memory 复习",
+        "- 例：上周违反 §2.3 沟通格式 5 次 → 本会话起手 grep `memory/feedback_no_priority*`",
+        "",
+        f"**Agent 你看完了吗？请在回复 Tim 时显式说【我看到了 {len(signals)} 个否定信号 + 我的归因分析如下...】。**",
+        "",
+    ]
+    return lines
+
+
+# ============ 次段：项目数据辅助（缩短版） ============
+
+def collect_health_stats() -> dict:
+    if not APP_DIR.exists():
+        return {"total_lines": 0, "red_count": 0, "yellow_count": 0}
+    red, yellow, total = 0, 0, 0
+    for f in APP_DIR.rglob("*.py"):
+        try:
+            n = sum(1 for _ in f.open(encoding="utf-8", errors="ignore"))
+        except Exception:
             continue
-        total += 1
-        if datetime.datetime.fromtimestamp(f.stat().st_mtime) >= cutoff:
-            new_files.append(f.name)
-    return {"total": total, "new_this_week": sorted(new_files)}
+        total += n
+        if n > 600:
+            red += 1
+        elif n > 300:
+            yellow += 1
+    return {"total_lines": total, "red_count": red, "yellow_count": yellow}
+
+
+def collect_git_summary(days: int = 7) -> dict:
+    since = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+    log = _safe_run(["git", "log", f"--since={since}", "--pretty=format:%s"])
+    msgs = [m for m in log.split("\n") if m.strip()]
+    cats = {"feat": 0, "fix": 0, "docs": 0, "refactor": 0, "chore": 0, "test": 0}
+    for m in msgs:
+        for k in cats:
+            if re.match(rf"^{k}(\(|:)", m):
+                cats[k] += 1
+                break
+    real_hotfix = sum(
+        1 for m in msgs
+        if re.match(r"^(fix|revert)(\(|:)", m.lower())
+        and any(kw in m.lower() for kw in ("hotfix", "revert", "紧急", "回滚"))
+    )
+    return {"count": len(msgs), "categories": cats, "real_hotfix": real_hotfix}
 
 
 def collect_debt_stats() -> dict:
-    """tech-debt.md 当前行数 + 条目数（## 标题数）。"""
     if not TECH_DEBT.exists():
         return {"lines": 0, "entries": 0}
     content = TECH_DEBT.read_text(encoding="utf-8")
@@ -153,186 +257,139 @@ def collect_debt_stats() -> dict:
     }
 
 
+def collect_memory_stats(days: int = 7) -> dict:
+    if not MEM_DIR.exists():
+        return {"total": 0, "new_this_week": 0}
+    cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
+    new_count, total = 0, 0
+    for f in MEM_DIR.glob("*.md"):
+        if f.name == "MEMORY.md":
+            continue
+        total += 1
+        if datetime.datetime.fromtimestamp(f.stat().st_mtime) >= cutoff:
+            new_count += 1
+    return {"total": total, "new_this_week": new_count}
+
+
+# ============ 上周对比 ============
+
 def find_last_report() -> dict | None:
-    """找上一份周报（按文件名排序最后一个）/ 提取关键数字用于对比。"""
+    """找上一份周报 / 提取关键数字。"""
     if not WEEKLY_DIR.exists():
         return None
     reports = sorted(p for p in WEEKLY_DIR.glob("*.md") if re.match(r"\d{4}-W\d{2}\.md", p.name))
     if not reports:
         return None
     last = reports[-1]
+    if last.name == f"{iso_week_id()}.md":
+        # 本周报告（避免拿自己对比自己）
+        if len(reports) < 2:
+            return None
+        last = reports[-2]
     content = last.read_text(encoding="utf-8")
-    # 从表格里抠数字（格式：| 红灯文件 | 3 | 0 | ⬇ |）
     extract = {}
-    for label, key in [
-        ("红灯文件", "red_count"),
-        ("黄灯文件", "yellow_count"),
-        ("tech-debt 条目", "debt_entries"),
-        ("memory 总数", "memory_total"),
-        ("后端代码量", "total_lines"),
-        ("进化指数", "evolution_index"),
-    ]:
-        m = re.search(rf"\|\s*{re.escape(label)}\s*\|\s*[\d.]+\s*\|\s*([\d.]+)", content)
-        if m:
-            extract[key] = float(m.group(1))
+    # 抠总否定信号数
+    m = re.search(r"总否定信号：(\d+) 次", content)
+    if m:
+        extract["negative_total"] = int(m.group(1))
+    m = re.search(r"\|\s*红灯文件[^\|]*\|\s*\d+\s*\|\s*(\d+)", content)
+    if m:
+        extract["red_count"] = int(m.group(1))
+    m = re.search(r"\|\s*tech-debt 条目[^\|]*\|\s*\d+\s*\|\s*(\d+)", content)
+    if m:
+        extract["debt_entries"] = int(m.group(1))
     return {"path": last.name, "data": extract}
 
 
-def _count_real_hotfix(git: dict) -> int:
-    """
-    数真翻车 commit。严格识别：
-    - commit type 必须是 fix(...) 或 revert(...)
-    - msg 体内必须含 hotfix / 紧急 / 回滚 关键字
-    单纯 fix(...) 不算（v5 真闭环 review-fix 大量是正常迭代不是翻车）。
-    单纯 docs(...) 含 "事故"/"hotfix" 也不算（那是回顾文档不是翻车本身）。
-    """
-    keywords = ("hotfix", "revert", "紧急", "回滚", "rollback")
-    count = 0
-    for c in git.get("commits", []):
-        msg = c["msg"].lower()
-        is_fix_or_revert = bool(re.match(r"^(fix|revert)(\(|:)", msg))
-        if is_fix_or_revert and any(kw in msg for kw in keywords):
-            count += 1
-    return count
-
-
-def calc_evolution_index(git, health, debt, mem) -> float:
-    """
-    进化指数 0-10 综合算法（v1 / 待迭代）：
-    - 基线 5
-    - 红灯文件每个 -0.8（>600 行）
-    - 黄灯文件超 10 个每个 -0.05（>300 行）
-    - debt 条目超 12 每条 -0.15
-    - commit 数 ≥ 5 +1（活跃）
-    - 新增 memory ≥ 1 +0.5（在学习 / 沉淀经验）
-    - 真翻车（hotfix/revert/紧急/回滚）每个 -0.6
-    """
-    score = 5.0
-    score -= 0.8 * health["red_count"]
-    score -= 0.05 * max(0, health.get("yellow_count", 0) - 10)
-    score -= 0.15 * max(0, debt["entries"] - 12)
-    if git.get("commit_count", 0) >= 5:
-        score += 1.0
-    if len(mem.get("new_this_week", [])) >= 1:
-        score += 0.5
-    score -= 0.6 * _count_real_hotfix(git)
-    return max(0.0, min(10.0, round(score, 1)))
-
-
-def _delta(current: float, last: float | None) -> str:
-    """对比箭头：⬆ 好转 / ⬇ 恶化 / → 持平 / N/A cold start。"""
-    if last is None:
+def _delta(cur: float, prev: float | None, less_is_better: bool = False) -> str:
+    if prev is None:
         return "—"
-    if current == last:
+    if cur == prev:
         return "→"
-    return "⬆" if current > last else "⬇"
+    if less_is_better:
+        return "⬆ 改善" if cur < prev else "⬇ 恶化"
+    return "⬆" if cur > prev else "⬇"
 
 
-def _delta_inverse(current: float, last: float | None) -> str:
-    """对越小越好的指标取反：红灯 / debt / 黄灯。"""
-    if last is None:
-        return "—"
-    if current == last:
-        return "→"
-    return "⬆" if current < last else "⬇"
+# ============ 报告组装 ============
 
-
-def render_report(week_id, git, health, mem, debt, evo, last) -> str:
+def render_report(week_id, signals, git, health, debt, mem, last) -> str:
     last_data = last["data"] if last else {}
     lines = [
-        f"# velo 周报 / {week_id}",
+        f"# velo 周报 / agent 协作复盘 / {week_id}",
         "",
         f"> 生成时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
         f"> 上份报告：{last['path'] if last else '（首次跑 / 无对比）'}",
-        "",
-        "## 一句话",
-        "",
-        f"**进化指数：{evo} / 10** {_delta(evo, last_data.get('evolution_index'))}",
-        "",
-        "## 本周做了啥",
-        "",
-        f"- {git['commit_count']} commit / +{git['insertions']} / -{git['deletions']} 行",
-        "- 分类：" + " / ".join(f"{k} {v}" for k, v in git["categories"].items() if v > 0),
-        "",
-        "## 跟上周比",
-        "",
-        "| 指标 | 上周 | 本周 | 变化 |",
-        "|---|---|---|---|",
-        f"| 红灯文件 | {last_data.get('red_count', '—')} | {health['red_count']} | {_delta_inverse(health['red_count'], last_data.get('red_count'))} |",
-        f"| 黄灯文件 | {last_data.get('yellow_count', '—')} | {health['yellow_count']} | {_delta_inverse(health['yellow_count'], last_data.get('yellow_count'))} |",
-        f"| tech-debt 条目 | {last_data.get('debt_entries', '—')} | {debt['entries']} | {_delta_inverse(debt['entries'], last_data.get('debt_entries'))} |",
-        f"| memory 总数 | {last_data.get('memory_total', '—')} | {mem['total']} | {_delta(mem['total'], last_data.get('memory_total'))} |",
-        f"| 后端代码量 | {last_data.get('total_lines', '—')} | {health['total_lines']} | — |",
-        f"| 进化指数 | {last_data.get('evolution_index', '—')} | {evo} | {_delta(evo, last_data.get('evolution_index'))} |",
-        "",
-        "## 本周新学（新 memory）",
+        "> **这份报告给 agent 自己看 / 不是给 Tim 看的项目仪表盘。**",
         "",
     ]
-    if mem["new_this_week"]:
-        for m in mem["new_this_week"]:
-            lines.append(f"- {m}")
-    else:
-        lines.append("- 无新增")
 
+    # 主段：否定信号
+    lines += render_negative_section(signals)
+
+    # 强制 agent 行为
+    lines += render_agent_checklist(signals)
+
+    # 跟上周对比（含否定数 + 红灯 + debt）
     lines += [
+        "## 📊 跟上周对比",
         "",
-        "## 翻车统计",
-        "",
-        f"- fix commit：{git['categories'].get('fix', 0)} 次",
-        f"- revert / hotfix 关键字：{sum(1 for c in git.get('commits', []) if 'revert' in c['msg'].lower() or 'hotfix' in c['msg'].lower())} 次",
-        "",
-        "## 当前红灯文件",
+        "| 指标 | 上周 | 本周 | 变化 | 解读 |",
+        "|---|---|---|---|---|",
+        f"| 总否定信号 | {last_data.get('negative_total', '—')} | {len(signals)} | "
+        f"{_delta(len(signals), last_data.get('negative_total'), less_is_better=True)} | "
+        f"{'agent 协作变顺' if last_data.get('negative_total') and len(signals) < last_data['negative_total'] else '基线 / 待跟踪'} |",
+        f"| 红灯文件 | {last_data.get('red_count', '—')} | {health['red_count']} | "
+        f"{_delta(health['red_count'], last_data.get('red_count'), less_is_better=True)} | 代码健康 |",
+        f"| tech-debt 条目 | {last_data.get('debt_entries', '—')} | {debt['entries']} | "
+        f"{_delta(debt['entries'], last_data.get('debt_entries'), less_is_better=True)} | 债务清理 |",
         "",
     ]
-    if health["red_files"]:
-        for path, n in health["red_files"]:
-            lines.append(f"- ⚠️ {path}（{n} 行）")
-    else:
-        lines.append("- ✅ 0 红灯")
 
+    # 次段：项目数据（缩短）
     lines += [
+        "## 📁 项目数据（辅助 / 给 Tim 看）",
         "",
-        "## 下周提醒",
-        "",
-        f"- tech-debt.md 当前 {debt['entries']} 条 / {debt['lines']} 行 → 看 top 3 优先级",
-        "- 跑 `python3 scripts/verify_tech_debt.py` 看是否有新过期条目",
+        f"- commit：{git['count']} 次（feat {git['categories']['feat']} / fix {git['categories']['fix']} / docs {git['categories']['docs']} / refactor {git['categories']['refactor']} / chore {git['categories']['chore']} / test {git['categories']['test']}）",
+        f"- 真翻车（hotfix/revert）：{git['real_hotfix']} 次",
+        f"- 代码健康：{health['total_lines']} 行 / 🔴 {health['red_count']} 红 / 🟡 {health['yellow_count']} 黄",
+        f"- tech-debt：{debt['entries']} 条 / {debt['lines']} 行",
+        f"- memory：本周新增 {mem['new_this_week']} / 总 {mem['total']}",
         "",
         "---",
         "",
-        "**进化指数算法**（v1）：基线 5 / 红灯每个 -0.8 / 黄灯超 10 每个 -0.05 / debt 超 12 每条 -0.15 / commit≥5 +1 / 新 memory≥1 +0.5 / 真翻车（hotfix/revert/紧急）每个 -0.6",
+        "**算法说明**：否定信号扫描宽泛抓关键词（看不懂 / 我说了 / 别 / 停 / 等等 / 我他妈 等）/ ",
+        "会有误报（如【等等】可能是补充不是否定）/ agent 自己判断 / 关键词清单见 weekly_report.py NEGATIVE_KEYWORDS。",
     ]
     return "\n".join(lines)
 
 
-def iso_week_id(d: datetime.datetime | None = None) -> str:
-    d = d or datetime.datetime.now()
-    iso = d.isocalendar()
-    return f"{iso[0]}-W{iso[1]:02d}"
-
-
 def main() -> int:
     WEEKLY_DIR.mkdir(parents=True, exist_ok=True)
-
     week_id = iso_week_id()
-    git = collect_git_stats(7)
-    health = collect_health_stats()
-    mem = collect_memory_stats(7)
-    debt = collect_debt_stats()
-    last = find_last_report()
-    evo = calc_evolution_index(git, health, debt, mem)
-    report = render_report(week_id, git, health, mem, debt, evo, last)
 
+    signals = scan_negative_signals(7)
+    git = collect_git_summary(7)
+    health = collect_health_stats()
+    debt = collect_debt_stats()
+    mem = collect_memory_stats(7)
+    last = find_last_report()
+
+    report = render_report(week_id, signals, git, health, debt, mem, last)
     out = WEEKLY_DIR / f"{week_id}.md"
     out.write_text(report, encoding="utf-8")
 
-    # stdout 摘要（hook 起手时塞给 agent / Tim 间接看）
-    print("=== velo 周报已生成 ===")
+    # stdout 摘要（hook 起手时塞 agent 上下文）
+    print("=== agent 协作复盘 / 上周 Tim 否定信号扫描完毕 ===")
     print(f"📄 {out.relative_to(ROOT)}")
-    print(f"🌡 进化指数：{evo} / 10  {_delta(evo, (last or {}).get('data', {}).get('evolution_index'))}")
-    print(f"🔴 红灯文件：{health['red_count']}  🟡 黄灯：{health['yellow_count']}")
-    print(f"📋 tech-debt：{debt['entries']} 条 / {debt['lines']} 行")
-    print(f"🧠 memory：本周新增 {len(mem['new_this_week'])} / 总 {mem['total']}")
-    print(f"📝 commit：{git['commit_count']} 次 / fix {git['categories'].get('fix', 0)}")
+    print(f"🚨 上周否定信号：{len(signals)} 次")
+    if signals:
+        from collections import Counter
+        kw_counts = Counter(s["keyword"] for s in signals)
+        top = kw_counts.most_common(3)
+        print(f"   TOP3：{' / '.join(f'{k}×{n}' for k, n in top)}")
+    print()
+    print("⚠️ agent 你必须看 docs/agent-weekly/{}.md 做归因分析（Step 1-3）/ 报告 Tim".format(week_id))
     return 0
 
 
