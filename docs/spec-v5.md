@@ -2762,7 +2762,7 @@ def require_admin(
 
 ## §8 任务拆分（按模块分组，subagent 派工准备）
 
-**实施原则**（Tim 2026-04-28 拍 + 信条 15）：模块组之间**并行**（独立 worktree 不冲突），模块组内**串行**（同 git 冲突）。每个 task 主 agent 自己写到 `plans/phase5/task-N.X.md`（不派 codex 写）。
+**实施原则**（Tim 2026-04-28 拍 + 信条 15）：模块组之间**并行**（独立 worktree 不冲突），模块组内**串行**（同 git 冲突）。每个 task 主 agent 自己写到 `docs/archive/plans-phase5-task-N.X.md`（不派 codex 写）。
 
 ### §8.1 Sprint 0：P1 tech-debt 清理 + 迁移基线（5-8 天，单 worktree 串行）
 

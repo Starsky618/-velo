@@ -111,7 +111,7 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
 **像**：把施工图拆成每个工人的当日任务单（几号砖、几块板、装哪）。
 
 - **关键动作**：产出 `plans/phaseN/README.md`（总调度）+ 每个 `task-N.X.md`（单任务独立卡片）
-- **必看**：`plans/phase3/README.md` + `plans/phase4/README.md`（历史样板）
+- **必看**：`docs/archive/plans-phase3-README.md` + `plans-phase4-README.md`（历史样板 / 已归档）
 - **硬规则**：2 层扁平结构（README + task 文件），**严禁加第三层索引**（`architect` 信条 + 反模式表）。每个 task 卡含：目标 / 前置依赖 / 输入输出契约 / 完整代码 / 测试用例 / commit 指令 / 自检三问
   - ⭐ **2026-04-28 起：plans 正文由主 agent 自己写**（chunk by chunk，每个 task 卡写完 Edit 落盘）——**禁止派 codex 写**，理由同 ④（codex CLI 长任务卡死 bug 链）。codex 仍用于：plans 写完后异源审查（B 档 review-only）
 - **踩坑**：task 卡只写"抽成函数 X"而不给完整实现 → agent 当虚构函数处理
@@ -234,14 +234,15 @@ velo 工作流由两套大脑支撑：
 
 | 路径 | 定位 | 何时读 |
 |---|---|---|
-| `docs/spec-v1.md` ~ `spec-v4.md` | 每期技术规格（当前最新 v4） | 写代码前 |
-| `docs/plans/phaseN/README.md` | 每期施工总调度 | 派 subagent 前 |
-| `docs/plans/phaseN/task-N.X.md` | 单任务独立卡片 | subagent 自己读 |
+| `docs/spec-v5.md` | v5 期技术规格（当前现行） | 写代码前 |
+| `docs/archive/spec-v1.md` ~ `spec-v4.md` | v1-v4 期已 ship 归档（含 sunset 注释防陷阱） | 历史参考 |
+| `docs/archive/plans-phaseN-README.md` | 历史已 ship 总调度（phase3-5 + sprint-*） | 历史参考 |
+| `docs/archive/plans-phaseN-task-N.X.md` | 历史已 ship 任务卡 | 历史参考 |
 | `docs/architecture-guide.md` | 系统静态全景：7 容器 / 6 模块 / 7 表 | 新人入职 / 加新模块 |
 | `docs/data-flow-guide.md` | 9 条数据流动态链路 | 修跨模块 bug |
 | `docs/adr/README.md` | 10 份 ADR 总表 + 按场景索引 | 有人提议改决策时 |
 | `docs/adr/001-010-*.md` | 单条决策的完整论证 | 需要权威先例时 |
-| `docs/dev-guide.md` | 老版员工手册（⚠️ 待评估是否归档） | 历史参考 |
+| `docs/dev-guide.md` | Vibe Coding 开发者指南 | 颜颜 / CCF 上手 velo 时 |
 
 ### C. 运行规则（硬约束）
 
@@ -260,14 +261,14 @@ velo 工作流由两套大脑支撑：
 | `docs/changelog.md` | 所有改动流水账 | 查"这改动何时合的" |
 | `docs/deployment-diary.md` | 部署踩坑笔记 | 部署前 / 踩新坑后追加 |
 | `docs/tech-debt.md` | 已知债务清单 | **每期开工前必扫** |
-| `docs/handover.md` | 老交接文档（⚠️ 待评估是否归档） | 历史参考 |
+| `docs/archive/handover.md` | 2026-04-08 后端技术快照（已归档） | 历史参考 |
 
 ### E. 个人与归档
 
 | 路径 | 定位 |
 |---|---|
 | `docs/learning/VELO学习笔记.docx` | Starsky 的 CS 学习积累 |
-| `docs/superpowers/plans/` + `superpowers/specs/` | 旧 superpowers 工作流归档（低频访问） |
+| `docs/archive/` | 历史归档 59 file（spec-v1~v4 + plans-phase3-5 + plans-sprint-* + handover）|
 
 ### F. 升级路由表：教训类型 → 进哪份文档（agent 自决用）⭐
 
@@ -301,12 +302,12 @@ velo 工作流由两套大脑支撑：
 | 战略 PRD | `docs/prd/velo-{vision/strategy/product-spec}.md` | 固定 3 份 |
 | 战术 PRD | `docs/prd/phase-N-prd.md` | `phase-5-prd.md` |
 | 技术 Spec | `docs/spec-vN.md` | `spec-v5.md` |
-| 实施计划目录 | `docs/plans/phaseN/` | `plans/phase5/` |
-| 任务卡 | `docs/plans/phaseN/task-N.X.md` | `plans/phase5/task-8.1.md` |
+| 实施计划（新 sprint） | `docs/plans/phaseN/` 或自定义 | 新 sprint 启动时建 |
+| 历史已 ship 实施计划 | `docs/archive/plans-phaseN-*.md` | `archive/plans-phase5-task-8.1.md` |
 | ADR | `docs/adr/0XX-为什么{决策}.md` | `adr/011-为什么xxx.md` |
 | 竞品分析 | `docs/competitive-analysis/{对手}-对标.md` 或 `-深度解码.md` 或 `-失败模式.md` | 见 §5A |
 
-**老遗产**：第 3 期之前用过日期扁平命名（`2026-04-16-xxx.md`），已归档到 `docs/plans/phase3/`，以后不再用。
+**老遗产**：第 3 期之前用过日期扁平命名（`2026-04-16-xxx.md`），已归档到 `docs/archive/plans-phase3-*`，以后不再用。
 
 ---
 

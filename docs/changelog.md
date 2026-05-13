@@ -34,7 +34,7 @@ velo OAuth 默认申请 `read,activity:read` → Strava API **静默过滤**所�
 
 - CLAUDE.md "调试/排查硬规则" — 用户报"X 看不到/不工作"前 4 步强制顺序（grep 配置 → 读官方文档 → 验证源头 → 才能动中间链路）
 - CLAUDE.md 陷阱清单 #20 — Strava scope 字面陷阱
-- 历史档案 sunset 注释：`docs/spec-v2.md:852` / `spec-v4.md:445` / `plans/phase4/task-7.2.md:91`（不删原值 / 加"⚠️ 历史档案 / 勿照抄"标记防未来 agent 误抄）
+- 历史档案 sunset 注释：`docs/archive/spec-v2.md:852` / `archive/spec-v4.md:445` / `archive/plans-phase4-task-7.2.md:91`（不删原值 / 加"⚠️ 历史档案 / 勿照抄"标记防未来 agent 误抄）
 
 ### Codex 第 2 轮异源审补强（2 真 Critical + 1 Important + 1 Nice → 全修）
 
@@ -265,7 +265,7 @@ task-4.3 part-3 完成 / Tim 拍"开 Sprint 5"+ 7 个 brainstorm 决策（详 ta
 | `tests/test_backup_freshness.py` | 7 case（5 主路径 + 2 边界）/ 全过 |
 | `docker-compose.yml` | 加 `db-backup` 服务（postgres:16-alpine）+ monitor 加第 3 探针 + `./backups:/backups` 卷 |
 | `.gitignore` | `backups/` |
-| `docs/plans/sprint-5/task-1-pg-dump-backup.md` | 任务卡 + 7 个决策入册 |
+| `docs/archive/plans-sprint-5-task-1-pg-dump-backup.md` | 任务卡 + 7 个决策入册 |
 
 ### Tim brainstorm 7 拍（详 task 卡 §1）
 
@@ -304,7 +304,7 @@ monitor backup_freshness 探针：容器启动初期有 1 条"backup dir 为空"
 ### 配套文档同步
 
 - `docs/changelog.md`（本条目）
-- `docs/plans/sprint-5/task-1-pg-dump-backup.md` 验收清单 ✅
+- `docs/archive/plans-sprint-5-task-1-pg-dump-backup.md` 验收清单 ✅
 - `CLAUDE.md` 当前位置段更新（task-1 ship / 下一步 Sprint 5 待 Tim 选第 2 项）
 
 ### 兜底（未来真灾难时 restore 步骤）
@@ -685,7 +685,7 @@ velo 生产已 ship 半年（v0 至 v5 / 100 活跃用户 / 数据库每日增�
 
 - 战术 PRD `docs/prd/phase-5-prd.md` v0.4 完工（Tim 拍 11 yes 决策点）
 - 技术 spec `docs/spec-v5.md` 2879 行，3 轮双审 Critical 14→8→3→0 收敛
-- 实施计划 `docs/plans/phase5/` 29 张 task 卡 + README
+- 实施计划 `docs/archive/plans-phase5-*` 29 张 task 卡 + README
 
 ### Sprint 0：地基修补（5-8 天）✅ 全部完成
 
@@ -807,7 +807,7 @@ velo 生产已 ship 半年（v0 至 v5 / 100 活跃用户 / 数据库每日增�
 ### 待办（2026-05-06 起）⭐ 新 session 必读
 
 1. **下一个 sub-task = task-3.B.2 segment-creator.html 增强**（admin H5 收尾）：
-   - task 卡：`docs/plans/phase5/task-3.B.2.md`
+   - task 卡：`docs/archive/plans-phase5-task-3.B.2.md`
    - 前置都满足（D.1-D.5 完成 + 生产部署 + admin POST endpoints 已 hotfix 跑通）
    - 起手第一动作：grep verify task 卡现状（task 卡 grep 数据普遍 stale / 详 memory `feedback_phase5_task_card_grep_stale.md`）
 2. ⏳ 待 Tim 触发：学 git 分支多线程开发 / 专题讨论"规则系统熵增"（第三阶问题）/ 项目根 untracked 目录集中处理（`.claude/worktrees/` + `app/middleware/`）

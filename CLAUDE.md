@@ -127,8 +127,8 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 > 📖 **文档全地图**：`docs/README.md`（开新任务前必读）——含 9 阶段工作流 × 文档 × skill 全景、场景速查、5 分类目录。
 
 **执行与技术（agent 线）**
-- **技术规格**：`docs/spec-v1.md` ~ `docs/spec-v4.md`（当前 v4 已完成，v5 待规划）
-- **实施计划**：`docs/plans/phaseN/`（subagent 派工的输入）
+- **技术规格**：`docs/spec-v5.md`（v5 期 / 当前现行）/ 历史 `docs/archive/spec-v1.md` ~ `spec-v4.md`（v1-v4 已 ship 归档）
+- **实施计划**：历史已 ship 全归档 `docs/archive/plans-phase[3-5]-*.md` + `plans-sprint-*.md`（新 sprint 启动时建新 plans/ 目录）
 - **架构导览**：`docs/architecture-guide.md`（系统静态全景，每期收尾刷新）
 - **数据流全景**：`docs/data-flow-guide.md`（9 条链路动态视图，修跨模块 bug 必读）
 - **架构决策历史**：`docs/adr/`（10 份 ADR / 见 `docs/adr/README.md` 索引）—— 有人提议改决策时必读

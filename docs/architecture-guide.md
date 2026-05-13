@@ -221,7 +221,7 @@ app/<模块名>/
   - `_probe_static_site`: GET `http://admin-h5/` 期望 200
   - `_probe_api_proxy`: GET `http://admin-h5/api/admin/whoami`（无 token）期望 4xx（5xx = 反代挂 / 200 = SPA fallback 漏报）
   - 失败 → Redis SETNX 5min 去抖（防 60 条/h 风暴）→ 推飞书
-- **D 决策（Tim 2026-05-06）**：生产 `~/velo/.env` 不配 `FEISHU_BOT_WEBHOOK` → fallback 到 logger.warning + main 退码 1 / 探针真生效但告警进 logs 不发通道。激活路径 = .env 加一行 / 0 行代码改动（详 `docs/plans/phase5/task-monitor-admin-h5.md` 顶部 D 决策块）
+- **D 决策（Tim 2026-05-06）**：生产 `~/velo/.env` 不配 `FEISHU_BOT_WEBHOOK` → fallback 到 logger.warning + main 退码 1 / 探针真生效但告警进 logs 不发通道。激活路径 = .env 加一行 / 0 行代码改动（详 `docs/archive/plans-phase5-task-monitor-admin-h5.md` 顶部 D 决策块）
 - 不写业务表 / 不改 status —— **只读 + 告警**
 - depends_on: db / redis / admin-h5
 
