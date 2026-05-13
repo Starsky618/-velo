@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/verify_tech_debt.py 2>&1 || true"
+            "command": "python3 scripts/session_start.py 2>&1 || true"
           }
         ]
       }
