@@ -55,7 +55,7 @@
 | **总计** | **~14100**（含 admin H5 业务代码） |
 
 ⚠️ agent 注意:
-- 后端单文件红灯阈值 >600 / segment/service.py 已从 793 降到 189（task-pre-3.B 拆分）/ strava + user service.py 仍红灯（待清 / tech-debt P1）
+- 后端单文件红灯阈值 >600 / **当前 0 红灯**（segment 793→189 / strava 906→48 facade / user 834→48 facade，3 文件均拆为 facade + 子模块，详 commit 1c70a02 / 54fe26b / 6b5c827）
 - admin H5 独立 repo / vite build 实证通过 / 不计入后端行数 / 项目复杂度评估按 src/ 9 文件 470 行计（不是 ls -la 看到的 14 行视觉冲击 / 详 memory `feedback_project_health_dashboard_gap.md` § 视觉冲击 vs 真复杂度）
 - v5 admin endpoint 12 个全在 /api/admin/* 前缀（task-3.A.1 ~ 3.A.7 / 含 whoami / from-gpx / from-activity / curation-pool / ai/segment-drafts / segments / activities/{id}/trackpoints）
 

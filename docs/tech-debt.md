@@ -1,29 +1,8 @@
 # 技术债务清单
 
 > 项目 CLAUDE.md 防黑盒化机制 3："每期开工前做回溯体检"——新期 Spec 不允许依赖"还在 tech-debt 清单里"的功能，先修清理再做。
-
----
-
-## 🔴 真 gap：生产无 pg_dump 备份脚本（Sprint 5 必修 / task-4.3 part-1 抓到）
-
-velo 生产已 ship 半年（v0 至 v5 / 100 活跃用户 / 数据库每日增长）/ `scripts/` 0 hits 备份脚本（grep `pg_dump\|backup` 全无）。
-
-**风险**：任意场景命中 = 数据全损
-- db 容器 OOM / docker prune / 磁盘故障 / 误删
-- users / activities / segments / segment_efforts / strava_imports / segment_ai_drafts / segment_curation_pool 全丢
-- v5 新加 2 表也无保护
-
-**修法**（Sprint 5 / 0.5d 工作量）：
-1. 写 `scripts/backup_pg.sh`：`pg_dump -F c -f /backups/velo_$(date +%Y%m%d).dump`
-2. docker-compose 加 backup-cron 容器：每天 02:00 跑 / 留最近 30 天 / 自动清理超期
-3. backup volume 挂到 host 或单独磁盘
-4. 真用回归：故意 docker-compose down db + up → 用 backup 恢复 → 数据完整
-
-**优先级**：🔴 高（数据安全 / 任何 db 故障都是不可逆 / 已 ship 半年才发现 = 持续暴露）
-
-**blocker 关联**：task-4.3 §2 alembic downgrade 真 PG 双向验证推迟到 pg_dump 落地后再跑（v5 downgrade 会 drop `segment_ai_drafts` / `segment_curation_pool` 整表 + `notifications.payload` / `users.city` / `segments.{city,max_gradient,difficulty}` 列 = 数据全失；无备份不能裸跑 / Tim 2026-05-10 拍）
-
-来源：task-4.3 part-1 §3 部署清单审 grep `scripts/` + `docker-compose.yml` 0 hits 实证（commit d9bcbc0）
+>
+> **2026-05-13 刷新**：清理废条目 3 条（pg_dump P0 / service.py 红灯 3 文件 / middleware untracked）—— 全部已 ship / 详见对应 commit 链。本表只留真未修条目。
 
 ---
 
@@ -80,64 +59,11 @@ velo 升级 OAuth scope `activity:read` → `activity:read_all` 后（commit TBD
 
 ---
 
-## 第 4 期遗留 P1（v5 Sprint 0 已全部清理 ✅）
-
-> **2026-05-09 task-4.1 文档刷新时移除**：v5 Sprint 0 task 0.1-0.5 / 0.8 已闭环 5 项 P1。详见 `docs/changelog.md` 2026-04-29 起 Sprint 0 章节。
-
-| # | 项 | 修复 commit |
-|---|---|---|
-| 1 | datetime 栈内不一致 | task-0.1 `4a94097`（5 表 12 列改 tz-aware + Python `datetime.now(UTC)`）|
-| 2 | `ensure_valid_token` 行锁约束只在注释 | task-0.2 `022e2b1` + `db7e475`（签名改造 + populate_existing）|
-| 3 | `ensure_valid_token` 未绑定用户路径 | task-0.3 `07327b1`（入口校验 + scheduler 兜底）|
-| 4 | SQLAlchemy legacy `.get()` | task-0.4 `5e44c4f`（批量替换 8 处）|
-| 5 | scheduler Redis 连接每次新建 | task-0.5 + 0.8 `04bb17d`（并入 app/queue.py 单一源）|
-
----
-
 ### 来源：生产部署缺陷（CLAUDE.md 已有条目）
 
 已在主 CLAUDE.md "已知部署缺陷"小节记录：
 - OAuth callback 可重复创建 strava_imports（本期 task-7.3 已修）
 - ~~无 scheduler 容器~~（本期 task-7.9 将修）
-
-### 来源：task-1.A.2 完工（2026-04-30 双主驾首战收尾）
-
-**现状**：`app/segment/service.py` 792 行，超红灯 600。
-
-**性质**：本期新增三个函数（`get_my_effort_with_compare` / `create_segment_from_activity` /
-`get_segment_list` 扩展）职责均属"赛段操作"，与现有 8 个函数同模块语义一致，
-**职责单一不强制拆**（CLAUDE.md §代码健康度自动巡检"红灯：先评估职责是否统一"）。
-
-**和第 4 期 service.py 727 行红灯条的区别**：那条点的是 strava service.py（OAuth/token/sync），
-这条点的是 segment service.py，两者无关。
-
-**下期动作**（性价比中 / Sprint 2 完工后再评估）：
-- 拆 `app/segment/service.py` → `service.py`（核心 CRUD）+ `effort_service.py`（即时反馈/排行榜）+ `admin_service.py`（from-activity 等 admin 专用）
-- 触发条件：再加 1 个函数超 850 行 / 或 task-1.A.3 router 完工后看依赖收敛情况
-
----
-
-### 来源：task-1.C.1 收尾遗漏（2026-05-03 codex 异源审 task-3.A.1 时发现）
-
-**现状**：`app/middleware/__init__.py` + `app/middleware/rate_limit.py`（共 ~8500 字节）
-作为 untracked 文件存在于 working tree（创建时间 2026-04-30 task-1.C.1 飞书告警时期），但：
-- 从未 commit 进任何分支（`git log --all --oneline -- app/middleware/` 返回空）
-- 没有任何项目代码 import（grep `from app.middleware` 无结果；
-  `main.py` 那行 `fastapi.middleware.cors` 是 FastAPI 内置库无关）
-- `rate_limit.py` 含 httpx + 飞书 webhook 调用 + Redis 限速逻辑
-
-**性质**：Sprint 1 task-1.C.1 monitor 软目标可能漏 commit 的代码 / 或写完后被否决但未删
-
-**影响**：
-- working tree 持续 noise，未来任何 codex 异源审都会重新抓一次
-- 对 Sprint 3 commit 流程的实际风险：`git add .` 类宽范围 add 会误纳
-
-**下期动作**（待 Tim 单独裁决三选一）：
-- A. 补 Sprint 1 commit（先评审 7344 字节代码质量）
-- B. 删除（如果当时被否决）
-- C. 暂保 untracked（task-3.A.1 commit 时 Tim 拍此路径，本条登记后维持原状）
-
----
 
 ### 来源：task-0.7 收尾遗漏（2026-04-30 dev stack 验证发现）
 
@@ -337,7 +263,7 @@ CREATE TABLE segment_facts (
 ### 后端相关
 - N+1 查询（排名计算循环发 SQL）—— 代码已标 TODO；**v5 task-4.2 已修 power-curve N+1（24s → 1-2s）/ 排名循环未修**
 - trackpoints 表无分区策略（百万级用户后要加）
-- ~~service.py 单文件 727 行~~ ✅ 已解决（task-pre-3.B / 2026-05-05 拆分为 service.py 189 + service_create.py 257 + service_query.py 380 / 详 commit）
+- service.py 三大文件红灯 ✅ 全部已拆（2026-05-13 验：strava 906→48 facade `54fe26b` / user 834→48 facade `6b5c827` / segment 793→189 + 子模块 task-pre-3.B / 当前 0 红灯）
 
 ---
 
@@ -411,34 +337,23 @@ admin H5 草稿审核生产真用 / Tim 改稿 7 条 approved（segment_id 6/8/9
 
 ---
 
-## 🟢 P3：限流 middleware 写完未接入任何 router（2026-04-30 写 / 2026-05-11 收编）
+## 🟢 P3：限流 middleware 未接入任何 router（代码 commit b82d692 / 仍欠接入）
 
 ### 现状
-- `app/middleware/rate_limit.py` 172 行 + `app/middleware/__init__.py` 20 行 / 2026-04-30 写完
+- `app/middleware/rate_limit.py` 172 行 + `app/middleware/__init__.py` 20 行 / 已 commit
 - 完整功能：`check_rate_limit_by_user` / `check_rate_limit_by_ip` + X-Forwarded-For 解析 + Redis 不可用降级放行 + 飞书告警（每日去抖）
-- **grep 全库 0 调用** —— 无任何 router import / 死代码挂在树上
-
-### 风险
-- 当前 100 用户量级 + 内测阶段无真实攻击 = 0 实际风险
-- 未来公测 / 用户量上来 = OAuth state CSRF / 上传刷脚本 / 登录暴力 都没拦防
+- **grep 全库 0 调用** —— 无任何 router import / 工具写好待开槽
 
 ### 修法（< 1d）
-- 接入 3 个关键端点：
-  - `app/strava/router.py` OAuth callback（IP 限流 / 防 CSRF state 撞码）
-  - `app/activity/router.py` upload（user 限流 / 防刷上传）
-  - `app/user/router.py` login（IP 限流 / 防暴力破解）
-- 配套真用回归：故意 6 秒内请求 11 次 → 第 11 次 429
-- 改 7 个 router 文件 / 配 limit + window_sec / 加 e2e 测试
+- 接入 3 个关键端点：strava router OAuth callback（IP 限流 / 防 CSRF state 撞码）/ activity router upload（user 限流 / 防刷上传）/ user router login（IP 限流 / 防暴力破解）
+- 配套真用回归：6 秒内 11 次请求 → 第 11 次 429
 
 ### 触发条件
-- Tim 拍开专门 task 接入
-- 或公测 / 用户量过 500 时
+- 公测 / 用户量过 500 时
 - 或第一次出限流相关事故（CSRF / 暴力破解）
 
 ### 优先级
 低 / 当前内测期 0 攻击 / 工具已写好待开槽
-
-来源：2026-05-11 v5 收尾大扫除发现 untracked 时收编（commit TBD）
 
 ---
 
