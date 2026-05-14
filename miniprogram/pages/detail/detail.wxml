@@ -100,11 +100,11 @@
     <view class="metric-list">
       <view class="metric-row">
         <text class="metric-label">平均速度</text>
-        <text class="metric-value speed">{{activity.avg_speed || '-'}}<text class="metric-unit">km/h</text></text>
+        <text class="metric-value">{{activity.avg_speed != null ? activity.avg_speed : '-'}}<text class="metric-unit">km/h</text></text>
       </view>
       <view class="metric-row">
         <text class="metric-label">最大速度</text>
-        <text class="metric-value speed">{{activity.max_speed || '-'}}<text class="metric-unit">km/h</text></text>
+        <text class="metric-value">{{activity.max_speed != null ? activity.max_speed : '-'}}<text class="metric-unit">km/h</text></text>
       </view>
       <view class="metric-row">
         <text class="metric-label">移动时间</text>
@@ -133,7 +133,7 @@
       </view>
       <view class="metric-row">
         <text class="metric-label">最大功率</text>
-        <text class="metric-value power">{{activity.max_power || '-'}}<text class="metric-unit">W</text></text>
+        <text class="metric-value">{{activity.max_power != null ? activity.max_power : '-'}}<text class="metric-unit">W</text></text>
       </view>
       <view class="metric-row" wx:if="{{activity.calories}}">
         <text class="metric-label">热量</text>
@@ -171,7 +171,7 @@
       </view>
       <view class="metric-row">
         <text class="metric-label">最大心率</text>
-        <text class="metric-value hr">{{activity.max_hr || '-'}}<text class="metric-unit">bpm</text></text>
+        <text class="metric-value">{{activity.max_hr != null ? activity.max_hr : '-'}}<text class="metric-unit">bpm</text></text>
       </view>
     </view>
   </view>

@@ -269,16 +269,19 @@ def _calculate_moving_time(
         if prev.time is None or curr.time is None:
             continue
 
-        # 相邻两点速度均值（None 视为 0，等同停下）
-        v_prev = prev.speed if prev.speed is not None else 0.0
-        v_curr = curr.speed if curr.speed is not None else 0.0
-        avg_v = (v_prev + v_curr) / 2
+        # Trackpoint.speed 是 geo_math.calculate_speed(prev, curr) 算出来的
+        # 「这一段（prev→curr）」的速度，挂到 curr 上。
+        # 直接用 curr.speed 判断"这段在不在动"，不做跨段均值（跨段平均无语义）。
+        # None 视为停车（罕见：geo_math 算速度时遇 GPS 漂移返 None）。
+        seg_speed = curr.speed
+        if seg_speed is None or seg_speed < moving_threshold:
+            continue
 
-        if avg_v >= moving_threshold:
-            delta = (curr.time - prev.time).total_seconds()
-            # 防 GPS 信号丢失 / 设备 sleep 大 gap 污染统计
-            if 0 < delta < 60:
-                moving_seconds += delta
+        delta = (curr.time - prev.time).total_seconds()
+        # 防 GPS 信号丢失 / 设备 sleep 大 gap 污染统计
+        # 边界：delta == 60s 仍计入（"严格大于 60 秒才丢弃"语义对齐 Strava）
+        if 0 < delta <= 60:
+            moving_seconds += delta
 
     return int(moving_seconds)
 

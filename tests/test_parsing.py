@@ -39,6 +39,7 @@ from app.parsing.stats_calculator import (
     calculate_summary,
     calculate_splits,
     calculate_calories,
+    _calculate_moving_time,
 )
 from app.parsing.gpx_parser import GPXParser, GPXParseError
 from app.parsing.coord_normalizer import normalize
@@ -304,6 +305,78 @@ class TestStatsCalculator:
         if splits:
             assert "km" in splits[0]
             assert "avg_speed" in splits[0]
+
+
+class TestCalculateMovingTime:
+    """
+    _calculate_moving_time 单测——GPX 路径专用算法。
+
+    覆盖 4 类场景：
+    1. 全程在动（速度全 ≥ 1 m/s）→ moving_time == duration
+    2. 全程停车（速度全 < 1 m/s）→ moving_time == 0
+    3. 半停半动（一半停车一半骑）→ moving_time ≈ duration / 2
+    4. 无 speed 字段（老 GPX 数据）→ fallback 返回 duration
+    """
+
+    def _tps_with_speeds(self, speeds: list[float | None]) -> list[Trackpoint]:
+        """构造一组等间隔（10s）的轨迹点，给定每个点的段速度。"""
+        return [
+            _make_tp(seq=i, time=_base_time(i * 10), speed=v)
+            for i, v in enumerate(speeds)
+        ]
+
+    def test_all_moving(self):
+        """全程速度 5 m/s（远 > 阈值 1 m/s），moving_time = duration。"""
+        tps = self._tps_with_speeds([None, 5.0, 5.0, 5.0, 5.0])
+        # 4 个间隔 × 10s = 40s
+        result = _calculate_moving_time(tps, duration=40)
+        assert result == 40
+
+    def test_all_stationary(self):
+        """全程速度 0.3 m/s（< 阈值 1 m/s），moving_time = 0。"""
+        tps = self._tps_with_speeds([None, 0.3, 0.3, 0.3, 0.3])
+        result = _calculate_moving_time(tps, duration=40)
+        assert result == 0
+
+    def test_half_moving_half_stop(self):
+        """前半段骑（5 m/s）+ 后半段停（0.2 m/s），moving_time = 总时长一半。"""
+        # 6 个点 = 5 段；前 2 段在动（20s），后 3 段停车（30s）
+        tps = self._tps_with_speeds([None, 5.0, 5.0, 0.2, 0.2, 0.2])
+        result = _calculate_moving_time(tps, duration=50)
+        assert result == 20
+
+    def test_no_speed_field_fallback(self):
+        """老 GPX 文件 speed 全 None → fallback 返回 duration。"""
+        tps = self._tps_with_speeds([None, None, None, None])
+        result = _calculate_moving_time(tps, duration=30)
+        assert result == 30
+
+    def test_gap_exactly_60s_included(self):
+        """边界：delta == 60s 仍计入（off-by-one 防御回归）。"""
+        tps = [
+            _make_tp(0, time=_base_time(0), speed=None),
+            _make_tp(1, time=_base_time(60), speed=5.0),  # 60s gap，仍计入
+        ]
+        result = _calculate_moving_time(tps, duration=60)
+        assert result == 60
+
+    def test_gap_over_60s_skipped(self):
+        """delta > 60s（GPS 信号丢失 / 设备 sleep）跳过不计入。"""
+        tps = [
+            _make_tp(0, time=_base_time(0), speed=None),
+            _make_tp(1, time=_base_time(120), speed=5.0),  # 120s gap，跳过
+        ]
+        result = _calculate_moving_time(tps, duration=120)
+        assert result == 0
+
+    def test_no_duration_returns_none(self):
+        """duration=None 时返回 None（无时间戳骑行不算移动时间）。"""
+        tps = self._tps_with_speeds([None, 5.0])
+        assert _calculate_moving_time(tps, duration=None) is None
+
+    def test_empty_trackpoints_returns_none(self):
+        """空轨迹返回 None。"""
+        assert _calculate_moving_time([], duration=60) is None
 
 
 # ==================== gpx_parser.py 测试 ====================
