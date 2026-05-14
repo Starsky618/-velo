@@ -90,6 +90,7 @@ Page({
     loading: true,
     activity: null,
     durationText: '',
+    movingTimeText: '',
     dateText: '',
     // 海拔剖面相关（控制模板渲染）
     hasElevation: false,
@@ -150,6 +151,8 @@ Page({
           loading: false,
           activity: data,
           durationText: that.formatDuration(data.duration),
+          // 老活动 moving_time 为 NULL 显示 "-"；用 != null 防 truthiness 陷阱（0 视为合法）
+          movingTimeText: data.moving_time != null ? that.formatDuration(data.moving_time) : '-',
           dateText: that.formatDate(data.started_at || data.created_at),
           hasElevation: eleData.length > 0,
           maxElevation: formatNum(maxEle),

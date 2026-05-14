@@ -97,16 +97,22 @@
     <view class="chart-canvas-wrap" hidden="{{!hasTimeseries}}">
       <canvas type="2d" id="speedCanvas" class="chart-canvas"></canvas>
     </view>
-    <view class="metric-row">
-      <view class="metric">
-        <text class="metric-value speed">{{activity.avg_speed || '-'}}</text>
-        <text class="metric-sub">km/h</text>
-        <text class="metric-label">平均</text>
+    <view class="metric-list">
+      <view class="metric-row">
+        <text class="metric-label">平均速度</text>
+        <text class="metric-value speed">{{activity.avg_speed || '-'}}<text class="metric-unit">km/h</text></text>
       </view>
-      <view class="metric">
-        <text class="metric-value speed">{{activity.max_speed || '-'}}</text>
-        <text class="metric-sub">km/h</text>
-        <text class="metric-label">最高</text>
+      <view class="metric-row">
+        <text class="metric-label">最大速度</text>
+        <text class="metric-value speed">{{activity.max_speed || '-'}}<text class="metric-unit">km/h</text></text>
+      </view>
+      <view class="metric-row">
+        <text class="metric-label">移动时间</text>
+        <text class="metric-value">{{movingTimeText}}</text>
+      </view>
+      <view class="metric-row">
+        <text class="metric-label">全程耗时</text>
+        <text class="metric-value">{{durationText || '-'}}</text>
       </view>
     </view>
   </view>
@@ -120,21 +126,18 @@
     <view class="chart-canvas-wrap" hidden="{{!hasTimeseries || !hasPowerChart}}">
       <canvas type="2d" id="powerCanvas" class="chart-canvas"></canvas>
     </view>
-    <view class="metric-row">
-      <view class="metric">
-        <text class="metric-value power">{{activity.avg_power}}</text>
-        <text class="metric-sub">W</text>
-        <text class="metric-label">平均</text>
+    <view class="metric-list">
+      <view class="metric-row">
+        <text class="metric-label">平均功率</text>
+        <text class="metric-value power">{{activity.avg_power}}<text class="metric-unit">W</text></text>
       </view>
-      <view class="metric">
-        <text class="metric-value power">{{activity.max_power || '-'}}</text>
-        <text class="metric-sub">W</text>
-        <text class="metric-label">最大</text>
+      <view class="metric-row">
+        <text class="metric-label">最大功率</text>
+        <text class="metric-value power">{{activity.max_power || '-'}}<text class="metric-unit">W</text></text>
       </view>
-      <view class="metric" wx:if="{{activity.calories}}">
-        <text class="metric-value power">{{activity.calories}}</text>
-        <text class="metric-sub">kcal</text>
+      <view class="metric-row" wx:if="{{activity.calories}}">
         <text class="metric-label">热量</text>
+        <text class="metric-value power">{{activity.calories}}<text class="metric-unit">kcal</text></text>
       </view>
     </view>
 
@@ -161,16 +164,14 @@
     <view class="chart-canvas-wrap" hidden="{{!hasTimeseries || !hasHrChart}}">
       <canvas type="2d" id="hrCanvas" class="chart-canvas"></canvas>
     </view>
-    <view class="metric-row">
-      <view class="metric">
-        <text class="metric-value hr">{{activity.avg_hr}}</text>
-        <text class="metric-sub">bpm</text>
-        <text class="metric-label">平均</text>
+    <view class="metric-list">
+      <view class="metric-row">
+        <text class="metric-label">平均心率</text>
+        <text class="metric-value hr">{{activity.avg_hr}}<text class="metric-unit">bpm</text></text>
       </view>
-      <view class="metric">
-        <text class="metric-value hr">{{activity.max_hr || '-'}}</text>
-        <text class="metric-sub">bpm</text>
-        <text class="metric-label">最高</text>
+      <view class="metric-row">
+        <text class="metric-label">最大心率</text>
+        <text class="metric-value hr">{{activity.max_hr || '-'}}<text class="metric-unit">bpm</text></text>
       </view>
     </view>
   </view>
@@ -184,11 +185,10 @@
     <view class="chart-canvas-wrap">
       <canvas type="2d" id="cadenceCanvas" class="chart-canvas"></canvas>
     </view>
-    <view class="metric-row">
-      <view class="metric" wx:if="{{activity.avg_cadence}}">
-        <text class="metric-value cadence">{{activity.avg_cadence}}</text>
-        <text class="metric-sub">rpm</text>
-        <text class="metric-label">平均</text>
+    <view class="metric-list">
+      <view class="metric-row" wx:if="{{activity.avg_cadence}}">
+        <text class="metric-label">平均踏频</text>
+        <text class="metric-value cadence">{{activity.avg_cadence}}<text class="metric-unit">rpm</text></text>
       </view>
     </view>
   </view>

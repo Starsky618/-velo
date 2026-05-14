@@ -340,44 +340,50 @@
   color: var(--color-text-2);
 }
 
-/* ── 数据指标行 ── */
+/* ── 数据指标列表（label 左 / value 右，逐行分隔） ── */
+/*
+ * 设计语言：和 .elevation-stat-row 同款 — 左侧灰色 label，右侧加粗大字。
+ * 横向改纵向后扫读更快、视觉更克制，Strava / Apple Fitness 一致风格。
+ */
+.metric-list {
+  margin-top: 4rpx;
+}
+
 .metric-row {
   display: flex;
-  justify-content: space-around;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 18rpx 0;
+  border-bottom: 2rpx solid var(--color-divider);
 }
 
-.metric {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2rpx;
-  min-width: 140rpx;
-}
-
-.metric-value {
-  font-size: 48rpx;
-  font-weight: 700;
-  color: var(--color-text-1);
-  line-height: 1;
-  letter-spacing: -1rpx;
-}
-
-/* 不同类型用不同颜色 */
-.metric-value.speed { color: #5AC8FA; }
-.metric-value.power { color: #AF52DE; }
-.metric-value.hr { color: #FF2D55; }
-.metric-value.cadence { color: #FF6B9D; }
-
-.metric-sub {
-  font-size: 20rpx;
-  color: var(--color-text-3);
-  margin-top: 4rpx;
+.metric-row:last-child {
+  border-bottom: none;
 }
 
 .metric-label {
-  font-size: 22rpx;
-  color: var(--color-text-3);
-  margin-top: 4rpx;
+  font-size: 28rpx;
+  color: var(--color-text-2);
+}
+
+.metric-value {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  letter-spacing: -0.5rpx;
+  line-height: 1.1;
+}
+
+/*
+ * 数值统一用 text-1 黑色（Strava / 图 1 风格），不再按类型染色。
+ * 区块归属靠 section 顶部彩色小圆点（.section-dot.speed/.power/.hr/.cadence）传达。
+ */
+
+/* 单位字号略小，颜色随父级 metric-value 走 */
+.metric-unit {
+  font-size: 26rpx;
+  font-weight: 600;
+  margin-left: 6rpx;
 }
 
 /* ══════ 功率区间可视化 ══════ */
