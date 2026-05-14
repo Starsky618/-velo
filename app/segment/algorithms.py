@@ -56,23 +56,93 @@ def _haversine_distance(
     return R * c
 
 
-def calculate_max_gradient(trackpoints: list) -> float:
+def _smooth_elevations(
+    elevations: list[float | None], window: int = 15,
+) -> list[float | None]:
+    """
+    对海拔序列做移动中位数平滑，过滤 GPS 海拔尖刺。
+
+    为什么用中位数不用均值：
+    GPS 海拔噪声常是孤立尖刺（某一点突然跳 10-15m），均值会被尖刺拉偏，
+    中位数对孤立异常点不敏感——好比 11 个评委里有 1 个乱打分，
+    取中位数那个评委不受影响，取均值整体被拉跑。
+
+    为什么 window=15（保守选择）：
+    velo 轨迹点平均间距 5-10m，window=15 跨距约 75-150m。
+    - 单点尖刺：几乎完美压制（1 个 +15m 异常 in 15 个 ±0m 邻居 → 中位数 ≈ 真值）
+    - 连续随机噪声：**仅部分压制**——平滑窗口跨度 75-150m，跟 100m 算坡度窗口
+      只能部分重叠（实测 26.1% 仅降到 10-15%）。
+      要彻底压到 < 5% 需要 window ≥ 41，但会平掉 200m 短陡坡 → 不可接受
+    - 真陡坡保护：window=15 对 200m+ 持续陡坡几乎无损失
+
+    诚实声明（spec 审实测）：
+    本算法是"尖刺压制器"不是"全噪声消除器"。对生产 segment 24 "夜骑清徐"
+    （v1=26.1%），v2 + window=15 预期降到 ~10-15% 区间（difficulty 从 extreme → hard）。
+    最后 cap 25% 是兜底，不是常态修复。
+
+    彻底压到接近真实坡度（如夜骑清徐真实 ≈ 0.5%）需要 Step 3 引入"多用户骑行
+    数据群体融合"——同一赛段被骑 N 次后同位置取群体中位数 → GPS 噪声平均到接近 0。
+    现单用户阶段算法极限即此。
+
+    None 处理：
+    窗口内全部 None → 当前点保持 None（GPS 整段没记高度）。
+    部分 None → 只用有数据的点算中位数。
+
+    参数：
+        elevations: 原始海拔序列（list[float | None]）
+        window: 滑窗大小，应为奇数；偶数会取下中位数；默认 15
+    返回：
+        list[float | None] 与输入等长的平滑后序列
+    """
+    n = len(elevations)
+    if n == 0:
+        return []
+    half = window // 2
+    smoothed: list[float | None] = []
+    for i in range(n):
+        left = max(0, i - half)
+        right = min(n, i + half + 1)
+        vals = [e for e in elevations[left:right] if e is not None]
+        if not vals:
+            smoothed.append(None)
+        else:
+            vals.sort()
+            smoothed.append(vals[len(vals) // 2])
+    return smoothed
+
+
+def calculate_max_gradient(
+    trackpoints: list,
+    smooth_window: int = 15,
+    cap_pct: float = 25.0,
+) -> float:
     """
     从一段轨迹找出"最陡的 100 米"，返回该段坡度百分比。
 
-    算法：
+    算法（v2 / 2026-05-14 加 GPS 噪声压制）：
+    0. **先把海拔序列做移动中位数平滑**——压掉 GPS 单点尖刺（详 _smooth_elevations）
     1. 算累计距离数组 cumulative_dist[i] = 从起点到第 i 个点的总距离（米）
     2. 双指针滑窗：i 起点向后推 j 直到 cumulative_dist[j] - cumulative_dist[i] >= 100m
-    3. 每个 (i, j) 窗口算 |海拔差| / 实际距离 * 100，取所有窗口最大值
+    3. 每个 (i, j) 窗口用 **平滑后的海拔** 算 |海拔差| / 实际距离 * 100
+    4. 取所有窗口最大值，最后 cap 在 cap_pct（默认 25%，业界 sanity 上限）
 
-    为什么用"100m 滑窗"不取"两个相邻点"：
-    相邻轨迹点可能间距 5-10m，海拔差 1m → 算出 10-20% 假坡度（GPS 噪声放大）。
-    100m 窗口平滑掉噪声，反映"持续陡坡"的真实强度。
+    为什么 v1 不够：
+    v1 直接用原始 trackpoints 海拔算窗口坡度——问题在 backfill 路径下，
+    某条赛段会汇集 N 个用户的全部 trackpoint（密度 5-10m / 海拔噪声 ±15m），
+    只要任一对相邻 100m 窗口起点低估 + 终点高估 → 立刻算出 26% 假坡度。
+    生产真踩过这个坑（segment 24 "夜骑清徐" 11km 平路报 26.1%）。
+
+    为什么 cap 25%：
+    国际自行车联盟（UCI）公路赛事最陡爬坡极少超过 20%。25% 是世界顶级硬核路段
+    的上限（如比利时阿登 Koppenberg / Mur de Huy），更陡的几乎都是越野山路。
+    超过 25% 几乎可断定 GPS 噪声，cap 掉是 safety net 而非常态修复。
 
     参数：
         trackpoints: list[Trackpoint] 按 seq 升序，每个有 latitude / longitude / elevation 属性
+        smooth_window: 海拔平滑窗口大小（点数），默认 15
+        cap_pct: 坡度上限百分比，超过此值 cap 掉，默认 25.0
     返回：
-        float 最大坡度百分比（0 到 ~30）；下面情况返 0.0：
+        float 最大坡度百分比（0 到 cap_pct）；下面情况返 0.0：
         - 列表为空或只 1 个点（无法形成窗口）
         - 全部点海拔为 None（GPS 没记录高度）
         - 所有窗口海拔相同（纯水平骑行）
@@ -94,6 +164,10 @@ def calculate_max_gradient(trackpoints: list) -> float:
         )
         cumulative_dist.append(cumulative_dist[-1] + d)
 
+    # 海拔预平滑：先做一遍，下面所有窗口都用平滑后的值
+    raw_elevations = [tp.elevation for tp in trackpoints]
+    smoothed_elevations = _smooth_elevations(raw_elevations, window=smooth_window)
+
     max_grad = 0.0
     j = 0
     for i in range(len(trackpoints)):
@@ -107,8 +181,8 @@ def calculate_max_gradient(trackpoints: list) -> float:
         if j >= len(trackpoints):
             break
 
-        ele_start = trackpoints[i].elevation
-        ele_end = trackpoints[j].elevation
+        ele_start = smoothed_elevations[i]
+        ele_end = smoothed_elevations[j]
         if ele_start is None or ele_end is None:
             continue
 
@@ -119,6 +193,10 @@ def calculate_max_gradient(trackpoints: list) -> float:
         gradient = abs(ele_end - ele_start) / actual_dist * 100
         if gradient > max_grad:
             max_grad = gradient
+
+    # Cap 在 25%——超出几乎可断定 GPS 噪声残留（最后一道防线）
+    if max_grad > cap_pct:
+        max_grad = cap_pct
 
     return max_grad
 

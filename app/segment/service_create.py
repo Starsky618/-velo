@@ -260,6 +260,15 @@ def create_segment_from_activity(
     if inferred_difficulty is None:
         inferred_difficulty = calculate_difficulty(distance, elevation_gain, max_gradient)
 
+    # 5.5 海拔曲线：仅当所有点都有 elevation 时才生成（跟 from-gpx 路径同语义）。
+    # _sample_elevation_profile 期望 list[dict]，把 trackpoint ORM 转成 {"ele": ...} 字典。
+    elevation_profile = None
+    if all(tp.elevation is not None for tp in tps):
+        elevation_profile = _sample_elevation_profile(
+            [{"ele": tp.elevation} for tp in tps],
+            target_count=80,
+        )
+
     # 6. 构建 PostGIS LineString。WKT 坐标顺序是"经度 纬度"，和日常说法相反。
     path = WKTElement(wkt, srid=4326)
 
@@ -271,6 +280,7 @@ def create_segment_from_activity(
         elevation_gain=elevation_gain,
         elevation_loss=elevation_loss,
         avg_gradient=avg_gradient,
+        elevation_profile=json.dumps(elevation_profile) if elevation_profile is not None else None,
         start_lat=start.latitude,
         start_lon=start.longitude,
         end_lat=tps[-1].latitude,

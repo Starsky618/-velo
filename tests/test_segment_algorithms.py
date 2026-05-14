@@ -25,6 +25,7 @@ import pytest
 
 from app.segment.algorithms import (
     _haversine_distance,
+    _smooth_elevations,
     calculate_max_gradient,
     calculate_difficulty,
 )
@@ -161,6 +162,70 @@ class TestCalculateMaxGradient:
         # 全 0 海拔 → 坡度恒 0，但函数应跑完不 crash（陷阱 #1 反例锁定）
         pts = [_FakePoint(30.0, 120.0 + i * 0.001, 0.0) for i in range(20)]
         assert calculate_max_gradient(pts) == pytest.approx(0.0)
+
+    def test_gps_noise_spike_compressed_by_smoothing(self):
+        # v2 噪声压制：100 个平路点（海拔 100m）+ 1 个噪声尖刺（115m），
+        # 旧算法会算出窗口最陡 ≈ 15%，v2 平滑后该尖刺被中位数压回 100m → 接近 0%
+        pts = []
+        for i in range(100):
+            pts.append(_FakePoint(35.0, 110.0 + i * 0.0001, 100.0))
+        # 在中间塞一个尖刺
+        pts[50] = _FakePoint(35.0, 110.0 + 50 * 0.0001, 115.0)
+        grad = calculate_max_gradient(pts)
+        # 平滑后单点尖刺应几乎消失（< 2%）
+        assert grad < 2.0
+
+    def test_cap_25_percent_safety_net(self):
+        # 极端情况：构造海拔大幅持续上升的轨迹（不被平滑掉），但坡度算出来 > 25% → 应 cap 在 25%
+        # 100 个点等距 10m，每点海拔 +10m → 真实坡度 100%（不可能的路面）
+        pts = [_FakePoint(35.0, 110.0 + i * 0.0001, 100.0 + i * 10.0) for i in range(100)]
+        grad = calculate_max_gradient(pts)
+        # cap 上限 25%
+        assert grad == pytest.approx(25.0)
+
+    def test_real_steep_slope_not_destroyed(self):
+        # 防误杀：模拟真实 15% 长上坡（持续 50 个点，每 10m 上升 1.5m），平滑不应破坏它
+        # 50 个点 × 10m = 500m 连续陡坡（中位数平滑窗口 75-150m，远小于陡坡持续长度）
+        pts = [_FakePoint(35.0, 110.0 + i * 0.0001, 100.0 + i * 1.5) for i in range(50)]
+        grad = calculate_max_gradient(pts)
+        # 真陡坡 15% 应基本保留（允许平滑边界误差 ±2%）
+        assert 13.0 < grad < 17.0
+
+
+# ============================================================
+# _smooth_elevations：海拔中位数平滑（v2 加 / 2026-05-14）
+# ============================================================
+
+class TestSmoothElevations:
+    def test_empty_list_returns_empty(self):
+        assert _smooth_elevations([]) == []
+
+    def test_single_spike_removed(self):
+        # 平路 100m + 中间 1 个尖刺 → 平滑后尖刺消失
+        elevations = [100.0] * 9 + [115.0] + [100.0] * 9
+        smoothed = _smooth_elevations(elevations, window=15)
+        # 中位数平滑后，尖刺位置应被压回 100m 附近
+        assert abs(smoothed[9] - 100.0) < 0.5
+
+    def test_preserves_steady_slope(self):
+        # 持续上升序列（真陡坡）平滑后趋势不变（边界除外）
+        elevations = [100.0 + i for i in range(50)]
+        smoothed = _smooth_elevations(elevations, window=15)
+        # 中段任意一点的平滑值应接近原值
+        for i in range(15, 35):
+            assert abs(smoothed[i] - elevations[i]) < 1.0
+
+    def test_all_none_stays_none(self):
+        elevations = [None] * 10
+        smoothed = _smooth_elevations(elevations, window=5)
+        assert all(v is None for v in smoothed)
+
+    def test_partial_none_uses_available_values(self):
+        # 部分 None 不影响其他点的中位数计算
+        elevations = [100.0, None, 100.0, None, 100.0]
+        smoothed = _smooth_elevations(elevations, window=5)
+        # 中间点（有 3 个非 None 值）→ 中位数 = 100.0
+        assert smoothed[2] == 100.0
 
 
 # ============================================================

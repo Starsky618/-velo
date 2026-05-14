@@ -271,5 +271,46 @@ def test_create_segment_success():
     assert segment.elevation_gain == 15.0
     assert segment.elevation_loss == 14.0
     assert segment.avg_gradient == pytest.approx((15.0 - 14.0) / segment.distance * 100)
+    # 2026-05-14 加：from-activity 路径必须写 elevation_profile（codex 集成审 I3）
+    # 30 个 tp 都有 elevation → 应生成 JSON 字符串数组，前端拿来画曲线
+    assert segment.elevation_profile is not None
+    import json
+    profile = json.loads(segment.elevation_profile)
+    assert isinstance(profile, list)
+    assert len(profile) == 30  # ≤ 80 时 _sample_elevation_profile 原样返回
     db.add.assert_called_once_with(segment)
     db.flush.assert_called_once()
+
+
+def test_create_segment_from_activity_all_elevation_none_skips_profile():
+    """所有 tp.elevation=None（GPX 无海拔数据）→ elevation_profile 应为 None。"""
+    db = MagicMock()
+    activity_query = _FakeQuery(first_value=SimpleNamespace(id=1))
+    # 全部 elevation=None
+    trackpoints = [
+        SimpleNamespace(
+            seq=i,
+            latitude=37.0 + i * 0.001,
+            longitude=112.0,
+            elevation=None,
+        )
+        for i in range(30)
+    ]
+    tp_query = _FakeQuery(all_value=trackpoints)
+    overlap_result = MagicMock()
+    overlap_result.first.return_value = None
+    db.query.side_effect = [activity_query, tp_query]
+    db.execute.side_effect = [MagicMock(), overlap_result]
+
+    segment = service.create_segment_from_activity(
+        db,
+        activity_id=1,
+        name="无海拔赛段",
+        start_index=0,
+        end_index=29,
+        city="taiyuan",
+        difficulty="easy",
+    )
+
+    assert segment is not None
+    assert segment.elevation_profile is None  # 全 None 不生成 profile（跟 from-gpx 同语义）
