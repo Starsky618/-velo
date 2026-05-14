@@ -1,12 +1,13 @@
-"""赛段坡度数据回填脚本——重算 max_gradient + difficulty（v2 算法，2026-05-14）。
+"""赛段坡度数据回填脚本——用 DEM 查表替换历史 GPS 海拔（v3 / 2026-05-14）。
 
 为什么写这个：
-v1 算法 `calculate_max_gradient` 用 trackpoints 原始海拔算 100m 滑窗最陡，
-对 GPS 海拔噪声（±15m）没有压制，导致 11km 平路赛段被误算成 26.1%
-（生产 segment id=24 "夜骑清徐" 实证）。
+原算法用 GPS 海拔，精度 ±10-15m，造成 11km 平路赛段被算成 26.1% 假坡度
+（生产 segment id=24 "夜骑清徐" 实证）。GPS 噪声系统偏差无法通过平滑消除，
+业界共识必须换数据源——从 SRTM 30m DEM 查表替换。
 
-v2 算法加了海拔中位数预平滑 + 25% cap，详 app/segment/algorithms.py:59。
-本脚本对所有现有赛段重算 max_gradient，连带刷新 difficulty 评级。
+实测验证（DEM 公共 API）：
+- 夜骑清徐起点 768m / 终点 766m → 11km 平路真实坡度 0.018% ✓
+- 天龙山网红公路 起点 831m / 终点 1357m → 真实 max ~10-13% ✓
 
 跑法：
     # 干跑（默认，只打印不写 DB）
@@ -15,118 +16,161 @@ v2 算法加了海拔中位数预平滑 + 25% cap，详 app/segment/algorithms.p
     # 真跑（写 DB）
     python3 -m scripts.recompute_segment_stats --apply
 
-幂等：每次重算覆盖，纯函数输出，重跑无副作用。
-风险：difficulty 评级可能跳变（如 extreme → medium），前端用户能看到。
-这是预期效果——以前虚胖、现在真实。
+幂等：每次重算覆盖，纯函数 + DEM 查表，重跑无副作用。
+风险：difficulty 评级会大幅跳变（多数 extreme 变 medium/easy），前端用户能看到。
+这是预期效果——以前 GPS 假数据虚胖，现在 DEM 真实。
 
-不动的字段：
-- elevation_profile：生产 24 条全有数据，from-gpx 路径创建时已算好
-- elevation_gain / elevation_loss / avg_gradient：用 trackpoint 噪声数据重算
-  反而引入新偏差（这些是积分式累加，对噪声不敏感），保持原值更稳
+回填的字段：
+- elevation_profile：用 reference_line 沿线等距采样 80 点 → DEM 查表 → 覆盖
+- elevation_gain / loss / avg_gradient：基于 DEM 重算累计上升 / 下降 / 平均坡度
+- max_gradient：基于 DEM 海拔走 100m 滑窗
+- difficulty：用新 max_gradient + elevation_gain 重判
 
-数据源（跟 scripts/backfill_phase5.py 同款）：
-赛段 reference_line 50m 半径内所有 trackpoints —— 多用户多次骑行的聚合，
-点密度高（5-10m/点），新 v2 算法在这种数据上能压住噪声。
+数据源：
+- 等距采样 lat/lon：PostGIS ST_LineInterpolatePoint
+- DEM 海拔：opentopodata 公共 API（SRTM 30m）
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
+from types import SimpleNamespace
 
-from geoalchemy2 import Geography
-from sqlalchemy import cast, func, select
+from sqlalchemy import text
 
-from app.activity.models import Trackpoint
 from app.database import SessionLocal
+from app.segment._geo_utils import _haversine
 from app.segment.algorithms import calculate_difficulty, calculate_max_gradient
+from app.segment.dem_client import DEMServiceError, query_elevations
 from app.segment.models import Segment
 
 
 logger = logging.getLogger(__name__)
 
+# 沿赛段参考线等距采样点数（跟 service_create 创建时同款 80 点）
+SAMPLE_COUNT = 80
 
-def recompute_one_segment(db, seg: Segment) -> tuple[float | None, str | None]:
-    """重算单条赛段的 max_gradient / difficulty，返回新值（不写 DB）。
 
-    无 trackpoint 时返 (None, 原 difficulty)，调用方决定要不要写。
+def sample_reference_line_coords(db, segment_id: int) -> list[tuple[float, float]]:
+    """用 PostGIS ST_LineInterpolatePoint 沿赛段参考线等距采样 80 个点。
+
+    类比：拿一根有刻度的卷尺贴着赛段折线铺开，每 1/80 处采一个坐标。
+    返回 [(lat, lon), ...] 顺序按沿线方向。
+
+    PostGIS ST_LineInterpolatePoint(line, fraction) → 线上 fraction 比例位置的点。
+    fraction 取 0, 1/79, 2/79, ..., 1.0 共 80 个值（覆盖起点到终点）。
     """
-    # 用 scalar_subquery 让 reference_line 走 SQL 列引用（不走 Python EWKB hex 字符串路径）
-    # 详见 backfill_phase5.py:51 注释——这是踩坑实证后的正解
-    ref_line_subq = (
-        select(Segment.reference_line)
-        .where(Segment.id == seg.id)
-        .scalar_subquery()
-    )
-    tps = (
-        db.query(Trackpoint)
-        .filter(
-            Trackpoint.geom.isnot(None),
-            func.ST_DWithin(
-                cast(Trackpoint.geom, Geography),
-                cast(ref_line_subq, Geography),
-                50,
-            ),
+    rows = db.execute(
+        text("""
+            SELECT
+                ST_Y(ST_LineInterpolatePoint(reference_line, frac)) AS lat,
+                ST_X(ST_LineInterpolatePoint(reference_line, frac)) AS lon
+            FROM (
+                SELECT generate_series(0, :n - 1)::float / :denom AS frac
+            ) AS fractions,
+            segments
+            WHERE segments.id = :seg_id
+            ORDER BY frac
+        """),
+        {"n": SAMPLE_COUNT, "denom": float(SAMPLE_COUNT - 1), "seg_id": segment_id},
+    ).fetchall()
+    return [(float(r.lat), float(r.lon)) for r in rows]
+
+
+def recompute_one_segment(db, seg: Segment) -> dict | None:
+    """重算单条赛段所有坡度相关字段，返回新值字典（不写 DB）。
+
+    返 None 表示 DEM 查询失败或采样不到点 / 跳过这条 segment。
+    """
+    coords = sample_reference_line_coords(db, seg.id)
+    if len(coords) < 2:
+        logger.warning("segment id=%s 沿线采样不到点", seg.id)
+        return None
+
+    try:
+        dem_elevations = query_elevations(coords)
+    except DEMServiceError as exc:
+        logger.warning("segment id=%s DEM 查询失败：%s", seg.id, exc)
+        return None
+
+    # 用 DEM 海拔 + 实际坐标距离重算所有字段
+    total_dist = 0.0
+    elevation_gain = 0.0
+    elevation_loss = 0.0
+    for i in range(1, len(coords)):
+        total_dist += _haversine(
+            coords[i - 1][0], coords[i - 1][1],
+            coords[i][0], coords[i][1],
         )
-        .order_by(Trackpoint.activity_id, Trackpoint.seq)
-        .all()
+        prev_ele = dem_elevations[i - 1]
+        curr_ele = dem_elevations[i]
+        if prev_ele is not None and curr_ele is not None:
+            diff = curr_ele - prev_ele
+            if diff > 0:
+                elevation_gain += diff
+            else:
+                elevation_loss += abs(diff)
+
+    avg_gradient = (
+        round((elevation_gain - elevation_loss) / total_dist * 100, 1)
+        if total_dist > 0
+        else 0.0
     )
 
-    if not tps:
-        return None, seg.difficulty
+    # max_gradient：构造轻量对象给 calculate_max_gradient（同 from-activity 路径做法）
+    points = [
+        SimpleNamespace(latitude=coords[i][0], longitude=coords[i][1], elevation=dem_elevations[i])
+        for i in range(len(coords))
+    ]
+    new_max_grad = calculate_max_gradient(points)
 
-    new_max_grad = calculate_max_gradient(tps)
-    new_difficulty = calculate_difficulty(
-        seg.distance,
-        seg.elevation_gain if seg.elevation_gain is not None else 0.0,
-        new_max_grad,
-    )
-    return new_max_grad, new_difficulty
+    new_difficulty = calculate_difficulty(seg.distance, elevation_gain, new_max_grad)
+
+    return {
+        "elevation_profile": [e for e in dem_elevations if e is not None],
+        "elevation_gain": round(elevation_gain, 1),
+        "elevation_loss": round(elevation_loss, 1),
+        "avg_gradient": avg_gradient,
+        "max_gradient": new_max_grad,
+        "difficulty": new_difficulty,
+    }
 
 
 def recompute_all(db, apply_changes: bool) -> dict:
-    """遍历所有赛段，干跑模式只打印，真跑模式写 DB。
-
-    stats 字段说明（4 个互斥 bucket 加起来必须等于 total）：
-    - updated：真跑模式下成功写入 DB 的赛段数
-    - would_update：干跑模式下检测到需要更新的赛段数（真跑会变成 updated）
-    - unchanged：检测到无需更新的赛段数（新旧值差异 < 0.1% 且 difficulty 不变）
-    - no_tps：无 trackpoint 数据可用 / 跳过
-    - failed：异常 / 跳过
-    """
+    """遍历所有赛段，干跑模式只打印，真跑模式写 DB。"""
     segments = db.query(Segment).all()
     stats = {
         "total": len(segments),
         "updated": 0,
         "would_update": 0,
         "unchanged": 0,
-        "no_tps": 0,
         "failed": 0,
     }
 
     logger.info("扫描 %d 条赛段（apply=%s）", len(segments), apply_changes)
-    logger.info("%-4s %-30s %10s %10s %10s %10s", "id", "name", "old_grad", "new_grad", "old_diff", "new_diff")
+    logger.info(
+        "%-4s %-30s %10s %10s %10s %10s",
+        "id", "name", "old_grad", "new_grad", "old_diff", "new_diff",
+    )
 
     for seg in segments:
         try:
-            new_grad, new_diff = recompute_one_segment(db, seg)
+            new_values = recompute_one_segment(db, seg)
+            if new_values is None:
+                stats["failed"] += 1
+                continue
+
             old_grad = seg.max_gradient
             old_diff = seg.difficulty
-
-            if new_grad is None:
-                stats["no_tps"] += 1
-                logger.info(
-                    "%-4d %-30s %10s %10s %10s %10s [无 trackpoint 跳过]",
-                    seg.id, (seg.name or "")[:30],
-                    f"{old_grad:.1f}" if old_grad is not None else "-",
-                    "-", old_diff or "-", "-",
-                )
-                continue
+            new_grad = new_values["max_gradient"]
+            new_diff = new_values["difficulty"]
 
             changed = (
                 old_grad is None
-                or abs((new_grad or 0) - (old_grad or 0)) > 0.1
+                or abs(new_grad - (old_grad or 0)) > 0.1
                 or new_diff != old_diff
             )
             tag = " [变化]" if changed else ""
@@ -141,9 +185,12 @@ def recompute_all(db, apply_changes: bool) -> dict:
 
             if changed:
                 if apply_changes:
-                    # SAVEPOINT 隔离：必须 flush 把 ORM 改动推到嵌套点，
-                    # 否则一条 seg 失败会让本次所有改动全回滚（详 backfill_phase5.py:50 同 pattern）
+                    # SAVEPOINT 隔离：flush 把 ORM 改动推到嵌套点（防一条失败带翻整批）
                     with db.begin_nested():
+                        seg.elevation_profile = json.dumps(new_values["elevation_profile"])
+                        seg.elevation_gain = new_values["elevation_gain"]
+                        seg.elevation_loss = new_values["elevation_loss"]
+                        seg.avg_gradient = new_values["avg_gradient"]
                         seg.max_gradient = new_grad
                         seg.difficulty = new_diff
                         db.flush()
@@ -173,7 +220,7 @@ def recompute_all(db, apply_changes: bool) -> dict:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="重算所有赛段的 max_gradient + difficulty（v2 算法）。"
+        description="用 DEM 海拔重算所有赛段的坡度数据（v3 算法）。"
     )
     parser.add_argument(
         "--apply",

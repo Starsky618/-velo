@@ -7,6 +7,7 @@ from app.admin.dependencies import require_admin
 from app.admin import schemas, service as admin_service
 from app.database import get_db
 from app.segment.exceptions import InvalidSegmentRangeError, SegmentOverlapError
+from app.segment.dem_client import DEMServiceError
 from app.segment import service as segment_service
 from app.user.models import User
 
@@ -144,6 +145,11 @@ def create_segment_from_activity_admin(
     except SegmentOverlapError as e:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(e))
+    except DEMServiceError as e:
+        # DEM 公共 API 抖动（限流 / 502 / 网络断）→ 503 让 admin 重试
+        # 不降级用 GPS 假数据（那是回到 26.1% 假坡度的老问题）
+        db.rollback()
+        raise HTTPException(status_code=503, detail=f"DEM 服务暂时不可用，请稍后重试：{e}")
     except ValueError as e:
         db.rollback()
         raise HTTPException(status_code=404, detail=str(e))
@@ -181,6 +187,10 @@ def create_segment_from_gpx_admin(
     except SegmentOverlapError as e:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(e))
+    except DEMServiceError as e:
+        # DEM 公共 API 抖动 → 503 让 admin 重试（同 from-activity 路径同款处理）
+        db.rollback()
+        raise HTTPException(status_code=503, detail=f"DEM 服务暂时不可用，请稍后重试：{e}")
 
 
 @router.get("/segments", response_model=schemas.AdminSegmentListResponse)

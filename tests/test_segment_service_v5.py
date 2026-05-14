@@ -15,6 +15,21 @@ from app.segment import service
 from app.segment.exceptions import InvalidSegmentRangeError, SegmentOverlapError
 
 
+@pytest.fixture(autouse=True)
+def mock_dem(monkeypatch):
+    """单测不真发 HTTP / mock query_elevations 直接返 None（让 service 走 fallback 用原 GPS 海拔）。
+
+    生产环境 DEM 真行为由 dev stack 集成测试覆盖。
+    单测只验 service 逻辑（distance / elevation_gain 计算 / Hausdorff 等），
+    DEM 失败时 fallback 到 GPS 海拔的行为也顺带覆盖。
+    """
+    def _fake_query(points, dem_url=None):
+        # 返 None 列表 → service 走"DEM 查不到该位置则保留原 GPS 海拔"分支
+        return [None for _ in points]
+
+    monkeypatch.setattr("app.segment.service_create.query_elevations", _fake_query)
+
+
 class _FakeQuery:
     """极简 SQLAlchemy Query 替身：记录调用链，返回预置 scalar/all/first。"""
 

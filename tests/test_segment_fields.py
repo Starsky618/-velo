@@ -12,6 +12,19 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def mock_dem(monkeypatch):
+    """单测不真发 HTTP / mock DEM 查询返 None 让 service fallback 到原 GPS 海拔。
+
+    这样原测试的 elevation_gain / elevation_profile 断言不变（基于 GPS ele 字段）。
+    生产 DEM 真行为由 dev stack 集成测试覆盖。
+    """
+    monkeypatch.setattr(
+        "app.segment.service_create.query_elevations",
+        lambda points, dem_url=None: [None for _ in points],
+    )
+
+
 def test_01_create_segment_new_fields(client, admin_header):
     """创建带海拔数据的赛段，验证新增字段正确计算。"""
     payload = {

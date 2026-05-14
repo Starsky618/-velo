@@ -5,6 +5,7 @@
 """
 
 import json
+from types import SimpleNamespace
 
 from geoalchemy2 import WKTElement
 from sqlalchemy import text
@@ -18,6 +19,7 @@ from app.segment.algorithms import (
     calculate_difficulty,
     calculate_max_gradient,
 )
+from app.segment.dem_client import DEMServiceError, query_elevations
 from app.segment.coord_convert import convert_points_to_wgs84
 from app.segment.exceptions import InvalidSegmentRangeError, SegmentOverlapError
 from app.segment.models import Segment
@@ -102,8 +104,21 @@ def create_segment(
     if total_distance < 1.0:
         raise ValueError("赛段距离过短，请检查坐标点")
 
+    # DEM 海拔替换（v3 / 2026-05-14）：GPS 海拔精度 ±10-15m 物理限制，
+    # 任何平滑算法都洗不掉系统偏差（夜骑清徐 GPS 测得 26% 假坡度，DEM 实测 0.018%）。
+    # 业界 2024 共识：换数据源，从 SRTM 30m DEM 查表替换。
+    # 失败时抛 DEMServiceError，让 admin 知道服务挂了不要默默用 GPS 假数据。
+    dem_coords = [(p["lat"], p["lon"]) for p in reference_points]
+    dem_elevations = query_elevations(dem_coords)
+
+    # 把 DEM 海拔覆盖回 reference_points 的 ele 字段（保留原 list 结构供后续使用）
+    # 个别点 DEM 查不到（海上 / 数据空洞）时返 None，保持原值兜底
+    for i, dem_ele in enumerate(dem_elevations):
+        if dem_ele is not None:
+            reference_points[i]["ele"] = float(dem_ele)
+
     # 计算累计爬升、累计下降、平均坡度、海拔缩略图
-    # 只有所有坐标点都带海拔数据（ele 字段）时才能计算，否则四个字段全为 None
+    # DEM 替换后基本所有点都有 ele；若 DEM 整批查不到（极少数情况），降级为 None
     elevation_gain = None
     elevation_loss = None
     avg_gradient = None
@@ -221,25 +236,42 @@ def create_segment_from_activity(
     if len(tps) < 2:
         raise InvalidSegmentRangeError("赛段至少需要 2 个轨迹点")
 
-    # 3. 逐段累加距离和正高差。距离像用软尺沿弯路一段段量，高差只累计上坡。
+    # 3. 先算距离（不依赖海拔），太短早 raise 避免无效 DEM 调用
     distance = 0.0
+    for i in range(1, len(tps)):
+        distance += _haversine_distance(
+            tps[i - 1].latitude, tps[i - 1].longitude,
+            tps[i].latitude, tps[i].longitude,
+        )
+    if distance < 1000:
+        raise InvalidSegmentRangeError("赛段太短，至少 1 公里")
+
+    # 3.5 DEM 海拔替换（v3 / 2026-05-14）：用 SRTM 30m DEM 查表替换 GPS 海拔。
+    # 详 service_create.create_segment 同步说明 / from-gpx 路径同款逻辑。
+    # 用 SimpleNamespace wrapper 不动 ORM 实例，避免 SQLAlchemy 误以为要 update Trackpoint。
+    dem_coords = [(tp.latitude, tp.longitude) for tp in tps]
+    dem_elevations = query_elevations(dem_coords)
+    tps_with_dem = [
+        SimpleNamespace(
+            latitude=tp.latitude,
+            longitude=tp.longitude,
+            elevation=(float(dem_elevations[i]) if dem_elevations[i] is not None else tp.elevation),
+        )
+        for i, tp in enumerate(tps)
+    ]
+
+    # 用 DEM 替换后的海拔算累计爬升 / 下降
     elevation_gain = 0.0
     elevation_loss = 0.0
-    for i in range(1, len(tps)):
-        prev = tps[i - 1]
-        curr = tps[i]
-        distance += _haversine_distance(
-            prev.latitude, prev.longitude,
-            curr.latitude, curr.longitude,
-        )
+    for i in range(1, len(tps_with_dem)):
+        prev = tps_with_dem[i - 1]
+        curr = tps_with_dem[i]
         if prev.elevation is not None and curr.elevation is not None:
             diff = curr.elevation - prev.elevation
             if diff > 0:
                 elevation_gain += diff
             else:
                 elevation_loss += abs(diff)
-    if distance < 1000:
-        raise InvalidSegmentRangeError("赛段太短，至少 1 公里")
     avg_gradient = (elevation_gain - elevation_loss) / distance * 100 if distance > 0 else 0.0
 
     # 4. Hausdorff 查重：用共享 helper（防御 / 跨 from-gpx + from-activity 一致 / dialect 守卫含 SQLite 兼容）
@@ -255,17 +287,17 @@ def create_segment_from_activity(
     if inferred_city is None:
         inferred_city = infer_city_from_coords(start.latitude, start.longitude)
 
-    max_gradient = calculate_max_gradient(tps)
+    # max_gradient 用 DEM 替换后的海拔算（不是原 GPS）—— 这是 v3 关键修复点
+    max_gradient = calculate_max_gradient(tps_with_dem)
     inferred_difficulty = difficulty
     if inferred_difficulty is None:
         inferred_difficulty = calculate_difficulty(distance, elevation_gain, max_gradient)
 
-    # 5.5 海拔曲线：仅当所有点都有 elevation 时才生成（跟 from-gpx 路径同语义）。
-    # _sample_elevation_profile 期望 list[dict]，把 trackpoint ORM 转成 {"ele": ...} 字典。
+    # 5.5 海拔曲线：DEM 替换后基本所有点都有 ele；极少数 DEM 查不到时降级。
     elevation_profile = None
-    if all(tp.elevation is not None for tp in tps):
+    if all(tp.elevation is not None for tp in tps_with_dem):
         elevation_profile = _sample_elevation_profile(
-            [{"ele": tp.elevation} for tp in tps],
+            [{"ele": tp.elevation} for tp in tps_with_dem],
             target_count=80,
         )
 
