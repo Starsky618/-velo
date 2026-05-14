@@ -208,13 +208,15 @@ def test_get_my_effort_with_compare_first_attempt():
 
 
 def test_create_segment_invalid_range():
-    """start_index >= end_index 时，拿锁后立即拒绝，避免继续读轨迹。"""
+    """start_index >= end_index 时立即拒绝，advisory lock 推迟到 DEM 之后所以这里 0 调用。"""
     db = MagicMock()
 
     with pytest.raises(InvalidSegmentRangeError):
         service.create_segment_from_activity(db, 1, "非法赛段", 3, 3)
 
-    assert db.execute.call_count == 1
+    # v3 改动：advisory lock 推迟到 DEM 调用之后才拿（Codex 审 I1 修）
+    # 早 raise（invalid range / too short）不持锁 → 避免锁内发慢请求
+    assert db.execute.call_count == 0
 
 
 def test_create_segment_too_short():
@@ -230,7 +232,8 @@ def test_create_segment_too_short():
     with pytest.raises(InvalidSegmentRangeError):
         service.create_segment_from_activity(db, 1, "太短赛段", 0, 1)
 
-    assert db.execute.call_count == 1
+    # v3 改动：advisory lock 推迟（同 invalid_range case）—— too short 早 raise 不持锁
+    assert db.execute.call_count == 0
 
 
 def test_create_segment_overlap():

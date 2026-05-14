@@ -133,8 +133,24 @@ def _query_one_batch(
                 raise DEMServiceError(
                     f"DEM API 返回非 OK 状态：{data.get('status')} / {data.get('error', '')}"
                 )
-            # 按返回顺序提取 elevation；可能为 None（DEM 空洞 / 海上）
-            return [item.get("elevation") for item in data.get("results", [])]
+            # 类型 / 长度边界验证（Codex 审：API 可能返短列表或非数字字段）
+            results = data.get("results", [])
+            if len(results) != len(batch):
+                raise DEMServiceError(
+                    f"DEM API 返回长度 {len(results)} ≠ 请求 {len(batch)}"
+                )
+            elevations: list[float | None] = []
+            for item in results:
+                ele = item.get("elevation")
+                if ele is None:
+                    elevations.append(None)  # DEM 空洞 / 海上 / 合法 None
+                elif isinstance(ele, (int, float)):
+                    elevations.append(float(ele))
+                else:
+                    raise DEMServiceError(
+                        f"DEM API 海拔字段非 numeric：{type(ele).__name__}={ele!r}"
+                    )
+            return elevations
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             last_exc = exc
             logger.warning(

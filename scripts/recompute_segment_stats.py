@@ -80,15 +80,21 @@ def sample_reference_line_coords(db, segment_id: int) -> list[tuple[float, float
     return [(float(r.lat), float(r.lon)) for r in rows]
 
 
-def recompute_one_segment(db, seg: Segment) -> dict | None:
+def recompute_one_segment(db, seg: Segment, skip_dem: bool = False) -> dict | None:
     """重算单条赛段所有坡度相关字段，返回新值字典（不写 DB）。
 
     返 None 表示 DEM 查询失败或采样不到点 / 跳过这条 segment。
+    skip_dem=True 时跳过真 HTTP 调用（干跑模式 / 节省 rate limit）。
     """
     coords = sample_reference_line_coords(db, seg.id)
     if len(coords) < 2:
         logger.warning("segment id=%s 沿线采样不到点", seg.id)
         return None
+
+    if skip_dem:
+        # 干跑模式：跳过 DEM HTTP 调用（spec 审 I3 + codex 重叠）。
+        # 用占位值返回，让 caller 知道"would query N 点"但不真消费 rate limit。
+        return {"_dry_run_would_query": len(coords)}
 
     try:
         dem_elevations = query_elevations(coords)
@@ -129,8 +135,23 @@ def recompute_one_segment(db, seg: Segment) -> dict | None:
 
     new_difficulty = calculate_difficulty(seg.distance, elevation_gain, new_max_grad)
 
+    # elevation_profile 长度对齐（spec 审 I1）：保留 80 点位置，None 用相邻插值填充。
+    # 这样前端按"等距 80 点"假设画曲线不会偏移。
+    filled_profile: list[float] = []
+    last_valid: float | None = None
+    for i, ele in enumerate(dem_elevations):
+        if ele is not None:
+            filled_profile.append(round(ele, 1))
+            last_valid = ele
+        elif last_valid is not None:
+            # 上一个有效值兜底（最常见情况 / DEM 偶发空洞）
+            filled_profile.append(round(last_valid, 1))
+        else:
+            # 序列开头就是 None / 用 0.0 占位（极罕见 / 起点就在海上）
+            filled_profile.append(0.0)
+
     return {
-        "elevation_profile": [e for e in dem_elevations if e is not None],
+        "elevation_profile": filled_profile,
         "elevation_gain": round(elevation_gain, 1),
         "elevation_loss": round(elevation_loss, 1),
         "avg_gradient": avg_gradient,
@@ -140,27 +161,35 @@ def recompute_one_segment(db, seg: Segment) -> dict | None:
 
 
 def recompute_all(db, apply_changes: bool) -> dict:
-    """遍历所有赛段，干跑模式只打印，真跑模式写 DB。"""
+    """遍历所有赛段，干跑模式只统计 + 不发 DEM HTTP，真跑模式调 DEM + 写 DB。"""
     segments = db.query(Segment).all()
     stats = {
         "total": len(segments),
         "updated": 0,
         "would_update": 0,
+        "would_query_points": 0,
         "unchanged": 0,
         "failed": 0,
     }
 
-    logger.info("扫描 %d 条赛段（apply=%s）", len(segments), apply_changes)
-    logger.info(
-        "%-4s %-30s %10s %10s %10s %10s",
-        "id", "name", "old_grad", "new_grad", "old_diff", "new_diff",
-    )
+    logger.info("扫描 %d 条赛段（apply=%s / DEM 调用=%s）", len(segments), apply_changes, apply_changes)
+    if apply_changes:
+        logger.info(
+            "%-4s %-30s %10s %10s %10s %10s",
+            "id", "name", "old_grad", "new_grad", "old_diff", "new_diff",
+        )
 
     for seg in segments:
         try:
-            new_values = recompute_one_segment(db, seg)
+            new_values = recompute_one_segment(db, seg, skip_dem=not apply_changes)
             if new_values is None:
                 stats["failed"] += 1
+                continue
+
+            # 干跑模式：跳过真 DEM / 只统计需要查多少点
+            if "_dry_run_would_query" in new_values:
+                stats["would_update"] += 1
+                stats["would_query_points"] += new_values["_dry_run_would_query"]
                 continue
 
             old_grad = seg.max_gradient
@@ -208,11 +237,11 @@ def recompute_all(db, apply_changes: bool) -> dict:
         db.commit()
         logger.info("真跑完成：%s", stats)
     else:
-        logger.info("干跑完成（未写 DB）：%s", stats)
+        logger.info("干跑完成（未写 DB / 未发 DEM HTTP）：%s", stats)
         if stats["would_update"] > 0:
             logger.info(
-                "有 %d 条需要更新，加 --apply 真跑：python3 -m scripts.recompute_segment_stats --apply",
-                stats["would_update"],
+                "预计回填 %d 条赛段（消耗 %d 个 DEM 查询点），加 --apply 真跑：python3 -m scripts.recompute_segment_stats --apply",
+                stats["would_update"], stats["would_query_points"],
             )
 
     return stats

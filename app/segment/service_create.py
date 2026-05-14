@@ -211,11 +211,9 @@ def create_segment_from_activity(
     这像从一根长绳上剪下一段做成标准赛道：先锁住剪刀避免两个人同时剪，
     再检查起止点、量长度、查重，最后把线段写进 PostGIS。
     """
-    # 1. 入函数立即拿事务级 advisory lock。
-    # 类比：创建赛段前先拿唯一号码牌，同一时刻只有一个人能裁剪，避免并发重复创建。
-    db.execute(text("SELECT pg_advisory_xact_lock(hashtext('segment-create-from-activity'))"))
-
-    # 2. 先检查索引方向。起点必须早于终点，像剪绳子不能从右往左倒着剪。
+    # 1. 先检查索引方向。起点必须早于终点，像剪绳子不能从右往左倒着剪。
+    # 注意：advisory lock 推迟到 DEM 调用之后才拿（Codex 审：避免持锁期间阻塞 DEM 网络请求）。
+    # 早 raise 的廉价校验不需要持锁，等真要写 DB 时才进入串行区。
     if start_index >= end_index:
         raise InvalidSegmentRangeError("start_index 必须小于 end_index")
 
@@ -274,7 +272,13 @@ def create_segment_from_activity(
                 elevation_loss += abs(diff)
     avg_gradient = (elevation_gain - elevation_loss) / distance * 100 if distance > 0 else 0.0
 
-    # 4. Hausdorff 查重：用共享 helper（防御 / 跨 from-gpx + from-activity 一致 / dialect 守卫含 SQLite 兼容）
+    # 4. 现在拿 advisory lock（推迟到 DEM 调用之后 / 写 DB 之前的"准备进入串行区"时机）
+    # 类比：剪绳子前先拿唯一号码牌，同一时刻只有一个人能裁剪 → 避免并发重复创建。
+    # 关键设计（Codex 审 I1 修复）：lock 不在函数入口拿，否则慢 DEM 网络请求会让所有并发
+    # admin from-activity 创建排队等。把锁推迟到 Hausdorff 查重之前，DEM 阶段并行。
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtext('segment-create-from-activity'))"))
+
+    # 4.5 Hausdorff 查重：用共享 helper（防御 / 跨 from-gpx + from-activity 一致 / dialect 守卫含 SQLite 兼容）
     coords = ", ".join(f"{p.longitude} {p.latitude}" for p in tps)
     wkt = f"LINESTRING({coords})"
     if _check_hausdorff_overlap(db, wkt):
