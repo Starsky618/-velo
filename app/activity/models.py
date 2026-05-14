@@ -71,7 +71,8 @@ class Activity(Base):
     # 这些字段在上传时都是 NULL，异步解析成功后才会被填充
 
     distance = Column(Float, nullable=True)          # 总距离（米）
-    duration = Column(Integer, nullable=True)         # 总时间（秒）
+    duration = Column(Integer, nullable=True)         # 全程耗时（秒，含停车）= Strava 的 elapsed_time
+    moving_time = Column(Integer, nullable=True)      # 移动时间（秒，去掉停车）= Strava 的 moving_time；Strava 导入直接拿，GPX/FIT 用 trackpoints 速度阈值算
     elevation_gain = Column(Float, nullable=True)     # 总爬升（米）
     avg_speed = Column(Float, nullable=True)          # 平均速度（km/h）
     max_speed = Column(Float, nullable=True)          # 最大速度（km/h）

@@ -59,7 +59,8 @@ class ActivityDetail(BaseModel):
     title: Optional[str] = None
     status: str
     distance: Optional[float] = None
-    duration: Optional[int] = None
+    duration: Optional[int] = None                     # 全程耗时（秒，含停车）
+    moving_time: Optional[int] = None                  # 移动时间（秒，去掉停车）；老活动为 NULL → 前端 fallback "-"
     elevation_gain: Optional[float] = None
     avg_speed: Optional[float] = None
     max_speed: Optional[float] = None
