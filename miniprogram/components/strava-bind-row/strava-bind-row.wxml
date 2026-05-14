@@ -1,0 +1,13 @@
+<!--
+  Strava 绑定入口（菜单卡里的一行 / 自治 component）
+  视觉沿用 profile 页 .menu-item / .menu-emoji / .menu-label / .menu-arrow 全局样式
+  （由父 .menu-card 提供横向 padding，本行内只管纵向 28rpx + 内部排版）
+-->
+<view class="menu-item" hover-class="menu-item-hover" bindtap="_onTap">
+  <text class="menu-emoji">🟠</text>
+  <text class="menu-label">Strava 账号</text>
+  <text class="menu-status" wx:if="{{loading}}">加载中…</text>
+  <text class="menu-status menu-status-ok" wx:elif="{{connected}}">✓ 已绑定</text>
+  <text class="menu-status menu-status-todo" wx:else>未绑定</text>
+  <text class="menu-arrow" wx:if="{{!connected}}">›</text>
+</view>

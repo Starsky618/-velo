@@ -1,0 +1,52 @@
+/*
+ * Strava 绑定入口 — 仅补"状态文字"的小样式
+ * 行高 / emoji / label / arrow 全用 profile 页 .menu-item 全局样式（component 默认开启外部样式继承）
+ *
+ * 小程序 component 默认隔离外部样式 → 这里手工把 menu-item / menu-emoji / menu-label / menu-arrow / menu-item-hover
+ * 在本文件重声明一遍，保证视觉与"我的荣誉"/"设置"完全一致
+ */
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  padding: 28rpx 0;
+  gap: 20rpx;
+}
+
+.menu-item-hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.menu-emoji {
+  font-size: 40rpx;
+  width: 56rpx;
+  text-align: center;
+}
+
+.menu-label {
+  flex: 1;
+  font-size: 30rpx;
+  color: var(--color-text-1);
+  font-weight: 500;
+}
+
+.menu-arrow {
+  font-size: 40rpx;
+  color: var(--color-text-3);
+  line-height: 1;
+}
+
+/* 状态徽标：右对齐 / 已绑定绿 / 未绑定灰 / loading 浅灰 */
+.menu-status {
+  font-size: 26rpx;
+  color: var(--color-text-3);
+}
+
+.menu-status-ok {
+  color: #34C759;
+  font-weight: 500;
+}
+
+.menu-status-todo {
+  color: var(--color-text-3);
+}

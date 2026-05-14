@@ -92,6 +92,9 @@
       <text class="menu-arrow">›</text>
     </navigator>
     <view class="menu-divider"></view>
+    <!-- Strava 绑定入口：自治 component / D21 模块化 / 未来挪位置只改这一行 -->
+    <strava-bind-row />
+    <view class="menu-divider"></view>
     <navigator url="/pages/settings/settings" class="menu-item" hover-class="menu-item-hover">
       <text class="menu-emoji">⚙️</text>
       <text class="menu-label">设置</text>
