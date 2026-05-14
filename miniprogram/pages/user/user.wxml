@@ -11,6 +11,8 @@
     传 userId props（非 0 = 看他人 / component 内部自动切到 /api/user/{userId}/... endpoint）
 -->
 
+<wxs src="../../utils/format.wxs" module="f" />
+
 <!-- 加载中 -->
 <view wx:if="{{loading}}" class="loading-page">
   <text>加载中...</text>
@@ -60,7 +62,7 @@
     <text class="stats-title">累计骑行</text>
     <view class="stats-grid">
       <view class="stat-item">
-        <text class="stat-value">{{stats ? stats.distance : 0}}</text>
+        <text class="stat-value">{{f.km(stats ? stats.distance : 0)}}</text>
         <text class="stat-unit">km</text>
         <text class="stat-label">总里程</text>
       </view>

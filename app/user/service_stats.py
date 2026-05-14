@@ -153,8 +153,8 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
         elevation_gain = 0.0
         duration = 0
 
-    # 距离：米 → 公里，保留 1 位小数
-    distance_km = round(distance_m / 1000.0, 1)
+    # 距离：米 → 公里，保留 2 位小数
+    distance_km = round(distance_m / 1000.0, 2)
 
     # 获取用户的周目标（跨子文件 import service_auth.get_user_by_id / Q2 a）
     # 防御性处理：server_default 在 ORM 创建后 refresh 才生效，极端情况可能为 None

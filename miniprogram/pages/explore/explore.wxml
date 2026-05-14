@@ -19,6 +19,8 @@
     onReachBottom → fetchSegments(page+1) → segments concat 追加
 -->
 
+<wxs src="../../utils/format.wxs" module="f" />
+
 <view class="page-header">
   <text class="subtitle">VELO</text>
   <text class="title">探索</text>
@@ -66,7 +68,7 @@
         <view class="rider-name">{{item.nickname || '匿名骑友'}}</view>
         <view class="rider-meta">
           <text wx:if="{{item.city}}" class="rider-city">{{item.city}}</text>
-          <text class="rider-distance">{{item.total_distance_km}} km</text>
+          <text class="rider-distance">{{f.km(item.total_distance_km)}} km</text>
           <text wx:if="{{item.lastActivityLabel}}" class="rider-last-active">{{item.lastActivityLabel}}</text>
         </view>
       </view>
@@ -100,7 +102,7 @@
 
     <!-- 主元数据：距离 / 爬升 / 城市 / 难度 -->
     <view class="card-meta">
-      <text class="meta-item">{{item.distance}} km</text>
+      <text class="meta-item">{{f.km(item.distance)}} km</text>
       <text class="meta-item" wx:if="{{item.elevation_gain}}">↑{{item.elevation_gain}} m</text>
       <text class="meta-item" wx:if="{{item.cityLabel}}">{{item.cityLabel}}</text>
       <text class="meta-item difficulty difficulty-{{item.difficulty}}">{{item.difficultyLabel}}</text>
@@ -145,7 +147,7 @@
             <view class="search-user-name">{{item.nickname || '匿名骑友'}}</view>
             <view class="search-user-meta">
               <text wx:if="{{item.city}}">{{item.city}}</text>
-              <text>{{item.total_distance_km}} km</text>
+              <text>{{f.km(item.total_distance_km)}} km</text>
               <text wx:if="{{item.lastActivityLabel}}">{{item.lastActivityLabel}}</text>
             </view>
           </view>
@@ -166,7 +168,7 @@
             </view>
           </view>
           <view class="card-meta">
-            <text class="meta-item">{{item.distance}} km</text>
+            <text class="meta-item">{{f.km(item.distance)}} km</text>
             <text class="meta-item" wx:if="{{item.elevation_gain}}">↑{{item.elevation_gain}} m</text>
             <text class="meta-item" wx:if="{{item.cityLabel}}">{{item.cityLabel}}</text>
           </view>

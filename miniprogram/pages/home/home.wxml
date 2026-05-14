@@ -3,6 +3,8 @@
   每条骑行记录 = 一张卡片 = 产品核心内容单元
 -->
 
+<wxs src="../../utils/format.wxs" module="f" />
+
 <view class="page-header">
   <view class="page-header-left">
     <text class="subtitle">VELO</text>
@@ -21,7 +23,7 @@
 <!-- ====== 本周统计 ====== -->
 <view class="week-bar" wx:if="{{isLoggedIn}}">
   <view class="week-item">
-    <text class="week-value">{{weeklyKm}}</text>
+    <text class="week-value">{{f.km(weeklyKm)}}</text>
     <text class="week-label">km</text>
   </view>
   <view class="week-sep"></view>
@@ -75,7 +77,7 @@
     <!-- 核心数据块（已完成的骑行） -->
     <view class="card-stats" wx:if="{{item.status === 'completed'}}">
       <view class="stat-block">
-        <text class="stat-num">{{item.distance}}</text>
+        <text class="stat-num">{{f.km(item.distance)}}</text>
         <text class="stat-unit">km</text>
         <text class="stat-name">距离</text>
       </view>

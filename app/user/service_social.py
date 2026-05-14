@@ -336,11 +336,11 @@ def get_user_profile_for_others(
         "city": target.city,
         "ftp": target.ftp,
         "bike_type": target.bike_type,
-        "total_distance_km": round((totals.total_distance or 0) / 1000.0, 1),
+        "total_distance_km": round((totals.total_distance or 0) / 1000.0, 2),
         "total_elevation_m": round(totals.total_elevation or 0, 1),
         "activity_count": totals.activity_count or 0,
         "current_month_summary": {
-            "distance_km": round((current_month.m_distance or 0) / 1000.0, 1),
+            "distance_km": round((current_month.m_distance or 0) / 1000.0, 2),
             "elevation_m": round(current_month.m_elevation or 0, 1),
             "avg_power_w": round(current_month.m_avg_power or 0, 1),
         },
@@ -427,7 +427,7 @@ def get_active_users(
             "nickname": r.nickname,
             "avatar_url": r.avatar_url,
             "city": r.city,
-            "total_distance_km": round(float(r.total_distance_m) / 1000.0, 1),
+            "total_distance_km": round(float(r.total_distance_m) / 1000.0, 2),
             "activity_count": r.activity_count,
             "last_activity_at": r.last_activity_at,
         }

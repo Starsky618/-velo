@@ -1,0 +1,18 @@
+// wxml 专用格式化函数（WXS 模块 / 只能用 ES5 语法）
+// 这里只放给小程序模板调用的"显示层"函数 / 集中维护避免 wxml 散落 toFixed
+//
+// km(v)：把 km 距离 number 强制显示成两位小数字符串（带尾随零）
+//   - v 为 null/undefined/空串/NaN → 返 '0.00'
+//   - v 为 53.3 → 返 '53.30'（这是 toFixed(2) 的核心目的：保留尾随零）
+//   - 为何不用 v.toFixed 直接调：v 可能不是 Number 类型（后端返字符串场景）→ 先 +v 强转
+
+var km = function (v) {
+  if (v === null || v === undefined || v === '') return '0.00'
+  var n = +v
+  if (isNaN(n)) return '0.00'
+  return n.toFixed(2)
+}
+
+module.exports = {
+  km: km
+}

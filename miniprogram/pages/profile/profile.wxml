@@ -4,6 +4,8 @@
   wx:if / wx:else 是小程序的条件渲染，类似 JS 的 if-else
 -->
 
+<wxs src="../../utils/format.wxs" module="f" />
+
 <view class="page-header">
   <text class="subtitle">VELO</text>
   <text class="title">我的</text>
@@ -58,7 +60,7 @@
     <text class="stats-title">累计骑行</text>
     <view class="stats-grid">
       <view class="stat-item">
-        <text class="stat-value">{{stats ? stats.distance : 0}}</text>
+        <text class="stat-value">{{f.km(stats ? stats.distance : 0)}}</text>
         <text class="stat-unit">km</text>
         <text class="stat-label">总里程</text>
       </view>

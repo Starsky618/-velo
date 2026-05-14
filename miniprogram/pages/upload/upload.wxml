@@ -3,6 +3,8 @@
   每个 step 对应一种界面，用 wx:if 切换展示
 -->
 
+<wxs src="../../utils/format.wxs" module="f" />
+
 <view class="page-header">
   <text class="subtitle">VELO</text>
   <text class="title">上传骑行</text>
@@ -95,7 +97,7 @@
     <text class="result-ride-title">{{result.title || fileName}}</text>
     <view class="result-hero-stats">
       <view class="result-hero-item">
-        <text class="result-hero-value">{{result.distance || 0}}</text>
+        <text class="result-hero-value">{{f.km(result.distance || 0)}}</text>
         <text class="result-hero-unit">km</text>
         <text class="result-hero-label">距离</text>
       </view>

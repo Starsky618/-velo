@@ -110,7 +110,7 @@ Page({
         // → 模板字段名（distance / rides / elevation_gain）/ 模板更短更直观
         // 后端 schema 是 NOT NULL / 总是返 / 但仍用 || 0 防御异常 response
         const stats = {
-          distance: Math.round((data.total_distance_km || 0) * 10) / 10,  // 保留 1 位小数
+          distance: Math.round((data.total_distance_km || 0) * 100) / 100,  // 保留 2 位小数
           rides: data.activity_count || 0,
           elevation_gain: Math.round(data.total_elevation_m || 0),
         }

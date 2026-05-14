@@ -214,13 +214,13 @@ def get_activity_list(db: Session, user_id: int, page: int, page_size: int) -> t
         .all()
     )
 
-    # 距离：米 → 公里，保留 1 位小数
+    # 距离：米 → 公里，保留 2 位小数
     # 先用 expunge 让对象脱离 Session，再改属性，
     # 避免修改后的公里值被意外 commit 回数据库覆盖原始米值
     for item in items:
         db.expunge(item)
         if item.distance is not None:
-            item.distance = round(item.distance / 1000.0, 1)
+            item.distance = round(item.distance / 1000.0, 2)
 
     return items, total
 
@@ -239,7 +239,7 @@ def get_activity_detail(db: Session, activity_id: int, user_id: int) -> Activity
     # 脱离 Session 后再做单位转换，防止公里值被意外写回数据库
     db.expunge(activity)
     if activity.distance is not None:
-        activity.distance = round(activity.distance / 1000.0, 1)
+        activity.distance = round(activity.distance / 1000.0, 2)
 
     return activity
 
@@ -262,7 +262,7 @@ def update_activity(db: Session, activity_id: int, user_id: int, title: str) -> 
     # 脱离 Session 后再做单位转换
     db.expunge(activity)
     if activity.distance is not None:
-        activity.distance = round(activity.distance / 1000.0, 1)
+        activity.distance = round(activity.distance / 1000.0, 2)
 
     return activity
 

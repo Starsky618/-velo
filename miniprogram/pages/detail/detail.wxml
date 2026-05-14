@@ -4,6 +4,8 @@
   布局顺序：hero → 途经赛段 → 海拔剖面 → 速度 → 功率 → 心率 → 分段表
 -->
 
+<wxs src="../../utils/format.wxs" module="f" />
+
 <!-- 加载中 -->
 <view class="loading" wx:if="{{loading}}">
   <view class="spinner"></view>
@@ -20,7 +22,7 @@
     </view>
     <view class="hero-stats">
       <view class="hero-item">
-        <text class="hero-value">{{activity.distance || 0}}</text>
+        <text class="hero-value">{{f.km(activity.distance || 0)}}</text>
         <text class="hero-unit">km</text>
         <text class="hero-label">距离</text>
       </view>
