@@ -296,6 +296,7 @@ def save_parse_result(db, activity, result) -> None:
     activity.title = activity.title or result.metadata.title
     activity.distance = summary.distance
     activity.duration = summary.duration
+    activity.moving_time = summary.moving_time
     activity.elevation_gain = summary.elevation_gain
     activity.avg_speed = round(summary.avg_speed * 3.6, 1) if summary.avg_speed else None
     activity.max_speed = round(summary.max_speed * 3.6, 1) if summary.max_speed else None

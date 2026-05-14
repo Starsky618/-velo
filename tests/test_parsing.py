@@ -500,7 +500,7 @@ class TestCoordNormalizer:
         """创建一个 WGS84 坐标的 ParseResult。"""
         tp = _make_tp(0, lat=37.87, lon=112.55, time=_base_time())
         summary = ActivitySummary(
-            distance=1000.0, duration=60, elevation_gain=10.0,
+            distance=1000.0, duration=60, moving_time=60, elevation_gain=10.0,
             avg_speed=16.7, max_speed=20.0,
             avg_power=None, max_power=None,
             avg_hr=None, max_hr=None, avg_cadence=None,
@@ -522,7 +522,7 @@ class TestCoordNormalizer:
         # GCJ-02 坐标：天安门
         tp = _make_tp(0, lat=39.90923, lon=116.397428, time=_base_time())
         summary = ActivitySummary(
-            distance=1000.0, duration=60, elevation_gain=0.0,
+            distance=1000.0, duration=60, moving_time=60, elevation_gain=0.0,
             avg_speed=16.7, max_speed=20.0,
             avg_power=None, max_power=None,
             avg_hr=None, max_hr=None, avg_cadence=None,

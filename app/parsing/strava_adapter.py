@@ -167,6 +167,8 @@ def from_streams(
     summary = ActivitySummary(
         distance=detail.get("distance", 0.0),
         duration=elapsed,
+        # Strava API 直接给 moving_time，白送的 / 不需要算
+        moving_time=detail.get("moving_time"),
         elevation_gain=detail.get("total_elevation_gain", 0.0),
         avg_speed=detail.get("average_speed"),
         max_speed=detail.get("max_speed"),

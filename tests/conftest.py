@@ -99,6 +99,7 @@ _activities_table = Table(
     Column("error_message", Text),
     Column("distance", Float),
     Column("duration", Integer),
+    Column("moving_time", Integer),       # Sprint 5 polish：移动时间（去停车）
     Column("elevation_gain", Float),
     Column("avg_speed", Float),
     Column("max_speed", Float),

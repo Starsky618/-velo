@@ -99,7 +99,8 @@ class ActivitySummary:
     有的学校只给你原始答题卡，需要自己数对了几题（GPX）。
     """
     distance: float                 # 总距离（米）
-    duration: int | None            # 总时间（秒），无时间戳时为 None
+    duration: int | None            # 全程耗时（秒，含停车）= elapsed_time，无时间戳时为 None
+    moving_time: int | None         # 移动时间（秒，去掉停车段）= Strava 的 moving_time，老数据可为 None
     elevation_gain: float           # 总爬升（米）
     avg_speed: float | None         # 平均速度（m/s）
     max_speed: float | None         # 最大速度（m/s）

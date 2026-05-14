@@ -102,10 +102,15 @@ def calculate_summary(
     # ===== 7. 分段统计 =====
     splits = calculate_splits(trackpoints)
 
+    # ===== 8. 移动时间 =====
+    # 去掉停车段（速度 < 1 m/s ≈ 3.6 km/h）的有效骑行时间
+    moving_time = _calculate_moving_time(trackpoints, duration)
+
     # ===== 组装成绩单 =====
     return ActivitySummary(
         distance=round(total_distance, 1),
         duration=duration,
+        moving_time=moving_time,
         elevation_gain=round(elevation_gain, 1),
         avg_speed=avg_speed,
         max_speed=max_speed,
@@ -223,6 +228,59 @@ def calculate_calories(
 
 
 # ==================== 内部辅助函数 ====================
+
+
+def _calculate_moving_time(
+    trackpoints: list[Trackpoint],
+    duration: int | None,
+) -> int | None:
+    """
+    移动时间——去掉停车段的有效骑行时间（秒）。
+
+    标准 Strava 口径：相邻两点平均速度 ≥ 1 m/s（≈ 3.6 km/h）视为"在动"，
+    累加这段时间差；< 1 m/s 视为停车（等红灯 / 拍照 / 喝水）不计入。
+
+    特殊情况：
+    - trackpoints 没有 speed 数据（老 GPX 文件未经速度补全）→ 返回 duration
+      （视为全程在动，前端显示和"全程耗时"相同）
+    - 相邻两点时间差 > 60 秒：可能是 GPS 信号丢失或设备 sleep，
+      此段不计入移动时间（保守过滤）
+
+    参数：
+        trackpoints: 已填好 speed 字段的轨迹点
+        duration: 全程耗时（秒），fallback 用
+
+    返回：
+        移动时间（秒）。无 trackpoints 或无 duration 时返回 None。
+    """
+    if not trackpoints or duration is None:
+        return None
+
+    has_speed = any(tp.speed is not None for tp in trackpoints)
+    if not has_speed:
+        return duration
+
+    moving_threshold = 1.0  # m/s，Strava 主流标准
+    moving_seconds = 0.0
+
+    for i in range(1, len(trackpoints)):
+        prev = trackpoints[i - 1]
+        curr = trackpoints[i]
+        if prev.time is None or curr.time is None:
+            continue
+
+        # 相邻两点速度均值（None 视为 0，等同停下）
+        v_prev = prev.speed if prev.speed is not None else 0.0
+        v_curr = curr.speed if curr.speed is not None else 0.0
+        avg_v = (v_prev + v_curr) / 2
+
+        if avg_v >= moving_threshold:
+            delta = (curr.time - prev.time).total_seconds()
+            # 防 GPS 信号丢失 / 设备 sleep 大 gap 污染统计
+            if 0 < delta < 60:
+                moving_seconds += delta
+
+    return int(moving_seconds)
 
 
 def _get_total_distance(trackpoints: list[Trackpoint]) -> float:

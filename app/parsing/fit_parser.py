@@ -286,12 +286,22 @@ def _build_summary(
         # 兜底：用最后一个 trackpoint 的累计距离
         distance = trackpoints[-1].distance or 0.0
 
-    # 时间（秒）——优先用 total_timer_time（运动时间，排除暂停）
-    duration = _safe_get_int(session, "total_timer_time")
+    # 全程耗时（秒，含停车）= elapsed_time
+    # 优先 session 的 total_elapsed_time（含设备暂停的真实时间）
+    # 兜底 1：total_timer_time（旧 fit_parser 用过的字段，部分老码表只报这个）
+    # 兜底 2：首尾时间戳差
+    duration = _safe_get_int(session, "total_elapsed_time")
     if duration is None:
-        # 兜底：用首尾时间戳差
+        duration = _safe_get_int(session, "total_timer_time")
+    if duration is None:
         if trackpoints and trackpoints[0].time and trackpoints[-1].time:
             duration = int((trackpoints[-1].time - trackpoints[0].time).total_seconds())
+
+    # 移动时间（秒，去掉停车段）= moving_time
+    # FIT 的 total_timer_time 就是设备启停时间（暂停码表时不计入）= Strava moving_time 含义
+    moving_time = _safe_get_int(session, "total_timer_time")
+    if moving_time is None:
+        moving_time = duration  # 设备未报告 → 视为全程移动
 
     # 爬升（米）——用 is not None 而非 or，防止 0.0（平路）被误判
     elevation_gain_raw = _safe_get_float(session, "total_ascent")
@@ -325,6 +335,7 @@ def _build_summary(
     return ActivitySummary(
         distance=round(distance, 1) if distance is not None else 0.0,
         duration=duration,
+        moving_time=moving_time,
         elevation_gain=round(elevation_gain, 1),
         avg_speed=round(avg_speed, 2) if avg_speed is not None else None,
         max_speed=round(max_speed, 2) if max_speed is not None else None,
