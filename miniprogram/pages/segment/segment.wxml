@@ -4,7 +4,7 @@
   这个文件干什么的：
     用户在探索 tab 看到一张赛段卡片（如"妙峰山"）→ 点进来看详情。
     完整 4 区块（自上而下）：
-    - 区块 1 第一屏：赛段名 + 城市 tag + 海拔曲线（暂未支持/降级 placeholder）+ 4 数字（距离/爬升/平均坡度/最大坡度）
+    - 区块 1 第一屏：赛段名 + 城市 tag + 海拔曲线（有 elevation_profile 时画 / 无则 placeholder）+ 4 数字（距离/爬升/平均坡度/最大坡度）
     - 区块 2 AI 介绍：admin 审过的 description（50-100 字 / 长文展开收起）
     - 区块 3 我的记录：基于 EffortCompareResponse 6 字段（PR / 这次 / 上次 / 进步对比 / 三态）
     - 区块 4 全网排行榜：top 10 + 我的排名（D7 反转 / top 10 内高亮 / 外单独行）
@@ -20,8 +20,10 @@
   字段实证（grep ground truth）：
     - segment.description（admin AI 介绍落地字段 / app/admin/service.py:222）
     - leaderboard.items / leaderboard.total（不是 top / total_count）
-    - 海拔曲线 elevation_profile 不在 detail response → 区块降级 placeholder
+    - 海拔曲线 elevation_profile 来自 detail response（老赛段为 null → placeholder 降级）
 -->
+
+<wxs src="../../utils/format.wxs" module="f" />
 
 <!-- 加载中 / 404 / 主体 三态 -->
 <view wx:if="{{loading}}" class="loading">
@@ -49,21 +51,19 @@
       <text class="city-tag">{{cityLabel}}</text>
     </view>
 
-    <!-- 海拔曲线占位区
-         注意：当前后端 SegmentDetailResponse **不返 elevation_profile**，
-         所以 hasElevationProfile 永远 false → canvas 永远 hidden（保留节点供未来扩展）。
-         CLAUDE.md 陷阱 #17：用 hidden 不用 wx:if（防 canvas 创建 race） -->
+    <!-- 海拔曲线：有 elevation_profile 时 canvas 显示 / 老赛段未生成时 placeholder 兜底。
+         canvas 节点永远在 DOM（hidden 不 wx:if），防 canvas 创建 race（CLAUDE.md 陷阱 #17） -->
     <view class="elevation-wrap">
       <canvas type="2d" id="elevationCanvas" class="elevation-chart" hidden="{{!hasElevationProfile}}"></canvas>
       <view class="elevation-placeholder" wx:if="{{!hasElevationProfile}}">
-        <text class="placeholder-text">海拔曲线暂未生成</text>
+        <text class="placeholder-text">海拔数据缺失</text>
       </view>
     </view>
 
     <!-- 4 数字（距离 / 爬升 / 平均坡度 / 最大坡度） -->
     <view class="meta-grid">
       <view class="meta-item">
-        <text class="meta-value">{{segment.distance}}</text>
+        <text class="meta-value">{{f.km(segment.distance)}}</text>
         <text class="meta-label">公里</text>
       </view>
       <view class="meta-item">

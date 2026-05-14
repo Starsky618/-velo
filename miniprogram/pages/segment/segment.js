@@ -23,8 +23,45 @@
  */
 
 const api = require('../../utils/api')
+const bindchart = require('../../utils/bindchart')
 const { getCityLabel } = require('../../utils/city')
 const { formatTime } = require('../../utils/format')
+
+// niceScale / formatNum 复用活动详情页用的同款工具（保持视觉风格一致）
+const niceScale = bindchart.niceScale
+const formatNum = bindchart.formatNum
+
+/**
+ * 把后端 elevation_profile（约 80 个海拔数值的均匀采样数组）
+ * 转成绘图函数要的 [{distance, elevation}] 结构。
+ *
+ * 为什么 X 轴可以按 i/(N-1) 均匀分布：
+ *   后端 _sample_elevation_profile 是按沿赛段参考线累计距离做的等距采样
+ *   （app/segment/_geo_utils.py:38），不是按时间或点序号，
+ *   所以 80 个采样点在地理上就是均匀间隔的，前端无需还原真实距离。
+ *
+ * 类比：把卷尺贴在地形侧面 80 个等间距标记点上拍照，每张照片记录该处海拔。
+ *   现在要把这 80 张照片按"卷尺刻度"摆开 → 直接用 i/(N-1) * 总长度。
+ *
+ * @param {Array<number>} profile 海拔数值数组（米）
+ * @param {number} totalDistanceKm 赛段总距离（公里）
+ * @returns {Array<{distance: number, elevation: number}>}
+ *   distance 单位公里，elevation 单位米。profile 为空或单点时返回 []。
+ */
+function buildElevationData(profile, totalDistanceKm) {
+  if (!profile || profile.length < 2 || !totalDistanceKm || totalDistanceKm <= 0) {
+    return []
+  }
+  const n = profile.length
+  const result = []
+  for (let i = 0; i < n; i++) {
+    result.push({
+      distance: (i / (n - 1)) * totalDistanceKm,
+      elevation: profile[i],
+    })
+  }
+  return result
+}
 
 Page({
   data: {
@@ -46,7 +83,7 @@ Page({
     elevationGainText: '-',
     avgGradientText: '-',
     maxGradientText: '-',
-    hasElevationProfile: false,  // 后端暂不返 elevation_profile / 永远 false（区块降级）
+    hasElevationProfile: false,  // applySegment 里按 segment.elevation_profile 决定 true/false
 
     // 区块 2：AI 介绍
     shouldShowExpand: false,
@@ -150,13 +187,11 @@ Page({
       tasks[2],
     ])
       .then(([segment, myEffort, leaderboard]) => {
+        // applySegment 内部会触发 drawElevationProfile（setTimeout 100ms 兜底）
         this.applySegment(segment)
         this.applyMyEffort(myEffort)
         this.applyLeaderboard(leaderboard)
         this.setData({ loading: false })
-
-        // 海拔曲线 canvas 渲染（当前 hasElevationProfile=false / 不渲染）
-        // 未来后端补 elevation_profile 字段时，此处用 setTimeout(100) 兜底（陷阱 #17）
       })
       .catch((e) => {
         // segment fetch 失败已在 catch 里处理 setData，这里仅吞错误防 unhandledRejection
@@ -173,6 +208,9 @@ Page({
    * 注意陷阱 #1（truthiness）：
    *   - elevation_gain / avg_gradient / max_gradient 后端可能返 null（未算出）/ 0（算出但平地）
    *   - 用 `x === null || x === undefined` 显式判存在 / 不用 `!x`
+   *
+   * 海拔曲线：调 buildElevationData 把 elevation_profile 转好喂给 drawElevationProfile，
+   *   老赛段未生成时 elevationData=[] / hasElevationProfile=false → wxml 显示 placeholder。
    */
   applySegment(segment) {
     if (!segment) return
@@ -194,6 +232,14 @@ Page({
     const desc = segment.description || ''
     const shouldShowExpand = desc.length > 80
 
+    // 海拔曲线：后端返 elevation_profile（约 80 个海拔数值，老赛段可能为 null）
+    // segment.distance 单位是 km（service_query.py:180 已 /1000 转换），
+    // 直接喂给 buildElevationData 算 X 轴位置；不要从 DB 直接拿 distance（单位米）
+    const elevationData = buildElevationData(segment.elevation_profile, segment.distance)
+    const hasElevationProfile = elevationData.length > 0
+    // 不放 data 里：原始数组不用渲染到模板，避免 setData 序列化开销（同 detail.js 做法）
+    this.elevationData = elevationData
+
     this.setData({
       segment,
       cityLabel,
@@ -201,15 +247,173 @@ Page({
       avgGradientText,
       maxGradientText,
       shouldShowExpand,
-      // hasElevationProfile：当前后端 detail response 不返该字段 → 永远 false
-      // 未来后端补字段时改为 `!!segment.elevation_profile && segment.elevation_profile.length > 0`
-      hasElevationProfile: false,
+      hasElevationProfile,
+    }, () => {
+      // 海拔图绘制：setTimeout 100ms 兜底（CLAUDE.md 陷阱 #17）
+      // 极慢机型 setData 回调时 canvas 2d node 仍未 ready，wx.nextTick 不够保险
+      if (hasElevationProfile) {
+        setTimeout(() => this.drawElevationProfile(), 100)
+      }
     })
 
     // 设置导航栏标题（让用户在小程序最上方就看到赛段名）
     if (segment.name) {
       wx.setNavigationBarTitle({ title: segment.name })
     }
+  },
+
+  /**
+   * 页面重新显示时重画 canvas
+   *
+   * 类比：某些低端机型把页面切到后台一会儿再切回来，canvas 节点像被
+   *   "擦黑板"了一样，必须重画一遍才能看到图。
+   *   弱机型保护性补绘，正常机型每次进页面只画一次。
+   *
+   * 这里用 wx.nextTick 而非 setTimeout(100ms)：onShow 是"切回前台"重绘场景，
+   * canvas 节点早就挂载在 DOM 里，不像首次 setData 后还要等 canvas 2d node 初始化。
+   * 跟 detail.js:123 的 onShow 同款做法。
+   */
+  onShow() {
+    if (this.elevationData && this.elevationData.length > 0) {
+      wx.nextTick(() => this.drawElevationProfile())
+    }
+  },
+
+  /**
+   * 画海拔曲线（Strava 风格灰色面积图）
+   *
+   * 整套配方与活动详情页 detail.js:322 drawElevationProfile 完全一致，
+   * 让用户在活动详情和赛段详情看到的"地形侧面照"视觉风格统一：
+   *   - 半透明灰色填充（地形的"身体"）
+   *   - 顶部深灰描边（地形的"轮廓线"）
+   *   - 4 档网格 + 左侧海拔刻度 + 底部距离刻度
+   *
+   * Retina 适配：手机屏幕 dpr=2/3，canvas 实际像素要放大 dpr 倍再 scale 缩回来，
+   * 不然图形看起来模糊像素糊一坨。
+   *
+   * 数据要求：this.elevationData = [{distance: 公里, elevation: 米}]
+   *   buildElevationData() 已经处理好，不会在这里再算累计距离。
+   */
+  drawElevationProfile() {
+    const data = this.elevationData
+    if (!data || data.length < 2) return
+
+    wx.createSelectorQuery()
+      .in(this)
+      .select('#elevationCanvas')
+      .fields({ node: true, size: true })
+      .exec((res) => {
+        if (!res || !res[0] || !res[0].node) return
+
+        const canvas = res[0].node
+        const width = res[0].width
+        const height = res[0].height
+        const ctx = canvas.getContext('2d')
+
+        const dpr = wx.getSystemInfoSync().pixelRatio
+        canvas.width = width * dpr
+        canvas.height = height * dpr
+        ctx.scale(dpr, dpr)
+
+        ctx.clearRect(0, 0, width, height)
+
+        const pad = { top: 12, right: 16, bottom: 28, left: 44 }
+        const chartW = width - pad.left - pad.right
+        const chartH = height - pad.top - pad.bottom
+
+        // 数据范围
+        let minEle = Infinity
+        let maxEle = -Infinity
+        const maxDist = data[data.length - 1].distance
+        if (maxDist <= 0) return
+        for (let i = 0; i < data.length; i++) {
+          if (data[i].elevation < minEle) minEle = data[i].elevation
+          if (data[i].elevation > maxEle) maxEle = data[i].elevation
+        }
+
+        // Y 轴上下各留 10% 余量，至少 20m 范围（防纯平路图形退化）
+        let eleRange = maxEle - minEle
+        if (eleRange < 20) eleRange = 20
+        minEle = Math.floor(minEle - eleRange * 0.1)
+        maxEle = Math.ceil(maxEle + eleRange * 0.1)
+        eleRange = maxEle - minEle
+
+        const toX = (dist) => pad.left + (dist / maxDist) * chartW
+        const toY = (ele) => pad.top + (1 - (ele - minEle) / eleRange) * chartH
+
+        // 1. 网格线（最浅灰）
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)'
+        ctx.lineWidth = 0.5
+
+        const yTicks = niceScale(minEle, maxEle, 4)
+        for (let t = 0; t < yTicks.length; t++) {
+          const y = toY(yTicks[t])
+          ctx.beginPath()
+          ctx.moveTo(pad.left, y)
+          ctx.lineTo(width - pad.right, y)
+          ctx.stroke()
+        }
+
+        const xTicks = niceScale(0, maxDist, 4)
+        for (let t = 0; t < xTicks.length; t++) {
+          if (xTicks[t] <= 0) continue
+          const x = toX(xTicks[t])
+          ctx.beginPath()
+          ctx.moveTo(x, pad.top)
+          ctx.lineTo(x, pad.top + chartH)
+          ctx.stroke()
+        }
+
+        // 2. 边框
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)'
+        ctx.lineWidth = 0.5
+        ctx.strokeRect(pad.left, pad.top, chartW, chartH)
+
+        // 3. 灰色面积填充
+        ctx.beginPath()
+        ctx.moveTo(toX(data[0].distance), toY(data[0].elevation))
+        for (let i = 1; i < data.length; i++) {
+          ctx.lineTo(toX(data[i].distance), toY(data[i].elevation))
+        }
+        ctx.lineTo(toX(data[data.length - 1].distance), pad.top + chartH)
+        ctx.lineTo(toX(data[0].distance), pad.top + chartH)
+        ctx.closePath()
+        ctx.fillStyle = 'rgba(190, 190, 190, 0.5)'
+        ctx.fill()
+
+        // 4. 顶部轮廓描边
+        ctx.beginPath()
+        ctx.moveTo(toX(data[0].distance), toY(data[0].elevation))
+        for (let i = 1; i < data.length; i++) {
+          ctx.lineTo(toX(data[i].distance), toY(data[i].elevation))
+        }
+        ctx.strokeStyle = 'rgba(150, 150, 150, 0.9)'
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+
+        // 5. 坐标轴标签
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
+        ctx.font = '10px -apple-system, sans-serif'
+
+        ctx.textAlign = 'right'
+        ctx.textBaseline = 'middle'
+        for (let t = 0; t < yTicks.length; t++) {
+          const yPos = toY(yTicks[t])
+          const label = yTicks[t] >= 1000 ? formatNum(yTicks[t]) : String(yTicks[t])
+          ctx.fillText(label, pad.left - 6, yPos)
+        }
+
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        ctx.fillText('m', 4, pad.top + chartH + 4)
+
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'top'
+        for (let t = 0; t < xTicks.length; t++) {
+          if (xTicks[t] <= 0) continue
+          ctx.fillText(xTicks[t] + ' km', toX(xTicks[t]), pad.top + chartH + 8)
+        }
+      })
   },
 
   /**

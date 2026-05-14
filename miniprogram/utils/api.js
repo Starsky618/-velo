@@ -174,14 +174,16 @@ module.exports = {
    * 这条赛段叫什么、几公里、爬升多少、admin 写过啥介绍。
    *
    * 后端契约（GET /api/segments/{id} / 不需登录）：
-   *   - 真返字段（SegmentDetailResponse schema 实证 app/segment/schemas.py:141）：
+   *   - 真返字段（SegmentDetailResponse schema 实证 app/segment/schemas.py:159）：
    *       id / name / description（即"AI 介绍"落地字段，admin/service.py:222 写入） /
    *       distance（公里 / service 已转换） / elevation_gain（米） /
    *       avg_gradient / max_gradient（%） / difficulty（4 档枚举） /
    *       city（6 城 + unknown） / start_lat/lon / end_lat/lon /
    *       match_tolerance / min_match_ratio / created_at /
+   *       elevation_profile（list[float] | null）—— 约 80 个海拔采样（米），
+   *         前端 buildElevationData 拿来画曲线；老赛段未生成时为 null /
+   *         hasElevationProfile=false 走 placeholder 降级 /
    *       leaderboard（数组 / 含 rank/user_id/nickname/elapsed_time 等 / 前 20 名）
-   *   - 注意：本响应**不含 elevation_profile** — 海拔曲线区块降级 placeholder
    *   - 404 segment 不存在 → reject({ code: 404, ... })
    *
    * @param {number} segmentId - 赛段 ID

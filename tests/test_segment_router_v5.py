@@ -105,6 +105,67 @@ def test_get_segment_detail_404(client):
     assert res.status_code == 404
 
 
+def test_get_segment_detail_returns_elevation_profile(client, db):
+    """
+    detail endpoint 应返回 elevation_profile 反序列化后的浮点数组（前端画海拔曲线用）。
+
+    DB 里 elevation_profile 字段存 JSON 字符串（service_create.py:152 json.dumps），
+    service_query.py 反序列化回 list[float]，前端 buildElevationData 拿来画曲线。
+    """
+    import json
+    profile = [800.0, 805.5, 810.2, 808.0, 815.7]
+    seg = Segment(
+        name="带海拔的赛段",
+        distance=2000.0,
+        elevation_gain=15.0,
+        difficulty="easy",
+        city="beijing",
+        start_lat=39.9, start_lon=116.4,
+        end_lat=39.91, end_lon=116.41,
+        reference_line="SRID=4326;LINESTRING(116.4 39.9, 116.41 39.91)",
+        match_tolerance=50.0,
+        min_match_ratio=0.8,
+        elevation_profile=json.dumps(profile),
+    )
+    db.add(seg)
+    db.commit()
+    db.refresh(seg)
+
+    res = client.get(f"/api/segments/{seg.id}")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["elevation_profile"] == profile
+
+
+def test_get_segment_detail_elevation_profile_null_for_legacy(client, db):
+    """
+    老赛段未生成 elevation_profile（建表早期）→ detail 应返回 null 不爆错。
+
+    保护点：service_query.py 用 `if segment.elevation_profile else None` 判断 NULL 路径，
+    前端 hasElevationProfile=false 走 placeholder 降级。
+    """
+    seg = Segment(
+        name="老赛段无海拔",
+        distance=2000.0,
+        difficulty="easy",
+        city="beijing",
+        start_lat=39.9, start_lon=116.4,
+        end_lat=39.91, end_lon=116.41,
+        reference_line="SRID=4326;LINESTRING(116.4 39.9, 116.41 39.91)",
+        match_tolerance=50.0,
+        min_match_ratio=0.8,
+        elevation_profile=None,
+    )
+    db.add(seg)
+    db.commit()
+    db.refresh(seg)
+
+    res = client.get(f"/api/segments/{seg.id}")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["elevation_profile"] is None
+
+
 # ========== GET /api/segments/{id}/efforts/me：即时反馈 ==========
 
 def test_get_my_effort_compare_no_auth_returns_401(client):

@@ -4,6 +4,8 @@
 从 service.py 拆出，保持函数签名、返回值和业务行为不变。
 """
 
+import json
+
 from geoalchemy2 import Geography
 from sqlalchemy import cast, func
 from sqlalchemy.orm import Session
@@ -162,6 +164,15 @@ def get_segment_detail(db: Session, segment_id: int) -> dict:
             "created_at": row.created_at,
         })
 
+    # elevation_profile 在 DB 里是 JSON 字符串（service_create.py:152 写入时 json.dumps），
+    # 这里反序列化回 Python list 让 schema 自动校验+前端直接消费。
+    # 老数据可能为 NULL（建表早期没此字段），保持 None 兜底。
+    elevation_profile = (
+        json.loads(segment.elevation_profile)
+        if segment.elevation_profile
+        else None
+    )
+
     return {
         "id": segment.id,
         "name": segment.name,
@@ -173,6 +184,7 @@ def get_segment_detail(db: Session, segment_id: int) -> dict:
         "max_gradient": segment.max_gradient,
         "difficulty": segment.difficulty,
         "city": segment.city,
+        "elevation_profile": elevation_profile,  # 约 80 个海拔采样数值（米），前端画曲线
         "start_lat": segment.start_lat,
         "start_lon": segment.start_lon,
         "end_lat": segment.end_lat,

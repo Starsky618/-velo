@@ -162,6 +162,10 @@ class SegmentDetailResponse(BaseModel):
 
     v5 task-1.A.3 新增 4 字段（avg_gradient/max_gradient/difficulty/city），
     详情页要展示完整赛段画像（不止距离爬升，还要坡度+难度+城市）。
+
+    elevation_profile：约 80 个海拔采样数值（米），按沿赛段距离均匀分布。
+    前端画海拔曲线用——X 轴位置按 i/N * distance 算，因为采样本身是等距的。
+    老赛段未生成时为 None，前端要兜底降级为 placeholder。
     """
     id: int
     name: str
@@ -172,6 +176,7 @@ class SegmentDetailResponse(BaseModel):
     max_gradient: Optional[float] = None     # %（v5）
     difficulty: str                          # 4 档枚举（v5）
     city: str                                # 城市枚举（v5）
+    elevation_profile: Optional[list[float]] = None   # 约 80 个海拔采样（米）
     start_lat: float
     start_lon: float
     end_lat: float
