@@ -60,8 +60,10 @@
       </view>
     </view>
 
-    <!-- 4 数字（距离 / 爬升 / 平均坡度 / 最大坡度） -->
-    <view class="meta-grid">
+    <!-- 3 数字（距离 / 爬升 / 平均坡度） / 砍最大坡度（2026-05-15 Tim 拍：
+         SRTM 公开 DEM 精度物理上不足以测公路（30/90m 像素 vs 公路 5-10m 宽），
+         max_gradient 数字误导用户 / 等 Step 3 群体融合 OR 接气压计数据后再恢复 -->
+    <view class="meta-grid meta-grid-3">
       <view class="meta-item">
         <text class="meta-value">{{f.km(segment.distance)}}</text>
         <text class="meta-label">公里</text>
@@ -73,10 +75,6 @@
       <view class="meta-item">
         <text class="meta-value">{{avgGradientText}}</text>
         <text class="meta-label">平均坡度</text>
-      </view>
-      <view class="meta-item">
-        <text class="meta-value">{{maxGradientText}}</text>
-        <text class="meta-label">最大坡度</text>
       </view>
     </view>
   </view>
@@ -146,8 +144,8 @@
         <text>这次创下新纪录</text>
       </view>
 
-      <!-- 你的成绩 N 项 入口（task-4.4 只渲染数字 / task-4.5 才接通跳转） -->
-      <view class="my-efforts-entry" wx:if="{{myEffortsCount > 0}}">
+      <!-- 你的成绩 N 项 入口（task-4.5 接通跳转 → segment-efforts 全屏列表页） -->
+      <view class="my-efforts-entry" wx:if="{{myEffortsCount > 0}}" bindtap="goMyEfforts">
         <text class="my-efforts-text">你的成绩 {{myEffortsCount}} 项</text>
         <text class="my-efforts-arrow">›</text>
       </view>

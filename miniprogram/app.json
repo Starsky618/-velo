@@ -9,7 +9,8 @@
     "pages/honor/honor",
     "pages/settings/settings",
     "pages/user/user",
-    "pages/segment/segment"
+    "pages/segment/segment",
+    "pages/segment-efforts/segment-efforts"
   ],
   "window": {
     "navigationBarBackgroundColor": "#ffffff",

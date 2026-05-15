@@ -1,0 +1,54 @@
+<!--
+  我在某赛段的全部成绩列表（task-4.5）
+
+  入口：segment 详情页"你的成绩 N 项 ›"
+  布局参考图 1（黑底 / 大字号 / 年份粗体 + 上下分隔线 / PR 黄点 / 行尾箭头）
+-->
+
+<view wx:if="{{loading}}" class="state state-loading">
+  <text>加载中</text>
+</view>
+
+<view wx:elif="{{notLoggedIn}}" class="state state-empty">
+  <text class="state-text">登录后查看你的成绩</text>
+  <view class="btn-login" bindtap="goLogin">前往登录</view>
+</view>
+
+<view wx:elif="{{notFound}}" class="state state-empty">
+  <text class="state-text">赛段不存在或已下架</text>
+</view>
+
+<view wx:elif="{{loadFailed}}" class="state state-empty" bindtap="onTapRetry">
+  <text class="state-text">加载失败 · 点击重试</text>
+</view>
+
+<view wx:elif="{{groupedItems.length === 0}}" class="state state-empty">
+  <text class="state-text">还没骑过这条赛段</text>
+</view>
+
+<view wx:else class="page">
+  <block wx:for="{{groupedItems}}" wx:key="year" wx:for-item="group">
+    <view class="year-title">
+      <text>{{group.year}}</text>
+    </view>
+    <view
+      class="row"
+      wx:for="{{group.items}}"
+      wx:key="activity_id"
+      wx:for-item="item"
+      data-id="{{item.activity_id}}"
+      bindtap="onTapRow"
+    >
+      <view class="date-col">
+        <text class="date-text">{{item.dateLabel}}</text>
+        <view class="pr-dot" wx:if="{{item.is_pr}}"></view>
+      </view>
+      <view class="stats-col">
+        <text class="stat time-text">{{item.timeText}}</text>
+        <text class="stat speed-text">{{item.speedText}}</text>
+        <text class="stat power-text">{{item.powerText}}</text>
+      </view>
+      <text class="arrow">›</text>
+    </view>
+  </block>
+</view>

@@ -52,15 +52,42 @@ function buildElevationData(profile, totalDistanceKm) {
   if (!profile || profile.length < 2 || !totalDistanceKm || totalDistanceKm <= 0) {
     return []
   }
-  const n = profile.length
+  // 前端二次平滑（2026-05-15 Tim 反馈锯齿太多）：
+  // 后端 SRTM 90m 数据本身在山区窄带公路上有像素噪声（采到山势不是路面），
+  // 后端已做 window=21 中位数平滑，前端再做一次 window=7 滑动平均圆滑收尾。
+  // 两阶段平滑：中位数压尖刺 + 滑动平均出曲线 → 单调上升 / 下降赛段视觉接近真实。
+  const smoothed = movingAverage(profile, 7)
+  const n = smoothed.length
   const result = []
   for (let i = 0; i < n; i++) {
     result.push({
       distance: (i / (n - 1)) * totalDistanceKm,
-      elevation: profile[i],
+      elevation: smoothed[i],
     })
   }
   return result
+}
+
+/**
+ * 滑动平均平滑 / 比中位数更"圆滑"（中位数会留台阶 / 平均出曲线）。
+ * 边界处窗口自动缩短不补 0（首末 ~3 点偏移真实值 0.5-1m / 视觉无感）。
+ */
+function movingAverage(arr, window) {
+  const n = arr.length
+  const half = Math.floor(window / 2)
+  const out = []
+  for (let i = 0; i < n; i++) {
+    let sum = 0
+    let count = 0
+    for (let j = Math.max(0, i - half); j <= Math.min(n - 1, i + half); j++) {
+      if (arr[j] != null) {
+        sum += arr[j]
+        count++
+      }
+    }
+    out.push(count > 0 ? sum / count : arr[i])
+  }
+  return out
 }
 
 Page({
@@ -676,6 +703,17 @@ Page({
    */
   goLogin() {
     wx.switchTab({ url: '/pages/profile/profile' })
+  },
+
+  /**
+   * 跳转"我的成绩"全屏列表页（task-4.5）
+   * 入口：区块 3 底部"你的成绩 N 项 ›"
+   */
+  goMyEfforts() {
+    // 跟 segment-efforts.js onLoad 入口校验风格统一（严格正整数）
+    const id = this.data.segmentId
+    if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) return
+    wx.navigateTo({ url: '/pages/segment-efforts/segment-efforts?segment_id=' + id })
   },
 
   /**

@@ -130,6 +130,11 @@ page {
   gap: 16rpx;
 }
 
+/* 3 数字 grid（砍 max_gradient 后用 / 2026-05-15） */
+.meta-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .meta-item {
   display: flex;
   flex-direction: column;

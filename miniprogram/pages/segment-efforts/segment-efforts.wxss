@@ -1,0 +1,112 @@
+/* 我的成绩列表（task-4.5 / 图 1 风格：黑底白字大字号） */
+
+page {
+  background: #000000;
+  color: #FFFFFF;
+  min-height: 100vh;
+}
+
+.page {
+  padding-bottom: 80rpx;
+}
+
+/* ========== 状态提示（加载 / 失败 / 未登录） ========== */
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 0 60rpx;
+}
+
+.state-loading text,
+.state-text {
+  color: #86868B;
+  font-size: 30rpx;
+}
+
+.btn-login {
+  margin-top: 40rpx;
+  padding: 20rpx 60rpx;
+  background: #FF6B00;
+  color: #FFFFFF;
+  border-radius: 12rpx;
+  font-size: 30rpx;
+}
+
+/* ========== 年份标题 ========== */
+.year-title {
+  padding: 48rpx 32rpx 24rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: 1rpx;
+  border-top: 2rpx solid #2C2C2E;     /* 标题上分隔线（spec 图 1：上下白线分隔） */
+  border-bottom: 2rpx solid #2C2C2E;  /* 标题下分隔线 */
+}
+
+/* ========== 单条成绩行 ========== */
+.row {
+  display: flex;
+  align-items: center;
+  padding: 36rpx 32rpx;
+  border-bottom: 1rpx solid #1C1C1E;  /* 行间细分隔线 */
+}
+
+.row:active {
+  background: #1C1C1E;  /* 点击反馈 */
+}
+
+/* 日期列：日期 + PR 黄点 */
+.date-col {
+  display: flex;
+  align-items: center;
+  width: 200rpx;
+  flex-shrink: 0;
+}
+
+.date-text {
+  font-size: 36rpx;
+  color: #FFFFFF;
+  font-weight: 400;
+}
+
+.pr-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #FFD60A;  /* 亮黄 / 图 1 同款 */
+  margin-left: 12rpx;
+}
+
+/* 数字列：用时 / 速度 / 功率（紧凑横排 / 等宽数字防跳动） */
+.stats-col {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 28rpx;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat {
+  font-size: 32rpx;
+  color: #FFFFFF;
+}
+
+.time-text {
+  font-weight: 600;
+}
+
+.speed-text,
+.power-text {
+  color: #E5E5EA;
+}
+
+/* 箭头 */
+.arrow {
+  margin-left: 16rpx;
+  font-size: 40rpx;
+  color: #48484A;
+  flex-shrink: 0;
+}
