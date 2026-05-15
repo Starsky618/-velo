@@ -1,5 +1,51 @@
 # VELO 开发变更日志
 
+## 2026-05-14 ~ 2026-05-15: 赛段海拔曲线 + 坡度修复（Step 1 + Step 2-DEM 全套）✅ ship
+
+### Step 1（2026-05-14）：赛段详情页加海拔曲线
+
+**改动**：
+- 后端 `GET /api/segments/{id}` detail endpoint 加 `elevation_profile` 字段反序列化
+- 前端 segment.wxml 加 canvas + segment.js 加 `drawElevationProfile`（仿活动详情页灰色面积图风格）
+
+**commit**：`f18c76d`
+
+### Step 2-DEM（2026-05-15）：坡度数据修复（6 次迭代 + Tim 拍砍）
+
+**为什么要做**：生产 segment id=24 "夜骑清徐" 11km 平路 GPS 算 max_gradient=26.1% 假数据（Tim 体感真值 < 5%）。GPS 海拔 ±15m 噪声物理限制 / 任何平滑算法都洗不掉。
+
+**6 次算法迭代**：
+1. v1 单纯 100m 滑窗 / max=26.1%
+2. v2 中位数平滑（window=15）+ cap 25% / max=23%
+3. v2 + 500m 窗口 / max=10% / 仍超 Tim 体感
+4. + 短赛段 fallback（window > 总距离时用 总长/4）/ 491m 短陡坡 18.8%（合理）
+5. 切自托管 SRTM 90m（消除合规 + 稳定性）/ max=12% 反而升
+6. 前端二次 movingAverage 平滑 / 视觉改善但 max 数字仍虚高
+7. **Tim 拍砍 max_gradient 前端显示** ← 真智慧 / 不是失败
+
+**真根因**：SRTM 30/90m 像素 vs 公路 5-10m 宽 / DEM 像素采到的是路边山势不是路面 / Strava 用气压计（±0.1m）+ 群体融合达到 / velo 100 用户 + 手机 GPS 物理上做不到。
+
+**配套改动**：
+- DEM 数据源从 opentopodata.org 公共 API 切到 SRTM.py + CGIAR-CSI 90m 自托管（commit `fed8249`）/ 消除数据出境合规瑕疵 + 解决第三方 API 稳定性
+- docker-compose 加 `srtm_cache` volume 持久化懒下载的 tile
+- 回填脚本 `scripts/recompute_segment_stats.py` 完整重写（PostGIS ST_LineInterpolatePoint 等距 400 点采样 + DEM 查表 + 中位数平滑 + 500m 滑窗 max_gradient + 80 点 elevation_profile）
+- `service_create.create_segment_from_activity` 修补 `elevation_profile` 字段漏存（codex 旧 review I2）
+- `service_create.create_segment` from-gpx 路径 `avg_gradient` 公式统一净高差 `(gain - loss) / dist`（之前永远 ≥ 0 / 下坡赛段拿不到负数）
+- 部署 SOP 加 `alembic upgrade head` 硬性必跑步骤（CLAUDE.md commit `6c6d78d`）/ 2026-05-15 实证 sprint5_activity_privacy 迁移漏跑导致全 endpoint 500
+
+**前端砍 max_gradient**（commit `b2ae57c`）：
+- segment.wxml 4 数字 grid → 3 数字 grid（距离 / 米爬升 / 平均坡度）
+- 海拔曲线前端二次平滑（movingAverage window=7）+ 后端 window=21 中位数平滑双层
+- DB `Segment.max_gradient` 字段保留 / API 仍返 / 给 Step 3 群体融合后恢复
+
+**关键经验沉淀**（memory）：
+- DEM 物理精度限制 / 算法极限早识别（`feedback_dem_precision_physical_limit.md`）
+- 用户 escape hatch 是真智慧 / 砍功能比改算法到完美更智慧（`feedback_user_escape_hatch_is_wisdom.md`）
+
+**Step 3 计划**：用户量 ≥5-10 用户骑过同段路时 / 群体融合 DEM + 多用户 GPS 数据中位数校正 / 或气压计数据接入后恢复 max_gradient。详 tech-debt.md。
+
+---
+
 ## 2026-05-11 hotfix: Strava OAuth scope 升级 `activity:read_all`（私密活动同步事故）✅ ship
 
 ### 事故复盘

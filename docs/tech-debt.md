@@ -6,6 +6,24 @@
 
 ---
 
+## 🟡 P2：赛段 max_gradient 前端砍掉 / 等数据源升级恢复（2026-05-15 Step 2-DEM Tim 拍）
+
+velo 用 SRTM 公开 DEM（30m / 90m 像素）测窄带状公路（5-10m 宽）坡度 6 次算法迭代仍达不到 Tim 体感真值（天龙山 5% 缓坡 vs 算出 9.8-13.9% / 太山-蒙山下坡单调下坡 vs 曲线有锯齿）。根因：DEM 像素采到的可能是路边山势不是路面，算法平滑洗不掉数据源采错对象。
+
+**当前状态**：
+- 前端 segment.wxml 4 数字 grid 砍掉"最大坡度"（commit `b2ae57c`）/ 改 3 列 grid（距离 / 米爬升 / 平均坡度）
+- 后端 `Segment.max_gradient` 字段保留 / API 仍返 / 回填脚本仍算（给未来恢复留路）
+- `calculate_difficulty` 仍用 max_gradient 内部判断（不显示数字但 difficulty 评级仍用）
+
+**升级 trigger（任一满足即可恢复 max_gradient 显示）**：
+1. **Step 3 群体融合**：用户量起来后同段路 ≥5-10 个用户骑过 → 多用户 GPS 数据中位数校正 DEM（Strava 模式 / elevation basemap）
+2. **气压计数据接入**：用户用佳明 / Wahoo 码表导入活动 → 拉气压计字段（±0.1m / 比 GPS 高 100 倍）
+3. 中国境内 12m 商业 DEM 数据集开放（短期不可能 / TanDEM-X 中国授权复杂）
+
+**为什么不彻底删字段**：DB 字段保留 + API 保留 = 数据层不动 / 未来恢复零工程量（前端 wxml 加回一格 + difficulty 算法可继续用）。详 memory `feedback_dem_precision_physical_limit.md`。
+
+---
+
 ## 🟡 P2：Strava 老用户无 `needs_reauth` 状态机（2026-05-11 Strava scope 事故 codex round-2 抓）
 
 velo 升级 OAuth scope `activity:read` → `activity:read_all` 后（commit TBD），老用户的 token 还在 DB 里挂着但 scope 不足：
