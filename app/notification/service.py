@@ -24,7 +24,7 @@ from app.notification.models import Notification
 from app.notification.detector import classify
 from app.segment.models import SegmentEffort, Segment
 from app.segment.service import get_effort_rank
-from app.activity.models import Activity
+from app.activity.models import Activity, ActivityPrivacy
 from app.user.models import User
 
 logger = logging.getLogger(__name__)
@@ -283,28 +283,64 @@ def get_user_honors(db: Session, user_id: int) -> dict:
         .subquery()
     )
 
-    # 窗口函数：所有成绩 + 排名
-    # RANK() OVER (PARTITION BY segment_id ORDER BY elapsed_time, created_at)
-    # 好比把每条赛道的成绩单独排名，同时间先到先得
+    # task-4.2：荣誉墙 rank 跟主排行榜（每人一行）一致——
+    # 第一层：ROW_NUMBER per (segment_id, user_id) 选每人在每赛段的最佳 effort（rn=1）
+    # 第二层：RANK() per segment_id 按"每人最佳"排名
+    # 否则 Alice 30s/35s + Bob 40s → 老逻辑里 Bob rank=3，主榜显示 rank=2，数字对不上。
+    #
+    # task-4.1 延伸：过滤他人私密 effort（保留 owner 自己的 / 跟主榜行为一致）。
+    # Codex 异源审 I3：双层窗口都用 (elapsed_time, id) tiebreaker，跟主榜 helper 一致
+    # （否则双重并列时跨 dialect 行为不一致 / 跟主榜数字分叉）
+    row_number_per_user = (
+        sa.func.row_number().over(
+            partition_by=[SegmentEffort.segment_id, SegmentEffort.user_id],
+            order_by=[SegmentEffort.elapsed_time, SegmentEffort.id],
+        )
+    ).label("rn")
+
+    best_per_user = (
+        db.query(
+            SegmentEffort.id.label("effort_id"),
+            SegmentEffort.segment_id,
+            SegmentEffort.user_id,
+            SegmentEffort.elapsed_time,
+            SegmentEffort.avg_speed,
+            SegmentEffort.created_at,
+            row_number_per_user,
+        )
+        .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
+        .filter(SegmentEffort.segment_id.in_(sa.select(user_segments.c.segment_id)))
+        .filter(
+            sa.or_(
+                ActivityPrivacy.visibility == "public",
+                ActivityPrivacy.visibility.is_(None),
+                SegmentEffort.user_id == user_id,
+            )
+        )
+        .subquery()
+    )
+
+    # 第二层窗口：按"每人最佳"在赛段内排名（用 effort_id tiebreaker 跟主榜对齐）
     rank_col = (
         sa.func.rank().over(
-            partition_by=SegmentEffort.segment_id,
-            order_by=[SegmentEffort.elapsed_time, SegmentEffort.created_at],
+            partition_by=best_per_user.c.segment_id,
+            order_by=[best_per_user.c.elapsed_time, best_per_user.c.effort_id],
         )
     ).label("rank")
 
     ranked_query = (
         db.query(
-            SegmentEffort.segment_id,
+            best_per_user.c.segment_id,
             Segment.name.label("segment_name"),
-            SegmentEffort.user_id,
-            SegmentEffort.elapsed_time,
-            SegmentEffort.avg_speed,
-            SegmentEffort.created_at,
+            best_per_user.c.user_id,
+            best_per_user.c.elapsed_time,
+            best_per_user.c.avg_speed,
+            best_per_user.c.created_at,
             rank_col,
         )
-        .join(Segment, Segment.id == SegmentEffort.segment_id)
-        .filter(SegmentEffort.segment_id.in_(sa.select(user_segments.c.segment_id)))
+        .select_from(best_per_user)
+        .join(Segment, Segment.id == best_per_user.c.segment_id)
+        .filter(best_per_user.c.rn == 1)
         .subquery()
     )
 

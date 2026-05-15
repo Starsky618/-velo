@@ -75,19 +75,31 @@ def get_effort_rank(db: Session, effort) -> int:
 
     共享函数：notification 模块和 segment 模块共用，避免排名逻辑重复。
 
-    排名规则：COUNT(同赛段中"比我快"的成绩) + 1。
+    task-4.2：排名按"人数"算（不是 effort 条数）——跟主排行榜（每人一行）一致，
+    否则通知里推送的 rank 数字会跟用户打开排行榜看到的对不上。
     并列处理：同 elapsed_time 时按 created_at 先到先得（tiebreaker）。
     好比百米决赛：两人都跑 10.0 秒，先撞线的排前面。
 
+    task-4.1 延伸：算"比我快的人"时排除他人私密 effort（与主榜一致）；
+    保留 effort owner 自己的私密成绩计入（万一以前自己有更快的私密记录）。
+
     使用索引：idx_efforts_segment_time (segment_id, elapsed_time)
     """
+    from app.activity.models import ActivityPrivacy
+
     # "比我快"的定义：
     # 1. elapsed_time 更短的（显然更快）
     # 2. elapsed_time 一样但 created_at 更早的（先到先得）
+    # COUNT(DISTINCT user_id)：同一人多条 effort 只算 1 人，跟主榜一致。
+    # task-4.2 Codex 异源审 I1：必须排除 effort owner 自己——否则 owner 前后骑出同样 elapsed_time 时，
+    # 自己上一条 effort 会被算成"比我快的人"，notification 误报"你排第 2"。
+    # 排除自己后，OR 第三支（保留自己私密成绩）自然失效——简化为纯 public 过滤。
     faster_count = (
-        db.query(func.count(SegmentEffort.id))
+        db.query(func.count(func.distinct(SegmentEffort.user_id)))
+        .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
         .filter(
             SegmentEffort.segment_id == effort.segment_id,
+            SegmentEffort.user_id != effort.user_id,
             sa.or_(
                 SegmentEffort.elapsed_time < effort.elapsed_time,
                 sa.and_(
@@ -95,6 +107,12 @@ def get_effort_rank(db: Session, effort) -> int:
                     SegmentEffort.created_at < effort.created_at,
                 ),
             ),
+        )
+        .filter(
+            sa.or_(
+                ActivityPrivacy.visibility == "public",
+                ActivityPrivacy.visibility.is_(None),
+            )
         )
         .scalar()
     )

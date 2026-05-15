@@ -122,6 +122,7 @@ class LeaderboardEntry(BaseModel):
     """
     rank: int
     user_id: int
+    activity_id: Optional[int] = None        # task-4.2：对应"最快那次"的活动 ID（前端 task-4.4 用作跳转）
     nickname: Optional[str] = None
     avatar_url: Optional[str] = None
     elapsed_time: int                        # 秒
@@ -153,7 +154,7 @@ class LeaderboardResponse(BaseModel):
     total: int
     page: int
     page_size: int
-    my_rank: Optional[int] = None             # 登录用户在该赛段的真排名（基于 PR / 比我快的 effort 数 + 1）
+    my_rank: Optional[int] = None             # 登录用户在该赛段的真排名（基于 PR / 比我快的人数 + 1 / task-4.2 去重）
     my_elapsed_time: Optional[int] = None     # 登录用户的 PR 用时（秒）/ 用于前端独立行展示
 
 

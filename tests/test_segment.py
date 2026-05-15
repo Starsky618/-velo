@@ -656,6 +656,234 @@ def test_segment_detail_top20_filters_private(client, db, test_user, auth_header
     assert all(item["is_private_self"] is False for item in data_self["leaderboard"])
 
 
+# ==================== task-4.2：按人去重 + activity_id ====================
+
+def test_leaderboard_dedupes_by_user(client, db, test_user, auth_header):
+    """同一人骑 3 次同赛段，榜上只显示最快那次 / total = 1 而非 3。"""
+    seg_id = _insert_segment(db)
+    # 同一用户 3 条 effort，3 个不同 activity
+    times = [180, 120, 240]  # 中间那条最快
+    for t in times:
+        aid = _insert_activity(db, test_user.id, f"骑行 elapsed={t}")
+        _insert_effort(db, seg_id, aid, test_user.id, elapsed_time=t)
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    data = resp.json()
+
+    assert resp.status_code == 200
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    assert data["items"][0]["user_id"] == test_user.id
+    assert data["items"][0]["elapsed_time"] == 120  # 最快那条
+
+
+def test_leaderboard_returns_activity_id(client, db, test_user, auth_header):
+    """每行带 activity_id，对应最快那次的 activity（前端 task-4.4 用来跳转）。"""
+    seg_id = _insert_segment(db)
+    slow_act = _insert_activity(db, test_user.id, "慢骑")
+    fast_act = _insert_activity(db, test_user.id, "快骑")
+    _insert_effort(db, seg_id, slow_act, test_user.id, elapsed_time=200)
+    _insert_effort(db, seg_id, fast_act, test_user.id, elapsed_time=100)
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    data = resp.json()
+
+    assert resp.status_code == 200
+    assert data["items"][0]["activity_id"] == fast_act  # 不是 slow_act
+
+
+def test_leaderboard_total_counts_users_not_efforts(client, db):
+    """5 个用户各骑 3 次 → total=5（不是 15 / 不是 effort 条数）。"""
+    seg_id = _insert_segment(db)
+    users = [User(openid=f"dedupe_total_{i}") for i in range(5)]
+    db.add_all(users)
+    db.commit()
+    for u in users:
+        db.refresh(u)
+    for idx, u in enumerate(users):
+        # 每人 3 条 effort（不同时间）
+        for t in [100 + idx * 20, 200 + idx * 20, 300 + idx * 20]:
+            aid = _insert_activity(db, u.id, f"u{u.id}_t{t}")
+            _insert_effort(db, seg_id, aid, u.id, elapsed_time=t)
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard")
+    data = resp.json()
+
+    assert resp.status_code == 200
+    assert data["total"] == 5
+    assert len(data["items"]) == 5
+
+
+def test_my_rank_counts_users_not_efforts(client, db, test_user, auth_header):
+    """CCF 比我快但骑了 3 次 / 不应把我从第 2 挤到第 4。"""
+    seg_id = _insert_segment(db)
+    # 比我快的对手（3 条 effort 都比我快）
+    faster = User(openid="faster_competitor")
+    db.add(faster)
+    db.commit()
+    db.refresh(faster)
+    for t in [80, 90, 95]:
+        aid = _insert_activity(db, faster.id, f"faster_{t}")
+        _insert_effort(db, seg_id, aid, faster.id, elapsed_time=t)
+    # 我自己（PR = 150）
+    my_act = _insert_activity(db, test_user.id, "我的")
+    _insert_effort(db, seg_id, my_act, test_user.id, elapsed_time=150)
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    data = resp.json()
+
+    assert resp.status_code == 200
+    # 比我快的"人数"= 1（faster 算 1 人不算 3 次） → my_rank = 2
+    assert data["my_rank"] == 2
+
+
+def test_activity_segments_rank_consistent_with_leaderboard(client, db, test_user, auth_header):
+    """activity 详情里的 rank 跟主排行榜里的 rank 完全一致（都按人数算）。"""
+    seg_id = _insert_segment(db)
+    # 比我快的对手骑了 4 次（都比我快）
+    faster = User(openid="rank_consistent_faster")
+    db.add(faster)
+    db.commit()
+    db.refresh(faster)
+    for t in [70, 75, 80, 85]:
+        aid = _insert_activity(db, faster.id, f"opp_{t}")
+        _insert_effort(db, seg_id, aid, faster.id, elapsed_time=t)
+    # 我自己
+    my_act = _insert_activity(db, test_user.id, "我的活动")
+    _insert_effort(db, seg_id, my_act, test_user.id, elapsed_time=200)
+
+    # 主榜 my_rank
+    resp_board = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    my_rank_board = resp_board.json()["my_rank"]
+
+    # activity 详情里看 rank
+    resp_act = client.get(f"/api/activities/{my_act}/segments", headers=auth_header)
+    rank_in_activity = resp_act.json()["items"][0]["rank"]
+
+    assert my_rank_board == 2
+    assert rank_in_activity == 2  # 跟主榜一致 / 不是 5
+
+
+def test_leaderboard_dedupe_keeps_best_effort_metadata(client, db, test_user, auth_header):
+    """同人 3 条 effort（不同 created_at），榜上的 created_at + activity_id 都对应最快那条（不是最新那条）。"""
+    from tests.conftest import _segment_efforts_table
+
+    seg_id = _insert_segment(db)
+    # 注意：3 条 effort 故意让"最快那条"不是时间上最新的，避免实现里悄悄用"latest"通过测试
+    # 第 1 条：最早 / 中等用时 200
+    aid1 = _insert_activity(db, test_user.id, "first_ride")
+    db.execute(_segment_efforts_table.insert().values(
+        segment_id=seg_id, activity_id=aid1, user_id=test_user.id,
+        elapsed_time=200, avg_speed=30.0, avg_power=200.0,
+        start_index=1, end_index=6,
+        created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    ))
+    # 第 2 条：中间 / 最快用时 100
+    aid2 = _insert_activity(db, test_user.id, "second_ride_fastest")
+    db.execute(_segment_efforts_table.insert().values(
+        segment_id=seg_id, activity_id=aid2, user_id=test_user.id,
+        elapsed_time=100, avg_speed=40.0, avg_power=250.0,
+        start_index=1, end_index=6,
+        created_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
+    ))
+    # 第 3 条：最新 / 最慢用时 300
+    aid3 = _insert_activity(db, test_user.id, "third_ride_latest")
+    db.execute(_segment_efforts_table.insert().values(
+        segment_id=seg_id, activity_id=aid3, user_id=test_user.id,
+        elapsed_time=300, avg_speed=20.0, avg_power=150.0,
+        start_index=1, end_index=6,
+        created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+    ))
+    db.commit()
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    item = resp.json()["items"][0]
+
+    # 榜上必须显示"最快那条"的所有元数据，不是"最新那条"
+    assert item["elapsed_time"] == 100
+    assert item["activity_id"] == aid2  # 不是 aid3（最新）
+    assert "2024-06-01" in item["created_at"]  # 不是 2025-01-01
+
+
+def test_honors_dedupes_efforts_per_user(client, db, test_user, auth_header):
+    """荣誉墙 rank 跟主排行榜一致：同人多 effort 只算 1 人 + 排除他人私密 effort。"""
+    seg_id = _insert_segment(db)
+    # 比我快的对手 / 骑了 3 次都比我快（按老逻辑会让我从 rank=2 挤到 rank=4）
+    faster = User(openid="honors_faster_dedupe")
+    db.add(faster)
+    db.commit()
+    db.refresh(faster)
+    for t in [70, 80, 90]:
+        aid = _insert_activity(db, faster.id, f"honor_fast_{t}")
+        _insert_effort(db, seg_id, aid, faster.id, elapsed_time=t)
+    # 我自己 1 条 effort
+    my_act = _insert_activity(db, test_user.id, "honors_my_ride")
+    _insert_effort(db, seg_id, my_act, test_user.id, elapsed_time=120)
+
+    resp = client.get("/api/user/honors", headers=auth_header)
+    data = resp.json()
+
+    # 我应该在 top10s 里 / rank=2（faster 算 1 人，我第 2）
+    # 老逻辑 effort-based 会算 rank=4（faster 3 条 effort 都比我快）
+    all_entries = data["koms"] + data["top10s"]
+    assert len(all_entries) == 1
+    assert all_entries[0]["rank"] == 2
+
+
+def test_my_rank_matches_leaderboard_when_users_tie(client, db, test_user, auth_header):
+    """不同用户同秒并列时，my_rank 跟主榜 enumerate 显示的 rank 数字完全一致（防 Codex I2 回归）。"""
+    seg_id = _insert_segment(db)
+    # 3 个不同用户都骑出 200s（完全并列）
+    users = [User(openid=f"tie_user_{i}") for i in range(3)]
+    db.add_all(users)
+    db.commit()
+    for u in users:
+        db.refresh(u)
+    for u in users:
+        aid = _insert_activity(db, u.id, f"tie_{u.id}")
+        _insert_effort(db, seg_id, aid, u.id, elapsed_time=200)
+    # 我自己也骑 200s（也参与并列）
+    my_act = _insert_activity(db, test_user.id, "tie_mine")
+    _insert_effort(db, seg_id, my_act, test_user.id, elapsed_time=200)
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    data = resp.json()
+
+    # 主榜里我的 rank（找到 item.user_id==me 那行）
+    my_row_in_board = next(item for item in data["items"] if item["user_id"] == test_user.id)
+    # my_rank 字段（独立计算路径）
+    assert data["my_rank"] == my_row_in_board["rank"]
+    # total = 4 个不同的人
+    assert data["total"] == 4
+
+
+def test_segment_detail_top20_dedupes_too(client, db, test_user, auth_header):
+    """TOP20 路径（GET /api/segments/{id}）也按人去重。"""
+    seg_id = _insert_segment(db)
+    # 我骑了 2 次
+    for t in [150, 200]:
+        aid = _insert_activity(db, test_user.id, f"mine_{t}")
+        _insert_effort(db, seg_id, aid, test_user.id, elapsed_time=t)
+    # 别人骑了 2 次（其中一次比我所有都快）
+    other = User(openid="top20_dedupe_other")
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+    for t in [100, 130]:
+        aid = _insert_activity(db, other.id, f"other_{t}")
+        _insert_effort(db, seg_id, aid, other.id, elapsed_time=t)
+
+    resp = client.get(f"/api/segments/{seg_id}", headers=auth_header)
+    data = resp.json()
+
+    assert resp.status_code == 200
+    # 一共 2 人 / TOP20 应该 2 行
+    assert len(data["leaderboard"]) == 2
+    # 第 1 名是 other 的 100 / 第 2 名是 test_user 的 150
+    assert data["leaderboard"][0]["elapsed_time"] == 100
+    assert data["leaderboard"][1]["elapsed_time"] == 150
+
+
 def test_14_user_efforts(client, db, test_user, auth_header):
     """用户赛段成绩：返回所有赛段成绩 + 正确排名"""
     seg_id = _insert_segment(db)

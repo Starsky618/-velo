@@ -7,7 +7,7 @@
 import json
 
 from geoalchemy2 import Geography
-from sqlalchemy import cast, func, or_
+from sqlalchemy import and_, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app.activity.models import Activity, ActivityPrivacy
@@ -115,6 +115,56 @@ def get_segment_list(
     return items, total
 
 
+# ==================== 排行榜查询 helper（task-4.2） ====================
+
+def _user_best_effort_subquery(
+    db: Session,
+    segment_id: int,
+    current_user_id: int | None,
+):
+    """
+    构建子查询：每个用户在该赛段的"最佳一条 effort"。
+
+    用窗口函数 ROW_NUMBER() OVER PARTITION BY user_id ORDER BY elapsed_time ASC：
+    给每个人的多条 effort 按用时升序编号，外层只保留 rn=1（最快那条）。
+
+    类比：班级里每个学生考了好几次，给每个学生的成绩从高到低排号，
+    只挑每人最高那一份当作排行榜上的代表。
+
+    同时附带 task-4.1 隐私过滤（OR 三支）：他人私密 effort 直接消失，
+    自己的私密 effort 保留（在外层根据 privacy_visibility 渲染 is_private_self）。
+    """
+    row_number = func.row_number().over(
+        partition_by=SegmentEffort.user_id,
+        # 同用时时用 id 兜底排序：让结果稳定可复现（防 SQLite/PG 行为差异）
+        order_by=[SegmentEffort.elapsed_time.asc(), SegmentEffort.id.asc()],
+    ).label("rn")
+
+    return (
+        db.query(
+            SegmentEffort.id.label("effort_id"),
+            SegmentEffort.user_id.label("user_id"),
+            SegmentEffort.activity_id.label("activity_id"),
+            SegmentEffort.elapsed_time.label("elapsed_time"),
+            SegmentEffort.avg_speed.label("avg_speed"),
+            SegmentEffort.avg_power.label("avg_power"),
+            SegmentEffort.created_at.label("created_at"),
+            ActivityPrivacy.visibility.label("privacy_visibility"),
+            row_number,
+        )
+        .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
+        .filter(SegmentEffort.segment_id == segment_id)
+        .filter(
+            or_(
+                ActivityPrivacy.visibility == "public",
+                ActivityPrivacy.visibility.is_(None),
+                SegmentEffort.user_id == current_user_id,
+            )
+        )
+        .subquery()
+    )
+
+
 # ==================== 查询赛段详情 ====================
 
 def get_segment_detail(
@@ -129,53 +179,46 @@ def get_segment_detail(
     类似马拉松成绩榜——跑得越快排名越高。
     JOIN users 表拿昵称和头像，让排行榜不只是冷冰冰的数字。
 
-    隐私行为（task-4.1）：
-    - 其他人看排行榜：他人设了私密的成绩**完全不显示**（排名重新连续编号 / 不跳号）
+    task-4.2：每个用户只显示最佳那一条 effort（去重）。
+    task-4.1 隐私行为：
+    - 其他人看排行榜：他人设了私密的成绩**完全不显示**
     - 登录用户看排行榜：能看到自己的私密成绩排在原位 + is_private_self=true 标记
-    - 未登录访问：私密成绩全部消失（current_user_id=None，OR 条件第三支不生效）
+    - 未登录访问：私密成绩全部消失（current_user_id=None，OR 第三支不生效）
     """
     segment = db.query(Segment).filter_by(id=segment_id).first()
     if segment is None:
         raise ValueError("赛段不存在")
 
-    # 查排行榜 TOP20
-    # JOIN User 表：用 user_id 关联，拿到昵称和头像
-    # LEFT JOIN ActivityPrivacy：找每条 effort 对应的隐私行（可能没有 / 视同 public）
-    # WHERE 三支 OR：public / 无 privacy 行老数据 / 本人始终能看到自己的私密
-    # 注意：rank 在过滤之后再编号，绝不能"先编号再过滤"——否则跳号会泄露私密成绩的存在性
+    # 排行榜 TOP20：用 helper 子查询拿"每人最佳"，外层 JOIN User 拿昵称车型
+    best = _user_best_effort_subquery(db, segment_id, current_user_id)
     leaderboard_rows = (
         db.query(
-            SegmentEffort.user_id,
+            best.c.user_id,
+            best.c.activity_id,
             User.nickname,
             User.avatar_url,
-            SegmentEffort.elapsed_time,
-            SegmentEffort.avg_speed,
-            SegmentEffort.avg_power,
+            best.c.elapsed_time,
+            best.c.avg_speed,
+            best.c.avg_power,
             User.bike_type,
-            SegmentEffort.created_at,
-            ActivityPrivacy.visibility.label("privacy_visibility"),
+            best.c.created_at,
+            best.c.privacy_visibility,
         )
-        .join(User, User.id == SegmentEffort.user_id)
-        .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
-        .filter(SegmentEffort.segment_id == segment_id)
-        .filter(
-            or_(
-                ActivityPrivacy.visibility == "public",
-                ActivityPrivacy.visibility.is_(None),
-                SegmentEffort.user_id == current_user_id,
-            )
-        )
-        .order_by(SegmentEffort.elapsed_time.asc())
+        .select_from(best)
+        .join(User, User.id == best.c.user_id)
+        .filter(best.c.rn == 1)
+        .order_by(best.c.elapsed_time.asc(), best.c.effort_id.asc())
         .limit(20)
         .all()
     )
 
-    # 组装排行榜（加上 rank 序号，从 1 开始）
+    # 组装排行榜（rank 在过滤后再编号 / 一人一行）
     leaderboard = []
     for rank, row in enumerate(leaderboard_rows, start=1):
         leaderboard.append({
             "rank": rank,
             "user_id": row.user_id,
+            "activity_id": row.activity_id,
             "nickname": row.nickname,
             "avatar_url": row.avatar_url,
             "elapsed_time": row.elapsed_time,
@@ -183,7 +226,6 @@ def get_segment_detail(
             "avg_power": row.avg_power,
             "bike_type": row.bike_type,
             "created_at": row.created_at,
-            # 仅在"私密 + 本人"时为 True（其他人看到的全是 public，他们的 is_private_self 永远 False）
             "is_private_self": (
                 row.privacy_visibility == "private"
                 and row.user_id == current_user_id
@@ -244,7 +286,7 @@ def get_leaderboard(
     rank 的计算考虑了分页偏移：第 2 页第 1 条的 rank 不是 1 而是 page_size+1。
 
     返回 4 元组：(items, total, my_rank, my_elapsed_time)
-    - my_rank：登录用户在该赛段的排名（基于 PR / 比我快的 effort 数 + 1 / 跟主榜升序一致）
+    - my_rank：登录用户在该赛段的排名（基于 PR / 比我快的人数 + 1 / 跟主榜升序一致 / task-4.2 去重）
     - my_elapsed_time：登录用户的 PR 用时（秒）
     - 未登录 / 没骑过 / bike_type filter 排除了我的车型 → 两字段为 None
     """
@@ -252,38 +294,34 @@ def get_leaderboard(
     if segment is None:
         raise ValueError("赛段不存在")
 
-    # 基础查询：JOIN users 拿昵称头像车型
+    # task-4.2：基于 helper 子查询，每个用户在主榜上只出现 1 次（最快那条）
+    best = _user_best_effort_subquery(db, segment_id, current_user_id)
     query = (
         db.query(
-            SegmentEffort.user_id,
+            best.c.user_id,
+            best.c.activity_id,
             User.nickname,
             User.avatar_url,
-            SegmentEffort.elapsed_time,
-            SegmentEffort.avg_speed,
-            SegmentEffort.avg_power,
+            best.c.elapsed_time,
+            best.c.avg_speed,
+            best.c.avg_power,
             User.bike_type,
-            SegmentEffort.created_at,
-            ActivityPrivacy.visibility.label("privacy_visibility"),
+            best.c.created_at,
+            best.c.privacy_visibility,
         )
-        .join(User, User.id == SegmentEffort.user_id)
-        .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
-        .filter(SegmentEffort.segment_id == segment_id)
-        .filter(
-            or_(
-                ActivityPrivacy.visibility == "public",
-                ActivityPrivacy.visibility.is_(None),
-                SegmentEffort.user_id == current_user_id,
-            )
-        )
+        .select_from(best)
+        .join(User, User.id == best.c.user_id)
+        .filter(best.c.rn == 1)
     )
 
-    # 可选：按车型过滤
+    # 可选：按车型过滤（外层 JOIN User 后加 / 不影响子查询窗口分组）
     if bike_type is not None:
         query = query.filter(User.bike_type == bike_type)
 
     # 按用时升序（越快越靠前）
-    query = query.order_by(SegmentEffort.elapsed_time.asc())
+    query = query.order_by(best.c.elapsed_time.asc(), best.c.effort_id.asc())
 
+    # task-4.2：total 也是"人数"（基于去重后的查询 count）
     total = query.count()
 
     rows = (
@@ -293,13 +331,14 @@ def get_leaderboard(
         .all()
     )
 
-    # rank 从分页偏移开始计算
+    # rank 从分页偏移开始计算（每人一行 / 不重复 / 不跳号）
     start_rank = (page - 1) * page_size + 1
     items = []
     for i, row in enumerate(rows):
         items.append({
             "rank": start_rank + i,
             "user_id": row.user_id,
+            "activity_id": row.activity_id,
             "nickname": row.nickname,
             "avatar_url": row.avatar_url,
             "elapsed_time": row.elapsed_time,
@@ -318,28 +357,39 @@ def get_leaderboard(
     my_elapsed_time = None
     if current_user_id is not None:
         # 我的 PR：MIN(elapsed_time WHERE user_id=me, segment_id=X)
+        # 同时拿 PR 那条 effort 的 id —— 用于 my_rank 计算时跟主榜的 (elapsed_time, effort_id) tiebreaker 对齐。
         # bike_type filter 跟主榜一致：如果筛了车型 / 我的 PR 也只看该车型 effort
-        # （现实场景：用户骑公路车 + 看公路车榜 / 我的 PR 应基于公路车 effort）
         # 不需要 privacy 过滤：本来就只查自己的 effort，自己看自己的所有成绩（含私密）。
         my_pr_query = (
-            db.query(SegmentEffort.elapsed_time)
+            db.query(SegmentEffort.elapsed_time, SegmentEffort.id)
             .filter(SegmentEffort.segment_id == segment_id)
             .filter(SegmentEffort.user_id == current_user_id)
         )
         if bike_type is not None:
             # JOIN User 看 bike_type；如果用户车型不匹配 / 查不到 effort / my_pr=None
             my_pr_query = my_pr_query.join(User, User.id == SegmentEffort.user_id).filter(User.bike_type == bike_type)
-        my_pr_row = my_pr_query.order_by(SegmentEffort.elapsed_time.asc()).first()
+        my_pr_row = my_pr_query.order_by(SegmentEffort.elapsed_time.asc(), SegmentEffort.id.asc()).first()
 
         if my_pr_row is not None:
             my_elapsed_time = my_pr_row[0]
-            # rank = (比我快的 effort 总数) + 1
-            # 注意：跟主榜逻辑一致 / 不去重 / 同一用户多个 effort 都算（跟现有 leaderboard 行展示一致）
+            my_pr_effort_id = my_pr_row[1]
+            # task-4.2：my_rank = "比我快的人数" + 1（DISTINCT user_id）
+            # Codex 异源审 I2：tiebreaker 用 (elapsed_time, effort_id) 跟主榜 enumerate 一致，
+            # 否则"不同用户同秒"时 my_rank 跟主榜显示的 rank 数字分叉。
+            # "比我快" = elapsed_time < my_pr OR (elapsed_time == my_pr AND effort_id < my_pr_id)
             rank_query = (
-                db.query(func.count(SegmentEffort.id))
+                db.query(func.count(func.distinct(SegmentEffort.user_id)))
                 .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
                 .filter(SegmentEffort.segment_id == segment_id)
-                .filter(SegmentEffort.elapsed_time < my_elapsed_time)
+                .filter(
+                    or_(
+                        SegmentEffort.elapsed_time < my_elapsed_time,
+                        and_(
+                            SegmentEffort.elapsed_time == my_elapsed_time,
+                            SegmentEffort.id < my_pr_effort_id,
+                        ),
+                    )
+                )
                 .filter(
                     or_(
                         ActivityPrivacy.visibility == "public",
@@ -386,11 +436,11 @@ def get_user_efforts(db: Session, user_id: int) -> list[dict]:
     items = []
     for effort in efforts:
         # 计算该成绩在对应赛段中的排名
-        # "比我快的人数 + 1 = 我的名次"
-        # task-4.1 隐私过滤：他人的私密 effort 不算进 faster_count（保持和主排行榜 rank 一致），
-        # 自己的 effort（含自己的私密）正常计入。
+        # task-4.2：数"比我快的人数"（DISTINCT user_id），不是"effort 条数"——
+        # 跟主排行榜（每人一行）保持一致；CCF 骑 5 次比我快只算 1 人不算 5 人。
+        # task-4.1 隐私过滤：他人的私密 effort 不算进 faster_count，自己的正常计入。
         faster_count = (
-            db.query(func.count(SegmentEffort.id))
+            db.query(func.count(func.distinct(SegmentEffort.user_id)))
             .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
             .filter(
                 SegmentEffort.segment_id == effort.segment_id,
@@ -456,11 +506,12 @@ def get_activity_segments(db: Session, activity_id: int, user_id: int) -> list[d
     # 100 用户量级无性能问题；用户量上千后考虑用窗口函数一次性算。
     items = []
     for effort in efforts:
-        # rank：在这条赛段所有成绩中排第几（用时比我短的人数 + 1）
-        # task-4.1 隐私过滤：他人的私密 effort 不算进 faster_count（与主排行榜 rank 一致），
-        # 自己的 effort 正常计入。
+        # rank：在这条赛段所有成绩中排第几
+        # task-4.2：数"比我快的人数"（DISTINCT user_id），不是"effort 条数"——
+        # 跟主排行榜（每人一行）保持一致；否则 CCF 骑 5 次都比我快会把我从第 2 挤到第 6。
+        # task-4.1 隐私过滤：他人的私密 effort 不算进 faster_count，自己的正常计入。
         faster_count = (
-            db.query(func.count(SegmentEffort.id))
+            db.query(func.count(func.distinct(SegmentEffort.user_id)))
             .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
             .filter(
                 SegmentEffort.segment_id == effort.segment_id,
