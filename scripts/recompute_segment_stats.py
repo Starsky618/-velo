@@ -132,11 +132,13 @@ def recompute_one_segment(db, seg: Segment, skip_dem: bool = False) -> dict | No
     )
 
     # max_gradient：构造轻量对象给 calculate_max_gradient（同 from-activity 路径做法）
+    # window_m=500：DEM 数据（30m 像素 ±20m 噪声）用 100m 窗口会被单像素跳变放大成假陡坡。
+    # 500m 跨 ~17 个 30m 像素，噪声稀释。Strava 业界公开做法（rolling 500m）。
     points = [
         SimpleNamespace(latitude=coords[i][0], longitude=coords[i][1], elevation=dem_elevations[i])
         for i in range(len(coords))
     ]
-    new_max_grad = calculate_max_gradient(points)
+    new_max_grad = calculate_max_gradient(points, window_m=500.0)
 
     new_difficulty = calculate_difficulty(seg.distance, elevation_gain, new_max_grad)
 

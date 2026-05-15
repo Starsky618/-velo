@@ -115,6 +115,7 @@ def calculate_max_gradient(
     trackpoints: list,
     smooth_window: int = 15,
     cap_pct: float = 25.0,
+    window_m: float = 100.0,
 ) -> float:
     """
     从一段轨迹找出"最陡的 100 米"，返回该段坡度百分比。
@@ -141,6 +142,9 @@ def calculate_max_gradient(
         trackpoints: list[Trackpoint] 按 seq 升序，每个有 latitude / longitude / elevation 属性
         smooth_window: 海拔平滑窗口大小（点数），默认 15
         cap_pct: 坡度上限百分比，超过此值 cap 掉，默认 25.0
+        window_m: 算坡度的滑窗距离（米）。默认 100m 适合 GPS 原始 trackpoints
+                  （5-10m 点间距，反映"骑过时的瞬时坡度感"）。DEM 数据（30m 像素）
+                  应用 500m 避免单像素 ±20m 噪声放大成假陡坡——Strava 业界公开做法
     返回：
         float 最大坡度百分比（0 到 cap_pct）；下面情况返 0.0：
         - 列表为空或只 1 个点（无法形成窗口）
@@ -153,7 +157,7 @@ def calculate_max_gradient(
     if len(trackpoints) < 2:
         return 0.0
 
-    WINDOW_M = 100.0  # 100 米滑窗
+    WINDOW_M = window_m  # 滑窗距离（米），调用方决定（GPS 用 100m / DEM 用 500m）
 
     # 累计距离：从第 0 个点开始算到每个点
     cumulative_dist = [0.0]
