@@ -253,3 +253,25 @@ class ActivitySegmentItem(BaseModel):
 class ActivitySegmentsResponse(BaseModel):
     """某次骑行途经的所有赛段成绩响应"""
     items: list[ActivitySegmentItem]
+
+
+# ========== 我在某赛段的所有成绩（task-4.3） ==========
+
+class MySegmentEffortItem(BaseModel):
+    """
+    我在某个赛段的单条成绩。
+
+    跟"全网排行榜每人一行"不同：这是我自己骑过的每一次记录，
+    用来在前端展示"我在妙峰山骑了 5 次的全部历史成绩"列表。
+    """
+    activity_id: int                         # task-4.3：跳转到那次骑行详情
+    elapsed_time: int                        # 秒
+    avg_speed: Optional[float] = None        # km/h
+    avg_power: Optional[float] = None        # W
+    created_at: datetime
+    is_pr: bool                              # 我在该赛段的最快记录（图 1 黄点）
+
+
+class MySegmentEffortsResponse(BaseModel):
+    """我在某赛段的全部成绩响应（按时间倒序）"""
+    items: list[MySegmentEffortItem]

@@ -24,6 +24,7 @@ from app.segment.service_create import (  # noqa: F401 — 转导出
 from app.segment.service_query import (  # noqa: F401 — 转导出
     get_activity_segments,
     get_leaderboard,
+    get_my_efforts_on_segment,
     get_segment_detail,
     get_segment_list,
     get_user_efforts,
@@ -140,6 +141,10 @@ def get_my_effort_with_compare(
       反例：用户先上传今天的骑行，再补传昨天的 GPX —— 用 created_at 会把昨天误标 current。
     - PR 与时序无关：用 MIN(elapsed_time) 子查询，不需 join。PR 是历史最佳，谁先创下不影响。
     - is_pr 仅判 current.elapsed_time == pr_time；并列时 is_pr=True（用时持平视为 PR）。
+      **有意保留的语义差异**（task-4.3 Codex 异源审记录）：本接口是"骑完即时激励反馈"
+      （持平 PR 也激励一下），而 get_my_efforts_on_segment / get_activity_segments
+      的 is_pr 是"历史成绩单黄点标记"——用 (elapsed_time, id) tuple tiebreaker 只标 1 条。
+      两套语义跨屏含义不同：本字段是"这次刷新了我历史最佳"，黄点是"哪一次创下了那个最佳"。
     - 用现有索引 idx_efforts_segment_user_time（app/segment/models.py）。
 
     返回 6 字段（与 spec §4.1 endpoint 响应字段一一对应）：

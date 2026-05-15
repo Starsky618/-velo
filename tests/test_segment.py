@@ -978,3 +978,113 @@ def test_20_segment_detail_not_found(client):
     """赛段详情不存在 → 404"""
     resp = client.get("/api/segments/99999")
     assert resp.status_code == 404
+
+
+# ==================== task-4.3：我在某赛段的所有成绩 ====================
+
+def test_my_efforts_returns_only_self(client, db, test_user, auth_header):
+    """别人 3 条 + 我 2 条 → 接口只返我的 2 条。"""
+    seg_id = _insert_segment(db)
+    other = User(openid="my_efforts_other")
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+    # 别人 3 条
+    for t in [80, 90, 100]:
+        aid = _insert_activity(db, other.id, f"other_{t}")
+        _insert_effort(db, seg_id, aid, other.id, elapsed_time=t)
+    # 我 2 条
+    for t in [150, 200]:
+        aid = _insert_activity(db, test_user.id, f"mine_{t}")
+        _insert_effort(db, seg_id, aid, test_user.id, elapsed_time=t)
+
+    resp = client.get(f"/api/segments/{seg_id}/my-efforts", headers=auth_header)
+    data = resp.json()
+
+    assert resp.status_code == 200
+    assert len(data["items"]) == 2
+    assert all(it["elapsed_time"] in [150, 200] for it in data["items"])
+
+
+def test_my_efforts_ordered_by_created_at_desc(client, db, test_user, auth_header):
+    """最新骑的在前（跟图 1 一致）。"""
+    from tests.conftest import _segment_efforts_table
+
+    seg_id = _insert_segment(db)
+    # 3 条 effort，故意让 created_at 顺序跟 elapsed_time 顺序不同
+    cases = [
+        ("ride_2024_jan", 100, datetime(2024, 1, 1, tzinfo=timezone.utc)),
+        ("ride_2025_jun", 200, datetime(2025, 6, 1, tzinfo=timezone.utc)),
+        ("ride_2024_dec", 150, datetime(2024, 12, 1, tzinfo=timezone.utc)),
+    ]
+    for title, t, created in cases:
+        aid = _insert_activity(db, test_user.id, title)
+        db.execute(_segment_efforts_table.insert().values(
+            segment_id=seg_id, activity_id=aid, user_id=test_user.id,
+            elapsed_time=t, avg_speed=30.0, avg_power=200.0,
+            start_index=1, end_index=6,
+            created_at=created,
+        ))
+    db.commit()
+
+    resp = client.get(f"/api/segments/{seg_id}/my-efforts", headers=auth_header)
+    data = resp.json()
+
+    times = [it["elapsed_time"] for it in data["items"]]
+    # 期望顺序：2025-06(200) / 2024-12(150) / 2024-01(100)
+    assert times == [200, 150, 100]
+
+
+def test_my_efforts_is_pr_marks_fastest(client, db, test_user, auth_header):
+    """3 条 [150/100/200]，is_pr=true 只在 100 那条上。"""
+    seg_id = _insert_segment(db)
+    for t in [150, 100, 200]:
+        aid = _insert_activity(db, test_user.id, f"pr_{t}")
+        _insert_effort(db, seg_id, aid, test_user.id, elapsed_time=t)
+
+    resp = client.get(f"/api/segments/{seg_id}/my-efforts", headers=auth_header)
+    data = resp.json()
+
+    pr_items = [it for it in data["items"] if it["is_pr"]]
+    assert len(pr_items) == 1
+    assert pr_items[0]["elapsed_time"] == 100
+
+
+def test_my_efforts_empty_when_no_effort(client, db, test_user, auth_header):
+    """我没骑过这条赛段 → 返 200 + items=[]。"""
+    seg_id = _insert_segment(db)
+
+    resp = client.get(f"/api/segments/{seg_id}/my-efforts", headers=auth_header)
+
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+
+
+def test_my_efforts_segment_not_found(client, auth_header):
+    """不存在的赛段 → 404（不是 200 []）。"""
+    resp = client.get("/api/segments/99999/my-efforts", headers=auth_header)
+    assert resp.status_code == 404
+
+
+def test_my_efforts_requires_auth(client, db):
+    """无 token → 401（这是"我的数据"，不能匿名）。"""
+    seg_id = _insert_segment(db)
+    resp = client.get(f"/api/segments/{seg_id}/my-efforts")
+    assert resp.status_code == 401
+
+
+def test_my_efforts_is_pr_tiebreaker(client, db, test_user, auth_header):
+    """2 条都 100s（不同 id），is_pr 只标 id 最小那条（跟主榜 task-4.2 tiebreaker 一致）。"""
+    seg_id = _insert_segment(db)
+    aid1 = _insert_activity(db, test_user.id, "tie_first")
+    _insert_effort(db, seg_id, aid1, test_user.id, elapsed_time=100)
+    aid2 = _insert_activity(db, test_user.id, "tie_second")
+    _insert_effort(db, seg_id, aid2, test_user.id, elapsed_time=100)
+
+    resp = client.get(f"/api/segments/{seg_id}/my-efforts", headers=auth_header)
+    data = resp.json()
+
+    pr_items = [it for it in data["items"] if it["is_pr"]]
+    assert len(pr_items) == 1
+    # 第一条 effort (aid1 对应的) 的 segment_efforts.id 更小，应被标 PR
+    assert pr_items[0]["activity_id"] == aid1

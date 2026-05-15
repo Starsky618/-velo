@@ -285,6 +285,31 @@ def get_user_efforts(
     return schemas.UserEffortsResponse(items=items)
 
 
+# ==================== 我在某赛段的所有成绩（task-4.3） ====================
+
+
+@router.get(
+    "/{segment_id}/my-efforts",
+    response_model=schemas.MySegmentEffortsResponse,
+)
+def get_my_segment_efforts(
+    segment_id: int,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    返回当前登录用户在该赛段的全部成绩（按时间倒序）。
+
+    task-4.5 那个"我在妙峰山骑过 5 次"全屏成绩列表的数据源。
+    必须登录（这是"我的数据"，不像排行榜可匿名）。
+    """
+    try:
+        items = service.get_my_efforts_on_segment(db, segment_id, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return schemas.MySegmentEffortsResponse(items=items)
+
+
 # ==================== 活动途经赛段（Task 4.6） ====================
 # 路径是 /api/activities/{id}/segments，不在 /api/segments 下，
 # 注册在 segment 模块是因为依赖方向正确（Segment 依赖 Activity）。

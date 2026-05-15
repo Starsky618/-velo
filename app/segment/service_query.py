@@ -488,8 +488,10 @@ def get_activity_segments(db: Session, activity_id: int, user_id: int) -> list[d
         raise ValueError("活动不存在")
 
     # 查出这次骑行匹配到的所有赛段成绩
+    # task-4.3 集成审 I1：拿 effort.id 用于 is_pr tiebreaker，跟 get_my_efforts_on_segment 一致
     efforts = (
         db.query(
+            SegmentEffort.id.label("effort_id"),
             SegmentEffort.segment_id,
             Segment.name.label("segment_name"),
             SegmentEffort.elapsed_time,
@@ -529,16 +531,21 @@ def get_activity_segments(db: Session, activity_id: int, user_id: int) -> list[d
         rank = faster_count + 1
 
         # is_pr：这次成绩是不是我在这条赛段的个人最佳？
-        # 查我在这条赛段的历史最短用时，如果等于这次用时就是 PR
-        best_time = (
-            db.query(func.min(SegmentEffort.elapsed_time))
+        # task-4.3 集成审 I1：tiebreaker 用 (elapsed_time, id) 跟 get_my_efforts_on_segment 一致——
+        # 同秒并列时只有 id 最小那条算 PR，避免成绩列表页 vs 骑行详情页两个屏幕展示的黄点数量不一致。
+        my_best_row = (
+            db.query(SegmentEffort.elapsed_time, SegmentEffort.id)
             .filter(
                 SegmentEffort.segment_id == effort.segment_id,
                 SegmentEffort.user_id == user_id,
             )
-            .scalar()
+            .order_by(SegmentEffort.elapsed_time.asc(), SegmentEffort.id.asc())
+            .first()
         )
-        is_pr = (best_time == effort.elapsed_time)
+        is_pr = (
+            my_best_row is not None
+            and (my_best_row[0], my_best_row[1]) == (effort.elapsed_time, effort.effort_id)
+        )
 
         items.append({
             "segment_id": effort.segment_id,
@@ -551,3 +558,49 @@ def get_activity_segments(db: Session, activity_id: int, user_id: int) -> list[d
         })
 
     return items
+
+
+# ==================== 我在某赛段的所有成绩（task-4.3） ====================
+
+def get_my_efforts_on_segment(
+    db: Session, segment_id: int, user_id: int
+) -> list[dict]:
+    """
+    返回当前登录用户在某个赛段的全部成绩——"我在妙峰山骑了 5 次都长啥样"。
+
+    跟主排行榜（每人一行）不同：这是我自己的成绩单，5 次 effort 全部列出来。
+    按 created_at 倒序：最新骑的在最前（跟图 1 风格一致），同时间用 id 兜底排序。
+
+    is_pr 标记：5 次里最快那条标 true（图 1 黄色小圆点）。
+    并列 tiebreaker 跟主榜 task-4.2 一致：(elapsed_time, effort.id) 最小那条算 PR。
+    """
+    # 校验赛段存在（404 而不是 200 []）
+    if db.query(Segment.id).filter_by(id=segment_id).first() is None:
+        raise ValueError("赛段不存在")
+
+    efforts = (
+        db.query(SegmentEffort)
+        .filter(
+            SegmentEffort.segment_id == segment_id,
+            SegmentEffort.user_id == user_id,
+        )
+        .order_by(SegmentEffort.created_at.desc(), SegmentEffort.id.desc())
+        .all()
+    )
+    if not efforts:
+        return []
+
+    # PR 用 (elapsed_time, id) tuple 兜底——同秒并列时取 id 最小的（最早 / 跟主榜一致）
+    pr_key = min((e.elapsed_time, e.id) for e in efforts)
+
+    return [
+        {
+            "activity_id": e.activity_id,
+            "elapsed_time": e.elapsed_time,
+            "avg_speed": e.avg_speed,
+            "avg_power": e.avg_power,
+            "created_at": e.created_at,
+            "is_pr": (e.elapsed_time, e.id) == pr_key,
+        }
+        for e in efforts
+    ]
