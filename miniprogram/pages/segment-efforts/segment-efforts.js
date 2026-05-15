@@ -73,6 +73,9 @@ Page({
   groupByYear(items) {
     const groups = []
     let current = null
+    // Tim 2026-05-15 拍永久规则：前端永远不显示 "-" 占位符——
+    // 字段缺失就让该字段在 wxml 里 wx:if 整块消失，让用户察觉不到"少了什么"。
+    // 实现：speedText / powerText 为空字符串 = wxml wx:if 不渲染该 span。
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
       const date = new Date(item.created_at)
@@ -85,10 +88,10 @@ Page({
         }
         current.items.push({
           activity_id: item.activity_id,
-          dateLabel: '-',
+          dateLabel: '',
           timeText: formatTime(item.elapsed_time),
-          speedText: '-',
-          powerText: '-',
+          speedText: '',
+          powerText: '',
           is_pr: item.is_pr === true,
         })
         continue
@@ -104,12 +107,13 @@ Page({
         activity_id: item.activity_id,
         dateLabel: month + '月' + day + '日',
         timeText: formatTime(item.elapsed_time),
+        // 空字符串 → wxml wx:if 隐藏整个 span / 不显示 "-"
         speedText: (item.avg_speed !== null && item.avg_speed !== undefined)
           ? item.avg_speed.toFixed(1) + ' km/h'
-          : '-',
+          : '',
         powerText: (item.avg_power !== null && item.avg_power !== undefined)
           ? Math.round(item.avg_power) + ' W'
-          : '-',
+          : '',
         is_pr: item.is_pr === true,
       })
     }

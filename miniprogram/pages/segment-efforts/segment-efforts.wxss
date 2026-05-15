@@ -1,8 +1,8 @@
-/* 我的成绩列表（task-4.5 / 图 1 风格：黑底白字大字号） */
+/* 我的成绩列表（task-4.5 / 跟其他页面统一白底浅灰风格 / 2026-05-15 Tim hotfix）*/
 
 page {
-  background: #000000;
-  color: #FFFFFF;
+  background: #F2F2F7;
+  color: #1D1D1F;
   min-height: 100vh;
 }
 
@@ -37,25 +37,25 @@ page {
 
 /* ========== 年份标题 ========== */
 .year-title {
-  padding: 48rpx 32rpx 24rpx;
-  font-size: 32rpx;
+  padding: 40rpx 32rpx 20rpx;
+  font-size: 30rpx;
   font-weight: 700;
-  color: #FFFFFF;
+  color: #1D1D1F;
   letter-spacing: 1rpx;
-  border-top: 2rpx solid #2C2C2E;     /* 标题上分隔线（spec 图 1：上下白线分隔） */
-  border-bottom: 2rpx solid #2C2C2E;  /* 标题下分隔线 */
+  background: #F2F2F7;  /* 跟 page 背景一致 / 不抢戏 */
 }
 
 /* ========== 单条成绩行 ========== */
 .row {
   display: flex;
   align-items: center;
-  padding: 36rpx 32rpx;
-  border-bottom: 1rpx solid #1C1C1E;  /* 行间细分隔线 */
+  padding: 32rpx;
+  background: #FFFFFF;        /* 行用白底 / 跟其他页面卡片风格一致 */
+  border-bottom: 1rpx solid #F2F2F7;
 }
 
 .row:active {
-  background: #1C1C1E;  /* 点击反馈 */
+  background: #FAFAFA;  /* 点击反馈 / 浅灰 */
 }
 
 /* 日期列：日期 + PR 黄点 */
@@ -67,8 +67,8 @@ page {
 }
 
 .date-text {
-  font-size: 36rpx;
-  color: #FFFFFF;
+  font-size: 32rpx;
+  color: #1D1D1F;
   font-weight: 400;
 }
 
@@ -76,7 +76,7 @@ page {
   width: 14rpx;
   height: 14rpx;
   border-radius: 50%;
-  background: #FFD60A;  /* 亮黄 / 图 1 同款 */
+  background: #FF6B00;       /* 改用品牌橙（白底上更醒目 / 跟黄色对比度不够）*/
   margin-left: 12rpx;
 }
 
@@ -85,28 +85,30 @@ page {
   flex: 1;
   display: flex;
   justify-content: flex-end;
+  align-items: baseline;
   gap: 28rpx;
   font-variant-numeric: tabular-nums;
 }
 
 .stat {
-  font-size: 32rpx;
-  color: #FFFFFF;
+  font-size: 30rpx;
+  color: #1D1D1F;
 }
 
 .time-text {
   font-weight: 600;
+  color: #1D1D1F;
 }
 
 .speed-text,
 .power-text {
-  color: #E5E5EA;
+  color: #86868B;     /* 速度/功率用次级文字色 / 拉开层次 */
 }
 
 /* 箭头 */
 .arrow {
   margin-left: 16rpx;
-  font-size: 40rpx;
-  color: #48484A;
+  font-size: 36rpx;
+  color: #C7C7CC;
   flex-shrink: 0;
 }

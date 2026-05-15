@@ -6,6 +6,27 @@
 
 ---
 
+## 🟡 P2：前端历史代码"-"占位符全工程清理（2026-05-15 Tim 拍永久规则）
+
+Tim 拍永久 UX 规则："前端永远不显示 '-' 或'暂无 XX' 占位符 / 字段缺失必须整块隐藏"。
+详见 memory `feedback_no_dash_placeholder.md`。
+
+**已修**：`miniprogram/pages/segment-efforts/`（task-4.5 现场 / 已 commit 本次 hotfix）
+
+**遗留**（待集中清理）：
+- `miniprogram/pages/detail/detail.wxml:109/113/121/142/180/218` — 5+ 处 `xxx != null ? xxx : '-'` 模式
+- `miniprogram/pages/honor/honor.js:63,97` — speedText / formatDuration fallback '-'
+- `miniprogram/pages/segment/segment.js:110-112,274-282` — elevationGainText / avgGradientText / maxGradientText 初始值和兜底
+
+**修法 pattern**：
+1. wxml `<text>{{x || '-'}}</text>` → `<text wx:if="{{x}}">{{x}}</text>`
+2. js fallback `'-'` → `''`（空字符串触发 wxml wx:if 不渲染）
+3. 复合卡片整块：用 `wx:if="{{activity.fieldName}}"` 包整块 view（已有 pattern / detail.wxml:121 功率卡片）
+
+**为什么不立刻清**：detail.wxml 等场景多数字段（如 avg_speed / duration）几乎不为 null / "-"实际不触发 / 用户看不到 / 不算 hotfix 紧急。但写在这等下次有人改 detail 页时一并清。
+
+---
+
 ## 🟢 P3：用户主页 `current_month_summary.avg_power_w` 字段后端返但前端不渲染（task-4.6 Codex 异源审 I3）
 
 后端 `app/user/schemas.py:189` `_MonthSummary.avg_power_w` 字段存在 + `app/user/router.py:248-254` `/{user_id}/profile` 真返这数字。但 grep 全 `miniprogram/` 确认前端 `user.wxml`（他人主页）完全**不渲染** avg_power_w / 只在 user.js 注释里提了一句。
