@@ -61,6 +61,53 @@ def _can_view_activity(activity: Activity, viewer_user_id: int | None) -> bool:
     return activity.privacy.visibility == "public"
 
 
+def _apply_activity_privacy_mask(activity: Activity, viewer_user_id: int | None) -> None:
+    """
+    task-4.6：他人看 owner 隐藏的功率/心率字段时，把字段挖空成 None。
+
+    前端 wxml 用 `wx:if="{{activity.avg_power}}"` 判断显示——字段为 None 时整个功率卡片
+    会自动消失（跟没装功率计的骑行一模一样的 UX / 跟踏频字段处理同 pattern）。
+
+    本人查看自己的活动时不挖空（始终完整）。privacy=None（老 activity 无配置）也不挖。
+
+    必须在 db.expunge 之后调用：expunge 后 session 不再追踪此对象，
+    改属性不会被意外 flush 进 DB。expunge 之前修改 = 污染原始数据。
+    """
+    if viewer_user_id == activity.user_id:
+        return
+    privacy = activity.privacy
+    if privacy is None:
+        return
+
+    if privacy.hide_power:
+        activity.avg_power = None
+        activity.max_power = None
+        activity.normalized_power = None
+        # splits 是 JSONB list of dicts / 每条含 avg_power → 挖空 each
+        if activity.splits:
+            for split in activity.splits:
+                if isinstance(split, dict):
+                    split.pop("avg_power", None)
+        # task-4.6 Codex 异源审 C1：power_zones 必须挖！
+        # 注释曾说"不含直接功率值"是错的——实证 power_zones.py:43-104 返
+        # [{zone, name, min_w, max_w, seconds, percent}]，min_w/max_w 直接暴露功率
+        # 区间（Zone 5 min_w=280 → 别人直接知道 FTP ≈ 280W），违反"跟没装功率计一样"目标。
+        activity.power_zones = None
+
+    if privacy.hide_heartrate:
+        activity.avg_hr = None
+        activity.max_hr = None
+        if activity.splits:
+            for split in activity.splits:
+                if isinstance(split, dict):
+                    split.pop("avg_hr", None)
+
+    # task-4.6 Codex 异源审 I1：他人查看时不返 privacy 元数据
+    # 否则 hide_power=true 被对方看见 → 暴露"主动隐藏"信号（跟"没功率计"伪装目标矛盾）
+    # owner 看自己时上面已 return / 这里只对他人生效
+    activity.privacy = None
+
+
 def validate_ride_file(filename: str, file_bytes: bytes) -> None:
     """
     校验上传的骑行文件是否合法（支持 .gpx 和 .fit）。
@@ -233,10 +280,15 @@ def get_activity_list(db: Session, user_id: int, page: int, page_size: int) -> t
     # 距离：米 → 公里，保留 2 位小数
     # 先用 expunge 让对象脱离 Session，再改属性，
     # 避免修改后的公里值被意外 commit 回数据库覆盖原始米值
+    # task-4.6：spec 要求 list 也按隐私挖空（防御 / owner 看自己永远完整）
     for item in items:
+        _ = item.privacy  # force load 防 expunge 后 mask 函数访问 .privacy 炸 DetachedInstanceError
         db.expunge(item)
         if item.distance is not None:
             item.distance = round(item.distance / 1000.0, 2)
+        # 当前路由只返当前用户自己的活动（user_id 既是 owner 又是 viewer）→ mask 内部直接 return
+        # 留这一行是 spec 要求的防御编码：未来若开放 explore 看他人活动列表也不会漏挖
+        _apply_activity_privacy_mask(item, user_id)
 
     return items, total
 
@@ -252,10 +304,17 @@ def get_activity_detail(db: Session, activity_id: int, user_id: int) -> Activity
     if not _can_view_activity(activity, user_id):
         raise ValueError("活动不存在")
 
+    # task-4.6：强制 load privacy relationship（_ = activity.privacy 触发 lazy load）
+    # 否则 expunge 后 Pydantic 序列化时访问 .privacy 会 DetachedInstanceError
+    _ = activity.privacy
+
     # 脱离 Session 后再做单位转换，防止公里值被意外写回数据库
     db.expunge(activity)
     if activity.distance is not None:
         activity.distance = round(activity.distance / 1000.0, 2)
+
+    # task-4.6：他人查看时按 hide_power / hide_heartrate 挖空功率/心率字段
+    _apply_activity_privacy_mask(activity, user_id)
 
     return activity
 
@@ -281,6 +340,47 @@ def update_activity(db: Session, activity_id: int, user_id: int, title: str) -> 
         activity.distance = round(activity.distance / 1000.0, 2)
 
     return activity
+
+
+def update_activity_privacy(
+    db: Session,
+    activity_id: int,
+    user_id: int,
+    visibility: str | None = None,
+    hide_power: bool | None = None,
+    hide_heartrate: bool | None = None,
+) -> "ActivityPrivacy":
+    """
+    更新一条骑行的隐私设置（task-4.6）——3 个字段可选改，None 表示不改。
+
+    仅 owner 可改自己的活动隐私（违规 → PermissionError → 403）。
+    upsert 模式：若已有 privacy 行就 update，没有就 insert。
+    """
+    from app.activity.models import ActivityPrivacy
+
+    activity = db.query(Activity).filter_by(id=activity_id).first()
+    if activity is None:
+        raise ValueError("活动不存在")
+    if activity.user_id != user_id:
+        raise PermissionError("无权修改此活动")
+
+    privacy = activity.privacy
+    if privacy is None:
+        # 第一次设隐私 → 创建新行（其余字段走 model 默认值 public/false/false）
+        privacy = ActivityPrivacy(activity_id=activity_id)
+        db.add(privacy)
+        activity.privacy = privacy  # 让 relationship 立刻可见 / 测试方便
+
+    if visibility is not None:
+        privacy.visibility = visibility
+    if hide_power is not None:
+        privacy.hide_power = hide_power
+    if hide_heartrate is not None:
+        privacy.hide_heartrate = hide_heartrate
+
+    db.commit()
+    db.refresh(privacy)
+    return privacy
 
 
 def delete_activity(db: Session, activity_id: int, user_id: int) -> None:
@@ -498,4 +598,14 @@ def get_activity_timeseries(
     # 三步流水线：采样 → 算距离 → 构建数组
     indices = _sample_indices(total, max_points)
     cum_dist = _cumulative_distances(rows)
-    return _build_timeseries_arrays(rows, indices, cum_dist)
+    data = _build_timeseries_arrays(rows, indices, cum_dist)
+
+    # task-4.6：他人查看时按 hide_power / hide_heartrate 把对应时序数组挖空成 None
+    # 前端 detail.js 检测 powers=null → hasPowerChart=false → 功率曲线卡片整块消失
+    if user_id != activity.user_id and activity.privacy is not None:
+        if activity.privacy.hide_power:
+            data["powers"] = None
+        if activity.privacy.hide_heartrate:
+            data["heart_rates"] = None
+
+    return data

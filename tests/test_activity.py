@@ -384,3 +384,224 @@ def test_validate_gpx_accepts_normal_trackpoints():
     normal_gpx = header + body + footer
 
     service.validate_ride_file("test.gpx", normal_gpx)
+
+
+# ==================== task-4.6：隐私分项开关 + 字段挖空 ====================
+
+
+def _set_activity_power(db, activity_id, avg_power=200.0, max_power=350.0, avg_hr=140.0, max_hr=180.0):
+    """辅助：把测试活动的功率/心率字段填上数字，用于验证挖空行为"""
+    from tests.conftest import _activities_table
+    db.execute(_activities_table.update()
+               .where(_activities_table.c.id == activity_id)
+               .values(avg_power=avg_power, max_power=max_power, avg_hr=avg_hr, max_hr=max_hr))
+    db.commit()
+
+
+def test_update_privacy_visibility(client, auth_header, db, test_user):
+    """PATCH 改 visibility → 200 + 后续查 detail 走新的可见性"""
+    aid = _create_test_activity(db, test_user.id)
+    resp = client.patch(f"/api/activities/{aid}/privacy", headers=auth_header,
+                        json={"visibility": "private"})
+    assert resp.status_code == 200
+    assert resp.json()["visibility"] == "private"
+
+
+def test_update_privacy_hide_power(client, auth_header, db, test_user):
+    """PATCH 改 hide_power → 200 + 后续 owner 看自己仍完整 / 他人看挖空"""
+    aid = _create_test_activity(db, test_user.id)
+    _set_activity_power(db, aid)
+    resp = client.patch(f"/api/activities/{aid}/privacy", headers=auth_header,
+                        json={"hide_power": True})
+    assert resp.status_code == 200
+    assert resp.json()["hide_power"] is True
+
+
+def test_update_privacy_hide_heartrate(client, auth_header, db, test_user):
+    """PATCH 改 hide_heartrate → 200"""
+    aid = _create_test_activity(db, test_user.id)
+    resp = client.patch(f"/api/activities/{aid}/privacy", headers=auth_header,
+                        json={"hide_heartrate": True})
+    assert resp.status_code == 200
+    assert resp.json()["hide_heartrate"] is True
+
+
+def test_update_privacy_forbids_unknown_field(client, auth_header, db, test_user):
+    """传不在 schema 里的字段（如 distance）→ 422 / extra=forbid 防 admin 误改"""
+    aid = _create_test_activity(db, test_user.id)
+    resp = client.patch(f"/api/activities/{aid}/privacy", headers=auth_header,
+                        json={"distance": 1, "hide_power": True})
+    assert resp.status_code == 422
+
+
+def test_update_privacy_other_user_403(client, auth_header, db):
+    """改别人的活动隐私 → 403"""
+    from app.user.models import User
+    other_user = User(openid="privacy_update_other")
+    db.add(other_user)
+    db.commit()
+    db.refresh(other_user)
+    aid = _create_test_activity(db, other_user.id)
+    resp = client.patch(f"/api/activities/{aid}/privacy", headers=auth_header,
+                        json={"visibility": "private"})
+    assert resp.status_code == 403
+
+
+def test_others_see_null_power_when_hidden(client, auth_header, db, test_user):
+    """他人查看 hide_power=true 的活动 → avg_power/max_power/normalized_power 全 null"""
+    from app.user.models import User
+    from app.activity.models import ActivityPrivacy
+    other_user = User(openid="hide_power_owner")
+    db.add(other_user)
+    db.commit()
+    db.refresh(other_user)
+    aid = _create_test_activity(db, other_user.id)
+    _set_activity_power(db, aid)
+    db.add(ActivityPrivacy(activity_id=aid, visibility="public", hide_power=True))
+    db.commit()
+
+    resp = client.get(f"/api/activities/{aid}", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["avg_power"] is None
+    assert data["max_power"] is None
+
+
+def test_owner_sees_full_power_when_hidden(client, auth_header, db, test_user):
+    """本人看自己 hide_power=true 的活动 → 功率字段完整可见（自己不挖空）"""
+    from app.activity.models import ActivityPrivacy
+    aid = _create_test_activity(db, test_user.id)
+    _set_activity_power(db, aid, avg_power=250.0)
+    db.add(ActivityPrivacy(activity_id=aid, visibility="public", hide_power=True))
+    db.commit()
+
+    resp = client.get(f"/api/activities/{aid}", headers=auth_header)
+    assert resp.status_code == 200
+    assert resp.json()["avg_power"] == 250.0
+
+
+def test_others_see_null_heartrate_when_hidden(client, auth_header, db, test_user):
+    """他人查看 hide_heartrate=true 的活动 → avg_hr/max_hr 全 null"""
+    from app.user.models import User
+    from app.activity.models import ActivityPrivacy
+    other_user = User(openid="hide_hr_owner")
+    db.add(other_user)
+    db.commit()
+    db.refresh(other_user)
+    aid = _create_test_activity(db, other_user.id)
+    _set_activity_power(db, aid)
+    db.add(ActivityPrivacy(activity_id=aid, visibility="public", hide_heartrate=True))
+    db.commit()
+
+    resp = client.get(f"/api/activities/{aid}", headers=auth_header)
+    assert resp.status_code == 200
+    assert resp.json()["avg_hr"] is None
+    assert resp.json()["max_hr"] is None
+
+
+def test_old_activity_no_privacy_row_shows_all(client, auth_header, db):
+    """老活动无 privacy 行 → 他人看到完整功率/心率（兜底）"""
+    from app.user.models import User
+    other_user = User(openid="legacy_no_privacy")
+    db.add(other_user)
+    db.commit()
+    db.refresh(other_user)
+    aid = _create_test_activity(db, other_user.id)
+    _set_activity_power(db, aid, avg_power=300.0, avg_hr=150.0)
+    # 故意不创建 ActivityPrivacy 行
+
+    resp = client.get(f"/api/activities/{aid}", headers=auth_header)
+    assert resp.status_code == 200
+    assert resp.json()["avg_power"] == 300.0
+    assert resp.json()["avg_hr"] == 150.0
+
+
+def test_hide_power_also_masks_power_zones(client, auth_header, db):
+    """Codex 异源审 C1：hide_power 时 power_zones 也必须挖空（防 min_w/max_w 反推 FTP）"""
+    from app.user.models import User
+    from app.activity.models import ActivityPrivacy
+    from tests.conftest import _activities_table
+    other_user = User(openid="hide_power_zones_owner")
+    db.add(other_user)
+    db.commit()
+    db.refresh(other_user)
+    aid = _create_test_activity(db, other_user.id)
+    # 给 activity 设 power_zones JSON 字符串（fixture 列是 Text）
+    import json as _json
+    fake_zones = _json.dumps([{"zone": 5, "name": "Z5", "min_w": 280, "max_w": 320, "seconds": 120}])
+    db.execute(_activities_table.update()
+               .where(_activities_table.c.id == aid)
+               .values(power_zones=fake_zones))
+    db.commit()
+    db.add(ActivityPrivacy(activity_id=aid, visibility="public", hide_power=True))
+    db.commit()
+
+    resp = client.get(f"/api/activities/{aid}", headers=auth_header)
+    assert resp.status_code == 200
+    assert resp.json()["power_zones"] is None  # 整块必须消失
+
+
+def test_others_dont_see_privacy_metadata(client, auth_header, db):
+    """Codex 异源审 I1：他人查看公开活动 → privacy 元数据不返（防"主动隐藏"信号泄露）"""
+    from app.user.models import User
+    from app.activity.models import ActivityPrivacy
+    other_user = User(openid="hide_privacy_meta_owner")
+    db.add(other_user)
+    db.commit()
+    db.refresh(other_user)
+    aid = _create_test_activity(db, other_user.id)
+    db.add(ActivityPrivacy(activity_id=aid, visibility="public", hide_power=True))
+    db.commit()
+
+    resp = client.get(f"/api/activities/{aid}", headers=auth_header)
+    assert resp.status_code == 200
+    assert resp.json()["privacy"] is None  # 别人看不到"hide_power=true"信号
+
+
+def test_owner_sees_privacy_metadata(client, auth_header, db, test_user):
+    """本人看自己 → privacy 元数据完整（用于初始化抽屉 UI）"""
+    from app.activity.models import ActivityPrivacy
+    aid = _create_test_activity(db, test_user.id)
+    db.add(ActivityPrivacy(activity_id=aid, visibility="public", hide_power=True))
+    db.commit()
+
+    resp = client.get(f"/api/activities/{aid}", headers=auth_header)
+    assert resp.status_code == 200
+    privacy = resp.json()["privacy"]
+    assert privacy is not None
+    assert privacy["hide_power"] is True
+
+
+def test_visibility_round_trip(client, auth_header, db, test_user):
+    """改 visibility=private 再改回 public → 后续他人可见性回归正常"""
+    from app.user.models import User
+    aid = _create_test_activity(db, test_user.id)
+    # 切私密
+    client.patch(f"/api/activities/{aid}/privacy", headers=auth_header,
+                 json={"visibility": "private"})
+    # 用别的 user 看 → 404
+    other_user = User(openid="visibility_roundtrip_viewer")
+    db.add(other_user)
+    db.commit()
+    db.refresh(other_user)
+    # 切回公开
+    client.patch(f"/api/activities/{aid}/privacy", headers=auth_header,
+                 json={"visibility": "public"})
+    # 他人现在能看
+    from app.user.service_auth import create_token
+    other_token = create_token(other_user.id)
+    resp = client.get(f"/api/activities/{aid}",
+                      headers={"Authorization": f"Bearer {other_token}"})
+    assert resp.status_code == 200
+
+
+def test_patch_three_fields_at_once(client, auth_header, db, test_user):
+    """一次 PATCH 改 3 个字段全部生效"""
+    aid = _create_test_activity(db, test_user.id)
+    resp = client.patch(f"/api/activities/{aid}/privacy", headers=auth_header,
+                        json={"visibility": "private", "hide_power": True, "hide_heartrate": True})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["visibility"] == "private"
+    assert body["hide_power"] is True
+    assert body["hide_heartrate"] is True

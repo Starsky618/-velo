@@ -17,16 +17,24 @@ App({
     baseUrl: 'http://114.132.190.245',
     // JWT token，登录后存这里，所有请求带上它证明身份
     token: null,
-    // 当前用户信息（profile 接口返回的数据）
+    // 当前用户 ID（轻量 / 登录立刻可用 / 给 isOwner 判断用）
+    // 跟 userInfo 不同：userInfo 是 profile tab 主动激活后才拉的完整信息（昵称/头像/统计）
+    // userId 是登录后第一时间就有 → detail 页 isOwner 判断不依赖 profile tab 被打开过
+    userId: 0,
+    // 当前用户完整信息（profile 接口返回的数据 / 仅 profile tab 激活后才有）
     userInfo: null,
   },
 
   onLaunch() {
     // 小程序启动时执行
-    // 先从本地缓存恢复 token（用户关了再开不用重新登录）
+    // 先从本地缓存恢复 token + userId（用户关了再开不用重新登录 / isOwner 也能立刻判断）
     const token = wx.getStorageSync('token')
     if (token) {
       this.globalData.token = token
+    }
+    const userId = wx.getStorageSync('userId')
+    if (userId) {
+      this.globalData.userId = userId
     }
   },
 
@@ -54,9 +62,12 @@ App({
           var api = require('./utils/api')
           api.post('/api/user/login', { code: loginRes.code })
             .then((data) => {
-              // 第三步：存 token（内存 + 本地缓存双保险）
+              // 第三步：存 token + userId（内存 + 本地缓存双保险）
+              // userId 给 isOwner 判断用（detail 页 task-4.6 隐私入口 / 不等 profile tab 激活）
               this.globalData.token = data.token
+              this.globalData.userId = data.user_id || 0
               wx.setStorageSync('token', data.token)
+              if (data.user_id) wx.setStorageSync('userId', data.user_id)
               resolve(data)
             })
             .catch((err) => {
@@ -75,7 +86,9 @@ App({
    */
   logout() {
     this.globalData.token = null
+    this.globalData.userId = 0
     this.globalData.userInfo = null
     wx.removeStorageSync('token')
+    wx.removeStorageSync('userId')
   },
 })

@@ -150,6 +150,7 @@ def _user_best_effort_subquery(
             SegmentEffort.avg_power.label("avg_power"),
             SegmentEffort.created_at.label("created_at"),
             ActivityPrivacy.visibility.label("privacy_visibility"),
+            ActivityPrivacy.hide_power.label("privacy_hide_power"),  # task-4.6：挖功率字段用
             row_number,
         )
         .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
@@ -203,6 +204,7 @@ def get_segment_detail(
             User.bike_type,
             best.c.created_at,
             best.c.privacy_visibility,
+            best.c.privacy_hide_power,  # task-4.6
         )
         .select_from(best)
         .join(User, User.id == best.c.user_id)
@@ -215,6 +217,9 @@ def get_segment_detail(
     # 组装排行榜（rank 在过滤后再编号 / 一人一行）
     leaderboard = []
     for rank, row in enumerate(leaderboard_rows, start=1):
+        # task-4.6：他人查看时 owner 设了 hide_power → avg_power 挖空成 None
+        is_other_viewer = (row.user_id != current_user_id)
+        avg_power = None if (is_other_viewer and row.privacy_hide_power) else row.avg_power
         leaderboard.append({
             "rank": rank,
             "user_id": row.user_id,
@@ -223,7 +228,7 @@ def get_segment_detail(
             "avatar_url": row.avatar_url,
             "elapsed_time": row.elapsed_time,
             "avg_speed": row.avg_speed,
-            "avg_power": row.avg_power,
+            "avg_power": avg_power,
             "bike_type": row.bike_type,
             "created_at": row.created_at,
             "is_private_self": (
@@ -308,6 +313,7 @@ def get_leaderboard(
             User.bike_type,
             best.c.created_at,
             best.c.privacy_visibility,
+            best.c.privacy_hide_power,  # task-4.6
         )
         .select_from(best)
         .join(User, User.id == best.c.user_id)
@@ -335,6 +341,9 @@ def get_leaderboard(
     start_rank = (page - 1) * page_size + 1
     items = []
     for i, row in enumerate(rows):
+        # task-4.6：他人查看时 owner 设了 hide_power → avg_power 挖空成 None
+        is_other_viewer = (row.user_id != current_user_id)
+        avg_power = None if (is_other_viewer and row.privacy_hide_power) else row.avg_power
         items.append({
             "rank": start_rank + i,
             "user_id": row.user_id,
@@ -343,7 +352,7 @@ def get_leaderboard(
             "avatar_url": row.avatar_url,
             "elapsed_time": row.elapsed_time,
             "avg_speed": row.avg_speed,
-            "avg_power": row.avg_power,
+            "avg_power": avg_power,
             "bike_type": row.bike_type,
             "created_at": row.created_at,
             "is_private_self": (
@@ -547,12 +556,21 @@ def get_activity_segments(db: Session, activity_id: int, user_id: int) -> list[d
             and (my_best_row[0], my_best_row[1]) == (effort.elapsed_time, effort.effort_id)
         )
 
+        # task-4.6：他人查看公开活动时按 owner 的 hide_power 挖空 avg_power
+        is_other_viewer = (activity.user_id != user_id)
+        hide_power = (
+            is_other_viewer
+            and activity.privacy is not None
+            and activity.privacy.hide_power
+        )
+        avg_power = None if hide_power else effort.avg_power
+
         items.append({
             "segment_id": effort.segment_id,
             "segment_name": effort.segment_name,
             "elapsed_time": effort.elapsed_time,
             "avg_speed": effort.avg_speed,
-            "avg_power": effort.avg_power,
+            "avg_power": avg_power,
             "rank": rank,
             "is_pr": is_pr,
         })

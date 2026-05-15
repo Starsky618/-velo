@@ -11,9 +11,9 @@
 """
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ========== 任务 3.5：GPX 上传 ==========
@@ -25,6 +25,16 @@ class UploadResponse(BaseModel):
 
 
 # ========== 任务 3.7：活动查询 ==========
+
+class ActivityPrivacyResponse(BaseModel):
+    """隐私设置响应——returned 在 ActivityDetail.privacy 嵌套字段 + PATCH endpoint 响应"""
+    visibility: str
+    hide_power: bool
+    hide_heartrate: bool
+
+    class Config:
+        from_attributes = True
+
 
 class ActivitySummary(BaseModel):
     """
@@ -79,6 +89,9 @@ class ActivityDetail(BaseModel):
     power_zones: Optional[Any] = None        # JSONB: [{zone, name, ...}, ...]
     duplicate_of: Optional[int] = None       # Sprint 5 task-2 dedupe：非 None = 本活动是 dedup 重复 / 前端按需显示提示
     created_at: Optional[datetime] = None
+    # task-4.6：附带当前隐私设置（None = 老活动无配置 / 视同全公开）
+    # 仅 owner 需要用 / 用于初始化隐私开关 UI 状态
+    privacy: Optional[ActivityPrivacyResponse] = None
 
     class Config:
         from_attributes = True
@@ -102,6 +115,25 @@ class ActivityStatusResponse(BaseModel):
     status: str
     error_message: Optional[str] = None
     duplicate_of: Optional[int] = None  # Sprint 5 task-2 dedupe：上传后前端轮询看到非 None → 跳到合并目标 + toast
+
+
+# ========== 隐私设置（task-4.6） ==========
+
+class ActivityPrivacyUpdate(BaseModel):
+    """
+    PATCH /api/activities/{id}/privacy 请求体——3 个隐私开关都可选改。
+
+    extra="forbid"：防止 admin 误改 distance / user_id 等核心字段后还看到 200 OK
+    （v5 task-3.A.4/5 admin endpoint 复利实证 / CLAUDE.md 关键技术约定）。
+    """
+    visibility: Optional[Literal["public", "private"]] = None
+    hide_power: Optional[bool] = None
+    hide_heartrate: Optional[bool] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+# （ActivityPrivacyResponse 已在文件顶部定义 / 此处删除重复）
 
 
 # ========== 时序数据（供前端画速度/功率/心率曲线） ==========

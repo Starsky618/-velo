@@ -1088,3 +1088,76 @@ def test_my_efforts_is_pr_tiebreaker(client, db, test_user, auth_header):
     assert len(pr_items) == 1
     # 第一条 effort (aid1 对应的) 的 segment_efforts.id 更小，应被标 PR
     assert pr_items[0]["activity_id"] == aid1
+
+
+# ==================== task-4.6：赛段排行榜也按 hide_power 挖空 ====================
+
+def test_leaderboard_hides_power_for_others(client, db, test_user, auth_header):
+    """他人看赛段排行榜 → owner 设 hide_power 的那条 avg_power=null（Strava 一致性）"""
+    seg_id = _insert_segment(db)
+    other = User(openid="lb_hide_power_owner")
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+    aid = _insert_activity(db, other.id, "他骑")
+    _insert_effort(db, seg_id, aid, other.id, elapsed_time=100, avg_power=250.0)
+    db.add(ActivityPrivacy(activity_id=aid, visibility="public", hide_power=True))
+    db.commit()
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    assert resp.status_code == 200
+    item = resp.json()["items"][0]
+    assert item["user_id"] == other.id
+    assert item["avg_power"] is None  # 他人看 → 挖空
+    assert item["elapsed_time"] == 100  # 但用时不挖（不是敏感字段）
+
+
+def test_leaderboard_shows_own_power_when_hidden(client, db, test_user, auth_header):
+    """本人看排行榜 → 自己设 hide_power 的那条 avg_power 完整可见（owner 不挖空）"""
+    seg_id = _insert_segment(db)
+    my_act = _insert_activity(db, test_user.id, "我的")
+    _insert_effort(db, seg_id, my_act, test_user.id, elapsed_time=120, avg_power=180.0)
+    db.add(ActivityPrivacy(activity_id=my_act, visibility="public", hide_power=True))
+    db.commit()
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    assert resp.status_code == 200
+    item = resp.json()["items"][0]
+    assert item["user_id"] == test_user.id
+    assert item["avg_power"] == 180.0  # 自己看自己 → 完整
+
+
+def test_segment_detail_top20_hides_power_for_others(client, db, test_user, auth_header):
+    """TOP20 路径也挖：他人看 segment 详情的排行榜 → owner hide_power 那行 avg_power=null"""
+    seg_id = _insert_segment(db)
+    other = User(openid="top20_hide_power_owner")
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+    aid = _insert_activity(db, other.id, "他骑")
+    _insert_effort(db, seg_id, aid, other.id, elapsed_time=90, avg_power=270.0)
+    db.add(ActivityPrivacy(activity_id=aid, visibility="public", hide_power=True))
+    db.commit()
+
+    resp = client.get(f"/api/segments/{seg_id}", headers=auth_header)
+    assert resp.status_code == 200
+    item = resp.json()["leaderboard"][0]
+    assert item["avg_power"] is None
+
+
+def test_activity_segments_hides_power_for_others(client, db, test_user, auth_header):
+    """他人查看公开活动的途经赛段 → owner hide_power 那条 avg_power=null"""
+    seg_id = _insert_segment(db)
+    other = User(openid="act_seg_hide_power_owner")
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+    aid = _insert_activity(db, other.id, "他骑")
+    _insert_effort(db, seg_id, aid, other.id, elapsed_time=100, avg_power=240.0)
+    db.add(ActivityPrivacy(activity_id=aid, visibility="public", hide_power=True))
+    db.commit()
+
+    resp = client.get(f"/api/activities/{aid}/segments", headers=auth_header)
+    assert resp.status_code == 200
+    item = resp.json()["items"][0]
+    assert item["avg_power"] is None

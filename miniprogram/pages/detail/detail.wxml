@@ -17,8 +17,14 @@
   <!-- ====== 深色头部卡片（距离/时长/爬升） ====== -->
   <view class="hero-card">
     <view class="hero-top">
-      <text class="hero-title">{{activity.title || '骑行记录'}}</text>
-      <text class="hero-date">{{dateText}}</text>
+      <view class="hero-title-wrap">
+        <text class="hero-title">{{activity.title || '骑行记录'}}</text>
+        <text class="hero-date">{{dateText}}</text>
+      </view>
+      <!-- task-4.6：隐私设置入口（仅 owner 可见） -->
+      <view class="privacy-btn" wx:if="{{isOwner}}" bindtap="togglePrivacyDrawer">
+        <text class="privacy-icon">⚙</text>
+      </view>
     </view>
     <view class="hero-stats">
       <view class="hero-item">
@@ -219,4 +225,34 @@
 
   <!-- 底部留白（防止被 tabBar 遮挡） -->
   <view style="height: 60rpx;"></view>
+</view>
+
+<!-- task-4.6：隐私设置抽屉（点齿轮 → 弹出底部抽屉 / 3 个 switch） -->
+<view class="privacy-mask" wx:if="{{privacyDrawerOpen}}" bindtap="togglePrivacyDrawer"></view>
+<view class="privacy-drawer {{privacyDrawerOpen ? 'open' : ''}}">
+  <view class="privacy-drawer-head">
+    <text class="privacy-drawer-title">隐私设置</text>
+    <text class="privacy-drawer-close" bindtap="togglePrivacyDrawer">完成</text>
+  </view>
+  <view class="privacy-row">
+    <view class="privacy-row-text">
+      <text class="privacy-row-label">仅自己可见</text>
+      <text class="privacy-row-desc">开启后，他人将看不到这条骑行</text>
+    </view>
+    <switch checked="{{privacyForm.visibility === 'private'}}" bindchange="onPrivacyVisibilityChange" color="#FF6B00" />
+  </view>
+  <view class="privacy-row">
+    <view class="privacy-row-text">
+      <text class="privacy-row-label">隐藏功率数据</text>
+      <text class="privacy-row-desc">他人查看时功率卡片整块消失</text>
+    </view>
+    <switch checked="{{privacyForm.hide_power}}" bindchange="onPrivacyHidePowerChange" color="#FF6B00" />
+  </view>
+  <view class="privacy-row">
+    <view class="privacy-row-text">
+      <text class="privacy-row-label">隐藏心率数据</text>
+      <text class="privacy-row-desc">他人查看时心率卡片整块消失</text>
+    </view>
+    <switch checked="{{privacyForm.hide_heartrate}}" bindchange="onPrivacyHideHeartrateChange" color="#FF6B00" />
+  </view>
 </view>

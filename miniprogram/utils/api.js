@@ -260,6 +260,26 @@ module.exports = {
   },
 
   /**
+   * 更新某条骑行的隐私设置（task-4.6）
+   *
+   * 类比：给骑行的"门禁卡"换设置——
+   * 公开/私密、是否隐藏功率、是否隐藏心率。
+   *
+   * 后端契约（PATCH /api/activities/{id}/privacy / 需登录）：
+   *   - body：{ visibility?, hide_power?, hide_heartrate? } 三字段都可选 / 不传不改
+   *   - extra="forbid"：传未知字段 → 422（防 admin 越权改 distance 等）
+   *   - 仅 owner 可改自己的活动（其他人 → 403）
+   *   - 返回更新后的 3 字段
+   *
+   * @param {number} activityId
+   * @param {object} partial - { visibility?, hide_power?, hide_heartrate? }
+   * @returns {Promise<object>} { visibility, hide_power, hide_heartrate }
+   */
+  updateActivityPrivacy: function (activityId, partial) {
+    return request('/api/activities/' + activityId + '/privacy', 'PATCH', partial)
+  },
+
+  /**
    * 上传文件专用（GPX 上传走这个，不走普通 JSON 请求）
    *
    * @param {string} url - 上传接口路径

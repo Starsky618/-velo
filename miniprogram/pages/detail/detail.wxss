@@ -53,6 +53,13 @@
 
 .hero-top {
   margin-bottom: 32rpx;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.hero-title-wrap {
+  flex: 1;
 }
 
 .hero-title {
@@ -68,6 +75,99 @@
   color: rgba(255, 255, 255, 0.45);
   margin-top: 8rpx;
   display: block;
+}
+
+/* task-4.6：隐私设置入口按钮（齿轮图标） */
+.privacy-btn {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.privacy-icon {
+  color: #FFFFFF;
+  font-size: 32rpx;
+}
+
+/* task-4.6：隐私设置抽屉 */
+.privacy-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 100;
+}
+
+.privacy-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #FFFFFF;
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 24rpx 32rpx 60rpx;
+  z-index: 101;
+  transform: translateY(100%);
+  transition: transform 0.25s ease-out;
+}
+
+.privacy-drawer.open {
+  transform: translateY(0);
+}
+
+.privacy-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 0;
+  margin-bottom: 16rpx;
+  border-bottom: 2rpx solid #F2F2F7;
+}
+
+.privacy-drawer-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1D1D1F;
+}
+
+.privacy-drawer-close {
+  font-size: 28rpx;
+  color: #FF6B00;
+}
+
+.privacy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 0;
+  border-bottom: 1rpx solid #F2F2F7;
+}
+
+.privacy-row:last-child {
+  border-bottom: none;
+}
+
+.privacy-row-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-right: 24rpx;
+}
+
+.privacy-row-label {
+  font-size: 30rpx;
+  color: #1D1D1F;
+  font-weight: 500;
+}
+
+.privacy-row-desc {
+  font-size: 24rpx;
+  color: #86868B;
+  margin-top: 6rpx;
 }
 
 .hero-stats {

@@ -6,6 +6,18 @@
 
 ---
 
+## 🟢 P3：用户主页 `current_month_summary.avg_power_w` 字段后端返但前端不渲染（task-4.6 Codex 异源审 I3）
+
+后端 `app/user/schemas.py:189` `_MonthSummary.avg_power_w` 字段存在 + `app/user/router.py:248-254` `/{user_id}/profile` 真返这数字。但 grep 全 `miniprogram/` 确认前端 `user.wxml`（他人主页）完全**不渲染** avg_power_w / 只在 user.js 注释里提了一句。
+
+**为什么不修**：Tim 2026-05-15 拍"产品里没有每月平均功率 / 只有最大功率 / 最大功率只能本人看"——前端不渲染 = 产品层确实不暴露 / task-4.6 `hide_power` 已覆盖所有产品可见的功率字段。
+
+**未来防御 trigger**：如果未来加"他人主页显示功率"UI（比如月均功率 / 个人 PR 等），**先在 `app/user/service_social.py:317-345` 加 `hide_power` 联动**：扫该用户本月活动如有任一条 `hide_power=true` → avg_power_w 返 None / 前端 wxml 用 `wx:if` 整块消失。
+
+否则会重蹈 task-4.6 Codex C1 `power_zones` 二阶泄露的覆辙——汇总字段表面是聚合但反推能力强（min_w/max_w 直接推出 FTP）。
+
+---
+
 ## 🟡 P2：赛段 max_gradient 前端砍掉 / 等数据源升级恢复（2026-05-15 Step 2-DEM Tim 拍）
 
 velo 用 SRTM 公开 DEM（30m / 90m 像素）测窄带状公路（5-10m 宽）坡度 6 次算法迭代仍达不到 Tim 体感真值（天龙山 5% 缓坡 vs 算出 9.8-13.9% / 太山-蒙山下坡单调下坡 vs 曲线有锯齿）。根因：DEM 像素采到的可能是路边山势不是路面，算法平滑洗不掉数据源采错对象。

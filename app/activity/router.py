@@ -120,6 +120,37 @@ def update_activity(
     return activity
 
 
+@router.patch("/{activity_id}/privacy", response_model=schemas.ActivityPrivacyResponse)
+def update_activity_privacy(
+    activity_id: int,
+    req: schemas.ActivityPrivacyUpdate,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    更新一条骑行的隐私设置（task-4.6）。
+
+    3 个开关：visibility（公开/私密）/ hide_power / hide_heartrate
+    仅 owner 可改自己的活动。schema 限制 extra="forbid" 防误改其他字段。
+    """
+    try:
+        privacy = service.update_activity_privacy(
+            db, activity_id, user_id,
+            visibility=req.visibility,
+            hide_power=req.hide_power,
+            hide_heartrate=req.hide_heartrate,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    return schemas.ActivityPrivacyResponse(
+        visibility=privacy.visibility,
+        hide_power=privacy.hide_power,
+        hide_heartrate=privacy.hide_heartrate,
+    )
+
+
 @router.delete("/{activity_id}", status_code=204)
 def delete_activity(
     activity_id: int,

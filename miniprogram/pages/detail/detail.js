@@ -104,6 +104,14 @@ Page({
     hasPowerChart: false,
     hasHrChart: false,
     hasCadenceChart: false,
+    // task-4.6：隐私设置（仅 owner 可见 / 用于初始化抽屉 UI）
+    isOwner: false,
+    privacyDrawerOpen: false,
+    privacyForm: {
+      visibility: 'public',
+      hide_power: false,
+      hide_heartrate: false,
+    },
   },
 
   // 海拔剖面原始数据 — 不放 data 里，因为不需要渲染到模板，
@@ -147,6 +155,15 @@ Page({
         if (maxEle === -Infinity) maxEle = 0
         that.elevationData = eleData
 
+        // task-4.6：判断当前查看者是不是 owner（用于显示隐私设置入口）
+        // 优先用 globalData.userId（登录后立刻可用 / 不等 profile tab 激活）
+        // 兜底用 globalData.userInfo.id（向后兼容 / 之前已激活 profile 的会话）
+        var app = getApp()
+        var gd = app.globalData || {}
+        var myUserId = gd.userId || (gd.userInfo && gd.userInfo.id) || 0
+        var isOwner = !!(myUserId && data.user_id === myUserId)
+        var privacy = data.privacy || {}
+
         that.setData({
           loading: false,
           activity: data,
@@ -157,6 +174,12 @@ Page({
           hasElevation: eleData.length > 0,
           maxElevation: formatNum(maxEle),
           elevationGainText: formatNum(data.elevation_gain || 0),
+          isOwner: isOwner,
+          privacyForm: {
+            visibility: privacy.visibility || 'public',
+            hide_power: privacy.hide_power === true,
+            hide_heartrate: privacy.hide_heartrate === true,
+          },
         }, function () {
           // setData 的回调：此时 DOM 已更新完毕，canvas 元素已在页面上。
           // 额外套一层 wx.nextTick，确保 wx:if 条件渲染的 canvas 节点
@@ -494,6 +517,59 @@ Page({
    */
   goBack: function () {
     wx.navigateBack()
+  },
+
+  /**
+   * task-4.6：打开/关闭隐私设置抽屉
+   */
+  togglePrivacyDrawer: function () {
+    this.setData({ privacyDrawerOpen: !this.data.privacyDrawerOpen })
+  },
+
+  /**
+   * task-4.6：visibility switch 切换 → 调 PATCH endpoint 更新
+   * 用 switch 的 detail.value（true=私密 / false=公开）
+   */
+  onPrivacyVisibilityChange: function (e) {
+    var visibility = e.detail.value ? 'private' : 'public'
+    this._patchPrivacy({ visibility: visibility }, 'visibility', visibility)
+  },
+
+  onPrivacyHidePowerChange: function (e) {
+    var value = !!e.detail.value
+    this._patchPrivacy({ hide_power: value }, 'hide_power', value)
+  },
+
+  onPrivacyHideHeartrateChange: function (e) {
+    var value = !!e.detail.value
+    this._patchPrivacy({ hide_heartrate: value }, 'hide_heartrate', value)
+  },
+
+  /**
+   * 内部：发 PATCH 请求 + 成功后更新本地 privacyForm + 重拉 detail 让字段挖空生效
+   */
+  _patchPrivacy: function (patch, fieldKey, newValue) {
+    var that = this
+    var activityId = this.activityId
+    if (!activityId) return
+
+    api.updateActivityPrivacy(activityId, patch)
+      .then(function () {
+        // 更新本地 form 状态
+        var form = Object.assign({}, that.data.privacyForm)
+        form[fieldKey] = newValue
+        that.setData({ privacyForm: form })
+        wx.showToast({ title: '已保存', icon: 'success', duration: 1000 })
+        // 重拉 detail：让 hide_power=true 触发字段挖空（但本人看自己始终完整 / 这步主要为 UI 刷新一致）
+        that.fetchDetail(activityId)
+        that.fetchTimeseries(activityId)
+      })
+      .catch(function (err) {
+        wx.showToast({ title: err.message || '保存失败', icon: 'none' })
+        // 回滚 UI：A 审 I1 修——必须创建新对象引用，否则微信 setData 浅比较认为 privacyForm
+        // 没变（同一引用）→ 不触发 wxml 重渲染 → switch 卡在新值与服务端不一致
+        that.setData({ privacyForm: Object.assign({}, that.data.privacyForm) })
+      })
   },
 
   /**
