@@ -555,7 +555,7 @@ Codex 比 Claude 便宜，但**不是免费**。
 
 ### 动作 trigger 自查（必）
 
-每次写报告 / 给 Tim 提议前 mental check 5 问：
+每次写报告 / 给 Tim 提议前 mental check 6 问：
 
 1. 我有没有把代码细节推给 Tim？（违反 → 改翻译层句式）
 2. 我做了哪些实证 / 没做哪些？（涉及未做的 → 走最低限度不确定度自报）
@@ -566,10 +566,14 @@ Codex 比 Claude 便宜，但**不是免费**。
    是 → **立刻** Edit 同步文档（先 git commit doc fix 也行），再动代码。
    不允许"代码先改、文档后补、文档不补"。
    修补类 edit 完成后，必须 grep 旧符号全文残留；范围限定为 `CLAUDE.md` / `AGENTS.md` / `docs/spec-v*.md` / `docs/plans/**` / `docs/agent-rules/**`，避免把 `.git` / `__pycache__` / app 编译引用噪音混进 doc drift 检查。
+6. **我刚 commit 完吗？这是 user-facing bug fix / feature 吗？**
+   是 → **立刻**触发部署 SOP（CLAUDE.md §"部署 SOP"4 步：git push + 服务器 pull + docker rebuild + alembic upgrade + curl verify）。
+   **commit ≠ ship**——Tim 打开小程序连的是生产服务器 / 本地 commit 跑的还是老代码 / 用户看不到改动。
+   跳过场景（不需立刻部署）：纯文档 / 纯 spec / tooling-only / hotfix 中尚未完工的中间 commit。
 
 **光"知道规则"不够——必须动作 trigger 强制自查**。否则下次又翻车。
 
-**实证案例**（5 问每个都有翻车记录支撑，不是凭空立的）：
+**实证案例**（6 问每个都有翻车记录支撑，不是凭空立的）：
 
 | 问 | 翻车实证 | 教训 |
 |---|---|---|
@@ -578,8 +582,9 @@ Codex 比 Claude 便宜，但**不是免费**。
 | 3 高风险 checklist | （无翻车，预防性立的）| schema/生产动作不走 checklist 风险无封顶 |
 | 4 承诺动作 | 2026-04-29 task-0.7 收尾说"记住了"不 save memory，Tim 当场抓"你并没记住" | 口头 = 没承诺 |
 | 5 决策同步文档 | 2026-04-30 task-1.A.3 决策点 2 拍"保留 distance"后只动代码不动 spec → codex 异源审抓 → Tim："严重失职务必重视" | "决策即同步"不是"决策即写代码" |
+| 6 部署触发 | 2026-05-15 Sprint 5 task-4 系列 6 task + 2 hotfix 全程**一次都没主动部署** / Tim 真用回归打开"我的成绩"页看到"5月6日全部一样" / 我以为修好了实际生产跑老代码 / 用户看不到改动 → Tim 当场反问"为什么会犯同样的错误？" | "本地 commit 全绿 ≠ 用户看到"——commit 完不部署 = 没修复 / 部署是独立动作必须主动 trigger / CLAUDE.md 部署 SOP 早写了但无 trigger 机制 = SOP 死了 |
 
-记住：**每次提议前 5 问全过一遍，不是挑感兴趣的过**——形式主义陷阱（标了没真过）比不过更危险。
+记住：**每次提议前 6 问全过一遍，不是挑感兴趣的过**——形式主义陷阱（标了没真过）比不过更危险。
 
 ---
 

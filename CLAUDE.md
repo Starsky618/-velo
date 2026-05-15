@@ -76,7 +76,7 @@
 
 **Why**：文档膨胀 = 双方认知负荷加重 + 漂移源更多 + 系统不稳定性加重。
 
-### 🔄 动作 trigger 自查（每次写报告前 mental check 5 问）
+### 🔄 动作 trigger 自查（每次写报告前 mental check 6 问）
 
 1. 我有没有把代码细节直接推给 Tim？（违反 → 改翻译层句式）
 2. 我做了哪些实证 / 没做哪些？（涉及未做的 → 用最低限度不确定度自报：🟡 + 一句"未 grep / 未跑命令"）
@@ -84,12 +84,14 @@
 4. 我有没有给 Tim 任何"未来承诺"句式（"记住了 / 学到了 / 待会做 X"）？有 → **立刻** save memory / TaskCreate / 写文件落实
 5. 这次决策 / 评审是否引入 spec / task 卡 / 文档偏离？是 → **立刻** Edit 同步文档（或先 git commit doc fix），再动代码。不允许"代码先改、文档后补、文档不补"
    - 修补类 edit 完成后，必须在 `CLAUDE.md` / `AGENTS.md` / `docs/spec-v*.md` / `docs/plans/**` / `docs/agent-rules/**` 范围内 `rg <旧符号>`，确认旧签名 / 旧路径 / 旧决策无残留
+6. **我刚 commit 完吗？这是 user-facing bug fix / feature 吗？是 → 立刻触发部署 SOP**（git push + 服务器 pull + docker rebuild + alembic upgrade + curl verify）
+   - **commit ≠ ship**：Tim 打开小程序连的是生产 / 本地 commit 跑的还是老代码 / 用户看不到改动
+   - 跳过场景：纯文档 / 纯 spec / tooling-only / 多 commit 中尚未完工的中间 commit
+   - 实证：2026-05-15 Sprint 5 task-4 系列 6 task + 2 hotfix 全程未主动部署 → Tim 真用回归看到老代码"5月6日全部一样" → 反问"为什么会犯同样的错误"
 
 **光"知道规则"不够——必须动作 trigger 强制自查**。否则下次又翻车。
 
-> 详细规则、5 条翻车实证表：`docs/agent-rules/agent-collaboration.md` §7
-
-> 详细规则、checklist 表格、实证案例：`docs/agent-rules/agent-collaboration.md` §7
+> 详细规则、6 条翻车实证表：`docs/agent-rules/agent-collaboration.md` §7
 
 ---
 
@@ -105,6 +107,7 @@
 | 切换主开发 vs 一气呵成 | `agent-collaboration.md` §10 切换 trigger |
 | 会话拥挤 / 长讨论收尾 / 换窗口 | `agent-collaboration.md` §10 工作交接桥梁 |
 | 给 Tim 提议 / 报告前 | `agent-collaboration.md` §7 翻译层句式 |
+| **user-facing fix/feature commit 完** | `agent-collaboration.md` §7 mental check 第 6 问 → 部署 SOP |
 | 代码审查（动 DB / 外部 API / 文件系统）| `agent-collaboration.md` §4 场景 B 必跑命令 |
 | 经验是否沉淀 / 沉淀到哪 | `agent-collaboration.md` §0 经验沉淀三层路径 |
 
