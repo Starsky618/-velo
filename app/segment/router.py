@@ -180,15 +180,19 @@ def list_segments(
 @router.get("/{segment_id}", response_model=schemas.SegmentDetailResponse)
 def get_segment(
     segment_id: int,
+    current_user_id: int | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     """
     查看赛段详情 + 排行榜前 20 名。
 
     不需要登录——排行榜是公开的，任何人都能查看。
+
+    登录用户额外效果（task-4.1）：能在 TOP20 中看到自己的私密成绩
+    + is_private_self 标记；他人和未登录看不到任何人的私密成绩。
     """
     try:
-        detail = service.get_segment_detail(db, segment_id)
+        detail = service.get_segment_detail(db, segment_id, current_user_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return detail
@@ -301,12 +305,12 @@ def get_activity_segments(
     查看某次骑行途经的所有赛段成绩。
 
     骑行完成后查看"这次骑了哪些赛道、排第几、有没有刷新个人最佳"。
-    只能查看自己的活动，查别人的返回 403。
+
+    需登录。本人始终可看；他人活动按 visibility 判定（public 可看 / private 返 404）。
+    rank 计算自动排除他人私密 effort，与主排行榜一致。
     """
     try:
         items = service.get_activity_segments(db, activity_id, user_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
     return schemas.ActivitySegmentsResponse(items=items)

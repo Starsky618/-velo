@@ -123,6 +123,20 @@ _activities_table = Table(
     Column("updated_at", DateTime(timezone=True)),
 )
 
+# activity_privacy 表（SQLite 简化版）
+# 这里像给每条骑行配一张“门禁卡”：
+# 没有卡 = 老数据默认公开；有卡时再看 visibility 决定别人能不能进。
+_activity_privacy_table = Table(
+    "activity_privacy",
+    _test_metadata,
+    Column("activity_id", Integer, primary_key=True),
+    Column("visibility", String(16), nullable=False, default="public"),
+    Column("hide_power", Boolean, nullable=False, default=False),
+    Column("hide_heartrate", Boolean, nullable=False, default=False),
+    Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
+)
+
 
 # 简化版 segments 表（SQLite 兼容）
 # Segment 模型用了 PostGIS Geometry（LINESTRING），SQLite 不支持，

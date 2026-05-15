@@ -88,7 +88,8 @@ def get_activity(
     """
     获取单个活动的完整详情。
     包含简化轨迹、分段数据、功率区间。
-    只能查看自己的活动。
+
+    需登录。本人始终可看；他人活动按 visibility 判定（public 可看 / private 返 404）。
     """
     try:
         activity = service.get_activity_detail(db, activity_id, user_id)

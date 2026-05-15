@@ -19,9 +19,10 @@
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Float, DateTime, Text,
-    ForeignKey, Index, UniqueConstraint, func,
+    Boolean, Column, Integer, BigInteger, String, Float, DateTime, Text,
+    ForeignKey, Index, UniqueConstraint, func, text,
 )
+from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database import Base
@@ -144,6 +145,15 @@ class Activity(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    # 一条骑行最多对应一张隐私“门禁卡”。
+    # uselist=False 像在字典里用唯一键查值：每条 activity 只会拿到 0 或 1 条 privacy。
+    privacy = relationship(
+        "ActivityPrivacy",
+        back_populates="activity",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
     # ===== 索引 =====
     # 加速常见查询：按用户+状态筛选、按用户+开始时间排序
     __table_args__ = (
@@ -213,3 +223,34 @@ class Trackpoint(Base):
         # 空间索引（GIST）：加速"附近的点"类查询
         Index("idx_trackpoints_geom", "geom", postgresql_using="gist"),
     )
+
+
+class ActivityPrivacy(Base):
+    """
+    骑行隐私表——每条 activity 的“门禁卡”。
+
+    没有 privacy 行时，系统把它当成老数据，默认公开；
+    有 privacy 行时，再看 visibility 决定别人能不能看到。
+    """
+
+    __tablename__ = "activity_privacy"
+
+    activity_id = Column(
+        Integer,
+        ForeignKey("activities.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    # server_default 让 DB 层兜底默认值——即使绕过 ORM 直接 INSERT 也能保证 visibility=public。
+    # default 是 Python 层兜底（ORM 创建对象时不传该字段也能用），两层都保留。
+    visibility = Column(String(16), nullable=False, default="public", server_default="public")
+    hide_power = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
+    hide_heartrate = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    activity = relationship("Activity", back_populates="privacy")

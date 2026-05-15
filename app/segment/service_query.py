@@ -7,10 +7,11 @@
 import json
 
 from geoalchemy2 import Geography
-from sqlalchemy import cast, func
+from sqlalchemy import cast, func, or_
 from sqlalchemy.orm import Session
 
-from app.activity.models import Activity
+from app.activity.models import Activity, ActivityPrivacy
+from app.activity.service import _can_view_activity
 from app.segment.models import Segment, SegmentEffort
 from app.user.models import User
 
@@ -116,13 +117,22 @@ def get_segment_list(
 
 # ==================== 查询赛段详情 ====================
 
-def get_segment_detail(db: Session, segment_id: int) -> dict:
+def get_segment_detail(
+    db: Session,
+    segment_id: int,
+    current_user_id: int | None = None,
+) -> dict:
     """
     获取赛段详情 + 排行榜前 20 名。
 
     排行榜按用时从短到长排序（越快越靠前），
     类似马拉松成绩榜——跑得越快排名越高。
     JOIN users 表拿昵称和头像，让排行榜不只是冷冰冰的数字。
+
+    隐私行为（task-4.1）：
+    - 其他人看排行榜：他人设了私密的成绩**完全不显示**（排名重新连续编号 / 不跳号）
+    - 登录用户看排行榜：能看到自己的私密成绩排在原位 + is_private_self=true 标记
+    - 未登录访问：私密成绩全部消失（current_user_id=None，OR 条件第三支不生效）
     """
     segment = db.query(Segment).filter_by(id=segment_id).first()
     if segment is None:
@@ -130,7 +140,9 @@ def get_segment_detail(db: Session, segment_id: int) -> dict:
 
     # 查排行榜 TOP20
     # JOIN User 表：用 user_id 关联，拿到昵称和头像
-    # ORDER BY elapsed_time ASC：用时最短的排最前
+    # LEFT JOIN ActivityPrivacy：找每条 effort 对应的隐私行（可能没有 / 视同 public）
+    # WHERE 三支 OR：public / 无 privacy 行老数据 / 本人始终能看到自己的私密
+    # 注意：rank 在过滤之后再编号，绝不能"先编号再过滤"——否则跳号会泄露私密成绩的存在性
     leaderboard_rows = (
         db.query(
             SegmentEffort.user_id,
@@ -141,9 +153,18 @@ def get_segment_detail(db: Session, segment_id: int) -> dict:
             SegmentEffort.avg_power,
             User.bike_type,
             SegmentEffort.created_at,
+            ActivityPrivacy.visibility.label("privacy_visibility"),
         )
         .join(User, User.id == SegmentEffort.user_id)
+        .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
         .filter(SegmentEffort.segment_id == segment_id)
+        .filter(
+            or_(
+                ActivityPrivacy.visibility == "public",
+                ActivityPrivacy.visibility.is_(None),
+                SegmentEffort.user_id == current_user_id,
+            )
+        )
         .order_by(SegmentEffort.elapsed_time.asc())
         .limit(20)
         .all()
@@ -162,6 +183,11 @@ def get_segment_detail(db: Session, segment_id: int) -> dict:
             "avg_power": row.avg_power,
             "bike_type": row.bike_type,
             "created_at": row.created_at,
+            # 仅在"私密 + 本人"时为 True（其他人看到的全是 public，他们的 is_private_self 永远 False）
+            "is_private_self": (
+                row.privacy_visibility == "private"
+                and row.user_id == current_user_id
+            ),
         })
 
     # elevation_profile 在 DB 里是 JSON 字符串（service_create.py:152 写入时 json.dumps），
@@ -237,9 +263,18 @@ def get_leaderboard(
             SegmentEffort.avg_power,
             User.bike_type,
             SegmentEffort.created_at,
+            ActivityPrivacy.visibility.label("privacy_visibility"),
         )
         .join(User, User.id == SegmentEffort.user_id)
+        .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
         .filter(SegmentEffort.segment_id == segment_id)
+        .filter(
+            or_(
+                ActivityPrivacy.visibility == "public",
+                ActivityPrivacy.visibility.is_(None),
+                SegmentEffort.user_id == current_user_id,
+            )
+        )
     )
 
     # 可选：按车型过滤
@@ -272,6 +307,10 @@ def get_leaderboard(
             "avg_power": row.avg_power,
             "bike_type": row.bike_type,
             "created_at": row.created_at,
+            "is_private_self": (
+                row.privacy_visibility == "private"
+                and row.user_id == current_user_id
+            ),
         })
 
     # Sprint 4 D7 hotfix：算登录用户的 my_rank + my_elapsed_time
@@ -281,6 +320,7 @@ def get_leaderboard(
         # 我的 PR：MIN(elapsed_time WHERE user_id=me, segment_id=X)
         # bike_type filter 跟主榜一致：如果筛了车型 / 我的 PR 也只看该车型 effort
         # （现实场景：用户骑公路车 + 看公路车榜 / 我的 PR 应基于公路车 effort）
+        # 不需要 privacy 过滤：本来就只查自己的 effort，自己看自己的所有成绩（含私密）。
         my_pr_query = (
             db.query(SegmentEffort.elapsed_time)
             .filter(SegmentEffort.segment_id == segment_id)
@@ -297,8 +337,16 @@ def get_leaderboard(
             # 注意：跟主榜逻辑一致 / 不去重 / 同一用户多个 effort 都算（跟现有 leaderboard 行展示一致）
             rank_query = (
                 db.query(func.count(SegmentEffort.id))
+                .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
                 .filter(SegmentEffort.segment_id == segment_id)
                 .filter(SegmentEffort.elapsed_time < my_elapsed_time)
+                .filter(
+                    or_(
+                        ActivityPrivacy.visibility == "public",
+                        ActivityPrivacy.visibility.is_(None),
+                        SegmentEffort.user_id == current_user_id,
+                    )
+                )
             )
             if bike_type is not None:
                 rank_query = rank_query.join(User, User.id == SegmentEffort.user_id).filter(User.bike_type == bike_type)
@@ -339,11 +387,21 @@ def get_user_efforts(db: Session, user_id: int) -> list[dict]:
     for effort in efforts:
         # 计算该成绩在对应赛段中的排名
         # "比我快的人数 + 1 = 我的名次"
+        # task-4.1 隐私过滤：他人的私密 effort 不算进 faster_count（保持和主排行榜 rank 一致），
+        # 自己的 effort（含自己的私密）正常计入。
         faster_count = (
             db.query(func.count(SegmentEffort.id))
+            .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
             .filter(
                 SegmentEffort.segment_id == effort.segment_id,
                 SegmentEffort.elapsed_time < effort.elapsed_time,
+            )
+            .filter(
+                or_(
+                    ActivityPrivacy.visibility == "public",
+                    ActivityPrivacy.visibility.is_(None),
+                    SegmentEffort.user_id == user_id,
+                )
             )
             .scalar()
         )
@@ -370,14 +428,14 @@ def get_activity_segments(db: Session, activity_id: int, user_id: int) -> list[d
     好比跑完马拉松后查"分段计时牌"：
     经过了哪些计时点、每段用了多久、排第几、是不是个人最快。
 
-    权限：只能查看自己的活动，他人的返回 403。
+    权限：本人永远可看；公开活动别人也可看；私密活动对别人表现成不存在。
     """
     # 权限检查：这次骑行是不是你的？
     activity = db.query(Activity).filter_by(id=activity_id).first()
     if activity is None:
         raise ValueError("活动不存在")
-    if activity.user_id != user_id:
-        raise PermissionError("无权查看此活动")
+    if not _can_view_activity(activity, user_id):
+        raise ValueError("活动不存在")
 
     # 查出这次骑行匹配到的所有赛段成绩
     efforts = (
@@ -399,11 +457,21 @@ def get_activity_segments(db: Session, activity_id: int, user_id: int) -> list[d
     items = []
     for effort in efforts:
         # rank：在这条赛段所有成绩中排第几（用时比我短的人数 + 1）
+        # task-4.1 隐私过滤：他人的私密 effort 不算进 faster_count（与主排行榜 rank 一致），
+        # 自己的 effort 正常计入。
         faster_count = (
             db.query(func.count(SegmentEffort.id))
+            .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
             .filter(
                 SegmentEffort.segment_id == effort.segment_id,
                 SegmentEffort.elapsed_time < effort.elapsed_time,
+            )
+            .filter(
+                or_(
+                    ActivityPrivacy.visibility == "public",
+                    ActivityPrivacy.visibility.is_(None),
+                    SegmentEffort.user_id == user_id,
+                )
             )
             .scalar()
         )

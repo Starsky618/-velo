@@ -129,6 +129,7 @@ class LeaderboardEntry(BaseModel):
     avg_power: Optional[float] = None        # W
     bike_type: Optional[str] = None          # 车型（Task 4.5 新增）
     created_at: Optional[datetime] = None
+    is_private_self: bool = False            # 仅本人能看到自己的私密成绩时为 True
 
 
 class LeaderboardResponse(BaseModel):

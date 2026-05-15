@@ -45,6 +45,22 @@ _PROCESSING_TIMEOUT = 10 * 60
 _ALLOWED_EXTENSIONS = {".gpx", ".fit"}
 
 
+def _can_view_activity(activity: Activity, viewer_user_id: int | None) -> bool:
+    """
+    判断一条骑行对当前查看者是否可见。
+
+    可以把它想成宿舍门禁：
+    - 房主本人永远能进
+    - 老房间没有装门禁卡，沿用旧规则，默认开放
+    - 装了门禁卡后，只有 public 才让其他人进
+    """
+    if viewer_user_id == activity.user_id:
+        return True
+    if activity.privacy is None:
+        return True
+    return activity.privacy.visibility == "public"
+
+
 def validate_ride_file(filename: str, file_bytes: bytes) -> None:
     """
     校验上传的骑行文件是否合法（支持 .gpx 和 .fit）。
@@ -233,8 +249,8 @@ def get_activity_detail(db: Session, activity_id: int, user_id: int) -> Activity
     activity = db.query(Activity).filter_by(id=activity_id).first()
     if activity is None:
         raise ValueError("活动不存在")
-    if activity.user_id != user_id:
-        raise PermissionError("无权查看此活动")
+    if not _can_view_activity(activity, user_id):
+        raise ValueError("活动不存在")
 
     # 脱离 Session 后再做单位转换，防止公里值被意外写回数据库
     db.expunge(activity)
@@ -305,8 +321,8 @@ def get_activity_status(db: Session, activity_id: int, user_id: int) -> Activity
     activity = db.query(Activity).filter_by(id=activity_id).first()
     if activity is None:
         raise ValueError("活动不存在")
-    if activity.user_id != user_id:
-        raise PermissionError("无权查看此活动")
+    if not _can_view_activity(activity, user_id):
+        raise ValueError("活动不存在")
 
     # 超时保护：processing 超过 10 分钟视为失败
     # updated_at 在 Worker 开始解析时会被更新为 processing 的时间戳，
@@ -454,8 +470,8 @@ def get_activity_timeseries(
     activity = db.query(Activity).filter_by(id=activity_id).first()
     if activity is None:
         raise ValueError("活动不存在")
-    if activity.user_id != user_id:
-        raise PermissionError("无权查看此活动")
+    if not _can_view_activity(activity, user_id):
+        raise ValueError("活动不存在")
     if activity.status != "completed":
         raise ValueError("活动尚未解析完成")
 

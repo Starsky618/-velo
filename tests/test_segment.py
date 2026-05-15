@@ -14,7 +14,9 @@
 
 from datetime import datetime, timedelta, timezone  # task-0.1 双审 C2：加 timezone 用于 aware datetime
 
+from app.activity.models import ActivityPrivacy
 from app.segment.matcher import match_segment
+from app.user.models import User
 
 
 # ==================== 测试数据构造 ====================
@@ -345,7 +347,6 @@ def test_12_leaderboard_sorted(client, db, test_user):
     act_id = _insert_activity(db, test_user.id, "骑行A")
 
     # 创建第二个用户
-    from app.user.models import User
     user2 = User(openid="leaderboard_user_2")
     db.add(user2)
     db.commit()
@@ -521,6 +522,140 @@ def test_13f_leaderboard_bike_type_filter_no_match(client, db, test_user, auth_h
     assert data["my_elapsed_time"] is None
 
 
+def test_leaderboard_filters_private_for_others(client, db):
+    """他人看榜时，私密成绩整条消失，total 和 rank 都按过滤后重算。"""
+    seg_id = _insert_segment(db)
+    users = [User(openid=f"privacy_other_{i}") for i in range(5)]
+    db.add_all(users)
+    db.commit()
+    for user in users:
+        db.refresh(user)
+
+    activity_ids = [_insert_activity(db, user.id, f"骑行{i}") for i, user in enumerate(users)]
+    for idx, (user, activity_id) in enumerate(zip(users, activity_ids), start=1):
+        _insert_effort(db, seg_id, activity_id, user.id, elapsed_time=idx * 100)
+    db.add(ActivityPrivacy(activity_id=activity_ids[2], visibility="private"))
+    db.commit()
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard")
+    data = resp.json()
+
+    assert resp.status_code == 200
+    assert data["total"] == 4
+    assert [item["rank"] for item in data["items"]] == [1, 2, 3, 4]
+    assert [item["elapsed_time"] for item in data["items"]] == [100, 200, 400, 500]
+    assert all(item["is_private_self"] is False for item in data["items"])
+
+
+def test_leaderboard_shows_own_private_to_self(client, db, test_user, auth_header):
+    """本人看榜时，自己的私密成绩仍保留，并带上专属标记。"""
+    seg_id = _insert_segment(db)
+    act_id = _insert_activity(db, test_user.id, "我的私密骑行")
+    _insert_effort(db, seg_id, act_id, test_user.id, elapsed_time=150)
+    db.add(ActivityPrivacy(activity_id=act_id, visibility="private"))
+    db.commit()
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    data = resp.json()
+
+    assert resp.status_code == 200
+    assert data["total"] == 1
+    assert data["items"][0]["user_id"] == test_user.id
+    assert data["items"][0]["is_private_self"] is True
+
+
+def test_leaderboard_rank_continuous_after_filter(client, db):
+    """第 3 名私密后，外部榜单仍是连续 1-2-3-4，不留下泄密跳号。"""
+    seg_id = _insert_segment(db)
+    users = [User(openid=f"privacy_gap_{i}") for i in range(5)]
+    db.add_all(users)
+    db.commit()
+    for user in users:
+        db.refresh(user)
+
+    activity_ids = [_insert_activity(db, user.id, f"Gap{i}") for i, user in enumerate(users)]
+    for idx, (user, activity_id) in enumerate(zip(users, activity_ids), start=1):
+        _insert_effort(db, seg_id, activity_id, user.id, elapsed_time=idx * 10)
+    db.add(ActivityPrivacy(activity_id=activity_ids[2], visibility="private"))
+    db.commit()
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard")
+    data = resp.json()
+
+    assert [item["rank"] for item in data["items"]] == [1, 2, 3, 4]
+
+
+def test_my_rank_excludes_private_efforts(client, db, test_user, auth_header):
+    """my_rank 只数公开的更快成绩，避免主榜和“我的排名”说两套话。"""
+    seg_id = _insert_segment(db)
+    my_act_id = _insert_activity(db, test_user.id, "我的骑行")
+    faster_public = User(openid="rank_public")
+    faster_private = User(openid="rank_private")
+    db.add_all([faster_public, faster_private])
+    db.commit()
+    db.refresh(faster_public)
+    db.refresh(faster_private)
+    public_act_id = _insert_activity(db, faster_public.id, "公开快骑")
+    private_act_id = _insert_activity(db, faster_private.id, "私密快骑")
+
+    _insert_effort(db, seg_id, public_act_id, faster_public.id, elapsed_time=100)
+    _insert_effort(db, seg_id, private_act_id, faster_private.id, elapsed_time=120)
+    _insert_effort(db, seg_id, my_act_id, test_user.id, elapsed_time=200)
+    db.add(ActivityPrivacy(activity_id=private_act_id, visibility="private"))
+    db.commit()
+
+    resp = client.get(f"/api/segments/{seg_id}/leaderboard", headers=auth_header)
+    data = resp.json()
+
+    assert resp.status_code == 200
+    assert data["my_rank"] == 2
+    assert data["my_elapsed_time"] == 200
+
+
+def test_segment_detail_top20_filters_private(client, db, test_user, auth_header):
+    """TOP20 路径（GET /api/segments/{id}）也按隐私过滤。
+
+    本人 + 4 个他人骑过同赛段；第 2 个他人设私密。
+    - 未登录看 GET /api/segments/{id}：TOP20 共 4 条（私密消失）/ rank 1-2-3-4 连续
+    - 本人看 GET /api/segments/{id}：TOP20 共 5 条（含自己 + 含其他人非私密；不含他人私密）
+    """
+    seg_id = _insert_segment(db)
+    # 本人骑行
+    my_act_id = _insert_activity(db, test_user.id, "我的骑行")
+    _insert_effort(db, seg_id, my_act_id, test_user.id, elapsed_time=250)
+    # 4 个他人骑行（其中第 2 个私密）
+    others = [User(openid=f"top20_other_{i}") for i in range(4)]
+    db.add_all(others)
+    db.commit()
+    for u in others:
+        db.refresh(u)
+    other_activity_ids = [_insert_activity(db, u.id, f"他骑{i}") for i, u in enumerate(others)]
+    times = [100, 200, 300, 400]
+    for u, aid, t in zip(others, other_activity_ids, times):
+        _insert_effort(db, seg_id, aid, u.id, elapsed_time=t)
+    # 第 2 个他人（elapsed_time=200）设私密
+    db.add(ActivityPrivacy(activity_id=other_activity_ids[1], visibility="private"))
+    db.commit()
+
+    # 未登录访问：私密那条消失 / 共 4 条 / rank 1-2-3-4
+    resp = client.get(f"/api/segments/{seg_id}")
+    data = resp.json()
+    assert resp.status_code == 200
+    times_in_response = [item["elapsed_time"] for item in data["leaderboard"]]
+    assert times_in_response == [100, 250, 300, 400]
+    assert [item["rank"] for item in data["leaderboard"]] == [1, 2, 3, 4]
+    assert all(item["is_private_self"] is False for item in data["leaderboard"])
+
+    # 本人访问：他人私密仍消失（自己没有私密）/ 共 4 条
+    resp_self = client.get(f"/api/segments/{seg_id}", headers=auth_header)
+    data_self = resp_self.json()
+    assert resp_self.status_code == 200
+    times_self = [item["elapsed_time"] for item in data_self["leaderboard"]]
+    assert times_self == [100, 250, 300, 400]
+    # 本人没有私密 effort，is_private_self 全 False
+    assert all(item["is_private_self"] is False for item in data_self["leaderboard"])
+
+
 def test_14_user_efforts(client, db, test_user, auth_header):
     """用户赛段成绩：返回所有赛段成绩 + 正确排名"""
     seg_id = _insert_segment(db)
@@ -586,8 +721,13 @@ def test_17_activity_segments_not_pr(client, db, test_user, auth_header):
     assert data["items"][0]["is_pr"] is False  # 有更好的 100 秒
 
 
-def test_18_activity_segments_other_user(client, db, test_user, auth_header):
-    """查看别人活动的途经赛段 → 403"""
+def test_18_activity_segments_other_user_default_public(client, db, test_user, auth_header):
+    """查看别人活动的途经赛段，默认公开 → 200（task-4.1 更新产品契约）。
+
+    task-4.1 之前：他人 activity 一律 403。
+    task-4.1 之后：activity 默认公开，他人能看到 segments。
+    若 owner 设私密 → endpoint 返回 404（不存在）。
+    """
     from app.user.models import User
     other_user = User(openid="other_user_segments")
     db.add(other_user)
@@ -597,7 +737,7 @@ def test_18_activity_segments_other_user(client, db, test_user, auth_header):
     act_id = _insert_activity(db, other_user.id, "别人的骑行")
 
     resp = client.get(f"/api/activities/{act_id}/segments", headers=auth_header)
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 def test_19_activity_segments_not_found(client, auth_header):

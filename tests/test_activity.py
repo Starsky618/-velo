@@ -19,6 +19,7 @@ from app.parsing.gpx_parser import GPXParser
 from app.activity.power_zones import calculate_power_zones
 from app.activity.simplify import simplify_track
 from app.activity import service
+from app.activity.models import ActivityPrivacy
 
 # fixture 文件路径
 _FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -203,8 +204,12 @@ def test_23_activity_detail(client, auth_header, db, test_user):
     assert "power_zones" in data
 
 
-def test_24_detail_other_user(client, auth_header, db, test_user):
-    """用例 24：查别人活动 → 403"""
+def test_24_detail_other_user_default_public(client, auth_header, db, test_user):
+    """用例 24（task-4.1 更新）：查别人活动默认可见 → 200。
+
+    task-4.1 改了产品契约：activity 默认公开，他人能看到完整数据。
+    若 owner 设私密 → 见 test_activity_privacy_private_blocks_others。
+    """
     # 创建另一个用户的活动
     from app.user.models import User
     other_user = User(openid="other_user_openid")
@@ -214,7 +219,54 @@ def test_24_detail_other_user(client, auth_header, db, test_user):
     aid = _create_test_activity(db, other_user.id)
 
     resp = client.get(f"/api/activities/{aid}", headers=auth_header)
-    assert resp.status_code == 403
+    assert resp.status_code == 200
+
+
+def test_activity_privacy_default_public(db, test_user):
+    """老骑行没有 privacy 行时，别人仍按默认公开可见。"""
+    aid = _create_test_activity(db, test_user.id)
+    activity = service.get_activity_detail(db, aid, user_id=999999)
+    assert activity.id == aid
+
+
+def test_activity_privacy_private_blocks_others(client, auth_header, db):
+    """私密骑行对他人表现成 404，像这条记录根本不存在。"""
+    from app.user.models import User
+
+    other_user = User(openid="privacy_owner")
+    db.add(other_user)
+    db.commit()
+    db.refresh(other_user)
+    aid = _create_test_activity(db, other_user.id)
+    db.add(ActivityPrivacy(activity_id=aid, visibility="private"))
+    db.commit()
+
+    resp = client.get(f"/api/activities/{aid}", headers=auth_header)
+    assert resp.status_code == 404
+
+
+def test_activity_privacy_self_always_visible(client, auth_header, db, test_user):
+    """本人看自己的私密骑行仍返回完整详情。"""
+    aid = _create_test_activity(db, test_user.id)
+    db.add(ActivityPrivacy(activity_id=aid, visibility="private"))
+    db.commit()
+
+    resp = client.get(f"/api/activities/{aid}", headers=auth_header)
+    assert resp.status_code == 200
+
+
+def test_old_activities_default_public(client, auth_header, db):
+    """没有 privacy 行的老数据，对其他登录用户继续默认公开。"""
+    from app.user.models import User
+
+    owner = User(openid="legacy_public_owner")
+    db.add(owner)
+    db.commit()
+    db.refresh(owner)
+    aid = _create_test_activity(db, owner.id)
+
+    resp = client.get(f"/api/activities/{aid}", headers=auth_header)
+    assert resp.status_code == 200
 
 
 def test_25_delete_activity(client, auth_header, db, test_user, monkeypatch):
@@ -271,6 +323,30 @@ def test_28_update_other_user(client, auth_header, db, test_user):
         headers=auth_header,
     )
     assert resp.status_code == 403
+
+
+def test_edit_delete_still_owner_only(client, auth_header, db, test_user, monkeypatch):
+    """就算活动是公开的，编辑和删除也仍像房门钥匙一样只认主人。"""
+    from app.user.models import User
+
+    owner = User(openid="public_owner")
+    db.add(owner)
+    db.commit()
+    db.refresh(owner)
+    aid = _create_test_activity(db, owner.id)
+    db.add(ActivityPrivacy(activity_id=aid, visibility="public"))
+    db.commit()
+    monkeypatch.setattr("app.activity.service._storage.delete", lambda f: True)
+
+    patch_resp = client.patch(
+        f"/api/activities/{aid}",
+        json={"title": "偷改"},
+        headers=auth_header,
+    )
+    delete_resp = client.delete(f"/api/activities/{aid}", headers=auth_header)
+
+    assert patch_resp.status_code == 403
+    assert delete_resp.status_code == 403
 
 
 def test_29_update_title_too_long(client, auth_header, db, test_user):
