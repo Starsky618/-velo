@@ -50,18 +50,23 @@ from app.segment.models import Segment
 
 logger = logging.getLogger(__name__)
 
-# 沿赛段参考线等距采样点数（跟 service_create 创建时同款 80 点）
-SAMPLE_COUNT = 80
+# 沿赛段参考线等距采样点数。
+# 算 max_gradient 用 400 点密采样（10km 赛段 = 25m 间距，100m 滑窗跨 4 点 / 平滑窗口跨 375m 重叠率 71% / 能压住 DEM 山区噪声 ±20m）
+# 存 elevation_profile 仍用 80 点（前端画曲线够 / 每 5 取 1）
+DENSE_SAMPLE_COUNT = 400
+PROFILE_SAMPLE_COUNT = 80
+PROFILE_STRIDE = DENSE_SAMPLE_COUNT // PROFILE_SAMPLE_COUNT  # = 5
 
 
-def sample_reference_line_coords(db, segment_id: int) -> list[tuple[float, float]]:
-    """用 PostGIS ST_LineInterpolatePoint 沿赛段参考线等距采样 80 个点。
+def sample_reference_line_coords(
+    db, segment_id: int, n: int = DENSE_SAMPLE_COUNT,
+) -> list[tuple[float, float]]:
+    """用 PostGIS ST_LineInterpolatePoint 沿赛段参考线等距采样 n 个点。
 
-    类比：拿一根有刻度的卷尺贴着赛段折线铺开，每 1/80 处采一个坐标。
+    类比：拿一根有刻度的卷尺贴着赛段折线铺开，每 1/(n-1) 处采一个坐标。
     返回 [(lat, lon), ...] 顺序按沿线方向。
 
-    PostGIS ST_LineInterpolatePoint(line, fraction) → 线上 fraction 比例位置的点。
-    fraction 取 0, 1/79, 2/79, ..., 1.0 共 80 个值（覆盖起点到终点）。
+    n 默认 400 点用于算 max_gradient。前端 elevation_profile 用 80 点从中等步距取。
     """
     rows = db.execute(
         text("""
@@ -75,7 +80,7 @@ def sample_reference_line_coords(db, segment_id: int) -> list[tuple[float, float
             WHERE segments.id = :seg_id
             ORDER BY frac
         """),
-        {"n": SAMPLE_COUNT, "denom": float(SAMPLE_COUNT - 1), "seg_id": segment_id},
+        {"n": n, "denom": float(n - 1), "seg_id": segment_id},
     ).fetchall()
     return [(float(r.lat), float(r.lon)) for r in rows]
 
@@ -135,19 +140,18 @@ def recompute_one_segment(db, seg: Segment, skip_dem: bool = False) -> dict | No
 
     new_difficulty = calculate_difficulty(seg.distance, elevation_gain, new_max_grad)
 
-    # elevation_profile 长度对齐（spec 审 I1）：保留 80 点位置，None 用相邻插值填充。
-    # 这样前端按"等距 80 点"假设画曲线不会偏移。
+    # elevation_profile：从 400 点密采样里每 5 个取 1 个 → 80 点存 DB（前端画曲线够用）
+    # None 位置用上一个有效值兜底，长度严格 80（前端按等距假设画图）
+    sparse_elevations = dem_elevations[::PROFILE_STRIDE][:PROFILE_SAMPLE_COUNT]
     filled_profile: list[float] = []
     last_valid: float | None = None
-    for i, ele in enumerate(dem_elevations):
+    for ele in sparse_elevations:
         if ele is not None:
             filled_profile.append(round(ele, 1))
             last_valid = ele
         elif last_valid is not None:
-            # 上一个有效值兜底（最常见情况 / DEM 偶发空洞）
             filled_profile.append(round(last_valid, 1))
         else:
-            # 序列开头就是 None / 用 0.0 占位（极罕见 / 起点就在海上）
             filled_profile.append(0.0)
 
     return {

@@ -135,9 +135,12 @@ def create_segment(
                 # 下坡：累计下降（abs 转为正数，好比"下了多少层楼"）
                 elevation_loss += abs(diff)
 
-        # 平均坡度（%）= 累计爬升 ÷ 水平距离 × 100
-        # 好比爬 100 米高差的山，水平走了 1000 米，坡度就是 10%
-        avg_gradient = round(elevation_gain / total_distance * 100, 1) if total_distance > 0 else 0.0
+        # 平均坡度（%）= **净高差**（爬升 - 下降）÷ 水平距离 × 100
+        # 下坡赛段 loss > gain → 负数（如 -2.9% 表示整段平均下降 2.9%）
+        # 跟 from-activity 路径 + 回填脚本统一公式（codex 旧 review I1 + Tim 2026-05-15 反馈）
+        avg_gradient = round(
+            (elevation_gain - elevation_loss) / total_distance * 100, 1
+        ) if total_distance > 0 else 0.0
 
         # 海拔缩略图：等距采样约 80 个点，前端用来画海拔曲线
         elevation_profile = _sample_elevation_profile(reference_points, target_count=80)
