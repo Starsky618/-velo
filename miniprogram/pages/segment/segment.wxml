@@ -116,12 +116,24 @@
       <text>还没骑过这条赛段，去骑一次试试</text>
     </view>
 
-    <!-- 三态 4：有成绩 -->
+    <!-- 三态 4：有成绩（task-4.4：Strava 风格双行结构 + N 项入口） -->
     <view wx:else class="record-content">
-      <!-- 主成绩：PR 用时（个人最佳） -->
-      <view class="record-main">
-        <text class="record-label">最快用时</text>
-        <text class="record-time">{{myEffortDisplay.prTime}}</text>
+      <!-- 本次：仅从骑行详情进入时显示（带 from_activity_id 且 my-efforts 找到对应 effort） -->
+      <view class="record-row record-current" wx:if="{{currentAttempt}}">
+        <text class="record-label">本次</text>
+        <view class="record-value">
+          <text class="record-time">{{currentAttempt.time}}</text>
+          <text class="record-date">{{currentAttempt.date}}</text>
+        </view>
+      </view>
+
+      <!-- 最快（PR）：始终显示（已通过 wx:elif !myEffort.pr_elapsed_time 兜底过滤未骑过场景） -->
+      <view class="record-row record-pr">
+        <text class="record-label">最快</text>
+        <view class="record-value">
+          <text class="record-time">{{myEffortDisplay.prTime}}</text>
+          <text class="record-date" wx:if="{{myEffortDisplay.prDate}}">{{myEffortDisplay.prDate}}</text>
+        </view>
       </view>
 
       <!-- 进步对比（这次 vs 上次 / 仅当有 last 时显示） -->
@@ -132,6 +144,12 @@
       <!-- 这次刚破 PR 的提示 -->
       <view class="record-pr-flag" wx:if="{{myEffort.current_attempt_is_pr && !myEffort.is_first_attempt}}">
         <text>这次创下新纪录</text>
+      </view>
+
+      <!-- 你的成绩 N 项 入口（task-4.4 只渲染数字 / task-4.5 才接通跳转） -->
+      <view class="my-efforts-entry" wx:if="{{myEffortsCount > 0}}">
+        <text class="my-efforts-text">你的成绩 {{myEffortsCount}} 项</text>
+        <text class="my-efforts-arrow">›</text>
       </view>
     </view>
   </view>

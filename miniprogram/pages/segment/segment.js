@@ -25,7 +25,7 @@
 const api = require('../../utils/api')
 const bindchart = require('../../utils/bindchart')
 const { getCityLabel } = require('../../utils/city')
-const { formatTime } = require('../../utils/format')
+const { formatTime, formatDate } = require('../../utils/format')
 
 // niceScale / formatNum 复用活动详情页用的同款工具（保持视觉风格一致）
 const niceScale = bindchart.niceScale
@@ -91,8 +91,13 @@ Page({
 
     // 区块 3：我的记录（基于 EffortCompareResponse 6 字段）
     myEffort: null,             // 后端 6 字段对象
-    myEffortDisplay: null,      // 前端渲染用：{ prTime, progressText }
+    myEffortDisplay: null,      // 前端渲染用：{ prTime, prDate, progressText }
     myEffortError: false,
+    // task-4.4：双行结构 + N 项入口数据
+    fromActivityId: null,       // 从骑行详情进入时带的 activity_id（决定是否显示"本次"行）
+    currentAttempt: null,       // "本次"行渲染数据：{ time, date }（仅从 detail 进入且找到对应 effort 时）
+    myEffortsCount: 0,          // "你的成绩 N 项" 中的 N（点击跳转 task-4.5 才接通）
+    prDateFromEfforts: '',      // PR 那条 effort 的 created_at（applyMyEfforts 算出后给 applyMyEffort 用）
 
     // 区块 4：全网排行榜
     leaderboard: null,          // 后端响应：{ items, total, page, page_size }
@@ -110,6 +115,15 @@ Page({
       return
     }
 
+    // task-4.4：从骑行详情点进来时带 from_activity_id，让"我的记录"卡显示"本次"行
+    // 从 explore / 通知进来不带 → 只显示 PR 行
+    // task-4.4 Codex 异源审 I1：严格匹配纯数字串，防 "123abc" 这种脏参数被 parseInt 接受成 123
+    // 把别人的 activity 误标"本次"
+    const rawFromActivityId = options && options.from_activity_id
+    const validFromActivityId = (typeof rawFromActivityId === 'string' && /^\d+$/.test(rawFromActivityId))
+      ? parseInt(rawFromActivityId, 10)
+      : null
+
     const app = getApp()
     // globalData.userInfo 在登录后才有 / 未登录时是 null
     const userInfo = (app.globalData && app.globalData.userInfo) || null
@@ -117,6 +131,7 @@ Page({
 
     this.setData({
       segmentId,
+      fromActivityId: validFromActivityId,
       loading: true,
       isLoggedIn,
       myUserId: (userInfo && userInfo.id) || 0,
@@ -171,6 +186,16 @@ Page({
       }),
     )
 
+    // task-4.4 task 4：我在该赛段的全部成绩（仅登录拉 / 失败静默 / 用来算"本次"+N 项）
+    // 失败不显示错误（这部分是锦上添花 / PR/本次 失败时仍走 myEffort 的 PR 那行兜底）
+    if (this.data.isLoggedIn) {
+      tasks.push(
+        api.getMySegmentEfforts(segmentId).catch(() => null),
+      )
+    } else {
+      tasks.push(Promise.resolve(null))
+    }
+
     Promise.all([
       // 仅 segment 走主路径 catch（404 → notFound / 其他错误 → toast）
       tasks[0].catch((err) => {
@@ -185,10 +210,12 @@ Page({
       }),
       tasks[1],
       tasks[2],
+      tasks[3],
     ])
-      .then(([segment, myEffort, leaderboard]) => {
+      .then(([segment, myEffort, leaderboard, myEfforts]) => {
         // applySegment 内部会触发 drawElevationProfile（setTimeout 100ms 兜底）
         this.applySegment(segment)
+        this.applyMyEfforts(myEfforts)  // task-4.4：必须在 applyMyEffort 前算 prDate
         this.applyMyEffort(myEffort)
         this.applyLeaderboard(leaderboard)
         this.setData({ loading: false })
@@ -460,12 +487,64 @@ Page({
       }
     }
 
+    // task-4.4：PR 日期来自 my-efforts 接口（在 applyMyEfforts 里已存到 data.prDateFromEfforts）
+    // 兜底：my-efforts 失败时不显示日期（仅显示用时 / 跟 task-4.4 前的体验一致）
     this.setData({
       myEffort,
       myEffortDisplay: {
         prTime: formatTime(pr),
+        prDate: this.data.prDateFromEfforts || '',
         progressText,
       },
+    })
+  },
+
+  /**
+   * 应用 my-efforts 数据（task-4.4：算"本次"行 + "你的成绩 N 项"入口 + PR 日期）
+   *
+   * 三件事：
+   *   1. myEffortsCount：N 项入口的数字（点击跳转 task-4.5 才接通）
+   *   2. currentAttempt：从骑行详情进入时，找到对应 activity_id 那条 effort 作"本次"行
+   *   3. prDateFromEfforts：找到 is_pr=true 那条 effort 的 created_at 给 PR 行做日期标签
+   *
+   * 必须在 applyMyEffort 之前调用——后者会从 data.prDateFromEfforts 取日期拼到 myEffortDisplay。
+   */
+  applyMyEfforts(myEfforts) {
+    if (!myEfforts || !myEfforts.items || myEfforts.items.length === 0) {
+      this.setData({
+        myEffortsCount: 0,
+        currentAttempt: null,
+        prDateFromEfforts: '',
+      })
+      return
+    }
+
+    const items = myEfforts.items
+    const fromActivityId = this.data.fromActivityId
+
+    // 本次：仅当从骑行详情带 from_activity_id 进入时才找
+    let currentAttempt = null
+    if (fromActivityId) {
+      const found = items.find((e) => e.activity_id === fromActivityId)
+      if (found) {
+        currentAttempt = {
+          time: formatTime(found.elapsed_time),
+          date: formatDate(found.created_at),
+        }
+      }
+    }
+
+    // PR 日期：找 is_pr=true 那条（task-4.3 已保证只有 1 条）
+    let prDateFromEfforts = ''
+    const prItem = items.find((e) => e.is_pr === true)
+    if (prItem) {
+      prDateFromEfforts = formatDate(prItem.created_at)
+    }
+
+    this.setData({
+      myEffortsCount: items.length,
+      currentAttempt,
+      prDateFromEfforts,
     })
   },
 
@@ -545,9 +624,17 @@ Page({
   fetchMyEffort() {
     if (!this.data.isLoggedIn) return
     this.setData({ myEffortError: false })
-    api.getMySegmentEffort(this.data.segmentId)
-      .then((data) => {
-        this.applyMyEffort(data)
+
+    // task-4.4 B 审 I1：同时重拉 my-efforts，否则首次 my-efforts 失败时 prDateFromEfforts 永远为空
+    // → PR 行只显示用时不显示日期（即使重试 myEffort 成功也救不回来）
+    Promise.all([
+      api.getMySegmentEffort(this.data.segmentId),
+      api.getMySegmentEfforts(this.data.segmentId).catch(() => null),  // 静默失败 / 维持现有 prDateFromEfforts
+    ])
+      .then(([myEffort, myEfforts]) => {
+        // 必须 applyMyEfforts 先（写 prDateFromEfforts），再 applyMyEffort（读 prDateFromEfforts 拼 myEffortDisplay）
+        if (myEfforts) this.applyMyEfforts(myEfforts)
+        this.applyMyEffort(myEffort)
         // Claude 综合审 I3 修：重试 myEffort 成功后必须重算 leaderboard.myRankRow
         // 否则首次 myEffort 失败 + 当时不在 top 10 → 重试成功后独立行永远不出现 → D7 反转失效
         if (this.data.leaderboard) this.applyLeaderboard(this.data.leaderboard)

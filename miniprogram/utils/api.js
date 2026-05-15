@@ -240,6 +240,26 @@ module.exports = {
   },
 
   /**
+   * 拉取我在某赛段的全部成绩（task-4.3 新接口 / task-4.4 用来算"本次"+N 项）
+   *
+   * 类比：像翻开自己的"赛段成绩薄"——
+   * 这条赛段我骑了 5 次都长啥样、最快是哪次、每次跳到哪条骑行详情。
+   *
+   * 后端契约（GET /api/segments/{id}/my-efforts / 需登录）：
+   *   - 真返 items 数组（MySegmentEffortItem schema 实证 app/segment/schemas.py:262）：
+   *       activity_id / elapsed_time / avg_speed / avg_power / created_at / is_pr
+   *   - 按 created_at 倒序（最新在前）/ 同时间 id 兜底
+   *   - is_pr 只标最快那条（同秒并列时取 id 最小那条 / 跟主榜 tiebreaker 一致）
+   *   - 401 未登录 → reject / 404 segment 不存在 → reject
+   *
+   * @param {number} segmentId - 赛段 ID
+   * @returns {Promise<object>} { items: [...] }
+   */
+  getMySegmentEfforts: function (segmentId) {
+    return request('/api/segments/' + segmentId + '/my-efforts', 'GET')
+  },
+
+  /**
    * 上传文件专用（GPX 上传走这个，不走普通 JSON 请求）
    *
    * @param {string} url - 上传接口路径

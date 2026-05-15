@@ -505,6 +505,12 @@ Page({
   goSegment: function (e) {
     var id = e.currentTarget.dataset.id
     if (!id) return
-    wx.navigateTo({ url: '/pages/segment/segment?id=' + id })
+    // task-4.4：从骑行详情进 segment 详情时带 from_activity_id，
+    // 让赛段页"我的记录"卡显示"本次"行（来自这条 activity 的 effort）
+    var url = '/pages/segment/segment?id=' + id
+    if (this.activityId) {
+      url += '&from_activity_id=' + this.activityId
+    }
+    wx.navigateTo({ url: url })
   },
 })

@@ -213,28 +213,52 @@ page {
   gap: 24rpx;
 }
 
-.record-main {
+/* task-4.4：Strava 风格双行结构（本次 + 最快），左标签 右用时+日期 */
+.record-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 24rpx 0;
+  justify-content: space-between;
+  padding: 12rpx 0;
+}
+
+.record-row.record-current {
+  border-bottom: 2rpx solid #F2F2F7;
+  padding-bottom: 20rpx;
 }
 
 .record-label {
-  font-size: 24rpx;
+  font-size: 28rpx;
   color: #86868B;
-  margin-bottom: 8rpx;
+  flex-shrink: 0;
+}
+
+.record-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 .record-time {
-  font-size: 56rpx;
+  font-size: 48rpx;
   font-weight: 700;
   color: #1D1D1F;
   font-variant-numeric: tabular-nums;  /* 等宽数字 / 时间显示更稳 */
+  line-height: 1.1;
+}
+
+.record-row.record-current .record-time {
+  color: #FF6B00;  /* "本次"行用品牌橙色突出 / 跟 Strava 类似 */
+}
+
+.record-date {
+  font-size: 22rpx;
+  color: #86868B;
+  margin-top: 4rpx;
 }
 
 .record-progress {
   text-align: center;
+  padding-top: 8rpx;
 }
 
 .progress-text {
@@ -253,6 +277,25 @@ page {
   color: #FF2D55;
   font-size: 26rpx;
   font-weight: 600;
+}
+
+/* task-4.4："你的成绩 N 项" 入口（task-4.5 才接通点击 / 现仅渲染数字） */
+.my-efforts-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 16rpx;
+  border-top: 2rpx solid #F2F2F7;
+}
+
+.my-efforts-text {
+  font-size: 28rpx;
+  color: #1D1D1F;
+}
+
+.my-efforts-arrow {
+  font-size: 32rpx;
+  color: #86868B;
 }
 
 /* ========== 区块 4：全网排行榜 ========== */
