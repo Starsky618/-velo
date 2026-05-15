@@ -43,7 +43,7 @@ from sqlalchemy import text
 
 from app.database import SessionLocal
 from app.segment._geo_utils import _haversine
-from app.segment.algorithms import calculate_difficulty, calculate_max_gradient
+from app.segment.algorithms import _smooth_elevations, calculate_difficulty, calculate_max_gradient
 from app.segment.dem_client import DEMServiceError, query_elevations
 from app.segment.models import Segment
 
@@ -107,7 +107,13 @@ def recompute_one_segment(db, seg: Segment, skip_dem: bool = False) -> dict | No
         logger.warning("segment id=%s DEM 查询失败：%s", seg.id, exc)
         return None
 
-    # 用 DEM 海拔 + 实际坐标距离重算所有字段
+    # DEM 山区像素 ±20m 噪声 + 30m 分辨率不能精确测窄带状公路 → 视觉锯齿 + max 虚高。
+    # 对 400 点 DEM 数据做中位数平滑（window=21 / 跨 ~525m），让单调上坡 / 下坡赛段
+    # 看起来真单调；max_gradient + elevation_profile 都用平滑后数据保持一致。
+    # 真陡坡（连续上升 ≥ 500m）的中段海拔差稳定 → 中位数趋势不变 / 不会被平掉。
+    smoothed_elevations = _smooth_elevations(dem_elevations, window=21)
+
+    # 用平滑后 DEM 海拔 + 实际坐标距离重算所有字段
     total_dist = 0.0
     elevation_gain = 0.0
     elevation_loss = 0.0
@@ -116,8 +122,8 @@ def recompute_one_segment(db, seg: Segment, skip_dem: bool = False) -> dict | No
             coords[i - 1][0], coords[i - 1][1],
             coords[i][0], coords[i][1],
         )
-        prev_ele = dem_elevations[i - 1]
-        curr_ele = dem_elevations[i]
+        prev_ele = smoothed_elevations[i - 1]
+        curr_ele = smoothed_elevations[i]
         if prev_ele is not None and curr_ele is not None:
             diff = curr_ele - prev_ele
             if diff > 0:
@@ -134,20 +140,19 @@ def recompute_one_segment(db, seg: Segment, skip_dem: bool = False) -> dict | No
         else 0.0
     )
 
-    # max_gradient：构造轻量对象给 calculate_max_gradient（同 from-activity 路径做法）
-    # window_m=500：DEM 数据（30m 像素 ±20m 噪声）用 100m 窗口会被单像素跳变放大成假陡坡。
-    # 500m 跨 ~17 个 30m 像素，噪声稀释。Strava 业界公开做法（rolling 500m）。
+    # max_gradient：用平滑后数据 + 500m 窗口
+    # 双层防御（平滑 + 大窗口）压住 DEM 像素噪声与采样到山势而非公路的位置漂移
     points = [
-        SimpleNamespace(latitude=coords[i][0], longitude=coords[i][1], elevation=dem_elevations[i])
+        SimpleNamespace(latitude=coords[i][0], longitude=coords[i][1], elevation=smoothed_elevations[i])
         for i in range(len(coords))
     ]
     new_max_grad = calculate_max_gradient(points, window_m=500.0)
 
     new_difficulty = calculate_difficulty(seg.distance, elevation_gain, new_max_grad)
 
-    # elevation_profile：从 400 点密采样里每 5 个取 1 个 → 80 点存 DB（前端画曲线够用）
-    # None 位置用上一个有效值兜底，长度严格 80（前端按等距假设画图）
-    sparse_elevations = dem_elevations[::PROFILE_STRIDE][:PROFILE_SAMPLE_COUNT]
+    # elevation_profile：从平滑后 400 点每 5 个取 1 → 80 点存 DB（前端画曲线够用）
+    # 用平滑后数据，前端看到的曲线视觉更接近真实路型（单调上坡看起来真单调，无锯齿）
+    sparse_elevations = smoothed_elevations[::PROFILE_STRIDE][:PROFILE_SAMPLE_COUNT]
     filled_profile: list[float] = []
     last_valid: float | None = None
     for ele in sparse_elevations:
