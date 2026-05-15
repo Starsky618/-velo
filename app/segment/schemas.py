@@ -268,7 +268,9 @@ class MySegmentEffortItem(BaseModel):
     elapsed_time: int                        # 秒
     avg_speed: Optional[float] = None        # km/h
     avg_power: Optional[float] = None        # W
-    created_at: datetime
+    # 实际是 Activity.started_at（真骑行时间 / 不是 effort 写入 DB 时间）
+    # Optional 兜底极少数 Strava 活动 started_at=NULL 的边界（service 已 nullslast 排序兜底）
+    created_at: Optional[datetime] = None
     is_pr: bool                              # 我在该赛段的最快记录（图 1 黄点）
 
 

@@ -587,7 +587,13 @@ def get_my_efforts_on_segment(
     返回当前登录用户在某个赛段的全部成绩——"我在妙峰山骑了 5 次都长啥样"。
 
     跟主排行榜（每人一行）不同：这是我自己的成绩单，5 次 effort 全部列出来。
-    按 created_at 倒序：最新骑的在最前（跟图 1 风格一致），同时间用 id 兜底排序。
+
+    ⚠ 时间字段陷阱（2026-05-15 Tim 真用回归发现）：
+    必须用 Activity.started_at（真实骑行时间）做排序和年份分组，
+    绝对不要用 SegmentEffort.created_at（effort 写入 DB 那一刻）——
+    Strava 自动同步会把一堆活动在同一秒批量解析，所有 effort 的 created_at
+    都变成"同步那一刻"，年份分组全挤到当年，排序也乱。
+    详见 memory `feedback_time_field_use_business_not_db_writetime.md`。
 
     is_pr 标记：5 次里最快那条标 true（图 1 黄色小圆点）。
     并列 tiebreaker 跟主榜 task-4.2 一致：(elapsed_time, effort.id) 最小那条算 PR。
@@ -596,29 +602,40 @@ def get_my_efforts_on_segment(
     if db.query(Segment.id).filter_by(id=segment_id).first() is None:
         raise ValueError("赛段不存在")
 
-    efforts = (
-        db.query(SegmentEffort)
+    # JOIN Activity 拿 started_at（真实骑行时间 / 不是 effort.created_at DB 写入时间）
+    rows = (
+        db.query(
+            SegmentEffort.id.label("effort_id"),
+            SegmentEffort.activity_id,
+            SegmentEffort.elapsed_time,
+            SegmentEffort.avg_speed,
+            SegmentEffort.avg_power,
+            Activity.started_at.label("started_at"),
+        )
+        .join(Activity, Activity.id == SegmentEffort.activity_id)
         .filter(
             SegmentEffort.segment_id == segment_id,
             SegmentEffort.user_id == user_id,
         )
-        .order_by(SegmentEffort.created_at.desc(), SegmentEffort.id.desc())
+        # nullslast：极少数 strava 活动 started_at 为 NULL 时降级到 effort.id 兜底
+        .order_by(Activity.started_at.desc().nullslast(), SegmentEffort.id.desc())
         .all()
     )
-    if not efforts:
+    if not rows:
         return []
 
-    # PR 用 (elapsed_time, id) tuple 兜底——同秒并列时取 id 最小的（最早 / 跟主榜一致）
-    pr_key = min((e.elapsed_time, e.id) for e in efforts)
+    # PR 用 (elapsed_time, effort_id) tuple 兜底——同秒并列时取 id 最小的（跟主榜一致）
+    pr_key = min((r.elapsed_time, r.effort_id) for r in rows)
 
     return [
         {
-            "activity_id": e.activity_id,
-            "elapsed_time": e.elapsed_time,
-            "avg_speed": e.avg_speed,
-            "avg_power": e.avg_power,
-            "created_at": e.created_at,
-            "is_pr": (e.elapsed_time, e.id) == pr_key,
+            "activity_id": r.activity_id,
+            "elapsed_time": r.elapsed_time,
+            "avg_speed": r.avg_speed,
+            "avg_power": r.avg_power,
+            # 字段名保留 created_at 兼容前端但语义是 Activity.started_at（真骑行时间）
+            "created_at": r.started_at,
+            "is_pr": (r.elapsed_time, r.effort_id) == pr_key,
         }
-        for e in efforts
+        for r in rows
     ]

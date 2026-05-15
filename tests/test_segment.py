@@ -313,8 +313,12 @@ def _insert_effort(db, segment_id, activity_id, user_id,
     db.commit()
 
 
-def _insert_activity(db, user_id, title="测试骑行"):
-    """直接往数据库插入一条活动记录"""
+def _insert_activity(db, user_id, title="测试骑行", started_at=None):
+    """直接往数据库插入一条活动记录
+
+    task-4.6 hotfix：默认填 started_at（真骑行时间）—— my-efforts 接口现在用
+    Activity.started_at 排序 / 分组（不再用 effort.created_at DB 写入时间）。
+    """
     from tests.conftest import _activities_table
     db.execute(_activities_table.insert().values(
         user_id=user_id,
@@ -322,6 +326,7 @@ def _insert_activity(db, user_id, title="测试骑行"):
         status="completed",
         file_url="test.gpx",
         distance=50000.0,
+        started_at=started_at or datetime(2026, 4, 1, 8, 0, 0, tzinfo=timezone.utc),
         created_at=datetime(2026, 4, 1, tzinfo=timezone.utc),  # task-0.1 双审 C2 修复
     ))
     db.commit()
@@ -1006,33 +1011,33 @@ def test_my_efforts_returns_only_self(client, db, test_user, auth_header):
     assert all(it["elapsed_time"] in [150, 200] for it in data["items"])
 
 
-def test_my_efforts_ordered_by_created_at_desc(client, db, test_user, auth_header):
-    """最新骑的在前（跟图 1 一致）。"""
-    from tests.conftest import _segment_efforts_table
+def test_my_efforts_ordered_by_started_at_desc(client, db, test_user, auth_header):
+    """task-4.6 hotfix：按 Activity.started_at 倒序（真骑行时间），不是 effort.created_at（DB 写入时间）。
 
+    这条测试故意让"effort 在 DB 写入顺序"跟"真骑行顺序"不一致——
+    模拟 Strava 同步：3 条活动按 effort.id 顺序写入，但 started_at 是 2024/2025 混杂。
+    """
     seg_id = _insert_segment(db)
-    # 3 条 effort，故意让 created_at 顺序跟 elapsed_time 顺序不同
+    # 3 条 effort：先写入 2025 那条（更晚骑的）/ 再写 2024 老活动 → 真排序要按 started_at
     cases = [
-        ("ride_2024_jan", 100, datetime(2024, 1, 1, tzinfo=timezone.utc)),
-        ("ride_2025_jun", 200, datetime(2025, 6, 1, tzinfo=timezone.utc)),
-        ("ride_2024_dec", 150, datetime(2024, 12, 1, tzinfo=timezone.utc)),
+        ("ride_2025_jun", 200, datetime(2025, 6, 1, 8, 0, 0, tzinfo=timezone.utc)),
+        ("ride_2024_dec", 150, datetime(2024, 12, 1, 8, 0, 0, tzinfo=timezone.utc)),
+        ("ride_2024_jan", 100, datetime(2024, 1, 1, 8, 0, 0, tzinfo=timezone.utc)),
     ]
-    for title, t, created in cases:
-        aid = _insert_activity(db, test_user.id, title)
-        db.execute(_segment_efforts_table.insert().values(
-            segment_id=seg_id, activity_id=aid, user_id=test_user.id,
-            elapsed_time=t, avg_speed=30.0, avg_power=200.0,
-            start_index=1, end_index=6,
-            created_at=created,
-        ))
-    db.commit()
+    for title, t, started in cases:
+        aid = _insert_activity(db, test_user.id, title, started_at=started)
+        _insert_effort(db, seg_id, aid, test_user.id, elapsed_time=t)
 
     resp = client.get(f"/api/segments/{seg_id}/my-efforts", headers=auth_header)
     data = resp.json()
 
     times = [it["elapsed_time"] for it in data["items"]]
-    # 期望顺序：2025-06(200) / 2024-12(150) / 2024-01(100)
+    # 期望顺序：2025-06(200) / 2024-12(150) / 2024-01(100) 按 started_at desc
     assert times == [200, 150, 100]
+    # created_at 字段值应该来自 activity.started_at（不是 effort 写入时间）
+    assert "2025-06-01" in data["items"][0]["created_at"]
+    assert "2024-12-01" in data["items"][1]["created_at"]
+    assert "2024-01-01" in data["items"][2]["created_at"]
 
 
 def test_my_efforts_is_pr_marks_fastest(client, db, test_user, auth_header):
