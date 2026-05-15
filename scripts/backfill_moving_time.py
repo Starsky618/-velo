@@ -24,9 +24,12 @@
     python3 -m scripts.backfill_moving_time --user-id 1
 
 限流保护：
-    1. 显式 sleep 0.25s/条 (≈ 4 req/s)，远低于 Strava 100/15min ≈ 6.7 req/s 平均
-    2. StravaClient 内置 Redis rate limiter 兜底（超限抛 StravaRateLimitError）
-    3. 单个用户 token 失效（refresh 过期等）→ 跳过该用户全部活动，继续下一个
+    1. Strava 限流：100 req / 15 min → 平均 9 秒/req。默认 sleep 9s/条保守
+       跑（一气呵成 / 不会被限流踢出）。
+    2. --fast 模式 sleep 0.25s/条（4 req/s）：约 25s 就会触碰 100 上限，
+       StravaClient 抛 StravaRateLimitError → 脚本 commit 当前进度退出，
+       等 15 分钟再重跑下一批 ~100 条。适合赶时间手动分批跑。
+    3. 单个用户 token 失效（refresh 过期等）→ 跳过该用户全部活动，继续下一个。
 
 进度：
     每 20 条 db.commit() + 打印进度。中途崩溃最多损失最后 20 条进度。
@@ -50,8 +53,11 @@ logger = logging.getLogger(__name__)
 
 
 # 节流：每条 API 调用之间 sleep 时长（秒）
-# 4 req/s × 60 = 240 req/min，远低于 Strava 100/15min 平均 6.7 req/s 阈值
-_SLEEP_SEC = 0.25
+# Strava 限流 100 req / 15 min → 平均 9 秒/req。默认保守 9s，一气呵成不被踢出。
+# --fast 改 0.25s（4 req/s）会快速触发限流 → 脚本 commit 当前进度退出，
+# Tim 等 15 分钟再重跑下一批（每批 ~95-100 条）。
+_SLEEP_SEC_SAFE = 9.0
+_SLEEP_SEC_FAST = 0.25
 
 # 每 N 条 commit 一次 + 打印进度
 _COMMIT_EVERY = 20
@@ -70,7 +76,7 @@ def _query_pending(db, user_id_filter: int | None) -> list[Activity]:
 
 
 def _print_dry_run_stats(activities: list[Activity]) -> None:
-    """干跑模式：打印待回填条数 + 按用户分组明细。"""
+    """干跑模式：打印待回填条数 + 按用户分组明细 + 两种模式预估时间。"""
     total = len(activities)
     by_user = Counter(a.user_id for a in activities)
     logger.info("=== 干跑模式（不调 API / 不改 DB） ===")
@@ -78,19 +84,33 @@ def _print_dry_run_stats(activities: list[Activity]) -> None:
     logger.info("按用户分组：")
     for uid, count in by_user.most_common():
         logger.info("  user_id=%d: %d 条", uid, count)
-    # 给个时间预估，让用户决定要不要真跑
-    est_seconds = total * (_SLEEP_SEC + 0.3)  # 0.3s 平均 API 响应延迟估
-    logger.info("真跑预估耗时：≈ %d 秒（%d 分钟）", int(est_seconds), int(est_seconds / 60))
+    # 两种模式预估
+    safe_sec = total * (_SLEEP_SEC_SAFE + 0.3)
+    # fast 模式：先跑 ~100 条触发限流，等 15min，再跑 ~100 条，循环
+    batches = max(1, (total + 99) // 100)
+    fast_sec = batches * (100 * 0.55 + 15 * 60)  # 0.25s sleep + 0.3s API
+    logger.info(
+        "默认（安全）跑预估：≈ %d 分钟一气呵成", int(safe_sec / 60),
+    )
+    logger.info(
+        "--fast 跑预估：≈ %d 批 × 15 分钟限流等待 ≈ %d 分钟（人工分批）",
+        batches, int(fast_sec / 60),
+    )
 
 
 def backfill_moving_time(
     db,
     user_id_filter: int | None = None,
+    fast: bool = False,
 ) -> dict:
     """真跑回填。返回 stats dict。"""
     activities = _query_pending(db, user_id_filter)
     total = len(activities)
-    logger.info("=== 真跑模式：待回填 %d 条 ===", total)
+    sleep_sec = _SLEEP_SEC_FAST if fast else _SLEEP_SEC_SAFE
+    logger.info(
+        "=== 真跑模式：待回填 %d 条 / sleep %.2fs/条（%s）===",
+        total, sleep_sec, "fast" if fast else "safe",
+    )
 
     stats = {
         "success": 0,        # 成功写入 moving_time
@@ -157,7 +177,7 @@ def backfill_moving_time(
             stats["api_error"] += 1
 
         # 节流
-        time.sleep(_SLEEP_SEC)
+        time.sleep(sleep_sec)
 
         # 进度 + commit
         if idx % _COMMIT_EVERY == 0:
@@ -184,6 +204,11 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="只回填指定 user_id 的活动（小批量验证用）",
     )
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="激进节流 0.25s/条（默认 9s/条）。会触发限流退出 / 等 15min 重跑",
+    )
     return parser.parse_args()
 
 
@@ -195,7 +220,7 @@ def main() -> int:
             activities = _query_pending(db, args.user_id)
             _print_dry_run_stats(activities)
             return 0
-        backfill_moving_time(db, user_id_filter=args.user_id)
+        backfill_moving_time(db, user_id_filter=args.user_id, fast=args.fast)
         return 0
     finally:
         db.close()
