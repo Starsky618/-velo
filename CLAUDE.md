@@ -296,6 +296,25 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 
 > **核心教训：本地测试全绿 ≠ 生产能跑。** 测试用 SQLite + mock，不连真 Docker/PostgreSQL/Strava API。
 
+### 部署 SOP（每次部署必跑 4 步，顺序不可乱）
+
+```bash
+# 1. 服务器 pull 最新代码
+ssh ubuntu@114.132.190.245 "cd ~/velo && git pull origin main"
+
+# 2. rebuild api 容器（不是 restart / restart 不会拿新代码）
+ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build api"
+
+# 3. 跑 alembic upgrade（硬性必跑 / 哪怕你"觉得这次没改 schema"）
+#    2026-05-15 实证：跳过这步 = 生产新代码引用未建表 / 全 endpoint 500
+ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T api python3 -m alembic upgrade head"
+
+# 4. curl 真 endpoint 验证（不只看 docker ps Up）
+ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T api python3 -c \"import urllib.request,json; print(json.load(urllib.request.urlopen('http://localhost:8000/api/segments/1'))['id'])\""
+```
+
+**为什么 alembic upgrade 升成硬性步骤**：并行开发时，**任何 sprint 加了迁移文件，所有人部署时都得跑**——哪怕你这次没改 schema。2026-05-15 实证：Tim 隐私 sprint 加了 `activity_privacy` 表迁移，我做坡度 sprint 部署时没跑 → 生产全 endpoint 500。
+
 ### 部署前强制检查清单
 
 - [ ] **requirements.txt 完整**？本地 pip install 的新包都写进去
