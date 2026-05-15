@@ -27,5 +27,9 @@ rq-scheduler>=0.13.1           # RQ 定时任务调度（调度器用）
 # DeepSeek 兼容 OpenAI Python SDK，只换 base_url 即可（Tim 2026-04-29 拍国产模型）
 openai>=1.0.0
 
+# DEM 海拔查询（2026-05-15 / Tim 拍合规自托管）
+# CGIAR-CSI SRTM 90m 懒下载 / 无需 NASA Earthdata 账号 / 数据从外网下载到本地容器缓存后不再依赖外网
+SRTM.py==0.3.7
+
 # 测试依赖
 pytest==9.0.2

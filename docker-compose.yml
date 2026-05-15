@@ -60,6 +60,7 @@ services:
       - redis
     volumes:
       - uploads:/app/uploads
+      - srtm_cache:/root/.cache/srtm   # DEM 海拔数据本地缓存（CGIAR-CSI SRTM 90m / 懒下载持久化）
 
   # ===== Worker：异步任务处理 =====
   # 和 API 用同一个镜像，只是启动命令不同
@@ -84,6 +85,7 @@ services:
       - redis
     volumes:
       - uploads:/app/uploads
+      - srtm_cache:/root/.cache/srtm   # worker 跑回填脚本时也需要 DEM 缓存
 
   # ===== Cleanup：定时僵尸回收 =====
   # 每 5 分钟运行一次清理脚本，回收孤儿 activity + 孤儿文件
@@ -217,3 +219,4 @@ volumes:
   uploads:     # GPX 文件存储
   caddy_data:  # SSL 证书存储
   caddy_config:
+  srtm_cache:  # DEM 海拔数据缓存（CGIAR-CSI SRTM 90m 懒下载 tile）
