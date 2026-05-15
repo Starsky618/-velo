@@ -203,13 +203,17 @@ def recompute_all(db, apply_changes: bool) -> dict:
 
             old_grad = seg.max_gradient
             old_diff = seg.difficulty
+            old_avg = seg.avg_gradient
             new_grad = new_values["max_gradient"]
             new_diff = new_values["difficulty"]
+            new_avg = new_values["avg_gradient"]
 
             changed = (
                 old_grad is None
                 or abs(new_grad - (old_grad or 0)) > 0.1
                 or new_diff != old_diff
+                or old_avg is None
+                or abs(new_avg - (old_avg or 0)) > 0.05
             )
             tag = " [变化]" if changed else ""
             logger.info(
