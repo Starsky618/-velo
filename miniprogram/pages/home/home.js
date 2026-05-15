@@ -140,8 +140,8 @@ Page({
             elevation_gain: Math.round(item.elevation_gain || 0),
             // 次要数据
             avg_speed: item.avg_speed,
-            avg_power: item.avg_power,
-            avg_hr: item.avg_hr,
+            avg_power: item.avg_power != null ? Math.round(item.avg_power) : null,
+            avg_hr: item.avg_hr != null ? Math.round(item.avg_hr) : null,
             // 时间
             dateText: that.fmtDate(item.started_at || item.created_at),
             // 赛段成绩（后续异步填充）

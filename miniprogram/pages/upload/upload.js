@@ -189,6 +189,10 @@ Page({
       .then(function (data) {
         // WXML 模板不支持 .toFixed()，在 JS 层预计算格式化数据
         var durationMin = data.duration ? Math.round(data.duration / 60) : 0
+        // 平均功率 / 心率 / 踏频统一取整：DB 存 Float 但展示层不要小数
+        if (data.avg_power != null) data.avg_power = Math.round(data.avg_power)
+        if (data.avg_hr != null) data.avg_hr = Math.round(data.avg_hr)
+        if (data.avg_cadence != null) data.avg_cadence = Math.round(data.avg_cadence)
         that.setData({
           step: 'done',
           result: data,

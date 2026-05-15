@@ -145,6 +145,18 @@ Page({
     var that = this
     api.get('/api/activities/' + id)
       .then(function (data) {
+        // 平均功率 / 心率 / 踏频统一取整：DB 存 Float 但展示层不要小数
+        if (data.avg_power != null) data.avg_power = Math.round(data.avg_power)
+        if (data.avg_hr != null) data.avg_hr = Math.round(data.avg_hr)
+        if (data.avg_cadence != null) data.avg_cadence = Math.round(data.avg_cadence)
+        if (Array.isArray(data.splits)) {
+          for (var si = 0; si < data.splits.length; si++) {
+            var sp = data.splits[si]
+            if (sp.avg_power != null) sp.avg_power = Math.round(sp.avg_power)
+            if (sp.avg_hr != null) sp.avg_hr = Math.round(sp.avg_hr)
+          }
+        }
+
         // 处理海拔剖面数据
         var eleData = processElevationData(data.simplified_track)
         var maxEle = -Infinity
