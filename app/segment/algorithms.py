@@ -159,6 +159,12 @@ def calculate_max_gradient(
 
     WINDOW_M = window_m  # 滑窗距离（米），调用方决定（GPS 用 100m / DEM 用 500m）
 
+    # 短赛段 fallback：如果窗口比赛段总长还长，无法形成窗口（算出 max=0 是 bug）。
+    # 改用总距离 / 4 作为窗口，确保 < 1km 短赛段也能算出有意义的坡度。
+    # 实证：桃花沟陡坡 climb 491m 用 500m 窗口 → 0% 假平地；用 122m 窗口 → 合理值
+    # 这个 fallback 要在累计距离算完之后再判断（要先知道实际总长）。
+    # 注：累计距离算法不变，但 WINDOW_M 在下面会动态调整
+
     # 累计距离：从第 0 个点开始算到每个点
     cumulative_dist = [0.0]
     for i in range(1, len(trackpoints)):
@@ -167,6 +173,11 @@ def calculate_max_gradient(
             trackpoints[i].latitude, trackpoints[i].longitude,
         )
         cumulative_dist.append(cumulative_dist[-1] + d)
+
+    # 短赛段 fallback：窗口 > 总长时无法形成窗口 → 用总长/4 作窗口
+    total_dist = cumulative_dist[-1]
+    if WINDOW_M > total_dist / 2.0 and total_dist > 0:
+        WINDOW_M = total_dist / 4.0
 
     # 海拔预平滑：先做一遍，下面所有窗口都用平滑后的值
     raw_elevations = [tp.elevation for tp in trackpoints]
