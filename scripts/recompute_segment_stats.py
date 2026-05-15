@@ -125,9 +125,12 @@ def recompute_one_segment(db, seg: Segment, skip_dem: bool = False) -> dict | No
             else:
                 elevation_loss += abs(diff)
 
+    # avg_gradient 用 seg.distance（reference_line 真实长度）算，不用 total_dist。
+    # total_dist 是 400 点直线累计 < reference_line 折线真长度，两者用不同距离会让
+    # 用户拿 DB 显示的 gain/loss/dist 自己算 avg 算不回 DB 的 avg（不自洽 bug / Tim 2026-05-15 抓）
     avg_gradient = (
-        round((elevation_gain - elevation_loss) / total_dist * 100, 1)
-        if total_dist > 0
+        round((elevation_gain - elevation_loss) / seg.distance * 100, 1)
+        if seg.distance and seg.distance > 0
         else 0.0
     )
 
