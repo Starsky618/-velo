@@ -156,39 +156,41 @@ Page({
   },
 
   /**
-   * 绑定 Strava——复用现有 OAuth 链接复制弹窗流程（components/strava-bind-row 同款）
+   * 绑定 Strava——Sprint 6 task-4 三次 hotfix / Tim 2026-05-16 真用拍
    *
-   * 流程：
-   *   1. GET /api/strava/authorize 拿 authorize_url
-   *   2. 复制到剪贴板（自带"已复制"toast）
-   *   3. modal 提示用户去微信"文件传输助手"粘贴打开
+   * 旧流程：复制 URL → 切微信传输助手 → 粘贴 → 浏览器打开（用户嫌麻烦）
+   * 新流程：拿 authorize_url → 跳本地 web-view 页直接打开 Strava 授权
+   *        用户在小程序内授权完 → 后端 callback 返成功 HTML → 用户左上返回 settings
+   *        settings.onShow 自动拉新 bound 状态
+   *
+   * 前置：小程序公众平台业务域名加 https://www.strava.com + https://114.132.190.245
+   *      开发版可工具勾选"不校验合法域名"临时跳过
    */
   onBindStrava() {
     wx.showLoading({ title: '准备授权链接…' })
     api.get('/api/strava/authorize')
-      .then(function (data) {
+      .then((data) => {
         wx.hideLoading()
         const url = data && data.authorize_url
         if (!url) {
           wx.showToast({ title: '后端未返链接', icon: 'none' })
           return
         }
-        wx.setClipboardData({
-          data: url,
-          success: function () {
-            wx.showModal({
-              title: '前往 Strava 授权',
-              content: '授权链接已复制。请打开微信「发现 → 搜一搜」或发给"文件传输助手"，粘贴该链接并点击打开，完成 Strava 登录授权后回到本页。',
-              showCancel: false,
-              confirmText: '我去授权',
-            })
-          },
-          fail: function () {
-            wx.showModal({
-              title: '请复制链接到浏览器',
-              content: url,
-              showCancel: false,
-              confirmText: '知道了',
+        // 跳 web-view 页 / 用户在小程序内完成 Strava OAuth
+        wx.navigateTo({
+          url: '/pages/strava-auth/strava-auth?url=' + encodeURIComponent(url),
+          fail: (err) => {
+            console.error('[settings] navigate strava-auth failed', err)
+            // 兜底：navigate 失败仍走旧复制流程
+            wx.setClipboardData({
+              data: url,
+              success: () => {
+                wx.showModal({
+                  title: '请复制链接到浏览器',
+                  content: '链接已复制 / 跳转 web-view 失败 / 请手动粘贴打开授权',
+                  showCancel: false,
+                })
+              },
             })
           },
         })

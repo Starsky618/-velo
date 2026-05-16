@@ -1,0 +1,13 @@
+<!--
+  Strava 授权页（Sprint 6 task-4 三次 hotfix / Tim 2026-05-16 真用拍）
+
+  小程序内部嵌入 Strava OAuth 授权页 / 避免用户手动复制链接到微信传输助手。
+  用户在 web-view 里登录 Strava 并 Approve → Strava 重定向到后端 callback →
+  后端返成功 HTML 页 → 用户点左上"返回"回 settings / settings.onShow 触发拉新 bound 状态。
+
+  限制（Tim 需在小程序公众平台后台配置 / 否则 web-view 拒载）：
+  - 业务域名加 https://www.strava.com（Strava OAuth 域）
+  - 业务域名加 https://114.132.190.245（我们后端 callback）
+  - 开发版可在开发者工具勾选"不校验合法域名" / 临时绕过
+-->
+<web-view src="{{authorizeUrl}}" />

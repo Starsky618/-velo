@@ -10,7 +10,8 @@
     "pages/settings/settings",
     "pages/user/user",
     "pages/segment/segment",
-    "pages/segment-efforts/segment-efforts"
+    "pages/segment-efforts/segment-efforts",
+    "pages/strava-auth/strava-auth"
   ],
   "window": {
     "navigationBarBackgroundColor": "#ffffff",
