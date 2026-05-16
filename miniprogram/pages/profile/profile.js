@@ -313,9 +313,9 @@ Page({
     });
   },
 
-  // 编辑主城（Tim 2026-05-16 真用拍：之前 city 默认值无法改 / 加 picker 入口）
-  // wx.showActionSheet 6 城 + "清空"选项 / 选完调 PATCH /api/user/me
+  // 编辑主城（Tim 2026-05-17 还报"无法切换" / 加 4 处 console.log 埋点定位卡哪步）
   onEditCity() {
+    console.log('[city] step C1: onEditCity triggered');
     const cities = [
       { code: 'beijing', label: '北京' },
       { code: 'shanghai', label: '上海' },
@@ -328,10 +328,11 @@ Page({
       itemList: cities.map((c) => c.label).concat(['清空主城']),
       success: (res) => {
         const idx = res.tapIndex;
-        // 最后一项是"清空主城" → body.city = null
         const cityCode = idx < cities.length ? cities[idx].code : null;
+        console.log('[city] step C2: actionSheet picked / idx=', idx, '/ cityCode=', cityCode);
         api.patch('/api/user/me', { city: cityCode })
           .then(() => {
+            console.log('[city] step C3: PATCH /api/user/me success / cityCode=', cityCode);
             // 乐观更新 UI
             const profile = Object.assign({}, this.data.profile || {}, { city: cityCode });
             const cityLabel = cityCode ? cities.find((c) => c.code === cityCode).label : '';
@@ -339,9 +340,13 @@ Page({
             wx.showToast({ title: '主城已更新', icon: 'success' });
           })
           .catch((err) => {
-            console.error('[profile] update city failed', err);
-            wx.showToast({ title: '更新失败', icon: 'none' });
+            console.error('[city] step C3 FAIL: PATCH /api/user/me rejected', err);
+            wx.showToast({ title: '更新失败 / 看 console', icon: 'none', duration: 3000 });
           });
+      },
+      fail: (err) => {
+        // 用户取消 actionSheet 也走这里 / errMsg 含 "cancel"
+        console.log('[city] step C2 cancel / fail', err);
       },
     });
   },
