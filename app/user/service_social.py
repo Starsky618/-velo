@@ -60,9 +60,9 @@ BEIJING_TZ = timezone(timedelta(hours=8))
 
 _HEATMAP_CACHE_TTL_SEC = 3600
 _HEATMAP_CACHE_PREFIX = "heatmap:user_"
-_VALID_USER_CITIES = {
-    "beijing", "shanghai", "hangzhou", "shenzhen", "chengdu", "taiyuan", "unknown",
-}
+# _VALID_USER_CITIES 已废弃（Tim 2026-05-17 真用拍放宽 user.city 到任意中文）
+# 历史 6 城枚举只剩 activity.city（worker 推断起点 / ck_activities_city CHECK 仍生效）
+# update_user_city 现仅校验长度 + strip / 不再卡 6 城
 
 # 看他人主页严格白名单（PRD 5.A.2 / D-P08 红线 / spec R3-I3 强制生效）
 # 加新字段前先 review：是否泄漏 token / openid / mute_notifications / 任何隐私字段？
@@ -218,24 +218,32 @@ def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict
 
 def update_user_city(db: Session, user_id: int, city) -> User:
     """
-    用户主动改主城市——"用户在 settings 页选了一个城市"。
+    用户主动改家乡标签——"用户在 picker 里选省+市"。
+
+    Sprint 6 task-4 hotfix（Tim 2026-05-17）：user.city 放宽到任意中文
+    （picker mode="region" 选省+市拼接 / 如"山西-太原"）/ 不再限 6 城枚举。
 
     动作：
-    1. 校验 city ∈ 7 主城枚举（含 'unknown' / 含 NULL 表示清空）
-    2. 找到 user 行（不存在抛 ValueError，不是 404）
-    3. 改字段并 commit
-    4. 清掉该用户所有 city 的 heatmap 缓存（用户改主城后旧缓存作废）
-
-    陷阱守卫：
-    - 陷阱 #4（.one() vs .first()）：用 .first() + 显式 ValueError
-    - 接受 city=None 表示"清空选择"，与 nullable=True 一致
+    1. 接受 city = None（清空）/ 或 ≤ 32 字符任意中文
+    2. 去前后空白 / 空串等价 NULL
+    3. 找到 user 行（不存在抛 ValueError）
+    4. 改字段并 commit
+    5. 清 heatmap 缓存（兼容历史 / 现在前端 heatmap-card 不传 city / 但清掉无害）
 
     抛错：
-    - city 非法 → ValueError("invalid city: <值>")
+    - city 超长 → ValueError（schema 层 max_length=32 拦先了 / 这里再兜底）
     - user 不存在 → ValueError("user not found: <id>")
     """
-    if city is not None and city not in _VALID_USER_CITIES:
-        raise ValueError(f"invalid city: {city}")
+    # 接受 None / 字符串 / 其他类型拒
+    if city is not None:
+        if not isinstance(city, str):
+            raise ValueError(f"invalid city type: {type(city).__name__}")
+        # 去前后空白 / 空串等价 NULL（与 bio 同款归一化）
+        city = city.strip()
+        if not city:
+            city = None
+        elif len(city) > 32:
+            raise ValueError(f"city too long: {len(city)} > 32")
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:

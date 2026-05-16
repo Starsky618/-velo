@@ -39,13 +39,15 @@
           <text class="hero-name">{{profile.nickname || '未设置昵称'}}</text>
           <text class="hero-edit-hint">›</text>
         </view>
-        <!-- city 点击弹 picker 改主城（Tim 2026-05-16 真用拍：之前无编辑入口 / 默认值无法改）
-             空 city 也显示"📍 选择主城" 让用户能进入编辑（不是只有有值时才显示） -->
-        <view class="hero-city" bindtap="onEditCity">
-          <text class="hero-city-icon">📍</text>
-          <text class="hero-city-text" wx:if="{{cityLabel}}">{{cityLabel}}</text>
-          <text class="hero-city-text" wx:else>选择主城</text>
-        </view>
+        <!-- city 用小程序原生 picker mode="region" 三级选省/市/区（Tim 2026-05-17 真用拍放宽全国）
+             picker 内置全国行政区数据 / 不用自己维护 / 选完 bindchange 传 [省 市 区] 数组 -->
+        <picker mode="region" bindchange="onRegionChange" value="{{regionArr}}">
+          <view class="hero-city">
+            <text class="hero-city-icon">📍</text>
+            <text class="hero-city-text" wx:if="{{profile.city}}">{{profile.city}}</text>
+            <text class="hero-city-text" wx:else>选择家乡</text>
+          </view>
+        </picker>
       </view>
 
       <view class="hero-settings" bindtap="onTapSettings">

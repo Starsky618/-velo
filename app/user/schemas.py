@@ -219,9 +219,13 @@ class UserPatchRequest(BaseModel):
     避免与其他用户资料字段（ftp/weight/bike_type/weekly_goal）耦合在一个端点。
     PATCH /me 专门做"小修小改"——目前只 city，未来加 settings 类字段也走这里。
     """
-    city: Optional[UserCity] = Field(
+    # Sprint 6 task-4 hotfix（Tim 2026-05-17）：city 放宽到任意中文（picker 选省+市拼接）
+    # 不再是 6 城 enum / 只校验长度 ≤ 32 + 不含换行 / 应用层 strip 空白
+    # 历史 UserCity enum 保留给 heatmap endpoint 等其他地方 / 不影响
+    city: Optional[str] = Field(
         None,
-        description="可选 / 不传不改 / 传 null 清空 / 传枚举值更新",
+        max_length=32,
+        description="家乡标签 / picker 选省+市拼接（如'山西-太原'）/ 任意中文 ≤ 32 字符 / 可选",
     )
     bio: Optional[str] = Field(
         None,

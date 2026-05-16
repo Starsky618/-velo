@@ -151,9 +151,14 @@ def test_patch_me_requires_auth(client):
     assert resp.status_code == 401
 
 
-def test_patch_me_invalid_city_422(client, auth_header):
-    """非枚举 city → 422。"""
-    resp = client.patch("/api/user/me", json={"city": "guangzhou"}, headers=auth_header)
+def test_patch_me_invalid_city_too_long_422(client, auth_header):
+    """city 超长（> 32 字符）→ 422。
+
+    Sprint 6 task-4 hotfix（Tim 2026-05-17）：city 放宽到任意中文 / 不再限 6 城
+    所以 'guangzhou' 现在合法 / 测改成超长边界（> 32 char）→ schema max_length 拦。
+    """
+    long_city = "山西-太原-小店区" * 10  # > 32 字符
+    resp = client.patch("/api/user/me", json={"city": long_city}, headers=auth_header)
     assert resp.status_code == 422
 
 

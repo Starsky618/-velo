@@ -92,16 +92,19 @@ class User(Base):
         comment="免打扰开关预留字段。本期仅字段存在，实际开关存前端本地",
     )
 
-    # ===== 城市（第 5 期 task-0.6 + 2.C.1 完整启用）=====
-    # 6 主城枚举 + 'unknown' 兜底，NULL 表示用户未填写
-    # 用于：5.A.1 个人页热图按城市筛选 + admin 列表按城市分组
-    # 防止脏数据混入：CHECK 约束要么 NULL 要么 7 个允许值之一
-    # 注意 truthiness 陷阱（CLAUDE.md 陷阱 #1）：判"是否填写"用 `is not None`，
-    # 不要用 `if user.city:`——'unknown' 也会是 truthy（已选了"我不在这 6 城"也算填了）
+    # ===== 城市（Sprint 6 task-4 hotfix / Tim 2026-05-17 真用拍放宽全国行政区）=====
+    # 用户手填家乡标签：任意中文字符串（小程序 picker mode="region" 选省+市拼）
+    # 长度上限 32 字符 / 仅应用层 schema 校验（DB 留 64 字节冗余 / 防绕 API 直写超长）
+    # 删 ck_users_city CHECK 约束（migration sprint6_user_city_widen）/
+    # 6 城+unknown 限制只剩 activities.city（worker 推断的活动起点 / 仍 6 城+unknown）
+    #
+    # 语义解耦：
+    #   user.city = 用户自报家乡（任意省市 / 标签作用）
+    #   activity.city = worker 自动推断起点（6 城+unknown / city-medals 用）
     city = Column(
-        String(32),
+        String(64),
         nullable=True,
-        comment="所属城市：beijing/shanghai/hangzhou/shenzhen/chengdu/taiyuan/unknown 或 NULL",
+        comment="用户手填家乡标签：任意中文字符串（picker 选省+市 / ≤ 32 字符）或 NULL",
     )
 
     # ===== 骑手签名 bio（Sprint 6 task-1）=====
@@ -120,11 +123,6 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    __table_args__ = (
-        # city 必须 NULL 或 7 个枚举值之一（防脏数据进热图聚合）
-        CheckConstraint(
-            "city IS NULL OR city IN ('beijing', 'shanghai', 'hangzhou', "
-            "'shenzhen', 'chengdu', 'taiyuan', 'unknown')",
-            name="ck_users_city",
-        ),
-    )
+    # Sprint 6 task-4 hotfix（Tim 2026-05-17）：删 ck_users_city CHECK 约束
+    # 放宽 user.city 到任意中文（picker 选省+市拼接 / 仅应用层校验）
+    # __table_args__ 留空 / 未来加其他约束时再补

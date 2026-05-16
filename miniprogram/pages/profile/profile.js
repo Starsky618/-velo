@@ -73,7 +73,8 @@ Page({
   data: {
     isLoggedIn: false,
     profile: null,
-    cityLabel: '',  // 6 城英文 code → 中文 label / hero 区显示用
+    // cityLabel 已删（Tim 2026-05-17 user.city 改任意中文 / hero 直接显示 profile.city）
+    regionArr: ['', '', ''],  // picker mode="region" 初始值 / 三级 [省 市 区]
     stats: null,
     // heatmap / cityMedals 字段已删（heatmap 改用组件 / 城市勋章砍）
 
@@ -133,18 +134,10 @@ Page({
   fetchProfile() {
     // GET /api/user/profile → UserProfile（含 bio / badges[]）
     // badges 字段保留 / 但 wxml 不渲染（Tim 2026-05-16 真用拍砍）
+    // city 改任意中文（Tim 2026-05-17 picker mode="region"）/ 不再做 6 城 code→label 映射
     return api.get('/api/user/profile')
       .then((res) => {
-        const profile = res || null;
-        // 计算 cityLabel（英文 code → 中文 label / 让 hero 区直接显示"北京"而不是"beijing"）
-        // 6 城映射与后端 app/user/cities.py CITY_LABELS 保持一致 / 前端独立维护一份小映射
-        // 避免每次拉 city-medals 才拿到 label（task-4 后已不调 city-medals）
-        const CITY_LABEL_MAP = {
-          beijing: '北京', shanghai: '上海', hangzhou: '杭州',
-          shenzhen: '深圳', chengdu: '成都', taiyuan: '太原',
-        };
-        const cityLabel = (profile && profile.city) ? (CITY_LABEL_MAP[profile.city] || '') : '';
-        this.setData({ profile, cityLabel });
+        this.setData({ profile: res || null });
       })
       .catch((err) => {
         console.error('[profile] fetchProfile failed', err);
@@ -313,45 +306,42 @@ Page({
     });
   },
 
-  // 编辑主城（Tim 2026-05-17 还报"无法切换" / 加 4 处 console.log 埋点定位卡哪步）
-  onEditCity() {
-    console.log('[city] step C1: onEditCity triggered');
-    const cities = [
-      { code: 'beijing', label: '北京' },
-      { code: 'shanghai', label: '上海' },
-      { code: 'hangzhou', label: '杭州' },
-      { code: 'shenzhen', label: '深圳' },
-      { code: 'chengdu', label: '成都' },
-      { code: 'taiyuan', label: '太原' },
-    ];
-    // wx.showActionSheet itemList 上限 6 项（Tim 2026-05-17 真用 Console 实证）
-    // 拿掉"清空主城"项 / 100 用户量级用户清空 city 场景极少 / 可接受
-    // 未来要支持清空可用 wxml <picker> 或自定义 modal
-    wx.showActionSheet({
-      itemList: cities.map((c) => c.label),
-      success: (res) => {
-        const idx = res.tapIndex;
-        const cityCode = cities[idx].code;
-        console.log('[city] step C2: actionSheet picked / idx=', idx, '/ cityCode=', cityCode);
-        api.patch('/api/user/me', { city: cityCode })
-          .then(() => {
-            console.log('[city] step C3: PATCH /api/user/me success / cityCode=', cityCode);
-            // 乐观更新 UI
-            const profile = Object.assign({}, this.data.profile || {}, { city: cityCode });
-            const cityLabel = cityCode ? cities.find((c) => c.code === cityCode).label : '';
-            this.setData({ profile, cityLabel });
-            wx.showToast({ title: '主城已更新', icon: 'success' });
-          })
-          .catch((err) => {
-            console.error('[city] step C3 FAIL: PATCH /api/user/me rejected', err);
-            wx.showToast({ title: '更新失败 / 看 console', icon: 'none', duration: 3000 });
-          });
-      },
-      fail: (err) => {
-        // 用户取消 actionSheet 也走这里 / errMsg 含 "cancel"
-        console.log('[city] step C2 cancel / fail', err);
-      },
-    });
+  // 家乡 picker 选完触发（Tim 2026-05-17 真用拍：放宽到全国省+市 / 用 picker mode="region"）
+  // e.detail.value = [省 市 区] 三级数组 / 我们取省+市拼接 "山西-太原"
+  // 直辖市 / 特别行政区时市可能为空 / 兜底用省名
+  onRegionChange(e) {
+    const region = e && e.detail && e.detail.value;
+    if (!region || region.length < 2) {
+      console.warn('[city] onRegionChange got empty region', region);
+      return;
+    }
+    const [province, city] = region;
+    // 拼接规则：有市拼 "省-市"（如"山西-太原"）/ 没市只用省（如"北京"直辖市）
+    // 注意：picker 返"北京市"含"市"后缀 / 去掉让标签更简短
+    const stripSuffix = (s) => (s || '').replace(/市$|省$|自治区$|特别行政区$/, '');
+    const provinceShort = stripSuffix(province);
+    const cityShort = stripSuffix(city);
+    const cityLabel = cityShort && cityShort !== provinceShort
+      ? `${provinceShort}-${cityShort}`
+      : provinceShort;
+
+    console.log('[city] picker selected:', region, '→ label:', cityLabel);
+    if (cityLabel.length > 32) {
+      wx.showToast({ title: '家乡标签太长', icon: 'none' });
+      return;
+    }
+
+    api.patch('/api/user/me', { city: cityLabel })
+      .then(() => {
+        console.log('[city] PATCH /api/user/me success / city=', cityLabel);
+        const profile = Object.assign({}, this.data.profile || {}, { city: cityLabel });
+        this.setData({ profile, regionArr: region });
+        wx.showToast({ title: '家乡已更新', icon: 'success' });
+      })
+      .catch((err) => {
+        console.error('[city] PATCH /api/user/me failed', err);
+        wx.showToast({ title: '更新失败 / 看 console', icon: 'none', duration: 3000 });
+      });
   },
 
   // 跳到设置页（bio / 隐私 / Strava 绑定 / 退出登录）

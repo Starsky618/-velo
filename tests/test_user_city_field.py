@@ -52,16 +52,24 @@ def _cleanup(db):
 
 
 def test_user_city_column_exists():
-    """ORM 声明：city 字段存在 + 类型 String(32) + nullable=True。"""
+    """ORM 声明：city 字段存在 + 类型 String(64) + nullable=True。
+
+    Sprint 6 task-4 hotfix（Tim 2026-05-17）：city 放宽到 String(64) 任意中文标签
+    （picker 选省+市拼 / ≤ 32 字符 schema 校验 / DB 留 64 字节冗余）。
+    """
     col = User.__table__.columns["city"]
-    assert col.type.length == 32
+    assert col.type.length == 64
     assert col.nullable is True
 
 
-def test_user_city_check_constraint_exists():
-    """ORM 声明：ck_users_city CheckConstraint 存在。"""
+def test_user_city_check_constraint_removed():
+    """ORM 声明：ck_users_city CheckConstraint 已删（user.city 改任意中文）。
+
+    Sprint 6 task-4 hotfix（Tim 2026-05-17）：放宽用户家乡标签 / 删 6 城 CHECK。
+    activities.city 的 ck_activities_city 不动 / 仍限 6 城+unknown。
+    """
     constraints = {c.name for c in User.__table__.constraints}
-    assert "ck_users_city" in constraints
+    assert "ck_users_city" not in constraints
 
 
 def test_user_city_null_allowed(pg_session_factory):
