@@ -77,6 +77,10 @@ _PROFILE_RESPONSE_KEYS = {
 # 用 `|=` 追加而不是整体重写——保留既有 9 字段不变，未来 review diff 一眼看出只是"加 bio"。
 # bio 默认公开（Sprint 4 D7 / 跟 city 一样在页面层公开 / 不属敏感生理数据）。
 _PROFILE_RESPONSE_KEYS |= {"bio"}
+# Sprint 6 task-2：身份徽章列表加入白名单（11 字段）。
+# 同样用 `|=` 追加（红线 / 不整体重写 / 防 v0.1 Critical 复发）。
+# badges 是真实骑行数据自动算出的 / 默认公开 / 自他对称返同样字段集。
+_PROFILE_RESPONSE_KEYS |= {"badges"}
 
 
 def _get_redis_client():
@@ -349,6 +353,8 @@ def get_user_profile_for_others(
             "elevation_m": round(current_month.m_elevation or 0, 1),
             "avg_power_w": round(current_month.m_avg_power or 0, 1),
         },
+        # Sprint 6 task-2：身份徽章列表（top 3 / 真实骑行数据自动算 / 自他对称）
+        "badges": get_user_badges(db, target_user_id),
     }
     # 白名单严格生效（R3-I3 防回退 / 防止未来手滑加敏感字段静默泄漏）
     return _filter_profile_keys(raw_response)
@@ -438,3 +444,111 @@ def get_active_users(
         }
         for r in rows
     ]
+
+
+# ===== Sprint 6 task-2：身份徽章聚合 + 计算 =====
+#
+# 数据流：
+#   _aggregate_badges_input(db, user_id) — 单次 SQL 拉齐 5 维输入（防 N+1）
+#       ↓
+#   compute_badges(**inputs)（badges.py / 纯函数 / 不碰 DB）
+#       ↓
+#   返回 top 3 list[dict]
+#
+# 为什么"聚合"和"计算"分两层：
+#   - 聚合层（service）：碰 DB / 知道字段名 / 跟着 schema 走
+#   - 计算层（badges.py）：纯函数 / 易测 / 改规则不动 SQL
+# 类比：厨房分"备菜员（切配）"和"厨师（炒）"——职责分清，未来换菜单（规则）只动厨师，
+# 不用让备菜员重新学进货。
+
+
+def _aggregate_badges_input(db: Session, user_id: int) -> dict:
+    """聚合 badges.compute_badges 需要的全部输入字段（单次 SQL / 防 N+1）。
+
+    数据来源：
+    - users 表：ftp / city（看自己 ORM 拿）
+    - activities 表：累计 distance / elevation_gain（completed + 非 duplicate）
+    - segment_efforts JOIN segments：top 5 山名频次（group_by + count + 稳定排序）
+
+    红线：
+    - Activity 字段名 = distance / elevation_gain（不是 distance_m / elevation_gain_m）
+    - 过滤 status == "completed" + duplicate_of IS NULL（Sprint 5 dedupe 兼容）
+    - 山名稳定排序：count desc + segment_id asc（与 badges.py 内部 tie-breaker 一致 / 避免不同 DB 行为差异）
+    """
+    # 用 Session.get(Model, pk)——SQLA 2.0 推荐主键查询 API / 走 identity map / 快
+    # 不用 db.query(User).get() 是因为后者在 2.0 已是 LegacyAPIWarning。
+    # 类比："凭身份证号去户籍处取档案" vs "翻完整本户口本找名字" —— 主键查询一击即中。
+    user = db.get(User, user_id)
+    if user is None:
+        # 异常路径：调用方（如 get_user_profile_for_others）会自己 raise ValueError("用户不存在")
+        # 这里返回"空"输入让 compute_badges 返 []，不抛异常（防御性 / 不会 500）
+        return {
+            "ftp": None,
+            "total_distance_m": 0.0,
+            "total_elevation_m": 0.0,
+            "city": None,
+            "top_segments": [],
+        }
+
+    # ----- 累计距离 / 爬升（一次 SQL）-----
+    stats = (
+        db.query(
+            _func.coalesce(_func.sum(_Activity.distance), 0).label("total_distance"),
+            _func.coalesce(_func.sum(_Activity.elevation_gain), 0).label("total_elevation"),
+        )
+        .filter(
+            _Activity.user_id == user_id,
+            _Activity.status == "completed",
+            _Activity.duplicate_of.is_(None),  # Sprint 5 dedupe：跳过 duplicate 防双倍计数
+        )
+        .one()
+    )
+
+    # ----- 山名 top 5 频次（一次 SQL / group_by + count）-----
+    # 延迟 import 避免模块循环依赖（segment 模块可能反向引用 user）
+    from app.segment.models import Segment, SegmentEffort
+
+    top_segments_rows = (
+        db.query(
+            SegmentEffort.segment_id,
+            Segment.name.label("segment_name"),
+            _func.count().label("cnt"),
+        )
+        .join(Segment, SegmentEffort.segment_id == Segment.id)
+        .filter(SegmentEffort.user_id == user_id)
+        .group_by(SegmentEffort.segment_id, Segment.name)
+        # 稳定排序：count desc + segment_id asc（与 compute_badges 内部 tie-breaker 完全一致）
+        .order_by(_func.count().desc(), SegmentEffort.segment_id.asc())
+        .limit(5)
+        .all()
+    )
+
+    return {
+        "ftp": user.ftp,
+        "total_distance_m": float(stats.total_distance or 0),
+        "total_elevation_m": float(stats.total_elevation or 0),
+        "city": user.city,
+        "top_segments": [
+            {
+                "segment_id": r.segment_id,
+                "segment_name": r.segment_name,
+                "count": int(r.cnt),
+            }
+            for r in top_segments_rows
+        ],
+    }
+
+
+def get_user_badges(db: Session, user_id: int) -> list[dict]:
+    """计算指定用户的身份徽章列表（top 3 / 自他对称的统一入口）。
+
+    本函数在 router / get_user_profile_for_others / 任何需要 badges 的入口都共用——
+    保证看自己 vs 看他人字段集合完全一致（D-P08 红线）。
+
+    返回值是 list[{"type": str, "label": str}]，与 schemas.Badge 字段集一致。
+    """
+    # 延迟 import 避免模块加载期循环（badges.py → cities.py → geo.py 一条链）
+    from app.user.badges import compute_badges
+
+    inputs = _aggregate_badges_input(db, user_id)
+    return compute_badges(**inputs)

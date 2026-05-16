@@ -61,12 +61,22 @@ def get_profile(
     """
     获取当前用户的资料。
     需要登录（请求头带 JWT）。
+
+    Sprint 6 task-2：响应含 badges 字段（top 3 真实数据自动算的身份徽章 / 自他对称）。
     """
     try:
         user = service.get_user_by_id(db, user_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return user
+
+    # 自他对称（D-P08 红线 / Sprint 6 task-2）：自己看自己也返 badges 字段，
+    # 与 GET /{user_id}/profile（看他人）字段集合完全一致。
+    # 走 ORM → model_validate → 覆盖 badges 字段，避免改 service.get_user_by_id 返回类型。
+    profile = schemas.UserProfile.model_validate(user)
+    profile.badges = [
+        schemas.Badge(**b) for b in service.get_user_badges(db, user_id)
+    ]
+    return profile
 
 
 @router.put("/profile", response_model=schemas.UserProfile)
@@ -79,6 +89,13 @@ def update_profile(
     更新当前用户的资料。
     只传想改的字段，没传的保持不变。
     需要登录（请求头带 JWT）。
+
+    Sprint 6 task-2 契约（写操作响应不计算 badges）：
+    本 endpoint 返回 `UserProfile`，schema 含 `badges: list[Badge] = []` 默认值。
+    PUT 是"我改了什么字段"的 echo，**不重新计算徽章**——前端在 PUT 成功后
+    应单独发 GET /api/user/profile 刷新整页（含最新 badges）。
+    理由：① 减少写路径上的 SQL 开销 ② 改 FTP 后徽章可能变 / 让前端显式 GET 拉
+    比在 PUT 响应里偷偷塞进来更清晰。
     """
     # exclude_unset=True：只取前端实际传了的字段，没传的不动
     # mode="json"：确保枚举值（如 BikeType.road）被序列化为纯字符串 "road"，
@@ -222,6 +239,11 @@ def patch_me(
     - 传 null → 清空（user.bio = NULL）
     - 传 "" 空串 → 等价 null（service_auth 层归一化）
     - 传字符串 → 更新（≤ 30 字符 + 单行，schema 层已 422 校验）
+
+    Sprint 6 task-2 契约（写操作响应不计算 badges）：
+    本 endpoint 返回 `UserProfile`，schema 含 `badges: list[Badge] = []` 默认值。
+    PATCH 是 settings 类窄写操作，**不重新计算徽章**——前端 PATCH 后应单独发
+    GET /api/user/profile 刷新整页（与 PUT /profile 同样契约 / 一致行为）。
     """
     # exclude_unset=True：区分"没传 city"vs"传了 city=null"——
     # 前者是 'city' not in update_data，后者是 update_data['city'] is None

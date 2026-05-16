@@ -64,6 +64,17 @@ class BikeType(str, Enum):
     mtb = "mtb"
 
 
+class Badge(BaseModel):
+    """单条身份徽章（Sprint 6 task-2 / 看自己 + 看他人对称返回）。
+
+    字段：
+    - type: 5 种枚举之一 — ftp / distance / elevation / regular_mountain / city_local
+    - label: 展示文案 — "FTP 220W" / "累计 8000km" / "雀儿山常客" / "北京" 等
+    """
+    type: str
+    label: str
+
+
 class UserProfile(BaseModel):
     """用户资料响应：返回给前端的用户完整信息"""
     id: int
@@ -76,6 +87,9 @@ class UserProfile(BaseModel):
     bike_type: Optional[str] = None
     weekly_goal: float
     created_at: datetime
+    # Sprint 6 task-2：身份徽章列表 / top 3 / 服务端根据真实数据自动算 / 用户无法手填
+    # 默认 [] 防 null / 自他对称返同样字段集
+    badges: list[Badge] = []
 
     class Config:
         from_attributes = True
@@ -250,6 +264,8 @@ class UserProfileResponse(BaseModel):
     total_elevation_m: float
     activity_count: int
     current_month_summary: _MonthSummary
+    # Sprint 6 task-2：身份徽章列表 / 自他对称（与 UserProfile.badges 字段集一致）/ 真实数据自动算
+    badges: list[Badge] = []
 
 
 # ===== Sprint 5 task-3：探索 tab 骑友 section =====

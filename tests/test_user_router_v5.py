@@ -217,6 +217,8 @@ def test_get_profile_returns_whitelist_fields(client, auth_header):
             "elevation_m": 100.0,
             "avg_power_w": 180.0,
         },
+        # Sprint 6 task-2：badges 加入白名单（11 字段）
+        "badges": [{"type": "ftp", "label": "FTP 200W"}],
         # ⚠ service 层应该已过滤这些；但即使漏，schema 层不应让它们出去
         "openid": "wx_secret",
         "strava_access_token": "TOKEN_LEAK",
@@ -226,16 +228,19 @@ def test_get_profile_returns_whitelist_fields(client, auth_header):
         assert resp.status_code == 200
         body = resp.json()
 
-        # 严格白名单（Sprint 4 codex 异源审 2026-05-06 砍 ftp / P1-4 / Sprint 6 task-1 加 bio）
+        # 严格白名单（Sprint 4 codex 异源审 2026-05-06 砍 ftp / P1-4 / Sprint 6 task-1 加 bio / Sprint 6 task-2 加 badges）
         allowed = {"id", "nickname", "avatar_url", "city", "bio", "bike_type",
                    "total_distance_km", "total_elevation_m", "activity_count",
-                   "current_month_summary"}
+                   "current_month_summary", "badges"}
         assert set(body.keys()) == allowed
 
         # 敏感字段绝对不应出现（ftp 加入此列：Sprint 4 codex 拍砍 / FTP 是骑手生理数据）
         for forbidden in ("openid", "strava_access_token", "strava_refresh_token",
                           "mute_notifications", "weight", "ftp"):
             assert forbidden not in body, f"敏感字段 {forbidden} 泄漏！"
+
+        # badges 字段透出验证（自他对称）
+        assert body["badges"] == [{"type": "ftp", "label": "FTP 200W"}]
 
 
 def test_get_profile_user_not_found_404(client, auth_header):
@@ -577,11 +582,63 @@ def test_get_user_profile_for_others_returns_bio(client, auth_header):
         assert resp.status_code == 200
         body = resp.json()
         assert body["bio"] == "公开签名展示"
-        # 同时验证白名单长度 = 10（既有 9 + bio）
+        # 同时验证白名单长度 = 11（task-1 加 bio + task-2 加 badges）
+        # Sprint 6 task-2：UserProfileResponse schema 加 badges 默认 [] / 即使 service mock
+        # 未塞 badges，Pydantic schema 也会补 [] 进响应——白名单期望必须含 badges。
         allowed = {"id", "nickname", "avatar_url", "city", "bio", "bike_type",
                    "total_distance_km", "total_elevation_m", "activity_count",
-                   "current_month_summary"}
+                   "current_month_summary", "badges"}
         assert set(body.keys()) == allowed
+
+
+def test_self_and_others_badges_symmetry(client, auth_header, test_user):
+    """Sprint 6 task-2 / D-P08 新增字段强制：self vs others 看到的 badges 字段完全一致。
+
+    场景：CCF 点小明头像看 user 页 / 小明自己也看自己的 profile / 两边 badges 数组完全一样
+    （包括顺序 + type + label）。如果有一边偷偷漏算 badges → 信任破裂"为什么我自己看是 3 个
+    徽章 / 别人看我变成 0 个？"
+
+    策略：mock get_user_badges 返同一组 fake badges → 断言 GET /profile（self）和
+    GET /{id}/profile（others）响应里 badges 字段完全相等。
+    """
+    fake_badges = [
+        {"type": "ftp", "label": "FTP 220W"},
+        {"type": "regular_mountain", "label": "雀儿山常客"},
+        {"type": "distance", "label": "累计 8000km"},
+    ]
+
+    # self 端：mock get_user_by_id + get_user_badges
+    with patch("app.user.router.service.get_user_badges", return_value=fake_badges):
+        resp_self = client.get("/api/user/profile", headers=auth_header)
+        assert resp_self.status_code == 200
+        self_badges = resp_self.json()["badges"]
+
+    # others 端：mock get_user_profile_for_others 返含相同 badges 的完整 dict
+    fake_others = {
+        "id": 999,
+        "nickname": "test",
+        "avatar_url": None,
+        "city": "chengdu",
+        "bio": None,
+        "bike_type": None,
+        "total_distance_km": 0.0,
+        "total_elevation_m": 0.0,
+        "activity_count": 0,
+        "current_month_summary": {"distance_km": 0.0, "elevation_m": 0.0, "avg_power_w": 0.0},
+        "badges": fake_badges,
+    }
+    with patch(
+        "app.user.router.service.get_user_profile_for_others",
+        return_value=fake_others,
+    ):
+        resp_others = client.get("/api/user/999/profile", headers=auth_header)
+        assert resp_others.status_code == 200
+        others_badges = resp_others.json()["badges"]
+
+    # 核心断言：两端 badges 完全相等（顺序 + 内容 / 字段集对称 D-P08 红线）
+    assert self_badges == others_badges == fake_badges, (
+        f"self vs others badges 不对称 / self={self_badges} / others={others_badges}"
+    )
 
 
 def test_active_users_does_not_leak_bio(client, auth_header):
@@ -617,10 +674,11 @@ def test_active_users_does_not_leak_bio(client, auth_header):
 
 
 def test_profile_response_keys_whitelist_size():
-    """回归 B：_PROFILE_RESPONSE_KEYS 长度严格 = 10（既有 9 + bio）。
+    """回归 B：_PROFILE_RESPONSE_KEYS 长度严格 = 11（既有 9 + Sprint 6 task-1 bio + task-2 badges）。
 
     锁定 set 长度避免未来手滑用整体重写覆盖 `|=` 追加丢字段。
     """
     from app.user.service_social import _PROFILE_RESPONSE_KEYS
-    assert len(_PROFILE_RESPONSE_KEYS) == 10
+    assert len(_PROFILE_RESPONSE_KEYS) == 11
     assert "bio" in _PROFILE_RESPONSE_KEYS
+    assert "badges" in _PROFILE_RESPONSE_KEYS

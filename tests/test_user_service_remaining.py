@@ -440,10 +440,11 @@ class TestGetUserProfileForOthers:
 
             result = get_user_profile_for_others(db, user_id, requester_user_id=user_id)
             # Sprint 4 codex 异源审 2026-05-06 砍 ftp（P1-4）
+            # Sprint 6 task-1 加 bio / task-2 加 badges → 11 字段
             allowed_keys = {
-                "id", "nickname", "avatar_url", "city", "bike_type",
+                "id", "nickname", "avatar_url", "city", "bio", "bike_type",
                 "total_distance_km", "total_elevation_m", "activity_count",
-                "current_month_summary",
+                "current_month_summary", "badges",
             }
             assert set(result.keys()) == allowed_keys
             # 严格不返这些（ftp 加入：codex 拍砍 / FTP 是骑手生理数据 / Strava 也允许独立隐私层）
@@ -468,7 +469,7 @@ class TestGetUserProfileForOthers:
         """
         from app.user.service_social import _filter_profile_keys, _PROFILE_RESPONSE_KEYS
 
-        # 构造含 7 个敏感字段的 raw_response（Sprint 4 codex 拍砍 ftp / +1 / Sprint 6 task-1 加 bio）
+        # 构造含 7 个敏感字段的 raw_response（Sprint 4 codex 拍砍 ftp / Sprint 6 task-1 加 bio / task-2 加 badges）
         raw_with_sensitive = {
             # 白名单内（应保留）
             "id": 42,
@@ -481,6 +482,8 @@ class TestGetUserProfileForOthers:
             "total_elevation_m": 500.0,
             "activity_count": 5,
             "current_month_summary": {"distance_km": 30.0},
+            # Sprint 6 task-2：badges 加入白名单（真实数据自动算 / 公开）
+            "badges": [{"type": "ftp", "label": "FTP 200W"}],
             # ⚠ 敏感字段（应被过滤）
             "ftp": 200,  # Sprint 4 codex 异源审拍砍（P1-4 / FTP 是骑手生理数据）
             "openid": "wx_secret_openid_xxx",

@@ -6,6 +6,44 @@
 
 ---
 
+## 🟡 P2：badges 看他人是否过滤私密 effort（Sprint 6 task-2 / 待 Tim 拍 / 2026-05-16）
+
+`app/user/service_social.py:_aggregate_badges_input` 山名常客频次查询：
+```python
+.filter(SegmentEffort.user_id == user_id)
+```
+**没有** JOIN `ActivityPrivacy` 过滤 visibility。相比之下 `app/segment/service.py:100` 排行榜查询有完整的 `outerjoin(ActivityPrivacy) + visibility` 过滤。
+
+**待 Tim 拍的产品决策**：CCF 看小明的 profile 时，小明的私密活动 effort 是否应被计入"雀儿山常客"频次？
+
+| 选项 | 含义 | 优 | 劣 |
+|---|---|---|---|
+| A 全计入 | self / others 都算上所有 effort（含私密） | badges 是聚合派生 / 不暴露具体活动详情 | 私密活动信息可能间接泄漏（"我骑过 5 次雀儿山"还是被知道）|
+| B others 过滤 | 看自己全算 / 看他人只算非私密 | 与 Sprint 5 排行榜规则一致 | self vs others 字段值不一致 / 违反 D-P08 新增字段对称（badges 数组可能 self 含 / others 不含） |
+| C 全过滤 | self / others 都不算私密 effort | 一致严格 | 自己看自己也少徽章 / 与"badges 反映真实数据"理念冲突 |
+
+**当前行为 = A（全计入 / 注释未明示）**。100 用户量级 / 私密 effort 占比极低（绝大多数活动公开）/ 不阻塞 Sprint 6 task-2 ship。
+
+**触发讨论条件**：
+- 用户报"我设私密的活动还是被人看出来骑过几次"
+- 用户量上 1000 / 私密占比上升
+
+**修法草稿**（选 A 时）：在 `_aggregate_badges_input` 加注释 + Tim 拍后写入 ADR。选 B/C 时改 SQL 加 outerjoin + visibility 守卫。
+
+---
+
+## 🟢 P3：profile endpoint 调用链 SQL 重复聚合（Sprint 6 task-2 Codex 异源审 / 2026-05-16）
+
+`get_user_profile_for_others` 已查 `target / totals / current_month_summary`（3 次 SQL）/ 随后 `get_user_badges()` 又重新查 `user / activities`（2 次 SQL）→ 热路径从 3 次膨胀到 6 次。100 用户量级 / 6 SQL 也就几十 ms / 不阻塞 ship。
+
+**触发清理条件**：
+- profile p99 响应时间 > 500ms / 或
+- 用户量上 1000 后真用回归报"profile 页加载慢"
+
+**修法草稿**：重构 `_aggregate_badges_input` 接受 `pre_computed_totals` 可选参数 / `get_user_profile_for_others` 内部复用已查的 totals / 减少 2 次 SQL。需同步改 self profile 路径（GET /profile router 内）。
+
+---
+
 ## 🟢 P3：PATCH /api/user/me 同传 city+bio 时双 commit 无原子保证（Sprint 6 task-1 三审共识 / 2026-05-16）
 
 `app/user/router.py:230-247` 路由先调 `update_user_city`（service_social 内 commit + 清 heatmap 缓存）/ 再调 `update_user_profile`（service_auth 内 commit）/ 中间无 SAVEPOINT。第二次 commit 若 DB 异常 → city 已持久化 + 缓存已清 / bio 未写入 / 用户收 500 但 city 已变。
