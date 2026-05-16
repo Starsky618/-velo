@@ -130,6 +130,92 @@ def _handle_athlete_deauthorize(db: Session, owner_id) -> None:
     db.commit()
 
 
+def unbind_strava(db: Session, user_id: int) -> None:
+    """
+    主动解绑 Strava——用户在 velo 设置页点"解绑"时调用。
+
+    与 _handle_athlete_deauthorize 的行为对齐（Sprint 6 task-5 v0.3 集成审 Critical）：
+    主动解绑（velo 端发起）与被动撤销（Strava 端发起 webhook）效果一致——
+    清 4 个 token 字段 + 暂停 active 导入任务 + 保留历史活动。
+
+    清空 User 表 4 字段：
+        - strava_athlete_id（BigInteger / unique / **不是 strava_user_id**）
+        - strava_access_token
+        - strava_refresh_token
+        - strava_token_expires_at
+
+    同事务把该用户所有 active 的 strava_imports → paused：
+        - 防调度器下一 tick 继续 pick 该 active job 白消耗 API
+        - 防重新绑定后 active 行对新 token 继续导入触发 dedupe 冲突
+        completed / paused 行**状态不变**（只动 active）
+
+    不做的事：
+        - **不删 activities**（已导入的历史活动保留 / 用户可能还想看）
+        - **不删 strava_imports 行**（只改 status）
+        - **不调 Strava API 主动撤销授权**（用户自行去 Strava 后台撤销 / 简化设计）
+
+    并发场景：解绑时 worker 正用旧 token 同步 → token 清空后 worker 下次调用
+    拿到 NULL → ensure_valid_token 抛 UnboundStravaError → handle_strava_api_call 容错
+    跳过（在 service_token.py 已实现 / 不在本函数 scope）。
+
+    类比：办了张健身卡（access_token）但不想去了——
+    去前台把卡注销了（清字段）+ 让教练别再给你打电话约课（pause 导入任务）+
+    历史训练记录保留在档案柜（活动不删）+ 你也没主动告诉健身房集团总部去销户
+    （不调 Strava API）。
+    """
+    # 用 .first() 不用 .one()（CLAUDE.md 陷阱 #4 / 三审 Critical 修 / 与 _handle_athlete_deauthorize 既有 pattern 对齐）：
+    # .one() 在 user 不存在时抛 NoResultFound / FastAPI 无全局 handler → 500 而不是 404
+    # 概率小但真实场景（JWT 有效但用户已被 admin purge / 数据不一致）
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise ValueError(f"用户不存在 user_id={user_id}")
+
+    # Sprint 6 task-5 三审 Important 修（B 集成审独占）：解绑时 importing 骨架活动→failed
+    # 防止用户主页永久"加载中"显示——worker 已拿不到 token / 这些骨架不会再被填充。
+    # 同事务一起改 / 与 active imports → paused 同 pattern。
+    from app.activity.models import Activity
+    importing_count = (
+        db.query(Activity)
+        .filter(
+            Activity.user_id == user_id,
+            Activity.status == "importing",
+        )
+        .update({Activity.status: "failed"}, synchronize_session=False)
+    )
+    if importing_count > 0:
+        logger.info(
+            "用户主动解绑 自动把 %d 个 importing 骨架活动转 failed user_id=%d",
+            importing_count, user_id,
+        )
+
+    # 先暂停 active 导入任务（顺序与 _handle_athlete_deauthorize 401 分支一致：
+    # 先 pause 让调度器停下 / 再清 token / 保证即使后续 commit 中途异常，
+    # 调度器也不会拿旧 token 继续空跑）
+    from app.strava.models import StravaImport
+    paused_count = (
+        db.query(StravaImport)
+        .filter(
+            StravaImport.user_id == user_id,
+            StravaImport.status == "active",
+        )
+        .update({StravaImport.status: "paused"}, synchronize_session=False)
+    )
+    if paused_count > 0:
+        logger.info(
+            "用户主动解绑 自动 pause %d 个 active 导入任务 user_id=%d",
+            paused_count, user_id,
+        )
+
+    # 清空所有 Strava 字段
+    user.strava_athlete_id = None
+    user.strava_access_token = None
+    user.strava_refresh_token = None
+    user.strava_token_expires_at = None
+
+    db.commit()
+    logger.info("用户主动解绑 Strava user_id=%d", user_id)
+
+
 def _create_importing_activity(db: Session, user: User, strava_activity_id) -> bool:
     """
     为单条 Strava 活动创建 importing 状态的骨架记录。

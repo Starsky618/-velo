@@ -1,16 +1,63 @@
 <!--
-  设置页 — 目前只有免打扰开关
+  设置页（Sprint 6 task-5）— 三区块结构
 
-  免打扰开启后：
-  - 首页铃铛不再显示红点（home.js onShow 会读本地存储判断）
-  - 列表数据仍然照常请求展示（只是视觉上不打扰）
+  这一页是用户的"控制台"，把"每天不点 / 但出问题时一定要能点到"的几件事集中起来：
+  - 账号资料：FTP 编辑（其他敏感字段未来扩展）
+  - 第三方账号：Strava 绑定 / 解绑状态
+  - 登录态：退出登录（危险操作 / 强制二次确认）
+
+  类比：手机的"设置" App——平时不进，但出问题时（换号、退账号、改重要参数）
+  必须能找到入口。
+
+  入口来源：从"我的"页右上角设置 icon（task-4）跳进来。
+
+  红线（v0.2/v0.3 task 卡）：
+  - 解绑 / 退出**必须二次确认**（wx.showModal confirm）
+  - bound 状态走 GET /api/strava/status 的 `bound` 字段（不从 profile 拉）
+  - "-" 占位符永久规则：FTP 未设时显示 "未设置"（不是 "-"）
 -->
 <view class="settings-page">
-  <view class="setting-group">
-    <view class="setting-item">
-      <text class="setting-label">免打扰</text>
-      <switch checked="{{muted}}" bindchange="onToggleMute" color="#FF2D55" />
+
+  <!-- 区块 1：账号资料 -->
+  <view class="section">
+    <view class="section-title">账号资料</view>
+    <view class="row" bindtap="onEditFtp">
+      <text class="row-label">FTP</text>
+      <view class="row-right">
+        <text class="row-value">{{ftp ? ftp + ' W' : '未设置'}}</text>
+        <text class="row-arrow">›</text>
+      </view>
     </view>
-    <text class="setting-hint">开启后首页不再显示通知红点</text>
+    <text class="section-hint">骑行实力评估的核心参数 / 影响功率区间统计</text>
   </view>
+
+  <!-- 区块 2：第三方账号 -->
+  <view class="section">
+    <view class="section-title">第三方账号</view>
+    <view class="row">
+      <text class="row-label">Strava</text>
+      <view class="row-right">
+        <text class="row-value" wx:if="{{stravaBound}}">已绑定</text>
+        <text class="row-value muted" wx:else>未绑定</text>
+        <button
+          class="inline-btn danger-btn"
+          wx:if="{{stravaBound}}"
+          bindtap="onUnbindStrava"
+          size="mini">解绑</button>
+        <button
+          class="inline-btn primary-btn"
+          wx:else
+          bindtap="onBindStrava"
+          size="mini">绑定</button>
+      </view>
+    </view>
+    <text class="section-hint" wx:if="{{stravaBound}}">解绑后历史活动保留 / 不再自动同步新活动</text>
+  </view>
+
+  <!-- 区块 3：登录态 -->
+  <view class="section">
+    <view class="section-title">登录态</view>
+    <button class="full-width-btn danger-btn" bindtap="onLogout">退出登录</button>
+  </view>
+
 </view>

@@ -45,4 +45,5 @@ from app.strava.service_sync import (  # noqa: F401 — 转导出
     get_import_progress,
     handle_manual_sync,
     handle_webhook_event,
+    unbind_strava,
 )

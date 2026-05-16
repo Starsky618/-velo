@@ -77,6 +77,23 @@
 
 ---
 
+## 🟢 P3：Strava unbind 在途 worker 竞态（Sprint 6 task-5 Codex 异源审 / 2026-05-16）
+
+`app/strava/service_sync.unbind_strava` 把 active strava_imports → paused 阻止**下一次** scheduler pick。但**挡不住已在途**的 `_run_tier1()`：worker 已通过 `ensure_valid_token()` 拿到旧 access_token / 用户此刻解绑（token 清 + imports paused）/ 当前 tier1 调用仍能成功 / 落 activity + commit。
+
+**为什么不立即修**：
+- 时间窗口极短（worker 拿 token 到 commit 之间 ms 级 / 用户手动点解绑刚好撞上 < 0.1% 概率）
+- 100 用户量级 / 用户解绑频次低 / 撞上的预期 = 0
+- 修法复杂：`_run_tier1` 落库前 `SELECT FOR UPDATE` 复核 import 任务 status / 牵动 import_scheduler 主链路
+
+**触发清理条件**：
+- 真用回归发现"解绑后又同步过来 1 条新 activity"
+- 用户量上 1000 后撞上概率升高
+
+**修法草稿**：在 `_run_tier1` worker 完成 fetch 准备 save 之前加一次 SELECT FOR UPDATE 复核 `import.status == 'active'` / 若已 paused 则 abort 当前轮不写 DB / 与 unbind 同事务竞态由 DB 行锁兜底。
+
+---
+
 ## 🟢 P3：PATCH /api/user/me 同传 city+bio 时双 commit 无原子保证（Sprint 6 task-1 三审共识 / 2026-05-16）
 
 `app/user/router.py:230-247` 路由先调 `update_user_city`（service_social 内 commit + 清 heatmap 缓存）/ 再调 `update_user_profile`（service_auth 内 commit）/ 中间无 SAVEPOINT。第二次 commit 若 DB 异常 → city 已持久化 + 缓存已清 / bio 未写入 / 用户收 500 但 city 已变。

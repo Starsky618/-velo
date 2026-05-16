@@ -153,6 +153,41 @@ def get_strava_status(
     return service.get_strava_status(db, user_id)
 
 
+@router.post("/unbind", status_code=204)
+def unbind_strava(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    主动解绑 Strava 账号——用户在 velo 设置页点"解绑"时调用（Sprint 6 task-5）。
+
+    清空 User 表 4 个 strava 字段：
+        - strava_athlete_id（注意字段名 / **不是 strava_user_id**）
+        - strava_access_token
+        - strava_refresh_token
+        - strava_token_expires_at
+
+    同事务把该用户所有 active 的 strava_imports → paused（与 _handle_athlete_deauthorize
+    被动撤销路径行为对齐 / v0.3 集成审 Critical 修复）。
+
+    历史 strava_imports 记录 + 已导入 activities **全部保留**（仅停止后续同步）。
+    解绑时**不调 Strava API 撤销授权**（用户自行去 Strava 后台撤销 / 简化设计）。
+
+    Worker 并发场景（解绑时 worker 正用旧 token 同步）→ token 清后 worker 下次
+    ensure_valid_token 拿到 NULL → 抛 UnboundStravaError → handle_strava_api_call
+    容错跳过（已在 service_token.py 实现 / 不在本 endpoint scope）。
+
+    返回 204 No Content（操作成功 / 无业务数据返回 / 前端只需看状态码）。
+    需要登录（请求头带 JWT）。
+    """
+    try:
+        service.unbind_strava(db, user_id)
+    except ValueError as e:
+        # service 层抛 ValueError("用户不存在...") → 翻译 404
+        # （概率小但真实场景：JWT 有效但用户已被 admin purge）
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 # ==================== 6.5 Webhook ====================
 
 
