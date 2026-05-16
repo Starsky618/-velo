@@ -77,6 +77,19 @@
 
 ---
 
+## 🟡 P2：profile 头像微信一键导入待找方案（Sprint 6 task-4 hotfix 2 / 2026-05-16）
+
+Tim 真用拍要支持"微信头像一键导入"。小程序唯一 API = `<button open-type="chooseAvatar">` + `bind:chooseavatar`。但 button 嵌在 hero-top flex 行时**拦截 hero-info 区点击事件**（city 不可点 / Tim 2026-05-16 二次真用报）→ 退回 image bindtap + wx.chooseMedia（拍照/相册）/ 牺牲微信一键导入。
+
+**触发清理条件**：用户量上 100 后觉得换头像麻烦 / 或团队找出 button 不拦截布局方案
+
+**修法草稿**：
+- 方案 A：button 单独放卡片底部"换微信头像"链接 / 不嵌入 hero-top flex 行
+- 方案 B：button 用 cover-view / absolute position 锁死在头像区 / 实测 z-index 不溢出
+- 方案 C：把头像编辑入口移到 settings 页（settings 已有 button open-type chooseAvatar 上手）
+
+---
+
 ## 🟢 P3：Strava unbind 在途 worker 竞态（Sprint 6 task-5 Codex 异源审 / 2026-05-16）
 
 `app/strava/service_sync.unbind_strava` 把 active strava_imports → paused 阻止**下一次** scheduler pick。但**挡不住已在途**的 `_run_tier1()`：worker 已通过 `ensure_valid_token()` 拿到旧 access_token / 用户此刻解绑（token 清 + imports paused）/ 当前 tier1 调用仍能成功 / 落 activity + commit。

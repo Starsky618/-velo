@@ -21,21 +21,17 @@
   <!-- ============== 块 1：头像区 ============== -->
   <view class="hero-card">
     <view class="hero-top">
-      <!-- 头像支持微信一键导入：用 button + open-type="chooseAvatar"（小程序原生 API）
-           点击 → 系统弹层"使用微信头像 / 拍照 / 相册"三选一，是 Tim 2026-05-16 真用拍的方案。
-           button 默认有边框 / class="hero-avatar-btn" 重置成裸图（边框/背景全去掉） -->
+      <!-- 头像点击 → wx.chooseMedia 拍照/相册（Tim 2026-05-16 二次真用拍：
+           前一版 <button open-type="chooseAvatar"> 在 hero-top flex 行内拦截 hero-info 区
+           点击事件 / 导致 city 不可点击 / 退回 image bindtap 模式 /
+           微信一键头像导入留 tech-debt 后续找方案如放 settings 页或独立链接） -->
       <view class="hero-avatar-wrap">
-        <button
-          class="hero-avatar-btn"
-          open-type="chooseAvatar"
-          bind:chooseavatar="onChooseAvatar"
-        >
-          <image
-            class="hero-avatar"
-            src="{{profile.avatar_url || '/images/avatar-default.png'}}"
-            mode="aspectFill"
-          />
-        </button>
+        <image
+          class="hero-avatar"
+          src="{{profile.avatar_url || '/images/avatar-default.png'}}"
+          mode="aspectFill"
+          bindtap="onEditAvatar"
+        />
       </view>
 
       <view class="hero-info">

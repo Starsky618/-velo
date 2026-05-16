@@ -280,24 +280,33 @@ Page({
     });
   },
 
-  // 编辑头像 —— Tim 2026-05-16 真用拍：用微信原生 button open-type="chooseAvatar"
-  // 系统直接弹三选一：使用微信头像 / 拍照 / 相册 / 一键拿到微信头像 URL
-  // 拿到后调 PUT /api/user/profile 写入 avatar_url 字段
-  // 注：微信头像 URL 是临时的 / 后续如需持久化要走上传 OSS 流程 / 当前先存 URL 用着
-  onChooseAvatar(e) {
-    const avatarUrl = e && e.detail && e.detail.avatarUrl;
-    if (!avatarUrl) return;
-    api.put('/api/user/profile', { avatar_url: avatarUrl })
-      .then(() => {
-        // 乐观更新 UI / 不重拉
-        const profile = Object.assign({}, this.data.profile || {}, { avatar_url: avatarUrl });
-        this.setData({ profile });
-        wx.showToast({ title: '头像已更新', icon: 'success' });
-      })
-      .catch((err) => {
-        console.error('[profile] update avatar failed', err);
-        wx.showToast({ title: '头像更新失败', icon: 'none' });
-      });
+  // 编辑头像 —— Tim 2026-05-16 二次真用拍：退回 wx.chooseMedia 拍照/相册（牺牲微信一键导入）
+  // 前一版 <button open-type="chooseAvatar"> 在 hero-top flex 行内拦截 hero-info 区点击事件
+  // 导致 city 不可点击 / 退回 image bindtap 模式 / 微信一键导入留 tech-debt 后续找方案
+  onEditAvatar() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const tempFile = res.tempFiles && res.tempFiles[0];
+        if (!tempFile) return;
+        // 小程序临时文件路径 / 当前直接存为 avatar_url（后端不做上传 OSS / 100 用户量级先这样）
+        // 注：tempFilePath 是本地 wxfile:// / 重启 app 可能失效 / 真正持久化需后端上传接口
+        api.put('/api/user/profile', { avatar_url: tempFile.tempFilePath })
+          .then(() => {
+            const profile = Object.assign({}, this.data.profile || {}, {
+              avatar_url: tempFile.tempFilePath,
+            });
+            this.setData({ profile });
+            wx.showToast({ title: '头像已更新', icon: 'success' });
+          })
+          .catch((err) => {
+            console.error('[profile] update avatar failed', err);
+            wx.showToast({ title: '头像更新失败', icon: 'none' });
+          });
+      },
+    });
   },
 
   // 编辑主城（Tim 2026-05-16 真用拍：之前 city 默认值无法改 / 加 picker 入口）
@@ -338,8 +347,28 @@ Page({
     wx.navigateTo({ url: '/pages/settings/settings' });
   },
 
-  // 未登录态点击登录
+  // 未登录态点击登录（修 task-4 续工 subagent bug：原写法 wx.navigateTo /pages/login/login
+  // 跳转到不存在的页面 / 静默失败 / 用户点没反应 / Tim 2026-05-16 真用报告）
+  // 正确流程：直接调 app.login() → 拿 token → setData isLoggedIn → fetchAllData
   onLogin() {
-    wx.navigateTo({ url: '/pages/login/login' });
+    if (this.data.loginLoading) return; // 防重复点击
+    this.setData({ loginLoading: true });
+    wx.showLoading({ title: '登录中...' });
+    app.login()
+      .then(() => {
+        this.setData({ isLoggedIn: true });
+        return this.fetchAllData(true);
+      })
+      .then(() => {
+        wx.hideLoading();
+        wx.showToast({ title: '登录成功', icon: 'success' });
+      })
+      .catch((err) => {
+        wx.hideLoading();
+        wx.showToast({ title: (err && err.message) || '登录失败', icon: 'none' });
+      })
+      .finally(() => {
+        this.setData({ loginLoading: false });
+      });
   },
 });
