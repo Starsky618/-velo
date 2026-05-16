@@ -69,7 +69,7 @@ class Badge(BaseModel):
 
     字段：
     - type: 5 种枚举之一 — ftp / distance / elevation / regular_mountain / city_local
-    - label: 展示文案 — "FTP 220W" / "累计 8000km" / "雀儿山常客" / "北京" 等
+    - label: 展示文案 — "FTP 220W" / "累计 8000km" / "雀儿山常客" / "北京骑友" 等
     """
     type: str
     label: str
