@@ -53,6 +53,14 @@ agent 读 PRD 效率低。agent 需要的是**规则化结论**加**可执行的
 
 **使用场景**:规则层没覆盖、需要创造性判断、要给出有深度的 reasoning 时,加载这份。
 
+### Layer 4: NPC 文案灵魂源 — `persona-constitution.md`（2026-05-16 新增）
+
+velo Persona Engine Sprint 启动 / NPC 老登人格规范 + 50 条精选 + 信息密度双标尺 + 9 类反例禁区 + 黑话词典 + 调侃边界 + 架构约束（独立模块 / 可拔的码表）+ 持续可拔性验证三招（命名前缀 / MANIFEST / 拔出测试）。
+
+读者：LLM agent（prompt prefix）+ 模板审核者 + 内容运营。**所有 AI 文案的 ground truth / 单一真相源**。
+
+---
+
 ### Layer 3: 协作协议层 — `agent-collaboration.md`
 
 **按需加载**。agent 需要决定某个细节工作是否外包给 Codex 时加载。

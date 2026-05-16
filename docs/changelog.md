@@ -1,5 +1,46 @@
 # VELO 开发变更日志
 
+## 2026-05-16: Persona Engine Sprint plans v0.4 ship（NPC 文案系统规划全套 / 4 轮双审收敛）✅
+
+**为什么要做**：velo 真正的护城河 = NPC 老登人格（数据 / 功能 / 视觉都可被 copy / 但人格 copy 不了）。Tim 拍独立大型 Sprint / 不和"我的"页基础混。
+
+**产物**（9 个文档 / 共 ~3000 行）：
+- `docs/agent-rules/persona-constitution.md` ~558 行：NPC 灵魂源（§ 1-8 + 50 条精选 + 信息密度双标尺 + 9 类反例禁区 + 黑话词典 + § 7 架构约束"可拔的码表"+ § 7.5 持续可拔性验证三招）
+- `docs/prd/persona-engine-sprint-prd.md` ~510 行：Sprint PRD v0.2（6 task × 9 章节 + § 0.1 真实代码事实表 + 算法 vs LLM 分工 92/8）
+- `docs/plans/persona-engine-handoff.md` + 6 个 task 卡 ~1480 行：共用约束 + 实施细则
+
+**4 轮双审收敛节奏**：5 → 3 → 1 → 0 Critical（vs Sprint 6 实证 3 轮 14→8→3→0 / 跨模块新工程多走 1 轮合理）
+
+**关键架构决策**：
+- ADR-009 子工程 / `app/agent/persona/` 独立目录 / 拔了 velo 主功能照样跑（验收标准明确）
+- v0.1 = 100% 算法 + 模板（0 LLM 调用 / 0 漂移 / 0 成本）/ v0.5+ 才接 LLM（跨时间镜像等动态场景）
+- 每场景 ≥ 5 条（Tim 拍 / 防 broken record）/ 总扩到 ~158 条 / 副线 cycle 完成
+
+**实施阶段 ready**：等新 claude 进程接手按 task-1 → task-6 顺序执行。
+
+---
+
+## 2026-05-16: Sprint 6 "我的"页基础 ship（task-1 ~ task-5 + 2 次 hotfix）✅
+
+**为什么要做**：从 v5 期字段表格升级为骑手身份名片（签名 / 数据徽章 / 城市勋章 / profile 页改造 / settings 子页）。
+
+**主要 commit**：
+- `3488ea4` feat(profile): Sprint 6 task-4 profile 页改造 + ride-card 组件提取
+- `6c6bff2` feat(strava): Sprint 6 task-5 settings 子页 + POST /api/strava/unbind
+- `bbfbb0c` fix(profile): task-4 真用回归 5 处 hotfix（Tim 2026-05-16）
+- `7a6fb6e` fix(profile): 修登录失败 + city 不可点击（task-4 二次 hotfix）
+
+**关键产物**：
+- 后端 task-1: User.bio 字段（≤30 字签名）
+- 后端 task-2: 数据徽章规则模块（badges.py 纯函数）
+- 后端 task-3: `activities.city` 字段 + worker hook + 城市勋章 endpoint
+- 前端 task-4: profile 页三模块布局 + ride-card 公共组件
+- 前端 task-5: settings 子页 + POST /api/strava/unbind
+
+**Sprint 范围外（明确延后）**：NPC 拟人化文案 → Persona Engine Sprint（同日 plans ship）
+
+---
+
 ## 2026-05-14 ~ 2026-05-15: 赛段海拔曲线 + 坡度修复（Step 1 + Step 2-DEM 全套）✅ ship
 
 ### Step 1（2026-05-14）：赛段详情页加海拔曲线
