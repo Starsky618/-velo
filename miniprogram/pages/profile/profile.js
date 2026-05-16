@@ -347,28 +347,29 @@ Page({
     wx.navigateTo({ url: '/pages/settings/settings' });
   },
 
-  // 未登录态点击登录（修 task-4 续工 subagent bug：原写法 wx.navigateTo /pages/login/login
-  // 跳转到不存在的页面 / 静默失败 / 用户点没反应 / Tim 2026-05-16 真用报告）
-  // 正确流程：直接调 app.login() → 拿 token → setData isLoggedIn → fetchAllData
+  // 未登录态点击登录（Tim 2026-05-16 二次真用：卡在"登录中..."loading 不消失）
+  // 根因：原写法等 fetchAllData 全 settle 才 hideLoading / fetchAllData 内含 setData isLoggedIn=true
+  // 触发 wx:if 块渲染 + <heatmap-card /> 组件自 fetch / 渲染链路可能延迟 hideLoading 到达
+  //
+  // 修法：先 hideLoading + toast 给用户即时反馈 / 再后台跑 fetchAllData（不阻塞 loading）
+  // 即使 fetchAllData 失败 toast 也已经"登录成功" / 数据稍后刷出来 / 体验更鲁棒
   onLogin() {
     if (this.data.loginLoading) return; // 防重复点击
     this.setData({ loginLoading: true });
-    wx.showLoading({ title: '登录中...' });
+    wx.showLoading({ title: '登录中...', mask: true });
     app.login()
       .then(() => {
-        this.setData({ isLoggedIn: true });
-        return this.fetchAllData(true);
-      })
-      .then(() => {
+        // 第一时间结束 loading + 切登录态 / 不等数据
         wx.hideLoading();
+        this.setData({ isLoggedIn: true, loginLoading: false });
         wx.showToast({ title: '登录成功', icon: 'success' });
+        // 数据后台拉 / 失败也不影响登录态展示
+        this.fetchAllData(true);
       })
       .catch((err) => {
         wx.hideLoading();
-        wx.showToast({ title: (err && err.message) || '登录失败', icon: 'none' });
-      })
-      .finally(() => {
         this.setData({ loginLoading: false });
+        wx.showToast({ title: (err && err.message) || '登录失败', icon: 'none' });
       });
   },
 });
