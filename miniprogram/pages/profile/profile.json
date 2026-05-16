@@ -5,6 +5,7 @@
   "backgroundColor": "#fafafa",
   "enablePullDownRefresh": true,
   "usingComponents": {
-    "ride-card": "/components/ride-card/ride-card"
+    "ride-card": "/components/ride-card/ride-card",
+    "heatmap-card": "/components/heatmap-card/heatmap-card"
   }
 }

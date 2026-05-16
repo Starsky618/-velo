@@ -253,6 +253,22 @@
   background: var(--color-bg);
 }
 
+/* 头像 button reset（open-type="chooseAvatar" 必须用 button / 默认有边框背景 / 全部重置成裸图）
+   Tim 2026-05-16 真用拍：头像点击要弹微信"使用微信头像 / 拍照 / 相册"三选一 */
+.hero-avatar-btn {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  line-height: 1;
+  width: 128rpx;
+  height: 128rpx;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.hero-avatar-btn::after {
+  border: none;
+}
+
 .hero-info {
   flex: 1;
   min-width: 0;

@@ -69,9 +69,9 @@ Page({
   data: {
     isLoggedIn: false,
     profile: null,
+    cityLabel: '',  // 6 城英文 code → 中文 label / hero 区显示用
     stats: null,
-    heatmap: null,
-    cityMedals: null,
+    // heatmap / cityMedals 字段已删（heatmap 改用组件 / 城市勋章砍）
 
     // 活动列表（分页）
     rides: [],
@@ -111,15 +111,16 @@ Page({
       this.setData({ rides: [], ridesPage: 1, hasMoreRides: true });
     }
 
-    // 并发拉 4 个 —— Promise.allSettled 让单个失败不影响其它块
+    // 并发拉 2 个 —— Promise.allSettled 让单个失败不影响其它块
+    // Tim 2026-05-16 真用拍：
+    //   - 热图改用 heatmap-card 组件 / 组件自己 fetch / 不再走 fetchHeatmap
+    //   - 城市勋章砍掉 / 不再走 fetchCityMedals
     const tasks = [
       this.fetchProfile(),
       this.fetchStats(),
-      this.fetchHeatmap(),
-      this.fetchCityMedals(),
     ];
 
-    // 活动列表独立 / 不参与 allSettled（避免分页失败影响顶部 4 块）
+    // 活动列表独立 / 不参与 allSettled（避免分页失败影响顶部 2 块）
     this.fetchRides(true);
 
     return Promise.allSettled(tasks);
@@ -127,9 +128,19 @@ Page({
 
   fetchProfile() {
     // GET /api/user/profile → UserProfile（含 bio / badges[]）
+    // badges 字段保留 / 但 wxml 不渲染（Tim 2026-05-16 真用拍砍）
     return api.get('/api/user/profile')
       .then((res) => {
-        this.setData({ profile: res || null });
+        const profile = res || null;
+        // 计算 cityLabel（英文 code → 中文 label / 让 hero 区直接显示"北京"而不是"beijing"）
+        // 6 城映射与后端 app/user/cities.py CITY_LABELS 保持一致 / 前端独立维护一份小映射
+        // 避免每次拉 city-medals 才拿到 label（task-4 后已不调 city-medals）
+        const CITY_LABEL_MAP = {
+          beijing: '北京', shanghai: '上海', hangzhou: '杭州',
+          shenzhen: '深圳', chengdu: '成都', taiyuan: '太原',
+        };
+        const cityLabel = (profile && profile.city) ? (CITY_LABEL_MAP[profile.city] || '') : '';
+        this.setData({ profile, cityLabel });
       })
       .catch((err) => {
         console.error('[profile] fetchProfile failed', err);
@@ -148,27 +159,9 @@ Page({
       });
   },
 
-  fetchHeatmap() {
-    // GET /api/user/me/heatmap → HeatmapResponse（不传 city 返全部 activity 轨迹）
-    return api.get('/api/user/me/heatmap')
-      .then((res) => {
-        this.setData({ heatmap: res || null });
-      })
-      .catch((err) => {
-        console.error('[profile] fetchHeatmap failed', err);
-      });
-  },
-
-  fetchCityMedals() {
-    // GET /api/user/me/city-medals → CityMedalsResponse
-    return api.get('/api/user/me/city-medals')
-      .then((res) => {
-        this.setData({ cityMedals: res || null });
-      })
-      .catch((err) => {
-        console.error('[profile] fetchCityMedals failed', err);
-      });
-  },
+  // Tim 2026-05-16 真用拍：
+  //   - fetchHeatmap 删除 / 改用 <heatmap-card /> 组件自己 fetch + <map> 渲染
+  //   - fetchCityMedals 删除 / 城市勋章前端砍 / 后端 endpoint 保留以备恢复
 
   // 活动列表分页
   // GET /api/activities?page=N&page_size=N → ActivityListResponse
@@ -287,19 +280,55 @@ Page({
     });
   },
 
-  // 编辑头像 —— 调用微信原生选图 + 上传到后端
-  // 注：上传细节走既有上传流程；本 task 范围内只触发选图 / 不实现完整上传
-  onEditAvatar() {
-    wx.chooseMedia({
-      count: 1,
-      mediaType: ['image'],
-      sourceType: ['album', 'camera'],
+  // 编辑头像 —— Tim 2026-05-16 真用拍：用微信原生 button open-type="chooseAvatar"
+  // 系统直接弹三选一：使用微信头像 / 拍照 / 相册 / 一键拿到微信头像 URL
+  // 拿到后调 PUT /api/user/profile 写入 avatar_url 字段
+  // 注：微信头像 URL 是临时的 / 后续如需持久化要走上传 OSS 流程 / 当前先存 URL 用着
+  onChooseAvatar(e) {
+    const avatarUrl = e && e.detail && e.detail.avatarUrl;
+    if (!avatarUrl) return;
+    api.put('/api/user/profile', { avatar_url: avatarUrl })
+      .then(() => {
+        // 乐观更新 UI / 不重拉
+        const profile = Object.assign({}, this.data.profile || {}, { avatar_url: avatarUrl });
+        this.setData({ profile });
+        wx.showToast({ title: '头像已更新', icon: 'success' });
+      })
+      .catch((err) => {
+        console.error('[profile] update avatar failed', err);
+        wx.showToast({ title: '头像更新失败', icon: 'none' });
+      });
+  },
+
+  // 编辑主城（Tim 2026-05-16 真用拍：之前 city 默认值无法改 / 加 picker 入口）
+  // wx.showActionSheet 6 城 + "清空"选项 / 选完调 PATCH /api/user/me
+  onEditCity() {
+    const cities = [
+      { code: 'beijing', label: '北京' },
+      { code: 'shanghai', label: '上海' },
+      { code: 'hangzhou', label: '杭州' },
+      { code: 'shenzhen', label: '深圳' },
+      { code: 'chengdu', label: '成都' },
+      { code: 'taiyuan', label: '太原' },
+    ];
+    wx.showActionSheet({
+      itemList: cities.map((c) => c.label).concat(['清空主城']),
       success: (res) => {
-        const tempFile = res.tempFiles && res.tempFiles[0];
-        if (!tempFile) return;
-        // TODO：调用上传接口（settings 页应已有 / 复用其逻辑）
-        // 本 task 仅占位 / 实际上传留给设置页统一处理
-        wx.showToast({ title: '请在设置页修改头像', icon: 'none' });
+        const idx = res.tapIndex;
+        // 最后一项是"清空主城" → body.city = null
+        const cityCode = idx < cities.length ? cities[idx].code : null;
+        api.patch('/api/user/me', { city: cityCode })
+          .then(() => {
+            // 乐观更新 UI
+            const profile = Object.assign({}, this.data.profile || {}, { city: cityCode });
+            const cityLabel = cityCode ? cities.find((c) => c.code === cityCode).label : '';
+            this.setData({ profile, cityLabel });
+            wx.showToast({ title: '主城已更新', icon: 'success' });
+          })
+          .catch((err) => {
+            console.error('[profile] update city failed', err);
+            wx.showToast({ title: '更新失败', icon: 'none' });
+          });
       },
     });
   },

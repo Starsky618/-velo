@@ -21,13 +21,21 @@
   <!-- ============== 块 1：头像区 ============== -->
   <view class="hero-card">
     <view class="hero-top">
+      <!-- 头像支持微信一键导入：用 button + open-type="chooseAvatar"（小程序原生 API）
+           点击 → 系统弹层"使用微信头像 / 拍照 / 相册"三选一，是 Tim 2026-05-16 真用拍的方案。
+           button 默认有边框 / class="hero-avatar-btn" 重置成裸图（边框/背景全去掉） -->
       <view class="hero-avatar-wrap">
-        <image
-          class="hero-avatar"
-          src="{{profile.avatar_url || '/images/avatar-default.png'}}"
-          mode="aspectFill"
-          bindtap="onEditAvatar"
-        />
+        <button
+          class="hero-avatar-btn"
+          open-type="chooseAvatar"
+          bind:chooseavatar="onChooseAvatar"
+        >
+          <image
+            class="hero-avatar"
+            src="{{profile.avatar_url || '/images/avatar-default.png'}}"
+            mode="aspectFill"
+          />
+        </button>
       </view>
 
       <view class="hero-info">
@@ -35,9 +43,12 @@
           <text class="hero-name">{{profile.nickname || '未设置昵称'}}</text>
           <text class="hero-edit-hint">›</text>
         </view>
-        <view class="hero-city" wx:if="{{profile.city}}">
+        <!-- city 点击弹 picker 改主城（Tim 2026-05-16 真用拍：之前无编辑入口 / 默认值无法改）
+             空 city 也显示"📍 选择主城" 让用户能进入编辑（不是只有有值时才显示） -->
+        <view class="hero-city" bindtap="onEditCity">
           <text class="hero-city-icon">📍</text>
-          <text class="hero-city-text">{{profile.city}}</text>
+          <text class="hero-city-text" wx:if="{{cityLabel}}">{{cityLabel}}</text>
+          <text class="hero-city-text" wx:else>选择主城</text>
         </view>
       </view>
 
@@ -52,16 +63,8 @@
       <text class="hero-bio-placeholder" wx:else>点这里写一句你的骑行宣言</text>
     </view>
 
-    <!-- 徽章行（task-2 / Badge schema = { type, label } / 注意无 icon 字段） -->
-    <view class="badge-row" wx:if="{{profile.badges && profile.badges.length > 0}}">
-      <view
-        class="badge-item"
-        wx:for="{{profile.badges}}"
-        wx:key="type"
-      >
-        <text class="badge-label">{{item.label}}</text>
-      </view>
-    </view>
+    <!-- 徽章行 Tim 2026-05-16 真用拍砍（初期没用 / 后端 + schema 保留 / 仅前端隐藏）
+         未来产品需要时取消注释即可恢复 -->
   </view>
 
   <!-- ============== 块 2：训练统计（本周 / period=week） ============== -->
@@ -94,40 +97,13 @@
     </view>
   </view>
 
-  <!-- ============== 块 3：热图 + 城市勋章墙 ============== -->
-  <view class="map-card">
-    <view class="map-title-row">
-      <text class="map-title">骑行热图</text>
-    </view>
+  <!-- ============== 块 3：热图（复用既有 heatmap-card 组件 / 含原生 <map> + polylines） ============== -->
+  <!-- Tim 2026-05-16 真用拍：原占位 area 不真渲染腾讯地图 → 改用既有组件
+       组件 self-contained / 自己调 GET /api/user/me/heatmap + 用 <map> 渲染 polylines / 不需要 profile 传数据 -->
+  <heatmap-card />
 
-    <!-- HeatmapResponse: city / tracks: list[list[list[float]]] / activity_count -->
-    <view class="heatmap-area" wx:if="{{heatmap && heatmap.tracks && heatmap.tracks.length > 0}}">
-      <!-- 真热图渲染留给后续 task / 先用占位文本提示已有数据 -->
-      <view class="heatmap-preview">
-        <text>已记录 {{heatmap.activity_count}} 条骑行轨迹</text>
-      </view>
-    </view>
-    <view class="heatmap-empty" wx:else>
-      <text>上传 GPX 后会在这里生成你的骑行热图</text>
-    </view>
-
-    <!-- 城市勋章墙（task-3 / 6 城 / CityMedal: city / label / unlocked / 无 icon 字段） -->
-    <view class="medals-section" wx:if="{{cityMedals && cityMedals.medals && cityMedals.medals.length > 0}}">
-      <view class="medals-title-row">
-        <text class="medals-title">城市勋章</text>
-        <text class="medals-progress">{{cityMedals.unlocked_count}} / {{cityMedals.total}}</text>
-      </view>
-      <view class="medals-grid">
-        <view
-          class="medal-cell {{item.unlocked ? 'medal-unlocked' : 'medal-locked'}}"
-          wx:for="{{cityMedals.medals}}"
-          wx:key="city"
-        >
-          <text class="medal-city">{{item.label}}</text>
-        </view>
-      </view>
-    </view>
-  </view>
+  <!-- 城市勋章墙 Tim 2026-05-16 真用拍砍（莫名其妙 / 后端 + endpoint 保留 / 仅前端隐藏）
+       未来想恢复时取消注释 medals-section 即可 -->
 
   <!-- ============== 块 4：活动列表（ride-card 组件 / 复用首页同款） ============== -->
   <!-- 字段直接透传 ActivitySummary：id / title / distance(公里) / duration(秒) / -->
