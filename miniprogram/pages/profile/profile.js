@@ -324,11 +324,14 @@ Page({
       { code: 'chengdu', label: '成都' },
       { code: 'taiyuan', label: '太原' },
     ];
+    // wx.showActionSheet itemList 上限 6 项（Tim 2026-05-17 真用 Console 实证）
+    // 拿掉"清空主城"项 / 100 用户量级用户清空 city 场景极少 / 可接受
+    // 未来要支持清空可用 wxml <picker> 或自定义 modal
     wx.showActionSheet({
-      itemList: cities.map((c) => c.label).concat(['清空主城']),
+      itemList: cities.map((c) => c.label),
       success: (res) => {
         const idx = res.tapIndex;
-        const cityCode = idx < cities.length ? cities[idx].code : null;
+        const cityCode = cities[idx].code;
         console.log('[city] step C2: actionSheet picked / idx=', idx, '/ cityCode=', cityCode);
         api.patch('/api/user/me', { city: cityCode })
           .then(() => {
