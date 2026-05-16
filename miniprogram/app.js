@@ -48,9 +48,11 @@ App({
    */
   login() {
     return new Promise((resolve, reject) => {
+      console.log('[app.login] step A: calling wx.login()')
       // 第一步：调微信接口拿临时 code
       wx.login({
         success: (loginRes) => {
+          console.log('[app.login] step B: wx.login success / code =', loginRes && loginRes.code ? loginRes.code.substring(0, 10) + '...' : 'EMPTY')
           if (!loginRes.code) {
             reject(new Error('wx.login 失败：未获取到 code'))
             return
@@ -60,8 +62,10 @@ App({
           // 在这里 require 而不是文件顶部，避免循环依赖：
           // app.js require api.js → api.js 调 getApp() → App 还没创建完 → 爆炸
           var api = require('./utils/api')
+          console.log('[app.login] step C: calling POST /api/user/login')
           api.post('/api/user/login', { code: loginRes.code })
             .then((data) => {
+              console.log('[app.login] step D: POST /api/user/login success', data)
               // 第三步：存 token + userId（内存 + 本地缓存双保险）
               // userId 给 isOwner 判断用（detail 页 task-4.6 隐私入口 / 不等 profile tab 激活）
               this.globalData.token = data.token
@@ -71,10 +75,12 @@ App({
               resolve(data)
             })
             .catch((err) => {
+              console.error('[app.login] step D FAIL: POST /api/user/login rejected', err)
               reject(err)
             })
         },
         fail: (err) => {
+          console.error('[app.login] step B FAIL: wx.login itself failed', err)
           reject(new Error('wx.login 调用失败'))
         },
       })

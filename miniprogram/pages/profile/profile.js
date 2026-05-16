@@ -347,19 +347,27 @@ Page({
     wx.navigateTo({ url: '/pages/settings/settings' });
   },
 
-  // 未登录态点击登录（Tim 2026-05-16 二次真用：卡在"登录中..."loading 不消失）
-  // 根因：原写法等 fetchAllData 全 settle 才 hideLoading / fetchAllData 内含 setData isLoggedIn=true
-  // 触发 wx:if 块渲染 + <heatmap-card /> 组件自 fetch / 渲染链路可能延迟 hideLoading 到达
-  //
-  // 修法：先 hideLoading + toast 给用户即时反馈 / 再后台跑 fetchAllData（不阻塞 loading）
-  // 即使 fetchAllData 失败 toast 也已经"登录成功" / 数据稍后刷出来 / 体验更鲁棒
+  // 未登录态点击登录（Tim 2026-05-16 三次真用：仍卡 loading / app.login 既不 resolve 也不 reject）
+  // 修法：加 5s 兜底 timeout + 全程 console.log / 下次卡能从 console 看到卡哪步 + toast 必出错
   onLogin() {
     if (this.data.loginLoading) return; // 防重复点击
     this.setData({ loginLoading: true });
     wx.showLoading({ title: '登录中...', mask: true });
+
+    console.log('[login] step 1: showLoading + app.login() called');
+
+    // 兜底 5s timeout：即使 promise 永远 pending 也强制结束 loading + toast
+    const timeoutHide = setTimeout(() => {
+      console.error('[login] TIMEOUT after 5s / app.login never resolved or rejected');
+      wx.hideLoading();
+      this.setData({ loginLoading: false });
+      wx.showToast({ title: '登录超时 / 检查网络或服务器', icon: 'none', duration: 3000 });
+    }, 5000);
+
     app.login()
-      .then(() => {
-        // 第一时间结束 loading + 切登录态 / 不等数据
+      .then((data) => {
+        console.log('[login] step 2: app.login resolved', data);
+        clearTimeout(timeoutHide);
         wx.hideLoading();
         this.setData({ isLoggedIn: true, loginLoading: false });
         wx.showToast({ title: '登录成功', icon: 'success' });
@@ -367,9 +375,11 @@ Page({
         this.fetchAllData(true);
       })
       .catch((err) => {
+        console.error('[login] step 2 FAIL: app.login rejected', err);
+        clearTimeout(timeoutHide);
         wx.hideLoading();
         this.setData({ loginLoading: false });
-        wx.showToast({ title: (err && err.message) || '登录失败', icon: 'none' });
+        wx.showToast({ title: (err && err.message) || '登录失败', icon: 'none', duration: 3000 });
       });
   },
 });
