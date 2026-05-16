@@ -195,7 +195,7 @@ def test_city_unknown_not_treated_as_local():
 
 
 def test_city_chengdu_returns_local_badge():
-    """city='chengdu' → 含"成都骑友"本地徽章（与 PRD § 3.2 字面一致）。"""
+    """city='chengdu' → 含"成都"本地徽章（Tim 2026-05-16 真用拍裸字 / 不加"骑友"后缀）。"""
     badges = compute_badges(
         ftp=None,
         total_distance_m=0,
@@ -205,7 +205,7 @@ def test_city_chengdu_returns_local_badge():
     )
     assert len(badges) == 1
     assert badges[0]["type"] == BADGE_TYPE_CITY_LOCAL
-    assert badges[0]["label"] == "成都骑友"
+    assert badges[0]["label"] == "成都"
 
 
 # ─────────────────────────────────────────────────────────────────────

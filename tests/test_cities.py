@@ -50,13 +50,13 @@ def test_city_labels_keys_match_valid_codes():
 
 
 def test_city_labels_contain_real_chinese_names():
-    """6 城 label 锁定（带"骑友"后缀 / 与 PRD § 3.2 字面"成都骑友"示例一致）。"""
+    """6 城 label 锁定（裸城市名 / Tim 2026-05-16 真用拍 / 不加"骑友"后缀）。"""
     expected = {
-        "beijing": "北京骑友",
-        "shanghai": "上海骑友",
-        "hangzhou": "杭州骑友",
-        "shenzhen": "深圳骑友",
-        "chengdu": "成都骑友",
-        "taiyuan": "太原骑友",
+        "beijing": "北京",
+        "shanghai": "上海",
+        "hangzhou": "杭州",
+        "shenzhen": "深圳",
+        "chengdu": "成都",
+        "taiyuan": "太原",
     }
     assert CITY_LABELS == expected

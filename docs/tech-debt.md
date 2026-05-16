@@ -6,7 +6,7 @@
 
 ---
 
-## 🟡 P2：badges 看他人是否过滤私密 effort（Sprint 6 task-2 / 待 Tim 拍 / 2026-05-16）
+## 🟢 P3：badges 看他人时全计入私密 effort（Sprint 6 task-2 / Tim 2026-05-16 拍 A / 2026-05-16）
 
 `app/user/service_social.py:_aggregate_badges_input` 山名常客频次查询：
 ```python
@@ -14,21 +14,21 @@
 ```
 **没有** JOIN `ActivityPrivacy` 过滤 visibility。相比之下 `app/segment/service.py:100` 排行榜查询有完整的 `outerjoin(ActivityPrivacy) + visibility` 过滤。
 
-**待 Tim 拍的产品决策**：CCF 看小明的 profile 时，小明的私密活动 effort 是否应被计入"雀儿山常客"频次？
+**Tim 2026-05-16 拍 A**（全计入私密 effort）：
 
-| 选项 | 含义 | 优 | 劣 |
-|---|---|---|---|
-| A 全计入 | self / others 都算上所有 effort（含私密） | badges 是聚合派生 / 不暴露具体活动详情 | 私密活动信息可能间接泄漏（"我骑过 5 次雀儿山"还是被知道）|
-| B others 过滤 | 看自己全算 / 看他人只算非私密 | 与 Sprint 5 排行榜规则一致 | self vs others 字段值不一致 / 违反 D-P08 新增字段对称（badges 数组可能 self 含 / others 不含） |
-| C 全过滤 | self / others 都不算私密 effort | 一致严格 | 自己看自己也少徽章 / 与"badges 反映真实数据"理念冲突 |
+| 选项 | 含义 | Tim 评价 |
+|---|---|---|
+| **A 全计入** | self / others 都算上所有 effort（含私密） | ✅ **选这个** / badges 是聚合派生 / 不暴露具体活动详情 / 简单产品语义 |
+| B others 过滤 | 看自己全算 / 看他人只算非私密 | ❌ self vs others 字段值不一致 / 违反 D-P08 新增字段对称（badges 数组可能 self 含 / others 不含） |
+| C 全过滤 | self / others 都不算私密 effort | ❌ 自己看自己也少徽章 / 与"badges 反映真实数据"理念冲突 |
 
-**当前行为 = A（全计入 / 注释未明示）**。100 用户量级 / 私密 effort 占比极低（绝大多数活动公开）/ 不阻塞 Sprint 6 task-2 ship。
+**当前行为 = A**（已 ship / Tim 拍 / 与 Sprint 5 排行榜对私密 effort 的过滤规则不一致 / 但 badges 是派生数据不直接暴露活动详情 / 风险可接受）。
 
-**触发讨论条件**：
+**重审触发条件**（Tim 已拍但保留 awareness）：
 - 用户报"我设私密的活动还是被人看出来骑过几次"
-- 用户量上 1000 / 私密占比上升
+- 用户量上 1000 / 私密占比上升 / 私密含敏感信息（如军用敏感地区路线）的真实案例
 
-**修法草稿**（选 A 时）：在 `_aggregate_badges_input` 加注释 + Tim 拍后写入 ADR。选 B/C 时改 SQL 加 outerjoin + visibility 守卫。
+**重审时修法草稿**（如未来翻 B）：改 `_aggregate_badges_input` SQL 加 `outerjoin(ActivityPrivacy) + visibility` 守卫 / 区分 self vs others 调用方。
 
 ---
 

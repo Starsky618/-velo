@@ -35,16 +35,18 @@ ALL_CITY_CODES_WITH_UNKNOWN: tuple[str, ...] = VALID_CITY_CODES + ("unknown",)
 # 中文 label 映射（手维护 / 因为 geo.py 是 GPS 坐标 box 不带中文名）。
 # 加新城时若忘了在这里加一行，下方 assert 会立刻报错提示 —— 不会等到生产 KeyError。
 #
-# label 带"骑友"后缀：与 PRD § 3.2 task-2 徽章规则表"成都骑友"示例字面一致。
-# 这样 badges.py 输出 "北京骑友" / "成都骑友" 等 / 而不是裸城市名 "北京" / "成都"——
-# 后者跟 user.city 字段重复 / 失去"身份徽章"语义。
+# label 用裸城市名"北京" / "成都"（Tim 2026-05-16 真用拍）：
+# - PRD v0.1-v0.4 spec 字面写"成都骑友"示例 / 但 Tim 真用觉得画蛇添足
+# - 前端展示空间小 / 已经在 user.city 字段显示了城市 / 再加"骑友"后缀冗余
+# - 历史 commit 3b34769 曾按 spec 字面改成"骑友"后缀 / 本次 Tim push back 改回
+# - PRD § 3.2 L275 同步从"成都骑友"改为"成都"（防未来再按字面 spec 改回去）
 CITY_LABELS: dict[str, str] = {
-    "beijing": "北京骑友",
-    "shanghai": "上海骑友",
-    "hangzhou": "杭州骑友",
-    "shenzhen": "深圳骑友",
-    "chengdu": "成都骑友",
-    "taiyuan": "太原骑友",
+    "beijing": "北京",
+    "shanghai": "上海",
+    "hangzhou": "杭州",
+    "shenzhen": "深圳",
+    "chengdu": "成都",
+    "taiyuan": "太原",
 }
 
 # 自检：CITY_LABELS keys 必须与 VALID_CITY_CODES 完全一致（防漏维护 / import 时立刻 fail）
