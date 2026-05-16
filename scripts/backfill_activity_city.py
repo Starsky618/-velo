@@ -42,6 +42,11 @@ from app.activity.models import Activity
 from app.common.geo import infer_city_from_coords
 from app.database import SessionLocal
 
+# 必须 import User ORM 让 SQLAlchemy 注册 users 表——否则 commit 时 activities.user_id
+# 外键解析失败（"could not find table 'users'" 错）/ 2026-05-16 真跑 286 条全失败实证。
+# 单独的脚本进程不会自动加载所有 ORM 模块 / 必须显式 import 所有相关外键表。
+from app.user.models import User  # noqa: F401
+
 
 def main(dry_run: bool) -> None:
     db = SessionLocal()
