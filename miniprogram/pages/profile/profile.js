@@ -27,6 +27,10 @@
 //   - ActivitySummary.distance 是公里（service 已转）/ duration 秒 / elevation_gain 米
 
 const api = require('../../utils/api');
+// 模块级 app 实例（v5 期老版本有 / 续工 subagent 漏写 → onLogin 调 app.login() ReferenceError
+// Tim 2026-05-16 Console 实证：app is not defined at ii.onLogin profile.js:367）
+// 这里 getApp() 是安全的：profile.js 是 page 文件 / Page() 注册时 App 已 onLaunch 完成
+const app = getApp();
 
 // 判断登录态 —— 与 utils/api.js 同口径（依赖 getApp().globalData.token）
 function isLoggedIn() {
