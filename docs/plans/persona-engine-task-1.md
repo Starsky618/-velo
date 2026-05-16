@@ -67,6 +67,7 @@ app/agent/persona/
 ├── filters.py              # 空骨架 docstring（task-3 填）
 ├── cache.py                # 空骨架 docstring（task-3 填）
 ├── service.py              # 空骨架 docstring（task-3 主入口）
+├── models.py               # 3 个 ORM（PersonaOutput / PersonaTemplate / PersonaFeedback）
 └── MANIFEST.md             # 资产清单 v0.1
 ```
 
@@ -120,7 +121,8 @@ def upgrade() -> None:
         sa.Column("template_id", sa.Integer, nullable=False),
         sa.Column("text_snapshot", sa.Text, nullable=False),  # v0.4 修 / Claude A+B 共识 C1 / 文案快照 / 避免 endpoint JOIN
         sa.Column("shown_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("activity_id", sa.Integer, sa.ForeignKey("activities.id"), nullable=True),
+        # ondelete="SET NULL"：activity 被删时保留台账（防 PG NO ACTION 让删活动 500 / Codex C1）
+        sa.Column("activity_id", sa.Integer, sa.ForeignKey("activities.id", ondelete="SET NULL"), nullable=True),
     )
     op.create_index(
         "ix_persona_outputs_user_scene_shown", "persona_outputs",
@@ -134,7 +136,7 @@ def upgrade() -> None:
         sa.Column("scene_type", sa.String(32), nullable=False),
         sa.Column("segment", sa.String(32), nullable=True),
         sa.Column("template_text", sa.Text, nullable=False),
-        sa.Column("weight", sa.Integer, server_default="1"),
+        sa.Column("weight", sa.Integer, server_default=sa.text("1")),
         sa.Column("active", sa.Boolean, server_default=sa.text("true")),
     )
     op.create_index(
@@ -161,7 +163,9 @@ def downgrade() -> None:
     op.drop_table("persona_outputs")
 ```
 
-### ORM 模型（`app/agent/models.py` 追加 / 不覆盖 SegmentAiDraft）
+### ORM 模型（`app/agent/persona/models.py` 新建 / 防火墙隔离）
+
+> v0.5 实施时修：原 plan 写 `app/agent/models.py 追加`，但该文件不存在（SegmentAiDraft 住在 `app/segment/models.py`）。改为新建 `app/agent/persona/models.py` 让 3 个 ORM 也在 persona 子目录内 → 拔目录就拔模型。
 
 ```python
 class PersonaOutput(Base):
@@ -185,7 +189,7 @@ class PersonaFeedback(Base):
 ## 后端代码
 - app/agent/persona/ — 整目录
 - app/agent/__init__.py — 子工程 reference（task-1 加）
-- app/agent/models.py — PersonaOutput / PersonaTemplate / PersonaFeedback（task-1 加）
+- app/agent/persona/models.py — 3 个 ORM（PersonaOutput / PersonaTemplate / PersonaFeedback / task-1 加）
 
 ## 数据库
 - migrations/versions/persona_engine_init.py

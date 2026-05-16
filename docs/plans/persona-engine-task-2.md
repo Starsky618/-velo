@@ -63,7 +63,7 @@
 ```python
 from typing import Optional
 from sqlalchemy.orm import Session
-from app.agent.models import PersonaTemplate
+from app.agent.persona.models import PersonaTemplate
 
 def compute_user_stage(total_distance_m: int) -> str:
     """累计距离（米）→ 段位（纯函数 / 不查 DB）。

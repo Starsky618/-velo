@@ -175,7 +175,7 @@ from typing import Optional
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.agent.persona import trigger_router, template_lib, filters, cache
-from app.agent.models import PersonaOutput
+from app.agent.persona.models import PersonaOutput
 
 logger = logging.getLogger(__name__)
 
@@ -309,7 +309,7 @@ def generate_persona_output(
 - service 顶层 try/except 是否真兜底（**绝对 critical**）
 - filter ANTI_PATTERN_KEYWORDS 列表是否覆盖宪法 § 3 全部 9 类
 - cache.record_output 失败是否真 fire-and-forget（不影响主返）
-- ADR-009 不反向 import（trigger_router / filters / cache / service 都只 from app.agent.persona / app.agent.models）
+- ADR-009 不反向 import（trigger_router / filters / cache / service 都只 from app.agent.persona / app.agent.persona.models）
 
 ### 依赖
 

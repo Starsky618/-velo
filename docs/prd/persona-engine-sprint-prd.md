@@ -194,7 +194,7 @@
   - `persona_outputs`：NPC 说过的话历史
   - `persona_templates`：模板库元数据
   - `persona_feedback`：用户反馈（v1.0+ 才用 / 本 Sprint 建表占位）
-- ORM 模型加进 `app/agent/models.py`（沿用 segment_ai_drafts 同位置）
+- ORM 模型加进 `app/agent/persona/models.py`（v0.5 实施时修：原 plan 误写 `app/agent/models.py` / 该文件不存在 / SegmentAiDraft 住在 `app/segment/models.py`；新位置让 3 个 ORM 也在 persona 子目录内 / 拔目录就拔模型）
 - 写 `app/agent/persona/MANIFEST.md` 资产清单初版（按宪法 § 7.5.2）
 
 **用户流程**：N/A（无前端流程）。
@@ -202,7 +202,7 @@
 **页面&状态**：N/A。
 
 **数据需求**：
-- `persona_outputs`：id PK / user_id FK / scene_type VARCHAR(32) / template_id INTEGER FK / shown_at timestamptz / activity_id FK nullable / index (user_id, scene_type, shown_at)
+- `persona_outputs`：id PK / user_id FK / scene_type VARCHAR(32) / template_id INTEGER（**无 FK** / 模板表可独立增删 / 历史台账不受污染 / 去重在 service 层） / text_snapshot TEXT（v0.4 修 / 文案快照 / 避免 endpoint JOIN templates） / shown_at timestamptz / activity_id FK **ondelete=SET NULL** nullable（防生产删 activity 500 / Codex C1）/ index (user_id, scene_type, shown_at)
 - `persona_templates`：id PK / scene_type VARCHAR(32) / segment VARCHAR(32) nullable / template_text TEXT / weight INTEGER default 1 / active BOOLEAN default true / index (scene_type, active)
 - `persona_feedback`：id PK / user_id FK / output_id FK / reaction ENUM('like','dislike','dismiss') / created_at timestamptz
 - 所有表名以 `persona_` 前缀（宪法 § 7.5.1）
