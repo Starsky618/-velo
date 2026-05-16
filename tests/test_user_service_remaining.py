@@ -468,13 +468,14 @@ class TestGetUserProfileForOthers:
         """
         from app.user.service_social import _filter_profile_keys, _PROFILE_RESPONSE_KEYS
 
-        # 构造含 7 个敏感字段的 raw_response（Sprint 4 codex 拍砍 ftp / +1）
+        # 构造含 7 个敏感字段的 raw_response（Sprint 4 codex 拍砍 ftp / +1 / Sprint 6 task-1 加 bio）
         raw_with_sensitive = {
             # 白名单内（应保留）
             "id": 42,
             "nickname": "test",
             "avatar_url": "https://x",
             "city": "beijing",
+            "bio": "测试签名",  # Sprint 6 task-1：bio 加入白名单（公开 / 跟 city 同级）
             "bike_type": "road",
             "total_distance_km": 100.0,
             "total_elevation_m": 500.0,

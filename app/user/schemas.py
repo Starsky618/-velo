@@ -17,7 +17,28 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+# ========== Sprint 6 task-1：bio 字段共享校验 ==========
+#
+# 个性签名一行短描述，要求"单行 / ≤ 30 字符"。
+# 抽成独立 helper 是因为两个 request schema（UserProfileUpdate / UserPatchRequest）
+# 都接 bio——同一规则两个入口都得守，复制粘贴 = 未来改一处忘另一处。
+# 类比：小区"住户档案"两个登记窗口（户籍处 / 物业前台）共用同一张校验清单——
+# 长度 ≤ 30 + 不许含换行符 / 制表符 / 其他控制字符（避免一行签名被塞成多行 / 显示错位）。
+
+def _reject_newline_and_control(v: Optional[str]) -> Optional[str]:
+    """共享：bio 校验拒收换行 / 控制字符（强制单行短签名）。
+
+    None 直接透传（用户没改 / 想清空）；非 None 时扫描 \\n \\r \\t \\x00 等控制字符，
+    含任意一个就 422——前端必须改成单行才能保存。
+    """
+    if v is None:
+        return v
+    if any(c in v for c in "\n\r\t\x00"):
+        raise ValueError("签名不能含换行或控制字符")
+    return v
 
 
 # ========== 任务 2.2：微信登录 ==========
@@ -49,6 +70,7 @@ class UserProfile(BaseModel):
     nickname: Optional[str] = None
     avatar_url: Optional[str] = None
     city: Optional[str] = None  # Sprint 4 codex 异源审拍加（P1-3 / 跟看他人 UserProfileResponse.city 字段对齐 / 默认公开 / 详 D9 fallback 2026-05-06）
+    bio: Optional[str] = None  # Sprint 6 task-1：骑手签名（≤ 30 字符 / 一行短描述）
     ftp: Optional[int] = None
     weight: Optional[float] = None
     bike_type: Optional[str] = None
@@ -68,6 +90,7 @@ class UserProfileUpdate(BaseModel):
     - weight: 30.0-200.0
     - bike_type: road / gravel / mtb
     - weekly_goal: 10.0-2000.0
+    - bio: ≤ 30 字符 + 单行（Sprint 6 task-1 / 详 _reject_newline_and_control）
     """
     nickname: Optional[str] = Field(None, max_length=64)
     avatar_url: Optional[str] = None
@@ -75,6 +98,12 @@ class UserProfileUpdate(BaseModel):
     weight: Optional[float] = Field(None, ge=30.0, le=200.0)
     bike_type: Optional[BikeType] = None
     weekly_goal: Optional[float] = Field(None, ge=10.0, le=2000.0)
+    bio: Optional[str] = Field(None, max_length=30)
+
+    @field_validator("bio")
+    @classmethod
+    def _validate_bio(cls, v):
+        return _reject_newline_and_control(v)
 
 
 # ========== 任务 2.5：骑行统计 ==========
@@ -180,6 +209,16 @@ class UserPatchRequest(BaseModel):
         None,
         description="可选 / 不传不改 / 传 null 清空 / 传枚举值更新",
     )
+    bio: Optional[str] = Field(
+        None,
+        max_length=30,
+        description="骑手签名 / Sprint 6 task-1 / ≤ 30 字符 / 单行 / 空串等价清空（service 层转 NULL）",
+    )
+
+    @field_validator("bio")
+    @classmethod
+    def _validate_bio(cls, v):
+        return _reject_newline_and_control(v)
 
 
 class _MonthSummary(BaseModel):
@@ -205,6 +244,7 @@ class UserProfileResponse(BaseModel):
     nickname: Optional[str] = None
     avatar_url: Optional[str] = None
     city: Optional[str] = None
+    bio: Optional[str] = None  # Sprint 6 task-1：骑手签名 / 看他人也可见 / 与白名单 _PROFILE_RESPONSE_KEYS 对齐
     bike_type: Optional[str] = None
     total_distance_km: float
     total_elevation_m: float

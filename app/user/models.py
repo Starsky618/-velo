@@ -104,6 +104,16 @@ class User(Base):
         comment="所属城市：beijing/shanghai/hangzhou/shenzhen/chengdu/taiyuan/unknown 或 NULL",
     )
 
+    # ===== 骑手签名 bio（Sprint 6 task-1）=====
+    # 个性签名 / 一行短描述，"我的"页骑手名片展示。
+    # 类比：微信"个性签名"——一行字让别人秒懂你是哪种骑手
+    # （如"成都老登 / 公路党 / FTP 220W"）。
+    # 长度：30 个字符上限（PostgreSQL varchar 按 Unicode codepoint 计 / 与 schema
+    # max_length=30 完全对齐，防止绕过 API 走脚本直写超长 bio 污染数据层）。
+    # nullable=True：用户可不填；空字符串("") 或 纯空格 "  " 在 service 层
+    # 等价转 NULL，避免"看似填了实际空"的脏数据。
+    bio = Column(String(30), nullable=True)
+
     # 创建时间和更新时间
     # server_default 让数据库自动填入当前时间，不依赖 Python 端的时钟
     # tz-aware（第 5 期 task-0.1）：统一时区元数据，避免 naive vs aware TypeError

@@ -73,6 +73,10 @@ _PROFILE_RESPONSE_KEYS = {
     "total_distance_km", "total_elevation_m", "activity_count",
     "current_month_summary",
 }
+# Sprint 6 task-1：骑手签名加入白名单。
+# 用 `|=` 追加而不是整体重写——保留既有 9 字段不变，未来 review diff 一眼看出只是"加 bio"。
+# bio 默认公开（Sprint 4 D7 / 跟 city 一样在页面层公开 / 不属敏感生理数据）。
+_PROFILE_RESPONSE_KEYS |= {"bio"}
 
 
 def _get_redis_client():
@@ -334,6 +338,7 @@ def get_user_profile_for_others(
         "nickname": target.nickname,
         "avatar_url": target.avatar_url,
         "city": target.city,
+        "bio": target.bio,  # Sprint 6 task-1：骑手签名（公开 / 白名单内）
         "ftp": target.ftp,
         "bike_type": target.bike_type,
         "total_distance_km": round((totals.total_distance or 0) / 1000.0, 2),

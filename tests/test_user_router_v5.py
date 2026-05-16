@@ -206,6 +206,7 @@ def test_get_profile_returns_whitelist_fields(client, auth_header):
         "nickname": "test",
         "avatar_url": "https://x",
         "city": "beijing",
+        "bio": "测试签名",  # Sprint 6 task-1：bio 加入白名单
         "ftp": 200,
         "bike_type": "road",
         "total_distance_km": 100.0,
@@ -225,8 +226,8 @@ def test_get_profile_returns_whitelist_fields(client, auth_header):
         assert resp.status_code == 200
         body = resp.json()
 
-        # 严格白名单（Sprint 4 codex 异源审 2026-05-06 砍 ftp / P1-4）
-        allowed = {"id", "nickname", "avatar_url", "city", "bike_type",
+        # 严格白名单（Sprint 4 codex 异源审 2026-05-06 砍 ftp / P1-4 / Sprint 6 task-1 加 bio）
+        allowed = {"id", "nickname", "avatar_url", "city", "bio", "bike_type",
                    "total_distance_km", "total_elevation_m", "activity_count",
                    "current_month_summary"}
         assert set(body.keys()) == allowed
@@ -438,3 +439,188 @@ def test_user_heatmap_unexpected_exception_not_swallowed_as_404(client, auth_hea
                side_effect=RuntimeError("database connection lost")):
         with pytest.raises(RuntimeError):
             client.get("/api/user/42/heatmap", headers=auth_header)
+
+
+# ───────────────────────────────────────────────────────────────────────
+# Sprint 6 task-1：User.bio 字段
+#
+# 测试覆盖 8 个关键场景 + 2 个回归断言：
+#   1. PATCH /me 写 bio → 200 + DB.bio 写入 + GET /profile 能读出
+#   2. PUT /profile 写 bio → 200 + DB.bio 写入 + GET /profile 能读出
+#   3. PATCH /me bio 长度 31 → 422
+#   4. PUT /profile bio 长度 31 → 422
+#   5. PATCH /me bio = null → DB.bio IS NULL
+#   6. PATCH /me bio = "" → DB.bio IS NULL（空串归一化）
+#   7. PATCH /me bio 含换行 → 422
+#   8. GET /api/user/{id}/profile 返 bio（看他人对称）
+#   回归 A：GET /api/user/active 不返 bio（防白名单泄漏）
+#   回归 B：_PROFILE_RESPONSE_KEYS 长度 = 10（既有 9 + bio）
+# ───────────────────────────────────────────────────────────────────────
+
+
+def test_patch_me_set_bio_success(client, auth_header, test_user, db):
+    """PATCH /me 入 bio → 200 + DB 持久化 + GET /profile 能读回。"""
+    bio_text = "成都老登 / 公路党 / FTP 220W"
+    resp = client.patch("/api/user/me", json={"bio": bio_text}, headers=auth_header)
+    assert resp.status_code == 200
+
+    # DB 层验证（防 schema/router 漏接 service）
+    db.refresh(test_user)
+    assert test_user.bio == bio_text
+
+    # GET /profile 端到端验证
+    profile_resp = client.get("/api/user/profile", headers=auth_header)
+    assert profile_resp.status_code == 200
+    assert profile_resp.json()["bio"] == bio_text
+
+
+def test_put_profile_set_bio_success(client, auth_header, test_user, db):
+    """PUT /profile 入 bio → 200 + DB 持久化 + GET /profile 能读回。"""
+    bio_text = "杭州 / 周末长距离"
+    resp = client.put("/api/user/profile", json={"bio": bio_text}, headers=auth_header)
+    assert resp.status_code == 200
+
+    db.refresh(test_user)
+    assert test_user.bio == bio_text
+
+    profile_resp = client.get("/api/user/profile", headers=auth_header)
+    assert profile_resp.status_code == 200
+    assert profile_resp.json()["bio"] == bio_text
+
+
+def test_patch_me_bio_too_long_422(client, auth_header):
+    """PATCH /me bio = 31 字符 → 422（超过 max_length=30）。"""
+    long_bio = "x" * 31
+    resp = client.patch("/api/user/me", json={"bio": long_bio}, headers=auth_header)
+    assert resp.status_code == 422
+
+
+def test_put_profile_bio_too_long_422(client, auth_header):
+    """PUT /profile bio = 31 字符 → 422。"""
+    long_bio = "x" * 31
+    resp = client.put("/api/user/profile", json={"bio": long_bio}, headers=auth_header)
+    assert resp.status_code == 422
+
+
+def test_patch_me_bio_null_clears(client, auth_header, test_user, db):
+    """PATCH /me bio = null → DB.bio 置 NULL（即使原来有值）。"""
+    # 先写一个 bio
+    test_user.bio = "原签名"
+    db.commit()
+
+    resp = client.patch("/api/user/me", json={"bio": None}, headers=auth_header)
+    assert resp.status_code == 200
+
+    db.refresh(test_user)
+    assert test_user.bio is None
+
+
+def test_patch_me_bio_empty_string_normalized_to_null(client, auth_header, test_user, db):
+    """PATCH /me bio = '' → DB.bio IS NULL（service_auth 空串归一化）。
+
+    防御目的：避免 DB 同时存在 NULL 和 '' 两种"空"状态污染查询逻辑
+    （陷阱 #1 Python truthiness：'' 在 if 判断时都是 False，等价但易混）。
+    """
+    test_user.bio = "原签名"
+    db.commit()
+
+    resp = client.patch("/api/user/me", json={"bio": ""}, headers=auth_header)
+    assert resp.status_code == 200
+
+    db.refresh(test_user)
+    assert test_user.bio is None  # ← 关键：是 None 不是 ""
+
+
+def test_patch_me_bio_with_newline_422(client, auth_header):
+    """PATCH /me bio 含换行符 → 422（强制单行）。"""
+    resp = client.patch(
+        "/api/user/me",
+        json={"bio": "line1\nline2"},
+        headers=auth_header,
+    )
+    assert resp.status_code == 422
+
+
+def test_put_profile_bio_with_newline_422(client, auth_header):
+    """PUT /profile bio 含换行符 → 422（PUT 入口同 PATCH 守同一规则）。"""
+    resp = client.put(
+        "/api/user/profile",
+        json={"bio": "a\nb"},
+        headers=auth_header,
+    )
+    assert resp.status_code == 422
+
+
+def test_get_user_profile_for_others_returns_bio(client, auth_header):
+    """GET /api/user/{id}/profile 看他人 → bio 出现在响应里（白名单已加 bio）。"""
+    fake_result = {
+        "id": 42,
+        "nickname": "test",
+        "avatar_url": None,
+        "city": "beijing",
+        "bio": "公开签名展示",
+        "bike_type": "road",
+        "total_distance_km": 100.0,
+        "total_elevation_m": 500.0,
+        "activity_count": 5,
+        "current_month_summary": {
+            "distance_km": 30.0,
+            "elevation_m": 100.0,
+            "avg_power_w": 180.0,
+        },
+    }
+    with patch(
+        "app.user.router.service.get_user_profile_for_others",
+        return_value=fake_result,
+    ):
+        resp = client.get("/api/user/42/profile", headers=auth_header)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["bio"] == "公开签名展示"
+        # 同时验证白名单长度 = 10（既有 9 + bio）
+        allowed = {"id", "nickname", "avatar_url", "city", "bio", "bike_type",
+                   "total_distance_km", "total_elevation_m", "activity_count",
+                   "current_month_summary"}
+        assert set(body.keys()) == allowed
+
+
+def test_active_users_does_not_leak_bio(client, auth_header):
+    """回归 A：/api/user/active 列表项 schema 是 ActiveUserItem（不含 bio）/ 防白名单泄漏。
+
+    bio 应只在 profile 详情（GET /api/user/{id}/profile）/ self profile 里返回，
+    列表场景按精简字段返。
+
+    防假阳性：必须 mock service 返非空列表 + 故意塞 bio key 进每个 item
+    （模拟"service 不小心加了 bio"的失败场景）→ 确认 Pydantic ActiveUserItem
+    schema 严格白名单 / Pydantic 默认 extra='ignore' 把 bio 滤掉。
+    历史 v1 写法用真 service 跑 / fixture 空列表让 for 循环不执行 / 断言永不触发。
+    """
+    leaky_items = [
+        {
+            "id": 999,
+            "nickname": "假泄漏骑友",
+            "avatar_url": None,
+            "city": "beijing",
+            "total_distance_km": 12.3,
+            "activity_count": 1,
+            "last_activity_at": None,
+            "bio": "如果 schema 漏 / 这条 bio 会被返出去",  # 故意塞
+        }
+    ]
+    with patch("app.user.router.service.get_active_users", return_value=leaky_items):
+        resp = client.get("/api/user/active", headers=auth_header)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["items"]) == 1, "mock 应保留 1 条 item / 防 fixture 空列表假阳性"
+    for item in body["items"]:
+        assert "bio" not in item, "ActiveUserItem 不应泄漏 bio 字段！"
+
+
+def test_profile_response_keys_whitelist_size():
+    """回归 B：_PROFILE_RESPONSE_KEYS 长度严格 = 10（既有 9 + bio）。
+
+    锁定 set 长度避免未来手滑用整体重写覆盖 `|=` 追加丢字段。
+    """
+    from app.user.service_social import _PROFILE_RESPONSE_KEYS
+    assert len(_PROFILE_RESPONSE_KEYS) == 10
+    assert "bio" in _PROFILE_RESPONSE_KEYS

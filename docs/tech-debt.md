@@ -6,6 +6,25 @@
 
 ---
 
+## 🟢 P3：PATCH /api/user/me 同传 city+bio 时双 commit 无原子保证（Sprint 6 task-1 三审共识 / 2026-05-16）
+
+`app/user/router.py:230-247` 路由先调 `update_user_city`（service_social 内 commit + 清 heatmap 缓存）/ 再调 `update_user_profile`（service_auth 内 commit）/ 中间无 SAVEPOINT。第二次 commit 若 DB 异常 → city 已持久化 + 缓存已清 / bio 未写入 / 用户收 500 但 city 已变。
+
+**为什么不立即修**：
+- 100 用户量级 / DB 抖动概率极低
+- 修法（router 直接 setattr 单 commit）会牵动 3 条既有 mock 测试（`test_patch_me_valid_city_calls_service` / `_empty_body_does_not_call_update` / `_explicit_null_clears_city`）+ 失去 service 层注释追溯
+- 三审共识：Claude B + Codex 都建议合并但都接受 tech-debt
+- 真用频次低：用户同时改 city + bio 不是高频场景
+
+**触发清理条件**：
+- 用户量级升 1000 以上 / 或
+- 真用回归报出"改了 city 但 bio 没保存"投诉 / 或
+- 下一次大改 PATCH /me（如加 settings 新字段）顺手收编
+
+**修法草稿**：router 内 `try: user = service.get_user_by_id(...)` → setattr `user.city = ...` + setattr `user.bio = ...` + `db.commit()` + commit 后才 `invalidate_heatmap_cache`。需同步改 3 条 mock 测试为"断言 user.city / user.bio 真值"而不是"断言 service 函数被调用"。
+
+---
+
 ## 🟡 P2：前端历史代码"-"占位符全工程清理（2026-05-15 Tim 拍永久规则）
 
 Tim 拍永久 UX 规则："前端永远不显示 '-' 或'暂无 XX' 占位符 / 字段缺失必须整块隐藏"。

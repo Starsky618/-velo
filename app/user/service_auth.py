@@ -170,8 +170,18 @@ def update_user_profile(db: Session, user_id: int, update_data: dict) -> User:
 
     只更新前端传过来的字段，没传的保持不变。
     就像修改住户档案：只改你说要改的栏目，其他栏目原样保留。
+
+    Sprint 6 task-1：bio 空字符串 / 纯空格归一化为 NULL。
+    用户在小程序把签名清空时前端可能传 "" / "   " / null——后端统一存 NULL。
+    避免 DB 里同时存在 NULL 和 "" / "   " 三种"空"状态污染查询逻辑（陷阱 #1 truthiness）。
     """
     user = get_user_by_id(db, user_id)
+
+    # bio 空白归一：前端清空时无论传 "" / "   " 纯空格 / null，DB 都存 NULL
+    # 必须在 setattr 之前做转换——否则空白字符串已经被写进 ORM
+    if "bio" in update_data and isinstance(update_data["bio"], str):
+        if update_data["bio"].strip() == "":
+            update_data["bio"] = None
 
     # 遍历要更新的字段，逐个修改
     for field, value in update_data.items():

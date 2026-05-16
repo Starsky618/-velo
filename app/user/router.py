@@ -207,15 +207,21 @@ def patch_me(
     db: Session = Depends(get_db),
 ):
     """
-    修改当前用户的 settings 类字段（v5 只 city / 未来扩）。
+    修改当前用户的 settings 类字段（v5 city / Sprint 6 加 bio）。
 
     设计：与现有 `PUT /profile` 分开——profile 改 ftp/weight/bike_type/weekly_goal 主资料；
-    PATCH /me 改 settings（city 等"附加项"）。两套独立避免接口耦合。
+    PATCH /me 改 settings（city / bio 等"附加项"）。两套独立避免接口耦合。
 
     body.city：
     - 不传 → 不改（沿用现有 city）
     - 传 null → 清空（user.city = NULL，与 nullable=True 一致）
     - 传枚举值 → 更新 + 失效该用户所有 city 的 heatmap 缓存
+
+    body.bio（Sprint 6 task-1）：
+    - 不传 → 不改
+    - 传 null → 清空（user.bio = NULL）
+    - 传 "" 空串 → 等价 null（service_auth 层归一化）
+    - 传字符串 → 更新（≤ 30 字符 + 单行，schema 层已 422 校验）
     """
     # exclude_unset=True：区分"没传 city"vs"传了 city=null"——
     # 前者是 'city' not in update_data，后者是 update_data['city'] is None
@@ -232,7 +238,15 @@ def patch_me(
             # invalid city 在 schema 层已被 422 拦掉，到这里说明 service 层自己的兜底
             raise HTTPException(status_code=422, detail=msg)
 
-    # 返回最新 user（含可能改过的 city）
+    # Sprint 6 task-1：bio 写入走 update_user_profile（已内建空串转 NULL 逻辑）
+    # 只挑 bio 字段传过去，避免把 city 误塞进 setattr 循环（city 已被上面 update_user_city 处理）
+    if "bio" in update_data:
+        try:
+            service.update_user_profile(db, user_id, {"bio": update_data["bio"]})
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+    # 返回最新 user（含可能改过的 city / bio）
     return service.get_user_by_id(db, user_id)
 
 
