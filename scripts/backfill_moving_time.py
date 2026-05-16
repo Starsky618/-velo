@@ -135,13 +135,15 @@ def backfill_moving_time(
         if activity.user_id != current_user_id:
             try:
                 user, _ = ensure_valid_token(db, activity.user_id)
-                client = StravaClient(user)
+                # StravaClient(db, user) — 两个参数都必传（client.py:75）
+                client = StravaClient(db, user)
                 current_user_id = activity.user_id
                 logger.info("切换 user_id=%d", user.id)
             except Exception:
-                # token 失效 / refresh 失败 → 该用户所有活动跳过
-                logger.warning(
-                    "user_id=%d token 无效，跳过该用户全部活动",
+                # 真正的 token 失效场景：refresh_token 也失效 / Strava 端撤销授权 / 网络错
+                # 用 logger.exception 打完整 traceback，避免再被"误叙事"成 token 无效
+                logger.exception(
+                    "user_id=%d 初始化 client 失败，跳过该用户全部活动",
                     activity.user_id,
                 )
                 skip_user_ids.add(activity.user_id)
