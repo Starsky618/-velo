@@ -10,8 +10,12 @@
 activities 表 + ck_activities_city CHECK 约束**不动**。
 
 Revision ID: sprint6_user_city_widen
-Revises: sprint6_activity_city
+Revises: persona_engine_init
 Create Date: 2026-05-17
+
+链路：sprint6_activity_city → persona_engine_init → sprint6_user_city_widen
+（原 down_revision 写的是 sprint6_activity_city / 与 persona_engine_init 分叉双 head /
+2026-05-17 部署时 alembic 报 "Multiple head revisions" / 改接在 persona_engine_init 后）
 """
 
 from alembic import op
@@ -19,7 +23,7 @@ import sqlalchemy as sa
 
 
 revision = "sprint6_user_city_widen"
-down_revision = "sprint6_activity_city"
+down_revision = "persona_engine_init"
 branch_labels = None
 depends_on = None
 
