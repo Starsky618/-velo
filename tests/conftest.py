@@ -119,6 +119,9 @@ _activities_table = Table(
     Column("activity_type", String(20), default="cycling"),  # 第 4 期新增：活动类型
     Column("strava_activity_id", Integer), # 第 2 期新增：Strava 活动去重 ID
     Column("duplicate_of", Integer),         # Sprint 5 task-2：语义级 dedupe 自引用 FK
+    # Sprint 6 task-3：activities.city 起点城市（6 城 + unknown 或 NULL）
+    # SQLite 不模拟 CHECK 约束 / CHECK 测试走真 PG（test_activity_city_field.py）
+    Column("city", String(32), nullable=True),
     Column("created_at", DateTime(timezone=True)),
     Column("updated_at", DateTime(timezone=True)),
 )

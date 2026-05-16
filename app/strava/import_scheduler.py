@@ -413,6 +413,24 @@ def _run_tier2(
 
         activity.status = "completed"
 
+        # ===== Sprint 6 task-3：写 activity.city 起点城市（Strava 路径集成）=====
+        # GPX/FIT 路径在 worker.py 接入 / Strava 路径独立调 save_parse_result / 必须独立接入。
+        # 漏接入 = Strava 同步过来的活动 city 永远 NULL → city-medals 漏算。
+        # SAVEPOINT 隔离 / city 写失败不阻断 activity 已 set 的 status='completed'。
+        try:
+            from app.activity.worker import _set_activity_city
+
+            nested_act_city = db.begin_nested()
+            try:
+                _set_activity_city(activity, activity.simplified_track)
+                db.flush()  # SAVEPOINT 内 flush 让 city 写到 DB
+                nested_act_city.commit()
+            except Exception:
+                nested_act_city.rollback()  # 不影响外层 activity.status='completed'
+        except Exception:
+            # 最外层兜底：begin_nested 失败 / import 失败等极端场景
+            pass
+
         # ===== Sprint 5 task-2 GPX 语义级 dedupe（Strava 路径集成）=====
         # codex 第 2 轮 review Critical 1 抓的：worker.py（GPX/FIT 路径）已集成 dedupe / 但
         # Strava import 路径独立调用 / 之前完全漏接 → 用户先 GPX 后 Strava 同步场景下 dedupe 失效。

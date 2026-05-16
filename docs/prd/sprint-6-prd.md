@@ -325,7 +325,7 @@
 
 1. **加 `activities.city` 字段 + Alembic 迁移**：
    - 类型 String(32) / nullable / CHECK 约束 7 枚举（与 users.city 一致：6 城 + unknown）
-   - 加索引 `idx_activities_user_city`（user_id + city / partial WHERE status='completed' AND city IS NOT NULL）
+   - 加索引 `idx_activities_user_city_completed`（user_id + city / partial WHERE status='completed' AND city IS NOT NULL AND duplicate_of IS NULL）
 
 2. **worker hook 写入路径**：所有 activity 上传完成解析时（GPX / FIT / Strava）调 `infer_city_from_coords` 传 `simplified_track` 起点经纬度 / 写 `activity.city`。
 

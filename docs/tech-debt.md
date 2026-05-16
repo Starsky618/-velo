@@ -44,6 +44,39 @@
 
 ---
 
+## 🟢 P3：Sprint 6 task-3 Strava worker hook 缺真 e2e 测试（task 卡 v0.4 红线未完全满足 / 2026-05-16）
+
+当前 case-9（`tests/test_city_medals.py:262`）= source-level grep `_set_activity_city` 字符串 + case-9b 直调 helper / 双层防回退。但 task 卡 v0.4 L218 明文要求"测试 case-9 必须真覆盖该路径（不能只 mock activity / 必须从 import_scheduler 起跑到 hook）"。
+
+**为什么不立即修**：
+- 完整 e2e 需 mock 5-7 个 import_scheduler 上游依赖（StravaClient.list_activities / fetch_streams / from_streams / save_parse_result / normalize 等）+ setup user + token + 假 Strava activity / 估时 30-60 分钟
+- 接入点已 grep 锁定 `app/strava/import_scheduler.py:425`（reviewer + subagent + 主 agent 三方实证）
+- task-6 真用回归会真 Strava 同步打通验证（小明真同步活动看 city 是否点亮）
+- 100 用户量级真用回归足以兜底
+
+**触发清理条件**：
+- task-6 真用回归发现 Strava 同步 city 漏写
+- 或 Strava import_scheduler 重构 / 接入点位置改动 / 担心 source grep 失灵
+
+**修法草稿**：参考 `tests/test_strava_*` 已有 mock pattern / mock 顶层 Strava 客户端 + from_streams 返特定 simplified_track / 真调 `_run_tier2` / 断言 `activity.city` DB 写入。
+
+---
+
+## 🟢 P3：Sprint 6 task-3 PG partial index 命中验证缺（Codex 异源审 / 2026-05-16）
+
+`migrations/versions/sprint6_activity_city.py:65` `idx_activities_user_city_completed` 是 partial index（条件 `status='completed' AND city IS NOT NULL AND duplicate_of IS NULL`）/ 用于加速 `service_social.get_city_medals` 聚合查询。
+
+当前 case-14（`tests/test_city_medals.py:190` 1000 条 < 100ms）在 SQLite 内存表跑 / **无 partial index**（PG-only / 走 dialect 守卫跳过）/ 只能证明 SQL 写法不退化 N+1 / **不能证明 PG 生产真命中此 index**。
+
+**触发清理条件**：
+- 真用回归 city-medals 慢（p99 > 500ms / 100 用户量级不应该出现）
+- 用户量上 1000 后聚合扫表
+- dev stack 准备好真 PG fixture 后
+
+**修法草稿**：dev stack 用真 PG 跑 `EXPLAIN ANALYZE SELECT city FROM activities WHERE user_id=X AND status='completed' AND city IS NOT NULL AND duplicate_of IS NULL GROUP BY city` / 断言 `Index Scan using idx_activities_user_city_completed`（不是 `Seq Scan`）。
+
+---
+
 ## 🟢 P3：PATCH /api/user/me 同传 city+bio 时双 commit 无原子保证（Sprint 6 task-1 三审共识 / 2026-05-16）
 
 `app/user/router.py:230-247` 路由先调 `update_user_city`（service_social 内 commit + 清 heatmap 缓存）/ 再调 `update_user_profile`（service_auth 内 commit）/ 中间无 SAVEPOINT。第二次 commit 若 DB 异常 → city 已持久化 + 缓存已清 / bio 未写入 / 用户收 500 但 city 已变。

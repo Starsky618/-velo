@@ -19,8 +19,8 @@
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
-    Boolean, Column, Integer, BigInteger, String, Float, DateTime, Text,
-    ForeignKey, Index, UniqueConstraint, func, text,
+    Boolean, CheckConstraint, Column, Integer, BigInteger, String, Float,
+    DateTime, Text, ForeignKey, Index, UniqueConstraint, func, text,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
@@ -123,6 +123,23 @@ class Activity(Base):
         index=True,
     )
 
+    # ===== 起点城市（Sprint 6 task-3）=====
+    # 6 主城枚举 + 'unknown' 兜底，NULL 表示未推断（旧数据 / 起点坐标缺失 / worker 异常）
+    # 用途：city-medals 城市征服墙聚合（"用户在哪几个城市骑过"），未来扩展按城市筛 feed
+    #
+    # NULL vs 'unknown' 严格区分（不可混淆）：
+    #   - NULL    = "从未推断过"（旧数据 / 空 track / lat lon 缺失 / worker 异常）
+    #   - unknown = "推断过但不在 6 城内"（用户骑老家小县城）
+    # 业务层 city-medals 聚合用 `city IN (6 城)` 过滤同时排除两者。
+    #
+    # CHECK 约束（与 users.city 完全一致 / 见下方 __table_args__）：DB 层兜底防脏数据。
+    # 注意 truthiness 陷阱（CLAUDE.md 陷阱 #1）：判"是否推断过"用 `is not None`。
+    city = Column(
+        String(32),
+        nullable=True,
+        comment="活动起点城市：6 城 + unknown 或 NULL（旧数据 / 起点经纬度缺失）",
+    )
+
     # ===== JSONB 字段（结构化数据，存为 JSON 格式）=====
 
     # 简化轨迹：Douglas-Peucker 算法压缩后的坐标点列表
@@ -161,6 +178,15 @@ class Activity(Base):
         Index("idx_activities_user_started", "user_id", "started_at"),
         # 同一用户 + 同一文件哈希 = 重复上传，数据库层最后防线
         UniqueConstraint("user_id", "file_hash", name="uq_user_file_hash"),
+        # Sprint 6 task-3：activities.city CHECK 约束（与 users.city 完全一致）。
+        # DB 层兜底拦截 ORM / 脚本绕过应用层写入非法城市值；
+        # 字符串必须与 migrations/versions/sprint6_activity_city.py CHECK 一字不差，
+        # 否则 alembic check_constraint 重命名时会被识别为两条不同约束。
+        CheckConstraint(
+            "city IS NULL OR city IN ('beijing', 'shanghai', 'hangzhou', "
+            "'shenzhen', 'chengdu', 'taiyuan', 'unknown')",
+            name="ck_activities_city",
+        ),
     )
 
 

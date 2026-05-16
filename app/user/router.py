@@ -217,6 +217,22 @@ def get_my_heatmap(
     return service.get_user_heatmap(db, user_id, city.value if city else None)
 
 
+@router.get("/me/city-medals", response_model=schemas.CityMedalsResponse)
+def get_my_city_medals(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    我的城市征服勋章墙（Sprint 6 task-3）。
+
+    返回当前用户已点亮城市列表 + 全 6 城 medal 数组（含中文 label）。
+    自他对称（D-P08 红线）：与 GET /api/user/{user_id}/city-medals 字段集合完全一致。
+
+    "已点亮"定义：用户有至少一条 completed activity 起点落在该城内（排除 duplicate / unknown）。
+    """
+    return service.get_city_medals(db, user_id)
+
+
 @router.patch("/me", response_model=schemas.UserProfile)
 def patch_me(
     body: schemas.UserPatchRequest,
@@ -353,3 +369,23 @@ def get_user_heatmap_for_others(
     except ValueError:
         raise HTTPException(status_code=404, detail="用户不存在")
     return service.get_user_heatmap(db, user_id, city.value if city else None)
+
+
+@router.get("/{user_id}/city-medals", response_model=schemas.CityMedalsResponse)
+def get_user_city_medals(
+    user_id: int,
+    requester_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    看他人城市征服勋章墙（Sprint 6 task-3 / D-P08 / 任意登录用户）。
+
+    自他对称（D-P08 红线 / 与 GET /api/user/me/city-medals 字段集合完全一致）。
+    user 不存在 → service.get_user_by_id 抛 ValueError → 翻译为 404
+    （跟 L310-311 /{user_id}/power-curve 同 pattern）。
+    """
+    try:
+        service.get_user_by_id(db, user_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return service.get_city_medals(db, user_id)

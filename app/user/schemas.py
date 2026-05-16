@@ -292,3 +292,38 @@ class ActiveUserItem(BaseModel):
 class ActiveUsersResponse(BaseModel):
     """探索 tab 骑友 section 列表响应 / 按 last_activity_at desc 排序。"""
     items: list[ActiveUserItem]
+
+
+# ===== Sprint 6 task-3：城市征服勋章 =====
+
+
+class CityMedal(BaseModel):
+    """单格城市勋章（"我的"页"城市征服墙"一格 / 自他对称返同样字段集）。
+
+    字段：
+    - city: 6 城枚举 code 之一（beijing / shanghai / hangzhou / shenzhen /
+      chengdu / taiyuan）。不含 unknown —— unknown 不算"征服"。
+    - label: 城市中文名（"北京" / "上海" / ...），与 cities.py CITY_LABELS 一致。
+    - unlocked: True = 用户已骑过该城（completed activity 起点落在城内）。
+    """
+    city: str
+    label: str
+    unlocked: bool
+
+
+class CityMedalsResponse(BaseModel):
+    """城市勋章墙响应（GET /api/user/me/city-medals + /{user_id}/city-medals 共用）。
+
+    自他对称（D-P08 红线 / 与 Sprint 6 task-2 一致）：看自己 = 看他人字段集合完全一致。
+
+    字段：
+    - unlocked: 已点亮城市 code 列表（sorted / 稳定顺序方便前端 diff）
+    - unlocked_count: 已点亮城市数（unlocked 的长度）
+    - total: 总城市数 = 6（VALID_CITY_CODES 长度 / 不含 unknown）
+    - medals: 全 6 城列表（每格含 city / label / unlocked）—— 前端不用自己维护城市名
+      和顺序，直接 v-for 渲染 6 格。
+    """
+    unlocked: list[str]
+    unlocked_count: int
+    total: int
+    medals: list[CityMedal]

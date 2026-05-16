@@ -50,6 +50,46 @@ _BATCH_SIZE = 500
 _MAX_TRACKPOINTS = 50_000
 
 
+def _set_activity_city(activity, simplified_track) -> None:
+    """从轨迹起点经纬度推断 activity.city（Sprint 6 task-3）。
+
+    干啥：worker 解析完成时把活动起点落在哪个城市写回 activity.city，
+    让"我的"页"城市征服墙"能自动聚合用户骑过的城市。
+
+    语义（红线 / 与 PRD § 3.3 异常情况对齐）：
+        - simplified_track 为空 / 起点 lat lon 缺失 → **不写值**（DB 保持 NULL）
+        - 坐标在 6 城内 → 写 6 城之一（infer_city_from_coords 返）
+        - 坐标在中国但不在 6 城 → 写 'unknown'（infer_city_from_coords 返 'unknown'）
+        - 异常 → **不写值**（容错：worker 不能因 city 推断失败炸活动创建）
+
+    NULL vs 'unknown' 语义区分（不可混淆 / city-medals 业务层依赖）：
+        - NULL    = "从未推断过"（旧数据 / 空 track / 坐标缺失 / 异常）
+        - 'unknown' = "推断过但不在 6 城"（用户骑老家小县城）
+
+    设计为 helper：让 GPX/FIT（worker.py）和 Strava（import_scheduler.py）
+    两条路径调同一个 helper，未来扩 7-N 城时只改 helper 不改三处接入点。
+
+    参数：
+        activity: Activity ORM 对象（直接修改 .city 字段）
+        simplified_track: 简化轨迹 list[{lat, lon, ele}] 或 None
+    """
+    try:
+        if not simplified_track:
+            return  # 空轨迹 → DB 保持 NULL
+        first_pt = simplified_track[0]
+        lat = first_pt.get("lat")
+        lon = first_pt.get("lon")
+        # truthiness 陷阱 #1：0.0 是合法纬度（赤道）/ 必须 `is None` 不能 truthy
+        if lat is None or lon is None:
+            return  # 起点坐标缺失 → DB 保持 NULL
+        from app.common.geo import infer_city_from_coords
+
+        activity.city = infer_city_from_coords(lat, lon)  # 6 城之一 或 'unknown'
+    except Exception:
+        # 容错：worker 不能因 city 推断失败而炸 activity 创建 / 保持 NULL
+        return
+
+
 def parse_activity(activity_id: int) -> None:
     """
     解析一条骑行活动的 GPX 文件，把结果写入数据库。
@@ -208,6 +248,25 @@ def _do_parse(db, activity_id: int) -> None:
         except Exception:
             # 进步检测失败静默跳过，不影响 activity 已经 completed 的事实
             # 失败场景：power_curve / heatmap 算法异常 / DB 临时网络抖动 / Redis 不可用
+            pass
+
+    # ===== 步骤 10.55：写 activity.city 起点城市（Sprint 6 task-3）=====
+    # 与下方 user.city hook 是独立两件事——
+    #   - activity.city：每条活动的起点城市（每次都推断 / 多次骑入不同城市都正确分别记录）
+    #   - user.city：用户的主城（只在 user.city 为 NULL 时首次推断 / 之后用户改 settings 自己改）
+    # 两者用独立 SAVEPOINT，互不污染。activity.city 写失败不影响 user.city 流程，反之亦然。
+    # Sprint 5 task-2 dedupe 守卫：duplicate 跳过（避免给 duplicate 重复写）。
+    if not is_duplicate:
+        try:
+            nested_act_city = db.begin_nested()
+            try:
+                _set_activity_city(activity, activity.simplified_track)
+                db.flush()  # SAVEPOINT 内 flush 让 city 字段写到 DB
+                nested_act_city.commit()
+            except Exception:
+                nested_act_city.rollback()  # SAVEPOINT 回退 / 不影响外层 activity.status
+        except Exception:
+            # 最外层兜底：begin_nested 失败 / 极端场景
             pass
 
     # ===== 步骤 10.6：首次上传自动推断主城市（v5 task-2.C.2 / spec §3.5）=====

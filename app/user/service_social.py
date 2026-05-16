@@ -539,6 +539,63 @@ def _aggregate_badges_input(db: Session, user_id: int) -> dict:
     }
 
 
+def get_city_medals(db: Session, user_id: int) -> dict:
+    """计算用户的城市征服勋章列表（Sprint 6 task-3 / 自他对称的统一入口）。
+
+    干啥：聚合用户哪几个城市骑过 completed 活动 / 返已点亮列表 + 全 6 城 medal 数组。
+    自他对称（D-P08 红线 / 与 get_user_badges 同模式）：看自己 = 看他人字段集合一致。
+
+    过滤规则（不可漏）：
+        - activities.status == 'completed'  —— 排除 pending / processing / failed
+        - activities.duplicate_of IS NULL    —— Sprint 5 task-2 dedupe 排除重复行
+        - activities.city IS NOT NULL        —— 排除"从未推断过"的旧数据
+        - activities.city IN VALID_CITY_CODES —— 排除 'unknown' + 任何脏数据
+          （白名单 in() 比黑名单 != 'unknown' 更安全 / 未来加新城自动跟随 cities.py）
+
+    性能：单条 GROUP BY SQL / partial index 命中（idx_activities_user_city_completed）/
+    1000 条 activity 用户聚合 < 100ms。
+
+    参数：
+        db: SQLAlchemy Session
+        user_id: 目标用户 ID（self 或 others）
+
+    返回：dict 形态与 schemas.CityMedalsResponse 字段集完全一致。
+
+    抛错：本函数不抛 / 用户不存在时返 unlocked=[] / count=0（查不存在用户的 404 由 router 层兜）。
+    """
+    # 延迟 import 避免模块加载期循环（cities.py → geo.py 一条链）
+    from app.user.cities import CITY_LABELS, VALID_CITY_CODES
+
+    # 单条 SQL / GROUP BY / partial index 命中 / 不引入 N+1
+    unlocked_rows = (
+        db.query(_Activity.city)
+        .filter(
+            _Activity.user_id == user_id,
+            _Activity.status == "completed",
+            _Activity.duplicate_of.is_(None),  # Sprint 5 task-2 dedupe
+            _Activity.city.isnot(None),  # 排除从未推断过
+            _Activity.city.in_(VALID_CITY_CODES),  # 排除 unknown / 脏数据 / 白名单
+        )
+        .group_by(_Activity.city)
+        .all()
+    )
+
+    # set 去重 + sorted 给前端稳定顺序（虽然 GROUP BY 本身已去重，再 set 一次防多列查询误用）
+    unlocked = sorted({row[0] for row in unlocked_rows})
+
+    medals = [
+        {"city": code, "label": CITY_LABELS[code], "unlocked": code in unlocked}
+        for code in VALID_CITY_CODES
+    ]
+
+    return {
+        "unlocked": unlocked,
+        "unlocked_count": len(unlocked),
+        "total": len(VALID_CITY_CODES),  # 6
+        "medals": medals,
+    }
+
+
 def get_user_badges(db: Session, user_id: int) -> list[dict]:
     """计算指定用户的身份徽章列表（top 3 / 自他对称的统一入口）。
 
