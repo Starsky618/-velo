@@ -1,0 +1,83 @@
+/* ride-card 组件样式 —— 从 home.wxss 提取沉淀 */
+/* 设计思路：卡片白底圆角 + 灰阴影；标题加粗，副标题次级灰；
+   stats 网格化 4 列，缺字段整块隐藏（不留空格） */
+
+.ride-card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 28rpx 32rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease;
+}
+
+.ride-card:active {
+  transform: scale(0.98);
+}
+
+.ride-card-header {
+  margin-bottom: 20rpx;
+}
+
+.ride-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  line-height: 1.4;
+}
+
+.ride-subtitle {
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 6rpx;
+}
+
+.ride-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx 32rpx;
+}
+
+.ride-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 120rpx;
+}
+
+.ride-stat-value {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.ride-stat-label {
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 4rpx;
+}
+
+/* 空态样式 */
+.ride-empty {
+  padding: 80rpx 40rpx;
+  text-align: center;
+}
+
+.ride-empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 20rpx;
+  opacity: 0.6;
+}
+
+.ride-empty-text {
+  font-size: 28rpx;
+  color: #666;
+  margin-bottom: 8rpx;
+}
+
+.ride-empty-subtext {
+  font-size: 24rpx;
+  color: #999;
+}

@@ -1,132 +1,316 @@
-/**
- * 个人中心页 — 用户的"仪表盘"
- *
- * 想象成骑行者的"个人成就墙"：
- * - 未登录：显示登录按钮
- * - 已登录：显示昵称、累计统计、FTP/体重等信息
- *
- * 登录流程：
- * 点击按钮 → app.login() → 拿到 token → 获取 profile + stats → 刷新页面
- */
+// profile 页 —— 骑手身份名片
+//
+// 设计思路：
+//   - onShow 并发拉 4 个接口（profile / stats / heatmap / city-medals），
+//     不串行等待 / 否则首屏白屏时间 = 4 个接口耗时之和
+//   - 活动列表独立拉取 + 分页（不阻塞前 4 个 / 走 /api/activities）
+//   - 编辑入口拆 3 个：bio（PATCH /api/user/me）/ nickname（PUT /api/user/profile）/ avatar
+//   - 未登录直接跳过数据拉取 / 显示登录提示
+//
+// 模块边界：
+//   - 本页只读 + 编辑用户自己的资料
+//   - 看他人 profile 走单独路由（不在 task-4 范围）
+//   - 编辑用 wx.showModal 不弹页面（简单字段不开新页）
+//
+// endpoint 路径（全部 /api 前缀 / grep 实证 app/user/router.py + app/strava/router.py）：
+//   - GET  /api/user/profile          → UserProfile（self / 含 bio / badges[]）
+//   - PUT  /api/user/profile          → 改主资料（nickname / avatar_url / ftp / ...）
+//   - PATCH /api/user/me              → 改 settings 类（bio / city）
+//   - GET  /api/user/stats?period=week → StatsResponse
+//   - GET  /api/user/me/heatmap        → HeatmapResponse
+//   - GET  /api/user/me/city-medals    → CityMedalsResponse
+//   - GET  /api/activities?page=N&page_size=N → ActivityListResponse
+//
+// 字段口径（与 wxml + ride-card 组件契约）：
+//   - StatsResponse.distance 是公里（service 已转）/ rides / elevation_gain 米 int /
+//     duration 秒 / goal_percent —— **不返** avg_power_w（tech-debt P3 / self 视图不渲染）
+//   - ActivitySummary.distance 是公里（service 已转）/ duration 秒 / elevation_gain 米
 
-const api = require('../../utils/api')
-const { getCityLabel } = require('../../utils/city')
-const app = getApp()
+const api = require('../../utils/api');
+
+// 判断登录态 —— 与 utils/api.js 同口径（依赖 getApp().globalData.token）
+function isLoggedIn() {
+  try {
+    const app = getApp();
+    return !!(app && app.globalData && app.globalData.token);
+  } catch (e) {
+    return false;
+  }
+}
+
+// 时间格式化：把 ISO datetime 转 "今天 09:30" / "昨天 18:20" / "MM-DD HH:mm"
+// 类比 home.js fmtDate（同款逻辑 / profile 独立一份避免跨页耦合）
+function fmtStartedAt(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const hour = pad(d.getHours());
+  const min = pad(d.getMinutes());
+  if (d.toDateString() === now.toDateString()) {
+    return `今天 ${hour}:${min}`;
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) {
+    return `昨天 ${hour}:${min}`;
+  }
+  // 跨年加年份避免歧义（2023-04-12 和 2026-04-12 看起来一样）
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  if (d.getFullYear() !== now.getFullYear()) {
+    return `${d.getFullYear()}-${month}-${day} ${hour}:${min}`;
+  }
+  return `${month}-${day} ${hour}:${min}`;
+}
 
 Page({
   data: {
     isLoggedIn: false,
-    loading: false,
-    // 用户资料（来自 GET /api/user/profile / 含 city: Optional[str]）
     profile: null,
-    // city 中文标签（D9 fallback / 无值时为空字符串，模板 wx:if 不显示 badge）
-    cityLabel: '',
-    // 骑行统计（来自 GET /api/user/stats?period=all）
     stats: null,
+    heatmap: null,
+    cityMedals: null,
+
+    // 活动列表（分页）
+    rides: [],
+    ridesPage: 1,
+    ridesPageSize: 10,
+    hasMoreRides: true,
+    ridesLoading: false,
+    totalRides: 0,
   },
 
-  /**
-   * onShow 而不是 onLoad：
-   * 每次切到"我的"tab 都检查登录状态并刷新数据。
-   * onLoad 只在页面首次创建时触发一次，
-   * onShow 每次页面显示都会触发（包括从其他 tab 切回来）。
-   */
   onShow() {
-    if (app.globalData.token) {
-      this.setData({ isLoggedIn: true })
-      this.fetchUserData()
-    } else {
-      this.setData({ isLoggedIn: false, profile: null, stats: null, cityLabel: '' })
+    // 切回页面时刷新数据（避免 settings 改完看到旧值）
+    this.refreshLoginState();
+    if (this.data.isLoggedIn) {
+      this.fetchAllData();
     }
   },
 
-  /**
-   * 点击"微信一键登录"按钮
-   */
-  handleLogin() {
-    // 防止重复点击
-    if (this.data.loading) return
-    this.setData({ loading: true })
-
-    wx.showLoading({ title: '登录中...' })
-
-    app.login()
-      .then((loginData) => {
-        this.setData({ isLoggedIn: true })
-        // 登录成功后立即获取用户数据
-        return this.fetchUserData()
-      })
-      .then(() => {
-        wx.hideLoading()
-        wx.showToast({ title: '登录成功', icon: 'success' })
-      })
-      .catch((err) => {
-        wx.hideLoading()
-        wx.showToast({
-          title: err.message || '登录失败',
-          icon: 'none',
-        })
-      })
-      .finally(() => {
-        this.setData({ loading: false })
-      })
+  onPullDownRefresh() {
+    if (this.data.isLoggedIn) {
+      this.fetchAllData(true).finally(() => {
+        wx.stopPullDownRefresh();
+      });
+    } else {
+      wx.stopPullDownRefresh();
+    }
   },
 
-  /**
-   * 获取用户资料和统计数据
-   *
-   * 两个请求并行发出（不用等 profile 返回再发 stats），
-   * 就像同时寄两封信，不用等第一封回信再寄第二封。
-   */
-  fetchUserData() {
-    const profileReq = api.get('/api/user/profile')
-      .then((data) => {
-        app.globalData.userInfo = data
-        // WXML 模板不支持 .toFixed() 方法调用，所以在 JS 层算好 W/kg
-        const wpkg = (data.ftp && data.weight)
-          ? (data.ftp / data.weight).toFixed(1)
-          : null
-        // city 中文标签：抽 utils/city.js 公共函数（task-4.3 用户详情页复用 / D9 fallback 逻辑统一）
-        const cityLabel = getCityLabel(data.city)
-        this.setData({ profile: data, wpkg: wpkg, cityLabel: cityLabel })
-      })
-      .catch((err) => {
-        // 401 说明 token 过期，清除登录状态
-        if (err.code === 401) {
-          app.logout()
-          this.setData({ isLoggedIn: false, profile: null, stats: null, cityLabel: '' })
-        }
-      })
-
-    const statsReq = api.get('/api/user/stats?period=all')
-      .then((data) => {
-        this.setData({ stats: data })
-      })
-      .catch(() => {
-        // 统计获取失败不影响页面展示，静默处理
-      })
-
-    return Promise.all([profileReq, statsReq])
+  refreshLoginState() {
+    this.setData({ isLoggedIn: isLoggedIn() });
   },
 
-  /**
-   * 退出登录
-   */
-  handleLogout() {
-    wx.showModal({
-      title: '确认退出',
-      content: '退出后需要重新登录',
-      success: (res) => {
-        if (res.confirm) {
-          app.logout()
-          this.setData({ isLoggedIn: false, profile: null, stats: null, cityLabel: '' })
-          wx.showToast({ title: '已退出', icon: 'success' })
-        }
-      },
+  // 4 接口并发 + 活动列表独立拉取
+  // 返回 Promise 便于 pullDownRefresh 等待
+  fetchAllData(reset) {
+    if (reset) {
+      this.setData({ rides: [], ridesPage: 1, hasMoreRides: true });
+    }
+
+    // 并发拉 4 个 —— Promise.allSettled 让单个失败不影响其它块
+    const tasks = [
+      this.fetchProfile(),
+      this.fetchStats(),
+      this.fetchHeatmap(),
+      this.fetchCityMedals(),
+    ];
+
+    // 活动列表独立 / 不参与 allSettled（避免分页失败影响顶部 4 块）
+    this.fetchRides(true);
+
+    return Promise.allSettled(tasks);
+  },
+
+  fetchProfile() {
+    // GET /api/user/profile → UserProfile（含 bio / badges[]）
+    return api.get('/api/user/profile')
+      .then((res) => {
+        this.setData({ profile: res || null });
+      })
+      .catch((err) => {
+        console.error('[profile] fetchProfile failed', err);
+      });
+  },
+
+  fetchStats() {
+    // GET /api/user/stats?period=week → StatsResponse
+    // 注意：self stats 不返 avg_power_w / 见 tech-debt P3
+    return api.get('/api/user/stats', { period: 'week' })
+      .then((res) => {
+        this.setData({ stats: res || null });
+      })
+      .catch((err) => {
+        console.error('[profile] fetchStats failed', err);
+      });
+  },
+
+  fetchHeatmap() {
+    // GET /api/user/me/heatmap → HeatmapResponse（不传 city 返全部 activity 轨迹）
+    return api.get('/api/user/me/heatmap')
+      .then((res) => {
+        this.setData({ heatmap: res || null });
+      })
+      .catch((err) => {
+        console.error('[profile] fetchHeatmap failed', err);
+      });
+  },
+
+  fetchCityMedals() {
+    // GET /api/user/me/city-medals → CityMedalsResponse
+    return api.get('/api/user/me/city-medals')
+      .then((res) => {
+        this.setData({ cityMedals: res || null });
+      })
+      .catch((err) => {
+        console.error('[profile] fetchCityMedals failed', err);
+      });
+  },
+
+  // 活动列表分页
+  // GET /api/activities?page=N&page_size=N → ActivityListResponse
+  fetchRides(reset) {
+    if (this.data.ridesLoading) return;
+    const page = reset ? 1 : this.data.ridesPage;
+    this.setData({ ridesLoading: true });
+
+    return api.get('/api/activities', {
+      page,
+      page_size: this.data.ridesPageSize,
     })
+      .then((res) => {
+        // 后端真返字段 = items[] / total / page / page_size
+        const rawItems = (res && res.items) || [];
+        const total = (res && res.total) || 0;
+        // 补充 startedAtDisplay 字段供 ride-card subtitle 槽位用
+        // 其他字段（id / title / distance / duration / elevation_gain / avg_speed）直接透传
+        //
+        // 业务时间用 started_at 不用 created_at（memory feedback_time_field_use_business_not_db_writetime.md
+        // Tim 2026-05-15 拍永久规则 / 踩过 2 次坑）：
+        // Strava 批量同步会把所有 effort.created_at squash 成同步那一刻 / 整页活动显示同一时间
+        // started_at 为空时返空字符串 / wxml 用 wx:if 整块隐藏 / 不显示错误时间
+        const items = rawItems.map((it) => Object.assign({}, it, {
+          startedAtDisplay: it.started_at ? fmtStartedAt(it.started_at) : '',
+        }));
+        const newRides = reset ? items : this.data.rides.concat(items);
+        this.setData({
+          rides: newRides,
+          totalRides: total,
+          ridesPage: page + 1,
+          hasMoreRides: newRides.length < total,
+          ridesLoading: false,
+        });
+      })
+      .catch((err) => {
+        console.error('[profile] fetchRides failed', err);
+        this.setData({ ridesLoading: false });
+      });
   },
 
-  // task-4.2 升级：functional 数据获取移入 component 自治（D21 模块化哲学）
-  // power-curve-card / heatmap-card 自己 attached 时 fetch + 自己持有 loading/error/empty/data 状态
-  // profile.js 不再持有任何 power-curve / heatmap 数据 / 失败互不影响 / 复用零拆代码
-})
+  onLoadMoreRides() {
+    if (this.data.hasMoreRides && !this.data.ridesLoading) {
+      this.fetchRides(false);
+    }
+  },
+
+  // 点击骑行卡片 → 跳详情
+  // ride-card 组件 triggerEvent('tap-ride', { activity_id }) → 这里接 e.detail
+  onRideTap(e) {
+    const id = e.detail && e.detail.activity_id;
+    if (!id) return;
+    wx.navigateTo({ url: `/pages/detail/detail?id=${id}` });
+  },
+
+  // 编辑 bio —— wx.showModal editable + PATCH /api/user/me
+  // PATCH /me 是 settings 类小修（接 city / bio）/ 不与 PUT /profile 主资料字段耦合
+  onEditBio() {
+    const current = (this.data.profile && this.data.profile.bio) || '';
+    wx.showModal({
+      title: '编辑骑行宣言',
+      editable: true,
+      placeholderText: '不超过 30 字',
+      content: current,
+      success: (res) => {
+        if (!res.confirm) return;
+        const newBio = (res.content || '').trim();
+        if (newBio.length > 30) {
+          wx.showToast({ title: '不能超过 30 字', icon: 'none' });
+          return;
+        }
+        api.patch('/api/user/me', { bio: newBio })
+          .then(() => {
+            wx.showToast({ title: '已保存', icon: 'success' });
+            // 乐观更新：本地直接改 / 避免再次拉
+            this.setData({
+              'profile.bio': newBio,
+            });
+          })
+          .catch((err) => {
+            wx.showToast({ title: '保存失败', icon: 'none' });
+            console.error('[profile] update bio failed', err);
+          });
+      },
+    });
+  },
+
+  // 编辑昵称 —— wx.showModal editable + PUT /api/user/profile
+  // PUT /profile 用于改主资料字段（nickname / avatar_url / ftp / weight / bike_type / weekly_goal）
+  onEditNickname() {
+    const current = (this.data.profile && this.data.profile.nickname) || '';
+    wx.showModal({
+      title: '编辑昵称',
+      editable: true,
+      placeholderText: '请输入昵称',
+      content: current,
+      success: (res) => {
+        if (!res.confirm) return;
+        const newName = (res.content || '').trim();
+        if (!newName) {
+          wx.showToast({ title: '昵称不能为空', icon: 'none' });
+          return;
+        }
+        api.put('/api/user/profile', { nickname: newName })
+          .then(() => {
+            wx.showToast({ title: '已保存', icon: 'success' });
+            this.setData({
+              'profile.nickname': newName,
+            });
+          })
+          .catch((err) => {
+            wx.showToast({ title: '保存失败', icon: 'none' });
+            console.error('[profile] update nickname failed', err);
+          });
+      },
+    });
+  },
+
+  // 编辑头像 —— 调用微信原生选图 + 上传到后端
+  // 注：上传细节走既有上传流程；本 task 范围内只触发选图 / 不实现完整上传
+  onEditAvatar() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const tempFile = res.tempFiles && res.tempFiles[0];
+        if (!tempFile) return;
+        // TODO：调用上传接口（settings 页应已有 / 复用其逻辑）
+        // 本 task 仅占位 / 实际上传留给设置页统一处理
+        wx.showToast({ title: '请在设置页修改头像', icon: 'none' });
+      },
+    });
+  },
+
+  // 跳到设置页（bio / 隐私 / Strava 绑定 / 退出登录）
+  onTapSettings() {
+    wx.navigateTo({ url: '/pages/settings/settings' });
+  },
+
+  // 未登录态点击登录
+  onLogin() {
+    wx.navigateTo({ url: '/pages/login/login' });
+  },
+});

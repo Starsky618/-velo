@@ -3,7 +3,10 @@
 > 所属：Sprint 6（"我的"页基础落地 / 共 6 task）
 > 这是第 4 个 task / 前端主体改造 / 依赖 task-1 / task-2 / task-3 全部 ship
 > v0.2（2026-05-16）：修 endpoint 前缀 /api/user 单数（v0.1 用了复数 /api/users）/ 改 bio 走 PATCH /me / 改 nickname 走 PUT /profile / 城市勋章 6 格不是 7 格 / D-P08 描述精确
+> v0.3（2026-05-16 续工）：字段名校准到真 schema（distance / rides / elevation_gain / duration / medals[].label / 无 icon 字段）/ ride-card 字段对齐 ActivitySummary（id 不是 activity_id / distance 公里不是米 / avg_speed 已是 km/h）/ self stats endpoint 不返 avg_power_w → task-4 self 视图也不渲染（P3 改写不删 / 见 tech-debt）
 > 上下文：2026-05-15 brainstorm / Tim 拍三模块布局 + 数字 hero 化 + 复用首页大卡片 + 不写 NPC 文案
+
+> **⚠️ 字段名以 `app/user/schemas.py` + `app/activity/schemas.py` 真 schema 为准——本卡内 wxml/js 示例若与代码事实有差异以代码为准。spec subagent 起手必读 PRD §0.1 真实代码事实表 + grep schemas.py。**
 
 ---
 
@@ -90,22 +93,23 @@ rg "'-'|\"-\"" miniprogram/pages/profile/profile.wxml
 - profile.js 132 行 / wxml 111 行 / wxss 222 行（v0.1 grep）
 - endpoint 前缀 `/api/user`（单数）+ `/api/activities`
 - v5 期 home.js 拉 `GET /api/activities?page=1&page_size=20`（大卡片）
-- current_month_summary 来自 GET /api/user/{user_id}/profile 看他人 endpoint（self stats 路径需确认）
+- current_month_summary 来自 GET /api/user/{user_id}/profile 看他人 endpoint（v0.3 grep 实证 self stats `StatsResponse` 无 avg_power_w）
 
 ### 页面布局（从上到下 4 块）
 
-**块 1 - 头像区**：
+**块 1 - 头像区**（字段名 = `UserProfile` 真 schema / Badge 无 icon 字段）：
 ```xml
 <view class="hero-section">
-  <image class="avatar" bindtap="onEditAvatar" />
+  <image class="avatar" src="{{profile.avatar_url}}" bindtap="onEditAvatar" />
   <view class="nickname" bindtap="onEditNickname">{{profile.nickname}}</view>
-  <view class="city-row" wx:if="{{cityLabel}}">{{cityLabel}}</view>
+  <!-- city 来自 profile.city（v5 D9 fallback / 不是 cityLabel 那种独立映射）-->
+  <view class="city-row" wx:if="{{profile.city}}">{{profile.city}}</view>
 
-  <!-- 新增：bio 签名（task-1）-->
+  <!-- 新增：bio 签名（task-1 / 字段 = profile.bio / NULL 整块隐藏）-->
   <view class="bio" wx:if="{{profile.bio}}" bindtap="onEditBio">{{profile.bio}}</view>
   <view class="bio-placeholder" wx:else bindtap="onEditBio">+ 添加签名</view>
 
-  <!-- 新增：徽章行（task-2）-->
+  <!-- 新增：徽章行（task-2 / Badge schema = type + label / 无 icon 字段）-->
   <view class="badge-row" wx:if="{{profile.badges.length > 0}}">
     <view class="badge" wx:for="{{profile.badges}}" wx:key="type">
       {{item.label}}
@@ -117,16 +121,20 @@ rg "'-'|\"-\"" miniprogram/pages/profile/profile.wxml
 </view>
 ```
 
-**块 2 - 训练统计**：数字 hero 化（CSS 大字号 + 灰色小标签 + 2 列网格 + 留白）。含 current_month_summary.avg_power_w 渲染（P3 清掉 / wx:if 包裹避免 null）。
+**块 2 - 训练统计**：数字 hero 化（CSS 大字号 + 灰色小标签 + 2 列网格 + 留白）。
 
-**块 3 - 热图 + 城市勋章墙**：
+字段口径（`StatsResponse` 真返）：`stats.distance`（公里 float / wxs km() 显示 2 位小数）/ `stats.rides`（int）/ `stats.elevation_gain`（米 int）/ `stats.duration`（秒 / wxs secToHm() 转 "Xh Ymin"）/ `stats.goal_percent`。
+
+⚠️ **不渲染 avg_power_w**：v0.3 grep 实证 self stats endpoint 不返此字段 / 看他人路径才返 / 详 tech-debt P3。
+
+**块 3 - 热图 + 城市勋章墙**（CityMedal schema = `city` / `label` / `unlocked` / 无 icon 字段）：
 ```xml
-<!-- 热图（已有 / GET /api/user/me/heatmap）-->
+<!-- 热图（已有 / GET /api/user/me/heatmap → tracks: list[list[list[float]]] / activity_count）-->
 <view class="heatmap-card">
   <heatmap-canvas />
 </view>
 
-<!-- 新增：城市勋章墙（task-3）-->
+<!-- 新增：城市勋章墙（task-3 / cityMedals.total = 6 / 不是 total_count）-->
 <view class="city-medals-wall">
   <view class="medals-title">城市征服：{{cityMedals.unlocked_count}} / {{cityMedals.total}}</view>
   <view class="medals-grid">
@@ -138,19 +146,35 @@ rg "'-'|\"-\"" miniprogram/pages/profile/profile.wxml
 </view>
 ```
 
-**块 4 - 活动列表**：复用首页同款大卡片。提取首页 `<view class="ride-card">...` 为公共 template 或 component：
+**块 4 - 活动列表**：复用 `<ride-card />` 组件（profile 引入 + 透传 ActivitySummary）。
+
+**v0.3 复用范围修订**：home.wxml 当前 inline 卡片含 home 专属字段（头像 / nickname / segments / initial / status pending 态）→ task 卡 v0.2 "home 单人不接头像跳转，未来开放 task-4.3 多人 home 流时一起做"明确推迟。本 task **只让 profile 用 ride-card**，**不动 home.wxml**（避免破坏首页 segments 异步加载 / status pending 态等成熟逻辑）。
 
 ```
-miniprogram/components/ride-card/  ← 新建组件目录（如果首页是 inline / 这次提取）
-miniprogram/pages/home/home.wxml   ← 改用 <ride-card />
-miniprogram/pages/profile/profile.wxml ← 同款 <ride-card />
+miniprogram/components/ride-card/  ← 新建组件目录（task-4 落地）
+miniprogram/pages/profile/profile.wxml ← 引入 <ride-card />（本 task）
+miniprogram/pages/home/home.wxml ← 维持 inline 卡片（推迟 / 等 task-4.3 多人流再迁移）
 ```
+
+**字段契约**（ride-card 接 ActivitySummary 真 schema 字段 / wxs 内部格式化）：
+- `id`（不是 `activity_id`）/ `title` / `distance`（公里）/ `duration`（秒）/ `elevation_gain`（米）/ `avg_speed`（km/h）/ `started_at`
+- 父页面可选补 `startedAtDisplay`（已格式化"今天 09:30"字符串）作为 subtitle 槽位
+- wxml 用 `utils/format.wxs` 的 `km()` / `secToHm()` / `roundInt()` 显示层格式化
 
 **复用要求**（防双 subagent 越界 / 见 memory `feedback_dual_subagent_shared_utils_ownership.md`）：
-- 组件接口固定（rides 数组 + 点击事件）
+- 组件接口固定（rides 数组 + tap-ride 事件）/ 字段名 = ActivitySummary 真 schema
 - profile 不修改 ride-card 内部 / 只传 data + 监听事件
+- ride-card 不脑补字段映射（不再有 distance_km / duration_display / activity_id 那种映射层）
 
 ### onShow 拉数据（5 接口并发 / 4 个 setData + 1 个分页）
+
+字段口径（v0.3 grep 实证 / `app/user/schemas.py` + `app/activity/schemas.py`）：
+- `GET /api/user/profile` → `UserProfile`: `id` / `nickname` / `avatar_url` / `city` / `bio` / `ftp` / `weight` / `bike_type` / `weekly_goal` / `created_at` / `badges[]`
+- `GET /api/user/stats?period=week` → `StatsResponse`: `period` / `distance`（公里 float）/ `rides`（int）/ `elevation_gain`（米 int）/ `duration`（秒 int）/ `weekly_goal` / `goal_percent`
+- `GET /api/user/me/heatmap` → `HeatmapResponse`: `city` / `tracks: list[list[list[float]]]` / `activity_count`
+- `GET /api/user/me/city-medals` → `CityMedalsResponse`: `unlocked: list[str]` / `unlocked_count` / `total` / `medals: list[CityMedal]`；CityMedal = `city` / `label` / `unlocked`（**无 icon 字段**）
+- `GET /api/activities?page=N&page_size=N` → `ActivityListResponse`: `items: list[ActivitySummary]` / `total` / `page` / `page_size`；ActivitySummary = `id` / `title` / `status` / `distance`（公里 / service 已转）/ `duration`（秒）/ `elevation_gain`（米）/ `avg_speed`（km/h / worker 已转）/ `avg_power` / `avg_hr` / `started_at` / `created_at`
+- Badge schema = `type` / `label`（**无 icon 字段**）
 
 ```javascript
 onShow() {
@@ -162,12 +186,12 @@ onShow() {
 
   // 并发拉 4 接口（endpoint 前缀 /api/user 单数 / v0.2 修）
   api.get('/api/user/profile').then(p => this.setData({ profile: p }))
-  api.get('/api/user/stats?period=week').then(s => this.setData({ stats: s }))
+  api.get('/api/user/stats', { period: 'week' }).then(s => this.setData({ stats: s }))
   api.get('/api/user/me/heatmap').then(h => this.setData({ heatmap: h }))
   api.get('/api/user/me/city-medals').then(c => this.setData({ cityMedals: c }))
 
-  // 活动列表分页（独立 / 不阻塞）
-  this.fetchActivities(1)
+  // 活动列表分页（独立 / 不阻塞）/ GET /api/activities?page=1&page_size=10
+  this.fetchRides(true)
 }
 ```
 
@@ -210,17 +234,14 @@ onTapSettings() {
 }
 ```
 
-### tech-debt P3 清理（顺手做）
+### tech-debt P3 处理（v0.3 续工修订 / 不删 / 改写描述）
 
-```html
-<!-- 训练统计卡内追加 / 包 wx:if 防 null -->
-<view class="stat-cell" wx:if="{{stats.current_month_summary.avg_power_w}}">
-  <view class="stat-number">{{stats.current_month_summary.avg_power_w}}</view>
-  <view class="stat-label">本月平均功率 W</view>
-</view>
-```
-
-完成后在 `docs/tech-debt.md` 删除 P3 这一条 + commit message 提一句"task-4 顺手清 P3"。
+**真 schema 校准（v0.3 必读）**：
+- `GET /api/user/stats?period=week` 返 `StatsResponse`——字段 = `distance` / `rides` / `elevation_gain` / `duration` / `weekly_goal` / `goal_percent` —— **不返 avg_power_w**
+- `avg_power_w` 只在 `GET /api/user/{user_id}/profile` → `UserProfileResponse.current_month_summary._MonthSummary` 看他人路径返
+- self 视图想渲染 → 要么改 self stats schema 加派生字段（动核心 endpoint 风险大）/ 要么 self 页多调一次 `/{me_id}/profile`（浪费 endpoint）
+- **task-4 决策**：self 视图不渲染 avg_power_w / P3 不删 / 改写为"等后端 stats endpoint 加派生字段再清"
+- commit message 说明"P3 改写描述 / self stats endpoint 不返此字段 / 等扩展 schema 再清"
 
 ### "-" 占位符永久规则
 

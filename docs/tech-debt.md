@@ -134,13 +134,21 @@ Tim 拍永久 UX 规则："前端永远不显示 '-' 或'暂无 XX' 占位符 / 
 
 ---
 
-## 🟢 P3：用户主页 `current_month_summary.avg_power_w` 字段后端返但前端不渲染（task-4.6 Codex 异源审 I3）
+## 🟢 P3：用户主页 `current_month_summary.avg_power_w` 字段后端返但前端不渲染（task-4.6 Codex 异源审 I3 / Sprint 6 task-4 续工 2026-05-16 复核）
 
-后端 `app/user/schemas.py:189` `_MonthSummary.avg_power_w` 字段存在 + `app/user/router.py:248-254` `/{user_id}/profile` 真返这数字。但 grep 全 `miniprogram/` 确认前端 `user.wxml`（他人主页）完全**不渲染** avg_power_w / 只在 user.js 注释里提了一句。
+**当前状态**：
+- 看他人 endpoint `GET /api/user/{user_id}/profile` 返 `current_month_summary.avg_power_w`（`app/user/schemas.py:189 _MonthSummary` + `service_social.py` 真填这字段）
+- **self stats endpoint `GET /api/user/stats?period=week` 不返此字段**（`schemas.py:140 StatsResponse` + `service_stats.py:99` 真实聚合只产 distance / rides / elevation_gain / duration / weekly_goal / goal_percent）
+- 前端 `user.wxml`（他人主页）+ `profile.wxml`（self 主页）都完全**不渲染** avg_power_w
 
-**为什么不修**：Tim 2026-05-15 拍"产品里没有每月平均功率 / 只有最大功率 / 最大功率只能本人看"——前端不渲染 = 产品层确实不暴露 / task-4.6 `hide_power` 已覆盖所有产品可见的功率字段。
+**为什么不修**：
+1. **产品层不暴露**：Tim 2026-05-15 拍"产品里没有每月平均功率 / 只有最大功率 / 最大功率只能本人看"——前端不渲染 = 产品决策 / 不是 bug
+2. **self 视图 schema 也不返**：task-4 续工原本想"profile 页渲染 self 当月平均功率"清掉 P3，但 grep 实证 self stats endpoint 根本不返此字段——要么改后端 stats schema 加派生字段（动核心 endpoint 风险大），要么 self 页改调 `GET /api/user/{me_id}/profile` 多调一次（浪费 endpoint）。Tim 已拍 self 视图也不渲染——产品层不要这个字段
+3. task-4.6 `hide_power` 已覆盖所有产品可见的功率字段
 
-**未来防御 trigger**：如果未来加"他人主页显示功率"UI（比如月均功率 / 个人 PR 等），**先在 `app/user/service_social.py:317-345` 加 `hide_power` 联动**：扫该用户本月活动如有任一条 `hide_power=true` → avg_power_w 返 None / 前端 wxml 用 `wx:if` 整块消失。
+**未来恢复 trigger**：如果未来加"他人主页 / self 主页显示月均功率"UI：
+- **先在 `app/user/schemas.py:140 StatsResponse` 加 `avg_power: Optional[float]` 派生字段**（self 路径）
+- **同时在 `app/user/service_social.py:317-345` 加 `hide_power` 联动**：扫用户本月活动如有任一条 `hide_power=true` → avg_power_w 返 None / 前端 wxml 用 `wx:if` 整块消失（他人路径）
 
 否则会重蹈 task-4.6 Codex C1 `power_zones` 二阶泄露的覆辙——汇总字段表面是聚合但反推能力强（min_w/max_w 直接推出 FTP）。
 

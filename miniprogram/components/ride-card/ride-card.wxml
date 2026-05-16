@@ -1,0 +1,54 @@
+<!-- ride-card 组件模板：骑行卡片列表（可复用 home / profile） -->
+<!-- 字段全部对齐后端 ActivitySummary schema（app/activity/schemas.py:39）： -->
+<!--   id / title / distance(公里, service 已转) / duration(秒) / elevation_gain(米) -->
+<!--   / avg_speed(km/h, worker 已转) / avg_power(W) / avg_hr(bpm) / started_at(ISO datetime) -->
+<!-- 空字段（如爬升缺失）用 wx:if 整块隐藏，禁用 "-" 占位（永久规则） -->
+
+<wxs src="../../utils/format.wxs" module="f" />
+
+<block wx:if="{{rides && rides.length > 0}}">
+  <view
+    class="ride-card"
+    wx:for="{{rides}}"
+    wx:key="id"
+    data-activity-id="{{item.id}}"
+    bindtap="onTapRide"
+  >
+    <view class="ride-card-header">
+      <view class="ride-title">{{item.title || '骑行记录'}}</view>
+      <!-- started_at 由父页面预格式化成 startedAtDisplay 字段（如"今天 09:30"） -->
+      <view class="ride-subtitle" wx:if="{{item.startedAtDisplay}}">
+        {{item.startedAtDisplay}}
+      </view>
+    </view>
+
+    <view class="ride-stats">
+      <!-- 距离：service 层已把米转公里 / wxs km() 保 2 位小数 + 尾随零 -->
+      <view class="ride-stat" wx:if="{{item.distance !== null && item.distance !== undefined}}">
+        <view class="ride-stat-value">{{f.km(item.distance)}}</view>
+        <view class="ride-stat-label">公里</view>
+      </view>
+      <!-- 时长：后端秒 / wxs secToHm() 转 "Xh Ymin" 或 "X 分钟" -->
+      <view class="ride-stat" wx:if="{{item.duration}}">
+        <view class="ride-stat-value">{{f.secToHm(item.duration)}}</view>
+        <view class="ride-stat-label">时长</view>
+      </view>
+      <!-- 均速：worker 已把 m/s 转 km/h（worker.py:360 round 1 位）/ 直接显示 -->
+      <view class="ride-stat" wx:if="{{item.avg_speed !== null && item.avg_speed !== undefined}}">
+        <view class="ride-stat-value">{{item.avg_speed}}</view>
+        <view class="ride-stat-label">均速 km/h</view>
+      </view>
+      <!-- 爬升：米 float / wxs roundInt() 四舍五入去 .0 尾巴 -->
+      <view class="ride-stat" wx:if="{{item.elevation_gain !== null && item.elevation_gain !== undefined}}">
+        <view class="ride-stat-value">{{f.roundInt(item.elevation_gain)}}</view>
+        <view class="ride-stat-label">爬升 m</view>
+      </view>
+    </view>
+  </view>
+</block>
+
+<view class="ride-empty" wx:elif="{{showEmpty}}">
+  <view class="ride-empty-icon">🚴</view>
+  <view class="ride-empty-text">{{emptyText}}</view>
+  <view class="ride-empty-subtext" wx:if="{{emptySubtext}}">{{emptySubtext}}</view>
+</view>

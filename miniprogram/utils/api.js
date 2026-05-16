@@ -117,6 +117,9 @@ module.exports = {
   get: function (url, params) { return request(url + buildQuery(params), 'GET') },
   post: function (url, data) { return request(url, 'POST', data) },
   put: function (url, data) { return request(url, 'PUT', data) },
+  // Sprint 6 task-4：profile 编辑 bio / city 走 PATCH /api/user/me（settings 类小修改）
+  // 与 put 同形：URL + body / 后端 PATCH endpoint 自带"未传字段不改"语义（Optional 字段）
+  patch: function (url, data) { return request(url, 'PATCH', data) },
   del: function (url) { return request(url, 'DELETE') },
 
   /**

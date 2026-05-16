@@ -220,3 +220,303 @@
   color: var(--color-primary);
   font-weight: 500;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/* Sprint 6 task-4：profile 页改造样式（hero / stats / map / medals / rides）  */
+/* 旧的 .user-card / .params-* / .logout-* 等 class 已被 wxml 重写废弃         */
+/* 暂留作 deprecated（不主动删 / 防其他历史页面引用）/ 未来集中清理            */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── 块 1：头像区（hero-card / 数字 + 身份名片视觉冲击）── */
+.hero-card {
+  margin: 32rpx 24rpx 24rpx;
+  padding: 40rpx 32rpx;
+  background: var(--color-card);
+  border-radius: 24rpx;
+  position: relative;
+}
+
+.hero-top {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.hero-avatar-wrap {
+  flex-shrink: 0;
+}
+
+.hero-avatar {
+  width: 128rpx;
+  height: 128rpx;
+  border-radius: 50%;
+  background: var(--color-bg);
+}
+
+.hero-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.hero-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.hero-name {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.hero-edit-hint {
+  font-size: 22rpx;
+  color: var(--color-text-3);
+}
+
+.hero-city {
+  margin-top: 8rpx;
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  font-size: 24rpx;
+  color: var(--color-text-2);
+}
+
+.hero-city-icon {
+  font-size: 22rpx;
+}
+
+.hero-city-text {
+  font-size: 24rpx;
+}
+
+.hero-settings {
+  position: absolute;
+  top: 32rpx;
+  right: 32rpx;
+  padding: 12rpx;
+}
+
+.hero-settings-icon {
+  font-size: 40rpx;
+}
+
+/* bio 签名（task-1） */
+.hero-bio {
+  margin-top: 24rpx;
+  padding: 16rpx 20rpx;
+  background: var(--color-bg);
+  border-radius: 16rpx;
+}
+
+.hero-bio-text {
+  font-size: 26rpx;
+  color: var(--color-text-1);
+  line-height: 1.5;
+}
+
+.hero-bio-placeholder {
+  margin-top: 24rpx;
+  padding: 16rpx 20rpx;
+  font-size: 26rpx;
+  color: var(--color-text-3);
+  background: var(--color-bg);
+  border-radius: 16rpx;
+}
+
+/* 徽章行（task-2 / chip 样式） */
+.badge-row {
+  margin-top: 24rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.badge-item {
+  padding: 8rpx 20rpx;
+  background: var(--color-primary);
+  border-radius: 32rpx;
+}
+
+.badge-label {
+  font-size: 22rpx;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+/* ── 块 2：训练统计（数字 hero 化 / 2 列 grid）── */
+.stats-card {
+  margin: 0 24rpx 24rpx;
+  padding: 32rpx;
+  background: var(--color-card);
+  border-radius: 24rpx;
+}
+
+.stats-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+
+.stats-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.stats-period {
+  font-size: 22rpx;
+  color: var(--color-text-3);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32rpx 24rpx;
+}
+
+.stats-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+/* 数字 hero 化关键：大字号 + 加粗 */
+.stats-value {
+  font-size: 56rpx;
+  font-weight: 700;
+  color: var(--color-text-1);
+  line-height: 1.1;
+}
+
+.stats-unit {
+  font-size: 22rpx;
+  color: var(--color-text-3);
+}
+
+/* ── 块 3：热图卡片 ── */
+.map-card {
+  margin: 0 24rpx 24rpx;
+  padding: 32rpx;
+  background: var(--color-card);
+  border-radius: 24rpx;
+}
+
+.map-title-row {
+  margin-bottom: 24rpx;
+}
+
+.map-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.heatmap-area {
+  min-height: 200rpx;
+}
+
+.heatmap-preview {
+  font-size: 24rpx;
+  color: var(--color-text-2);
+}
+
+.heatmap-empty {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+  text-align: center;
+  padding: 40rpx 0;
+}
+
+/* ── 块 3.5：城市勋章墙（6 城 grid / unlocked 高亮 / locked 灰）── */
+.medals-section {
+  margin: 0 24rpx 24rpx;
+  padding: 32rpx;
+  background: var(--color-card);
+  border-radius: 24rpx;
+}
+
+.medals-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+
+.medals-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.medals-progress {
+  font-size: 24rpx;
+  color: var(--color-text-2);
+}
+
+.medals-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16rpx;
+}
+
+.medal-cell {
+  padding: 24rpx 16rpx;
+  border-radius: 16rpx;
+  text-align: center;
+  background: var(--color-bg);
+}
+
+.medal-city {
+  font-size: 26rpx;
+  font-weight: 500;
+}
+
+.medal-unlocked {
+  background: var(--color-primary);
+}
+
+.medal-unlocked .medal-city {
+  color: #ffffff;
+}
+
+.medal-locked .medal-city {
+  color: var(--color-text-3);
+}
+
+/* ── 块 4：活动列表 ── */
+.rides-section {
+  margin: 0 24rpx 32rpx;
+  padding: 32rpx 32rpx 16rpx;
+  background: var(--color-card);
+  border-radius: 24rpx;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
+.section-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.section-count {
+  font-size: 22rpx;
+  color: var(--color-text-3);
+}
+
+.rides-loading,
+.rides-loadmore {
+  font-size: 24rpx;
+  color: var(--color-text-3);
+  text-align: center;
+  padding: 24rpx 0;
+}

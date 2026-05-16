@@ -1,8 +1,10 @@
 {
   "navigationBarTitleText": "我的",
+  "navigationBarBackgroundColor": "#ffffff",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#fafafa",
+  "enablePullDownRefresh": true,
   "usingComponents": {
-    "power-curve-card": "/components/power-curve-card/power-curve-card",
-    "heatmap-card": "/components/heatmap-card/heatmap-card",
-    "strava-bind-row": "/components/strava-bind-row/strava-bind-row"
+    "ride-card": "/components/ride-card/ride-card"
   }
 }

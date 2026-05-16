@@ -387,6 +387,8 @@
 
 ### 3.4 task-4 - 前端 - profile 页改造
 
+> **⚠️ 字段名以 `app/user/schemas.py` + `app/activity/schemas.py` 真 schema 为准**。本节示意若与代码事实有差异以代码为准——具体真字段集见下方"数据需求"段 + task-4 卡 onShow 段。
+
 **用户目标**：让用户打开"我的"页第一屏就能感受到自己的骑手身份——头像 + 一行签名 + 自动徽章 + 训练统计 + 骑行足迹 + 历史活动。**视觉密度有冲击 + 数字 hero 化**（但不加 NPC 拟人化文案）。
 
 **使用场景**：小明每天打开 velo "我的"页 → 第一眼看到自己头像 + "成都老登 / 公路党 / FTP 220W" 签名 + 三个徽章 → 往下滑看到本周 / 累计训练统计（大数字 + 留白 + 2 列网格）→ 再往下是热图 + 城市勋章墙（3/6 已解锁）→ 最下方历史活动列表（首页同款大卡片 / 可点开详情）。
@@ -422,10 +424,15 @@
 - **无活动**：A 列表空状态 / 城市勋章墙 0/6 全灰 / 热图空
 - **API 失败**：每模块独立 fallback
 
-**数据需求**：
-- 后端字段已有：nickname / avatar_url / city / ftp / stats / heatmap
-- 后端字段新增（本 Sprint）：bio (task-1) / badges (task-2) / city-medals (task-3)
+**数据需求**（v0.3 校准 / 字段名 grep schemas.py 实证）：
+- `GET /api/user/profile` → `UserProfile`: nickname / avatar_url / city / bio (task-1) / ftp / weight / bike_type / weekly_goal / created_at / **badges[]**(task-2; type+label / 无 icon)
+- `GET /api/user/stats?period=week` → `StatsResponse`: distance(公里 float) / rides(int) / elevation_gain(米 int) / duration(秒) / weekly_goal / goal_percent ——**不返 avg_power_w**（前端 self 视图不渲染 / 详 tech-debt P3）
+- `GET /api/user/me/heatmap` → `HeatmapResponse`: city / tracks(list[list[list[float]]]) / activity_count
+- `GET /api/user/me/city-medals` → `CityMedalsResponse`: unlocked / **unlocked_count** / **total** / medals[]（CityMedal = city + label + unlocked / 无 icon）
+- `GET /api/activities?page=N&page_size=N` → `ActivityListResponse`: items[ActivitySummary] / total / page / page_size
+- ActivitySummary 字段: **id**(不是 activity_id) / title / status / **distance**(公里 / service 已转) / **duration**(秒) / **elevation_gain**(米 float) / **avg_speed**(km/h / worker 已转) / avg_power / avg_hr / started_at / created_at
 - endpoint 前缀全部 `/api/user`（单数）+ `/api/activities`
+- 编辑入口：PATCH `/api/user/me`（bio + city / settings 类）+ PUT `/api/user/profile`（nickname / avatar_url / ftp / weight / bike_type / weekly_goal）
 
 **异常情况**：
 - bio 含 emoji → 前端按字符串展示（后端不过滤）

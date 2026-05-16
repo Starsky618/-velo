@@ -1,111 +1,164 @@
-<!--
-  个人中心页
-  两种状态：未登录（显示登录按钮） / 已登录（显示用户信息）
-  wx:if / wx:else 是小程序的条件渲染，类似 JS 的 if-else
--->
+<!-- profile 页 —— 骑手身份名片 -->
+<!-- 4 模块：① 头像区（含 bio 签名 + 徽章）② 训练统计（本周 / period=week） -->
+<!--          ③ 热图 + 城市勋章墙 ④ 活动列表（复用 ride-card 组件） -->
+<!-- 字段全部对齐后端真 schema（app/user/schemas.py / app/activity/schemas.py）： -->
+<!--   GET /api/user/profile → UserProfile（nickname / avatar_url / city / bio / ftp / -->
+<!--                                          weight / bike_type / weekly_goal / badges[]） -->
+<!--   GET /api/user/stats?period=week → StatsResponse（distance公里 / rides / -->
+<!--                                                     elevation_gain米 / duration秒 / -->
+<!--                                                     weekly_goal / goal_percent） -->
+<!--     ⚠️ self stats endpoint **不返** avg_power_w —— 那字段只在 GET /{user_id}/profile 看他人时返 -->
+<!--   GET /api/user/me/city-medals → CityMedalsResponse（unlocked_count / total / medals[]） -->
+<!--     CityMedal: city / label / unlocked（无 icon 字段） -->
+<!--   GET /api/user/me/heatmap → HeatmapResponse（city / tracks / activity_count） -->
+<!--   GET /api/activities?page=N&page_size=N → ActivityListResponse（items[] / total / page / page_size） -->
+<!-- 设计：缺失字段整块 wx:if 隐藏 / 禁用 "-" 占位（永久规则） -->
 
 <wxs src="../../utils/format.wxs" module="f" />
 
-<view class="page-header">
-  <text class="subtitle">VELO</text>
-  <text class="title">我的</text>
-</view>
+<view class="page" wx:if="{{isLoggedIn}}">
 
-<!-- ====== 未登录状态 ====== -->
-<view class="login-card card" wx:if="{{!isLoggedIn}}">
-  <text class="login-icon">👤</text>
-  <text class="login-title">登录以查看你的骑行数据</text>
-  <view class="login-btn" bindtap="handleLogin">
-    <text class="login-btn-text">{{loading ? '登录中...' : '微信一键登录'}}</text>
-  </view>
-</view>
+  <!-- ============== 块 1：头像区 ============== -->
+  <view class="hero-card">
+    <view class="hero-top">
+      <view class="hero-avatar-wrap">
+        <image
+          class="hero-avatar"
+          src="{{profile.avatar_url || '/images/avatar-default.png'}}"
+          mode="aspectFill"
+          bindtap="onEditAvatar"
+        />
+      </view>
 
-<!-- ====== 已登录状态（5 区块结构 / Sprint 4 task-4.1） ====== -->
-<view wx:else>
-  <!-- 区块 1：用户信息名片（含 city badge 自动渲染） -->
-  <view class="user-card card">
-    <view class="user-header">
-      <view class="avatar">
-        <text class="avatar-text">{{profile.nickname ? profile.nickname[0] : '骑'}}</text>
+      <view class="hero-info">
+        <view class="hero-name-row" bindtap="onEditNickname">
+          <text class="hero-name">{{profile.nickname || '未设置昵称'}}</text>
+          <text class="hero-edit-hint">›</text>
+        </view>
+        <view class="hero-city" wx:if="{{profile.city}}">
+          <text class="hero-city-icon">📍</text>
+          <text class="hero-city-text">{{profile.city}}</text>
+        </view>
       </view>
-      <view class="user-info">
-        <text class="user-name">{{profile.nickname || '骑行者'}}</text>
-        <text class="user-id">ID: {{profile.id}}</text>
-      </view>
-      <!-- city badge 自动 fallback：city 为 null / "unknown" / "" 三种 case 全部不显示，不弹引导（D9 严守） -->
-      <view class="city-badge" wx:if="{{profile.city && profile.city !== 'unknown'}}">
-        <text class="city-badge-text">{{cityLabel}}</text>
+
+      <view class="hero-settings" bindtap="onTapSettings">
+        <text class="hero-settings-icon">⚙</text>
       </view>
     </view>
 
-    <!-- 体能参数 -->
-    <view class="params-row" wx:if="{{profile.ftp || profile.weight}}">
-      <view class="param" wx:if="{{profile.ftp}}">
-        <text class="param-value">{{profile.ftp}}</text>
-        <text class="param-label">FTP (W)</text>
-      </view>
-      <view class="param" wx:if="{{profile.weight}}">
-        <text class="param-value">{{profile.weight}}</text>
-        <text class="param-label">体重 (kg)</text>
-      </view>
-      <view class="param" wx:if="{{wpkg}}">
-        <text class="param-value">{{wpkg}}</text>
-        <text class="param-label">W/kg</text>
+    <!-- bio 签名（task-1 / 点击编辑 / 字段名 = profile.bio） -->
+    <view class="hero-bio" bindtap="onEditBio">
+      <text class="hero-bio-text" wx:if="{{profile.bio}}">{{profile.bio}}</text>
+      <text class="hero-bio-placeholder" wx:else>点这里写一句你的骑行宣言</text>
+    </view>
+
+    <!-- 徽章行（task-2 / Badge schema = { type, label } / 注意无 icon 字段） -->
+    <view class="badge-row" wx:if="{{profile.badges && profile.badges.length > 0}}">
+      <view
+        class="badge-item"
+        wx:for="{{profile.badges}}"
+        wx:key="type"
+      >
+        <text class="badge-label">{{item.label}}</text>
       </view>
     </view>
   </view>
 
-  <!-- 区块 2：累计骑行卡片（不变） -->
-  <view class="stats-card card">
-    <text class="stats-title">累计骑行</text>
+  <!-- ============== 块 2：训练统计（本周 / period=week） ============== -->
+  <!-- StatsResponse 真字段：distance(公里) / rides / elevation_gain(米int) / duration(秒) / -->
+  <!--                       weekly_goal / goal_percent -->
+  <!-- ⚠️ 不渲染当月平均功率 W：self stats endpoint 不返 avg_power_w / 见 tech-debt P3 -->
+  <view class="stats-card" wx:if="{{stats}}">
+    <view class="stats-title-row">
+      <text class="stats-title">本周训练</text>
+      <text class="stats-period" wx:if="{{stats.goal_percent !== null && stats.goal_percent !== undefined}}">目标 {{stats.goal_percent}}%</text>
+    </view>
+
     <view class="stats-grid">
-      <view class="stat-item">
-        <text class="stat-value">{{f.km(stats ? stats.distance : 0)}}</text>
-        <text class="stat-unit">km</text>
-        <text class="stat-label">总里程</text>
+      <view class="stats-cell" wx:if="{{stats.distance !== null && stats.distance !== undefined}}">
+        <view class="stats-value">{{f.km(stats.distance)}}</view>
+        <view class="stats-unit">公里</view>
       </view>
-      <view class="stat-item">
-        <text class="stat-value">{{stats ? stats.rides : 0}}</text>
-        <text class="stat-unit">次</text>
-        <text class="stat-label">总骑行</text>
+      <view class="stats-cell" wx:if="{{stats.rides !== null && stats.rides !== undefined}}">
+        <view class="stats-value">{{stats.rides}}</view>
+        <view class="stats-unit">次骑行</view>
       </view>
-      <view class="stat-item">
-        <text class="stat-value">{{stats ? stats.elevation_gain : 0}}</text>
-        <text class="stat-unit">m</text>
-        <text class="stat-label">总爬升</text>
+      <view class="stats-cell" wx:if="{{stats.elevation_gain !== null && stats.elevation_gain !== undefined}}">
+        <view class="stats-value">{{stats.elevation_gain}}</view>
+        <view class="stats-unit">累计爬升 m</view>
+      </view>
+      <view class="stats-cell" wx:if="{{stats.duration !== null && stats.duration !== undefined}}">
+        <view class="stats-value">{{f.secToHm(stats.duration)}}</view>
+        <view class="stats-unit">本周时长</view>
       </view>
     </view>
   </view>
 
-  <!-- 区块 3：功率曲线（task-4.2.A 接入 / power-curve-card 自治 component / D21 模块化） -->
-  <power-curve-card />
+  <!-- ============== 块 3：热图 + 城市勋章墙 ============== -->
+  <view class="map-card">
+    <view class="map-title-row">
+      <text class="map-title">骑行热图</text>
+    </view>
 
-  <!-- 区块 4：骑行热力图（task-4.2.B 接入 / heatmap-card 自治 component / D21 模块化 / v3 polish 砍 city props）
-       v3 polish：heatmap-card 砍掉 city props / 直接调 /api/user/me/heatmap（无参数）/ 后端 v3 city 已可选
-       → 显示用户全部 activity 轨迹（不论城市 / 包括国外）/ Tim 拍"用户视角是我所有足迹不是某城市"
-       wx:if="{{profile}}" 仍保留：等 profile fetch 完才挂载（避免 race + 防 attached 时 profile.id 还没写入）-->
-  <heatmap-card wx:if="{{profile}}" />
+    <!-- HeatmapResponse: city / tracks: list[list[list[float]]] / activity_count -->
+    <view class="heatmap-area" wx:if="{{heatmap && heatmap.tracks && heatmap.tracks.length > 0}}">
+      <!-- 真热图渲染留给后续 task / 先用占位文本提示已有数据 -->
+      <view class="heatmap-preview">
+        <text>已记录 {{heatmap.activity_count}} 条骑行轨迹</text>
+      </view>
+    </view>
+    <view class="heatmap-empty" wx:else>
+      <text>上传 GPX 后会在这里生成你的骑行热图</text>
+    </view>
 
-  <!-- 区块 5：导航卡片（我的荣誉 + 设置 / 不变） -->
-  <view class="menu-card card">
-    <navigator url="/pages/honor/honor" class="menu-item" hover-class="menu-item-hover">
-      <text class="menu-emoji">🏆</text>
-      <text class="menu-label">我的荣誉</text>
-      <text class="menu-arrow">›</text>
-    </navigator>
-    <view class="menu-divider"></view>
-    <!-- Strava 绑定入口：自治 component / D21 模块化 / 未来挪位置只改这一行 -->
-    <strava-bind-row />
-    <view class="menu-divider"></view>
-    <navigator url="/pages/settings/settings" class="menu-item" hover-class="menu-item-hover">
-      <text class="menu-emoji">⚙️</text>
-      <text class="menu-label">设置</text>
-      <text class="menu-arrow">›</text>
-    </navigator>
+    <!-- 城市勋章墙（task-3 / 6 城 / CityMedal: city / label / unlocked / 无 icon 字段） -->
+    <view class="medals-section" wx:if="{{cityMedals && cityMedals.medals && cityMedals.medals.length > 0}}">
+      <view class="medals-title-row">
+        <text class="medals-title">城市勋章</text>
+        <text class="medals-progress">{{cityMedals.unlocked_count}} / {{cityMedals.total}}</text>
+      </view>
+      <view class="medals-grid">
+        <view
+          class="medal-cell {{item.unlocked ? 'medal-unlocked' : 'medal-locked'}}"
+          wx:for="{{cityMedals.medals}}"
+          wx:key="city"
+        >
+          <text class="medal-city">{{item.label}}</text>
+        </view>
+      </view>
+    </view>
   </view>
 
-  <!-- 退出登录 -->
-  <view class="logout-btn" bindtap="handleLogout">
-    <text class="logout-text">退出登录</text>
+  <!-- ============== 块 4：活动列表（ride-card 组件 / 复用首页同款） ============== -->
+  <!-- 字段直接透传 ActivitySummary：id / title / distance(公里) / duration(秒) / -->
+  <!--                              elevation_gain(米) / avg_speed(km/h) / started_at -->
+  <view class="rides-section">
+    <view class="section-title-row">
+      <text class="section-title">最近活动</text>
+      <text class="section-count" wx:if="{{totalRides > 0}}">{{totalRides}} 条</text>
+    </view>
+
+    <ride-card
+      rides="{{rides}}"
+      show-empty="{{!ridesLoading}}"
+      empty-text="还没有骑行记录"
+      empty-subtext="上传 GPX 或绑定 Strava 同步活动"
+      bind:tap-ride="onRideTap"
+    />
+
+    <view class="rides-loadmore" wx:if="{{hasMoreRides && !ridesLoading}}" bindtap="onLoadMoreRides">
+      <text>加载更多</text>
+    </view>
+    <view class="rides-loading" wx:if="{{ridesLoading}}">
+      <text>加载中...</text>
+    </view>
   </view>
+
+</view>
+
+<!-- 未登录态 -->
+<view class="login-prompt" wx:else>
+  <view class="login-icon">🚴</view>
+  <view class="login-title">登录后查看你的骑行档案</view>
+  <button class="login-btn" bindtap="onLogin">微信登录</button>
 </view>
