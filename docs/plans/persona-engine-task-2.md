@@ -54,7 +54,7 @@
 
 参 handoff § 1。本 task 重点：
 - § 1.1 ADR-009：template_lib 只读 `persona_templates` 表 / 不查任何业务表
-- § 1.2 命名前缀：迁移文件 `persona_engine_seed_46.py` / 测试 `test_persona_template_lib.py`
+- § 1.2 命名前缀：迁移文件 `persona_engine_seed.py` / 测试 `test_persona_template_lib.py`
 - **额外红线**：模板文案 ground truth = 宪法 § 2 / pytest 字面比对防漂移（任何字符改动 fail）/ **v0.2 修 / Codex 抓 / 只比"文案内容。"部分**（不含 `【...】` 标签 / 不含 `（...）` 触发说明 / 见宪法 § 2 ground truth 注释）
 - **v0.2 新红线**：每个 (scene_type, segment) ≥ 5 条（Tim 拍 / 防 broken record / 副线 cycle 扩到 ~158 条）
 
@@ -105,12 +105,12 @@ def pick_template(
 
 ### 46 条模板 data migration
 
-文件：`migrations/versions/persona_engine_seed_46.py`
+文件：`migrations/versions/persona_engine_seed.py`
 
 ```python
-"""persona_engine_seed_46
+"""persona_engine_seed
 
-Revision ID: persona_engine_seed_46
+Revision ID: persona_engine_seed
 Revises: persona_engine_init
 """
 
@@ -189,7 +189,7 @@ def downgrade():
 
 最少 8 条 pytest：
 
-1. **模板总数**：`SELECT count(*) FROM persona_templates WHERE active = true` **>= 46**（v0.3 修 / Claude A 抓 I-new-2 / 副线 cycle 扩到 ~158 进度变化 / 用 >= 而不是 ==）
+1. **模板总数**：`SELECT count(*) FROM persona_templates WHERE active = true` **>= 150**（v0.4 修 / v0.2 cycle 完结实际 168 条 / 防回退）
 2. **字面漂移检测**：每条 template_text 和 hardcoded list（从宪法 § 2 复制）byte-by-byte 一致
 3. **段位算法边界**：
    - `compute_user_stage(0)` == "rookie"
@@ -199,8 +199,8 @@ def downgrade():
    - `compute_distance_bucket(80_000)` == "normal"
    - `compute_distance_bucket(4_999)` == "tiny"
    - `compute_distance_bucket(200_000)` == "extreme"
-5. **场景查询**：`get_templates_for_scene("pr")` 返 6 条
-6. **段位过滤**：`get_templates_for_scene("segment_distance", "veteran_normal")` 返 1 条 = "80km。蹬两脚意思意思。"
+5. **场景查询**：`get_templates_for_scene("pr")` 返 **16 条**（v0.4 修 / v0.2 cycle 扩 / 原 6）
+6. **段位过滤**：`get_templates_for_scene("segment_distance", "veteran_normal")` 返 **7 条**（含 "40km。蹬两脚意思意思。" / v0.4 修 / normal 锚 80→40 / 原 1 条 80km）
 7. **pick 防重复**：用户最近用过 id=1 / pool=[1,2,3] → pick 返 id=2 or 3
 8. **pool 耗尽兜底**：用户用过 [1,2,3] / pool=[1,2,3] → pick 仍返 list[0]（不返 None）
 
@@ -220,8 +220,8 @@ def downgrade():
 ### 部署 verify
 
 ```bash
-docker compose exec db psql -c "SELECT count(*) FROM persona_templates WHERE active = true"  # 46
-docker compose exec db psql -c "SELECT template_text FROM persona_templates WHERE scene_type='pr'"  # 6 条对照宪法 § 2.1
+docker compose exec db psql -c "SELECT count(*) FROM persona_templates WHERE active = true"  # 168
+docker compose exec db psql -c "SELECT template_text FROM persona_templates WHERE scene_type='pr'"  # 16 条对照宪法 § 2.1 v0.2 扩容
 ```
 
 </details>

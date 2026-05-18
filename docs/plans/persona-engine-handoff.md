@@ -173,7 +173,7 @@ echo "✅ Pluck dryrun pass / NPC is removable"
 task-1 (脚手架 / persona_engine_init.py)
   ↑ down_revision = "sprint6_activity_city" (当前真 head / grep 实证)
   │
-  ├──→ task-2 (模板入库 / persona_engine_seed_46.py)
+  ├──→ task-2 (模板入库 / persona_engine_seed.py)
   │      ↑ down_revision = "persona_engine_init"
   │      └──→ task-3 (大脑)
   │              ├──→ task-4 (业务接入)

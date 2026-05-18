@@ -13,7 +13,7 @@
 - `app/agent/persona/` —— 整目录（task-1 建）
   - `__init__.py` —— ADR-009 边界声明 + 宪法 reference
   - `trigger_router.py` —— 场景路由（task-3 填）
-  - `template_lib.py` —— 模板池 + 渲染（task-2 填）
+  - `template_lib.py` —— 模板池 + 渲染（task-2 实施完 / 4 函数 compute_user_stage / compute_distance_bucket / get_templates_for_scene / pick_template）
   - `filters.py` —— 反 pattern 后置过滤（task-3 填）
   - `cache.py` —— 去重 + 缓存（task-3 填）
   - `service.py` —— 顶层入口（task-3 填）
@@ -24,9 +24,10 @@
 ## 数据库
 
 - `migrations/versions/persona_engine_init.py` —— task-1 建（down_revision = sprint6_activity_city）
+- `migrations/versions/persona_engine_seed.py` —— task-2 建（down_revision = sprint6_user_city_widen / 168 条 NPC 文案 batch insert）
 - 表：
   - `persona_outputs`（文案发送台账）
-  - `persona_templates`（模板池）
+  - `persona_templates`（模板池 / task-2 已 seed 168 条）
   - `persona_feedback`（用户反馈占位 / v1.0+ 才用）
 - 索引：
   - `ix_persona_outputs_user_scene_shown` (user_id, scene_type, shown_at)
@@ -50,7 +51,8 @@
 ## 测试
 
 - `tests/test_persona_module_init.py` —— task-1 加（4 条 / import + docstring + 迁移 upgrade/downgrade）
-- （task-2 ~ task-6 加各自的 `test_persona_*.py`）
+- `tests/test_persona_template_lib.py` —— task-2 加（11+ 条 / 段位算法边界 / 距离桶 / 字面漂移 / pick 防重复）
+- （task-3 ~ task-6 加各自的 `test_persona_*.py`）
 
 ## 脚本
 
