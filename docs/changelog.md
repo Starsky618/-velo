@@ -1130,3 +1130,56 @@ velo 生产已 ship 半年（v0 至 v5 / 100 活跃用户 / 数据库每日增�
 7. **路段创建无权限**：users 表增加 `is_admin`，创建路段需管理员权限
 8. **JWT 无续期说明**：新增静默续期机制文档
 9. **分页参数不一致**：统一为 `page_size`
+
+---
+
+## 2026-05-18：Persona Engine Sprint v0.1 全 6 task ship 🎉
+
+**这次干了啥**（用大白话讲）：
+
+velo 终于有"老登 NPC"了——一个 35 岁、骑龄 10+ 年、半句话不刷屏的 AI 角色。
+他会在你上传 PR 时说"今天嗑药了？"，看到你 8 天没骑会问"最近去哪儿了"，
+看到你 200km 极限骑会问"腰还连着腿吗"。
+
+不刷屏、不客服腔、不家长式。168 条精金文案分 7 个场景由 Tim 8 轮 cycle 亲手拍板。
+
+**6 task 全 ship 时间线**：
+
+- task-1 地基（3 表 + 5 空骨架）— commit `f3490fc`
+- task-2 文案库（168 条 + 4 函数 template_lib）— commit `fd8308c` + `7a2f5d4`
+- task-3 决策大脑（router 7 event / filters 反 pattern / cache 7 天去重 / service 6 步流水）— commit `af3c603`
+- task-4 业务接入（worker hook + endpoint + 2 scanner + persona-scanner 容器）— commit `ee555ad`
+- task-5 小程序展示（5 page + utils + api 拦截器 + 20 处 PERSONA 标记）— commit `68c6742`
+- task-6 final gate（拔出脚本 + diary + Sprint 收尾）— commit TBD
+
+**这次产品决策亮点**（Tim 的 8 轮 cycle 拍板）：
+
+1. **normal 桶 80km → 40km**：velo 用户群周末甜区 30-60km / 80 已 long
+2. **§2.6 过拟合裁定**：uploading + delete_confirm 用系统标准客服 / 不入 NPC 库
+3. **loading 戏剧化候选全砍**："高光出炉"过拟合 / 保留 v0.1 "算你的高光中…" 一条
+4. **错误页用 NPC 文案接 api.js 拦截器**：单一真相源（persona_static.js 改一处全生效）
+5. **PR 优先 > 极端 > 段位**：用户最想看的是 PR 反应 / 极端次之 / 段位垫底
+6. **拔出可拔性 = 架构纪律**：NPC 是码表不是车架 / 拔目录就拔模型
+
+**Critical bug 修复记录**（task-1 ~ task-5 累计 8 项三审 Critical 全修）：
+
+- task-1 Codex：persona_outputs.activity_id 加 ondelete=SET NULL（防生产删活动 500）
+- task-2 Codex：3 normal segment 各 4 条违反 v0.2 ≥ 5 红线（cycle 2 补 5 条候选）
+- task-3 Claude A：filters 漏"亲"独立关键词（"亲~"客服腔漏 filter）
+- task-3 Claude A：milestone_type 字段位置（spec line 90 user_data 不是 activity_data）
+- task-3 Claude B + Codex：夜骑 hour 4 边界（spec 23-04 / 代码 23-03 漏判）
+- task-4 Claude A+B：milestone scanner today_bj astimezone() 系统 TZ → ZoneInfo BJ
+- task-5 共识 3 个：api.js 没 require persona_static / persona_static 含违宪 uploading+delete_confirm / upload.wxml 缺 PERSONA 标记
+
+**测试覆盖**：
+
+- 后端：60 条 persona 测试通过（task-1 4 + task-2 12 + task-3 35 + task-4 9）/ 全套 663 测试 0 回归
+- 前端：20 处 PERSONA_START/END 标记 / 5 page 全覆盖可拔
+- 拔出脚本：scripts/persona_pluck_dryrun.sh 准备好（Tim dev env 跑 final gate）
+
+**未结清**（task-6 final gate / 留 Tim 真用 8 场景）：
+
+- 微信开发者工具上传体验版 / 真打开 profile / 真上传 PR / 真测沉寂 / ...
+- 模板覆盖率 ≥ 80%（168 × 80% ≈ 134 条被触发过 / SQL 查 persona_outputs 验）
+- deployment-diary 真用激活记录
+

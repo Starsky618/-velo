@@ -37,10 +37,11 @@ from app.parsing.fit_parser import FITParser, FITParseError
 from app.parsing.gpx_parser import GPXParser, GPXParseError
 from app.storage.local import LocalStorage
 from app.user.models import User
-# Persona Engine NPC hook（task-4 / ADR-009 worker → persona service 单向依赖）
+# PERSONA_START / Persona Engine NPC hook（task-4 / ADR-009 worker → persona service 单向依赖）
 # 模块级 import 防 UnboundLocalError 函数作用域陷阱（CLAUDE.md 陷阱 / 2026-04-30 worker city hook 踩过）
 from app.agent.persona import service as persona_service
 from app.agent.persona.trigger_router import PersonaEvent
+# PERSONA_END
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,9 @@ def _set_activity_city(activity, simplified_track) -> None:
     except Exception:
         # 容错：worker 不能因 city 推断失败而炸 activity 创建 / 保持 NULL
         return
+
+
+# PERSONA_START / Persona Engine task-4 NPC hook helper 函数（拔出时整段剥）
 
 
 def _query_weekly_count(user_id: int, db) -> int:
@@ -159,6 +163,9 @@ def _query_total_distance(user_id: int, db) -> int:
         Activity.activity_type == "cycling",
     ).scalar()
     return int(total or 0)
+
+
+# PERSONA_END
 
 
 def parse_activity(activity_id: int) -> None:
@@ -382,7 +389,8 @@ def _do_parse(db, activity_id: int) -> None:
             # 最外层兜底：begin_nested 失败 / 模块 import 失败等极端场景
             pass
 
-    # ===== 步骤 10.7：NPC 文案 hook（Persona Engine task-4 / 宪法 §7.2 不传染失败）=====
+    # PERSONA_START / Persona Engine task-4 NPC hook（拔出时整段剥 / 业务不依赖）
+    # ===== 步骤 10.7：NPC 文案 hook（宪法 §7.2 不传染失败）=====
     # 老登 NPC 给本次活动说半句话（PR / 极端 / 段位 / 连骑高频）。
     # 类比：你骑完车进群发了张图 / 群里那个老登扫一眼说一句俏皮话。
     #
@@ -458,6 +466,7 @@ def _do_parse(db, activity_id: int) -> None:
             logger.warning(
                 f"persona SAVEPOINT failed (activity_id={activity.id}): {outer_exc}"
             )
+    # PERSONA_END
 
     db.commit()
 

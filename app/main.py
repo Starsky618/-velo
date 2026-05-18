@@ -52,9 +52,10 @@ app.include_router(strava_router)
 from app.notification.router import notification_router, honor_router
 app.include_router(notification_router)
 app.include_router(honor_router)
-# Persona Engine NPC 文案模块——给用户每条骑行一句"老登"半句话（Persona Engine task-4）
+# PERSONA_START / Persona Engine NPC 文案模块——给用户每条骑行一句"老登"半句话（task-4）
 from app.agent.persona.router import router as persona_router
 app.include_router(persona_router)
+# PERSONA_END
 
 
 @app.get("/health")

@@ -389,3 +389,40 @@ sudo docker compose restart admin-h5   # 让 admin-h5 nginx 重新解析 api hos
 2. **任何 hostname-based proxy_pass 都要配 resolver + 变量化**，不论 nginx 还是 caddy。docker 容器 IP 不稳定是常态。
 3. **前端错误文案绝对不能 catch-all**——一句"操作失败"对运维来说等于 0 信息。轻则浪费时间，重则误导排查方向。**强制按 axios error 形态分流**（无 response = 网络层 / 5xx = 后端挂 / 4xx = 业务）。
 4. **部署 admin H5 类静态站时**，service 时间戳要和依赖的后端 service 一致。如果后端重启过，admin-h5 nginx 也跟着 restart 一次。这条加进部署 SOP。
+
+---
+
+## 2026-05-18：Persona Engine v0.1 全 Sprint ship（NPC 文案系统 6 task 完结）
+
+**Sprint 时间线**（4 天高密度执行 / 2026-05-15 brainstorm → 2026-05-18 task-6 ship）：
+
+| task | commit | 工程 |
+|---|---|---|
+| task-1 地基（3 表 + 5 空骨架 + Alembic head）| `f3490fc` | 4 测试通过 |
+| task-2 文案库（168 条 + template_lib 4 函数）| `fd8308c` + `7a2f5d4` | 12 测试 / 8 轮 cycle Tim 拍板 |
+| task-3 决策大脑（router/filters/cache/service）| `af3c603` | 35 测试 / Critical 3 全修 |
+| task-4 业务接入（worker hook + endpoint + scanner 容器）| `ee555ad` | 9 测试 / Critical 2 全修 / persona-scanner 容器 Up |
+| task-5 小程序展示（5 page + utils + api 拦截器）| `68c6742` | 20 处 PERSONA_START/END / Critical 3 全修 |
+| task-6 final gate（拔出脚本 + diary + Sprint 收尾）| TBD | 1 day |
+
+**真用激活待 Tim 完成**（task-6 plan § 8 场景 / 微信开发者工具上传体验版）：
+- 场景 1：注册 + profile 开场 → 看到至少 1 条 NPC 文案
+- 场景 2：上传 PR 活动 → toast 显示 PR 场景文案
+- 场景 3：上传普通 80km → toast 显示段位文案
+- 场景 4：上传极端数据（< 5km / > 150km / 23 点后 / > 35 km/h）
+- 场景 5：连骑高频 mock → consecutive_high 文案
+- 场景 6：沉寂 8 天 mock + 跑 silence scanner
+- 场景 7：累计跨 10000km + 跑 milestone scanner → "1 万了。老登正式入会。"
+- 场景 8：断网 + 损坏 GPX → 错误页文案
+
+**第三方依赖激活状态**（按 memory feedback_real_usage_vs_mock_blindspot 第 5 类盲区）：
+- DeepSeek LLM：暂不调（v0.5+ 才接 / 当前 100% 算法 + 模板）
+- 后端 endpoint：100% 真用通路（curl 401 verify ✓ + persona-scanner 容器 Up ✓）
+- 微信小程序前端：Tim 上传体验版后才能真用
+
+**已知非阻塞项**（task-6 final gate 前不卡 / 留 v1.0+）：
+- 24h endpoint 窗口 vs 7 天 cache 语义不完全一致（Codex 抓 / 留真用回归确认）
+- 节气表 _SOLAR_TERMS_2026 写死 / 2027 起需刷新
+- 闰年 2/29 注册用户周年永远不触发（小概率边界）
+- N+1 查询 _check_milestone_distance（100 用户量级可接受）
+
