@@ -589,3 +589,28 @@
   font-weight: 600;
   color: var(--color-text-2);
 }
+
+/* PERSONA_START / Persona Engine task-5 */
+.persona-pr-banner {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #c97e2e;  /* 金色暗示 PR */
+  text-align: center;
+  padding: 24rpx 32rpx;
+  margin: 0 24rpx 16rpx;
+  background: rgba(201, 126, 46, 0.08);
+  border-radius: 12rpx;
+}
+.persona-segment-text {
+  font-size: 26rpx;
+  color: var(--color-text-3);
+  text-align: center;
+  padding: 16rpx 32rpx;
+  font-style: italic;
+  /* 文案过长 truncate 兜底（宪法 §2.5 上限 25 字 / 正常不触发 / 但守护） */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* PERSONA_END */

@@ -20,6 +20,11 @@
 // 后端 API 地址（硬编码在这里作为兜底，正常走 app.globalData.baseUrl）
 var BASE_URL = 'http://114.132.190.245'
 
+// PERSONA_START / Persona Engine task-5 / 单一真相源 NPC 文案表
+var personaStaticModule = require('./persona_static')
+var getPersonaStatic = personaStaticModule.getPersonaStatic
+// PERSONA_END
+
 /**
  * 获取全局 App 实例（延迟获取，避免初始化时序问题）
  */
@@ -61,22 +66,29 @@ function request(url, method, data) {
             app.globalData.token = null
           }
           wx.removeStorageSync('token')
-          // 透传后端的真实错误信息，方便调试
-          var detail = (res.data && res.data.detail) || '登录已过期，请重新登录'
+          // PERSONA_START / Persona Engine task-5 / 单一真相源走 persona_static
+          var detail = (res.data && res.data.detail) || getPersonaStatic('unauth_401')
           reject({ code: 401, message: detail })
+          // PERSONA_END
           return
         }
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(res.data)
         } else {
+          // PERSONA_START / Persona Engine task-5 / 5xx 走 persona_static / 4xx 透传后端 detail
+          var defaultMsg = '请求失败'
+          if (res.statusCode >= 500) defaultMsg = getPersonaStatic('server_5xx')
           reject({
             code: res.statusCode,
-            message: (res.data && res.data.detail) || '请求失败',
+            message: (res.data && res.data.detail) || defaultMsg,
           })
+          // PERSONA_END
         }
       },
       fail: function () {
-        reject({ code: -1, message: '网络连接失败，请检查网络' })
+        // PERSONA_START / Persona Engine task-5 / 网络断走 persona_static
+        reject({ code: -1, message: getPersonaStatic('network_down') })
+        // PERSONA_END
       },
     })
   })

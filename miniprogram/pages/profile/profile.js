@@ -27,6 +27,9 @@
 //   - ActivitySummary.distance 是公里（service 已转）/ duration 秒 / elevation_gain 米
 
 const api = require('../../utils/api');
+// PERSONA_START / Persona Engine task-5
+const { fetchPersonaOutput } = require('../../utils/persona_fetch');
+// PERSONA_END
 // 模块级 app 实例（v5 期老版本有 / 续工 subagent 漏写 → onLogin 调 app.login() ReferenceError
 // Tim 2026-05-16 Console 实证：app is not defined at ii.onLogin profile.js:367）
 // 这里 getApp() 是安全的：profile.js 是 page 文件 / Page() 注册时 App 已 onLaunch 完成
@@ -85,6 +88,10 @@ Page({
     hasMoreRides: true,
     ridesLoading: false,
     totalRides: 0,
+
+    // PERSONA_START / Persona Engine task-5
+    personaText: null,  // NPC 老登一句 / null 时 wxml wx:if 隐藏整块
+    // PERSONA_END
   },
 
   onShow() {
@@ -123,6 +130,7 @@ Page({
     const tasks = [
       this.fetchProfile(),
       this.fetchStats(),
+      this.fetchPersona(),  // Persona Engine task-5 / 拿 NPC 老登一句
     ];
 
     // 活动列表独立 / 不参与 allSettled（避免分页失败影响顶部 2 块）
@@ -155,6 +163,15 @@ Page({
         console.error('[profile] fetchStats failed', err);
       });
   },
+
+  // PERSONA_START / Persona Engine task-5
+  // 拿 NPC 老登一句 / 失败兜底 fetchPersonaOutput 已 catch 静默返 null
+  fetchPersona() {
+    return fetchPersonaOutput('profile_open').then((res) => {
+      this.setData({ personaText: res.template_text || null });
+    });
+  },
+  // PERSONA_END
 
   // Tim 2026-05-16 真用拍：
   //   - fetchHeatmap 删除 / 改用 <heatmap-card /> 组件自己 fetch + <map> 渲染

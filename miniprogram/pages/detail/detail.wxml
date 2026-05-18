@@ -14,6 +14,10 @@
 
 <view wx:if="{{!loading && activity}}">
 
+  <!-- PERSONA_START / Persona Engine task-5 / PR 横幅（仅 PR 活动显示） -->
+  <view wx:if="{{personaPrText}}" class="persona-pr-banner">{{personaPrText}}</view>
+  <!-- PERSONA_END -->
+
   <!-- ====== 深色头部卡片（距离/时长/爬升） ====== -->
   <view class="hero-card">
     <view class="hero-top">
@@ -46,6 +50,10 @@
       </view>
     </view>
   </view>
+
+  <!-- PERSONA_START / Persona Engine task-5 / hero card 下方段位文案 -->
+  <view wx:if="{{personaSegmentText}}" class="persona-segment-text">{{personaSegmentText}}</view>
+  <!-- PERSONA_END -->
 
   <!-- ====== 途经赛段（Strava Segment Efforts 风格） ====== -->
   <view class="section-card" wx:if="{{hasSegments}}">

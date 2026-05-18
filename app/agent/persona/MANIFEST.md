@@ -45,7 +45,13 @@
 
 ## 前端
 
-（task-5 实施时追加 PERSONA_START / PERSONA_END 标记位 + 前端 utils 模块）
+- `miniprogram/utils/persona_fetch.js` —— task-5 加 / NPC endpoint 调用层（fetchPersonaOutput / fetchRecentPersona / 失败兜底 .catch 静默返 null）
+- `miniprogram/utils/persona_static.js` —— task-5 加 / 静态文案表（宪法 §2.6 v0.2 6 条中间态 / 不含 uploading + delete_confirm）
+- `miniprogram/pages/profile/profile.{wxml,js,wxss}` —— task-5 加 NPC 块（personaText / fetchPersonaOutput('profile_open') / hero bio 下方）
+- `miniprogram/pages/user/user.{wxml,js,wxss}` —— task-5 加看他人 NPC 块（personaText / fetchPersonaOutput('user_page_open', null, targetUserId) / onShow 刷新）
+- `miniprogram/pages/detail/detail.{wxml,js,wxss}` —— task-5 加 PR 横幅 + 段位文案双字段（personaPrText / personaSegmentText）
+- `miniprogram/pages/upload/upload.{wxml,js}` —— task-5 加 NPC toast 3 秒（fetchResult success 后调 fetchPersonaOutput('activity_upload', activityId)）
+- `miniprogram/utils/api.js` —— task-5 改 401 / 5xx / network reject message 接 persona_static getPersonaStatic（单一真相源）
 
 ## 配置
 

@@ -55,6 +55,10 @@
         <text class="city-badge-text">{{cityLabel}}</text>
       </view>
     </view>
+
+    <!-- PERSONA_START / Persona Engine task-5 / 看他人页 NPC 老登一句 / 拿对方的文案 -->
+    <view wx:if="{{personaText}}" class="persona-line">{{personaText}}</view>
+    <!-- PERSONA_END -->
   </view>
 
   <!-- ====== 区块 2：累计骑行（只读 / 公开数据）====== -->

@@ -147,3 +147,17 @@
   color: var(--color-text-3);
   margin-top: 8rpx;
 }
+
+/* PERSONA_START / Persona Engine task-5 */
+.persona-line {
+  font-size: 26rpx;
+  color: var(--color-text-3);
+  margin-top: 16rpx;
+  padding: 0 8rpx;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+}
+/* PERSONA_END */

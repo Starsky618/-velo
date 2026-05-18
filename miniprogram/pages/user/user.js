@@ -29,6 +29,9 @@
 
 const api = require('../../utils/api')
 const { getCityLabel } = require('../../utils/city')
+// PERSONA_START / Persona Engine task-5
+const { fetchPersonaOutput } = require('../../utils/persona_fetch')
+// PERSONA_END
 const app = getApp()
 
 Page({
@@ -48,6 +51,10 @@ Page({
     // 累计统计：从 profile 计算（后端 UserProfileResponse 已含
     // total_distance_km / activity_count / total_elevation_m / current_month_summary）
     stats: null,
+
+    // PERSONA_START / Persona Engine task-5 / 看他人页 NPC 一句
+    personaText: null,
+    // PERSONA_END
   },
 
   /**
@@ -75,7 +82,17 @@ Page({
 
     this.setData({ userId: userId, loading: true })
     this.fetchProfile(userId)
+    // PERSONA: fetchPersona 挪到 onShow（切走再切回会刷新 / Claude A I3）
   },
+
+  // PERSONA_START / Persona Engine task-5
+  // onShow 钩子刷新 NPC（切走再切回页面也重新拉一次）/ this.data.userId 已在 onLoad 保存
+  onShow() {
+    if (this.data.userId) {
+      this.fetchPersona(this.data.userId)
+    }
+  },
+  // PERSONA_END
 
   /**
    * 判断是不是当前登录用户自己（避免双视图混淆）
@@ -98,6 +115,15 @@ Page({
    *
    * @param {number} userId - 目标用户 ID
    */
+  // PERSONA_START / Persona Engine task-5
+  // 看他人页拿对方 NPC 一句 / target_user_id 传被看者 user_id
+  fetchPersona(targetUserId) {
+    fetchPersonaOutput('user_page_open', null, targetUserId).then((res) => {
+      this.setData({ personaText: res.template_text || null })
+    })
+  },
+  // PERSONA_END
+
   fetchProfile(userId) {
     api.getUserProfile(userId)
       .then((data) => {
