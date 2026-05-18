@@ -87,6 +87,20 @@ services:
       - uploads:/app/uploads
       - srtm_cache:/root/.cache/srtm   # worker 跑回填脚本时也需要 DEM 缓存
 
+  # ===== Persona-scanner：NPC 沉寂 + 里程碑扫描器（Persona Engine task-4）=====
+  # 每 24h 跑一遍 / 找沉寂用户（≥7 天没骑）+ 累计里程碑 + 周年 + 节气
+  # 给这些用户写一条 NPC 文案到 persona_outputs（用户下次打开 velo 看到）
+  # 沿用 cleanup_zombies "while true; sleep N" 包装模式（同 db-backup / monitor）
+  # 单脚本失败 || true 兜底 / 不让进程退（持续 24h 周期不中断）
+  persona-scanner:
+    build: .
+    command: sh -c "while true; do python scripts/persona_silence_scanner.py || true; python scripts/persona_milestone_scanner.py || true; sleep 86400; done"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
+    depends_on:
+      - db
+
   # ===== Cleanup：定时僵尸回收 =====
   # 每 5 分钟运行一次清理脚本，回收孤儿 activity + 孤儿文件
   cleanup:

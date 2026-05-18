@@ -17,6 +17,9 @@
   - `filters.py` —— 反 pattern 后置过滤（task-3 实施完 / ANTI_PATTERN_KEYWORDS 覆盖宪法 §3 全 9 类 + emoji + 长度 5-25）
   - `cache.py` —— 去重 + 缓存（task-3 实施完 / get_recent_outputs 7 天 + record_output SAVEPOINT 隔离）
   - `service.py` —— 顶层入口（task-3 实施完 / generate_persona_output 6 步流水线 + get_latest_output_for_scene + get_recent_outputs / 顶层 try/except 不传染）
+  - `router.py` —— FastAPI endpoint（task-4 加 / GET /api/persona/output + /recent）
+- `app/activity/worker.py` —— task-4 加 NPC hook（SAVEPOINT 隔离 / activity_uploaded + consecutive_high event）+ 3 helper（_query_weekly_count / _detect_pr / _query_total_distance）
+- `app/main.py` —— task-4 挂载 persona_router
   - `models.py` —— 3 个 ORM（task-1 加）
   - `MANIFEST.md` —— 本清单
 - `app/agent/__init__.py` —— 子工程 reference 段（task-1 追加）
@@ -47,16 +50,20 @@
 ## 配置
 
 - env: 暂无 `PERSONA_*` 配置（v0.5+ 接 LLM 时加）
+- `docker-compose.yml` 加 `persona-scanner` 容器（task-4 / sleep 86400 循环跑 2 个 scanner）
 
 ## 测试
 
 - `tests/test_persona_module_init.py` —— task-1 加（4 条 / import + docstring + 迁移 upgrade/downgrade）
 - `tests/test_persona_template_lib.py` —— task-2 加（11+ 条 / 段位算法边界 / 距离桶 / 字面漂移 / pick 防重复）
 - `tests/test_persona_task3.py` —— task-3 加（25+ 条 / router 7 event + 夜骑边界 / filters 反例 + 长度边界 / cache 7 天 / service 端到端 + 失败兜底 + 不传染）
-- （task-4 ~ task-6 加各自的 `test_persona_*.py`）
+- `tests/test_persona_task4.py` —— task-4 加（9 条 / worker hook helper + endpoint /output 真+null + /recent + scanner silence + milestone）
+- （task-5 ~ task-6 加各自的 `test_persona_*.py`）
 
 ## 脚本
 
+- `scripts/persona_silence_scanner.py` —— task-4 加（≥ 7 天没骑 → silence event / persona-scanner 容器调用）
+- `scripts/persona_milestone_scanner.py` —— task-4 加（累计里程碑 + 周年 + 节气 → surprise event / 含同日幂等 guard）
 - `scripts/persona_pluck_dryrun.sh` —— task-6 实施（拔出测试 / clean tree gate）
 
 ---

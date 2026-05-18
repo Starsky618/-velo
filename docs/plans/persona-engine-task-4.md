@@ -96,7 +96,7 @@ try:
                 "duration": activity.duration,
                 "moving_time": activity.moving_time,
                 "started_at": activity.started_at,
-                "avg_speed": activity.avg_speed,
+                "avg_speed_kmh": (activity.avg_speed * 3.6) if activity.avg_speed else None,  # v0.5 修 / 与 trigger_router 消费侧字段名 + 单位对齐（trigger_router 读 avg_speed_kmh）
                 "avg_power": activity.avg_power,
                 "normalized_power": activity.normalized_power,
                 "is_pr": is_pr,
