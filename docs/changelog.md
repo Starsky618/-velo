@@ -1,5 +1,48 @@
 # VELO 开发变更日志
 
+## 2026-05-16 → 2026-05-17: Sprint 6 "我的"页基础落地全部 ship ✅
+
+**主轴**：把 `pages/profile` 从字段表格升级为骑手身份名片——签名 + 训练统计 + 热图 + 历史活动列表。
+
+**子任务 ship 链**（实施期 2026-05-16）：
+- task-1 User.bio 一行短签名（commit `ce5ec78` / Alembic `sprint6_user_bio`）
+- task-2 数据徽章 + 6 城共享常量 `app/user/cities.py`（`3b34769`）→ Tim 真用拍砍"成都骑友"后缀改裸字"成都"（`38718ec`）
+- task-3 activities.city + worker hook 3 路径接入（GPX / FIT / Strava）+ city-medals endpoint + 286 历史回填（`2caa456` / Alembic `sprint6_activity_city` / backfill ORM import 漏写修 `6d1f7ba`）
+- task-5 settings 子页 3 区块（FTP / Strava / 退出）+ 后端 POST /api/strava/unbind（`6c6bff2`）
+- task-4 profile 页改造 4 模块布局 + 提取 ride-card 组件（`3488ea4`）
+
+**task-6 真用回归 8 hotfix 链**（2026-05-16 → 2026-05-17 / 验证真用价值）：
+
+1. `bbfbb0c` 真用 5 处：头像微信 button / city 编辑入口 / **砍 badges 前端展示**（初期没用）/ **砍城市勋章前端展示**（莫名其妙）/ 热图改用既有 `<heatmap-card />` 组件（原占位文本不渲染腾讯地图）
+2. `7a6fb6e` 二次 hotfix：修登录跳不存在路由 + 修头像 button 在 flex 行拦截 city 点击（退回 image bindtap）
+3. `64d3615` 三次 hotfix：登录卡 loading 不消失 / 改先 hideLoading 后台 fetchAllData
+4. `a754606` 加 5s 兜底 timeout + 全程 console.log 埋点（定位真根因前的防卡死兜底）
+5. `7ffdb0d` 真根因 = profile.js 缺模块级 `const app = getApp()` ReferenceError（task-4 续工 subagent 漏写 / Tim Console 截图一次定位）
+6. `7885904` Strava 一键授权 web-view 内嵌（弃复制链接 / 切微信传输助手粘贴的旧麻烦流程）
+7. `23b86b7` + `d08227b` city 切换失败根因 = wx.showActionSheet itemList **微信硬上限 6 项**（我传 7 项含"清空主城" → 直接拒 / 砍掉清空项）
+8. `6f514af` + `ebd09b1` city 放宽到全国省+市 picker mode="region"（小程序内置全国行政区数据 / 不用维护 333 个地级市清单）
+
+**关键架构语义解耦**（防未来 agent 混淆）：
+- `users.city` = 用户手填家乡标签（任意中文 / picker 选省+市拼接如"山西-太原" / String(64) / 删 ck_users_city CHECK）
+- `activities.city` = worker hook 自动推断起点（仍 6 城+unknown / ck_activities_city 不动 / city-medals 用）
+
+**前端砍 / 后端保留**：badges + 城市勋章前端展示砍掉（Tim 真用拍初期没用）/ 但后端 endpoint + DB 数据 286 条全保留 / 未来恢复只需取消 wxml 注释。
+
+**新沉淀 memory**（5 条）：
+- reviewer 抓 Critical 必须 cross-check task 卡 + Tim 意图
+- subagent 异常退出主 agent 必须 grep 实证
+- 独立 python 脚本必须显式 import 所有外键 ORM
+- 真机前端 bug 第 2 次没修好立刻加 console.log 埋点不盲改
+- 微信小程序硬上限速查（actionSheet 6 项 / button 拦截 / web-view 业务域名等）
+
+**Alembic head 推进**：`sprint5_activity_privacy → sprint6_user_bio → sprint6_activity_city → persona_engine_init → sprint6_user_city_widen`
+
+**tech-debt 新增 6 条 P2/P3**（见 docs/tech-debt.md）：profile 头像微信一键导入 / badges 隐私 effort / SQL 重复聚合 / Strava worker hook e2e / PG partial index 命中 / PATCH /me 双 commit / unbind 在途 worker 竞态。
+
+**总改动**：~3500 行新增（含 spec docs 2600+ 行 + 代码 ~900 行）/ 测试 585 → 589 passed。
+
+---
+
 ## 2026-05-16: Persona Engine Sprint plans v0.4 ship（NPC 文案系统规划全套 / 4 轮双审收敛）✅
 
 **为什么要做**：velo 真正的护城河 = NPC 老登人格（数据 / 功能 / 视觉都可被 copy / 但人格 copy 不了）。Tim 拍独立大型 Sprint / 不和"我的"页基础混。
