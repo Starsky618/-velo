@@ -78,10 +78,13 @@ def compute_user_stage(total_distance_m: int) -> str:
 def compute_distance_bucket(distance_m: int) -> str:
     """单次活动距离（米）→ 桶（纯函数）。
 
+    v0.2 cycle 1 修（2026-05-17 Tim 拍）：normal 中位从 80km 下调 40km
+    （velo 用户群周末甜区 30-60km / 80km 已属 long 桶 / 不是日常）。
+
     - < 5_000 → 'tiny'
-    - 5_000 - 50_000 → 'short'
-    - 50_000 - 100_000 → 'normal'
-    - 100_000 - 150_000 → 'long'
+    - 5_000 - 30_000 → 'short'
+    - 30_000 - 60_000 → 'normal'    （中位 ~45km）
+    - 60_000 - 150_000 → 'long'     （中位 ~100km）
     - > 150_000 → 'extreme'
     """
 
@@ -120,11 +123,11 @@ TEMPLATES = [
     ("pr", None, "把自己拉爆了。"),
     ("pr", None, "8500km 里这一天。"),
 
-    # § 2.2 段位 × 距离 (8)
-    ("segment_distance", "rookie_normal",  "今天 80km。挺猛。"),
-    ("segment_distance", "entry_normal",   "今天 80km。可以的吧。"),
-    ("segment_distance", "mid_normal",     "今天 80km。日常水平了。"),
-    ("segment_distance", "veteran_normal", "80km。蹬两脚意思意思。"),
+    # § 2.2 段位 × 距离 (8 / v0.2 cycle 1 修 / normal 锚 80→40 / 让 40km 真落 normal 桶)
+    ("segment_distance", "rookie_normal",  "今天 40km。挺猛。"),
+    ("segment_distance", "entry_normal",   "今天 40km。可以的吧。"),
+    ("segment_distance", "mid_normal",     "今天 40km。日常水平了。"),
+    ("segment_distance", "veteran_normal", "40km。蹬两脚意思意思。"),
     ("segment_distance", "rookie_short",   "30km。开了个头。"),
     ("segment_distance", "entry_long",     "100km。稳得很。"),
     ("segment_distance", "mid_long",       "150km。说明状态在。"),
