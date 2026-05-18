@@ -12,11 +12,11 @@
 
 - `app/agent/persona/` —— 整目录（task-1 建）
   - `__init__.py` —— ADR-009 边界声明 + 宪法 reference
-  - `trigger_router.py` —— 场景路由（task-3 填）
+  - `trigger_router.py` —— 场景路由（task-3 实施完 / PersonaEvent + route 7 种 event / PR > 极端 > 段位优先级）
   - `template_lib.py` —— 模板池 + 渲染（task-2 实施完 / 4 函数 compute_user_stage / compute_distance_bucket / get_templates_for_scene / pick_template）
-  - `filters.py` —— 反 pattern 后置过滤（task-3 填）
-  - `cache.py` —— 去重 + 缓存（task-3 填）
-  - `service.py` —— 顶层入口（task-3 填）
+  - `filters.py` —— 反 pattern 后置过滤（task-3 实施完 / ANTI_PATTERN_KEYWORDS 覆盖宪法 §3 全 9 类 + emoji + 长度 5-25）
+  - `cache.py` —— 去重 + 缓存（task-3 实施完 / get_recent_outputs 7 天 + record_output SAVEPOINT 隔离）
+  - `service.py` —— 顶层入口（task-3 实施完 / generate_persona_output 6 步流水线 + get_latest_output_for_scene + get_recent_outputs / 顶层 try/except 不传染）
   - `models.py` —— 3 个 ORM（task-1 加）
   - `MANIFEST.md` —— 本清单
 - `app/agent/__init__.py` —— 子工程 reference 段（task-1 追加）
@@ -52,7 +52,8 @@
 
 - `tests/test_persona_module_init.py` —— task-1 加（4 条 / import + docstring + 迁移 upgrade/downgrade）
 - `tests/test_persona_template_lib.py` —— task-2 加（11+ 条 / 段位算法边界 / 距离桶 / 字面漂移 / pick 防重复）
-- （task-3 ~ task-6 加各自的 `test_persona_*.py`）
+- `tests/test_persona_task3.py` —— task-3 加（25+ 条 / router 7 event + 夜骑边界 / filters 反例 + 长度边界 / cache 7 天 / service 端到端 + 失败兜底 + 不传染）
+- （task-4 ~ task-6 加各自的 `test_persona_*.py`）
 
 ## 脚本
 
