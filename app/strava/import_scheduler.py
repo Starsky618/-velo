@@ -74,6 +74,11 @@ def run_import_tick() -> None:
 def _do_tick(db) -> None:
     """调度器核心逻辑，拆出来方便异常处理包裹。"""
 
+    # ===== 0. 周期重启：把 10 分钟前完成的 idle 导入任务重新激活 =====
+    # 用户在 Strava 上传新活动后，webhook 暂时未注册（Sprint 8 backlog），
+    # 靠这里兜底：每 10 分钟把 idle 用户重新扔回 active 队列，tier1 重扫拉新活动。
+    _reactivate_idle_imports(db)
+
     # ===== 1. 僵尸检测：超过 24 小时未更新的导入任务标记为 paused =====
     _check_stale_imports(db)
 
@@ -119,6 +124,53 @@ def _do_tick(db) -> None:
     # ===== 6. 更新时间戳（用于僵尸检测）=====
     import_task.updated_at = datetime.now(timezone.utc)
     db.commit()
+
+
+def _reactivate_idle_imports(db) -> None:
+    """
+    周期重启 idle 用户的 import_task / 兜底 webhook 漏接。
+
+    用户场景：Tim 在 Strava 上传新骑行 → 之前的导入早就 status='completed' →
+    没人主动唤醒就永远不会再拉新活动。这个函数就是闹钟，每 10 分钟把"已完成"
+    的导入任务重新扔回 active 队列，tier1 重扫 Strava 列表拉新活动。
+
+    重置 4 个字段（缺一个就出 bug）：
+    - status='active'        → 让 _pick_next_task 能选到
+    - cursor_before=None     → 让 tier1 从最新活动开始扫（不是从历史游标续）
+    - total_activities=None  → 让 _is_tier1_complete 返 False（否则死循环 / Codex Critical 1）
+    - tier1_completed=0      → 累计重置（前端进度卡片若展示会倒退，100 用户量级以下可接受 / spec 审 Important-2）
+
+    多设备/多窗口防御：同一 user_id 可能因迁移残留有多条 completed 记录，
+    seen set 保证一个 user 只重启最近一条（按 updated_at desc 选最新）。
+
+    频率：scheduler 30 秒一 tick × cutoff=10 分钟。Strava 100/15min 配额对 1 用户余量足够。
+    50+ 用户量级需要切 webhook 优先（写 sprint 8 backlog）。
+    """
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
+    idle = (
+        db.query(StravaImport)
+        .filter(
+            StravaImport.status == "completed",
+            StravaImport.updated_at < cutoff,
+        )
+        .order_by(StravaImport.updated_at.desc())
+        .all()
+    )
+    seen = set()
+    reactivated = 0
+    for task in idle:
+        if task.user_id in seen:
+            continue
+        seen.add(task.user_id)
+        task.status = "active"
+        task.cursor_before = None
+        task.total_activities = None
+        task.tier1_completed = 0
+        reactivated += 1
+    if reactivated:
+        db.commit()
+        logger.info("周期重启 %d 个 idle 导入任务", reactivated)
 
 
 def _check_stale_imports(db) -> None:
