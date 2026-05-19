@@ -96,6 +96,10 @@ def handle_webhook_event(db: Session, payload: dict) -> None:
 
     if aspect_type in ("create", "update"):
         # 新活动或更新 → 创建 importing 骨架（由调度器异步处理详情+轨迹）
+        # TODO Sprint 8 Fix 1/2：webhook 路径补 _is_cycling 类型守卫——
+        # webhook payload 本身不带 type 字段 / 需 sprint 8 在 worker_strava
+        # 拉详情时再过滤。当前 manual_sync (Fix 6) + tier1 (Fix 3) 已守卫，
+        # 但 webhook 路径暂时还会为跑步骨架，靠 Fix 7 数据层 11 处过滤拦住。
         _create_importing_activity(db, user, object_id)
 
 
@@ -270,6 +274,9 @@ def handle_manual_sync(db: Session, user_id: int) -> dict:
     """
     from app.strava.client import StravaClient
     from app.activity.models import Activity
+    # Sprint 7 Fix 6：复用 import_scheduler 抽好的 _is_cycling 双字段守卫
+    # 同一来源避免两处复制粘贴 _CYCLING_TYPES（_is_cycling 内部引用）
+    from app.strava.import_scheduler import _is_cycling
     # v5 task-0.8：Redis 走 app.queue 单一源
     # 局部 import 理由：与本函数已有的 StravaClient 局部 import 风格一致
     # （client 必须局部 import 因 client.py 顶部反向依赖 service.ensure_valid_token
@@ -299,6 +306,16 @@ def handle_manual_sync(db: Session, user_id: int) -> dict:
     for act in activities:
         strava_id = act.get("id")
         if strava_id is None:
+            continue
+
+        # Sprint 7 Fix 6：手动同步守卫——非骑行活动一律跳过，不建 velo 骨架。
+        # 和 import_scheduler.py:_run_tier1 守卫同源（Fix 3 抽的 _is_cycling helper）。
+        # 用户场景：Tim 点"立即同步"按钮 → 拉到 Strava 最近 30 条 → 跑步/徒步直接跳过 →
+        # 只有骑行进 velo 数据库。manual_sync 这条独立路径必须有自己的守卫，不能依赖
+        # tier1（scheduler 路径），不然手动同步会重新污染列表。
+        if not _is_cycling(act):
+            logger.info("manual_sync 跳过非骑行活动 strava_id=%s type=%s",
+                        strava_id, act.get("type"))
             continue
 
         created = _create_importing_activity(db, user, strava_id)

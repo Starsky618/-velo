@@ -434,11 +434,11 @@ def test_manual_sync_updates_tier1_completed(
     client_instance = MockClient.return_value
     client_instance.get_athlete_activities.return_value = [
         {
-            "id": 201, "name": "Ride",
+            "id": 201, "name": "Ride", "type": "Ride",  # Sprint 7 Fix 6 _is_cycling 守卫要求
             "distance": 20000, "start_date": "2026-04-02T08:00:00Z",
         },
         {
-            "id": 202, "name": "Ride 2",
+            "id": 202, "name": "Ride 2", "type": "Ride",
             "distance": 15000, "start_date": "2026-04-01T08:00:00Z",
         },
     ]
