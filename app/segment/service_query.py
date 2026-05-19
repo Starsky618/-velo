@@ -153,8 +153,14 @@ def _user_best_effort_subquery(
             ActivityPrivacy.hide_power.label("privacy_hide_power"),  # task-4.6：挖功率字段用
             row_number,
         )
+        # Sprint 7 Fix 7+ (Codex 异源审抓 / Tim 拍 spec 扩展)：
+        # 赛段排行榜 INNER JOIN Activity 加 cycling filter——防御纵深，
+        # 即使历史脏数据让非骑行 effort 进过 segment_efforts 表，排行榜
+        # 也不显示。新数据靠 worker 写入端守卫；这里是兜底防线。
+        .join(Activity, Activity.id == SegmentEffort.activity_id)
         .outerjoin(ActivityPrivacy, ActivityPrivacy.activity_id == SegmentEffort.activity_id)
         .filter(SegmentEffort.segment_id == segment_id)
+        .filter(Activity.activity_type == "cycling")
         .filter(
             or_(
                 ActivityPrivacy.visibility == "public",
@@ -616,6 +622,9 @@ def get_my_efforts_on_segment(
         .filter(
             SegmentEffort.segment_id == segment_id,
             SegmentEffort.user_id == user_id,
+            # Sprint 7 Fix 7+ (Codex 异源审 / Tim 拍 spec 扩展)：
+            # 我的赛段成绩历史只显示骑行 effort（防御纵深）。
+            Activity.activity_type == "cycling",
         )
         # nullslast：极少数 strava 活动 started_at 为 NULL 时降级到 effort.id 兜底
         .order_by(Activity.started_at.desc().nullslast(), SegmentEffort.id.desc())
