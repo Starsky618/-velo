@@ -439,12 +439,15 @@ def _run_tier2(
             strava_id, activity.distance,
         )
         activity.status = "completed"
-        # Sprint 7 Fix 3：短距离分支补 activity_type 回填——
-        # 这里不拉 detail，没有 sport_type 可判断真实类型；
-        # 虽然 tier1 已守卫 _is_cycling，但短距离活动可能是任意运动 / 用户体验上
-        # 更倾向保守（不计入骑行统计）：标 "other" 让 Fix 5/7 数据层过滤排除掉。
+        # Sprint 7 Fix 3 修订（集成审 Important-1 / Tim 拍）：
+        # 短距离分支补 activity_type='cycling' 回填——
+        # tier1 _is_cycling 守卫已保证短距离分支接到的活动 100% 是骑行（跑步/徒步
+        # 在 tier1 就被拦了）。原 v5 草稿写 "other" 是 spec 自身遗漏 tier1 守卫前提，
+        # 会让 <5km 通勤短骑行被 Fix 5/7 数据层过滤后从列表/总里程消失（用户骑了车
+        # 但 velo 看不到 = 反直觉）。回填 "cycling" 让短骑行也进列表 / 计入总里程
+        # （虽然无轨迹 / 无功率 / 无心率，但用户能看到"骑过这一段"）。
         # 不破坏 tier2_skipped 累计（用户进度卡片仍正确显示"跳过 N 条"）。
-        activity.activity_type = "other"
+        activity.activity_type = "cycling"
         import_task.tier2_skipped = (import_task.tier2_skipped or 0) + 1
         db.commit()
         return

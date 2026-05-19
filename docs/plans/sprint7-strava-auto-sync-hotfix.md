@@ -593,7 +593,8 @@ if not _is_cycling(detail):
 ```
 
 4. **短距离 + 非骑行分支保留 `status='completed'` + 补 activity_type 回填**：
-   - 短距离分支 :354-362 加 `activity.activity_type = "other"`（回填 / 兜底 / 不破坏 tier2_skipped 累计）
+   - 短距离分支 :354-362 加 `activity.activity_type = "cycling"`（回填 / 不破坏 tier2_skipped 累计）
+     - **修订**（v5 集成审 reviewer Important-1 / Tim 拍）：tier1 `_is_cycling` 守卫已保证短距离分支接到的活动 100% 是骑行。原 v5 草稿写 "other" 是 spec 自身遗漏 tier1 守卫前提 / 会让 <5km 通勤短骑行被 Fix 5/7 数据层过滤后从列表/总里程消失。改 "cycling" 让用户的真骑行不论长短都进 velo。
    - 非骑行分支 :380-394 已有回填 / 不动
    - **不改成 db.delete**（v3 一度提议改 / spec 审 Important-4 指出会破坏 tier2_skipped 语义）
 

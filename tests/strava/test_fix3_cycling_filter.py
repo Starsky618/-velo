@@ -159,8 +159,12 @@ class TestTier1CyclingGuard:
 class TestTier2ShortDistanceBackfill:
     """tier2 短距离分支补 activity_type='other' 回填。"""
 
-    def test_short_distance_sets_other_type(self, strava_db, strava_user):
-        """活动距离 < 5km → status='completed' + activity_type='other'。"""
+    def test_short_distance_sets_cycling_type(self, strava_db, strava_user):
+        """活动距离 < 5km → status='completed' + activity_type='cycling'。
+
+        修订（集成审 Important-1 / Tim 拍）：tier1 _is_cycling 守卫已保证短距离分支
+        接到的活动 100% 是骑行 / 回填 'cycling' 让短骑行进列表 / 不被 Fix 5/7 过滤。
+        """
         import_task = StravaImport(
             user_id=strava_user.id,
             strava_athlete_id=88888,
@@ -186,8 +190,8 @@ class TestTier2ShortDistanceBackfill:
 
         strava_db.refresh(short_act)
         assert short_act.status == "completed"
-        assert short_act.activity_type == "other", \
-            f"短距离应回填 'other'，实际 = {short_act.activity_type}"
+        assert short_act.activity_type == "cycling", \
+            f"短距离应回填 'cycling'（tier1 守卫保证 100% 骑行），实际 = {short_act.activity_type}"
 
         # tier2_skipped 累加 / 防进度卡片漂移
         strava_db.refresh(import_task)
