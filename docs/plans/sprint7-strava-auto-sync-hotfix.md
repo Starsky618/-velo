@@ -49,7 +49,7 @@
   │  1. 抢锁 importing → processing                              │
   │  2. 调 Strava /activities/{id} 拉详情 (~1-3s)                │
   │  3. type / sport_type 守卫 → 非骑行 db.delete + return       │
-  │  4. distance < 5km → db.delete（你拍 A 列表只显完整骑行）     │
+  │  4. （v5+ 修订 / Tim 拍）所有骑行走完整流程 / 无距离阈值跳过 │
   │  5. 调 Strava /streams 拉轨迹 (~1-3s)                        │
   │  6. save_parse_result 写 DB (~100-500ms)                    │
   │  7. 5 套 hook：city / heatmap / power_curve / 5min / persona│
@@ -129,7 +129,7 @@
 - scheduler 周期重启：原代码任务 completed 后无重置机制
 - manual_sync：你拒绝点
 
-**Bug B**：tier1 不过滤 type → Morning Run 被建空骨架 → activity_type 默认 'cycling'（`models.py:99-104` server_default）→ tier2 短距离分支 status='completed' + return 不回填 → 详情页按 cycling 渲染 → 全空
+**Bug B**：tier1 不过滤 type → Morning Run 被建空骨架 → activity_type 默认 'cycling'（`models.py:99-104` server_default）→ tier2 短距离分支（v5+ 修订前）status='completed' + return 不回填 → 详情页按 cycling 渲染 → 全空
 
 **为什么跑步进得来骑行进不来 = 时间窗错位**：5-16 你重绑 Strava 触发 import_id=6 窗口恰好覆盖 5-14 Morning Run；5-18 Evening Ride 在窗口之后没任何路径补拉。
 
@@ -153,7 +153,7 @@
 | 🟠 Important | 集成审 | 脏数据 SQL 后 `redis-cli DEL heatmap:user_*` 清 1h TTL 缓存残留 |
 | 🟠 Important | 集成审 | worker.py **不**加 `from app.strava import worker_strava`（RQ 动态 import 自动解析 / 不必要预热） |
 | 🟠 Important | **Codex round 3** | **Fix 1 注册脚本 fallback 完整化**（GET 失败 / POST already exists / POST 无 id 三种 case 都 fail 不写 .env） |
-| 🟠 Important | **Codex round 3** | **webhook vs scheduler 短距离行为统一**：webhook 也保留骨架 + 回填 `activity_type='other'`（不 db.delete）/ 列表 / stats 11 处过滤拦住 |
+| 🟠 Important | **Codex round 3** | ~~webhook vs scheduler 短距离行为统一：webhook 也保留骨架 + 回填 `activity_type='other'`~~ **v5+ 修订（2026-05-19 Tim 拍）**：直接取消 `_MIN_DISTANCE_METERS` 阈值 / 所有骑行走完整流程（拉详情+轨迹+赛段）/ webhook 也按此统一 / Strava 配额对 1 用户充裕足够 |
 | 🟠 Important | **Codex round 3** | **脏数据 SQL Step 2 注释改正**：duplicate_of 自引用语义错；非空则停止删除人工决定 |
 | 🟢 嘴跳修正 | 自检 | 之前回答 Tim "低耦合"时说"v4 用脏数据替代不改 stats / social" 是误读。**加 SQL `WHERE activity_type='cycling'` 过滤本身不破坏功能**（对 cycling 数据零行为变化）属于"加防御"不是"改正常逻辑"。保留改 stats / social 路径 + 不抽 helper / 不动 GPX worker |
 | 🟢 真测 | 自检 | 真 POST `/push_subscriptions` 测试：Strava 返回 `"GET to callback URL does not return 200"`（不是"must be HTTPS"）→ HTTP 接受 + Strava 真去 GET HTTP callback handshake |
@@ -241,7 +241,7 @@ from app.database import SessionLocal
 from app.activity.models import Activity, Trackpoint
 from app.user.models import User
 from app.strava.client import StravaClient
-from app.strava.import_scheduler import _CYCLING_TYPES, _MIN_DISTANCE_METERS
+from app.strava.import_scheduler import _CYCLING_TYPES  # v5+ 修订：删 _MIN_DISTANCE_METERS
 from app.parsing.strava_adapter import from_streams
 from app.parsing.coord_normalizer import normalize
 from app.activity.worker import save_parse_result, _set_activity_city
@@ -358,14 +358,9 @@ def _process_strava_main(db, user_id: int, strava_activity_id: int) -> None:
                     strava_activity_id, strava_type, activity.activity_type)
         return
 
-    # 短距离：保留骨架 + 回填 other（与 scheduler tier2 短距离一致 / Codex round 3 Important-2 统一）
-    if (detail.get("distance") or 0) < _MIN_DISTANCE_METERS:
-        activity.activity_type = "other"
-        activity.status = "completed"
-        db.commit()
-        logger.info("短距离保留骨架 strava_id=%d distance=%.0f",
-                    strava_activity_id, detail.get("distance") or 0)
-        return
+    # v5+ 修订（Tim 拍）：取消 _MIN_DISTANCE_METERS 距离阈值——所有骑行
+    # （含 3km 通勤）走完整流程拉详情+轨迹+赛段。原 5km 跳过是过早优化
+    # （velo 1 用户量级 Strava 配额用不完 90%），让短骑行有完整数据更重要。
 
     try:
         streams = client.get_activity_streams(strava_activity_id)
@@ -592,11 +587,15 @@ if not _is_cycling(detail):
     ...
 ```
 
-4. **短距离 + 非骑行分支保留 `status='completed'` + 补 activity_type 回填**：
-   - 短距离分支 :354-362 加 `activity.activity_type = "cycling"`（回填 / 不破坏 tier2_skipped 累计）
-     - **修订**（v5 集成审 reviewer Important-1 / Tim 拍）：tier1 `_is_cycling` 守卫已保证短距离分支接到的活动 100% 是骑行。原 v5 草稿写 "other" 是 spec 自身遗漏 tier1 守卫前提 / 会让 <5km 通勤短骑行被 Fix 5/7 数据层过滤后从列表/总里程消失。改 "cycling" 让用户的真骑行不论长短都进 velo。
-   - 非骑行分支 :380-394 已有回填 / 不动
+4. **非骑行分支保留 `status='completed'` + 真实类型回填**：
+   - 非骑行分支 :380-394 已有回填（running / hiking / other）/ 不动
    - **不改成 db.delete**（v3 一度提议改 / spec 审 Important-4 指出会破坏 tier2_skipped 语义）
+
+5. **取消短距离分支**（v5+ 修订 / Tim 拍 / 2026-05-19）：
+   - 删除 `_MIN_DISTANCE_METERS = 5000` 常量
+   - 删除 _run_tier2 短距离 if 分支
+   - 改 _run_tier2 docstring "跳过条件：非骑行活动"
+   - 修订原因：tier1 `_is_cycling` 守卫保证进 tier2 的都是骑行；原 spec 拍 5km 跳过本意是省 Strava 配额，但 velo 1 真实用户量级配额用不完 90%。让所有骑行（含 3km 通勤）拉详情+轨迹+赛段 = 用户骑了车就能看到完整数据。reviewer 集成审 Important-1 抓出"短骑行进列表但无轨迹"半截活，Tim 拍取消阈值修补到一致。
 
 ### Fix 4：scheduler 周期重启 idle import_task（v4 完整版）
 

@@ -40,8 +40,10 @@ from app.user.models import User
 
 logger = logging.getLogger(__name__)
 
-# 第二层跳过条件
-_MIN_DISTANCE_METERS = 5000     # 距离 < 5km 的活动跳过详情+轨迹导入
+# 第二层跳过条件（v5+ 修订 / Tim 拍：取消 _MIN_DISTANCE_METERS 距离阈值）：
+# 所有骑行（含通勤 3km）走完整 tier2 流程拉详情+轨迹+赛段。原 5km 跳过是
+# 为省 Strava 配额（100 req/15min × 每条 2 次 detail+streams），但 velo 当前
+# 1 真实用户量级配额用不完 90%，过早优化反让用户骑了车看不到轨迹图 = 反直觉。
 _CYCLING_TYPES = {"Ride", "VirtualRide", "EBikeRide", "Handcycle", "Velomobile"}
 
 
@@ -408,7 +410,7 @@ def _run_tier2(
     第二层：拉详情+轨迹，写入完整数据，触发赛段匹配。
 
     每次只处理一条活动（2 次 API 调用），处理完更新进度。
-    跳过条件：非骑行活动、距离 < 5km。
+    跳过条件：非骑行活动（v5+ 修订 / Tim 拍：取消距离阈值 / 短骑行也完整处理）。
     """
     # 找下一条待处理的 importing 活动（最新的先）
     activity = (
@@ -430,27 +432,9 @@ def _run_tier2(
 
     strava_id = activity.strava_activity_id
 
-    # ---- 跳过条件检查 ----
-    # 检查活动类型和距离（从第一层骨架数据判断）
-    # 注意 truthiness 陷阱：distance=0 是合法值，用 is not None 判断
-    if activity.distance is not None and activity.distance < _MIN_DISTANCE_METERS:
-        logger.info(
-            "跳过短距离活动 strava_id=%d distance=%.0f",
-            strava_id, activity.distance,
-        )
-        activity.status = "completed"
-        # Sprint 7 Fix 3 修订（集成审 Important-1 / Tim 拍）：
-        # 短距离分支补 activity_type='cycling' 回填——
-        # tier1 _is_cycling 守卫已保证短距离分支接到的活动 100% 是骑行（跑步/徒步
-        # 在 tier1 就被拦了）。原 v5 草稿写 "other" 是 spec 自身遗漏 tier1 守卫前提，
-        # 会让 <5km 通勤短骑行被 Fix 5/7 数据层过滤后从列表/总里程消失（用户骑了车
-        # 但 velo 看不到 = 反直觉）。回填 "cycling" 让短骑行也进列表 / 计入总里程
-        # （虽然无轨迹 / 无功率 / 无心率，但用户能看到"骑过这一段"）。
-        # 不破坏 tier2_skipped 累计（用户进度卡片仍正确显示"跳过 N 条"）。
-        activity.activity_type = "cycling"
-        import_task.tier2_skipped = (import_task.tier2_skipped or 0) + 1
-        db.commit()
-        return
+    # v5+ 修订（Tim 拍 / 2026-05-19）：取消距离阈值跳过——所有骑行（含 3km 通勤）
+    # 都走完整 tier2 流程，拉详情+轨迹+赛段。详细原因见模块顶部 _CYCLING_TYPES
+    # 上方注释。短距离活动现在和长距离走同一条路径，无特殊分支。
 
     # ---- 拉详情 + 轨迹（2 次 API 调用）----
     try:

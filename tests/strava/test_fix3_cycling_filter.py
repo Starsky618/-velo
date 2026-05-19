@@ -1,14 +1,17 @@
 """
-Sprint 7 Fix 3：tier1 / tier2 _is_cycling 守卫 + 短距离 activity_type 回填 单测。
+Sprint 7 Fix 3：tier1 / tier2 _is_cycling 守卫 + 短距离走完整流程 单测。
 
-用户故事：Tim 在 Strava 上传 5-14 跑步 + 5-18 骑行 → tier1 list 拉到两条 →
-Fix 3 守卫拦住跑步活动不建骨架 → 只有骑行进 velo 数据库 →
-未来跑步永不污染 velo 骑行列表。
+用户故事：
+- Tim 在 Strava 上传 5-14 跑步 + 5-18 骑行 → tier1 list 拉到两条 →
+  Fix 3 守卫拦住跑步活动不建骨架 → 只有骑行进 velo 数据库
+- Tim 骑 3km 通勤 → tier1 守卫放行 → tier2 走完整流程拉详情+轨迹+赛段
+  （v5+ 修订 / Tim 拍：取消 _MIN_DISTANCE_METERS 距离阈值）
 
-覆盖 6 个场景：
+覆盖 7 个场景：
 1. _is_cycling 双字段 5 case（type / sport_type 组合）
-2. tier1 混合 list（Ride + Run + Hike）→ 只建 Ride 骨架
-3. tier2 短距离骑行 → activity_type='other' 兜底
+2. tier1 混合 list（Ride + Run + Hike + EBikeRide）→ 只建骑行骨架
+3. tier1 无 type 字段 → 保守拦截
+4. tier2 短距离骑行（3km）→ 走完整流程 / 调 get_activity_detail（防回归）
 """
 
 from unittest.mock import MagicMock, patch
@@ -153,18 +156,22 @@ class TestTier1CyclingGuard:
         assert len(activities) == 0, "无 type 字段的活动也应被拦截"
 
 
-# ==================== tier2 短距离回填测试 ====================
+# ==================== tier2 短距离走完整流程测试（v5+ 修订防回归）====================
 
 
-class TestTier2ShortDistanceBackfill:
-    """tier2 短距离分支补 activity_type='other' 回填。"""
+class TestTier2ShortDistanceFullFlow:
+    """tier2 短距离活动走完整流程——不再跳过详情拉取。
 
-    def test_short_distance_sets_cycling_type(self, strava_db, strava_user):
-        """活动距离 < 5km → status='completed' + activity_type='cycling'。
+    v5+ 修订（Tim 拍 / 2026-05-19）：取消 _MIN_DISTANCE_METERS = 5000 距离阈值。
+    所有骑行（含 3km 通勤）走完整 tier2 流程拉详情+轨迹+赛段。原 5km 跳过是
+    过早优化（velo 1 用户量级 Strava 配额用不完 90%），让短骑行有完整数据更重要。
 
-        修订（集成审 Important-1 / Tim 拍）：tier1 _is_cycling 守卫已保证短距离分支
-        接到的活动 100% 是骑行 / 回填 'cycling' 让短骑行进列表 / 不被 Fix 5/7 过滤。
-        """
+    本测试防回归——未来若有人重新加 _MIN_DISTANCE_METERS / 短距离跳过 detail，
+    本测试会立刻 fail 阻止合入。
+    """
+
+    def test_short_distance_calls_detail_api(self, strava_db, strava_user):
+        """3km 短距离活动 → tier2 调用 get_activity_detail（不被跳过）。"""
         import_task = StravaImport(
             user_id=strava_user.id,
             strava_athlete_id=88888,
@@ -172,30 +179,28 @@ class TestTier2ShortDistanceBackfill:
             total_activities=1,
             tier1_completed=1,
         )
-        # 一条 3km 短距离 importing 活动（tier1 已建骨架）
         short_act = Activity(
             user_id=strava_user.id,
             status="importing",
             data_source="strava",
             strava_activity_id=8001,
-            distance=3000,  # < 5km
+            distance=3000,  # 3km 短距离通勤
         )
         strava_db.add_all([import_task, short_act])
         strava_db.commit()
 
-        # 用 fake client（不会被调到，tier2 短距离分支直接 return）
+        # mock client：detail 抛 ValueError 让 tier2 在拉 detail 后立刻进 failed 分支
+        # （避免走完整 streams + adapter 链的复杂 mock，但能证明 detail 被调到）
         fake_client = MagicMock()
+        fake_client.get_activity_detail.side_effect = ValueError("mocked stop")
 
         _run_tier2(strava_db, fake_client, import_task, strava_user)
 
+        # 关键断言：get_activity_detail 必须被调用（防"短距离被跳过详情"回归）
+        fake_client.get_activity_detail.assert_called_once_with(8001)
+
+        # 活动状态：拉详情失败 → status='failed'（已通过短距离跳过分支 / 进了拉详情逻辑）
         strava_db.refresh(short_act)
-        assert short_act.status == "completed"
-        assert short_act.activity_type == "cycling", \
-            f"短距离应回填 'cycling'（tier1 守卫保证 100% 骑行），实际 = {short_act.activity_type}"
-
-        # tier2_skipped 累加 / 防进度卡片漂移
-        strava_db.refresh(import_task)
-        assert import_task.tier2_skipped == 1
-
-        # detail API 不应被调（短距离在拉 detail 前 return）
-        fake_client.get_activity_detail.assert_not_called()
+        assert short_act.status == "failed", \
+            f"应走完整 tier2 流程进 failed 分支（mock 异常），实际 = {short_act.status}"
+        assert "mocked stop" in (short_act.error_message or "")
