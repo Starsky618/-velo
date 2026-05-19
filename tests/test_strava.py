@@ -602,8 +602,8 @@ class TestImportScheduler:
         mock_instance = MagicMock()
         MockClient.return_value = mock_instance
         mock_instance.get_athlete_activities.return_value = [
-            {"id": 1001, "name": "Ride A", "distance": 30000, "start_date": "2024-06-01T10:00:00Z"},
-            {"id": 1002, "name": "Ride B", "distance": 45000, "start_date": "2024-05-15T08:00:00Z"},
+            {"id": 1001, "name": "Ride A", "type": "Ride", "distance": 30000, "start_date": "2024-06-01T10:00:00Z"},
+            {"id": 1002, "name": "Ride B", "type": "Ride", "distance": 45000, "start_date": "2024-05-15T08:00:00Z"},
         ]
 
         # 执行一次 tick
@@ -658,8 +658,8 @@ class TestImportScheduler:
         mock_instance = MagicMock()
         MockClient.return_value = mock_instance
         mock_instance.get_athlete_activities.return_value = [
-            {"id": 2001, "name": "Old Ride", "distance": 10000, "start_date": "2024-01-01T00:00:00Z"},
-            {"id": 2002, "name": "New Ride", "distance": 20000, "start_date": "2024-01-02T00:00:00Z"},
+            {"id": 2001, "name": "Old Ride", "type": "Ride", "distance": 10000, "start_date": "2024-01-01T00:00:00Z"},
+            {"id": 2002, "name": "New Ride", "type": "Ride", "distance": 20000, "start_date": "2024-01-02T00:00:00Z"},
         ]
 
         _do_tick(strava_db)

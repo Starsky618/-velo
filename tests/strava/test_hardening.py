@@ -392,6 +392,7 @@ def test_tier1_non_empty_resets_counter(db, strava_imports_table, redis_mock):
         {
             "id": 100,
             "name": "Ride 1",
+            "type": "Ride",  # Sprint 7 Fix 3：tier1 _is_cycling 守卫要求
             "distance": 15000,
             "start_date": "2026-04-01T08:00:00Z",
         },

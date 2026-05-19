@@ -45,6 +45,25 @@ _MIN_DISTANCE_METERS = 5000     # 距离 < 5km 的活动跳过详情+轨迹导�
 _CYCLING_TYPES = {"Ride", "VirtualRide", "EBikeRide", "Handcycle", "Velomobile"}
 
 
+def _is_cycling(act: dict) -> bool:
+    """
+    判断 Strava 活动是否为骑行类型——双字段守卫。
+
+    Strava 活动有两个类型字段：
+    - type：老字段，向后兼容，可能是 "Run" / "Ride" / "Hike" 等
+    - sport_type：新字段（2022 起），更细粒度，但骑行系列名字一致
+
+    两个字段任一命中骑行类型集合即视为骑行——防 Strava 未来字段语义变更
+    或边界情况（如某些活动只填了其中一个字段）。
+
+    用户故事：Tim 在 Strava 上传一个跑步活动 → tier1 拉到 type='Run' →
+    _is_cycling 返 False → 不建 velo 骨架 → 跑步永不污染骑行列表。
+    """
+    t = act.get("type", "")
+    s = act.get("sport_type", "")
+    return t in _CYCLING_TYPES or s in _CYCLING_TYPES
+
+
 def run_import_tick() -> None:
     """
     调度器的心跳函数——每 30 秒被 scheduler.py 容器调用一次（v4 task-7.9 起）。
@@ -306,6 +325,17 @@ def _run_tier1(db, client: StravaClient, import_task: StravaImport) -> None:
         if started_at and (oldest_start_date is None or started_at < oldest_start_date):
             oldest_start_date = started_at
 
+        # Sprint 7 Fix 3：tier1 入口守卫——非骑行活动一律跳过，不建 velo 骨架。
+        # 这是 Bug B（跑步活动被误拉进 velo 骑行列表）的源头修法：
+        # 之前 tier1 不分活动类型一锅端建 importing 骨架，tier2 才过滤；
+        # 但 activity_type 默认 "cycling"（models.py:99 server_default），
+        # 即使 tier2 跳过非骑行，骨架已存在 + 类型默认骑行 → 列表/统计全被污染。
+        # 这里第一道关：根本不让跑步/徒步进 velo 数据库。
+        if not _is_cycling(act):
+            logger.info("tier1 跳过非骑行活动 strava_id=%s type=%s",
+                        strava_id, act.get("type"))
+            continue
+
         # 去重：先查有没有已导入的
         existing = (
             db.query(Activity)
@@ -409,6 +439,12 @@ def _run_tier2(
             strava_id, activity.distance,
         )
         activity.status = "completed"
+        # Sprint 7 Fix 3：短距离分支补 activity_type 回填——
+        # 这里不拉 detail，没有 sport_type 可判断真实类型；
+        # 虽然 tier1 已守卫 _is_cycling，但短距离活动可能是任意运动 / 用户体验上
+        # 更倾向保守（不计入骑行统计）：标 "other" 让 Fix 5/7 数据层过滤排除掉。
+        # 不破坏 tier2_skipped 累计（用户进度卡片仍正确显示"跳过 N 条"）。
+        activity.activity_type = "other"
         import_task.tier2_skipped = (import_task.tier2_skipped or 0) + 1
         db.commit()
         return
@@ -428,8 +464,11 @@ def _run_tier2(
     # v4 task-7.6 双审判发现：此前非骑行活动被置 status=completed 但 activity_type
     # 仍保留默认的 'cycling' → get_user_stats / get_activity_list 会把
     # 跑步/徒步误当骑行计入距离。修正：回填真实类型（小写 Strava type）。
+    # Sprint 7 Fix 3：用 _is_cycling 双字段守卫替代单 type 判断
+    # （理论上 tier1 已过滤 / 这里是 detail 层第二道防线，防 list 和 detail
+    # 字段不一致或边界场景漏过 / spec 审 Important-1 拍）。
     strava_activity_type = detail.get("type", "")
-    if strava_activity_type not in _CYCLING_TYPES:
+    if not _is_cycling(detail):
         logger.info("跳过非骑行活动 strava_id=%d type=%s", strava_id, strava_activity_type)
         activity.status = "completed"
         # Strava type 映射到 VELO activity_type：
