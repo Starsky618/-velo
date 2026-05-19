@@ -23,6 +23,7 @@
  */
 
 const api = require('../../utils/api')
+const analytics = require('../../utils/analytics')
 const bindchart = require('../../utils/bindchart')
 const { getCityLabel } = require('../../utils/city')
 const { formatTime, formatDate } = require('../../utils/format')
@@ -164,6 +165,11 @@ Page({
       myUserId: (userInfo && userInfo.id) || 0,
     })
 
+    analytics.trackPageView('segment', {
+      target_type: 'segment',
+      target_id: segmentId,
+    })
+
     this.fetchAllData(segmentId)
   },
 
@@ -303,6 +309,15 @@ Page({
       shouldShowExpand,
       hasElevationProfile,
     }, () => {
+      analytics.track('segment_detail_view', {
+        page: 'segment',
+        target_type: 'segment',
+        target_id: segment.id || this.data.segmentId,
+        source: this.data.fromActivityId ? 'activity_detail' : '',
+        city: segment.city || '',
+        difficulty: segment.difficulty || '',
+        question: '用户是否查看某条赛段详情，以及偏好哪类赛段',
+      })
       // 海拔图绘制：setTimeout 100ms 兜底（CLAUDE.md 陷阱 #17）
       // 极慢机型 setData 回调时 canvas 2d node 仍未 ready，wx.nextTick 不够保险
       if (hasElevationProfile) {
@@ -524,6 +539,15 @@ Page({
         progressText,
       },
     })
+
+    analytics.track('my_effort_compare_view', {
+      page: 'segment',
+      target_type: 'segment',
+      target_id: this.data.segmentId,
+      has_progress_text: !!progressText,
+      is_first_attempt: myEffort.is_first_attempt === true,
+      question: '用户是否关心自己在赛段上的进步对比',
+    })
   },
 
   /**
@@ -642,6 +666,15 @@ Page({
       leaderboardItems: items,
       myRankOutOfTop,
       myRankRow,
+    })
+
+    analytics.track('leaderboard_view', {
+      page: 'segment',
+      target_type: 'segment',
+      target_id: this.data.segmentId,
+      total: leaderboard.total || 0,
+      visible_count: items.length,
+      question: '用户是否查看竞争榜单，以及榜单规模是否影响兴趣',
     })
   },
 

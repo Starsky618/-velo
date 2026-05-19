@@ -13,6 +13,7 @@
  * 后台悄悄通知服务器"我读过了"，即使网络慢也不影响视觉体验。
  */
 var api = require('../../utils/api')
+var analytics = require('../../utils/analytics')
 
 Page({
   data: {
@@ -24,6 +25,7 @@ Page({
   },
 
   onLoad() {
+    analytics.trackPageView('notification')
     // 两个请求并行发出，互不等——符合 task 约定（先加载列表，后台标读）
     this.loadFirstPage()
     this.markAllRead()
@@ -161,6 +163,13 @@ Page({
   goUserDetail(e) {
     var userId = e.currentTarget.dataset.userid
     if (!userId) return
+    analytics.track('other_user_profile_view', {
+      page: 'notification',
+      source: 'notification_rival',
+      target_type: 'user',
+      target_id: userId,
+      question: '用户是否从竞争通知自然进入骑友主页',
+    })
     wx.navigateTo({ url: '/pages/user/user?id=' + userId })
   },
 
@@ -176,6 +185,12 @@ Page({
       wx.showToast({ title: '该记录已失效', icon: 'none' })
       return
     }
+    analytics.track('notification_click', {
+      page: 'notification',
+      target_type: 'segment',
+      target_id: segmentId,
+      question: '通知是否能把用户带回赛段反馈循环',
+    })
     wx.navigateTo({ url: '/pages/segment/segment?id=' + segmentId })
   },
 })

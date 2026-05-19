@@ -22,6 +22,7 @@
  */
 
 const api = require('../../utils/api')
+const analytics = require('../../utils/analytics')
 
 // 6 城展示枚举（不含 unknown / 用户视角无意义）+ 中文标签映射
 const CITIES = [
@@ -76,6 +77,7 @@ Page({
   },
 
   onLoad() {
+    analytics.trackPageView('explore')
     // 并行拉赛段 + 骑友（Promise.all 不串行 / 减少首屏感知延迟）
     this.fetchSegments(1, '')
     this.fetchActiveUsers()
@@ -129,6 +131,13 @@ Page({
   onTapRiderAvatar(e) {
     const userId = e.currentTarget.dataset.id
     if (!userId) return
+    analytics.track('other_user_profile_view', {
+      page: 'explore',
+      source: 'active_riders',
+      target_type: 'user',
+      target_id: userId,
+      question: '用户是否从探索页自然进入骑友主页',
+    })
     wx.navigateTo({ url: '/pages/user/user?id=' + userId })
   },
 

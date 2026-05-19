@@ -14,6 +14,7 @@
 
 var api = require('../../utils/api')
 var bindchart = require('../../utils/bindchart')
+var analytics = require('../../utils/analytics')
 
 // ────── 纯工具函数（不依赖页面实例，可独立测试） ──────
 
@@ -121,6 +122,10 @@ Page({
   onLoad: function (options) {
     if (options.id) {
       this.activityId = options.id
+      analytics.trackPageView('detail', {
+        target_type: 'activity',
+        target_id: options.id,
+      })
       // 三个请求并行发起，互不依赖，谁先回来谁先渲染
       this.fetchDetail(options.id)
       this.fetchSegments(options.id)
@@ -193,6 +198,14 @@ Page({
             hide_heartrate: privacy.hide_heartrate === true,
           },
         }, function () {
+          analytics.track('activity_completed_view', {
+            page: 'detail',
+            source: 'activity_detail',
+            target_type: 'activity',
+            target_id: id,
+            status: data.status || '',
+            question: '用户是否查看骑行解析后的完整结果',
+          })
           // setData 的回调：此时 DOM 已更新完毕，canvas 元素已在页面上。
           // 额外套一层 wx.nextTick，确保 wx:if 条件渲染的 canvas 节点
           // 真正挂载完毕（某些低端机型 setData 回调略早于 canvas 挂载）

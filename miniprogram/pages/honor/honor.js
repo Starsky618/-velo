@@ -11,6 +11,7 @@
  * 点一个奖杯能跳到对应比赛的排行榜去炫耀。
  */
 var api = require('../../utils/api')
+var analytics = require('../../utils/analytics')
 
 Page({
   data: {
@@ -24,6 +25,7 @@ Page({
   },
 
   onLoad() {
+    analytics.trackPageView('honor')
     this.loadHonors()
   },
 

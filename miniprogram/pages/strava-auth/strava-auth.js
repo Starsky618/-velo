@@ -10,12 +10,15 @@
 // 替代旧流程：复制 URL → 切微信传输助手 → 粘贴 → 浏览器打开（用户嫌麻烦）
 //
 // 限制：业务域名（strava.com + 后端 IP）需小程序公众平台后台配置 / 开发版可工具勾选跳过
+const analytics = require('../../utils/analytics');
+
 Page({
   data: {
     authorizeUrl: '',
   },
 
   onLoad(query) {
+    analytics.trackPageView('strava_auth');
     const url = query && query.url ? decodeURIComponent(query.url) : '';
     if (!url) {
       wx.showToast({ title: '授权链接缺失', icon: 'none' });

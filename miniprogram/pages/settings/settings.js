@@ -30,6 +30,7 @@
  */
 
 const api = require('../../utils/api')
+const analytics = require('../../utils/analytics')
 const app = getApp()
 
 Page({
@@ -43,6 +44,7 @@ Page({
    * 也能拉到最新状态。
    */
   onShow() {
+    analytics.trackPageView('settings')
     // 兜底：未登录直接跳回 profile（理论上"我的"页设置入口已挡 / 双保险）
     if (!app.globalData.token) {
       wx.redirectTo({ url: '/pages/profile/profile' })

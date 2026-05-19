@@ -28,6 +28,7 @@
  */
 
 const api = require('../../utils/api')
+const analytics = require('../../utils/analytics')
 const { getCityLabel } = require('../../utils/city')
 const app = getApp()
 
@@ -74,6 +75,10 @@ Page({
     }
 
     this.setData({ userId: userId, loading: true })
+    analytics.trackPageView('user', {
+      target_type: 'user',
+      target_id: userId,
+    })
     this.fetchProfile(userId)
   },
 
@@ -119,6 +124,14 @@ Page({
           cityLabel: cityLabel,
           stats: stats,
           loading: false,
+        })
+        analytics.track('other_user_profile_view', {
+          page: 'user',
+          target_type: 'user',
+          target_id: userId,
+          city: data.city || '',
+          source: 'profile_loaded',
+          question: '用户是否会查看别人主页，社交关系是否自然出现',
         })
       })
       .catch((err) => {

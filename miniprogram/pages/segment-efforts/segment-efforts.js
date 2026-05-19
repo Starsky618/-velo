@@ -7,6 +7,7 @@
  */
 
 const api = require('../../utils/api')
+const analytics = require('../../utils/analytics')
 const { formatTime } = require('../../utils/format')
 
 Page({
@@ -28,6 +29,10 @@ Page({
       return
     }
     const segmentId = parseInt(raw, 10)
+    analytics.trackPageView('segment_efforts', {
+      target_type: 'segment',
+      target_id: segmentId,
+    })
 
     const app = getApp()
     const isLoggedIn = !!(app.globalData && app.globalData.token)

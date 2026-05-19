@@ -11,6 +11,7 @@
  */
 
 const api = require('../../utils/api')
+const analytics = require('../../utils/analytics')
 const app = getApp()
 
 Page({
@@ -34,6 +35,7 @@ Page({
   },
 
   onShow() {
+    analytics.trackPageView('home')
     if (app.globalData.token) {
       this.setData({ isLoggedIn: true })
       this.fetchWeeklyStats()
@@ -87,6 +89,12 @@ Page({
    * 点铃铛跳通知中心页。
    */
   goNotifications() {
+    analytics.track('home_action_click', {
+      page: 'home',
+      target_type: 'entry',
+      target_id: 'notification',
+      question: '用户进入首页后是否优先查看反馈通知',
+    })
     wx.navigateTo({ url: '/pages/notification/notification' })
   },
 
@@ -217,6 +225,12 @@ Page({
 
   openRide(e) {
     var id = e.currentTarget.dataset.id
+    analytics.track('home_action_click', {
+      page: 'home',
+      target_type: 'ride_card',
+      target_id: id || '',
+      question: '用户进入首页后是否优先查看骑行结果',
+    })
     wx.navigateTo({ url: '/pages/detail/detail?id=' + id })
   },
 

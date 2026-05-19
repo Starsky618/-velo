@@ -9,6 +9,7 @@
  */
 
 const api = require('../../utils/api')
+const analytics = require('../../utils/analytics')
 const app = getApp()
 
 Page({
@@ -29,6 +30,7 @@ Page({
   },
 
   onShow() {
+    analytics.trackPageView('upload')
     // 每次切到上传 tab，如果之前已完成或出错，重置状态
     // 这样用户可以上传下一个文件
   },
@@ -87,11 +89,25 @@ Page({
       return
     }
 
+    analytics.track('upload_start', {
+      page: 'upload',
+      target_type: 'file',
+      target_id: this.data.fileName || '',
+      file_size: this.data.fileSize || 0,
+      question: '用户是否真的开始上传骑行文件',
+    })
+
     this.setData({ step: 'uploading', statusText: '正在上传文件...' })
 
     // 第一步：上传文件
     api.upload('/api/activities/upload', this.data.filePath, 'file')
       .then(function (data) {
+        analytics.track('upload_success', {
+          page: 'upload',
+          target_type: 'activity',
+          target_id: data.activity_id || '',
+          question: '上传链路是否成功创建 activity',
+        })
         // 上传成功，拿到 activity_id，开始轮询解析状态
         that.setData({
           activityId: data.activity_id,
@@ -150,6 +166,13 @@ Page({
           } else if (data.status === 'failed') {
             // 解析失败
             clearInterval(timer)
+            analytics.track('parse_failed', {
+              page: 'upload',
+              target_type: 'activity',
+              target_id: activityId,
+              error_message: data.error_message || '',
+              question: '解析链路在哪些文件或错误上失败',
+            })
             that.setData({
               step: 'error',
               errorMsg: data.error_message || '解析失败，请重试',
@@ -187,6 +210,13 @@ Page({
     var that = this
     api.get('/api/activities/' + activityId)
       .then(function (data) {
+        analytics.track('activity_completed_view', {
+          page: 'upload',
+          source: 'upload_result',
+          target_type: 'activity',
+          target_id: activityId,
+          question: '用户上传后是否看到解析完成结果',
+        })
         // WXML 模板不支持 .toFixed()，在 JS 层预计算格式化数据
         var durationMin = data.duration ? Math.round(data.duration / 60) : 0
         // 平均功率 / 心率 / 踏频统一取整：DB 存 Float 但展示层不要小数

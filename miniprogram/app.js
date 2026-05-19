@@ -36,6 +36,12 @@ App({
     if (userId) {
       this.globalData.userId = userId
     }
+
+    var analytics = require('./utils/analytics')
+    analytics.track('app_open', {
+      page: 'app',
+      question: '用户是否打开 App，以及是否形成回访',
+    })
   },
 
   /**

@@ -208,6 +208,63 @@ velo 工作流由两套大脑支撑：
 | 线上救火 | `tech-debt.md` → `data-flow-guide.md` 对应链路 → `CLAUDE.md § 已知风险` | 5 分钟 |
 | 产品复杂决策不知怎么拍板 | `agent-rules/velo-mental-model.md § 10 问框架` | 15 分钟 |
 
+### §4.1 小程序埋点演示使用指南
+
+当前小程序埋点是**本地演示版**：只通过 `miniprogram/utils/analytics.js` 统一记录事件，打印到微信开发者工具 console，并保存最近 100 条到本地 storage 的 `analytics_events_demo`。它暂时不请求后端，不写数据库。
+
+**使用入口**
+
+```js
+const analytics = require('../../utils/analytics')
+
+analytics.track('home_action_click', {
+  page: 'home',
+  target_type: 'ride_card',
+  target_id: activityId,
+  question: '用户进入首页后是否优先查看骑行结果',
+})
+```
+
+页面访问用快捷方法：
+
+```js
+analytics.trackPageView('segment', {
+  target_type: 'segment',
+  target_id: segmentId,
+})
+```
+
+**V1 事件字典**
+
+| 事件名 | 用途 | 当前典型触发点 |
+|---|---|---|
+| `app_open` | 看用户是否打开 App / 是否回访 | `app.js onLaunch` |
+| `page_view` | 看哪些页面真的被访问 | 各核心页面 `onLoad/onShow` |
+| `home_action_click` | 判断首页第一跳和布局优先级 | 首页通知入口 / 骑行卡片 |
+| `upload_start` | 看用户是否开始上传 | 上传页确认上传 |
+| `upload_success` | 看上传是否成功创建 activity | `/api/activities/upload` 成功后 |
+| `parse_failed` | 看解析失败原因 | 轮询状态返回 `failed` |
+| `activity_completed_view` | 看用户是否查看解析结果 | 上传完成页 / 骑行详情页 |
+| `segment_detail_view` | 看用户是否查看赛段详情 | 赛段详情加载成功 |
+| `leaderboard_view` | 判断竞争榜单吸引力 | 赛段排行榜加载成功 |
+| `my_effort_compare_view` | 判断自我进步对比吸引力 | 赛段"我的记录"加载成功 |
+| `notification_click` | 看通知是否带回反馈循环 | 通知列表点击赛段 |
+| `other_user_profile_view` | 观察社交关系是否自然出现 | 探索 / 通知 / 用户主页 |
+
+**添加新埋点的门槛**
+
+新增事件前必须先写清三件事：
+
+1. 这个事件回答什么产品问题。
+2. 这个数据会影响哪个产品决策。
+3. 它是长期核心事件，还是短期实验事件。
+
+短期实验事件命名建议带实验名，如 `exp_home_v1_card_click`，并在任务卡或 commit message 写清过期时间。实验结束后删除页面调用，避免埋点变成没人敢动的负担。
+
+**后续接后端**
+
+后续如果要同步服务器，只改 `miniprogram/utils/analytics.js` 的 `track()`：在本地缓存后追加一次 `api.post('/api/analytics/events', event)` 即可。页面层不要直接请求埋点接口。
+
 ---
 
 ## §5 文档全目录地图
