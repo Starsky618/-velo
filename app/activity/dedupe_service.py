@@ -131,6 +131,7 @@ def find_and_mark_duplicate(db: Session, new_activity: Activity) -> Optional[int
             Activity.id != new_activity.id,
             Activity.status == "completed",
             Activity.duplicate_of.is_(None),
+            Activity.activity_type == "cycling",  # Sprint 7 Fix 7：dedupe 候选只取骑行 / 防跑步骑行交叉误判
             Activity.started_at.between(time_window_start, time_window_end),
         )
         .all()

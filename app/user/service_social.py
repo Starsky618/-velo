@@ -167,6 +167,7 @@ def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict
             _Activity.user_id == user_id,
             _Activity.status == "completed",
             _Activity.duplicate_of.is_(None),
+            _Activity.activity_type == "cycling",  # Sprint 7 Fix 7：防非骑行污染热力图
             _Activity.simplified_track.isnot(None),
         )
         .all()
@@ -321,6 +322,7 @@ def get_user_profile_for_others(
             _Activity.user_id == target_user_id,
             _Activity.status == "completed",
             _Activity.duplicate_of.is_(None),  # Sprint 5 task-2 dedupe：profile stats 跳过 duplicate
+            _Activity.activity_type == "cycling",  # Sprint 7 Fix 7：他人主页总里程/活动数只算骑行
         )
         .first()
     )
@@ -340,6 +342,7 @@ def get_user_profile_for_others(
             _Activity.user_id == target_user_id,
             _Activity.status == "completed",
             _Activity.duplicate_of.is_(None),  # Sprint 5 task-2 dedupe：月度 stats 跳过 duplicate
+            _Activity.activity_type == "cycling",  # Sprint 7 Fix 7：他人主页月度统计只算骑行
             _Activity.started_at >= first_of_month_utc,
         )
         .first()
@@ -419,6 +422,7 @@ def get_active_users(
             User.id != exclude_user_id,
             _Activity.status == "completed",
             _Activity.duplicate_of.is_(None),
+            _Activity.activity_type == "cycling",  # Sprint 7 Fix 7：探索页活跃骑友只算骑行
         )
     )
 
@@ -508,6 +512,7 @@ def _aggregate_badges_input(db: Session, user_id: int) -> dict:
             _Activity.user_id == user_id,
             _Activity.status == "completed",
             _Activity.duplicate_of.is_(None),  # Sprint 5 dedupe：跳过 duplicate 防双倍计数
+            _Activity.activity_type == "cycling",  # Sprint 7 Fix 7：总里程勋章只算骑行
         )
         .one()
     )
@@ -581,6 +586,7 @@ def get_city_medals(db: Session, user_id: int) -> dict:
             _Activity.user_id == user_id,
             _Activity.status == "completed",
             _Activity.duplicate_of.is_(None),  # Sprint 5 task-2 dedupe
+            _Activity.activity_type == "cycling",  # Sprint 7 Fix 7：城市勋章只算骑行
             _Activity.city.isnot(None),  # 排除从未推断过
             _Activity.city.in_(VALID_CITY_CODES),  # 排除 unknown / 脏数据 / 白名单
         )

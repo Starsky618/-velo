@@ -114,6 +114,7 @@ def detect_5min_power_progress(
             Activity.user_id == user_id,
             Activity.status == "completed",
             Activity.duplicate_of.is_(None),  # Sprint 5 task-2 dedupe：跳过 duplicate 防进步双计
+            Activity.activity_type == "cycling",  # Sprint 7 Fix 7：5min 功率进步只算骑行 baseline
             Activity.started_at >= last_month_start,
             Activity.started_at < first_this_month,
         )

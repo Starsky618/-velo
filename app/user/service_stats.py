@@ -123,6 +123,7 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
                 WHERE user_id = :user_id
                   AND status = 'completed'
                   AND duplicate_of IS NULL
+                  AND activity_type = 'cycling'
                   AND started_at >= :period_start
             """)
             row = db.execute(sql, {"user_id": user_id, "period_start": period_start}).fetchone()
@@ -138,6 +139,7 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
                 WHERE user_id = :user_id
                   AND status = 'completed'
                   AND duplicate_of IS NULL
+                  AND activity_type = 'cycling'
             """)
             row = db.execute(sql, {"user_id": user_id}).fetchone()
 
@@ -273,6 +275,7 @@ def get_user_power_curve(
             Activity.user_id == user_id,
             Activity.status == "completed",
             Activity.duplicate_of.is_(None),  # Sprint 5 task-2 dedupe：power-curve 跳过 duplicate
+            Activity.activity_type == "cycling",  # Sprint 7 Fix 7：防非骑行污染功率曲线
             Activity.started_at >= start,
             Activity.started_at < end,
         )
