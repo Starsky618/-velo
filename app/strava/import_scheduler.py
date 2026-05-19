@@ -386,6 +386,23 @@ def _run_tier1(db, client: StravaClient, import_task: StravaImport) -> None:
     if oldest_start_date:
         import_task.cursor_before = oldest_start_date
 
+    # Sprint 7 hotfix（Fix 4 真用回归暴露设计 bug / Tim 2026-05-19）：
+    # all_exists 短路——本批 30 条活动全部已存在（created_count=0）= tier1 没新发现 =
+    # 等同于"空 list"语义 / 立刻判 tier1 完成 / 让 tier2 启动。
+    #
+    # 没有这条短路时：用户上传新骑行 → Fix 4 周期重启 → tier1 从 cursor=None 拉最新批 →
+    # 全部已存在 → cursor 推进到 30 条最旧 ts → 继续拉历史 → 几百条历史要扫几小时 / tier2 永远不跑。
+    #
+    # 加这条短路：拉到第 1 批全已存在就停 / 1-2 tick 完成 tier1 / tier2 立刻处理新 importing。
+    # 这是 Fix 4 设计真意：周期重启只检查最新批 / 不重扫整个历史。
+    if created_count == 0 and len(activities) > 0:
+        if import_task.total_activities is None:
+            import_task.total_activities = import_task.tier1_completed
+        logger.info(
+            "tier1 短路完成（本批 %d 条全已存在 / 无新活动）import_id=%d total=%d",
+            len(activities), import_task.id, import_task.total_activities,
+        )
+
     db.commit()
 
     # v4 I9：非空拉取 → 重置空计数器
