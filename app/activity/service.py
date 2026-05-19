@@ -261,7 +261,19 @@ def get_activity_list(db: Session, user_id: int, page: int, page_size: int) -> t
     距离单位转换（米→公里）在这里做，router 层拿到的就是最终数据。
     """
     # Sprint 5 task-2 dedupe：列表查询过滤掉已标 duplicate 的（个人页只显示主活动 / 详情查询不过滤）
-    query = db.query(Activity).filter_by(user_id=user_id).filter(Activity.duplicate_of.is_(None))
+    # Sprint 7 Fix 5：列表 endpoint 加双重防御过滤——
+    # 即使 webhook / scheduler 路径漏过滤让非骑行 / 半成品活动进 DB，
+    # 列表层拦住不显示给用户。activity_type='cycling' + status='completed' 联合过滤：
+    # 历史脏数据（5-14 Morning Run 等）也被这里挡住，等脏数据清理 SQL 收尾。
+    # count 时序：必须在过滤后 count（集成审 Important-5），不然分页页码不准
+    # （比如总 100 条但 cycling completed 只 80 条，前端按 100 算页数会出空页）。
+    query = (
+        db.query(Activity)
+        .filter_by(user_id=user_id)
+        .filter(Activity.duplicate_of.is_(None))
+        .filter(Activity.activity_type == "cycling")
+        .filter(Activity.status == "completed")
+    )
     total = query.count()
 
     items = (
