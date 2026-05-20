@@ -173,6 +173,7 @@ Page({
         if (data.avg_power != null) data.avg_power = Math.round(data.avg_power)
         if (data.avg_hr != null) data.avg_hr = Math.round(data.avg_hr)
         if (data.avg_cadence != null) data.avg_cadence = Math.round(data.avg_cadence)
+        if (data.max_cadence != null) data.max_cadence = Math.round(data.max_cadence)
         if (Array.isArray(data.splits)) {
           for (var si = 0; si < data.splits.length; si++) {
             var sp = data.splits[si]

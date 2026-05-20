@@ -80,6 +80,7 @@ class ActivityDetail(BaseModel):
     avg_hr: Optional[float] = None
     max_hr: Optional[float] = None
     avg_cadence: Optional[float] = None
+    max_cadence: Optional[float] = None
     calories: Optional[float] = None
     normalized_power: Optional[float] = None  # 标准化功率（NP），FIT 自带
     started_at: Optional[datetime] = None

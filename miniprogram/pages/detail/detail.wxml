@@ -204,6 +204,10 @@
         <text class="metric-label">平均踏频</text>
         <text class="metric-value cadence">{{activity.avg_cadence}}<text class="metric-unit">rpm</text></text>
       </view>
+      <view class="metric-row" wx:if="{{activity.max_cadence}}">
+        <text class="metric-label">最大踏频</text>
+        <text class="metric-value cadence">{{activity.max_cadence}}<text class="metric-unit">rpm</text></text>
+      </view>
     </view>
   </view>
 
