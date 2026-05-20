@@ -120,8 +120,16 @@ def test_07_update_invalid_bike_type(client, auth_header):
     assert resp.status_code == 422
 
 
-def test_08_update_profile_success(client, auth_header):
-    """用例 8：正常更新 profile → 200"""
+def test_08_update_profile_success(client, auth_header, monkeypatch):
+    """用例 8：正常更新 profile → 200
+
+    Sprint 9 task-4：首次填 ftp 会触发 enqueue_backfill_ftp（默认 user.ftp=NULL）。
+    测试环境没起 Redis / 必须 mock 掉 enqueue 调用 / 避免 ConnectionError 401。
+    """
+    # Sprint 9 task-4：mock 掉 RQ enqueue（router 直接 import enqueue_backfill_ftp）
+    monkeypatch.setattr(
+        "app.user.router.enqueue_backfill_ftp", lambda *a, **kw: None
+    )
 
     resp = client.put(
         "/api/user/profile",

@@ -15,6 +15,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.activity.backfill_ftp import enqueue_backfill_ftp
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.user import schemas, service
@@ -104,10 +105,28 @@ def update_profile(
     if not update_data:
         raise HTTPException(status_code=400, detail="没有要更新的字段")
 
+    # Sprint 9 task-4：首次填 ftp 触发回填——把该用户所有 snapshot_ftp=NULL 的
+    # 历史活动批量补登 snapshot_ftp + 重算 IF/TSS。
+    # 必须在 update_user_profile 之前读旧 user.ftp（commit 后 ORM 字段已被改写）。
+    # 触发条件：旧 ftp 为 NULL + 新 ftp 是合法整数（schema 已守 50-500 范围）。
+    try:
+        existing_user = service.get_user_by_id(db, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    old_ftp = existing_user.ftp
+    new_ftp = update_data.get("ftp")
+    is_first_time_fill = old_ftp is None and isinstance(new_ftp, int) and new_ftp > 0
+
     try:
         user = service.update_user_profile(db, user_id, update_data)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+    # commit 后才入队——保证 RQ worker 起跑时 DB 里 user.ftp 已是新值
+    # （虽然 worker 不读 user.ftp / 用传入的 new_ftp，但语义上"先持久化再触发副作用"更稳）
+    if is_first_time_fill:
+        enqueue_backfill_ftp(user_id, new_ftp)
+
     return user
 
 
