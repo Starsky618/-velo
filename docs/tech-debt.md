@@ -233,6 +233,11 @@ velo 升级 OAuth scope `activity:read` → `activity:read_all` 后（commit TBD
 | v5-2 | `infer_city_from_coords` 跨省 / 海外起点不准 | P2 | spec §7 限定。靠 5.D.3 admin 人工修。6 城矩形边界粗略，跨省骑行（北京-天津 / 杭州-上海）会按起点判定；海外骑行返 unknown。**重评估触发**：城市枚举扩到 8+ / 每周 admin 修正占比 > 20% |
 | v5-3 | 候选池脚本周一次跑 | P2 | spec §7 限定。`scripts/generate_curation_pool.py` 每周一刷新，新赛段最长 7 天才进候选池。**重评估触发**：admin 反馈"新热门赛段太晚被推 AI 写"/ 或贡献者投诉自己的赛段 1 周才被处理 |
 | v5-4 | AI 草稿质量依赖人工审核 | P3 | PRD D-P10 拍。DeepSeek 生成质量参差，60-70% 可一稿过 / 30-40% 需人工改 / 偶尔有事实性错误（赛段位置写错）。**重评估触发**：DeepSeek 模型升级后人工修订率 < 10% / 或换更强模型 |
+| persona-1 | `veteran_short` 段位无 template 池 | P3 | Persona v0.1 / 老登 < 30km 短距走 segment_distance/veteran_short / 但宪法 §2.2 没该 segment 文案 / template_lib 返 None / 2026-05-20 回填 286 条里 93 条 no_output 全是此 segment。**重评估触发**：trigger_router 改路由（老登 < 30km 走 extreme/tiny 而非 segment_distance）/ 或宪法 §2.2 加该 segment 文案 |
+| persona-2 | 节气日历硬编码 2026 / 2027 起失效 | P2 | `scripts/persona_milestone_scanner.py` `_SOLAR_TERMS_2026` 写死 2026 月日。**重评估触发**：2026-12-31 前必须刷新表 / 或换 lunardate 库动态算 |
+| persona-3 | 闰年 2/29 注册用户周年永远不触发 | P3 | `_check_anniversary` 严格匹配月日 / 2/29 在平年不存在。**重评估触发**：实际有 2/29 注册用户投诉看不到周年文案 |
+| persona-4 | `_check_milestone_distance` N+1 查询 | P3 | scanner 每用户 2 次全表 query / 100 用户级可接受 / 1000+ 时性能问题。**重评估触发**：activity 表 > 5 万行 / 或 scanner 跑时间 > 30s |
+| persona-5 | endpoint 24h vs cache 7 天去重语义不一致 | P2 | "我的"页 24h 窗口 / cache 7 天防重复 / 用户每天打开但 24h 后什么都看不到（除非新骑行）。**重评估触发**：用户反馈"我的页 NPC 经常没文案" / 或扩 endpoint 窗口到 7 天与 cache 对齐 |
 
 **为什么记**：v6+ 任何 agent 看到这 4 项时，先看"重评估触发"是否命中——命中 = 该升级；没命中 = 维持现状不动。防止"我觉得这里能优化"主动重写。
 
@@ -533,6 +538,37 @@ admin H5 草稿审核生产真用 / Tim 改稿 7 条 approved（segment_id 6/8/9
 
 ### 优先级
 低 / 当前内测期 0 攻击 / 工具已写好待开槽
+
+---
+
+## 🟢 P3：dedupe_service.py 实时算法在"先 GPX 后 Strava"场景下留主反方向（2026-05-20 实证）
+
+### 现状
+- `app/activity/dedupe_service.py:152` 算法 = 永远把 new 标 dup / old 留主
+- 设计假设（Tim 2026-05-11 拍修法 A）：existing 已有 effort/通知关联 / 标 new 副本不引入迁移
+- worker.py:282-286 / worker_strava.py:250 / import_scheduler.py:535 三条路径 dedupe-then-segment-match 顺序正确 → **实时新副本不生成 effort**（排行榜不会双倍）✅
+
+### Corner case bug
+"先 GPX 后 Strava backfill"场景：
+- old (existing) = GPX / new = Strava → Strava 标 dup / GPX 留主
+- 用户列表看到 GPX 那份（数据少 / 无 normalized 传感器）/ Strava 那份被隐藏
+- 跟"数据全的留主"直觉反（Tim 2026-05-20 用自己 4 对历史数据踩了同款坑）
+
+### 触发概率
+- 100 用户量级几乎不触发：大部分用户先用 Strava → 后接 velo OAuth → 不会主动传 GPX
+- Tim 自己 1 用户踩出来 4 对（先用 velo 传 GPX → 后接 Strava OAuth backfill）
+- 100 → 1000 用户后预计再增 1-2 个个案
+
+### 修法草稿
+两条路：
+- A. dedupe_service.py 加 completeness + data_source 偏好选主 / **必须**配套 effort/notification 迁移逻辑（把 existing 的 effort 转到 new id / 工程量大）
+- B. 不修算法 / 历史回扫脚本兜底 / 未来某个用户中招后跑一次
+
+当前 = B。已配套 `scripts/historical_dedupe_cleanup.py`（dry-run + apply / 支持 `--user-id N` 单用户）。
+
+### 触发清理条件
+- 第 2 个用户报"老 GPX 留着 Strava 没了"
+- 或用户量上 1000 / 历史回扫负担每月 > 5 次
 
 ---
 
