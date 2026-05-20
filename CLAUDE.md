@@ -144,6 +144,12 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 **运行规则（agent 常驻）**
 - **agent 产品规则**：`docs/agent-rules/product-decisions.md`（常驻，规则层）
 - **agent 思考框架**：`docs/agent-rules/velo-mental-model.md`（按需，mental model 层）
+- **Persona 宪法**：`docs/agent-rules/persona-constitution.md`（**2026-05-20 模块已砍 / 文档保留作教训**）
+
+**Persona Engine（2026-05-20 砍掉 / 装饰展示层不应上 sprint 主线）**
+- 整目录 `app/agent/persona/` + 3 张 persona_* 表 + 6 task plans + 宪法 v0.1 **暂停不删 / 晾着**——等 3-5 天看真实反应再回头判断（永久砍 / 复用为骑后教练复盘 / 或部分组件 DeepSeek client + persona_outputs 台账复用）
+- **战略失误复盘**：memory `feedback_decoration_vs_guidance_velo_persona_lesson.md` + 全局 `~/.claude/CLAUDE.md` §2.1 "装饰展示 vs 主动指导"原则
+- **新方向训练分析线**：`docs/superpowers/specs/2026-05-20-training-analytics-roadmap.md`（5 模块 6-8 周）+ `docs/prd/sprint-9-prd.md`（Sprint 9 FTP 智能化 / **当前主线**）+ `docs/superpowers/specs/2026-05-20-coach-engine-design.md`（Sprint 12 LLM 教练总结预留设计）
 
 **历史档案**
 - **变更记录**：`docs/changelog.md`
@@ -305,8 +311,14 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 # 1. 服务器 pull 最新代码
 ssh ubuntu@114.132.190.245 "cd ~/velo && git pull origin main"
 
-# 2. rebuild api 容器（不是 restart / restart 不会拿新代码）
-ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build api"
+# 2. rebuild 所有受影响容器（不是 restart / restart 不会拿新代码）
+# ⚠ 2026-05-20 实证：只 rebuild api 漏 worker / 让 worker NPC hook 静默失效 30 分钟
+# api / worker / persona-scanner / cleanup / monitor 共享 `build: .` 同一 image
+# 改任意 app/*.py 都要 rebuild 该 service 对应的容器（worker 改了必 rebuild worker）
+# 最稳：不指定 service / docker 自动 rebuild + 重启所有受影响容器
+ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build"
+# 边界确定时才指定（仅改 router.py 等只影响 api）：
+# ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build api"
 
 # 3. 跑 alembic upgrade（硬性必跑 / 哪怕你"觉得这次没改 schema"）
 #    2026-05-15 实证：跳过这步 = 生产新代码引用未建表 / 全 endpoint 500

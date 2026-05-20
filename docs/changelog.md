@@ -1,5 +1,29 @@
 # VELO 开发变更日志
 
+## 2026-05-20: 战略 reset / Persona 砍 + 训练分析线立项 ⚠
+
+**主轴**：Tim + Claude 一次 brainstorm 复盘 / 发现 Persona Engine（NPC 老登嘴贱便利贴）是装饰展示层 / 用户不会看 / 一个 sprint 战略失误 → 决策砍掉 + 沉淀元教训 + 立训练分析新线。
+
+**关键决策**：
+
+1. **Persona Engine 砍**：整目录 `app/agent/persona/` + 3 张 persona_* 表 + 6 task plans + 宪法 v0.1 暂停不删 / 整套晾着 / 等 3-5 天看真实反应再判断（永久砍 / 部分复用 / 还是激活）
+2. **元教训沉淀**：全局 `~/.claude/CLAUDE.md` §2.1 新原则"装饰展示 vs 主动指导（每加新 feature 前必过这一关）" + memory `feedback_decoration_vs_guidance_velo_persona_lesson.md` 含 persona 完整始末
+3. **训练分析线立项**：跟另一线 brainstorm（roadmap.md）合并 / 5 模块 6-8 周完整版 / Sprint 9（FTP 智能化）→ 10（PMC 训练负荷曲线）→ 11（训练分布）→ 12（LLM 教练总结 / 替原"规则版"AI）→ 13 取消（HRV 永久不做）
+4. **HRV 永久不做**：research subagent 实证微信小程序 `wx.getWeRunData` 只返步数 / 不能调 Apple HealthKit / Strava API 不返 HRV / 蓝牙手环协议不一。velo 100 用户量级 + 微信小程序入口 → 永远拿不到 HRV / 装就崩塌
+
+**文档产出**：
+
+- 新建 `docs/superpowers/specs/2026-05-20-coach-engine-design.md` 设计稿（8 大块 / Sprint 12 模块 D 详细设计 / 等 Sprint 9-11 ship 后转 `sprint-12-prd.md`）
+- 改 `docs/superpowers/specs/2026-05-20-training-analytics-roadmap.md` 三处（模块 D 规则版→LLM 版 + 指针 / 模块 E 选做→永久不做 / §7 加 persona 已砍）
+- 改本项目 `CLAUDE.md` 文档清单段（标注 persona 已砍 + 链向训练分析线）
+- 改 `docs/tech-debt.md` persona-1~5 加搁置 banner
+
+**当前主线**：Sprint 9 / FTP 智能化（按另一线已写好的 `docs/prd/sprint-9-prd.md` 8 个 task 跑）。
+
+**zero 代码改动**：本日全是文档 + memory + 全局 CLAUDE.md 同步。
+
+---
+
 ## 2026-05-16 → 2026-05-17: Sprint 6 "我的"页基础落地全部 ship ✅
 
 **主轴**：把 `pages/profile` 从字段表格升级为骑手身份名片——签名 + 训练统计 + 热图 + 历史活动列表。

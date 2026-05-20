@@ -233,6 +233,15 @@ velo 升级 OAuth scope `activity:read` → `activity:read_all` 后（commit TBD
 | v5-2 | `infer_city_from_coords` 跨省 / 海外起点不准 | P2 | spec §7 限定。靠 5.D.3 admin 人工修。6 城矩形边界粗略，跨省骑行（北京-天津 / 杭州-上海）会按起点判定；海外骑行返 unknown。**重评估触发**：城市枚举扩到 8+ / 每周 admin 修正占比 > 20% |
 | v5-3 | 候选池脚本周一次跑 | P2 | spec §7 限定。`scripts/generate_curation_pool.py` 每周一刷新，新赛段最长 7 天才进候选池。**重评估触发**：admin 反馈"新热门赛段太晚被推 AI 写"/ 或贡献者投诉自己的赛段 1 周才被处理 |
 | v5-4 | AI 草稿质量依赖人工审核 | P3 | PRD D-P10 拍。DeepSeek 生成质量参差，60-70% 可一稿过 / 30-40% 需人工改 / 偶尔有事实性错误（赛段位置写错）。**重评估触发**：DeepSeek 模型升级后人工修订率 < 10% / 或换更强模型 |
+
+---
+
+### ⚠ Persona Engine 5 条债（2026-05-20 模块已砍 / 全部搁置不修）
+
+> **Persona Engine 模块 2026-05-20 战略决定砍掉**（装饰展示层不应上 sprint 主线 / 详 memory `feedback_decoration_vs_guidance_velo_persona_lesson.md` + 全局 `~/.claude/CLAUDE.md` §2.1 "装饰展示 vs 主动指导"原则）。
+>
+> 整目录 `app/agent/persona/` + 3 张 persona_* 表 + 6 task plans **暂停不删 / 晾着**。**以下 5 条 persona 技术债全部搁置 / 任何 agent 不要主动修**——等 3-5 天看真实反应再回头判断模块是永久砍 / 部分复用 / 还是激活。
+
 | persona-1 | `veteran_short` 段位无 template 池 | P3 | Persona v0.1 / 老登 < 30km 短距走 segment_distance/veteran_short / 但宪法 §2.2 没该 segment 文案 / template_lib 返 None / 2026-05-20 回填 286 条里 93 条 no_output 全是此 segment。**重评估触发**：trigger_router 改路由（老登 < 30km 走 extreme/tiny 而非 segment_distance）/ 或宪法 §2.2 加该 segment 文案 |
 | persona-2 | 节气日历硬编码 2026 / 2027 起失效 | P2 | `scripts/persona_milestone_scanner.py` `_SOLAR_TERMS_2026` 写死 2026 月日。**重评估触发**：2026-12-31 前必须刷新表 / 或换 lunardate 库动态算 |
 | persona-3 | 闰年 2/29 注册用户周年永远不触发 | P3 | `_check_anniversary` 严格匹配月日 / 2/29 在平年不存在。**重评估触发**：实际有 2/29 注册用户投诉看不到周年文案 |
