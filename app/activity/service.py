@@ -100,6 +100,11 @@ def _apply_activity_privacy_mask(activity: Activity, viewer_user_id: int | None)
         activity.intensity_factor = None
         activity.tss = None
         activity.snapshot_ftp = None
+        # task-3 sprint9 Codex 异源审 Important（2026-05-20 抓的）：calories 同样反推
+        # GPX 路径 stats_calculator.py:226：calories = avg_power × duration × 0.0009
+        # → 反推 avg_power = calories / (duration × 0.0009)
+        # Strava 路径 calories 也基于功率算法（has_sensors 守卫已守）/ 同样反推风险
+        activity.calories = None
 
     if privacy.hide_heartrate:
         activity.avg_hr = None
