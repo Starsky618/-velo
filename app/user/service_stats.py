@@ -118,7 +118,7 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
                     COALESCE(SUM(distance), 0)       AS distance,
                     COUNT(*)                         AS rides,
                     COALESCE(SUM(elevation_gain), 0) AS elevation_gain,
-                    COALESCE(SUM(duration), 0)       AS duration
+                    COALESCE(SUM(COALESCE(moving_time, duration)), 0) AS duration
                 FROM activities
                 WHERE user_id = :user_id
                   AND status = 'completed'
@@ -134,7 +134,7 @@ def get_user_stats(db: Session, user_id: int, period: str) -> dict:
                     COALESCE(SUM(distance), 0)       AS distance,
                     COUNT(*)                         AS rides,
                     COALESCE(SUM(elevation_gain), 0) AS elevation_gain,
-                    COALESCE(SUM(duration), 0)       AS duration
+                    COALESCE(SUM(COALESCE(moving_time, duration)), 0) AS duration
                 FROM activities
                 WHERE user_id = :user_id
                   AND status = 'completed'
