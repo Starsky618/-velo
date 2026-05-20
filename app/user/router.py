@@ -15,7 +15,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.activity import schemas as activity_schemas
 from app.activity.backfill_ftp import enqueue_backfill_ftp
+from app.activity.ftp_estimator import estimate_ftp_for_user
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.user import schemas, service
@@ -305,6 +307,31 @@ def patch_me(
 
     # 返回最新 user（含可能改过的 city / bio）
     return service.get_user_by_id(db, user_id)
+
+
+# ========== Sprint 9 task-6：FTP 智能估算 endpoint ==========
+#
+# 给 settings 页"让系统估算"按钮用——跑 CP 3-param 模型算用户 FTP。
+# 落在 /me/... 静态路径 / FastAPI 先匹配静态再匹配动态 /{user_id}/...
+#
+# 调用链：settings.js onEstimateFtp → GET /me/ftp-estimate → estimate_ftp_for_user
+#        → 拉用户全 best efforts → fit_cp3_model → 返 (ftp, confidence, method, r2)
+# 失败兜底：估算抛异常 → 500 / 前端 catch toast "估算失败 请手动填"
+# insufficient 兜底：返 ftp=None / 前端弹窗显示"历史活动不够"
+
+
+@router.get("/me/ftp-estimate", response_model=activity_schemas.EstimationResultResponse)
+def get_ftp_estimate(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """task-6 (sprint9)：给前端 ftp 估算弹窗用 / 跑 CP 3-param 算用户 ftp。
+
+    返回 EstimationResultResponse（ftp / confidence / method / r2）。
+    confidence='insufficient' 时 ftp=None / 前端引导用户手动填。
+    """
+    result = estimate_ftp_for_user(db, user_id)
+    return result
 
 
 @router.get("/{user_id}/profile", response_model=schemas.UserProfileResponse)

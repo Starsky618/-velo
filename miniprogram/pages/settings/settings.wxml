@@ -21,14 +21,59 @@
   <!-- 区块 1：账号资料 -->
   <view class="section">
     <view class="section-title">账号资料</view>
-    <view class="row" bindtap="onEditFtp">
-      <text class="row-label">FTP</text>
+
+    <!-- FTP 行：未设时多一个"让系统估算"按钮（Sprint 9 task-6 / 入口前置） -->
+    <view class="row">
+      <text class="row-label" bindtap="onEditFtp">FTP</text>
       <view class="row-right">
-        <text class="row-value">{{ftp ? ftp + ' W' : '未设置'}}</text>
-        <text class="row-arrow">›</text>
+        <button
+          class="inline-btn estimate-btn"
+          wx:if="{{!ftp}}"
+          bindtap="onEstimateFtp"
+          size="mini">让系统估算</button>
+        <text class="row-value" bindtap="onEditFtp">{{ftp ? ftp + ' W' : '未设置'}}</text>
+        <text class="row-arrow" bindtap="onEditFtp">›</text>
       </view>
     </view>
     <text class="section-hint">骑行实力评估的核心参数 / 影响功率区间统计</text>
+
+    <!-- 体重行（Sprint 9 task-6 / 可选 / 算 W/kg 用） -->
+    <view class="row" bindtap="onEditWeight">
+      <text class="row-label">体重</text>
+      <view class="row-right">
+        <text class="row-value">{{weight ? weight + ' kg' : '未设置'}}</text>
+        <text class="row-arrow">›</text>
+      </view>
+    </view>
+    <text class="section-hint">可选 / 用于计算 W/kg（功重比 / 衡量爬坡能力）</text>
+  </view>
+
+  <!-- Sprint 9 task-6：FTP 估算结果弹窗（手写 modal / 不用 wx.showModal 因为要展示富内容） -->
+  <view class="modal-mask" wx:if="{{ftpEstimateModal}}" bindtap="onCloseEstimateModal">
+    <view class="modal-content" catchtap="noop">
+      <view class="modal-title">系统估算结果</view>
+      <view class="modal-body">
+        <!-- insufficient：历史数据不足 / 引导手动填 -->
+        <view wx:if="{{estimateResult.confidence === 'insufficient'}}" class="estimate-fail">
+          <view class="estimate-fail-icon">📉</view>
+          <view class="estimate-fail-text">历史活动数据不足</view>
+          <view class="estimate-fail-hint">至少需要 3 段不同时长的全力骑行 / 请手动填 FTP</view>
+        </view>
+        <!-- 有估算值：显示数字 + confidence 配色 + R² -->
+        <view wx:else class="estimate-success">
+          <view class="estimate-hint">我估算你的 FTP 大约</view>
+          <view class="estimate-value">{{estimateResult.ftp}}<text class="estimate-unit">W</text></view>
+          <view class="confidence-row">
+            <text class="confidence {{estimateResult.confidence}}">{{estimateResult.confidence}} 置信度</text>
+            <text class="r2-text">R² = {{estimateResult.r2}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="modal-actions">
+        <button class="modal-btn primary-btn" bindtap="onAcceptEstimate" wx:if="{{estimateResult.ftp}}">用这个值</button>
+        <button class="modal-btn cancel-btn" bindtap="onCloseEstimateModal">手动填</button>
+      </view>
+    </view>
   </view>
 
   <!-- 区块 2：第三方账号 -->

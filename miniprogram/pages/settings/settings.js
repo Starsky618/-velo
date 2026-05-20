@@ -35,7 +35,11 @@ const app = getApp()
 Page({
   data: {
     ftp: null,
+    weight: null,                  // Sprint 9 task-6：体重（kg）/ 可选 / 算 W/kg 用
     stravaBound: false,
+    // Sprint 9 task-6：FTP 估算弹窗状态
+    ftpEstimateModal: false,       // 弹窗显隐
+    estimateResult: null,          // EstimationResultResponse / { ftp, confidence, method, r2 }
   },
 
   /**
@@ -61,7 +65,11 @@ Page({
       .then((p) => {
         // 三审 Important 修：用 != null 不用 ||（防 truthiness 陷阱 / 即使 ftp=0 也不会被当 null）
         // FTP schema 范围 50-500 / 实际 0 不会出现 / 但防御性写法
-        this.setData({ ftp: p.ftp != null ? p.ftp : null })
+        // Sprint 9 task-6：同步拉 weight / 一起 setData（避免两次渲染闪烁）
+        this.setData({
+          ftp: p.ftp != null ? p.ftp : null,
+          weight: p.weight != null ? p.weight : null,
+        })
       })
       .catch((err) => {
         if (err && err.code === 401) {
@@ -123,6 +131,136 @@ Page({
       },
     })
   },
+
+  /**
+   * 编辑体重（Sprint 9 task-6）——wx.showModal editable 唤起原生输入框
+   *
+   * 干啥用：可选填字段 / 用于算 W/kg（功重比）/ 影响详情页 power_per_kg 展示
+   *
+   * 校验：
+   *   1. 用户取消 → 直接 return
+   *   2. 空输入 → 静默忽略（不强制必填）
+   *   3. 解析浮点数 + 范围 30.0-200.0 → 不通过 toast
+   *   4. PUT /api/user/profile { weight } → 后端 schema Field ge=30.0 le=200.0 兜底
+   */
+  onEditWeight() {
+    const that = this
+    const current = this.data.weight ? String(this.data.weight) : ''
+    wx.showModal({
+      title: '编辑体重',
+      content: '',
+      editable: true,
+      placeholderText: current || '请输入 30-200 之间的体重（kg）',
+      success: function (res) {
+        if (!res.confirm) return
+        const raw = (res.content || '').trim()
+        if (!raw) return
+        const weight = parseFloat(raw)
+        if (isNaN(weight) || weight < 30 || weight > 200) {
+          wx.showToast({ title: '体重范围 30-200 kg', icon: 'none' })
+          return
+        }
+        api.put('/api/user/profile', { weight: weight })
+          .then(function () {
+            that.setData({ weight: weight })
+            wx.showToast({ title: '体重已更新', icon: 'success' })
+          })
+          .catch(function (err) {
+            wx.showToast({
+              title: (err && err.message) || '更新失败',
+              icon: 'none',
+            })
+          })
+      },
+    })
+  },
+
+  /**
+   * Sprint 9 task-6：让系统估算 FTP
+   *
+   * 干啥用：不知道自己 FTP 时 / 一键跑 CP 3-param 模型从历史活动算 FTP
+   *
+   * 流程：
+   *   1. showLoading "估算中"（最长 3 秒 / 后端跑 scipy curve_fit 一般 < 1 秒）
+   *   2. GET /api/user/me/ftp-estimate → EstimationResultResponse
+   *   3. 弹自定义 modal 显示结果 / 用户点"用这个" → onAcceptEstimate / 点"手动填" → 关弹窗
+   *
+   * 失败兜底：estimator 抛异常 → 500 → catch toast "估算失败 请手动填"
+   * insufficient 兜底：返 ftp=null → modal 显示"历史活动数据不足"引导手动填
+   */
+  onEstimateFtp() {
+    const that = this
+    wx.showLoading({ title: '估算中…', mask: true })
+    api.get('/api/user/me/ftp-estimate')
+      .then(function (result) {
+        wx.hideLoading()
+        that.setData({
+          ftpEstimateModal: true,
+          estimateResult: result,
+        })
+      })
+      .catch(function (err) {
+        wx.hideLoading()
+        wx.showToast({
+          title: (err && err.message) || '估算失败 / 请手动填',
+          icon: 'none',
+          duration: 2500,
+        })
+      })
+  },
+
+  /**
+   * Sprint 9 task-6：接受估算结果 / 写入 FTP
+   *
+   * 点"用这个值" → PUT /api/user/profile { ftp } → 触发 task-4 首次填 ftp 回填
+   * （RQ worker 异步把该用户所有 snapshot_ftp=NULL 的历史活动补登 + 重算 IF/TSS）
+   *
+   * 乐观更新：本地直接刷 ftp + 关弹窗 / 不等后端响应（失败时 toast 提示）
+   */
+  onAcceptEstimate() {
+    const that = this
+    const ftp = this.data.estimateResult && this.data.estimateResult.ftp
+    if (!ftp) {
+      // 防御：理论上 ftp=null 时按钮 wx:if 不显示 / 这里兜底
+      this.setData({ ftpEstimateModal: false })
+      return
+    }
+    api.put('/api/user/profile', { ftp: ftp })
+      .then(function () {
+        that.setData({
+          ftp: ftp,
+          ftpEstimateModal: false,
+          estimateResult: null,
+        })
+        wx.showToast({
+          title: 'FTP 已保存 / 正在算历史活动',
+          icon: 'success',
+          duration: 2500,
+        })
+      })
+      .catch(function (err) {
+        wx.showToast({
+          title: (err && err.message) || 'FTP 保存失败',
+          icon: 'none',
+        })
+      })
+  },
+
+  /**
+   * Sprint 9 task-6：关闭估算弹窗（点遮罩 / 点"手动填" / 点取消都走这里）
+   */
+  onCloseEstimateModal() {
+    this.setData({
+      ftpEstimateModal: false,
+      estimateResult: null,
+    })
+  },
+
+  /**
+   * Sprint 9 task-6：modal-content 上的 catchtap 占位（防点击穿透到 mask 触发关闭）
+   * catchtap="noop" 只需一个空方法即可 / 不做任何事
+   */
+  noop() {},
 
   /**
    * 解绑 Strava——强制二次确认（红线）
