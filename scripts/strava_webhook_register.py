@@ -41,10 +41,11 @@ def fail(msg: str) -> None:
 
 
 def get_env(key: str) -> str:
-    """从 .env 文件读 key 值（防 shell env 污染）。"""
+    """读 env：os.environ 优先（容器场景 docker-compose 注入）/ .env 文件兜底（宿主场景）。"""
+    if os.environ.get(key):
+        return os.environ[key]
     if not os.path.exists(ENV_FILE):
-        fail(f"找不到 {ENV_FILE} 文件 / 必须在 velo 根目录跑")
-
+        return ""
     with open(ENV_FILE, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -54,9 +55,18 @@ def get_env(key: str) -> str:
 
 
 def write_subscription_id_to_env(sub_id: int) -> None:
-    """把 STRAVA_WEBHOOK_SUBSCRIPTION_ID 写到 .env（替换已有或追加）。"""
+    """写 sub_id：.env 存在则写文件 / 不存在（容器场景）则醒目 print 让人工拷回。"""
     if not os.path.exists(ENV_FILE):
-        fail(f"找不到 {ENV_FILE}")
+        print("=" * 70)
+        print(f"✅ Strava webhook subscription 注册成功 / sub_id = {sub_id}")
+        print("=" * 70)
+        print("⚠️ 当前在容器内运行 / .env 不在容器里。")
+        print("请在**宿主机**手动写入 .env：")
+        print(f"  sed -i 's|^STRAVA_WEBHOOK_SUBSCRIPTION_ID=.*|STRAVA_WEBHOOK_SUBSCRIPTION_ID={sub_id}|' ~/velo/.env")
+        print(f"  # 然后 rebuild api 容器让新 env 生效：")
+        print(f"  sudo docker compose -f ~/velo/docker-compose.yml up -d --build api")
+        print("=" * 70)
+        return
 
     with open(ENV_FILE, "r", encoding="utf-8") as f:
         content = f.read()
@@ -67,12 +77,12 @@ def write_subscription_id_to_env(sub_id: int) -> None:
     if re.search(pattern, content, re.MULTILINE):
         new_content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
     else:
-        # 追加到文件末尾
         new_content = content.rstrip() + f"\n{replacement}\n"
 
     with open(ENV_FILE, "w", encoding="utf-8") as f:
         f.write(new_content)
     print(f"✅ .env 已写入 STRAVA_WEBHOOK_SUBSCRIPTION_ID={sub_id}")
+    print("⚠️ 记得 rebuild api 容器让新 env 生效：sudo docker compose up -d --build api")
 
 
 def main() -> None:
