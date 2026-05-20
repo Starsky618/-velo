@@ -410,9 +410,10 @@ class TestWebhookRoutes:
         assert resp.status_code == 403
 
 
+    @patch("app.queue.default_queue")
     @patch("app.strava.router.settings")
-    def test_webhook_post_activity_create(self, mock_settings, client, db, test_user):
-        """POST /api/strava/webhook activity create 应创建 importing Activity。"""
+    def test_webhook_post_activity_create(self, mock_settings, mock_queue, client, db, test_user):
+        """POST /api/strava/webhook activity create 应创建 importing Activity + enqueue worker。"""
         from app.activity.models import Activity
 
         # v4 task-7.4：webhook 加了 subscription_id 校验
@@ -439,6 +440,13 @@ class TestWebhookRoutes:
         assert activity is not None
         assert activity.status == "importing"
         assert activity.user_id == test_user.id
+
+        # Sprint 8 Fix 2：验证 worker_strava 被 enqueue
+        mock_queue.enqueue.assert_called_once()
+        call_args = mock_queue.enqueue.call_args
+        assert call_args[0][0] == "app.strava.worker_strava.process_strava_webhook_create"
+        assert call_args[0][1] == test_user.id
+        assert call_args[0][2] == 99999
 
     @patch("app.strava.router.settings")
     def test_webhook_post_unknown_owner(self, mock_settings, client, db):

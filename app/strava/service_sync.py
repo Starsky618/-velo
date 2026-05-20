@@ -94,13 +94,27 @@ def handle_webhook_event(db: Session, payload: dict) -> None:
             logger.info("删除 Strava 活动 strava_id=%s activity_id=%d", object_id, activity.id)
         return
 
-    if aspect_type in ("create", "update"):
-        # 新活动或更新 → 创建 importing 骨架（由调度器异步处理详情+轨迹）
-        # TODO Sprint 8 Fix 1/2：webhook 路径补 _is_cycling 类型守卫——
-        # webhook payload 本身不带 type 字段 / 需 sprint 8 在 worker_strava
-        # 拉详情时再过滤。当前 manual_sync (Fix 6) + tier1 (Fix 3) 已守卫，
-        # 但 webhook 路径暂时还会为跑步骨架，靠 Fix 7 数据层 11 处过滤拦住。
-        _create_importing_activity(db, user, object_id)
+    # Sprint 8 Fix 2：webhook 拆 create / update 独立路径 + RQ worker 异步处理
+    # webhook payload 只含 strava_activity_id（不含 type）/ 必须 worker 拉详情后才能守卫
+    # type，所以 type 守卫在 worker_strava._process_strava_main 内做。
+    if aspect_type == "create":
+        # 先建 importing 骨架（活动列表立刻有 / 哪怕详情还没拉）
+        # spec 字面要求 if created: 守卫——重复 webhook（Strava 偶尔重发）或
+        # scheduler tier1 已建骨架时 / created=False / 不重复 enqueue 防 RQ 队列污染
+        created = _create_importing_activity(db, user, object_id)
+        if created:
+            from app.queue import default_queue
+            default_queue.enqueue(
+                "app.strava.worker_strava.process_strava_webhook_create",
+                user.id, object_id, job_timeout=120,
+            )
+    elif aspect_type == "update":
+        # update 不建骨架（worker 自己判断 activity 是否存在 / 不存在则当 create 处理）
+        from app.queue import default_queue
+        default_queue.enqueue(
+            "app.strava.worker_strava.process_strava_webhook_update",
+            user.id, object_id, job_timeout=120,
+        )
 
 
 def _handle_athlete_deauthorize(db: Session, owner_id) -> None:
