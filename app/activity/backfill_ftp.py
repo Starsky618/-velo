@@ -145,10 +145,24 @@ def enqueue_backfill_ftp(user_id: int, new_ftp: int) -> None:
 
     用户 PUT /profile 改 ftp 立刻返 200 / 后台慢慢补登历史活动 / 不阻塞请求。
     走 default_queue（与 GPX parse_activity / Strava webhook 同队列）。
+
+    陷阱 #14 防护（Codex 异源审 + Claude quality 双审独立抓 / 2026-05-20）：
+    Redis 挂时 enqueue 抛异常 → 如果让异常上传到 router / DB ftp 已 commit 但 PUT 返 500
+    → 用户重试 PUT / 因 old_ftp 已是新值 / first-fill guard 永久 False → 历史活动死局不再回填。
+    修法：try/except 包 enqueue / 失败 logger.exception / 不抛 / PUT 仍返 200。
+    代价：用户历史回填丢失 / 但 ftp 状态正确 / 新活动 worker 仍正常算 snapshot_ftp。
+    后续：admin 手动触发 / 或下次新活动 worker 解析顺手补登（待 sprint 9.5 实现）。
     """
-    default_queue.enqueue(
-        "app.activity.backfill_ftp.backfill_user_snapshot_ftp_job",
-        user_id,
-        new_ftp,
-        job_timeout=_BACKFILL_JOB_TIMEOUT,
-    )
+    try:
+        default_queue.enqueue(
+            "app.activity.backfill_ftp.backfill_user_snapshot_ftp_job",
+            user_id,
+            new_ftp,
+            job_timeout=_BACKFILL_JOB_TIMEOUT,
+        )
+    except Exception:
+        logger.exception(
+            "enqueue_backfill_ftp 失败 user_id=%s new_ftp=%s / DB ftp 已 commit / "
+            "历史活动需 admin 手动触发回填",
+            user_id, new_ftp,
+        )
