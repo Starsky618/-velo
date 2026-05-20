@@ -504,7 +504,7 @@ def _run_tier2(
         parse_result = normalize(parse_result)
 
         # 共享写入函数（不改 status、不 commit）
-        save_parse_result(db, activity, parse_result)
+        save_parse_result(db, activity, parse_result, user=user)
 
         activity.status = "completed"
 

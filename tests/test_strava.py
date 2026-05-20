@@ -753,8 +753,8 @@ class TestSaveParseResult:
             # 用适配器生成 ParseResult
             parse_result = from_streams(MOCK_STREAMS, MOCK_DETAIL)
 
-            # 写入
-            save_parse_result(db, activity, parse_result)
+            # 写入（sprint9 task-2 加 user 参数 / test_user.ftp 默认 None → IF/TSS 不算）
+            save_parse_result(db, activity, parse_result, user=test_user)
             db.commit()
 
             # 验证统计字段已写入

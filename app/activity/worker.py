@@ -57,6 +57,35 @@ _BATCH_SIZE = 500
 _MAX_TRACKPOINTS = 50_000
 
 
+def calculate_intensity_metrics(
+    np: float | None,
+    ftp: int | None,
+    duration_seconds: int | None,
+) -> tuple[float | None, float | None]:
+    """
+    算 IF（强度系数）+ TSS（训练分数）。
+
+    精度规则单一真相源在此函数（models.py 注释 + 迁移 comment 是简述版本）：
+    - IF round 3 位小数
+    - TSS round 1 位小数
+
+    入参：
+      np: 标准化功率（W）/ GPX 路径无功率为 None
+      ftp: 用户当前 ftp（W）/ 用户没填为 None
+      duration_seconds: 活动时长（秒）/ 防除零必须 > 0
+
+    返：
+      (if, tss) 或 (None, None)
+
+    任一缺失 / 0 值 → 返 (None, None) / 前端整块隐藏（按永久规则不显示 -）
+    """
+    if np is None or not ftp or not duration_seconds:
+        return (None, None)
+    if_val = round(np / ftp, 3)
+    tss = round((duration_seconds * np * if_val) / (ftp * 3600) * 100, 1)
+    return (if_val, tss)
+
+
 def _set_activity_city(activity, simplified_track) -> None:
     """从轨迹起点经纬度推断 activity.city（Sprint 6 task-3）。
 
@@ -274,7 +303,7 @@ def _do_parse(db, activity_id: int) -> None:
         )
 
     # ===== 步骤 6-9：统计量 + 轨迹点写入（共享函数）=====
-    save_parse_result(db, activity, result)
+    save_parse_result(db, activity, result, user=user)
 
     # ===== 步骤 10：标记完成 =====
     activity.status = "completed"
@@ -485,7 +514,7 @@ def _do_parse(db, activity_id: int) -> None:
             db.rollback()
 
 
-def save_parse_result(db, activity, result) -> None:
+def save_parse_result(db, activity, result, user) -> None:
     """
     文件上传和 Strava 导入共用的 DB 写入逻辑——"档案管理员"。
 
@@ -501,10 +530,15 @@ def save_parse_result(db, activity, result) -> None:
     - 不调 db.commit()（由 caller 控制事务边界）
     - 不触发赛段匹配（由 caller 在 commit 后单独触发）
 
+    task-2 (sprint9): 加 user 参数 / 写 activity.snapshot_ftp + 算 IF/TSS。
+        把"当时用户的 ftp"锁到这条活动上（snapshot 语义）——后续用户改 ftp 也
+        不会回头改这条历史活动的 IF/TSS，保证训练数据的时间一致性。
+
     参数：
         db: SQLAlchemy Session，由调用方管理生命周期
         activity: Activity ORM 对象，统计字段会被直接修改
         result: ParseResult，翻译层输出的标准数据包
+        user: User ORM 对象 / 取 user.ftp 锁到 activity.snapshot_ftp
     """
     # ---- 统计量写入 activity ----
     # 速度：翻译层内部用 m/s，DB 存 km/h（兼容旧数据），写入时 ×3.6
@@ -523,6 +557,16 @@ def save_parse_result(db, activity, result) -> None:
     activity.max_hr = summary.max_hr
     activity.avg_cadence = summary.avg_cadence
     activity.max_cadence = summary.max_cadence
+    # task-2 (sprint9): 锁定当时 ftp 到这条活动 / 算 IF/TSS
+    # snapshot 语义：用户改 ftp 也不回头改历史活动的 IF/TSS（训练数据时间一致性）
+    activity.snapshot_ftp = user.ftp  # 可能为 None（用户没填）
+    if_val, tss = calculate_intensity_metrics(
+        np=summary.normalized_power,
+        ftp=activity.snapshot_ftp,
+        duration_seconds=activity.duration,
+    )
+    activity.intensity_factor = if_val
+    activity.tss = tss
     activity.calories = summary.calories
     activity.normalized_power = summary.normalized_power
     activity.started_at = summary.started_at

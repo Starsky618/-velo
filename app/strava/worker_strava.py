@@ -230,7 +230,7 @@ def _process_strava_main(db, user_id: int, strava_activity_id: int) -> None:
     try:
         ftp = int(user.ftp) if user.ftp else None
         parse_result = normalize(from_streams(streams, detail, ftp=ftp))
-        save_parse_result(db, activity, parse_result)
+        save_parse_result(db, activity, parse_result, user=user)
         activity.status = "completed"
     except Exception as e:
         logger.exception(
