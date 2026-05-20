@@ -420,7 +420,8 @@ def _do_parse(db, activity_id: int) -> None:
                         "duration": activity.duration,
                         "moving_time": activity.moving_time,
                         "started_at": activity.started_at,
-                        "avg_speed_kmh": (activity.avg_speed * 3.6) if activity.avg_speed else None,
+                        # activity.avg_speed 已是 km/h（worker save_parse_result 转过 / models.py:78 注释 / Codex 抓 C1）
+                        "avg_speed_kmh": activity.avg_speed,
                         "avg_power": activity.avg_power,
                         "normalized_power": activity.normalized_power,
                         "is_pr": is_pr,

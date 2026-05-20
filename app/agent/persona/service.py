@@ -52,18 +52,46 @@ def get_latest_output_for_scene(
     scene_type: str,
     activity_id: Optional[int] = None,
 ) -> Optional[PersonaOutput]:
-    """endpoint 查询函数 / 拿"该用户最近某场景"NPC 文案（24h 内）。
+    """endpoint 查询函数 / 拿"该用户某场景"NPC 文案。
+
+    时效语义（"便利贴 + 朋友圈" / Tim 2026-05-20 拍）：
+    - **activity_id 不为空** = 详情页 = **便利贴永远在**（不限时间窗 / 让历史活动详情页
+      永远能拿到回填时写的那条 NPC）
+    - **activity_id 为空** = "我的"页 / 看他人 / 上传完 toast 等场景 = **朋友圈式** /
+      只看最近 24h 内的（无最近活动就静默 / 一周不骑由 silence scanner 主动补）
 
     scene_type 语义：
-    - ∈ FRONTEND_SEMANTIC_SCENES（profile_open 等）→ 退化为查最近 24h **任意**
-      宪法场景最新一条（让 profile 一打开就有文案 / 不限定特定场景）
+    - ∈ FRONTEND_SEMANTIC_SCENES（profile_open 等）→ 退化为查任意宪法场景最新一条
     - ∈ 宪法 7 种场景（pr / segment_distance / 等）→ 按 scene_type 精确过滤
-    - activity_id != None → 加 WHERE activity_id IN (X, NULL) 过滤（让"某次活动详情页"
-      既能拿该活动专属文案 / 又能 fallback 拿无关联活动的通用文案）
+    - activity_id != None → 加 WHERE activity_id IN (X, NULL)（先看该活动 / 兜底通用）
 
-    返 None 表示 24h 内没有匹配记录。
+    返 None 表示无匹配记录。
     """
     try:
+        # 便利贴 / 朋友圈分流（Tim 2026-05-20 拍）+ activity_id 优先（Codex C2 抓）
+        if activity_id is not None:
+            # 便利贴式：先精确匹配 activity_id（不限时间窗）/ 防未来通用 NPC shown_at 更新覆盖
+            exact = db.query(PersonaOutput).filter(
+                PersonaOutput.user_id == user_id,
+                PersonaOutput.activity_id == activity_id,
+            )
+            if scene_type not in FRONTEND_SEMANTIC_SCENES:
+                exact = exact.filter(PersonaOutput.scene_type == scene_type)
+            hit = exact.order_by(PersonaOutput.shown_at.desc()).first()
+            if hit is not None:
+                return hit
+            # fallback：拿无关联活动的通用 NPC（限 24h / 不让 90 天前的通用文案露面）
+            since = datetime.now(timezone.utc) - timedelta(hours=24)
+            fallback = db.query(PersonaOutput).filter(
+                PersonaOutput.user_id == user_id,
+                PersonaOutput.activity_id.is_(None),
+                PersonaOutput.shown_at >= since,
+            )
+            if scene_type not in FRONTEND_SEMANTIC_SCENES:
+                fallback = fallback.filter(PersonaOutput.scene_type == scene_type)
+            return fallback.order_by(PersonaOutput.shown_at.desc()).first()
+
+        # 朋友圈式：24h 内最新一条（不传 activity_id）
         since = datetime.now(timezone.utc) - timedelta(hours=24)
         query = db.query(PersonaOutput).filter(
             PersonaOutput.user_id == user_id,
@@ -71,11 +99,6 @@ def get_latest_output_for_scene(
         )
         if scene_type not in FRONTEND_SEMANTIC_SCENES:
             query = query.filter(PersonaOutput.scene_type == scene_type)
-        if activity_id is not None:
-            query = query.filter(
-                (PersonaOutput.activity_id == activity_id)
-                | (PersonaOutput.activity_id.is_(None))
-            )
         return query.order_by(PersonaOutput.shown_at.desc()).first()
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"persona get_latest_output_for_scene failed: {exc}")
