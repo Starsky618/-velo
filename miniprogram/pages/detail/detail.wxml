@@ -157,6 +157,7 @@
 
     <!-- 功率区间可视化 -->
     <view class="zones" wx:if="{{activity.power_zones.length}}">
+      <view class="zones-meta" wx:if="{{activity.snapshot_ftp}}">按 FTP {{activity.snapshot_ftp}}W 算</view>
       <view class="zones-label">功率区间分布</view>
       <view class="zone-row" wx:for="{{activity.power_zones}}" wx:key="zone">
         <text class="zone-tag" style="background: {{item.color || '#FF9500'}};">Z{{item.zone}}</text>

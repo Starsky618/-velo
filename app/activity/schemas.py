@@ -81,6 +81,10 @@ class ActivityDetail(BaseModel):
     max_hr: Optional[float] = None
     avg_cadence: Optional[float] = None
     max_cadence: Optional[float] = None
+    snapshot_ftp: Optional[int] = None     # 这条活动锁定的 FTP（W）/ 跟 DB Integer 一致 / 前端显示 220W 不是 220.0W
+    intensity_factor: Optional[float] = None
+    tss: Optional[float] = None
+    power_per_kg: Optional[float] = None   # W/kg = avg_power / user.weight（service 算好返）
     calories: Optional[float] = None
     normalized_power: Optional[float] = None  # 标准化功率（NP），FIT 自带
     started_at: Optional[datetime] = None

@@ -93,6 +93,13 @@ def _apply_activity_privacy_mask(activity: Activity, viewer_user_id: int | None)
         # [{zone, name, min_w, max_w, seconds, percent}]，min_w/max_w 直接暴露功率
         # 区间（Zone 5 min_w=280 → 别人直接知道 FTP ≈ 280W），违反"跟没装功率计一样"目标。
         activity.power_zones = None
+        # task-3 (sprint9)：power_per_kg / IF / TSS / snapshot_ftp 同样泄露功率信息 → 一并挖空
+        # power_per_kg = avg_power / weight 反推 avg_power / IF + TSS 反推 NP / snapshot_ftp 暴露 FTP
+        if hasattr(activity, "power_per_kg"):
+            activity.power_per_kg = None
+        activity.intensity_factor = None
+        activity.tss = None
+        activity.snapshot_ftp = None
 
     if privacy.hide_heartrate:
         activity.avg_hr = None
@@ -319,6 +326,24 @@ def get_activity_detail(db: Session, activity_id: int, user_id: int) -> Activity
     # task-4.6：强制 load privacy relationship（_ = activity.privacy 触发 lazy load）
     # 否则 expunge 后 Pydantic 序列化时访问 .privacy 会 DetachedInstanceError
     _ = activity.privacy
+
+    # task-3 (sprint9): 算 W/kg 给详情页 / 后端算 / 前端不算
+    # Activity 模型没有 user relationship，必须单独 query User 拿 weight 字段。
+    # 守卫四件套：avg_power 非 None / owner 用户存在 / user.weight 非 None / weight > 0
+    # 任一不满足 → power_per_kg = None / 前端 wx:if 让整块消失（不显示"-"占位）
+    from app.user.models import User
+    owner = db.query(User).filter_by(id=activity.user_id).first()
+    if (
+        activity.avg_power is not None
+        and owner is not None
+        and owner.weight is not None
+        and owner.weight > 0
+    ):
+        # Pydantic from_attributes 模式下 / 在 ORM 实例加临时属性也能被 schema 读
+        # 保 2 位小数 / 例 3.5 W/kg
+        activity.power_per_kg = round(activity.avg_power / owner.weight, 2)
+    else:
+        activity.power_per_kg = None
 
     # 脱离 Session 后再做单位转换，防止公里值被意外写回数据库
     db.expunge(activity)

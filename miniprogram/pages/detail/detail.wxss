@@ -493,6 +493,12 @@
   border-top: 2rpx solid var(--color-divider);
 }
 
+.zones-meta {
+  font-size: 22rpx;
+  color: #999;
+  margin-bottom: 8rpx;
+}
+
 .zones-label {
   font-size: 24rpx;
   color: var(--color-text-3);
