@@ -82,6 +82,7 @@ class Activity(Base):
     avg_hr = Column(Float, nullable=True)             # 平均心率（bpm）
     max_hr = Column(Float, nullable=True)             # 最大心率
     avg_cadence = Column(Float, nullable=True)        # 平均踏频（rpm）
+    max_cadence = Column(Float, nullable=True)        # 最大踏频（rpm），老活动 / 无踏频感应为 NULL
     calories = Column(Float, nullable=True)           # 估算卡路里（kcal）
     normalized_power = Column(Float, nullable=True)   # 标准化功率（NP），FIT 自带，GPX/Strava 为 NULL
     # 用 DateTime(timezone=True) 让 PostgreSQL 用 TIMESTAMP WITH TIME ZONE 存储，
