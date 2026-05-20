@@ -135,8 +135,9 @@ Page({
             initial: initial,
             // 核心三项
             distance: item.distance || 0,
-            duration: item.duration || 0,
-            durationText: that.fmtDur(item.duration),
+            // 时长统一显示"移动时间"/ 老活动 GPX 没存 moving_time 时 fallback duration
+            duration: item.moving_time || item.duration || 0,
+            durationText: that.fmtDur(item.moving_time || item.duration),
             elevation_gain: Math.round(item.elevation_gain || 0),
             // 次要数据
             avg_speed: item.avg_speed,

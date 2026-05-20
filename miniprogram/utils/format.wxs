@@ -13,21 +13,21 @@ var km = function (v) {
   return n.toFixed(2)
 }
 
-// secToHm(sec)：把秒数转成"小时:分钟"显示字符串（< 1 小时显示"分钟"形式）
-//   - sec 为 null/undefined/0 → 返 '0 分钟'
+// secToHm(sec)：把秒数转成"时长"显示字符串（短/长行程统一英文 min 单位 / 字体规格一致）
+//   - sec 为 null/undefined/0 → 返 '0min'
 //   - sec ≥ 3600 → 返 'Hh Mmin' 格式（例 3700 → '1h 1min'）
-//   - sec < 3600 → 返 'Mmin' 格式（例 1800 → '30 分钟'）
-//   - 类比看公交车时刻表 / 短行程"30 分钟"够用 / 长行程才用"1 小时 30 分"
+//   - sec < 3600 → 返 'Mmin' 格式（例 1800 → '30min'）
+//   - 2026-05-20 Tim 真用拍：列表里"3h 25min"和"32 分钟"中英混杂 + 空格不一 / 视觉割裂 / 全统一英文 min
 var secToHm = function (sec) {
-  if (sec === null || sec === undefined || sec === '') return '0 分钟'
+  if (sec === null || sec === undefined || sec === '') return '0min'
   var n = +sec
-  if (isNaN(n) || n <= 0) return '0 分钟'
+  if (isNaN(n) || n <= 0) return '0min'
   var h = Math.floor(n / 3600)
   var m = Math.floor((n % 3600) / 60)
   if (h > 0) {
     return h + 'h ' + m + 'min'
   }
-  return m + ' 分钟'
+  return m + 'min'
 }
 
 // roundInt(v)：把数值四舍五入成整数字符串（前端"米爬升"等无小数语义的字段用）

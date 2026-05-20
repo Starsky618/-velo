@@ -1,7 +1,8 @@
 <!-- ride-card 组件模板：骑行卡片列表（可复用 home / profile） -->
 <!-- 字段全部对齐后端 ActivitySummary schema（app/activity/schemas.py:39）： -->
-<!--   id / title / distance(公里, service 已转) / duration(秒) / elevation_gain(米) -->
-<!--   / avg_speed(km/h, worker 已转) / avg_power(W) / avg_hr(bpm) / started_at(ISO datetime) -->
+<!--   id / title / distance(公里, service 已转) / duration(秒, 全程耗时) / moving_time(秒, 移动时间) -->
+<!--   / elevation_gain(米) / avg_speed(km/h, worker 已转) / avg_power(W) / avg_hr(bpm) / started_at(ISO datetime) -->
+<!-- 时长显示统一用 moving_time，老活动（GPX 早期）moving_time 为 NULL 时 fallback duration -->
 <!-- 空字段（如爬升缺失）用 wx:if 整块隐藏，禁用 "-" 占位（永久规则） -->
 
 <wxs src="../../utils/format.wxs" module="f" />
@@ -23,25 +24,25 @@
     </view>
 
     <view class="ride-stats">
-      <!-- 距离：service 层已把米转公里 / wxs km() 保 2 位小数 + 尾随零 -->
+      <!-- 距离：service 层已把米转公里 / wxs km() 保 2 位小数 / 单位 km 跟在数值后 -->
       <view class="ride-stat" wx:if="{{item.distance !== null && item.distance !== undefined}}">
-        <view class="ride-stat-value">{{f.km(item.distance)}}</view>
-        <view class="ride-stat-label">公里</view>
+        <view class="ride-stat-value">{{f.km(item.distance)}}<text class="ride-stat-unit">km</text></view>
+        <view class="ride-stat-label">距离</view>
       </view>
-      <!-- 时长：后端秒 / wxs secToHm() 转 "Xh Ymin" 或 "X 分钟" -->
-      <view class="ride-stat" wx:if="{{item.duration}}">
-        <view class="ride-stat-value">{{f.secToHm(item.duration)}}</view>
+      <!-- 时长：后端秒 / 优先用 moving_time（移动时间）/ 老活动 fallback duration / wxs secToHm() 转 "Xh Ymin" -->
+      <view class="ride-stat" wx:if="{{item.moving_time || item.duration}}">
+        <view class="ride-stat-value">{{f.secToHm(item.moving_time || item.duration)}}</view>
         <view class="ride-stat-label">时长</view>
       </view>
-      <!-- 均速：worker 已把 m/s 转 km/h（worker.py:360 round 1 位）/ 直接显示 -->
+      <!-- 均速：单位 km/h 跟在数值后 / label 写"均速" / 4 项宽度均衡挤同行 -->
       <view class="ride-stat" wx:if="{{item.avg_speed !== null && item.avg_speed !== undefined}}">
-        <view class="ride-stat-value">{{item.avg_speed}}</view>
-        <view class="ride-stat-label">均速 km/h</view>
+        <view class="ride-stat-value">{{item.avg_speed}}<text class="ride-stat-unit">km/h</text></view>
+        <view class="ride-stat-label">均速</view>
       </view>
-      <!-- 爬升：米 float / wxs roundInt() 四舍五入去 .0 尾巴 -->
+      <!-- 爬升：米 float / wxs roundInt() 四舍五入去 .0 尾巴 / 单位 m 跟在数值后 -->
       <view class="ride-stat" wx:if="{{item.elevation_gain !== null && item.elevation_gain !== undefined}}">
-        <view class="ride-stat-value">{{f.roundInt(item.elevation_gain)}}</view>
-        <view class="ride-stat-label">爬升 m</view>
+        <view class="ride-stat-value">{{f.roundInt(item.elevation_gain)}}<text class="ride-stat-unit">m</text></view>
+        <view class="ride-stat-label">爬升</view>
       </view>
     </view>
   </view>

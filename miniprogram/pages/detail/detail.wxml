@@ -38,7 +38,7 @@
       </view>
       <view class="hero-sep"></view>
       <view class="hero-item">
-        <text class="hero-value">{{durationText}}</text>
+        <text class="hero-value">{{headerTimeText}}</text>
         <text class="hero-unit"> </text>
         <text class="hero-label">时长</text>
       </view>

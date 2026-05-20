@@ -191,7 +191,9 @@ Page({
     api.get('/api/activities/' + activityId)
       .then(function (data) {
         // WXML 模板不支持 .toFixed()，在 JS 层预计算格式化数据
-        var durationMin = data.duration ? Math.round(data.duration / 60) : 0
+        // 时长统一显示"移动时间"/ 老活动 fallback duration
+        var timeSec = data.moving_time != null ? data.moving_time : data.duration
+        var durationMin = timeSec ? Math.round(timeSec / 60) : 0
         // 平均功率 / 心率 / 踏频统一取整：DB 存 Float 但展示层不要小数
         if (data.avg_power != null) data.avg_power = Math.round(data.avg_power)
         if (data.avg_hr != null) data.avg_hr = Math.round(data.avg_hr)
