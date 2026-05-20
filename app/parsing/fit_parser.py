@@ -324,6 +324,12 @@ def _build_summary(
 
     # 踏频（rpm）
     avg_cadence = _safe_get_float(session, "avg_cadence")
+    # max_cadence：FIT SDK session 标准字段名是 max_cadence；少数老设备不报 → 从 trackpoints 兜底算
+    # 跟 max_power 同模式（L318 _safe_get_int session.max_power），但加 fallback 防丢数据
+    max_cadence = _safe_get_float(session, "max_cadence")
+    if max_cadence is None:
+        cad_values = [tp.cad for tp in trackpoints if tp.cad is not None]
+        max_cadence = float(max(cad_values)) if cad_values else None
 
     # 卡路里
     calories = _safe_get_float(session, "total_calories")
@@ -344,6 +350,7 @@ def _build_summary(
         avg_hr=round(avg_hr, 1) if avg_hr is not None else None,
         max_hr=max_hr,
         avg_cadence=round(avg_cadence, 1) if avg_cadence is not None else None,
+        max_cadence=round(max_cadence, 1) if max_cadence is not None else None,
         calories=round(calories, 1) if calories is not None else None,
         started_at=started_at,
         finished_at=finished_at,

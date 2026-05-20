@@ -576,7 +576,7 @@ class TestCoordNormalizer:
             distance=1000.0, duration=60, moving_time=60, elevation_gain=10.0,
             avg_speed=16.7, max_speed=20.0,
             avg_power=None, max_power=None,
-            avg_hr=None, max_hr=None, avg_cadence=None,
+            avg_hr=None, max_hr=None, avg_cadence=None, max_cadence=None,
             calories=None, started_at=_base_time(), finished_at=_base_time(60),
             splits=None, normalized_power=None,
         )
@@ -598,7 +598,7 @@ class TestCoordNormalizer:
             distance=1000.0, duration=60, moving_time=60, elevation_gain=0.0,
             avg_speed=16.7, max_speed=20.0,
             avg_power=None, max_power=None,
-            avg_hr=None, max_hr=None, avg_cadence=None,
+            avg_hr=None, max_hr=None, avg_cadence=None, max_cadence=None,
             calories=None, started_at=_base_time(), finished_at=_base_time(60),
             splits=None, normalized_power=None,
         )

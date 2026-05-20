@@ -95,6 +95,7 @@ def calculate_summary(
     avg_power = round(sum(power_values) / len(power_values), 1) if power_values else None
     max_power = max(power_values) if power_values else None
     avg_cadence = round(sum(cad_values) / len(cad_values), 1) if cad_values else None
+    max_cadence = max(cad_values) if cad_values else None
 
     # ===== 6. 卡路里 =====
     calories = calculate_calories(avg_power, duration, weight)
@@ -119,6 +120,7 @@ def calculate_summary(
         avg_hr=avg_hr,
         max_hr=max_hr,
         avg_cadence=avg_cadence,
+        max_cadence=max_cadence,
         calories=calories,
         started_at=started_at,
         finished_at=finished_at,

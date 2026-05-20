@@ -109,6 +109,7 @@ class ActivitySummary:
     avg_hr: float | None            # 平均心率（bpm）
     max_hr: int | None              # 最大心率（bpm）
     avg_cadence: float | None       # 平均踏频（rpm）
+    max_cadence: float | None       # 最大踏频（rpm），老活动 / 无踏频感应为 None
     calories: float | None          # 估算卡路里（kcal）
     started_at: datetime | None     # 骑行开始时间（UTC）
     finished_at: datetime | None    # 骑行结束时间（UTC）

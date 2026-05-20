@@ -179,6 +179,8 @@ def from_streams(
         avg_hr=detail.get("average_heartrate"),
         max_hr=_safe_int(detail.get("max_heartrate")),
         avg_cadence=detail.get("average_cadence") if has_sensors else None,
+        # Strava detail 不返 max_cadence / 但 streams.cadence 已经拉了（L121）/ 从数组算 max / 0 新增 API
+        max_cadence=float(max(cad_data)) if (has_sensors and cad_data) else None,
         calories=detail.get("calories") if has_sensors else None,
         started_at=start_dt,
         finished_at=(start_dt + timedelta(seconds=elapsed)

@@ -522,6 +522,7 @@ def save_parse_result(db, activity, result) -> None:
     activity.avg_hr = summary.avg_hr
     activity.max_hr = summary.max_hr
     activity.avg_cadence = summary.avg_cadence
+    activity.max_cadence = summary.max_cadence
     activity.calories = summary.calories
     activity.normalized_power = summary.normalized_power
     activity.started_at = summary.started_at
