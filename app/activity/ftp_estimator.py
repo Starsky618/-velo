@@ -1,0 +1,286 @@
+"""Sprint 9 task-5：CP 3-param eFTP 估算器。
+
+这个文件干什么？
+-----------------
+当用户没有功率计实测 FTP（功能阈值功率），或者 FTP 长时间没更新时，
+我们需要"算"出来一个估计值。原理类似于：通过你跑 100 米、400 米、1500 米的
+最好成绩，反推你的"长距离稳定速度"（耐力区间）。骑行里的 eFTP 同理：
+用 3/5/10/20/60 分钟的最大功率，反推你"能稳定输出 1 小时的功率"——这就是 FTP。
+
+公式（Morton 1996 / PMID 8854981 标准 CP 3-param 模型）：
+    t = W' / (P - CP) + W' / (P_max - CP)
+
+反解（给定 t 求 P / scipy curve_fit 用这个形式）：
+    P(t) = CP + W' * (P_max - CP) / (W' + t * (P_max - CP))
+
+三个参数的物理含义：
+    CP    渐近线功率（≈ FTP）—— 你能"无限期"维持的功率
+    W'    无氧储备能量（焦耳）—— 像一个"电池"，超过 CP 的部分吃这个电池
+    P_max 瞬间最大功率（W）—— 你能爆发出来的最大功率
+
+confidence 4 档判断（拟合质量）：
+    insufficient < 3 best efforts / 拟合失败 / R² < 0.75
+    low         0.75 ≤ R² < 0.85
+    medium      0.85 ≤ R² < 0.95
+    high        R² ≥ 0.95
+
+操作注意事项：
+- v0.1 不做心率加权（method='cp3_no_hr'）/ v0.2 真用回归后再决定加不加
+- scipy.optimize.curve_fit 可能数值不稳 / 异常 / 不收敛 → 必须 try/except 兜底
+- 滑动窗口找 best power 用 O(n²) 简单实现 / v0.2 若性能瓶颈再优化成 O(n) 单调队列
+- 该模块"纯计算 + DB 查询"，不写库 / 调用方负责持久化结果
+
+输入/输出数据流：
+    入参：db Session + user_id
+    出参：EstimationResult(ftp, confidence, method, r2)
+    依赖：Activity.activity_type='cycling' / Activity.status='completed' / Trackpoint.power
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+import logging
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from app.activity.models import Activity, Trackpoint
+from app.user.models import User  # noqa: F401 — standalone script 防 SQLAlchemy 找不到外键关联表
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class EstimationResult:
+    """eFTP 估算结果。
+
+    像一份"体检报告"——既给数字（ftp），也给可信度（confidence + r2），
+    让调用方决定要不要采用（比如低可信度时不覆盖用户手填值）。
+    """
+    ftp: Optional[int]    # 估算的 FTP（W），insufficient 时为 None
+    confidence: str       # 'insufficient' / 'low' / 'medium' / 'high'
+    method: str           # 'cp3_no_hr'（v0.1）/ 'cp3_hr_weighted'（v0.2）
+    r2: float             # 拟合质量决定系数 / insufficient 时 = 0.0
+
+
+def fit_cp3_model(efforts: list[tuple[int, float]]) -> EstimationResult:
+    """用 scipy.optimize.curve_fit 拟合 CP 3-param。
+
+    入参：efforts = [(duration_seconds, power_w), ...]
+        至少 3 个点 / 时长可以乱序（curve_fit 不关心顺序）
+
+    返：EstimationResult / CP 即 FTP（渐近线）
+
+    数学思路：
+        给定 5 个 (t, P) 数据点，找一组 (W', CP, P_max) 使 P(t) 反解公式
+        最贴近这些点（最小二乘）。scipy.curve_fit 是非线性最小二乘求解器，
+        类似 Excel 里的"添加趋势线"功能，但是用我们指定的公式而不是多项式。
+    """
+    # 数据不足：至少要 3 个点才能定 3 参数（再少欠定 = 无数解）
+    if len(efforts) < 3:
+        return EstimationResult(
+            ftp=None, confidence="insufficient", method="cp3_no_hr", r2=0.0
+        )
+
+    try:
+        # 延迟 import：避免 scipy 启动开销影响其他模块加载
+        from scipy.optimize import curve_fit
+        import numpy as np
+
+        durations = np.array([e[0] for e in efforts], dtype=float)
+        powers = np.array([e[1] for e in efforts], dtype=float)
+
+        def cp3_func(t, w_prime, cp, p_max):
+            """CP 3-param 反解公式 P(t) = CP + W' * (P_max - CP) / (W' + t * (P_max - CP))。
+
+            重要：第二项分母是 P_max - CP，不是 CP - P_max——三轮 reviewer 抓的真重点。
+            """
+            return cp + w_prime * (p_max - cp) / (w_prime + t * (p_max - cp))
+
+        # 初值（p0）选普通业余骑手范围：W'=15kJ / CP=200W / Pmax=800W
+        # curve_fit 对初值敏感，离真值太远可能不收敛
+        popt, _ = curve_fit(
+            cp3_func,
+            durations,
+            powers,
+            p0=[15000.0, 200.0, 800.0],
+            maxfev=5000,  # 最多 5000 次迭代，给数值噪声留余地
+        )
+        w_prime, cp, p_max = popt
+
+        # 计算 R²（决定系数）：1 - 残差平方和/总平方和
+        # R²=1 完美拟合 / R²=0 等同于"猜平均值" / R²<0 比"猜平均值"还差
+        predicted = cp3_func(durations, *popt)
+        ss_res = float(np.sum((powers - predicted) ** 2))
+        ss_tot = float(np.sum((powers - np.mean(powers)) ** 2))
+        r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+
+        # 物理合理性检查：CP 必须为正且不能离谱（业余骑手 50-500W 范围）
+        if cp <= 0 or cp > 800 or w_prime <= 0 or p_max <= cp:
+            logger.warning(
+                "CP3 fit gave nonsensical params: cp=%.1f w_prime=%.1f p_max=%.1f",
+                cp, w_prime, p_max,
+            )
+            return EstimationResult(
+                ftp=None, confidence="insufficient", method="cp3_no_hr",
+                r2=round(r2, 3),
+            )
+
+        # confidence 4 档分级
+        if r2 >= 0.95:
+            conf = "high"
+        elif r2 >= 0.85:
+            conf = "medium"
+        elif r2 >= 0.75:
+            conf = "low"
+        else:
+            # R² 太低 = 拟合质量不可信 / 视为数据不足
+            return EstimationResult(
+                ftp=None, confidence="insufficient", method="cp3_no_hr",
+                r2=round(r2, 3),
+            )
+
+        return EstimationResult(
+            ftp=int(round(cp)),
+            confidence=conf,
+            method="cp3_no_hr",
+            r2=round(r2, 3),
+        )
+
+    except Exception:
+        # curve_fit 可能抛 RuntimeError（不收敛）/ OptimizeWarning / ValueError 等
+        # 数学错绝不能炸掉调用方（worker / endpoint）—— 一律降级 insufficient
+        logger.exception("CP3 fit failed unexpectedly")
+        return EstimationResult(
+            ftp=None, confidence="insufficient", method="cp3_no_hr", r2=0.0
+        )
+
+
+def _sliding_window_best_power(
+    tps: list[tuple[float, datetime]],
+    window_seconds: int,
+) -> float:
+    """滑动窗口：找该活动里"连续 window_seconds 秒内最大平均功率"。
+
+    入参：tps = [(power_w, timestamp), ...] 按时间正序
+    返：该窗口长度下的最大平均功率（W）/ 数据不够时返 0.0
+
+    简化实现（O(n²) 最坏 / 实测中等量级 trackpoints 也够快）：
+        左指针 left + 右指针 right，right 向前推进时左指针追上来确保窗口 ≤ window_seconds。
+        每个有效窗口算一次平均功率取 max。
+    v0.2 若性能瓶颈再换 O(n) 单调队列实现。
+
+    容差 10%：trackpoint 采样间隔不均匀（1-3s 抖动），允许窗口跨度 ≥ 90% 即视为合法。
+    """
+    if not tps or len(tps) < 2:
+        return 0.0
+
+    best = 0.0
+    left = 0
+    n = len(tps)
+    for right in range(1, n):
+        # 把左指针往前推，直到窗口长度 ≤ window_seconds
+        while left < right and (tps[right][1] - tps[left][1]).total_seconds() > window_seconds:
+            left += 1
+        span = (tps[right][1] - tps[left][1]).total_seconds()
+        # 窗口长度足够时（≥ 90% 目标）才算 / 避免短窗口虚高
+        if span >= window_seconds * 0.9:
+            window_powers = [p for p, _ in tps[left:right + 1]]
+            avg_power = sum(window_powers) / len(window_powers)
+            if avg_power > best:
+                best = avg_power
+    return best
+
+
+def _extract_best_efforts(
+    db: Session,
+    user_id: int,
+    windows_seconds: tuple[int, ...] = (180, 300, 600, 1200, 3600),
+    history_days: int = 180,
+) -> list[tuple[int, float]]:
+    """扫该用户最近 6 个月 cycling 活动 / 滑窗找各时长 best power。
+
+    返：[(window_seconds, best_power_w), ...] 只含有效窗口（power > 0）
+
+    设计思路：
+        我们要的不是"某一次骑行的 best"，而是"近半年最强的一次表现"——
+        所以对每个时长窗口（3min / 5min / 10min / 20min / 60min），
+        遍历所有历史活动，取各活动该窗口的 max，再在所有活动间取 max。
+
+    性能注意：
+        每条活动单独查 trackpoints（功率非空）/ 内存里跑滑窗。
+        100 用户量级 / 单用户 295 活动 / 单活动 ≤ 5 万点（worker 上限） → 可接受。
+        v0.2 若慢可改为预计算缓存（new 表 user_best_efforts）。
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=history_days)
+    activity_ids = (
+        db.query(Activity.id)
+        .filter(
+            Activity.user_id == user_id,
+            Activity.status == "completed",
+            Activity.activity_type == "cycling",
+            Activity.started_at >= cutoff,
+            Activity.avg_power.isnot(None),  # 没功率的活动直接跳过
+        )
+        .all()
+    )
+
+    if not activity_ids:
+        return []
+
+    # 用 dict 累积每个窗口长度的全局最佳
+    best_per_window: dict[int, float] = {w: 0.0 for w in windows_seconds}
+
+    for (aid,) in activity_ids:
+        tps = (
+            db.query(Trackpoint.power, Trackpoint.timestamp)
+            .filter(
+                Trackpoint.activity_id == aid,
+                Trackpoint.power.isnot(None),
+                Trackpoint.timestamp.isnot(None),  # 没时间戳算不了滑窗
+            )
+            .order_by(Trackpoint.seq)
+            .all()
+        )
+        if len(tps) < 10:
+            continue
+
+        # 转 list[tuple[float, datetime]] for sliding window
+        tps_list = [(float(p), t) for p, t in tps]
+
+        for window_sec in windows_seconds:
+            best = _sliding_window_best_power(tps_list, window_sec)
+            if best > best_per_window[window_sec]:
+                best_per_window[window_sec] = best
+
+    # 过滤 0 值（该窗口压根没有数据）/ 返回 (duration, power) 对
+    return [(w, p) for w, p in best_per_window.items() if p > 0]
+
+
+def estimate_ftp_for_user(db: Session, user_id: int) -> EstimationResult:
+    """eFTP 估算主入口。
+
+    步骤：
+      1. 扫历史 cycling 活动找 best 3/5/10/20/60 分钟功率
+      2. 心率加权（v0.1 不做 / v0.2 加）
+      3. scipy curve_fit 拟合 CP 3-param → CP ≈ FTP
+
+    返：EstimationResult / 调用方根据 confidence 决定是否采用
+    """
+    efforts = _extract_best_efforts(db, user_id)
+    if len(efforts) < 3:
+        logger.info(
+            "estimate_ftp_for_user user_id=%s 数据不足 efforts_count=%s",
+            user_id, len(efforts),
+        )
+        return EstimationResult(
+            ftp=None, confidence="insufficient", method="cp3_no_hr", r2=0.0
+        )
+
+    result = fit_cp3_model(efforts)
+    logger.info(
+        "estimate_ftp_for_user user_id=%s ftp=%s confidence=%s r2=%s",
+        user_id, result.ftp, result.confidence, result.r2,
+    )
+    return result
