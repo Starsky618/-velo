@@ -31,5 +31,8 @@ openai>=1.0.0
 # CGIAR-CSI SRTM 90m 懒下载 / 无需 NASA Earthdata 账号 / 数据从外网下载到本地容器缓存后不再依赖外网
 SRTM.py==0.3.7
 
+# Sprint 9 新增：FTP 估算（task-5 ftp_estimator 用 scipy.optimize.curve_fit 拟合 CP 模型）
+scipy>=1.11
+
 # 测试依赖
 pytest==9.0.2

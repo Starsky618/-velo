@@ -83,6 +83,9 @@ class Activity(Base):
     max_hr = Column(Float, nullable=True)             # 最大心率
     avg_cadence = Column(Float, nullable=True)        # 平均踏频（rpm）
     max_cadence = Column(Float, nullable=True)        # 最大踏频（rpm），老活动 / 无踏频感应为 NULL
+    snapshot_ftp = Column(Integer, nullable=True)     # 这条活动锁定的 FTP（W），跟 user.ftp 解耦；改 user.ftp 不影响历史
+    intensity_factor = Column(Float, nullable=True)   # IF = NP / snapshot_ftp（保 3 位小数）
+    tss = Column(Float, nullable=True)                # TSS = (秒 × NP × IF) / (snapshot_ftp × 3600) × 100（保 1 位）
     calories = Column(Float, nullable=True)           # 估算卡路里（kcal）
     normalized_power = Column(Float, nullable=True)   # 标准化功率（NP），FIT 自带，GPX/Strava 为 NULL
     # 用 DateTime(timezone=True) 让 PostgreSQL 用 TIMESTAMP WITH TIME ZONE 存储，
