@@ -108,6 +108,10 @@ _activities_table = Table(
     Column("avg_hr", Float),
     Column("max_hr", Float),
     Column("avg_cadence", Float),
+    Column("max_cadence", Float),         # Sprint 8 task-1.1：最大踏频
+    Column("snapshot_ftp", Integer),      # Sprint 9 task-1：活动锁定的 FTP（W）
+    Column("intensity_factor", Float),    # Sprint 9 task-1：IF = NP / snapshot_ftp
+    Column("tss", Float),                 # Sprint 9 task-1：TSS 训练分数
     Column("calories", Float),
     Column("started_at", DateTime(timezone=True)),
     Column("finished_at", DateTime(timezone=True)),
