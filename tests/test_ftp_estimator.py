@@ -61,3 +61,27 @@ class TestFtpEstimator:
         assert result.confidence == "insufficient"
         assert result.ftp is None
         assert result.method == "cp3_no_hr"
+
+    def test_non_monotonic_data_returns_insufficient(self):
+        """非单调（长时长 power > 短时长）= 物理不可能 → insufficient。
+
+        想象百米跑得比一公里慢——身体物理不允许；CP 模型假设 P(t) 严格单调递减。
+        这里 300s=250 > 180s=200 矛盾 / 拟合参数无物理意义 / 直接 insufficient。
+        """
+        efforts = [(180, 200.0), (300, 250.0), (600, 220.0), (1200, 210.0), (3600, 200.0)]
+        result = fit_cp3_model(efforts)
+        assert result.confidence == "insufficient", f"non-monotonic 应 insufficient / 实际 {result}"
+        assert result.ftp is None
+
+    def test_only_3_efforts_downgraded(self):
+        """3 efforts 自由度 0 → R² 数学必 1.0 → 但强制降级最高 low / 不能 high/medium。
+
+        Codex 异源审抓的 Critical：3 个 (t,P) 点拟合 3 参数 (W',CP,Pmax) 必完美拟合
+        / R²=1.0 = 虚假置信度欺骗用户；本测确保算法不会输出 high/medium。
+        """
+        efforts = [(180, 315.0), (300, 282.0), (600, 248.0)]
+        result = fit_cp3_model(efforts)
+        # 必须降级 / 不能 high 或 medium
+        assert result.confidence in ("low", "insufficient"), (
+            f"3 efforts 不能 high/medium / 实际 {result}"
+        )

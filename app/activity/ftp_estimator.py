@@ -8,21 +8,25 @@
 用 3/5/10/20/60 分钟的最大功率，反推你"能稳定输出 1 小时的功率"——这就是 FTP。
 
 公式（Morton 1996 / PMID 8854981 标准 CP 3-param 模型）：
-    t = W' / (P - CP) + W' / (P_max - CP)
-
-反解（给定 t 求 P / scipy curve_fit 用这个形式）：
     P(t) = CP + W' * (P_max - CP) / (W' + t * (P_max - CP))
+
+（注：原 spec 写 `t = W'/(P-CP) + W'/(P_max-CP)` 是 typo / 这里以反解
+形式为单一真相源，跟 cp3_func 实现一致）
 
 三个参数的物理含义：
     CP    渐近线功率（≈ FTP）—— 你能"无限期"维持的功率
     W'    无氧储备能量（焦耳）—— 像一个"电池"，超过 CP 的部分吃这个电池
     P_max 瞬间最大功率（W）—— 你能爆发出来的最大功率
 
-confidence 4 档判断（拟合质量）：
-    insufficient < 3 best efforts / 拟合失败 / R² < 0.75
-    low         0.75 ≤ R² < 0.85
-    medium      0.85 ≤ R² < 0.95
-    high        R² ≥ 0.95
+confidence 4 档判断（拟合质量 + 自由度）：
+    insufficient < 3 best efforts / 拟合失败 / R² < 0.75 / 数据非单调 / 物理参数不合理
+    low         R² ≥ 0.75（n < 5 时最高只能 low / 防自由度欺骗）
+    medium      0.85 ≤ R² < 0.95 且 n ≥ 5
+    high        R² ≥ 0.95 且 n ≥ 5
+
+自由度修正（Codex 异源审 Critical）：
+    3 个 best efforts 拟合 3 参数 = 自由度 0 → R² 必然 1.0 = 虚假高置信度
+    所以 n < 5 时强制降级最高 low / 否则会欺骗用户"我们很确定"
 
 操作注意事项：
 - v0.1 不做心率加权（method='cp3_no_hr'）/ v0.2 真用回归后再决定加不加
@@ -49,6 +53,11 @@ from app.user.models import User  # noqa: F401 — standalone script 防 SQLAlch
 
 
 logger = logging.getLogger(__name__)
+
+
+# Codex 异源审 Critical：3-4 个 best efforts = 自由度 ≤ 1 → R² 趋向 1.0 = 虚假置信度
+# 必须 ≥ 5 个 best efforts 才允许真正的 high/medium 置信度 / 否则强制降级 low
+_MIN_EFFORTS_FOR_RELIABLE = 5
 
 
 @dataclass
@@ -83,6 +92,19 @@ def fit_cp3_model(efforts: list[tuple[int, float]]) -> EstimationResult:
             ftp=None, confidence="insufficient", method="cp3_no_hr", r2=0.0
         )
 
+    # Codex 异源审 Important：非单调（短时长 power < 长时长）= 物理不可能 / R² 兜底不够
+    # 想象百米跑得比一公里慢——身体物理不允许；CP 模型假设 P(t) 严格单调递减
+    # 数据非单调 → curve_fit 仍能给出"拟合"但物理无意义 / 直接 insufficient
+    sorted_efforts = sorted(efforts, key=lambda x: x[0])
+    for i in range(1, len(sorted_efforts)):
+        if sorted_efforts[i][1] > sorted_efforts[i - 1][1]:
+            logger.warning(
+                "non-monotonic best efforts %s / 跳过拟合", sorted_efforts
+            )
+            return EstimationResult(
+                ftp=None, confidence="insufficient", method="cp3_no_hr", r2=0.0
+            )
+
     try:
         # 延迟 import：避免 scipy 启动开销影响其他模块加载
         from scipy.optimize import curve_fit
@@ -100,11 +122,16 @@ def fit_cp3_model(efforts: list[tuple[int, float]]) -> EstimationResult:
 
         # 初值（p0）选普通业余骑手范围：W'=15kJ / CP=200W / Pmax=800W
         # curve_fit 对初值敏感，离真值太远可能不收敛
+        # Codex 异源审 Important：加 bounds 防优化器发散到无意义参数空间
+        #   W' 5-50 kJ（业余 10-20kJ / 精英 30kJ+）
+        #   CP 50-500W（业余 150-250W / ITT 世界级 500W）
+        #   Pmax 600-1200W（爆发力区间 / 顶级冲刺手 1500W+ 但 CP 模型用不到那么高）
         popt, _ = curve_fit(
             cp3_func,
             durations,
             powers,
             p0=[15000.0, 200.0, 800.0],
+            bounds=([5000.0, 50.0, 600.0], [50000.0, 500.0, 1200.0]),
             maxfev=5000,  # 最多 5000 次迭代，给数值噪声留余地
         )
         w_prime, cp, p_max = popt
@@ -116,8 +143,9 @@ def fit_cp3_model(efforts: list[tuple[int, float]]) -> EstimationResult:
         ss_tot = float(np.sum((powers - np.mean(powers)) ** 2))
         r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
 
-        # 物理合理性检查：CP 必须为正且不能离谱（业余骑手 50-500W 范围）
-        if cp <= 0 or cp > 800 or w_prime <= 0 or p_max <= cp:
+        # 物理合理性检查（Codex 收紧）：CP 上限从 800 改 500
+        # 500W 已是 ITT 世界级 / 业余 350+ 极少 / 800 太宽容易放过病态拟合
+        if not (50 <= cp <= 500 and w_prime > 0 and p_max > cp):
             logger.warning(
                 "CP3 fit gave nonsensical params: cp=%.1f w_prime=%.1f p_max=%.1f",
                 cp, w_prime, p_max,
@@ -127,19 +155,33 @@ def fit_cp3_model(efforts: list[tuple[int, float]]) -> EstimationResult:
                 r2=round(r2, 3),
             )
 
-        # confidence 4 档分级
-        if r2 >= 0.95:
-            conf = "high"
-        elif r2 >= 0.85:
-            conf = "medium"
-        elif r2 >= 0.75:
-            conf = "low"
+        # Codex 异源审 Critical：自由度修正
+        # n=3 → 自由度 0 → 必 R²=1.0 / n=4 → 自由度 1 → R² 极易 ≈1.0
+        # 这种"数学必完美"的高 R² 不代表 FTP 估算可靠 → 强制降级
+        n_efforts = len(efforts)
+        if n_efforts < _MIN_EFFORTS_FOR_RELIABLE:
+            # < 5 efforts：最高只能 low；R² 不够阈值直接 insufficient
+            if r2 >= 0.75:
+                conf = "low"
+            else:
+                return EstimationResult(
+                    ftp=None, confidence="insufficient", method="cp3_no_hr",
+                    r2=round(r2, 3),
+                )
         else:
-            # R² 太低 = 拟合质量不可信 / 视为数据不足
-            return EstimationResult(
-                ftp=None, confidence="insufficient", method="cp3_no_hr",
-                r2=round(r2, 3),
-            )
+            # n ≥ 5 才允许真正的 confidence 分级
+            if r2 >= 0.95:
+                conf = "high"
+            elif r2 >= 0.85:
+                conf = "medium"
+            elif r2 >= 0.75:
+                conf = "low"
+            else:
+                # R² 太低 = 拟合质量不可信 / 视为数据不足
+                return EstimationResult(
+                    ftp=None, confidence="insufficient", method="cp3_no_hr",
+                    r2=round(r2, 3),
+                )
 
         return EstimationResult(
             ftp=int(round(cp)),
