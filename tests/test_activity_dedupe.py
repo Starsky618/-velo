@@ -140,8 +140,41 @@ def test_is_duplicate_custom_tolerance_tighter():
     a = _make_sig()
     b = _make_sig(distance=a.distance + 80)  # 80m 默认容差内
     assert is_potential_duplicate(a, b) is True
-    # 紧容差 50m 不通过
+    # 紧容差 50m 不通过（注意：8km 骑行百分比维度才 40m，max(50, 40) = 50m 仍为严格上限）
     assert is_potential_duplicate(a, b, distance_tol_m=50) is False
+
+
+def test_is_duplicate_long_distance_dynamic_tolerance():
+    """长距离骑行（161km）距离差 519m 应判重复 —— 2026-05-20 真用回扫实证修复。
+
+    场景：user_id=2 的 id=1（NULL data_source / 161.44km）vs id=151（Strava / 160.92km），
+    起骑时间秒级一致 / 距离差 519m。
+    旧固定 100m 容差漏判 / 新动态容差 = max(100, 161180 × 0.005 = 806m) = 806m → True。
+    """
+    started = datetime(2024, 7, 2, 23, 22, 23, tzinfo=timezone.utc)
+    a = _make_sig(started_at=started, distance=161_440, duration=46_359)
+    b = _make_sig(started_at=started, distance=160_921, duration=46_359)
+    assert is_potential_duplicate(a, b) is True
+
+
+def test_is_duplicate_long_distance_beyond_dynamic_tolerance():
+    """长距离骑行距离差超过动态容差 → 仍判不重复（容差不是无限放宽）。"""
+    started = datetime(2024, 7, 2, 23, 22, 23, tzinfo=timezone.utc)
+    a = _make_sig(started_at=started, distance=161_000, duration=46_359)
+    b = _make_sig(started_at=started, distance=162_500, duration=46_359)
+    # 161750 × 0.005 = 808m / 距离差 1500m > 808m → False
+    assert is_potential_duplicate(a, b) is False
+
+
+def test_is_duplicate_distance_pct_zero_falls_back_to_fixed():
+    """显式关闭百分比容差（赛事严格场景）→ 退化成纯固定阈值。"""
+    started = datetime(2024, 7, 2, 23, 22, 23, tzinfo=timezone.utc)
+    a = _make_sig(started_at=started, distance=161_000, duration=46_359)
+    b = _make_sig(started_at=started, distance=161_300, duration=46_359)
+    # 关闭百分比 → max(100, 0) = 100m / 距离差 300m > 100m → False
+    assert is_potential_duplicate(a, b, distance_tol_pct=0) is False
+    # 默认开启 → max(100, 161150 × 0.005 = 806m) = 806m / 300m < 806m → True
+    assert is_potential_duplicate(a, b) is True
 
 
 # ============================================================

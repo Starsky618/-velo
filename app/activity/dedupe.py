@@ -86,10 +86,16 @@ class ActivityScoreData:
 # 类比家里时钟：墙上钟 vs 微波炉钟 vs 手机钟，差几分钟正常
 DEFAULT_TIME_TOLERANCE_SEC = 300
 
-# 距离容差：100 米
-# Why：GPS 累计误差与距离正相关（10km 骑 ~50m / 50km 骑 ~200m），100m 折中。
-#      不同导出格式可能 simplify 不同精度，导致总距离略差
+# 距离容差：固定底线 100m + 百分比 0.5%（实际取 max）
+# Why：GPS 累计误差与距离正相关（10km ~50m / 50km ~200m / 150km ~750m）。
+#      原 v1 固定 100m 折中对长距离骑行就是太严——2026-05-20 真用回扫实证：
+#      user_id=2 整库 295 条 completed 活动里 161km 跨来源（NULL vs Strava）距离差 519m
+#      被原算法漏判（参考 docs/tech-debt.md "dedupe 距离容差 100m 固定值"条目实证）。
+#      v2 改 max(100m, 距离 × 0.5%)：短途 100m 兜底，长距离按线性比例放宽。
+#      0.5% 来自原注释 "10km 骑 ~50m" 线性外推（50/10000 = 0.5%）。
+#      caller 可显式传 distance_tol_pct=0 关闭百分比（赛事严格场景退化为固定阈值）。
 DEFAULT_DISTANCE_TOLERANCE_M = 100.0
+DEFAULT_DISTANCE_TOLERANCE_PCT = 0.005
 
 # 时长容差：60 秒
 # Why：用户开/停 GPS 时机差异（先到达再按停 vs 没下车就按停）
@@ -141,6 +147,7 @@ def is_potential_duplicate(
     *,
     time_tol_sec: int = DEFAULT_TIME_TOLERANCE_SEC,
     distance_tol_m: float = DEFAULT_DISTANCE_TOLERANCE_M,
+    distance_tol_pct: float = DEFAULT_DISTANCE_TOLERANCE_PCT,
     duration_tol_sec: int = DEFAULT_DURATION_TOLERANCE_SEC,
     start_tol_m: float = DEFAULT_START_TOLERANCE_M,
 ) -> bool:
@@ -158,7 +165,9 @@ def is_potential_duplicate(
 
     参数：
         a, b: 两个 ActivitySig
-        time_tol_sec / distance_tol_m / duration_tol_sec / start_tol_m: 各维容差
+        time_tol_sec / duration_tol_sec / start_tol_m: 各维容差（固定值）
+        distance_tol_m: 距离容差固定底线（短途兜底）
+        distance_tol_pct: 距离容差百分比系数（长距离按 GPS 累计误差比例放宽 / 传 0 关闭）
 
     返回：
         True = 4 维全在容差内 = 视为同一骑行的两份记录
@@ -169,8 +178,15 @@ def is_potential_duplicate(
     if time_diff > time_tol_sec:
         return False
 
-    # 第 2 维：总距离
-    if abs(a.distance - b.distance) > distance_tol_m:
+    # 第 2 维：总距离 / 容差 = max(固定底线 distance_tol_m, 平均距离 × 百分比 distance_tol_pct)
+    # 短途按 100m 固定值兜底（避免百分比维度太小漏放短途真重复），
+    # 长距离按 GPS 累计误差线性比例放宽（避免长途真重复被卡 100m 漏判）。
+    # 例：8km 骑行 → max(100, 8000 × 0.005 = 40) = 100m
+    # 例：161km 骑行 → max(100, 161000 × 0.005 = 805) = 805m
+    # 用两 sig 距离平均做基准：a 和 b 距离误差通常 < 1%，影响可忽略。
+    avg_distance = (a.distance + b.distance) / 2
+    effective_distance_tol = max(distance_tol_m, avg_distance * distance_tol_pct)
+    if abs(a.distance - b.distance) > effective_distance_tol:
         return False
 
     # 第 3 维：总时长
