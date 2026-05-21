@@ -174,6 +174,10 @@ Page({
         if (data.avg_hr != null) data.avg_hr = Math.round(data.avg_hr)
         if (data.avg_cadence != null) data.avg_cadence = Math.round(data.avg_cadence)
         if (data.max_cadence != null) data.max_cadence = Math.round(data.max_cadence)
+        // task-7 (sprint9): NP / IF / TSS 取整 / W/kg 后端已 round 2 位 / 不再处理
+        if (data.normalized_power != null) data.normalized_power = Math.round(data.normalized_power)
+        if (data.intensity_factor != null) data.intensity_factor = data.intensity_factor.toFixed(2)  // 0.85 这种
+        if (data.tss != null) data.tss = Math.round(data.tss)
         if (Array.isArray(data.splits)) {
           for (var si = 0; si < data.splits.length; si++) {
             var sp = data.splits[si]

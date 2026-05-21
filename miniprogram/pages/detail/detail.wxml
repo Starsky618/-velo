@@ -149,6 +149,22 @@
         <text class="metric-label">最大功率</text>
         <text class="metric-value">{{activity.max_power != null ? activity.max_power : '-'}}<text class="metric-unit">W</text></text>
       </view>
+      <view class="metric-row" wx:if="{{activity.power_per_kg}}">
+        <text class="metric-label">W/kg</text>
+        <text class="metric-value power">{{activity.power_per_kg}}<text class="metric-unit">w/kg</text></text>
+      </view>
+      <view class="metric-row" wx:if="{{activity.normalized_power}}">
+        <text class="metric-label">标准化功率 NP</text>
+        <text class="metric-value power">{{activity.normalized_power}}<text class="metric-unit">W</text></text>
+      </view>
+      <view class="metric-row" wx:if="{{activity.intensity_factor}}">
+        <text class="metric-label">强度系数 IF</text>
+        <text class="metric-value">{{activity.intensity_factor}}</text>
+      </view>
+      <view class="metric-row" wx:if="{{activity.tss}}">
+        <text class="metric-label">训练分数 TSS</text>
+        <text class="metric-value">{{activity.tss}}</text>
+      </view>
       <view class="metric-row" wx:if="{{activity.calories}}">
         <text class="metric-label">热量</text>
         <text class="metric-value power">{{activity.calories}}<text class="metric-unit">kcal</text></text>
