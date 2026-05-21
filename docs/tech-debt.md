@@ -6,6 +6,40 @@
 
 ---
 
+## 🔴 P1：ftp_estimator 算 ftp=117W vs Tim 真实 1200s best 250W（Sprint 9 task-5 / 2026-05-21 Tim 真用回归）
+
+`app/activity/ftp_estimator.py` 在 Tim 账号上算 ftp=117W / confidence=high / r2=0.981（commit `5ba4229` 修完滑窗 bug 后）。但 **Tim 自报 1200s 历史最佳 ≈ 250W** / 算法跑出 1200s best=142.6W → **差 100W+** = **算法或数据真有错**（不是产品语义偏差）。
+
+**实证矛盾**：
+- 算法输出（_extract_best_efforts user_id=2）：180s=218.6W / 300s=185.2W / 600s=156.5W / **1200s=142.6W** / 3600s=115.5W
+- Tim 主观真实：1200s 历史最佳 **≈ 250W**
+
+**可能原因（未排查 / 留 Sprint 10 后专题）**：
+1. `history_days=180` 6 个月窗口截掉了 Tim 真实 250W 那条活动（在更早时间）
+2. `Activity.avg_power.isnot(None)` 过滤掉了某些有 trackpoint power 但 avg_power 缺的活动
+3. `Trackpoint.power.isnot(None)` 过滤后数据稀疏 / 滑窗 left/right 推进出 bug
+4. 新算法时间加权 `power[i-1] × dt[i]` 约定有偏（prev_power 代表段 / 但首尾段可能算错）
+5. 跨活动取最大时漏数据
+
+**当前修复了什么**：commit `5ba4229` 修了滑窗 90% 容差 + index 计数平均 2 个 bug / 单调性恢复（修前 300s=278 > 180s=218 物理矛盾消除）/ 但 estimator 输出值依然跟真实数据不符 → 修了 bug 但没解决根问题。
+
+**Tim 2026-05-21 拍**：留 tech debt / Sprint 9 不再修（context 已超长）/ Sprint 10 后开"FTP 估算精度专题"。
+
+**Sprint 9 当前生产影响**：
+- estimator 单用户只服务"新用户首次填 ftp"场景 → Tim 已 ftp=210 不受影响
+- Breakthrough 检测依赖 estimator → Tim 账号永远算不出真突破（estimator 值偏低 / 不触发 1.05 阈值）
+- 实际危害：低（用户能手动填 ftp / 新功能不依赖估算输出）
+
+**修复触发条件**：
+- 新用户大量进入 / 需要靠 estimator 给 ftp 初值（v0.5-v1.0）
+- 或 Sprint 12 LLM 教练总结需要更准的 ftp / IF / TSS 输入
+
+**修法草稿**（未来专题）：
+1. 排查阶段：拉 Tim 真实最强 1200s 活动 / 看 trackpoints 是否完整 / 跟 estimator 算的对照
+2. 算法改进：考虑用 NP（已有字段）代替 best efforts 拟合 / 或 history_days=730 扩大窗口 / 或加 IF > 0.85 high-quality 活动过滤
+
+---
+
 ## 🟢 P3：badges 看他人时全计入私密 effort（Sprint 6 task-2 / Tim 2026-05-16 拍 A / 2026-05-16）
 
 `app/user/service_social.py:_aggregate_badges_input` 山名常客频次查询：

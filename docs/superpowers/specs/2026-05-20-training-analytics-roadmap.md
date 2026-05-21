@@ -43,7 +43,7 @@ velo 当前定位混合了"骑行社交"+"训练记录"。现在做战略分流�
 
 ## 1. 5 个模块全景
 
-### 模块 A：单次活动评分 + FTP 智能化（Sprint 9）
+### 模块 A：单次活动评分 + FTP 智能化（Sprint 9）✅ 2026-05-21 ship
 
 > **小明骑完今天的间歇训练**：打开 velo 详情页 → 看到 "今天 TSS 95 / IF 0.85 / NP 215W ← 接近你 FTP 的强度" → 心想"这次练得到位 / 跟训练计划吻合 / 明天该恢复骑"。
 >
@@ -59,7 +59,9 @@ velo 当前定位混合了"骑行社交"+"训练记录"。现在做战略分流�
 
 **工作量**：~10 天（最复杂的一期 / 含 snapshot_ftp 地基架构）。
 
-**详细 PRD**：`docs/prd/sprint-9-prd.md`（待写）。
+**详细 PRD**：`docs/prd/sprint-9-prd.md` ✅ ship 完工 / 8 task + 9 hotfix（详 `docs/changelog.md` 2026-05-20→21 段）。
+
+**P1 tech debt**：ftp_estimator 算 Tim ftp=117W vs 真实 1200s best 250W 差 100W+（`docs/tech-debt.md` P1）/ Sprint 10 后开"FTP 估算精度专题"。
 
 ---
 

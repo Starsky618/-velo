@@ -1,5 +1,56 @@
 # VELO 开发变更日志
 
+## 2026-05-20 → 21: Sprint 9 / FTP 智能化全部 ship ✅
+
+**主轴**：模块 A（路线图首块）/ 8 task + 9 hotfix 落地 / snapshot_ftp 快照式架构 + IF/TSS 量化数字 + CP 3-param eFTP 估算器 + W/kg 显示 + Breakthrough 自动检测。
+
+**Alembic head**：`sprint9_breakthrough_events` / **git main**: `5ba4229`。
+
+**8 task ship 链**：
+
+| task | commit | 内容 |
+|------|--------|------|
+| 1 | `65620b3` | activities 加 snapshot_ftp/IF/TSS + Alembic 迁移 + scipy>=1.11 |
+| 2 | `e5adee1` | worker save_parse_result 签名加 user + 算 IF/TSS + 3 调用方同步（worker.py + worker_strava + import_scheduler） |
+| 3 | `684330d` | ActivityDetail schema 加 4 字段 + service.py 算 W/kg + detail.wxml"按 FTP 220W 算"小字 + 一次性 baseline SQL 同步 184 条 |
+| 4 | `9c5cdc3` | backfill_ftp.py + update_profile PUT 检测首次填 ftp → RQ 异步回填 |
+| 5 | `3110df3` | ftp_estimator.py CP 3-param + scipy curve_fit + 滑窗 best efforts + 4 档 confidence |
+| 6 | `9eb805d` | GET /me/ftp-estimate + settings 体重输入 + "让系统估算"按钮 + 自定义 modal 弹窗 |
+| 7 | `5b2929a` | 详情页加 W/kg / NP / IF / TSS 4 行 metric-row |
+| 8 | `fffe293` | BreakthroughEvent ORM + 迁移 + breakthrough_detector + worker hook（GPX/FIT + Strava webhook + import_scheduler 三路）+ GET/PATCH endpoints + settings 弹窗 + 13 pytest |
+
+**9 hotfix**（三轮收敛实证 / Codex 异源审多次抓 Claude 双审漏过的真问题）：
+
+| hotfix | commit | 抓出方 | 内容 |
+|--------|--------|--------|------|
+| 1 | `f0c654c` | task-2 spec reviewer | conftest.py `_activities_table` 补 4 列防 80 fail baseline noise |
+| 2 | `9e5c0a3` | task-3 Codex 异源审 | hide_power 隐私挖空补 calories（calories+duration 反推 avg_power） |
+| 3 | `b09bf55` | task-4 Codex + quality 独立抓 | enqueue 失败补偿（陷阱 #14 / Redis 挂 PUT 不返 500 / try/except 兜底） |
+| 4 | `a8baa9a` | task-5 Codex 异源审 | **Critical**：3 efforts = 自由度 0 → R²=1.0 虚假 high 置信度（强制降级 + bounds + 非单调过滤 + guard 收紧） |
+| 5 | `b0f0730` | task-6 quality reviewer | **Critical**：button 嵌 .row-right flex 行拦截兄弟 tap（微信硬上限 #2 / 2026-05-16 task-4 hotfix 同坑）+ toast 文案条件化 |
+| 6 | `f1a0bf7` | task-8 Codex + quality 独立抓 | PATCH /me/breakthroughs 原子 UPDATE 防并发 race + import_scheduler 第 3 caller 漏接 hook + Response schema 加 expires_at + mask 误触防 reject + 注释 5→6 hook |
+| 7 | `5ba4229` | task-5 Tim 真用回归发现 | 滑窗算法 bug（90% 容差 + index 平均双 bug）/ 改严格时间加权 prefix sum |
+
+**关键产品决策记忆**：
+
+1. **快照式 ftp**（Tim 拍）：每活动 `snapshot_ftp` 永久锁定当时 ftp / 改 user.ftp 不动历史 power_zones / 物理事实"那段路骑的时候是 Z5 强度"不被未来 ftp 涨改写
+2. **首次填 ftp 触发回填 / 之后改不触发**（Tim 拍）：单次 escape hatch / 防回填风暴
+3. **三路 save_parse_result 全覆盖**（三轮 reviewer 抓 import_scheduler 漏处）：worker.py + worker_strava.py + import_scheduler.py 同步加 user 参数
+4. **CP 3-param Morton 1996 公式**：`P(t) = CP + W' × (P_max - CP) / (W' + t × (P_max - CP))` / 第二项分母 P_max - CP（spec §5.3 line 339 typo）/ implementer 按 PMID 8854981 实测核对
+5. **物理合理性 + 自由度 + 单调性 + bounds 4 层 guard**（task-5 hotfix 后）：拒绝数学有效但物理不可能的拟合结果
+6. **Breakthrough 状态机 4 态**（pending / accepted / rejected / expired）+ 7 天自动过期 + 防抖（新 pending 标老 pending expired）+ accepted 不触发回填（保快照式纯粹）
+7. **隐私挖空 5 字段**（hide_power 时）：power_per_kg / IF / TSS / snapshot_ftp / calories（防反推 avg_power）
+
+**真用回归实证**：
+- 场景 1 W/kg ✓ Tim 直接验
+- 场景 3 手动改 ftp 202→215→210 ✓ Tim 直接验
+- 场景 4 Breakthrough "更新 FTP" ✓ fake INSERT id=1 触发弹窗 + accepted 状态机 + user.ftp 更新
+
+**P1 tech debt（Sprint 9 收尾发现 / 留 Sprint 10 后专题）**：
+- ftp_estimator 算 Tim ftp=117W vs 真实 1200s best 250W 差 100W+ → 详见 `docs/tech-debt.md` P1 条目
+
+---
+
 ## 2026-05-20: 战略 reset / Persona 砍 + 训练分析线立项 ⚠
 
 **主轴**：Tim + Claude 一次 brainstorm 复盘 / 发现 Persona Engine（NPC 老登嘴贱便利贴）是装饰展示层 / 用户不会看 / 一个 sprint 战略失误 → 决策砍掉 + 沉淀元教训 + 立训练分析新线。
