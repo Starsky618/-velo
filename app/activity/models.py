@@ -284,3 +284,61 @@ class ActivityPrivacy(Base):
     )
 
     activity = relationship("Activity", back_populates="privacy")
+
+
+class BreakthroughEvent(Base):
+    """task-8 (sprint9)：用户骑出超过预估 ftp 时记录的事件。
+
+    干啥用：
+    -----------
+    用户的 ftp 不应该靠用户自己天天改——他可能不知道自己有没有进步。
+    "突破检测"像一个住在后端的小教练：每次解析完一条新活动后，
+    跑一遍 eFTP 估算（CP 3-param 模型），如果估算结果 > 当前 ftp × 1.05，
+    就在这张表写一条 pending 事件。用户下次进 settings 页时弹窗提示：
+    "你最近骑得不错，建议把 FTP 从 220W 更新到 240W"。
+
+    状态机：pending → accepted / rejected / expired
+    --------------------------------------------
+    - pending：新检测出 / 等用户进 settings 时弹窗
+    - accepted：用户点"用这个" / user.ftp 更新到 suggested_ftp / 不动历史活动
+    - rejected：用户点"暂不更新" / 不动 user.ftp
+    - expired：detected_at + 7 days 自动过期（GET endpoint 内自动转换）
+
+    类比：手机弹窗提醒"你有新版本可以更新"——你可以点更新 / 暂不 /
+    放着不管 7 天后自动消失。
+
+    防抖：
+    -----
+    同用户已有 pending → 新检测把老 pending 标 expired / 用最新覆盖。
+    避免同一周连续 3 次活动连发 3 个弹窗骚扰用户。
+
+    accepted 设计哲学：
+    ------------------
+    accepted 只动 user.ftp，**不触发** task-4 历史活动回填。
+    user.ftp 改了之后只影响后续新活动的 snapshot_ftp / IF / TSS。
+    历史活动保持原 snapshot_ftp 不变——快照式纯粹（task-1 已定的设计）。
+
+    输入/输出数据流：
+    ----------------
+    - 写入：worker.py / worker_strava.py / import_scheduler.py 解析活动后调用
+            detect_breakthrough() helper，触发条件下写 pending 行
+    - 读取：GET /api/user/me/breakthroughs（settings 页 onShow 拉 pending）
+    - 改状态：PATCH /api/user/me/breakthroughs/:id（用户点"用这个"/"暂不"）
+    """
+
+    __tablename__ = "breakthrough_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    activity_id = Column(Integer, ForeignKey("activities.id"), nullable=False)
+    detected_at = Column(DateTime(timezone=True), server_default=func.now())
+    old_ftp = Column(Integer, nullable=False)          # 检测时刻用户当前的 ftp（W）
+    suggested_ftp = Column(Integer, nullable=False)    # estimator 算出来的新 ftp（W）
+    status = Column(String(20), nullable=False, server_default="pending")
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        # 查 "该用户的所有 pending" 走这个复合索引；不查 expired/accepted/rejected
+        # 时也能借助前缀 user_id 走全表。
+        Index("idx_breakthrough_user_status", "user_id", "status"),
+    )

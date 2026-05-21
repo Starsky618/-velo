@@ -498,6 +498,32 @@ def _do_parse(db, activity_id: int) -> None:
             )
     # PERSONA_END
 
+    # ===== 步骤 10.8：FTP Breakthrough 自动检测（Sprint 9 task-8）=====
+    # 用户骑出超过预估 ftp 时写 pending 事件 / 让 settings 页 onShow 弹窗提示更新 ftp。
+    # SAVEPOINT 隔离（与 task-2.A.1 detector / persona hook 同 pattern）：
+    #   detect_breakthrough 内任何异常都被吞 / 但兜底再加一层 SAVEPOINT 防 session invalid。
+    # Sprint 5 task-2 守卫：duplicate 跳过（避免给重复活动重复发 breakthrough 弹窗）。
+    # 函数内 import 避免模块顶部循环依赖（breakthrough_detector → activity.models 已 import）。
+    if not is_duplicate:
+        try:
+            from app.activity.breakthrough_detector import detect_breakthrough
+
+            nested_bt = db.begin_nested()
+            try:
+                # 此时 activity.status='completed' 已 set；先 flush 让 estimator
+                # 查 status='completed' 时能看到本条活动（autoflush=False）。
+                db.flush()
+                detect_breakthrough(db, user, activity)
+                nested_bt.commit()
+            except Exception:
+                nested_bt.rollback()  # 不影响外层 activity.status='completed'
+        except Exception:
+            # 最外层兜底：begin_nested 失败 / 模块 import 极端失败
+            logger.exception(
+                "breakthrough hook outer SAVEPOINT failed activity_id=%s",
+                activity.id,
+            )
+
     db.commit()
 
     # ===== 步骤 11：触发 Segment 匹配 =====

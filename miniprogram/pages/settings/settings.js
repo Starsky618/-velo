@@ -40,6 +40,9 @@ Page({
     // Sprint 9 task-6：FTP 估算弹窗状态
     ftpEstimateModal: false,       // 弹窗显隐
     estimateResult: null,          // EstimationResultResponse / { ftp, confidence, method, r2 }
+    // Sprint 9 task-8：FTP Breakthrough 弹窗状态（worker 自动检测出的突破事件）
+    breakthroughModal: false,      // 弹窗显隐
+    breakthroughEvent: null,       // BreakthroughEventResponse / { id, old_ftp, suggested_ftp, ... }
   },
 
   /**
@@ -54,6 +57,8 @@ Page({
     }
     this._fetchProfile()
     this._fetchStravaStatus()
+    // Sprint 9 task-8：每次进 settings 时拉 pending breakthrough / 有则弹窗
+    this._checkPendingBreakthroughs()
   },
 
   /**
@@ -265,6 +270,82 @@ Page({
    * catchtap="noop" 只需一个空方法即可 / 不做任何事
    */
   noop() {},
+
+  /**
+   * Sprint 9 task-8：拉 pending breakthrough / 有则弹窗
+   *
+   * 调用时机：onShow（每次进 settings 页都拉一次 / 用户处理后不再有 pending 不会再弹）
+   *
+   * 失败兜底：静默 catch / 不打扰用户（网络抖动 / 后端 5xx 都不显示报错）
+   */
+  _checkPendingBreakthroughs() {
+    const that = this
+    api.get('/api/user/me/breakthroughs')
+      .then(function (events) {
+        if (events && events.length > 0) {
+          // 取最新一条（后端 order_by detected_at.desc / 第一条即最新）
+          // 防抖逻辑保证大多数情况只会有 1 条 pending
+          that.setData({
+            breakthroughModal: true,
+            breakthroughEvent: events[0],
+          })
+        }
+      })
+      .catch(function () {
+        // 静默失败：进 settings 不应因 breakthrough 拉取失败弹错误 toast
+      })
+  },
+
+  /**
+   * Sprint 9 task-8：用户点"更新 FTP" → PATCH accepted → 同事务改 user.ftp
+   *
+   * 乐观更新：本地直接刷 ftp / 关弹窗 / 不等后端响应（提高反应速度）
+   * 失败兜底：toast 提示 / 不回滚本地状态（再次 onShow 时会重新拉取真实状态）
+   */
+  onAcceptBreakthrough() {
+    const that = this
+    const event = this.data.breakthroughEvent
+    if (!event || !event.id) {
+      this.setData({ breakthroughModal: false, breakthroughEvent: null })
+      return
+    }
+    api.patch('/api/user/me/breakthroughs/' + event.id, { status: 'accepted' })
+      .then(function () {
+        that.setData({
+          breakthroughModal: false,
+          breakthroughEvent: null,
+          ftp: event.suggested_ftp,           // 同步本地 ftp 显示
+        })
+        wx.showToast({
+          title: 'FTP 已更新到 ' + event.suggested_ftp + ' W',
+          icon: 'success',
+          duration: 2000,
+        })
+      })
+      .catch(function (err) {
+        wx.showToast({
+          title: (err && err.message) || '更新失败 / 请重试',
+          icon: 'none',
+        })
+      })
+  },
+
+  /**
+   * Sprint 9 task-8：用户点"暂不更新" → PATCH rejected → 不动 user.ftp
+   *
+   * 关弹窗即可 / 不需要 toast（用户主动忽略 / 静默处理）
+   * fire-and-forget 调 PATCH（不阻塞 UI 关闭）
+   */
+  onRejectBreakthrough() {
+    const event = this.data.breakthroughEvent
+    if (event && event.id) {
+      api.patch('/api/user/me/breakthroughs/' + event.id, { status: 'rejected' })
+        .catch(function () {
+          // 静默：用户已经"暂不"了 / 网络失败重要性低 / 下次 onShow 会再拉
+        })
+    }
+    this.setData({ breakthroughModal: false, breakthroughEvent: null })
+  },
 
   /**
    * 解绑 Strava——强制二次确认（红线）

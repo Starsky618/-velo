@@ -12,15 +12,19 @@
 - 错误处理统一用 HTTPException
 """
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.activity import schemas as activity_schemas
 from app.activity.backfill_ftp import enqueue_backfill_ftp
 from app.activity.ftp_estimator import estimate_ftp_for_user
+from app.activity.models import BreakthroughEvent
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.user import schemas, service
+from app.user.models import User
 
 # 创建路由器，所有用户相关接口都挂在 /api/user 下
 router = APIRouter(prefix="/api/user", tags=["user"])
@@ -332,6 +336,101 @@ def get_ftp_estimate(
     """
     result = estimate_ftp_for_user(db, user_id)
     return result
+
+
+# ========== Sprint 9 task-8：FTP Breakthrough 事件 endpoints ==========
+#
+# 调用链：
+#   1. worker 解析活动完成 → detect_breakthrough 写 pending event
+#   2. settings.js onShow → GET /me/breakthroughs → 返 pending list
+#   3. 前端弹窗 → PATCH /me/breakthroughs/:id { status: accepted/rejected }
+#   4. accepted 同事务更新 user.ftp（不触发 task-4 backfill / 快照式纯粹）
+#
+# 自动过期（7 天）在 GET 内做：每次 onShow 时把 expires_at < now 的 pending 转 expired。
+# 比 cron 简单且零运维成本（velo 用户量小 / 不需要专门 cleanup job）。
+
+
+@router.get(
+    "/me/breakthroughs",
+    response_model=list[activity_schemas.BreakthroughEventResponse],
+)
+def list_pending_breakthroughs(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """task-8 (sprint9)：拉当前用户所有 pending breakthrough 事件。
+
+    settings.js onShow 调一次 / 有 pending 则弹窗 / 没有静默。
+
+    自动过期逻辑：每次调用先把 expires_at < now 的 pending 转 expired
+    （懒清理 / 不依赖额外 cron 任务）。
+    """
+    now = datetime.now(timezone.utc)
+    # 懒过期：把过期但仍是 pending 的事件改 expired / 一条 UPDATE 搞定
+    db.query(BreakthroughEvent).filter(
+        BreakthroughEvent.user_id == user_id,
+        BreakthroughEvent.status == "pending",
+        BreakthroughEvent.expires_at < now,
+    ).update({"status": "expired"}, synchronize_session=False)
+    db.commit()
+
+    # 返当前仍 pending 的事件
+    return (
+        db.query(BreakthroughEvent)
+        .filter(
+            BreakthroughEvent.user_id == user_id,
+            BreakthroughEvent.status == "pending",
+        )
+        .order_by(BreakthroughEvent.detected_at.desc())
+        .all()
+    )
+
+
+@router.patch(
+    "/me/breakthroughs/{event_id}",
+    response_model=activity_schemas.BreakthroughEventResponse,
+)
+def update_breakthrough(
+    event_id: int,
+    payload: activity_schemas.BreakthroughUpdatePayload,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """task-8 (sprint9)：用户处理 breakthrough 事件（accept / reject）。
+
+    accepted 语义（关键）：
+      - 同事务更新 user.ftp = suggested_ftp
+      - **不触发** task-4 历史活动回填 / 历史 snapshot_ftp 保持原值
+      - 后续新活动 IF / TSS 用新 ftp 算（snapshot 时间点之后才生效）
+
+    rejected 语义：只标状态 / 不动 user.ftp。
+
+    权限：用户只能改自己的事件（filter user_id）。
+    幂等：已 accepted / rejected / expired 的事件 → 400（防双击重复操作）。
+    """
+    event = (
+        db.query(BreakthroughEvent)
+        .filter_by(id=event_id, user_id=user_id)
+        .first()
+    )
+    if event is None:
+        raise HTTPException(status_code=404, detail="Breakthrough 不存在")
+    if event.status != "pending":
+        raise HTTPException(
+            status_code=400, detail=f"该 Breakthrough 已处理（状态：{event.status}）"
+        )
+
+    event.status = payload.status
+
+    if payload.status == "accepted":
+        # 同事务更新 user.ftp / 不触发 backfill（快照式 / 不动历史）
+        user = db.query(User).filter_by(id=user_id).first()
+        if user is not None:
+            user.ftp = event.suggested_ftp
+
+    db.commit()
+    db.refresh(event)
+    return event
 
 
 @router.get("/{user_id}/profile", response_model=schemas.UserProfileResponse)

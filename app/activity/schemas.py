@@ -167,6 +167,46 @@ class EstimationResultResponse(BaseModel):
         from_attributes = True
 
 
+# ========== Sprint 9 task-8：FTP Breakthrough 事件 ==========
+
+
+class BreakthroughEventResponse(BaseModel):
+    """task-8 (sprint9)：GET /api/user/me/breakthroughs 单条响应。
+
+    与 app.activity.models.BreakthroughEvent ORM 字段一一对齐。
+    detected_at / expires_at 用 Pydantic 自动序列化（**禁止手工拼 Z** /
+    陷阱 #11 / 已踩 / Tim 拍）—— tz-aware datetime 让 Pydantic 输出
+    "2026-05-21T12:00:00+00:00" 格式 / 前端 wx 自带 Date 解析能吃。
+
+    类比：体检报告——告诉用户当前 ftp / 建议新 ftp / 这个建议什么时候过期。
+    """
+    id: int
+    user_id: int
+    activity_id: int
+    detected_at: datetime
+    old_ftp: int
+    suggested_ftp: int
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class BreakthroughUpdatePayload(BaseModel):
+    """task-8 (sprint9)：PATCH /api/user/me/breakthroughs/:id 请求体。
+
+    用户只能从 pending 转 accepted / rejected。其他状态（expired）由系统
+    自动转换 / 用户不能手动改。
+
+    extra='forbid'（陷阱 #1 + admin endpoint 复利实证 / CLAUDE.md 关键技术约定）：
+    防客户端误传 / 注入其他字段后 200 OK 但实际没改 → 排查噩梦。
+    Literal 显式枚举 → 422 拦截非法值（不让 'pending'/'expired' 通过）。
+    """
+    status: Literal["accepted", "rejected"]
+
+    model_config = ConfigDict(extra="forbid")
+
+
 # ========== 时序数据（供前端画速度/功率/心率曲线） ==========
 
 class TimeseriesResponse(BaseModel):

@@ -409,6 +409,25 @@ def _strava_post_parse_hooks(db, activity) -> None:
     except Exception:
         pass
 
+    # 6. FTP Breakthrough 检测（Sprint 9 task-8 / 与 GPX worker.py 步骤 10.8 同源）
+    #    用户骑出超过预估 ftp 时写 pending event / settings 页 onShow 弹窗。
+    #    SAVEPOINT 隔离 / 不传染 activity.status='completed'。
+    try:
+        from app.activity.breakthrough_detector import detect_breakthrough
+
+        nested_bt = db.begin_nested()
+        try:
+            # 重新拉 user（hook 入参没传 / 与 user.city hook 同 pattern）
+            user = db.query(User).filter_by(id=activity.user_id).first()
+            if user is not None:
+                db.flush()  # 让 estimator 查 status='completed' 时看到本条
+                detect_breakthrough(db, user, activity)
+            nested_bt.commit()
+        except Exception:
+            nested_bt.rollback()
+    except Exception:
+        pass
+
 
 def _wipe_activity_derived_data(db, activity) -> None:
     """

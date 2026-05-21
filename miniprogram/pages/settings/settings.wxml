@@ -78,6 +78,29 @@
     </view>
   </view>
 
+  <!-- Sprint 9 task-8：FTP Breakthrough 弹窗（worker 自动检测出的突破事件） -->
+  <!-- 弹窗内容 = 当前 ftp → 建议新 ftp / 用户点"更新 FTP" 或 "暂不更新" -->
+  <view class="modal-mask" wx:if="{{breakthroughModal}}" bindtap="onRejectBreakthrough">
+    <view class="modal-content" catchtap="noop">
+      <view class="modal-title">🎉 检测到 FTP 突破</view>
+      <view class="modal-body">
+        <view class="breakthrough-success">
+          <view class="estimate-hint">你最近的训练表现超出当前 FTP</view>
+          <view class="breakthrough-ftp-row">
+            <text class="breakthrough-old">{{breakthroughEvent.old_ftp}}W</text>
+            <text class="breakthrough-arrow">→</text>
+            <text class="breakthrough-new">{{breakthroughEvent.suggested_ftp}}W</text>
+          </view>
+          <view class="estimate-hint">是否更新 FTP？后续新活动将用新值计算 IF/TSS</view>
+        </view>
+      </view>
+      <view class="modal-actions">
+        <button class="modal-btn primary-btn" bindtap="onAcceptBreakthrough">更新 FTP</button>
+        <button class="modal-btn cancel-btn" bindtap="onRejectBreakthrough">暂不更新</button>
+      </view>
+    </view>
+  </view>
+
   <!-- 区块 2：第三方账号 -->
   <view class="section">
     <view class="section-title">第三方账号</view>

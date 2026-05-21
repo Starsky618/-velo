@@ -305,3 +305,40 @@ page {
 .cancel-btn::after {
   border: none;
 }
+
+/* ═════════════════════════════════════════════════════════════════════════ */
+/* Sprint 9 task-8：FTP Breakthrough 弹窗专属样式                              */
+/* ═════════════════════════════════════════════════════════════════════════ */
+
+/* 复用 .modal-mask / .modal-content / .modal-title / .modal-body / .modal-actions
+   只新增 breakthrough 特有的 ftp-row（老 → 新值的视觉对比） */
+
+.breakthrough-success {
+  text-align: center;
+  width: 100%;
+}
+
+.breakthrough-ftp-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24rpx;
+  margin: 24rpx 0;
+}
+
+.breakthrough-old {
+  font-size: 48rpx;
+  font-weight: 600;
+  color: #999;            /* 灰：表示"旧值" */
+}
+
+.breakthrough-arrow {
+  font-size: 40rpx;
+  color: #999;
+}
+
+.breakthrough-new {
+  font-size: 64rpx;
+  font-weight: 700;
+  color: #34c759;         /* 绿：表示"新值/进步" / 与 confidence.high 同色系 */
+}

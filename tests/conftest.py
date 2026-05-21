@@ -261,8 +261,12 @@ def db():
     # 建表：只建 users 表（Activity 模型用了 PostgreSQL 专有的 JSONB 和 Geometry，
     # SQLite 不支持，所以 activities 表用下面的手动简化版 _activities_table 代替）
     from app.user.models import User
+    # Sprint 9 task-8：BreakthroughEvent ORM 字段都是 SQLite 兼容（Integer/String/DateTime）
+    # 直接建表 / 让 ORM 测试能跑（不需要简化版 _breakthrough_events_table）
+    from app.activity.models import BreakthroughEvent
     User.__table__.create(bind=_test_engine, checkfirst=True)
     _test_metadata.create_all(bind=_test_engine)
+    BreakthroughEvent.__table__.create(bind=_test_engine, checkfirst=True)
 
     session = _TestSession()
     try:
@@ -270,6 +274,7 @@ def db():
     finally:
         session.close()
         # 删表：测试结束后把所有表清掉，下次重建
+        BreakthroughEvent.__table__.drop(bind=_test_engine, checkfirst=True)
         _test_metadata.drop_all(bind=_test_engine)
         User.__table__.drop(bind=_test_engine, checkfirst=True)
 
