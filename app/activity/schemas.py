@@ -187,6 +187,7 @@ class BreakthroughEventResponse(BaseModel):
     old_ftp: int
     suggested_ftp: int
     status: str
+    expires_at: datetime  # quality + Codex 审 Minor / 前端可显示"还剩 N 天过期"
 
     class Config:
         from_attributes = True

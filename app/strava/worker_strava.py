@@ -2,7 +2,7 @@
 Strava webhook 异步处理 worker——"门铃响后的取件流程"。
 
 干啥用：Strava 用户上传新活动 → webhook 打电话给 velo → api 容器接到电话扔到 RQ 队列 →
-worker 容器跑这个文件里的函数 → 拉详情 + 轨迹 + 跑赛段匹配 + 触发 5 套 hook → 用户秒级看到。
+worker 容器跑这个文件里的函数 → 拉详情 + 轨迹 + 跑赛段匹配 + 触发 6 套 hook → 用户秒级看到。
 
 操作注意事项：
 - 这个文件被 RQ worker 通过字符串路径动态 importlib 调用（worker.py 不需要预先 import）
@@ -12,7 +12,7 @@ worker 容器跑这个文件里的函数 → 拉详情 + 轨迹 + 跑赛段匹�
 输入输出数据流：
 - 输入：webhook 推送的 user_id + strava_activity_id（来自 service_sync.handle_webhook_event）
 - 处理：拉 Strava API → 写 DB → 触发 hooks
-- 输出：activity.status='completed' + 5 套 hook 副作用（city / heatmap / progress / persona）
+- 输出：activity.status='completed' + 6 套 hook 副作用（city / heatmap / progress / persona）
 
 拆 create / update 两条独立路径：
 - create：抢 importing 锁 → 拉详情 → save → hooks
@@ -140,7 +140,7 @@ def process_strava_webhook_update(user_id: int, strava_activity_id: int) -> None
 
 def _process_strava_main(db, user_id: int, strava_activity_id: int) -> None:
     """
-    主流程：拉详情 + 守卫 + 拉轨迹 + save + 5 套 hook。
+    主流程：拉详情 + 守卫 + 拉轨迹 + save + 6 套 hook。
 
     严格对照 import_scheduler.py:_run_tier2 同源 pattern（同样的 SAVEPOINT 隔离 + hook 顺序）。
     """
@@ -259,7 +259,7 @@ def _process_strava_main(db, user_id: int, strava_activity_id: int) -> None:
     except Exception:
         pass
 
-    # ---- 5 套 hook（is_duplicate=True 跳过 / 与 GPX worker 同 pattern）----
+    # ---- 6 套 hook（is_duplicate=True 跳过 / 与 GPX worker 同 pattern）----
     if not is_duplicate:
         _strava_post_parse_hooks(db, activity)
 
@@ -280,7 +280,7 @@ def _process_strava_main(db, user_id: int, strava_activity_id: int) -> None:
 
 def _strava_post_parse_hooks(db, activity) -> None:
     """
-    完整复制 GPX worker (app/activity/worker.py:313-460) 5 套 hook + 每个 SAVEPOINT。
+    完整复制 GPX worker (app/activity/worker.py:313-460) 6 套 hook + 每个 SAVEPOINT。
 
     顺序严格对照 GPX worker（5 段 / 任一失败不阻断 status='completed'）：
     1. detect_5min_power_progress（5min 功率进步通知）

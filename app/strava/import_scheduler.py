@@ -544,6 +544,23 @@ def _run_tier2(
         except Exception:
             pass
 
+        # ===== Sprint 9 task-8 fix (quality + Codex 异源审独立抓 / 2026-05-21)：
+        # breakthrough 检测覆盖三条 save_parse_result 路径（worker.py / worker_strava.py / 此处）
+        # 漏接 = 用户首次绑定 Strava 时几百条历史活动里若有突破永不弹窗
+        # SAVEPOINT 隔离 / 失败不阻断 status='completed' / is_duplicate 守卫防重复活动
+        if not is_duplicate:
+            try:
+                from app.activity.breakthrough_detector import detect_breakthrough
+                nested_brk = db.begin_nested()
+                try:
+                    detect_breakthrough(db, user, activity)
+                    db.flush()
+                    nested_brk.commit()
+                except Exception:
+                    nested_brk.rollback()
+            except Exception:
+                pass
+
         db.commit()
     except Exception as e:
         db.rollback()

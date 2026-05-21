@@ -348,6 +348,14 @@ Page({
   },
 
   /**
+   * 关弹窗 / 不调 PATCH（task-8 quality reviewer Minor 修 / 防误触 mask 永久 reject）
+   * 用户下次 onShow 仍能弹（pending 还在 / 7 天后才 expired）
+   */
+  onCloseBreakthrough() {
+    this.setData({ breakthroughModal: false, breakthroughEvent: null })
+  },
+
+  /**
    * 解绑 Strava——强制二次确认（红线）
    *
    * 后端契约：POST /api/strava/unbind → 204 No Content（同事务清 4 字段 + active import → paused）

@@ -408,29 +408,44 @@ def update_breakthrough(
     权限：用户只能改自己的事件（filter user_id）。
     幂等：已 accepted / rejected / expired 的事件 → 400（防双击重复操作）。
     """
-    event = (
+    # Codex 异源审 Important（2026-05-21 抓）：原子 UPDATE 防并发 race
+    # 之前 .first() + 检查 + .commit 模式有两个 race：
+    # (1) 两个并发 PATCH 同时通过 status=pending 检查 → last-write-wins
+    # (2) GET 端懒过期跟 PATCH 之间 race / 已过期 pending 仍能 accepted
+    # 修：UPDATE ... WHERE id + user_id + status='pending' + expires_at>now / rowcount 检查
+    now = datetime.now(timezone.utc)
+    rowcount = (
         db.query(BreakthroughEvent)
-        .filter_by(id=event_id, user_id=user_id)
-        .first()
-    )
-    if event is None:
-        raise HTTPException(status_code=404, detail="Breakthrough 不存在")
-    if event.status != "pending":
-        raise HTTPException(
-            status_code=400, detail=f"该 Breakthrough 已处理（状态：{event.status}）"
+        .filter(
+            BreakthroughEvent.id == event_id,
+            BreakthroughEvent.user_id == user_id,
+            BreakthroughEvent.status == "pending",
+            BreakthroughEvent.expires_at > now,
         )
+        .update({"status": payload.status}, synchronize_session=False)
+    )
 
-    event.status = payload.status
+    if rowcount == 0:
+        # 真存在但已处理 / 过期 / 越权 — 区分 404 vs 400
+        existing = db.query(BreakthroughEvent).filter_by(id=event_id, user_id=user_id).first()
+        if existing is None:
+            db.commit()
+            raise HTTPException(status_code=404, detail="Breakthrough 不存在")
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail=f"该 Breakthrough 已处理（状态：{existing.status}）",
+        )
 
     if payload.status == "accepted":
         # 同事务更新 user.ftp / 不触发 backfill（快照式 / 不动历史）
+        event = db.query(BreakthroughEvent).filter_by(id=event_id).first()
         user = db.query(User).filter_by(id=user_id).first()
-        if user is not None:
+        if user is not None and event is not None:
             user.ftp = event.suggested_ftp
 
     db.commit()
-    db.refresh(event)
-    return event
+    return db.query(BreakthroughEvent).filter_by(id=event_id).first()
 
 
 @router.get("/{user_id}/profile", response_model=schemas.UserProfileResponse)
