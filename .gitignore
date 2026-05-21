@@ -38,3 +38,5 @@ docker-compose.override.yml
 
 # Claude Code superpowers worktree 临时目录（本机会话产物，不进版本库）
 .claude/worktrees/
+.claude/agent-weekly/
+docs/agent-weekly/
