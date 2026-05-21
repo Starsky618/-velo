@@ -23,18 +23,20 @@
     <view class="section-title">账号资料</view>
 
     <!-- FTP 行：未设时多一个"让系统估算"按钮（Sprint 9 task-6 / 入口前置） -->
-    <view class="row">
-      <text class="row-label" bindtap="onEditFtp">FTP</text>
+    <!-- task-6 Critical fix (quality reviewer 2026-05-21 抓 / 微信硬上限 #2)：button 嵌 flex 行拦截兄弟 tap →
+         button 移到 row 外单独一行 / 保留 row-value "未设置" + "›" 手动填入口 -->
+    <view class="row" bindtap="onEditFtp">
+      <text class="row-label">FTP</text>
       <view class="row-right">
-        <button
-          class="inline-btn estimate-btn"
-          wx:if="{{!ftp}}"
-          bindtap="onEstimateFtp"
-          size="mini">让系统估算</button>
-        <text class="row-value" bindtap="onEditFtp">{{ftp ? ftp + ' W' : '未设置'}}</text>
-        <text class="row-arrow" bindtap="onEditFtp">›</text>
+        <text class="row-value">{{ftp ? ftp + ' W' : '未设置'}}</text>
+        <text class="row-arrow">›</text>
       </view>
     </view>
+    <button
+      class="estimate-btn-block"
+      wx:if="{{!ftp}}"
+      bindtap="onEstimateFtp"
+      size="mini">让系统估算</button>
     <text class="section-hint">骑行实力评估的核心参数 / 影响功率区间统计</text>
 
     <!-- 体重行（Sprint 9 task-6 / 可选 / 算 W/kg 用） -->

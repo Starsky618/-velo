@@ -225,6 +225,10 @@ Page({
       this.setData({ ftpEstimateModal: false })
       return
     }
+    // task-6 Important fix (2026-05-21 quality reviewer)：toast 文案条件化
+    // task-4 backfill 仅"首次填 ftp（user.ftp NULL → 非 NULL）"触发
+    // 若用户已有 ftp 现在改值 = 不触发回填 / 不该误导"正在算历史活动"
+    const isFirstTimeFill = this.data.ftp == null
     api.put('/api/user/profile', { ftp: ftp })
       .then(function () {
         that.setData({
@@ -233,7 +237,7 @@ Page({
           estimateResult: null,
         })
         wx.showToast({
-          title: 'FTP 已保存 / 正在算历史活动',
+          title: isFirstTimeFill ? 'FTP 已保存 / 正在算历史活动' : 'FTP 已更新',
           icon: 'success',
           duration: 2500,
         })

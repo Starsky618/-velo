@@ -133,6 +133,22 @@ page {
   border: none;
 }
 
+/* task-6 Critical fix (2026-05-21 quality reviewer 抓 / 微信硬上限 #2 button 拦截兄弟 tap):
+   button 移出 .row-right flex 行 / 单独占一行 / 不再拦截 row-value + row-arrow tap */
+.estimate-btn-block {
+  background: #2d8cf0 !important;
+  color: #fff !important;
+  border: none !important;
+  font-size: 26rpx !important;
+  padding: 8rpx 24rpx !important;
+  margin: 16rpx 32rpx 8rpx 32rpx !important;
+  display: block !important;
+}
+
+.estimate-btn-block::after {
+  border: none;
+}
+
 /* ── modal 遮罩 + 内容容器 ── */
 .modal-mask {
   position: fixed;
