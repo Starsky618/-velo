@@ -73,7 +73,7 @@
 | parsing | `app/parsing/` | 1802 行 | v1 | GPX/FIT/Strava 三源统一翻译层(纯函数) |
 | strava | `app/strava/` | 1996 行 | v2 | Strava OAuth/API/Webhook/tier1-2 导入 |
 | notification | `app/notification/` | ~903 行 | v3 | PR/KOM/KOM_lost 事件检测、通知列表、**v5: 5min 功率进步检测**（task-2.A.1 / progress_detector.py 210 行）|
-| **agent** | `app/agent/` | **295 行**（segment_writer）**+ ~900 行**（persona / 2026-05-20）| **v5 + Persona v0.1** | **2 个子工程：① segment_writer（DeepSeek + RQ）② persona/（NPC 文案系统 / Sprint v0.1 / 168 文案 + 5 模块 + endpoint + scheduler）/ 都是叶子节点 / 不反向 import 业务 service** |
+| **agent** | `app/agent/` | **295 行**（segment_writer） | **v5** | **segment_writer（DeepSeek + RQ）/ 叶子节点 / 不反向 import 业务 service**（Persona Engine 2026-05-21 整模块清 / 详 changelog）|
 | **monitor** | `app/monitor/` | **350 行** | **v5** | **worker 软目标监控（processing_health 4min + 飞书告警）+ admin H5 端到端探针（admin_h5_health 静态站 + 反代）** |
 | **common** | `app/common/` | **80 行** | **v5** | **跨模块工具：地理函数 / haversine / city 推断 / 单向依赖最下方（任意业务模块可向下用）** |
 | **admin** | `app/admin/` | **885 行** | **v5** | **管理后台 12 endpoint（whoami / curation-pool / ai/segment-drafts / segments admin CRUD / from-activity / from-gpx / activities/{id}/trackpoints）/ 编排其他模块 service / require_admin 依赖把关** |
@@ -99,9 +99,9 @@ app/<模块名>/
 - `app/strava/`: models / router / service / client / import_scheduler
 - `app/notification/`: models / schemas / router / service / detector(PR/KOM 同步检测) / **progress_detector**（**v5 task-2.A.1** / 5min 功率进步异步检测）
 - `app/user/`: models / schemas / router / service（**v5 task-2.C.2 部分** 加 `get_user_power_curve` + `invalidate_power_curve_cache` + Redis 缓存）
-- **`app/agent/`** (v5 + Persona v0.1 / 2026-05-20):
+- **`app/agent/`** (v5):
   - segment_writer 子工程：`__init__` / segment_writer / tasks（DeepSeek + RQ / v5 task-1.B.1）
-  - **persona 子工程**：`persona/__init__` / `trigger_router`（7 event 路由 / PR>极端>段位）/ `template_lib`（4 函数 / 段位 + 距离桶 + 模板查 + pick 防重）/ `filters`（宪法 §3 反例 9 类 + emoji + 长度 5-25）/ `cache`（7 天去重 + SAVEPOINT 隔离）/ `service`（顶层 try/except 不传染）/ `router`（GET /api/persona/output + /recent）/ `models`（3 ORM）
+  - ~~persona 子工程~~（2026-05-21 整模块清 / 详 changelog）
 - **`app/monitor/`** (v5): __init__ / processing_health（worker 软目标 4min）/ admin_h5_health（端到端探针 / 静态站 + 反代 / Redis SETNX 5min 去抖）
 - **`app/common/`** (v5): __init__ / geo（haversine / infer_city_from_coords）
 - **`app/admin/`** (v5): __init__ / dependencies（require_admin）/ schemas / router（12 endpoint）/ service（编排候选池 + AI 草稿 + segment / 含 _check_hausdorff_overlap 共享 helper）
@@ -262,7 +262,7 @@ app/<模块名>/
 
 ---
 
-## 4. 数据表(12 / v5 +2 / Persona v0.1 +3 / 2026-05-20)
+## 4. 数据表(12 / v5 +2 / Persona 3 张 stage 3 待 drop)
 
 ### 4.1 表清单
 
@@ -277,9 +277,9 @@ app/<模块名>/
 | `notifications` | v3（**v5 加 payload JSONB + 部分唯一索引 uniq_progress_notification_per_activity**） | 5k-50k | notification |
 | **`segment_ai_drafts`** | **v5** | **同 segments** | **agent**（pending→human_edited→approved/rejected 状态机 / segment_id UNIQUE FK）|
 | **`segment_curation_pool`** | **v5** | **30-500** | **segment**（admin 候选池 + 周期性脚本算分 / segment_id UNIQUE FK）|
-| **`persona_outputs`** | **Persona v0.1 / 2026-05-16** | **同 activities × 用户活跃** | **agent/persona**（NPC 文案发送台账 / text_snapshot 防 endpoint JOIN / activity_id FK ondelete=SET NULL）|
-| **`persona_templates`** | **Persona v0.1** | **168（v0.2 cycle）** | **agent/persona**（NPC 模板池 / scene_type + segment 索引 / active flag 不删表只下线）|
-| **`persona_feedback`** | **Persona v0.1 / 占位**| **v1.0+ 才用** | **agent/persona**（用户长按 NPC like/dislike/dismiss 反馈 / 当前不暴露 endpoint）|
+| ~~`persona_outputs`~~ | ~~Persona v0.1~~ | **193 行 / stage 3 待 drop** | **2026-05-21 模块清** / 数据已 pg_dump 归档 `docs/archive/persona-db-backup/` |
+| ~~`persona_templates`~~ | ~~Persona v0.1~~ | **168 行 / stage 3 待 drop** | 同上 |
+| ~~`persona_feedback`~~ | ~~Persona v0.1~~ | **0 行 / stage 3 待 drop** | 同上 / 0 行实证"装饰展示无人理"决策正确 |
 
 > **`progress_records` 没建独立表**：spec 早期版本提过，task-2.A.1 实施时改用 `notifications.payload` JSONB + 部分唯一索引 `uniq_progress_notification_per_activity` 实现幂等推送（spec §2 修订补遗 5.5/5.6 / commit `91a3691`）。如果未来文档误引用 `progress_records`，按本表为准。
 
@@ -626,17 +626,15 @@ Strava 导入路径:
 
 ⚠️ 老 `POST /api/segments` 与 `DELETE /api/segments/{id}` v5 起 deprecated（router 顶部 `deprecated=True`）/ Sunset 2026-06-30。
 
-**API 总路由数: 49**（grep `@router.*` 实证 / Persona v0.1 +2）：
-- 主 router：user 10 + activity 7 + segment 6 + strava 7 + admin 12 + notification 2 + honor 1 + **persona 2** = **47**
+**API 总路由数: 47**（grep `@router.*` 实证 / 2026-05-21 Persona 2 个清）：
+- 主 router：user 10 + activity 7 + segment 6 + strava 7 + admin 12 + notification 2 + honor 1 = **45**
 - alias router：segment/router.py 内 `user_effort_router` 1（`/api/user/efforts`）+ `activity_segment_router` 1（`/api/activities/{id}/segments`）= **2**
-- 总计 47 + 2 = **49**
+- 总计 45 + 2 = **47**
 - 其中 deprecated 2 个（老 segment POST/DELETE / `deprecated=True` / Sunset 2026-06-30）/ 仍可访问
 
 **v5 新增 endpoint**：admin 12 全新 + user 6 新（power-curve/heatmap/PATCH me/{id}/profile/{id}/power-curve/{id}/heatmap）+ segment 1 新（efforts/me）= **+19 净增 v5**。
 
-**Persona v0.1 新增 endpoint**（2026-05-18 / `app/agent/persona/router.py`）：
-- `GET /api/persona/output?scene_type=X[&activity_id=Y][&target_user_id=Z]` — 拿当前场景 NPC 文案（详情页带 activity_id 不限时间 / "我的"页限 24h 朋友圈式）
-- `GET /api/persona/recent?limit=10` — 拿用户最近 N 条 NPC 历史
+~~Persona v0.1 endpoint 2 个~~（2026-05-21 整模块清 / `GET /api/persona/output` + `/recent` 已删 / 详 changelog）。
 
 ⚠️ agent 注意:
 - 完整 OpenAPI schema: `/api/docs`(FastAPI 自动生成)

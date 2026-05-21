@@ -21,7 +21,6 @@
 10. [链路 10: AI 草稿生成 (v5)](#链路-10ai-草稿生成v5-task-1b1--5b2)
 11. [链路 11: worker 软目标监控 (v5)](#链路-11worker-软目标监控v5-task-1c1--571)
 12. 链路 12-16: 功率曲线 / 城市热图 / 看他人 / 赛段创建 / 即时反馈（v5）
-13. 链路 17: NPC 文案 hook（Persona v0.1 / 2026-05-18）
 12. [链路 12: 用户功率曲线查询 + 缓存 (v5)](#链路-12用户功率曲线查询--缓存v5-task-2c2--5c2)
 13. [链路 13: 城市热图 + PATCH 改 city (v5)](#链路-13城市热图--patch-改-cityv5-task-2c2c3--5a1)
 14. [链路 14: 看他人主页 (v5)](#链路-14看他人主页v5-task-2c3--5a2)
@@ -1417,83 +1416,14 @@ admin H5 三个入口：
 
 ---
 
-## 链路 17：NPC 文案 hook（Persona Engine v0.1 / 2026-05-18）
+## 链路 17（已删 / Persona Engine 整模块 2026-05-20 砍 / 2026-05-21 清）
 
-### 17.1 触发
+Persona Engine（NPC 文案 hook）属"装饰展示"层 / 用户看一眼不改变行为 / 一个 sprint 战略失误后整模块清理。
 
-worker 完成 activity 解析 → status=completed 后、`db.commit()` 前 → 跑 step 10.7 NPC hook 给本次活动写一条 NPC 文案到 `persona_outputs`。同时小程序 detail/profile 等页打开时通过 `GET /api/persona/output` 拉这条文案给用户看。
-
-### 17.2 序列（worker hook 写入侧）
-
-```
-[worker]  parse_activity → ... → step 10.6 user.city hook 完成 / 在 db.commit 之前
-  ↓ if not is_duplicate:
-  ↓ try: nested_persona = db.begin_nested()  # SAVEPOINT 隔离 / 失败不传染 activity 主流程
-  ↓   try: db.flush()  # 让本次 activity 进 session 让 _query_weekly_count 包含本次
-  ↓     weekly_count = _query_weekly_count(user_id, db)  # 本周一 北京 ZoneInfo
-  ↓     is_pr = _detect_pr(activity, user_id, db)  # 4 字段任一打破历史 max
-  ↓     total_distance_m = _query_total_distance(user_id, db)  # cycling sum
-  ↓     event1 = PersonaEvent(type='activity_uploaded', ...)
-  ↓     persona_service.generate_persona_output(event1, db)  # 6 步流水
-  ↓       └→ trigger_router.route(event) → PR > 极端 > 段位 优先级
-  ↓       └→ template_lib.get_templates_for_scene + pick_template（7 天去重）
-  ↓       └→ filters.is_safe（宪法 §3 反例 9 类 + emoji + 长度 5-25）
-  ↓       └→ cache.record_output（写 persona_outputs / 内层 SAVEPOINT 隔离）
-  ↓     if weekly_count >= 5: event2 = consecutive_high_detected → 同上流水
-  ↓     nested_persona.commit()
-  ↓   except Exception as inner: nested.rollback() + logger.warning（不抛）
-  ↓ except Exception as outer: logger.warning（catch begin_nested 本身失败 / 不传染）
-  ↓ db.commit()  # activity 主流程不受 persona 任何影响（宪法 §7.2）
-```
-
-### 17.3 序列（endpoint 读取侧 / 便利贴 + 朋友圈分流）
-
-```
-[api]  GET /api/persona/output?scene_type=X[&activity_id=Y]
-  ↓ get_current_user 解 JWT → user_id
-  ↓ service.get_latest_output_for_scene(db, user_id, scene_type, activity_id):
-  ↓   if activity_id is not None:  # 详情页 = 便利贴永远在
-  ↓     先精确查 activity_id==Y（不限时间 / Codex C2 防覆盖）
-  ↓     无命中 → fallback 查 activity_id IS NULL 限 24h（防 90 天前通用文案露面）
-  ↓   else:  # "我的"页 = 朋友圈式 24h
-  ↓     查 user × scene_type / shown_at >= now - 24h / 最新一条
-  ↓ 返 200 + {template_text|null, scene_type, created_at}（**永不返 5xx / 宪法 §7.2**）
-```
-
-### 17.4 后台 scheduler（每日 24h cron）
-
-```
-[persona-scanner 容器 / sleep 86400 循环]:
-  ↓ python -m scripts.persona_silence_scanner
-  ↓   找 last_activity_started_at >= 7 天的 user / 触发 silence_detected event / 写 persona_outputs
-  ↓ python -m scripts.persona_milestone_scanner
-  ↓   3 类 milestone 扫：累计跨阈值（1万/5万/10万 km）+ 周年 + 节气（2026 表硬编码）
-  ↓   同日幂等 guard：今日已写 surprise 的 user 跳过（防 cron 重复跑）
-  ↓   ZoneInfo("Asia/Shanghai") 算 today_bj（防容器 TZ=UTC 偏一天）
-```
-
-### 17.5 关键陷阱
-
-| 陷阱 | 原因 | 修法 |
-|---|---|---|
-| worker 没 rebuild | task-4 部署只 rebuild api + scanner / 漏 worker | 部署 SOP 改 `docker compose up -d --build`（不指定 service / 见 CLAUDE.md 部署 SOP）|
-| avg_speed 双重转换 | save_parse_result 已 *3.6 转 km/h / NPC hook 又 *3.6 | NPC hook 直接用 `activity.avg_speed` 不再 *3.6（worker.py + backfill 都修）|
-| db.flush() 在 hook 前 | SessionLocal autoflush=False / activity 还没落 DB / weekly_count 漏本次 | hook 内显式 `db.flush()` 让本次 activity 进 session 可查 |
-| endpoint activity_id 被通用覆盖 | (activity_id=X OR NULL) order by shown_at desc → 更晚的通用 NPC 覆盖回填的活动专属 | 先精确查 activity_id=X / 无命中再 fallback NULL |
-| 历史活动 backfill 段位错 | "现在段位算所有历史"违反真实时间线 | SQL window function 算"当时累计 km"（`scripts/persona_backfill.py`）|
-
-### 17.6 实证
-
-- 168 条 NPC 文案入库（v0.2 cycle / 7 个场景）
-- 193 条历史活动回填（2026-05-20 / 286 扫描 / 93 边缘 segment 无 template 池为 no_output）
-- worker hook 真用：上传 activity 422 / 55km / segment_distance/veteran_normal / "40km。蹬两脚意思意思。"
-- task-1.A.3 决策点 2 修：spec 写 `distance_km` → 现有 router 契约已用 `distance` → doc fix `1a0631f` 同步 spec（不破前端）
-
-### 16.4 不变式
-
-- 先查 segment 存在性再查 effort（避免 segment_id 不存在时静默返"is_first=True"误导用户）
-- 单次查询限 100 条 effort（防超长历史用户）
-- 字段名 `elapsed_time` 不是 `time`（陷阱 #10 / 不脑补）
+- 历史归档：`docs/archive/persona-db-backup/`（pg_dump 193+168+0 行 INSERT / 含 schema + FK / 可还原）
+- 战略复盘：`docs/changelog.md` 2026-05-20 段 + memory `feedback_decoration_vs_guidance_velo_persona_lesson.md`
+- 代码层：`app/agent/persona/` 整目录 + 5 处跨模块引用 + scripts + docker-compose persona-scanner 全删（commit `e723906`）
+- DB 层：3 张表 stage 3 reverse migration drop
 
 ---
 

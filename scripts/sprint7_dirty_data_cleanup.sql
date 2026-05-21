@@ -100,7 +100,8 @@ WHERE activity_id IN (
 
 
 -- 1.5 NOTE 2026-05-21：原 persona_outputs 影响范围检查已移除
--- Persona 模块整模块砍 / persona_outputs 表已 drop / FK 自然消失。
+-- Persona 模块整模块砍（stage 2 代码层 / stage 3 reverse migration 才真 drop 3 张表）。
+-- 若在 stage 3 完成前真跑此脚本：persona_outputs 表仍存在 / FK 仍是 SET NULL / 影响行为未变 / 但代码已不查。
 
 
 -- ============================================================

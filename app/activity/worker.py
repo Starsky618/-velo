@@ -25,10 +25,8 @@ rq Worker（根目录的 worker.py）从队列中取出任务，调用这里的 
 """
 
 import logging
-from datetime import datetime, timezone
 
 from sqlalchemy import update, func
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.activity.models import Activity, Trackpoint
 from app.database import SessionLocal
