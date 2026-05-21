@@ -272,11 +272,18 @@ velo 升级 OAuth scope `activity:read` → `activity:read_all` 后（commit TBD
 
 ### ✅ Persona Engine 5 条债（2026-05-21 整模块清 / 全部失效）
 
-> **Persona Engine 2026-05-21 彻底清理**（C 方案 = 前端 + 后端代码 + DB 表全清 / 详 `docs/changelog.md` 2026-05-20→21 段 + memory `feedback_decoration_vs_guidance_velo_persona_lesson.md`）。
+> **Persona Engine 2026-05-21 分 stage 清理**（C 方案 = 前端 + 后端代码 + DB 表全清 / 详 `docs/changelog.md` 2026-05-20→21 段 + memory `feedback_decoration_vs_guidance_velo_persona_lesson.md`）。
+>
+> 进度（commit hash）：
+> - stage 1 ✅（`a1babdc`）：pg_dump 3 表到 archive
+> - stage 2 ✅（`e723906` + `07a0256`）：app/agent/persona/ + 5 处跨模块引用 + scripts + tests + docker-compose persona-scanner 全清
+> - stage 3 ✅（`8073ab9`）：Alembic reverse migration drop 3 表（待 stage 5 真跑）
+> - **stage 4 ⏸ 待**：前端 miniprogram 14 文件清（utils/persona_*.js + 4 page 文件 + api.js）/ 当前生产前端仍调死 endpoint
+> - stage 5 ⏸ 待：生产部署 SOP（git push → docker rebuild → alembic upgrade head → curl verify）
 >
 > 原 5 条 persona 技术债（veteran_short 无 template / 节气硬编码 / 闰年周年 / N+1 / endpoint 窗口语义）随模块清理整体失效 / 不再追踪。
 >
-> 历史数据归档：`docs/archive/persona-db-backup/2026-05-21-persona-tables.sql`（193+168+0 行 / 含 schema + FK 可还原）。
+> 历史数据归档：`docs/archive/persona-db-backup/2026-05-21-persona-tables.sql`（193+168+0=361 条 INSERT / 含 schema + FK / archive 自包含可直接 `psql restore`）。
 
 ---
 

@@ -1,5 +1,34 @@
 # VELO 开发变更日志
 
+## 2026-05-21: Persona Engine 彻底清理（分 5 stage / 进行中）🧨
+
+**主轴**：Tim 拍 C 方案 = 前端 + 后端代码 + DB 表全清。装饰展示层不应上 sprint 主线 / 战略复盘见 [2026-05-20 段](#2026-05-20-战略-reset--persona-砍--训练分析线立项-)。
+
+**stage 进度**：
+
+| stage | commit | 内容 |
+|---|---|---|
+| 1 | `a1babdc` | `pg_dump` 3 张 persona 表到 `docs/archive/persona-db-backup/2026-05-21-persona-tables.sql`（193+168+0=361 条 INSERT / 含 schema + FK / archive 自包含） |
+| 2 | `e723906` + `07a0256` | `app/agent/persona/` 整目录（9 文件）+ 5 处跨模块引用（main.py / agent/__init__ / worker.py / worker_strava.py / docker-compose persona-scanner service）+ scripts 4 文件 + tests 5 文件 + 历史脚本注释化 / **净删 3463 行 / pytest 657 passed**  |
+| 3 | `8073ab9` | 新写 `migrations/versions/sprint9_persona_cleanup.py` reverse migration（drop_table feedback → templates → outputs / downgrade NotImplementedError）+ 清 `docs/tech-debt.md` 5 条 persona 债 + 同步 `docs/data-flow-guide.md` + `docs/architecture-guide.md` |
+| 4 | 待 | 前端 miniprogram 14 文件清（utils/persona_fetch + persona_static 整删 + api.js 剔 endpoint + 4 page 按 PERSONA_START/END 段剔 / 1569 行总量 / 派 subagent 拆 4 page-level task） |
+| 5 | 待 | 生产部署 SOP（git push → ssh server git pull → docker compose up -d --build api worker → docker stop persona-scanner 孤儿容器 → alembic upgrade head 真跑 reverse migration → curl verify 旧 endpoint 404 → 小程序真机回归） |
+
+**三审收敛**（stage 2 + 3 各跑 Claude A spec-faithful + Claude B integration + Codex 异源审三轮）：
+
+- stage 2：Critical 0 / Important 10（worker_strava docstring × 3 + docs 同步 × 4 + 死 import × 2 + sql 注释 × 1）/ fix commit `07a0256`
+- stage 3：Critical 0 / Important 4（migration docstring 措辞 × 2 + tech-debt 文案超前 × 1 + changelog 没记 × 1）/ 本 commit 即修
+
+**关键决策记忆**：
+
+1. **archive 自包含**：pg_dump --inserts --no-owner --no-acl / 含 CREATE TABLE + INSERT + ALTER FK / 直接 `psql -U velo -d velo < archive.sql` 恢复
+2. **不删历史 migration**：persona_engine_init.py + persona_engine_seed.py 保留 alembic chain 完整性 / 新环境跑会"建了又删"浪费几秒但语义对
+3. **downgrade NotImplementedError**：诚实做法 / drop 表不可逆 / 强制人工介入从 archive restore
+4. **CLAUDE.md:320 留 follow-up**：Tim 拍"第三组不做" / 部署 SOP 注释仍写"persona-scanner / cleanup / monitor"过时 / 防夹带不动 / 等 Tim 自己改或拍我精确 add hunk
+5. **persona_feedback 0 条数据**：实证"装饰展示无人理"决策正确（用户从不点反馈 / 验证砍掉 ROI 高）
+
+---
+
 ## 2026-05-20 → 21: Sprint 9 / FTP 智能化全部 ship ✅
 
 **主轴**：模块 A（路线图首块）/ 8 task + 9 hotfix 落地 / snapshot_ftp 快照式架构 + IF/TSS 量化数字 + CP 3-param eFTP 估算器 + W/kg 显示 + Breakthrough 自动检测。
