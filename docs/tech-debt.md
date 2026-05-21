@@ -270,19 +270,13 @@ velo 升级 OAuth scope `activity:read` → `activity:read_all` 后（commit TBD
 
 ---
 
-### ⚠ Persona Engine 5 条债（2026-05-20 模块已砍 / 全部搁置不修）
+### ✅ Persona Engine 5 条债（2026-05-21 整模块清 / 全部失效）
 
-> **Persona Engine 模块 2026-05-20 战略决定砍掉**（装饰展示层不应上 sprint 主线 / 详 memory `feedback_decoration_vs_guidance_velo_persona_lesson.md` + 全局 `~/.claude/CLAUDE.md` §2.1 "装饰展示 vs 主动指导"原则）。
+> **Persona Engine 2026-05-21 彻底清理**（C 方案 = 前端 + 后端代码 + DB 表全清 / 详 `docs/changelog.md` 2026-05-20→21 段 + memory `feedback_decoration_vs_guidance_velo_persona_lesson.md`）。
 >
-> 整目录 `app/agent/persona/` + 3 张 persona_* 表 + 6 task plans **暂停不删 / 晾着**。**以下 5 条 persona 技术债全部搁置 / 任何 agent 不要主动修**——等 3-5 天看真实反应再回头判断模块是永久砍 / 部分复用 / 还是激活。
-
-| persona-1 | `veteran_short` 段位无 template 池 | P3 | Persona v0.1 / 老登 < 30km 短距走 segment_distance/veteran_short / 但宪法 §2.2 没该 segment 文案 / template_lib 返 None / 2026-05-20 回填 286 条里 93 条 no_output 全是此 segment。**重评估触发**：trigger_router 改路由（老登 < 30km 走 extreme/tiny 而非 segment_distance）/ 或宪法 §2.2 加该 segment 文案 |
-| persona-2 | 节气日历硬编码 2026 / 2027 起失效 | P2 | `scripts/persona_milestone_scanner.py` `_SOLAR_TERMS_2026` 写死 2026 月日。**重评估触发**：2026-12-31 前必须刷新表 / 或换 lunardate 库动态算 |
-| persona-3 | 闰年 2/29 注册用户周年永远不触发 | P3 | `_check_anniversary` 严格匹配月日 / 2/29 在平年不存在。**重评估触发**：实际有 2/29 注册用户投诉看不到周年文案 |
-| persona-4 | `_check_milestone_distance` N+1 查询 | P3 | scanner 每用户 2 次全表 query / 100 用户级可接受 / 1000+ 时性能问题。**重评估触发**：activity 表 > 5 万行 / 或 scanner 跑时间 > 30s |
-| persona-5 | endpoint 24h vs cache 7 天去重语义不一致 | P2 | "我的"页 24h 窗口 / cache 7 天防重复 / 用户每天打开但 24h 后什么都看不到（除非新骑行）。**重评估触发**：用户反馈"我的页 NPC 经常没文案" / 或扩 endpoint 窗口到 7 天与 cache 对齐 |
-
-**为什么记**：v6+ 任何 agent 看到这 4 项时，先看"重评估触发"是否命中——命中 = 该升级；没命中 = 维持现状不动。防止"我觉得这里能优化"主动重写。
+> 原 5 条 persona 技术债（veteran_short 无 template / 节气硬编码 / 闰年周年 / N+1 / endpoint 窗口语义）随模块清理整体失效 / 不再追踪。
+>
+> 历史数据归档：`docs/archive/persona-db-backup/2026-05-21-persona-tables.sql`（193+168+0 行 / 含 schema + FK 可还原）。
 
 ---
 
