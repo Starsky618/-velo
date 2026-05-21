@@ -524,18 +524,3 @@
   padding: 24rpx 0;
 }
 
-/* PERSONA_START / Persona Engine task-5 / NPC 老登一句样式 */
-.persona-line {
-  font-size: 26rpx;
-  color: var(--color-text-3);
-  margin-top: 16rpx;
-  padding: 0 8rpx;
-  /* 文案过长单行 truncate / 防溢出（宪法 §2.5 字数 5-25 上限基本不会触发 / 但兜底） */
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  /* 略带斜体让 NPC 一句有"另一个声音"的感觉 / 不与正文混 */
-  font-style: italic;
-}
-/* PERSONA_END */

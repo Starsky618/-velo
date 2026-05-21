@@ -3,12 +3,6 @@
   每个 step 对应一种界面，用 wx:if 切换展示
 -->
 
-<!-- PERSONA_START / Persona Engine task-5 -->
-<!-- upload page 的 NPC 反应走 wx.showToast 而非 wxml DOM 节点（toast 是临时悬浮）
-     真实实现位置：upload.js fetchResult success 后调 fetchPersonaOutput('activity_upload', ...)
-     此处仅作 PERSONA 标记块占位 / 让拔出测试 grep <!-- PERSONA_START -->/<!-- PERSONA_END --> 5 page 全覆盖 -->
-<!-- PERSONA_END -->
-
 <wxs src="../../utils/format.wxs" module="f" />
 
 <view class="page-header">

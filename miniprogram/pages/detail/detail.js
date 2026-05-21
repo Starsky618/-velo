@@ -14,9 +14,6 @@
 
 var api = require('../../utils/api')
 var bindchart = require('../../utils/bindchart')
-// PERSONA_START / Persona Engine task-5
-var personaFetch = require('../../utils/persona_fetch')
-// PERSONA_END
 
 // ────── 纯工具函数（不依赖页面实例，可独立测试） ──────
 
@@ -110,10 +107,6 @@ Page({
     // task-4.6：隐私设置（仅 owner 可见 / 用于初始化抽屉 UI）
     isOwner: false,
 
-    // PERSONA_START / Persona Engine task-5
-    personaPrText: null,        // PR 横幅文案（仅 PR 活动有）
-    personaSegmentText: null,   // 段位文案
-    // PERSONA_END
     privacyDrawerOpen: false,
     privacyForm: {
       visibility: 'public',
@@ -133,24 +126,8 @@ Page({
       this.fetchDetail(options.id)
       this.fetchSegments(options.id)
       this.fetchTimeseries(options.id)
-      this.fetchPersona(options.id)  // Persona Engine task-5 / 拿 PR + 段位 2 条 NPC 文案
     }
   },
-
-  // PERSONA_START / Persona Engine task-5
-  // 拉 2 条 NPC 文案 / PR + 段位场景 / activity_id 精准定位（防串别活动）
-  fetchPersona: function (activityId) {
-    var that = this
-    // PR 横幅（only show 当本活动是 PR 时 / endpoint 拿 scene_type='pr' + 本 activity_id）
-    personaFetch.fetchPersonaOutput('pr', activityId).then(function (res) {
-      that.setData({ personaPrText: res.template_text || null })
-    })
-    // 段位文案（普通活动 / segment_distance 场景）
-    personaFetch.fetchPersonaOutput('segment_distance', activityId).then(function (res) {
-      that.setData({ personaSegmentText: res.template_text || null })
-    })
-  },
-  // PERSONA_END
 
   // 页面重新显示时重绘所有 Canvas（某些低端机型切走再切回会回收 Canvas 导致白屏）
   onShow: function () {

@@ -61,11 +61,6 @@
       <text class="hero-bio-placeholder" wx:else>点这里写一句你的骑行宣言</text>
     </view>
 
-    <!-- PERSONA_START / Persona Engine task-5 / NPC 老登一句 -->
-    <!-- 字段缺失整块 wx:if 隐藏（永久规则 / 不显示 "-" 占位 / API 失败也不显示空白） -->
-    <view wx:if="{{personaText}}" class="persona-line">{{personaText}}</view>
-    <!-- PERSONA_END -->
-
     <!-- 徽章行 Tim 2026-05-16 真用拍砍（初期没用 / 后端 + schema 保留 / 仅前端隐藏）
          未来产品需要时取消注释即可恢复 -->
   </view>

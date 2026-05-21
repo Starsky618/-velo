@@ -9,9 +9,6 @@
  */
 
 const api = require('../../utils/api')
-// PERSONA_START / Persona Engine task-5
-const { fetchPersonaOutput } = require('../../utils/persona_fetch')
-// PERSONA_END
 const app = getApp()
 
 Page({
@@ -203,21 +200,6 @@ Page({
           result: data,
           durationMin: durationMin,
         })
-
-        // PERSONA_START / Persona Engine task-5
-        // 解析完成后调 NPC endpoint 拿这次上传的反应文案 / 3 秒 toast
-        // worker hook 已在 activity completed 时写好 persona_outputs / 这里直接拿
-        // activity_id 精准定位防串别活动 / 失败兜底已在 fetchPersonaOutput.catch 里静默
-        fetchPersonaOutput('activity_upload', activityId).then(function (r) {
-          if (r.template_text) {
-            wx.showToast({
-              title: r.template_text,
-              icon: 'none',
-              duration: 3000,
-            })
-          }
-        })
-        // PERSONA_END
       })
       .catch(function (err) {
         that.setData({
