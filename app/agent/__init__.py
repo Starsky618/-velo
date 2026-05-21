@@ -22,8 +22,4 @@ AI 内容生成模块（v5 task-1.B.1 / 留接口架构 / 未来 v7+ 扩 RAG）�
 
 子工程地图（ADR-009 / agent 模块下并列子目录 / 都是叶子节点）：
 - segment AI 草稿：本目录 segment_writer.py + tasks.py（赛段 AI 介绍）
-- Persona Engine：app/agent/persona/（NPC 文案系统 / Persona Engine Sprint task-1 起）
-  - 文案灵魂源：docs/agent-rules/persona-constitution.md
-  - 同 ADR-009 边界：persona 子目录任何文件**不反向 import** 业务 service
-  - 失败隔离：persona service 顶层 catch / 返 None / 用 SAVEPOINT 不传染调用方事务
 """

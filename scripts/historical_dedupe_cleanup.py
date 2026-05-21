@@ -6,8 +6,11 @@
 - 本脚本扫全库找疑似重复 pair / 按完整度评分 + data_source 偏好选主 / DELETE 副侧
 - segment_efforts FK CASCADE → 自动跟删（防排行榜双倍计数）
 - trackpoints / activity_privacy FK CASCADE → 自动跟删
-- notifications / persona_outputs FK SET NULL → 老引用变 NULL（NPC / 通知文案保留 audit）
+- notifications FK SET NULL → 老引用变 NULL（通知文案保留 audit）
 - activities.duplicate_of FK SET NULL → 我之前手工标的副本被删时自动"浮上来"
+
+NOTE 2026-05-21：Persona 模块整模块砍 / persona_outputs 表已 drop / 本脚本原本 audit
+persona_count 的逻辑已移除（persona_count 永远 0）/ 保留 notification audit 不变。
 
 跑法：
     python -m scripts.historical_dedupe_cleanup                # dry-run 默认 / 只看不动
@@ -26,7 +29,7 @@
 
 风险：
 - 这是 DELETE 生产数据的不可逆操作 / 必须 dry-run 确认后再 --apply
-- 删的是活动主体 + 它的所有 effort/trackpoint/privacy / 老引用 notification/persona 变 NULL
+- 删的是活动主体 + 它的所有 effort/trackpoint/privacy / 老引用 notification 变 NULL
 """
 
 from __future__ import annotations
@@ -48,7 +51,6 @@ from app.activity.dedupe import (
     is_potential_duplicate,
 )
 from app.activity.models import Activity, ActivityPrivacy, Trackpoint  # noqa: F401
-from app.agent.persona.models import PersonaFeedback, PersonaOutput, PersonaTemplate  # noqa: F401
 from app.database import SessionLocal
 from app.notification.models import Notification  # noqa: F401
 from app.segment.models import Segment, SegmentEffort  # noqa: F401
@@ -183,14 +185,12 @@ def scan_user(db, user_id: int) -> list[tuple[Activity, Activity, dict]]:
             effort_count = db.query(SegmentEffort).filter_by(activity_id=dup.id).count()
             tp_count = db.query(Trackpoint).filter_by(activity_id=dup.id).count()
             notif_count = db.query(Notification).filter_by(activity_id=dup.id).count()
-            persona_count = db.query(PersonaOutput).filter_by(activity_id=dup.id).count()
             pairs.append((main, dup, {
                 "score_main": score_main,
                 "score_dup": score_dup,
                 "effort_count": effort_count,
                 "tp_count": tp_count,
                 "notif_count": notif_count,
-                "persona_count": persona_count,
             }))
             used.add(dup.id)
             # 如果 a 反向变成了副本 - 把 a 也 used + 跳出 / 否则 a 继续找别的副本
@@ -248,7 +248,6 @@ def main() -> None:
         total_effort = 0
         total_tp = 0
         total_notif = 0
-        total_persona = 0
 
         for uid in user_ids:
             pairs = scan_user(db, uid)
@@ -265,13 +264,12 @@ def main() -> None:
                     f"src={dup.data_source or 'NULL'}) | "
                     f"{started_str} {km_str} | "
                     f"cascade: effort={info['effort_count']} tp={info['tp_count']} "
-                    f"notif={info['notif_count']}(NULL) persona={info['persona_count']}(NULL)"
+                    f"notif={info['notif_count']}(NULL)"
                 )
                 total_pairs += 1
                 total_effort += info["effort_count"]
                 total_tp += info["tp_count"]
                 total_notif += info["notif_count"]
-                total_persona += info["persona_count"]
 
                 # 第 3 步（仅 apply）：真删副侧
                 if args.apply:
@@ -294,7 +292,7 @@ def main() -> None:
         logger.info(
             f"汇总：{total_pairs} 对疑似重复 / "
             f"将删 effort={total_effort} tp={total_tp} / "
-            f"将 SET NULL notif={total_notif} persona={total_persona}"
+            f"将 SET NULL notif={total_notif}"
         )
     except Exception:
         db.rollback()

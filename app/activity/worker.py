@@ -25,7 +25,7 @@ rq Worker（根目录的 worker.py）从队列中取出任务，调用这里的 
 """
 
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from sqlalchemy import update, func
 from sqlalchemy.exc import SQLAlchemyError
@@ -37,11 +37,6 @@ from app.parsing.fit_parser import FITParser, FITParseError
 from app.parsing.gpx_parser import GPXParser, GPXParseError
 from app.storage.local import LocalStorage
 from app.user.models import User
-# PERSONA_START / Persona Engine NPC hook（task-4 / ADR-009 worker → persona service 单向依赖）
-# 模块级 import 防 UnboundLocalError 函数作用域陷阱（CLAUDE.md 陷阱 / 2026-04-30 worker city hook 踩过）
-from app.agent.persona import service as persona_service
-from app.agent.persona.trigger_router import PersonaEvent
-# PERSONA_END
 
 logger = logging.getLogger(__name__)
 
@@ -126,75 +121,6 @@ def _set_activity_city(activity, simplified_track) -> None:
         return
 
 
-# PERSONA_START / Persona Engine task-4 NPC hook helper 函数（拔出时整段剥）
-
-
-def _query_weekly_count(user_id: int, db) -> int:
-    """查本周用户 cycling 上传数（Persona Engine task-4 NPC hook 用）。
-
-    本周 = 周一 00:00 北京时间 起到现在。
-    用 ZoneInfo 替代 fixed offset（防未来扩展多时区炸 / Codex + Claude B 拍）。
-
-    类比：老登要知道你这周已经骑了几次 / 触发连骑高频文案。
-    """
-    from zoneinfo import ZoneInfo  # Python 3.9+ stdlib
-    BJ_TZ = ZoneInfo("Asia/Shanghai")
-    now_bj = datetime.now(BJ_TZ)
-    week_start_bj = (now_bj - timedelta(days=now_bj.weekday())).replace(
-        hour=0, minute=0, second=0, microsecond=0,
-    )
-    week_start_utc = week_start_bj.astimezone(timezone.utc)
-    return db.query(Activity).filter(
-        Activity.user_id == user_id,
-        Activity.started_at >= week_start_utc,
-        Activity.activity_type == "cycling",
-    ).count()
-
-
-def _detect_pr(activity, user_id: int, db) -> bool:
-    """检测 activity 是否打破历史 max（任一字段 = PR）。
-
-    PR 字段：distance / elevation_gain / duration / normalized_power。
-    历史 max = 该用户除本 activity 外的最大值。
-
-    类比：老登的"破纪录探测器"——
-    今天骑了 100km / 之前最长 90km → PR
-    今天爬了 1500m / 之前最高 1200m → PR
-    """
-    others = db.query(
-        func.max(Activity.distance),
-        func.max(Activity.elevation_gain),
-        func.max(Activity.duration),
-        func.max(Activity.normalized_power),
-    ).filter(
-        Activity.user_id == user_id,
-        Activity.id != activity.id,
-        Activity.activity_type == "cycling",
-    ).first()
-    if others is None or all(v is None for v in others):
-        return True  # 第一条活动 = PR
-    max_distance, max_elev, max_duration, max_np = others
-    if activity.distance and max_distance and activity.distance > max_distance:
-        return True
-    if activity.elevation_gain and max_elev and activity.elevation_gain > max_elev:
-        return True
-    if activity.duration and max_duration and activity.duration > max_duration:
-        return True
-    if activity.normalized_power and max_np and activity.normalized_power > max_np:
-        return True
-    return False
-
-
-def _query_total_distance(user_id: int, db) -> int:
-    """查用户累计 cycling 距离（米）/ 给 NPC 算段位用。"""
-    total = db.query(func.sum(Activity.distance)).filter(
-        Activity.user_id == user_id,
-        Activity.activity_type == "cycling",
-    ).scalar()
-    return int(total or 0)
-
-
-# PERSONA_END
 
 
 def parse_activity(activity_id: int) -> None:
@@ -418,89 +344,9 @@ def _do_parse(db, activity_id: int) -> None:
             # 最外层兜底：begin_nested 失败 / 模块 import 失败等极端场景
             pass
 
-    # PERSONA_START / Persona Engine task-4 NPC hook（拔出时整段剥 / 业务不依赖）
-    # ===== 步骤 10.7：NPC 文案 hook（宪法 §7.2 不传染失败）=====
-    # 老登 NPC 给本次活动说半句话（PR / 极端 / 段位 / 连骑高频）。
-    # 类比：你骑完车进群发了张图 / 群里那个老登扫一眼说一句俏皮话。
-    #
-    # 失败隔离（CRITICAL / 违反 = REJECT）：
-    # - 任何 persona 失败必须被 SAVEPOINT + try/except 兜底 / 绝对不能让 activity 主流程 fail
-    # - SAVEPOINT 失败本身（极端场景）也要被外层 catch / 不传染
-    # Sprint 5 task-2 守卫：duplicate 跳过（避免给重复活动重复说话）。
-    if not is_duplicate:
-        try:
-            nested_persona = db.begin_nested()
-            try:
-                # 打包参数 dict（不让 persona 反向 import 业务 service / ADR-009）
-                # db.flush() 让当前 activity 进 session 可见 / 让 weekly_count 包含本次上传
-                # （SessionLocal autoflush=False / hook 在 db.commit() 前 / 本 activity 还没落 DB / Codex I1）
-                db.flush()
-                weekly_count = _query_weekly_count(activity.user_id, db)
-                is_pr = _detect_pr(activity, activity.user_id, db)
-                total_distance_m = _query_total_distance(activity.user_id, db)
-
-                # 1) activity_uploaded event（PR / 极端 / 段位 三路）
-                upload_event = PersonaEvent(
-                    type="activity_uploaded",
-                    activity_data={
-                        "id": activity.id,
-                        "distance": activity.distance,
-                        "elevation_gain": activity.elevation_gain,
-                        "duration": activity.duration,
-                        "moving_time": activity.moving_time,
-                        "started_at": activity.started_at,
-                        # activity.avg_speed 已是 km/h（worker save_parse_result 转过 / models.py:78 注释 / Codex 抓 C1）
-                        "avg_speed_kmh": activity.avg_speed,
-                        "avg_power": activity.avg_power,
-                        "normalized_power": activity.normalized_power,
-                        "is_pr": is_pr,
-                        "is_rain": False,  # 暂无天气数据 / 留 v1.0+
-                    },
-                    user_data={
-                        "user_id": activity.user_id,
-                        "total_distance_m": total_distance_m,
-                        "weekly_count": weekly_count,
-                        "last_activity_days": 0,  # 刚上传
-                    },
-                    timestamp=datetime.now(timezone.utc),
-                )
-                upload_text = persona_service.generate_persona_output(upload_event, db)
-                logger.info(
-                    f"persona output for activity {activity.id}: {upload_text!r}"
-                )
-
-                # 2) 连骑高频额外触发（本周第 5+ 次时）
-                if weekly_count >= 5:
-                    ch_event = PersonaEvent(
-                        type="consecutive_high_detected",
-                        user_data={
-                            "user_id": activity.user_id,
-                            "weekly_count": weekly_count,
-                        },
-                        timestamp=datetime.now(timezone.utc),
-                    )
-                    ch_text = persona_service.generate_persona_output(ch_event, db)
-                    logger.info(
-                        f"persona consecutive_high for user {activity.user_id}: {ch_text!r}"
-                    )
-
-                db.flush()
-                nested_persona.commit()
-            except Exception as inner_exc:
-                nested_persona.rollback()
-                logger.warning(
-                    f"persona hook failed (activity_id={activity.id}, ignored): {inner_exc}"
-                )
-        except Exception as outer_exc:
-            # begin_nested 本身失败（极端场景 / 不限定 SQLAlchemyError / Claude B 第三轮抓）
-            logger.warning(
-                f"persona SAVEPOINT failed (activity_id={activity.id}): {outer_exc}"
-            )
-    # PERSONA_END
-
     # ===== 步骤 10.8：FTP Breakthrough 自动检测（Sprint 9 task-8）=====
     # 用户骑出超过预估 ftp 时写 pending 事件 / 让 settings 页 onShow 弹窗提示更新 ftp。
-    # SAVEPOINT 隔离（与 task-2.A.1 detector / persona hook 同 pattern）：
+    # SAVEPOINT 隔离（与 task-2.A.1 detector 同 pattern）：
     #   detect_breakthrough 内任何异常都被吞 / 但兜底再加一层 SAVEPOINT 防 session invalid。
     # Sprint 5 task-2 守卫：duplicate 跳过（避免给重复活动重复发 breakthrough 弹窗）。
     # 函数内 import 避免模块顶部循环依赖（breakthrough_detector → activity.models 已 import）。

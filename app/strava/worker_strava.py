@@ -12,7 +12,7 @@ worker 容器跑这个文件里的函数 → 拉详情 + 轨迹 + 跑赛段匹�
 输入输出数据流：
 - 输入：webhook 推送的 user_id + strava_activity_id（来自 service_sync.handle_webhook_event）
 - 处理：拉 Strava API → 写 DB → 触发 hooks
-- 输出：activity.status='completed' + 6 套 hook 副作用（city / heatmap / progress / persona）
+- 输出：activity.status='completed' + 5 套 hook 副作用（city / heatmap / progress / breakthrough）
 
 拆 create / update 两条独立路径：
 - create：抢 importing 锁 → 拉详情 → save → hooks
@@ -280,14 +280,14 @@ def _process_strava_main(db, user_id: int, strava_activity_id: int) -> None:
 
 def _strava_post_parse_hooks(db, activity) -> None:
     """
-    完整复制 GPX worker (app/activity/worker.py:313-460) 6 套 hook + 每个 SAVEPOINT。
+    完整复制 GPX worker 同套 hook + 每个 SAVEPOINT 独立隔离。
 
-    顺序严格对照 GPX worker（5 段 / 任一失败不阻断 status='completed'）：
+    顺序严格对照 GPX worker（任一失败不阻断 status='completed'）：
     1. detect_5min_power_progress（5min 功率进步通知）
     2. invalidate caches（heatmap + power_curve Redis 缓存）
     3. _set_activity_city（activity.city / 起点城市）
     4. user.city 推断（仅 user.city 为 None 时）
-    5. persona engine NPC（activity_uploaded + consecutive_high_detected 双路）
+    5. FTP Breakthrough 检测（Sprint 9 task-8 / settings 弹窗）
     """
     # 1. detect_5min_power_progress
     try:
@@ -350,66 +350,7 @@ def _strava_post_parse_hooks(db, activity) -> None:
     except Exception:
         pass
 
-    # 5. persona NPC（手工构造 PersonaEvent / 不是 .from_activity_upload）
-    # 严格对照 GPX worker.py:402-470：含 activity_uploaded + consecutive_high_detected 双路
-    try:
-        from app.agent.persona import service as persona_service
-        from app.agent.persona.trigger_router import PersonaEvent
-        from app.activity.worker import _query_weekly_count, _detect_pr, _query_total_distance
-
-        nested_persona = db.begin_nested()
-        try:
-            db.flush()  # 让本 activity 进 session 可见 / 影响 weekly_count
-            weekly_count = _query_weekly_count(activity.user_id, db)
-            is_pr = _detect_pr(activity, activity.user_id, db)
-            total_distance_m = _query_total_distance(activity.user_id, db)
-
-            upload_event = PersonaEvent(
-                type="activity_uploaded",
-                activity_data={
-                    "id": activity.id,
-                    "distance": activity.distance,
-                    "elevation_gain": activity.elevation_gain,
-                    "duration": activity.duration,
-                    "moving_time": activity.moving_time,
-                    "started_at": activity.started_at,
-                    # activity.avg_speed 已是 km/h（save_parse_result 写入时已乘 3.6 转换，见 worker.py:518）
-                    # 严禁再乘 3.6 / 否则 NPC 路由会错走 high_speed extreme 分支
-                    "avg_speed_kmh": activity.avg_speed,
-                    "avg_power": activity.avg_power,
-                    "normalized_power": activity.normalized_power,
-                    "is_pr": is_pr,
-                    "is_rain": False,
-                },
-                user_data={
-                    "user_id": activity.user_id,
-                    "total_distance_m": total_distance_m,
-                    "weekly_count": weekly_count,
-                    "last_activity_days": 0,
-                },
-                timestamp=datetime.now(timezone.utc),
-            )
-            persona_service.generate_persona_output(upload_event, db)
-
-            if weekly_count >= 5:
-                ch_event = PersonaEvent(
-                    type="consecutive_high_detected",
-                    user_data={
-                        "user_id": activity.user_id,
-                        "weekly_count": weekly_count,
-                    },
-                    timestamp=datetime.now(timezone.utc),
-                )
-                persona_service.generate_persona_output(ch_event, db)
-
-            db.flush()
-            nested_persona.commit()
-        except Exception:
-            nested_persona.rollback()
-    except Exception:
-        pass
-
-    # 6. FTP Breakthrough 检测（Sprint 9 task-8 / 与 GPX worker.py 步骤 10.8 同源）
+    # 5. FTP Breakthrough 检测（Sprint 9 task-8 / 与 GPX worker.py 步骤 10.8 同源）
     #    用户骑出超过预估 ftp 时写 pending event / settings 页 onShow 弹窗。
     #    SAVEPOINT 隔离 / 不传染 activity.status='completed'。
     try:
@@ -434,7 +375,7 @@ def _wipe_activity_derived_data(db, activity) -> None:
     update 路径清派生数据（防 save_parse_result 重复插 trackpoints / segment_efforts 残留）。
 
     清理：trackpoints / segment_efforts / notifications + activity 派生字段
-    保留：user.city（用户级数据）/ persona_outputs（历史台账）/ Redis cache（hook 会重 invalidate）
+    保留：user.city（用户级数据）/ Redis cache（hook 会重 invalidate）
     """
     db.query(Trackpoint).filter_by(activity_id=activity.id).delete(synchronize_session=False)
     db.query(SegmentEffort).filter_by(activity_id=activity.id).delete(synchronize_session=False)

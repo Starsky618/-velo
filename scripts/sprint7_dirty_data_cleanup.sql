@@ -99,21 +99,8 @@ WHERE activity_id IN (
 );
 
 
--- 1.5 检查 persona_outputs 影响范围（FK SET NULL / 不连带删 / 但 NPC 文案 activity_id 变 NULL）
--- 集成审 Critical-2 + Codex Pass G：persona_outputs.activity_id 是 SET NULL，
--- DELETE 后 persona_outputs 行保留但 activity_id 变 NULL，前端跳转可能 404。
--- 给 Tim 看影响多少条 NPC 文案 / 决定是否需要前端 wx:if 兼容。
-SELECT COUNT(*) AS persona_outputs_affected
-FROM persona_outputs
-WHERE activity_id IN (
-    SELECT id FROM activities
-    WHERE data_source = 'strava'
-      AND (
-          activity_type != 'cycling'
-          OR (simplified_track IS NULL AND status = 'completed')
-          OR (status = 'importing' AND created_at < NOW() - INTERVAL '24 hours')
-      )
-);
+-- 1.5 NOTE 2026-05-21：原 persona_outputs 影响范围检查已移除
+-- Persona 模块整模块砍 / persona_outputs 表已 drop / FK 自然消失。
 
 
 -- ============================================================
