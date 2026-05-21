@@ -208,30 +208,52 @@ def _sliding_window_best_power(
     入参：tps = [(power_w, timestamp), ...] 按时间正序
     返：该窗口长度下的最大平均功率（W）/ 数据不够时返 0.0
 
-    简化实现（O(n²) 最坏 / 实测中等量级 trackpoints 也够快）：
-        左指针 left + 右指针 right，right 向前推进时左指针追上来确保窗口 ≤ window_seconds。
-        每个有效窗口算一次平均功率取 max。
-    v0.2 若性能瓶颈再换 O(n) 单调队列实现。
+    **v0.2 修 bug**（Tim 2026-05-21 真用回归实证 / 修 task-5 quality reviewer Important 2 +
+    Codex 异源审 Important 3 / 单条活动内 7 条 300s > 180s 物理矛盾的根因）：
 
-    容差 10%：trackpoint 采样间隔不均匀（1-3s 抖动），允许窗口跨度 ≥ 90% 即视为合法。
+    旧实现 2 个 bug 叠加：
+    1. **90% 容差**：180s 窗口允许 162s 段 / 短段平均功率 ≠ 真 180s 段
+    2. **index 计数平均**：sum(power) / n 在采样不均匀时（Garmin 4Hz vs 1Hz）失真
+       —— 实际是 index 算术平均 / 不是时间加权平均
+
+    新实现（严格 + 时间加权 + O(n) prefix sum）：
+    - 严格要求 span ≥ window_seconds（不再 90% 容差）
+    - 用 `power[i] × dt[i]` 累计 prefix sum / 时间加权平均
+    - O(n) 双指针 / left 单向推进
+
+    物理保证：单条活动内 best 180s ≥ best 300s（短窗 ≥ 长窗 / 因 180s 是 300s 子集）。
     """
     if not tps or len(tps) < 2:
         return 0.0
 
+    n = len(tps)
+
+    # cumulative_time[i] = tps[0] 到 tps[i] 累计秒数
+    times = [0.0]
+    for i in range(1, n):
+        dt = (tps[i][1] - tps[i - 1][1]).total_seconds()
+        times.append(times[-1] + max(dt, 0))  # 防 timestamp 倒序（数据脏） / 当 0
+
+    # cumulative_energy[i] = tps[0] 到 tps[i] 累计 power*dt
+    # 用 tps[i-1] 的 power 代表 [i-1, i] 这段（Coggan 标准约定）
+    energy = [0.0]
+    for i in range(1, n):
+        dt = times[i] - times[i - 1]
+        energy.append(energy[-1] + tps[i - 1][0] * dt)
+
     best = 0.0
     left = 0
-    n = len(tps)
     for right in range(1, n):
-        # 把左指针往前推，直到窗口长度 ≤ window_seconds
-        while left < right and (tps[right][1] - tps[left][1]).total_seconds() > window_seconds:
+        # 推进 left：让 [left, right] 时间跨度尽量贴近 window_seconds（但 ≥）
+        while left + 1 < right and (times[right] - times[left + 1]) >= window_seconds:
             left += 1
-        span = (tps[right][1] - tps[left][1]).total_seconds()
-        # 窗口长度足够时（≥ 90% 目标）才算 / 避免短窗口虚高
-        if span >= window_seconds * 0.9:
-            window_powers = [p for p, _ in tps[left:right + 1]]
-            avg_power = sum(window_powers) / len(window_powers)
-            if avg_power > best:
-                best = avg_power
+        span = times[right] - times[left]
+        if span < window_seconds:
+            continue  # 当前窗口不够长（活动开头 / 暂停后 / 跳过）
+        # 时间加权平均：(累计能量差) / (时间跨度)
+        avg_power = (energy[right] - energy[left]) / span
+        if avg_power > best:
+            best = avg_power
     return best
 
 

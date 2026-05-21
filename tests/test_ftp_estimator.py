@@ -8,11 +8,60 @@
 """
 import pytest
 
+from datetime import datetime, timedelta, timezone
+
 from app.activity.ftp_estimator import (
     estimate_ftp_for_user,
     fit_cp3_model,
     EstimationResult,
+    _sliding_window_best_power,
 )
+
+
+class TestSlidingWindowMonotonicity:
+    """v0.2 滑窗 bug 修复回归测试（Tim 2026-05-21 真用回归实证：
+    单条活动内出现 best 180s=218 < best 300s=278 物理矛盾 / 90% 容差 + index 平均双 bug）。
+
+    物理保证：单条活动内 best(短窗) ≥ best(长窗) / 因短窗是长窗子集。
+    """
+
+    @staticmethod
+    def _make_tps(power_seq: list[float], dt_seconds: float = 1.0) -> list[tuple[float, datetime]]:
+        """构造均匀采样 trackpoints / 间隔 dt 秒。"""
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        return [(p, base + timedelta(seconds=i * dt_seconds)) for i, p in enumerate(power_seq)]
+
+    def test_monotonic_short_window_ge_long(self):
+        """1Hz 均匀采样 600 秒 / best 180s 必 ≥ best 300s（短窗 ≥ 长窗 / 物理约束）"""
+        # 模拟前 200 秒 250W 高强度 + 后 400 秒 100W 恢复
+        power_seq = [250.0] * 200 + [100.0] * 400
+        tps = self._make_tps(power_seq, dt_seconds=1.0)
+        best_180 = _sliding_window_best_power(tps, 180)
+        best_300 = _sliding_window_best_power(tps, 300)
+        # 180s 窗口可以完全在 250W 高强度段 → best_180 ≈ 250
+        # 300s 窗口必须跨高低段 → best_300 < 250
+        assert best_180 >= best_300, f"违反物理约束: best 180s={best_180:.1f} < best 300s={best_300:.1f}"
+        assert best_180 >= 240, f"best 180s 应 ≈ 250W / 实际 {best_180:.1f}"
+
+    def test_uneven_sampling_4hz_vs_1hz(self):
+        """采样不均匀（4Hz vs 1Hz）/ 时间加权平均应对 / 不被 index 数量混淆"""
+        # 前 90 秒 4Hz (360 点 / 200W) + 后 90 秒 1Hz (90 点 / 200W) = 180s 均 200W
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        tps = []
+        for i in range(360):  # 4Hz × 90s
+            tps.append((200.0, base + timedelta(seconds=i * 0.25)))
+        for i in range(1, 91):  # 1Hz × 90s
+            tps.append((200.0, base + timedelta(seconds=90 + i)))
+        best_180 = _sliding_window_best_power(tps, 180)
+        # 时间加权平均 = 200W / 不被 index 计数（360 个 4Hz vs 90 个 1Hz）干扰
+        assert abs(best_180 - 200.0) < 1.0, f"时间加权 best 180s 应 ≈ 200 / 实际 {best_180:.2f}"
+
+    def test_short_window_returns_zero_when_data_too_short(self):
+        """活动只有 60s / 求 best 180s → 时长不够返 0（严格 ≥ window_seconds / 不再 90% 容差）"""
+        power_seq = [200.0] * 60
+        tps = self._make_tps(power_seq, dt_seconds=1.0)
+        best_180 = _sliding_window_best_power(tps, 180)
+        assert best_180 == 0.0, f"60s 数据求 180s window 应返 0 / 实际 {best_180}"
 
 
 class TestFtpEstimator:
