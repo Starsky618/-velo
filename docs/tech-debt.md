@@ -40,6 +40,28 @@
 
 ---
 
+## 🟡 P2：Sprint 7 Fix 4 scheduler 周期重启 hotfix（all_exists 短路）需长期完整重写（2026-05-19 真用回归暴露）
+
+`app/strava/import_scheduler.py:_reactivate_idle_imports` + `_run_tier1` 当前是 hotfix 状态：
+
+**问题根因**（commit `3539d57` hotfix message 实证）：Fix 4 每 10 分钟把 idle import_task 重置 `total_activities=None + tier1_completed=0 + cursor_before=None` → scheduler 从头扫整个 Strava 历史 list（用户 200+ 条历史活动 / 30 秒 1 批 → 扫完几小时）→ tier1 永远不完成 → tier2 永远不跑 → 新骑行卡 importing。
+
+**当前 hotfix**（commit `3539d57`）：`_run_tier1` 加 `all_exists` 短路 —— 本批活动全已存在 → 立刻设 `total_activities=tier1_completed` → tier1 完成 → tier2 启动。用户场景：重启拉最新批 → 全已存在 → 1 tick 完成 / 不再扫整个历史。
+
+**为什么是 hotfix 不是长期解**：
+- 短路依赖"最新批全是已扫过的"假设 / 边界 case：用户一次性上传 30 条新骑行 → 第 1 批可能 created=N → 不短路 → cursor 推进继续拉历史 → 仍会扫到底（虽然 Sprint 8 webhook ship 后这场景极少）
+- Strava API 文档支持 `after` 时间戳参数（拉某时间之后的活动）/ 但 import_scheduler 当前不用 `after` / 只用 `before`
+- 真正干净的设计：tier1 用 `after = max(activity.started_at)` 只拉用户已知最新骑行之后的新活动 / 完全不扫历史
+
+**修法（Sprint 10 后开专题）**：
+1. 改 `StravaClient.get_athlete_activities` 加 `after` 参数支持
+2. 改 `_run_tier1` 用 `after = max(activity.started_at WHERE user_id=X AND data_source='strava')`
+3. 删 `all_exists` 短路 + `_reactivate_idle_imports` 不再清 `cursor_before/total/tier1`（保留累计 / 只重启 status）
+
+**Sprint 8 webhook ship 后影响下降**：webhook 7-15 秒到达 → scheduler 兜底很少触发 → hotfix 短路在生产几乎不暴露边界 case。但代码 debt 仍在 / 后续添加多用户场景前必须修。
+
+---
+
 ## 🟢 P3：badges 看他人时全计入私密 effort（Sprint 6 task-2 / Tim 2026-05-16 拍 A / 2026-05-16）
 
 `app/user/service_social.py:_aggregate_badges_input` 山名常客频次查询：
