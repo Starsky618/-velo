@@ -603,64 +603,98 @@ Redis 限速: 每 user 每秒 1 次查询(v4 task-7.5)。
 
 ---
 
-## 4. 链路 4: Strava Webhook 实时同步
+## 4. 链路 4: Strava Webhook 实时同步（Sprint 7+8 后 / 2026-05-22 真用回归通过）
 
 ### 4.1 触发
 
 - 用户在 Strava 端新建/更新活动 → Strava 推 POST 到 velo webhook endpoint
+- **已注册 subscription_id = 347703**（生产 .env / 2026-05-22 一次性脚本 `scripts/strava_webhook_register.py` 跑出）
+- **callback_url = `http://114.132.190.245/api/strava/webhook`**（域名备案后切 HTTPS / spec 文档已规划）
 
-### 4.2 序列
+### 4.2 序列（Sprint 8 Fix 2 拆 create / update 独立异步路径）
 
 ```
 [Strava] POST /api/strava/webhook
-  │ body: {object_type, aspect_type, owner_id, object_id,
-  │        subscription_id, ...}
+  │ body: {object_type, aspect_type, owner_id, object_id, subscription_id}
   ▼
-[api] → app/strava/router.py:webhook_handler
+[api 容器] → app/strava/router.py:webhook_receive
   │
-  │ Step 1: 校验 subscription_id (v4 task-7.4):
+  │ Step 1: 校验 subscription_id (Sprint 4 task-7.4):
   │   if body.subscription_id != settings.STRAVA_WEBHOOK_SUBSCRIPTION_ID:
-  │     return 403
-  │   (防伪造 webhook 攻击)
+  │     return 403  (防伪造)
   │
-  │ Step 2: 过滤:
-  │   if object_type != 'activity' or aspect_type != 'create':
-  │     return 200 (忽略,只处理新建)
+  │ Step 2: 调 app/strava/service_sync.py:handle_webhook_event
+  │   → SELECT user FROM users WHERE strava_athlete_id = body.owner_id
+  │     ⚡ 未找到 → 200(遗留 webhook,忽略)
   │
-  │ Step 3: SELECT user FROM users WHERE strava_athlete_id = body.owner_id
-  │   ⚡ 未找到 → 200(可能是已解绑用户的遗留 webhook,忽略)
+  │ Step 3: 分支处理(Sprint 8 Fix 2):
   │
-  │ Step 4: ensure_valid_token(user.id)
+  │   if aspect_type == "create":
+  │     created = _create_importing_activity(db, user, object_id)  # 建骨架
+  │     if created:  # 防重复 webhook 污染 RQ 队列
+  │       default_queue.enqueue(
+  │         "app.strava.worker_strava.process_strava_webhook_create",
+  │         user.id, object_id, job_timeout=120
+  │       )
   │
-  │ Step 5: GET https://www.strava.com/api/v3/activities/{body.object_id}
-  │   → 取完整 activity 数据 + streams(轨迹流)
+  │   elif aspect_type == "update":
+  │     default_queue.enqueue(
+  │       "app.strava.worker_strava.process_strava_webhook_update",
+  │       user.id, object_id, job_timeout=120
+  │     )
   │
-  │ Step 6:
-  │   INSERT activities (user_id, strava_activity_id=body.object_id,
-  │                      data_source='strava', status='importing', ...)
-  │   去重兜底:UNIQUE(strava_activity_id) 约束
-  │   ⚡ IntegrityError → 已导入过,返回 200
+  │   elif aspect_type == "delete":
+  │     DELETE FROM activities WHERE strava_activity_id = object_id
   │
-  │ Step 7: 同步执行链路 1 的 Step 5~10:
-  │   解析 → 写 trackpoints → 写 activity 统计 → status='completed'
-  │   → 触发 auto_match → 触发 notification
+  │ Step 4: api 立刻返 200(< 50ms / 满足 Strava 2s 响应窗口)
+
+[worker 容器] RQ 拉任务 → process_strava_webhook_create / _update
   │
-  │ (注意:webhook 不入 rq 队列,直接在 api 进程同步处理,
-  │  因为 Strava 需要 2 秒内 200 响应)
+  │ Step A: 原子抢锁 importing → processing
+  │   UPDATE activities SET status='processing' WHERE strava_activity_id=X AND status='importing'
+  │   抢不到 = 已被处理(scheduler tier2 抢先 / 重复 webhook)→ 静默退出
   │
-  │ 返回 200
+  │ Step B: 拉详情(GET /activities/{id}) + 守卫 _is_cycling
+  │   非骑行 → status='completed' + 回填真实 activity_type(running/hiking/other)+ return
+  │   骑行 → 继续
+  │
+  │ Step C: 拉轨迹(GET /activities/{id}/streams)
+  │   异常分流(Sprint 8 三审 Codex Critical):
+  │     StravaRateLimitError / httpx.HTTPError → raise 让 RQ retry
+  │     业务异常 → logger.exception + status='failed' + 写 type:msg
+  │
+  │ Step D: from_streams + normalize + save_parse_result
+  │   写 trackpoints / 算 splits / 算功率 / 算 IF/TSS(Sprint 9 加)
+  │
+  │ Step E: dedupe(GPX vs Strava 同骑行查重 / SAVEPOINT 隔离)
+  │
+  │ Step F: 5 套 hook(is_duplicate 时跳过):
+  │   1. detect_5min_power_progress
+  │   2. invalidate Redis caches (heatmap + power_curve)
+  │   3. _set_activity_city (起点城市)
+  │   4. user.city 推断(仅 user.city=None 时)
+  │   5. ~~persona NPC~~ (Persona Engine 2026-05-21 整模块清 / 已删)
+  │
+  │ Step G: 赛段匹配 match_activity_against_segments
+  │
+  │ Step H: status='completed'
 ```
 
-### 4.3 ⚠️ 危险点
+**实测延迟**：上传 → DB completed ≈ 7-15 秒（5-22 Afternoon Ride 10km 真用回归实证）
 
-- Strava 要求 webhook 2s 内响应。如果同步处理超时,Strava 会重试、最终放弃订阅。**Step 5-7 总耗时必须 < 1.5s**,否则考虑分拆:只写 status='importing' + 入 rq 队列,后续异步处理
-- subscription_id 只有一个(整个 velo app 一个),泄漏等于所有用户的 webhook 都能伪造
+### 4.3 ⚠️ 危险点 / 兜底机制
+
+- **Strava 2s 响应窗口**：api 收到 webhook 后**只 enqueue 不处理**（Sprint 8 Fix 2 改造前是同步处理 / 改造后 api 返回 < 50ms）→ worker 异步拉详情 / 不阻塞 Strava
+- **subscription_id 单一**：全 app 共享 1 个 / 泄漏 = 所有用户 webhook 可伪造
+- **webhook 漏接兜底**：scheduler 每 10 分钟 `_reactivate_idle_imports` 重启 idle import_task / tier1 重扫 Strava 列表抓漏（Sprint 7 Fix 4 + hotfix all_exists 短路 / 详 `docs/tech-debt.md` P2）
 
 ### 4.4 不变式
 
-1. subscription_id 校验是第一道门,不校验等于放弃 webhook 安全
-2. webhook 绝对不在 DB 事务外调 Strava API(避免长事务 holding 锁)
-3. 失败只 log,不抛异常给 Strava(否则会被标记不健康然后吊销订阅)
+1. subscription_id 校验是第一道门 / 不校验等于放弃 webhook 安全
+2. api 容器**只做 enqueue / 不做 DB 重写**（Sprint 8 Fix 2 / 防 api 长事务 + 满足 Strava 2s）
+3. worker 业务异常分流：可恢复 raise / 业务级 status=failed（Sprint 8 Codex Critical 修）
+4. 失败只 log / 不抛异常给 Strava（否则被标不健康 → 吊销订阅）
+5. webhook 路径不带 type 字段 / 类型守卫**必须** worker 拉详情后再做（防直接拦 importing 骨架）
 
 ---
 

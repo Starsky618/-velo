@@ -1,5 +1,57 @@
 # VELO 开发变更日志
 
+## 2026-05-19 → 22: Sprint 7+8 Strava 同步链全 ship ✅
+
+**主轴**：从"Strava 上传后 velo 看不到 / 跑步徒步污染骑行列表"修到"Strava 上传 7-15 秒 velo 完整显示 + 跑步永不入库"。
+
+**两条链路收尾**：
+- **Sprint 7 兜底链**（scheduler 闹钟 + 数据层 13 处过滤 + 130 行历史脏数据清）
+- **Sprint 8 实时链**（Strava webhook 注册 + worker_strava 异步处理）
+
+**真用回归 2 次通过**：
+- 5-19 Evening Ride 55km（短期 SQL unblock 5-18 卡 importing）
+- 5-22 Afternoon Ride 10km（webhook 实时链 / 7-15 秒到达）
+
+### Sprint 7 ship 链（7 Fix + 脏数据 SQL + hotfix / commits 倒序）
+
+| 项 | commit | 内容 |
+|---|---|---|
+| Fix 4 hotfix | `3539d57` | tier1 加 all_exists 短路防死扫历史（真用回归暴露设计 bug） |
+| 脏数据 SQL | `5c7e6f5` | scripts/sprint7_dirty_data_cleanup.sql 三审收敛 Critical |
+| Fix 7+ | `47683e7` | segment_query.py 2 处 cycling filter（Codex 异源审抓 spec 漏点 / Tim 拍扩 13 处） |
+| Fix 7 | `5ac1ca7` | service_stats + service_social + dedupe + progress 11 处加 activity_type='cycling' |
+| Fix 6 | `b4c6f14` | service_sync manual_sync 加 _is_cycling 守卫 |
+| Fix 5 | `f67d1d8` | activity/service.py:get_activity_list 加 activity_type + status filter |
+| Fix 3 二修 | `3bf28ec` | 取消 _MIN_DISTANCE_METERS 短距离阈值（Tim 拍）/ 短骑行也拉详情 |
+| Fix 3 修订 | `ce3112b` | 短距离回填 'other' → 'cycling'（reviewer Important-1 + spec 修订） |
+| Fix 3 | `5e13ff9` | import_scheduler tier1/tier2 加 _is_cycling 双字段守卫 + 短距离回填 |
+| Fix 4 | `1af86fa` | scheduler `_reactivate_idle_imports` 每 10 分钟兜底重启 idle 用户 |
+| Plans v5 | `60f432c` | sprint plans v5 ship（4 轮双审 / 3 轮 codex / Critical=0 收敛） |
+
+**脏数据清理实证**：DB 删 130 行（跑步 / 徒步 / 空骨架 / >24h importing）/ FK CASCADE 自动清 trackpoints/efforts/notifications / Redis heatmap+power_curve 缓存清。
+
+### Sprint 8 ship 链（webhook 实时链）
+
+| 项 | commit | 内容 |
+|---|---|---|
+| 注册脚本兼容 | `33a148e` | strava_webhook_register.py 改 os.environ 优先 / 容器内可跑 |
+| Fix 1+2 | `8f5146f` | worker_strava.py 新文件 411 行 + service_sync.handle_webhook_event 改 enqueue + 注册脚本 / 三审收敛 3 Critical |
+
+**关键三审 Critical 收敛**：
+1. **集成审 Critical**：worker_strava avg_speed * 3.6 双重转换（GPX worker.py:424 同源已修 / 我没同步）→ 改 `"avg_speed_kmh": activity.avg_speed`
+2. **集成审 + spec 审 Critical**：service_sync create 路径缺 `if created:` 守卫（spec 字面要求）→ 防重复 webhook 污染 RQ 队列
+3. **Codex Critical**：worker_strava 拉详情/拉轨迹/解析 3 处 except 改异常分流 → `StravaRateLimitError + httpx.HTTPError + httpx.TransportError` raise 让 RQ retry / 业务异常 logger.exception + status='failed' / 防 429 限流永久失败
+
+**Strava webhook 注册实证**：`POST /push_subscriptions` 返 `sub_id=347703` / Strava handshake GET callback 返 200 / 写 .env `STRAVA_WEBHOOK_SUBSCRIPTION_ID=347703` / docker compose up -d --build api 让新 env 生效。
+
+**回归测试**：708 全套 pytest（新 26 case：reactivate_idle 5 / fix3_cycling 8 / fix5_list 6 / fix6_manual_sync 3 / fix7_data 7 / fix7_segment 2 / worker_strava 5）。
+
+### Sprint 7 留下的 P2 tech debt
+
+`docs/tech-debt.md` 新条目（commit `ed0d59c`）：Fix 4 scheduler 周期重启 hotfix（all_exists 短路）需长期完整重写——用 Strava API `after` 时间戳参数避免重启从头扫历史。Sprint 8 webhook ship 后影响下降 / 但代码 debt 仍在。
+
+---
+
 ## 2026-05-21: Persona Engine 彻底清理（分 5 stage / 进行中）🧨
 
 **主轴**：Tim 拍 C 方案 = 前端 + 后端代码 + DB 表全清。装饰展示层不应上 sprint 主线 / 战略复盘见 [2026-05-20 段](#2026-05-20-战略-reset--persona-砍--训练分析线立项-)。
