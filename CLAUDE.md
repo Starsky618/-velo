@@ -149,7 +149,11 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 **Persona Engine（2026-05-20 砍掉 / 装饰展示层不应上 sprint 主线）**
 - 整目录 `app/agent/persona/` + 3 张 persona_* 表 + 6 task plans + 宪法 v0.1 **暂停不删 / 晾着**——等 3-5 天看真实反应再回头判断（永久砍 / 复用为骑后教练复盘 / 或部分组件 DeepSeek client + persona_outputs 台账复用）
 - **战略失误复盘**：memory `feedback_decoration_vs_guidance_velo_persona_lesson.md` + 全局 `~/.claude/CLAUDE.md` §2.1 "装饰展示 vs 主动指导"原则
-- **新方向训练分析线**：`docs/superpowers/specs/2026-05-20-training-analytics-roadmap.md`（5 模块 6-8 周）+ `docs/prd/sprint-9-prd.md`（Sprint 9 FTP 智能化 / **当前主线**）+ `docs/superpowers/specs/2026-05-20-coach-engine-design.md`（Sprint 12 LLM 教练总结预留设计）
+- **训练分析线**：`docs/superpowers/specs/2026-05-20-training-analytics-roadmap.md`（5 模块 6-8 周）
+  - **Sprint 9 模块 A（FTP 智能化）✅ 2026-05-21 ship**：8 task + 9 hotfix / 详 `docs/prd/sprint-9-prd.md` + `docs/changelog.md` 2026-05-20→21 段
+  - **当前主线**：Sprint 10 模块 B（PMC 训练负荷曲线 CTL/ATL/TSB）/ 待开新 sprint PRD
+  - Sprint 12 LLM 教练总结预留设计：`docs/superpowers/specs/2026-05-20-coach-engine-design.md`
+  - **P1 tech debt**：ftp_estimator 算 ftp=117W vs Tim 真实 1200s best 250W（`docs/tech-debt.md`）/ Sprint 10 后专题
 
 **历史档案**
 - **变更记录**：`docs/changelog.md`
