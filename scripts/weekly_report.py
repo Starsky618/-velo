@@ -3,9 +3,9 @@
 velo 周报生成器——给 agent 自己看的协作复盘。
 
 干啥用：
-    每周一首次开会话时自动跑（由 session_start.py 触发）。
+    手动运行，不再由 session_start.py 自动触发。
     扫上周对话历史 jsonl，找 Tim 否定我的瞬间（"看不懂"/"我说了"/"别"/"等等"等），
-    生成 markdown 报告写到 docs/agent-weekly/YYYY-WNN.md。
+    默认只在 stdout 输出摘要；加 --write 才写到 .claude/agent-weekly/YYYY-WNN.md。
 
     报告核心目的：让本周 agent 看到上周 agent 犯的错 → 强制做归因分析 →
     必要时沉淀新规则到 memory。这才是真"agentic engineering 进化"。
@@ -27,13 +27,14 @@ velo 周报生成器——给 agent 自己看的协作复盘。
 注意事项：
     - jsonl 解析所有异常吞掉（schema 变化不挂报告）
     - 关键词宽泛抓（agent 看完自己判断哪些是真否定 / 哪些是中性）
-    - 报告写文件 + stdout 摘要
+    - 默认不写 repo-tracked 文件，避免每周制造上下文噪声
 
 用法：
-    单跑: python3 scripts/weekly_report.py
-    自动: 由 scripts/session_start.py 在本周 W-id.md 未生成时触发
+    预览: python3 scripts/weekly_report.py
+    写入本机忽略目录: python3 scripts/weekly_report.py --write
 """
 
+import argparse
 import datetime
 import json
 import re
@@ -42,7 +43,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WEEKLY_DIR = ROOT / "docs" / "agent-weekly"
+WEEKLY_DIR = ROOT / ".claude" / "agent-weekly"
 APP_DIR = ROOT / "app"
 TECH_DEBT = ROOT / "docs" / "tech-debt.md"
 MEM_DIR = Path.home() / ".claude" / "projects" / "-Users-macbookair-Desktop-velo" / "memory"
@@ -365,7 +366,10 @@ def render_report(week_id, signals, git, health, debt, mem, last) -> str:
 
 
 def main() -> int:
-    WEEKLY_DIR.mkdir(parents=True, exist_ok=True)
+    parser = argparse.ArgumentParser(description="Generate a local agent weekly recap.")
+    parser.add_argument("--write", action="store_true", help="write the full report to .claude/agent-weekly")
+    args = parser.parse_args()
+
     week_id = iso_week_id()
 
     signals = scan_negative_signals(7)
@@ -376,20 +380,22 @@ def main() -> int:
     last = find_last_report()
 
     report = render_report(week_id, signals, git, health, debt, mem, last)
-    out = WEEKLY_DIR / f"{week_id}.md"
-    out.write_text(report, encoding="utf-8")
 
     # stdout 摘要（hook 起手时塞 agent 上下文）
     print("=== agent 协作复盘 / 上周 Tim 否定信号扫描完毕 ===")
-    print(f"📄 {out.relative_to(ROOT)}")
     print(f"🚨 上周否定信号：{len(signals)} 次")
     if signals:
         from collections import Counter
         kw_counts = Counter(s["keyword"] for s in signals)
         top = kw_counts.most_common(3)
         print(f"   TOP3：{' / '.join(f'{k}×{n}' for k, n in top)}")
-    print()
-    print("⚠️ agent 你必须看 docs/agent-weekly/{}.md 做归因分析（Step 1-3）/ 报告 Tim".format(week_id))
+    if args.write:
+        WEEKLY_DIR.mkdir(parents=True, exist_ok=True)
+        out = WEEKLY_DIR / f"{week_id}.md"
+        out.write_text(report, encoding="utf-8")
+        print(f"📄 已写入本机忽略目录：{out.relative_to(ROOT)}")
+    else:
+        print("ℹ️ 默认不写文件；需要完整报告时运行 scripts/weekly_report.py --write。")
     return 0
 
 
