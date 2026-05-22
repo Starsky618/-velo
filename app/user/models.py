@@ -53,6 +53,14 @@ class User(Base):
     # 体重，单位公斤（kg），用于计算功率体重比等指标
     weight = Column(Float, nullable=True)
 
+    # 出生年份（不是年龄）：年龄每年都会变，存年份像存“出生日期的年份页码”，
+    # 需要时再用当前年份现算，避免 DB 里年龄过期。
+    birth_year = Column(Integer, nullable=True)
+
+    # 用户自填最大心率（bpm）：FTP 估算的心率门槛优先用这个真值；
+    # 没填时才用 birth_year 推算一个保守兜底值。
+    max_hr = Column(Integer, nullable=True)
+
     # 车型：road（公路车）/ gravel（砾石车）/ mtb（山地车）
     bike_type = Column(String(20), nullable=True)
 

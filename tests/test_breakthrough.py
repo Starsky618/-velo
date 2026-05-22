@@ -112,6 +112,24 @@ class TestBreakthroughDetector:
         ).count()
         assert count == 0
 
+    def test_breakthrough_threshold_uses_raw_ftp_not_plus_5_bias(
+        self, db, user_with_ftp_220, activity_low
+    ):
+        """case 2b：suggested 过阈值但 raw 未过阈值 → 不误报突破。"""
+        with patch(
+            "app.activity.breakthrough_detector.estimate_ftp_for_user"
+        ) as mock_est:
+            mock_est.return_value = EstimationResult(
+                ftp=234,
+                confidence="low",
+                method="p20_hr_gated_cp3_check",
+                r2=0.0,
+                raw_ftp=229.0,
+            )
+            event = detect_breakthrough(db, user_with_ftp_220, activity_low)
+
+        assert event is None
+
     def test_user_no_ftp_skip(self, db, user_no_ftp, activity_high):
         """case 3：用户 user.ftp=None → 跳过 / 不调 estimator / 返 None。"""
         with patch(

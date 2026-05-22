@@ -1,11 +1,11 @@
-"""Sprint 9 task-5：CP 3-param eFTP 估算器。
+"""Sprint 10：HR-gated FTP 估算器。
 
 这个文件干什么？
 -----------------
 当用户没有功率计实测 FTP（功能阈值功率），或者 FTP 长时间没更新时，
-我们需要"算"出来一个估计值。原理类似于：通过你跑 100 米、400 米、1500 米的
-最好成绩，反推你的"长距离稳定速度"（耐力区间）。骑行里的 eFTP 同理：
-用 3/5/10/20/60 分钟的最大功率，反推你"能稳定输出 1 小时的功率"——这就是 FTP。
+我们需要"算"出来一个估计值。当前口径不是历史 PB，而是"当前训练 FTP"：
+先找最近 90 天里同一连续窗口同时有功率和心率、且心率强度够高的 20 分钟努力，
+用 `20min_power * 0.95` 做主锚点；CP3 只拿已经通过心率门控的窗口做一致性校验。
 
 公式（Morton 1996 / PMID 8854981 标准 CP 3-param 模型）：
     P(t) = CP + W' * (P_max - CP) / (W' + t * (P_max - CP))
@@ -29,18 +29,21 @@ confidence 4 档判断（拟合质量 + 自由度）：
     所以 n < 5 时强制降级最高 low / 否则会欺骗用户"我们很确定"
 
 操作注意事项：
-- v0.1 不做心率加权（method='cp3_no_hr'）/ v0.2 真用回归后再决定加不加
+- estimate_ftp_for_user 对外 method='p20_hr_gated_cp3_check'
+- fit_cp3_model 保留 method='cp3_no_hr'，表示底层数学函数不直接看心率
 - scipy.optimize.curve_fit 可能数值不稳 / 异常 / 不收敛 → 必须 try/except 兜底
-- 滑动窗口找 best power 用 O(n²) 简单实现 / v0.2 若性能瓶颈再优化成 O(n) 单调队列
+- 滑动窗口找 best power 用 O(n) 双指针，避免长活动上 O(n²) 扫描
 - 该模块"纯计算 + DB 查询"，不写库 / 调用方负责持久化结果
 
 输入/输出数据流：
     入参：db Session + user_id
     出参：EstimationResult(ftp, confidence, method, r2)
-    依赖：Activity.activity_type='cycling' / Activity.status='completed' / Trackpoint.power
+    依赖：Activity.activity_type='cycling' / Activity.status='completed'
+         / Trackpoint.power / Trackpoint.heart_rate / User.max_hr 或 User.birth_year
 """
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
@@ -49,7 +52,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.activity.models import Activity, Trackpoint
-from app.user.models import User  # noqa: F401 — standalone script 防 SQLAlchemy 找不到外键关联表
+from app.user.models import User
 
 
 logger = logging.getLogger(__name__)
@@ -58,6 +61,18 @@ logger = logging.getLogger(__name__)
 # Codex 异源审 Critical：3-4 个 best efforts = 自由度 ≤ 1 → R² 趋向 1.0 = 虚假置信度
 # 必须 ≥ 5 个 best efforts 才允许真正的 high/medium 置信度 / 否则强制降级 low
 _MIN_EFFORTS_FOR_RELIABLE = 5
+
+_HR_GATED_METHOD = "p20_hr_gated_cp3_check"
+_FTP_PRODUCT_BIAS_W = 5
+_HISTORY_DAYS = 90
+_MAX_VALID_ACTIVITIES = 10
+_POWER_COVERAGE_MIN = 0.90
+_HR_COVERAGE_MIN = 0.80
+_P20_AVG_HR_RATIO = 0.85
+_SHORT_MAX_HR_RATIO = 0.90
+_CP3_DIFF_RATIO_MAX = 0.12
+_P20_WINDOW_SECONDS = 1200
+_AUX_WINDOWS_SECONDS = (180, 300, 600, 1200, 3600)
 
 
 @dataclass
@@ -69,8 +84,25 @@ class EstimationResult:
     """
     ftp: Optional[int]    # 估算的 FTP（W），insufficient 时为 None
     confidence: str       # 'insufficient' / 'low' / 'medium' / 'high'
-    method: str           # 'cp3_no_hr'（v0.1）/ 'cp3_hr_weighted'（v0.2）
+    method: str           # 对外 'p20_hr_gated_cp3_check' / 底层 CP3 保留 'cp3_no_hr'
     r2: float             # 拟合质量决定系数 / insufficient 时 = 0.0
+    raw_ftp: Optional[float] = None  # 内部原始 FTP；普通前端响应 schema 不暴露
+
+
+@dataclass
+class QualifiedEffort:
+    """通过心率门控的连续窗口。
+
+    类比：不是整张试卷都算数，而是只把“监考老师确认认真答题”的那几道题
+    交给 CP3 数学模型，防止模型拿通勤/恢复骑当全力证据。
+    """
+    duration_seconds: int
+    avg_power: float
+    avg_hr: float
+    max_hr: int
+    power_coverage: float
+    hr_coverage: float
+    activity_id: int
 
 
 def fit_cp3_model(efforts: list[tuple[int, float]]) -> EstimationResult:
@@ -257,6 +289,192 @@ def _sliding_window_best_power(
     return best
 
 
+def _clamp_ftp(ftp: int) -> int:
+    """把建议 FTP 卡在产品允许范围 50-500W。"""
+    return max(50, min(500, ftp))
+
+
+def _effective_max_hr(user: User) -> tuple[int | None, bool]:
+    """返回 (有效最大心率, 是否用年龄公式兜底)。
+
+    优先级：
+    1. 用户自填 max_hr：最接近个人真实值
+    2. birth_year 推 Tanaka 公式：208 - 0.7 * age，只做低置信度兜底
+    3. 都没有：不能估，避免心率门槛凭空造标准
+    """
+    if user.max_hr is not None:
+        return int(user.max_hr), False
+
+    if user.birth_year is None:
+        return None, False
+
+    current_year = datetime.now(timezone.utc).year
+    age = current_year - int(user.birth_year)
+    if age <= 0 or age > 100:
+        return None, False
+    return int(round(208 - 0.7 * age)), True
+
+
+def _best_qualified_window(
+    tps: list[tuple[int | None, int | None, datetime]],
+    window_seconds: int,
+    effective_max_hr: int,
+    require_avg_hr_gate: bool,
+) -> QualifiedEffort | None:
+    """找单条活动里某个时长的最佳合格窗口。
+
+    合格 = 同一时间窗口内功率覆盖 ≥90%、心率覆盖 ≥80%，再看心率强度。
+    20/60min 用平均心率门槛；3/5/10min 用峰值心率门槛作辅助证据。
+    """
+    if len(tps) < 2:
+        return None
+
+    n = len(tps)
+    times = [0.0]
+    for i in range(1, n):
+        dt = (tps[i][2] - tps[i - 1][2]).total_seconds()
+        times.append(times[-1] + max(dt, 0.0))
+
+    power_energy = [0.0]
+    power_time = [0.0]
+    hr_energy = [0.0]
+    hr_time = [0.0]
+    for i in range(1, n):
+        dt = times[i] - times[i - 1]
+        power = tps[i - 1][0]
+        hr = tps[i - 1][1]
+        power_energy.append(
+            power_energy[-1] + (float(power) * dt if power is not None else 0.0)
+        )
+        power_time.append(power_time[-1] + (dt if power is not None else 0.0))
+        hr_energy.append(
+            hr_energy[-1] + (float(hr) * dt if hr is not None else 0.0)
+        )
+        hr_time.append(hr_time[-1] + (dt if hr is not None else 0.0))
+
+    best: QualifiedEffort | None = None
+    left = 0
+    hr_deque: deque[int] = deque()
+
+    for right in range(1, n):
+        hr_index = right - 1
+        hr_value = tps[hr_index][1]
+        if hr_value is not None:
+            while hr_deque and (tps[hr_deque[-1]][1] or 0) <= hr_value:
+                hr_deque.pop()
+            hr_deque.append(hr_index)
+
+        while left + 1 < right and (times[right] - times[left + 1]) >= window_seconds:
+            left += 1
+        while hr_deque and hr_deque[0] < left:
+            hr_deque.popleft()
+
+        span = times[right] - times[left]
+        if span < window_seconds:
+            continue
+
+        measured_power_time = power_time[right] - power_time[left]
+        measured_hr_time = hr_time[right] - hr_time[left]
+        power_coverage = measured_power_time / span if span > 0 else 0.0
+        hr_coverage = measured_hr_time / span if span > 0 else 0.0
+        if power_coverage < _POWER_COVERAGE_MIN or hr_coverage < _HR_COVERAGE_MIN:
+            continue
+
+        avg_power = (power_energy[right] - power_energy[left]) / span
+        avg_hr = (
+            (hr_energy[right] - hr_energy[left]) / measured_hr_time
+            if measured_hr_time > 0 else 0.0
+        )
+        max_hr = int(tps[hr_deque[0]][1]) if hr_deque else 0
+
+        if require_avg_hr_gate:
+            if avg_hr < effective_max_hr * _P20_AVG_HR_RATIO:
+                continue
+        elif max_hr < effective_max_hr * _SHORT_MAX_HR_RATIO:
+            continue
+
+        if best is None or avg_power > best.avg_power:
+            best = QualifiedEffort(
+                duration_seconds=window_seconds,
+                avg_power=avg_power,
+                avg_hr=avg_hr,
+                max_hr=max_hr,
+                power_coverage=round(power_coverage, 3),
+                hr_coverage=round(hr_coverage, 3),
+                activity_id=-1,
+            )
+
+    return best
+
+
+def _extract_hr_gated_efforts(
+    db: Session,
+    user_id: int,
+    effective_max_hr: int,
+) -> tuple[list[tuple[int, float]], int]:
+    """扫最近 90 天，最多采纳最近 10 条有合格窗口的活动。"""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=_HISTORY_DAYS)
+    activity_ids = (
+        db.query(Activity.id)
+        .filter(
+            Activity.user_id == user_id,
+            Activity.status == "completed",
+            Activity.activity_type == "cycling",
+            Activity.duplicate_of.is_(None),
+            Activity.started_at >= cutoff,
+        )
+        .order_by(Activity.started_at.desc())
+        .all()
+    )
+
+    best_per_window: dict[int, QualifiedEffort] = {}
+    valid_activity_count = 0
+
+    for (aid,) in activity_ids:
+        if valid_activity_count >= _MAX_VALID_ACTIVITIES:
+            break
+
+        rows = (
+            db.query(Trackpoint.power, Trackpoint.heart_rate, Trackpoint.timestamp)
+            .filter(
+                Trackpoint.activity_id == aid,
+                Trackpoint.timestamp.isnot(None),
+            )
+            .order_by(Trackpoint.seq)
+            .all()
+        )
+        if len(rows) < 10:
+            continue
+
+        tps = [(p, h, t) for p, h, t in rows]
+        found_in_activity = False
+        for window_sec in _AUX_WINDOWS_SECONDS:
+            effort = _best_qualified_window(
+                tps,
+                window_sec,
+                effective_max_hr,
+                require_avg_hr_gate=(
+                    window_sec in (_P20_WINDOW_SECONDS, 3600)
+                ),
+            )
+            if effort is None:
+                continue
+            effort.activity_id = aid
+            found_in_activity = True
+            prev = best_per_window.get(window_sec)
+            if prev is None or effort.avg_power > prev.avg_power:
+                best_per_window[window_sec] = effort
+
+        if found_in_activity:
+            valid_activity_count += 1
+
+    efforts = [
+        (duration, effort.avg_power)
+        for duration, effort in sorted(best_per_window.items())
+    ]
+    return efforts, valid_activity_count
+
+
 def _extract_best_efforts(
     db: Session,
     user_id: int,
@@ -323,28 +541,70 @@ def _extract_best_efforts(
 
 
 def estimate_ftp_for_user(db: Session, user_id: int) -> EstimationResult:
-    """eFTP 估算主入口。
+    """FTP 估算主入口：20min HR gate 主锚点 + CP3 一致性检查。
 
-    步骤：
-      1. 扫历史 cycling 活动找 best 3/5/10/20/60 分钟功率
-      2. 心率加权（v0.1 不做 / v0.2 加）
-      3. scipy curve_fit 拟合 CP 3-param → CP ≈ FTP
-
-    返：EstimationResult / 调用方根据 confidence 决定是否采用
+    关键原则：CP3 不能再盲扫所有功率活动。只有同一窗口内同时有功率和心率，
+    且心率强度像阈值努力，才会进入 `qualified_efforts`。
     """
-    efforts = _extract_best_efforts(db, user_id)
-    if len(efforts) < 3:
+    user = db.query(User).filter_by(id=user_id).first()
+    if user is None:
+        return EstimationResult(
+            ftp=None, confidence="insufficient", method=_HR_GATED_METHOD, r2=0.0
+        )
+
+    effective_max_hr, max_hr_from_age = _effective_max_hr(user)
+    if effective_max_hr is None:
+        logger.info("estimate_ftp_for_user user_id=%s 缺 max_hr/birth_year", user_id)
+        return EstimationResult(
+            ftp=None, confidence="insufficient", method=_HR_GATED_METHOD, r2=0.0
+        )
+
+    efforts, valid_activity_count = _extract_hr_gated_efforts(
+        db, user_id, effective_max_hr
+    )
+    p20 = next(
+        (power for duration, power in efforts if duration == _P20_WINDOW_SECONDS),
+        None,
+    )
+    if p20 is None:
         logger.info(
-            "estimate_ftp_for_user user_id=%s 数据不足 efforts_count=%s",
-            user_id, len(efforts),
+            "estimate_ftp_for_user user_id=%s 无合格 20min 窗口 efforts=%s",
+            user_id, efforts,
         )
         return EstimationResult(
-            ftp=None, confidence="insufficient", method="cp3_no_hr", r2=0.0
+            ftp=None, confidence="insufficient", method=_HR_GATED_METHOD, r2=0.0
         )
 
-    result = fit_cp3_model(efforts)
-    logger.info(
-        "estimate_ftp_for_user user_id=%s ftp=%s confidence=%s r2=%s",
-        user_id, result.ftp, result.confidence, result.r2,
+    raw_ftp = p20 * 0.95
+    suggested_ftp = _clamp_ftp(int(round(raw_ftp)) + _FTP_PRODUCT_BIAS_W)
+    cp3_result = fit_cp3_model(efforts) if len(efforts) >= 3 else EstimationResult(
+        ftp=None, confidence="insufficient", method="cp3_no_hr", r2=0.0
     )
-    return result
+
+    confidence = "low"
+    if cp3_result.ftp is not None and raw_ftp > 0:
+        diff_ratio = abs(cp3_result.ftp - raw_ftp) / raw_ftp
+        powers = [power for _, power in efforts]
+        power_spread = (max(powers) - min(powers)) / p20 if p20 > 0 else 0.0
+        if (
+            len(efforts) >= _MIN_EFFORTS_FOR_RELIABLE
+            and diff_ratio <= _CP3_DIFF_RATIO_MAX
+            and power_spread >= 0.08
+        ):
+            confidence = "medium"
+    if max_hr_from_age:
+        confidence = "low"
+
+    logger.info(
+        "estimate_ftp_for_user user_id=%s raw_ftp=%.1f suggested=%s confidence=%s "
+        "r2=%s efforts=%s valid_activities=%s max_hr_source=%s",
+        user_id, raw_ftp, suggested_ftp, confidence, cp3_result.r2, efforts,
+        valid_activity_count, "age" if max_hr_from_age else "user",
+    )
+    return EstimationResult(
+        ftp=suggested_ftp,
+        confidence=confidence,
+        method=_HR_GATED_METHOD,
+        r2=cp3_result.r2,
+        raw_ftp=raw_ftp,
+    )

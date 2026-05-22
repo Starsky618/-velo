@@ -130,6 +130,26 @@ _activities_table = Table(
     Column("updated_at", DateTime(timezone=True)),
 )
 
+# trackpoints 表（SQLite 简化版）
+# FTP estimator 只需要逐点时间、功率、心率；保留完整字段名，避免 ORM 查询找不到列。
+_trackpoints_table = Table(
+    "trackpoints",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("activity_id", Integer, nullable=False),
+    Column("seq", Integer, nullable=False),
+    Column("latitude", Float, nullable=False),
+    Column("longitude", Float, nullable=False),
+    Column("elevation", Float),
+    Column("timestamp", DateTime(timezone=True)),
+    Column("heart_rate", Integer),
+    Column("cadence", Integer),
+    Column("power", Integer),
+    Column("speed", Float),
+    Column("distance", Float),
+    Column("geom", Text),
+)
+
 # activity_privacy 表（SQLite 简化版）
 # 这里像给每条骑行配一张“门禁卡”：
 # 没有卡 = 老数据默认公开；有卡时再看 visibility 决定别人能不能进。

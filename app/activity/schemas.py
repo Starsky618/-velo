@@ -152,9 +152,9 @@ class EstimationResultResponse(BaseModel):
     - ftp: 估算的 FTP（W），confidence='insufficient' 时为 None
     - confidence: 'insufficient' / 'low' / 'medium' / 'high'
       - insufficient：历史数据不足 / 非单调 / 物理不合理 → 前端显示"请手动填"
-      - low / medium / high：R² + n_efforts 综合分档（详见 ftp_estimator._classify_confidence）
-    - method: 'cp3_no_hr'（v0.1 不带心率）/ 'cp3_hr_weighted'（v0.2 心率加权）
-    - r2: 拟合质量决定系数（0-1）/ insufficient 时 = 0.0
+    - low / medium / high：20min 主锚点 + CP3 一致性检查综合分档
+    - method: 'p20_hr_gated_cp3_check'（20min 心率门控主锚点 / CP3 只做校验）
+    - r2: CP3 一致性检查的拟合质量（0-1）/ 未参与校验时 = 0.0
 
     类比：体检报告——数字（ftp）+ 可信度（confidence + r2），让前端决定要不要采用。
     """

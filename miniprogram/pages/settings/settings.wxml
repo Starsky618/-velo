@@ -48,6 +48,25 @@
       </view>
     </view>
     <text class="section-hint">可选 / 用于计算 W/kg（功重比 / 衡量爬坡能力）</text>
+
+    <!-- 年龄 + 最大心率（Sprint 10 / 后端存 birth_year，不存会过期的 age） -->
+    <view class="row" bindtap="onEditBirthYear">
+      <text class="row-label">年龄</text>
+      <view class="row-right">
+        <text class="row-value">{{displayAge ? displayAge + ' 岁' : '未设置'}}</text>
+        <text class="row-arrow">›</text>
+      </view>
+    </view>
+    <text class="section-hint">编辑时填写出生年份 / 用于缺少最大心率时估算心率门槛</text>
+
+    <view class="row" bindtap="onEditMaxHr">
+      <text class="row-label">最大心率</text>
+      <view class="row-right">
+        <text class="row-value">{{maxHr ? maxHr + ' bpm' : '未设置'}}</text>
+        <text class="row-arrow">›</text>
+      </view>
+    </view>
+    <text class="section-hint">可选 / FTP 自动估算会优先用它判断 20 分钟是否真的够强</text>
   </view>
 
   <!-- Sprint 9 task-6：FTP 估算结果弹窗（手写 modal / 不用 wx.showModal 因为要展示富内容） -->
@@ -59,7 +78,7 @@
         <view wx:if="{{estimateResult.confidence === 'insufficient'}}" class="estimate-fail">
           <view class="estimate-fail-icon">📉</view>
           <view class="estimate-fail-text">历史活动数据不足</view>
-          <view class="estimate-fail-hint">至少需要 3 段不同时长的全力骑行 / 请手动填 FTP</view>
+          <view class="estimate-fail-hint">需要最近 90 天内 20 分钟高强度窗口，且同一窗口同时有功率和心率 / 请补最大心率或手动填 FTP</view>
         </view>
         <!-- 有估算值：显示数字 + confidence 配色 + R² -->
         <view wx:else class="estimate-success">

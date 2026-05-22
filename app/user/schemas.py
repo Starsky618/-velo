@@ -13,7 +13,7 @@ Pydantic 会自动检查格式是否合规，不合规直接返回 422 错误，
 - 不要在 schema 里写业务逻辑，它只管格式校验
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -84,6 +84,8 @@ class UserProfile(BaseModel):
     bio: Optional[str] = None  # Sprint 6 task-1：骑手签名（≤ 30 字符 / 一行短描述）
     ftp: Optional[int] = None
     weight: Optional[float] = None
+    birth_year: Optional[int] = None
+    max_hr: Optional[int] = None
     bike_type: Optional[str] = None
     weekly_goal: float
     created_at: datetime
@@ -102,6 +104,8 @@ class UserProfileUpdate(BaseModel):
     校验规则（与 spec 一致）：
     - ftp: 50-500 的整数，或 null（清除）
     - weight: 30.0-200.0
+    - birth_year: 1900-当前年份（后端存出生年份，不存会过期的 age）
+    - max_hr: 120-220 bpm
     - bike_type: road / gravel / mtb
     - weekly_goal: 10.0-2000.0
     - bio: ≤ 30 字符 + 单行（Sprint 6 task-1 / 详 _reject_newline_and_control）
@@ -110,6 +114,8 @@ class UserProfileUpdate(BaseModel):
     avatar_url: Optional[str] = None
     ftp: Optional[int] = Field(None, ge=50, le=500)
     weight: Optional[float] = Field(None, ge=30.0, le=200.0)
+    birth_year: Optional[int] = Field(None, ge=1900)
+    max_hr: Optional[int] = Field(None, ge=120, le=220)
     bike_type: Optional[BikeType] = None
     weekly_goal: Optional[float] = Field(None, ge=10.0, le=2000.0)
     bio: Optional[str] = Field(None, max_length=30)
@@ -118,6 +124,16 @@ class UserProfileUpdate(BaseModel):
     @classmethod
     def _validate_bio(cls, v):
         return _reject_newline_and_control(v)
+
+    @field_validator("birth_year")
+    @classmethod
+    def _validate_birth_year(cls, v):
+        if v is None:
+            return v
+        current_year = datetime.now(timezone.utc).year
+        if v > current_year:
+            raise ValueError("出生年份不能晚于今年")
+        return v
 
 
 # ========== 任务 2.5：骑行统计 ==========

@@ -1,10 +1,11 @@
-"""Sprint 9 task-5 单元测试：CP 3-param + 心率加权 eFTP 估算。
+"""Sprint 9/10 FTP 估算测试：CP3 底层拟合 + 20min 心率门控入口。
 
 测试覆盖 4 个核心场景：
 1. 标准 5 点拟合 / CP 应接近真实 ftp 220W ±10%
 2. 数据不足（< 3 efforts）→ confidence='insufficient'
 3. 退化数据（所有功率相同）→ 拟合 fail 或低 R² → insufficient/low
 4. 新用户 0 条活动 → insufficient
+5. 对外估算入口必须同时满足功率 + 心率 + 20min 强度门槛
 """
 import pytest
 
@@ -16,6 +17,7 @@ from app.activity.ftp_estimator import (
     EstimationResult,
     _sliding_window_best_power,
 )
+from app.activity.models import Activity, Trackpoint
 
 
 class TestSlidingWindowMonotonicity:
@@ -109,7 +111,7 @@ class TestFtpEstimator:
         result = estimate_ftp_for_user(db, test_user.id)
         assert result.confidence == "insufficient"
         assert result.ftp is None
-        assert result.method == "cp3_no_hr"
+        assert result.method == "p20_hr_gated_cp3_check"
 
     def test_non_monotonic_data_returns_insufficient(self):
         """非单调（长时长 power > 短时长）= 物理不可能 → insufficient。
@@ -134,3 +136,189 @@ class TestFtpEstimator:
         assert result.confidence in ("low", "insufficient"), (
             f"3 efforts 不能 high/medium / 实际 {result}"
         )
+
+
+class TestHrGatedFtpEstimator:
+    """Sprint 10 FTP 精度专题：20min 心率门控主锚点。
+
+    测试重点不是 CP3 数学本身，而是入口数据闸门：
+    必须同一窗口同时有功率 + 心率，且心率强度足够，才允许估算 FTP。
+    """
+
+    @staticmethod
+    def _activity_with_points(
+        db,
+        user,
+        title: str,
+        seconds: int,
+        power: int | None,
+        hr: int | None,
+        started_offset_days: int = 7,
+    ) -> Activity:
+        started = datetime.now(timezone.utc) - timedelta(days=started_offset_days)
+        activity = Activity(
+            user_id=user.id,
+            title=title,
+            status="completed",
+            activity_type="cycling",
+            started_at=started,
+            duration=seconds,
+            avg_power=power,
+            avg_hr=hr,
+        )
+        db.add(activity)
+        db.flush()
+
+        for seq in range(seconds + 1):
+            db.add(Trackpoint(
+                activity_id=activity.id,
+                seq=seq,
+                latitude=30.0,
+                longitude=120.0,
+                timestamp=started + timedelta(seconds=seq),
+                power=power,
+                heart_rate=hr,
+            ))
+        db.commit()
+        return activity
+
+    def test_power_without_hr_is_not_eligible(self, db, test_user):
+        """有功率但无心率 → 不能估 FTP，防 CP3 盲扫日常功率活动。"""
+        test_user.max_hr = 200
+        db.commit()
+        self._activity_with_points(db, test_user, "power_only", 1200, power=260, hr=None)
+
+        result = estimate_ftp_for_user(db, test_user.id)
+
+        assert result.confidence == "insufficient"
+        assert result.ftp is None
+
+    def test_hr_without_power_is_not_eligible(self, db, test_user):
+        """有心率但无功率 → 不能估 FTP，心率不能单独反推瓦数。"""
+        test_user.max_hr = 200
+        db.commit()
+        self._activity_with_points(db, test_user, "hr_only", 1200, power=None, hr=180)
+
+        result = estimate_ftp_for_user(db, test_user.id)
+
+        assert result.confidence == "insufficient"
+        assert result.ftp is None
+
+    def test_low_hr_power_window_is_not_eligible(self, db, test_user):
+        """20min 功率够高但平均心率低于 85% maxHR → 视为非阈值努力。"""
+        test_user.max_hr = 200
+        db.commit()
+        self._activity_with_points(db, test_user, "tempo_not_threshold", 1200, power=260, hr=150)
+
+        result = estimate_ftp_for_user(db, test_user.id)
+
+        assert result.confidence == "insufficient"
+        assert result.ftp is None
+
+    def test_target_20min_window_missing_hr_is_not_eligible(self, db, test_user):
+        """整条活动有心率和功率，但目标 20min 高功率窗口缺心率 → 不入选。"""
+        test_user.max_hr = 200
+        started = datetime.now(timezone.utc) - timedelta(days=7)
+        activity = Activity(
+            user_id=test_user.id,
+            title="mixed_but_anchor_missing_hr",
+            status="completed",
+            activity_type="cycling",
+            started_at=started,
+            duration=1500,
+            avg_power=228,
+            avg_hr=180,
+        )
+        db.add(activity)
+        db.flush()
+
+        for seq in range(1501):
+            in_high_power_block = seq <= 1200
+            db.add(Trackpoint(
+                activity_id=activity.id,
+                seq=seq,
+                latitude=30.0,
+                longitude=120.0,
+                timestamp=started + timedelta(seconds=seq),
+                power=260 if in_high_power_block else 100,
+                heart_rate=None if in_high_power_block else 180,
+            ))
+        db.commit()
+
+        result = estimate_ftp_for_user(db, test_user.id)
+
+        assert result.confidence == "insufficient"
+        assert result.ftp is None
+
+    def test_qualified_20min_anchor_returns_p20_with_5w_bias(self, db, test_user):
+        """合格 20min 窗口 → raw=p20*0.95，最终建议值再 +5W。"""
+        test_user.max_hr = 200
+        db.commit()
+        self._activity_with_points(db, test_user, "threshold_20min", 1200, power=250, hr=172)
+
+        result = estimate_ftp_for_user(db, test_user.id)
+
+        assert result.method == "p20_hr_gated_cp3_check"
+        assert result.confidence == "low"
+        assert result.ftp == 243  # round(250 * 0.95)=238，再加 5W 产品偏移
+
+    def test_suggested_ftp_is_clamped_to_response_bounds(self, db, test_user):
+        """最终建议值上限只在输出层 clamp 到 500，不影响 raw 内部计算。"""
+        test_user.max_hr = 200
+        db.commit()
+        self._activity_with_points(db, test_user, "too_high", 1200, power=700, hr=190)
+
+        result = estimate_ftp_for_user(db, test_user.id)
+
+        assert result.ftp == 500
+
+    def test_suggested_ftp_is_clamped_to_minimum_response_bound(self, db, test_user):
+        """最终建议值下限只在输出层 clamp 到 50。"""
+        test_user.max_hr = 200
+        db.commit()
+        self._activity_with_points(db, test_user, "too_low", 1200, power=20, hr=190)
+
+        result = estimate_ftp_for_user(db, test_user.id)
+
+        assert result.ftp == 50
+
+    def test_birth_year_fallback_can_estimate_but_caps_confidence_low(self, db, test_user):
+        """缺 max_hr 但有 birth_year → Tanaka 公式兜底，confidence 最高 low。"""
+        current_year = datetime.now(timezone.utc).year
+        test_user.birth_year = current_year - 30
+        test_user.max_hr = None
+        db.commit()
+        self._activity_with_points(db, test_user, "age_formula", 1200, power=250, hr=160)
+
+        result = estimate_ftp_for_user(db, test_user.id)
+
+        assert result.ftp == 243
+        assert result.confidence == "low"
+
+    def test_cp3_with_less_than_5_efforts_cannot_raise_confidence(self, db, test_user):
+        """少于 5 个合格窗口时，CP3 即使接近 p20 也不能把 confidence 升到 medium。"""
+        test_user.max_hr = 200
+        db.commit()
+        self._activity_with_points(db, test_user, "p5", 300, power=281, hr=183)
+        self._activity_with_points(db, test_user, "p10", 600, power=252, hr=182)
+        self._activity_with_points(db, test_user, "p20", 1200, power=236, hr=176)
+
+        result = estimate_ftp_for_user(db, test_user.id)
+
+        assert result.confidence == "low"
+
+    def test_cp3_close_to_p20_can_raise_confidence(self, db, test_user):
+        """5/10/20/60min 合格窗口与 CP3 接近 → confidence 可升到 medium/high。"""
+        test_user.max_hr = 200
+        db.commit()
+        self._activity_with_points(db, test_user, "p3", 180, power=315, hr=184)
+        self._activity_with_points(db, test_user, "p5", 300, power=281, hr=183)
+        self._activity_with_points(db, test_user, "p10", 600, power=252, hr=182)
+        self._activity_with_points(db, test_user, "p20", 1200, power=236, hr=176)
+        self._activity_with_points(db, test_user, "p60", 3600, power=226, hr=174)
+
+        result = estimate_ftp_for_user(db, test_user.id)
+
+        assert result.method == "p20_hr_gated_cp3_check"
+        assert result.confidence in ("medium", "high")
+        assert result.ftp == 229  # round(236 * 0.95)=224，再加 5W

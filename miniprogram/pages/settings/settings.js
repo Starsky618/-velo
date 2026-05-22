@@ -36,6 +36,9 @@ Page({
   data: {
     ftp: null,
     weight: null,                  // Sprint 9 task-6：体重（kg）/ 可选 / 算 W/kg 用
+    birthYear: null,               // Sprint 10：出生年份 / 后端不存 age / 用来兜底估算最大心率
+    displayAge: null,              // Sprint 10：前端展示年龄 / 不回写后端
+    maxHr: null,                   // Sprint 10：最大心率 / FTP 自动估算的心率门槛
     stravaBound: false,
     // Sprint 9 task-6：FTP 估算弹窗状态
     ftpEstimateModal: false,       // 弹窗显隐
@@ -68,12 +71,16 @@ Page({
   _fetchProfile() {
     api.get('/api/user/profile')
       .then((p) => {
+        const birthYear = p.birth_year != null ? p.birth_year : null
         // 三审 Important 修：用 != null 不用 ||（防 truthiness 陷阱 / 即使 ftp=0 也不会被当 null）
         // FTP schema 范围 50-500 / 实际 0 不会出现 / 但防御性写法
         // Sprint 9 task-6：同步拉 weight / 一起 setData（避免两次渲染闪烁）
         this.setData({
           ftp: p.ftp != null ? p.ftp : null,
           weight: p.weight != null ? p.weight : null,
+          birthYear: birthYear,
+          displayAge: this._ageFromBirthYear(birthYear),
+          maxHr: p.max_hr != null ? p.max_hr : null,
         })
       })
       .catch((err) => {
@@ -82,6 +89,19 @@ Page({
           wx.redirectTo({ url: '/pages/profile/profile' })
         }
       })
+  },
+
+  /**
+   * 用出生年份现算展示年龄。
+   *
+   * 类比：后端保存“出生年份”这张出生证明；前端每次打开设置页时，
+   * 再用今年减一下，得到不会过期的年龄展示。
+   */
+  _ageFromBirthYear(birthYear) {
+    if (!birthYear) return null
+    const age = new Date().getFullYear() - birthYear
+    if (age <= 0 || age > 100) return null
+    return age
   },
 
   /**
@@ -169,6 +189,86 @@ Page({
           .then(function () {
             that.setData({ weight: weight })
             wx.showToast({ title: '体重已更新', icon: 'success' })
+          })
+          .catch(function (err) {
+            wx.showToast({
+              title: (err && err.message) || '更新失败',
+              icon: 'none',
+            })
+          })
+      },
+    })
+  },
+
+  /**
+   * 编辑出生年份——只存年份，不存动态 age。
+   *
+   * 类比：身份证上写的是出生年份；年龄每天都会变，后端按当前年份临时算。
+   * 这个字段只在用户没填最大心率时兜底，估算置信度最多 low。
+   */
+  onEditBirthYear() {
+    const that = this
+    const currentYear = new Date().getFullYear()
+    const current = this.data.birthYear ? String(this.data.birthYear) : ''
+    wx.showModal({
+      title: '编辑出生年份',
+      content: '',
+      editable: true,
+      placeholderText: current || '例如 1994',
+      success: function (res) {
+        if (!res.confirm) return
+        const raw = (res.content || '').trim()
+        if (!raw) return
+        const birthYear = parseInt(raw, 10)
+        if (isNaN(birthYear) || birthYear < 1900 || birthYear > currentYear) {
+          wx.showToast({ title: '出生年份不合法', icon: 'none' })
+          return
+        }
+        api.put('/api/user/profile', { birth_year: birthYear })
+          .then(function () {
+            that.setData({
+              birthYear: birthYear,
+              displayAge: that._ageFromBirthYear(birthYear),
+            })
+            wx.showToast({ title: '出生年份已更新', icon: 'success' })
+          })
+          .catch(function (err) {
+            wx.showToast({
+              title: (err && err.message) || '更新失败',
+              icon: 'none',
+            })
+          })
+      },
+    })
+  },
+
+  /**
+   * 编辑最大心率——优先用于 FTP 估算的心率门槛。
+   *
+   * 类比：最大心率像门锁的钥匙；没有钥匙只能用年龄公式估一把备用钥匙，
+   * 所以后端会把这种估算的置信度压低。
+   */
+  onEditMaxHr() {
+    const that = this
+    const current = this.data.maxHr ? String(this.data.maxHr) : ''
+    wx.showModal({
+      title: '编辑最大心率',
+      content: '',
+      editable: true,
+      placeholderText: current || '请输入 120-220 之间的整数',
+      success: function (res) {
+        if (!res.confirm) return
+        const raw = (res.content || '').trim()
+        if (!raw) return
+        const maxHr = parseInt(raw, 10)
+        if (isNaN(maxHr) || maxHr < 120 || maxHr > 220) {
+          wx.showToast({ title: '最大心率范围 120-220', icon: 'none' })
+          return
+        }
+        api.put('/api/user/profile', { max_hr: maxHr })
+          .then(function () {
+            that.setData({ maxHr: maxHr })
+            wx.showToast({ title: '最大心率已更新', icon: 'success' })
           })
           .catch(function (err) {
             wx.showToast({

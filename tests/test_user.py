@@ -94,6 +94,8 @@ def test_05_get_profile(client, auth_header):
     assert data["weekly_goal"] == 200.0
     assert data["nickname"] is None
     assert data["ftp"] is None
+    assert data["birth_year"] is None
+    assert data["max_hr"] is None
 
 
 def test_06_update_ftp_out_of_range(client, auth_header):
@@ -137,6 +139,8 @@ def test_08_update_profile_success(client, auth_header, monkeypatch):
             "nickname": "骑行者Tim",
             "ftp": 200,
             "weight": 70.5,
+            "birth_year": 1994,
+            "max_hr": 190,
             "bike_type": "road",
             "weekly_goal": 300.0,
         },
@@ -148,8 +152,32 @@ def test_08_update_profile_success(client, auth_header, monkeypatch):
     assert data["nickname"] == "骑行者Tim"
     assert data["ftp"] == 200
     assert data["weight"] == 70.5
+    assert data["birth_year"] == 1994
+    assert data["max_hr"] == 190
     assert data["bike_type"] == "road"
     assert data["weekly_goal"] == 300.0
+
+
+def test_08b_update_profile_rejects_future_birth_year(client, auth_header):
+    """补充用例：出生年份不能写未来年份。"""
+
+    resp = client.put(
+        "/api/user/profile",
+        json={"birth_year": 2999},
+        headers=auth_header,
+    )
+    assert resp.status_code == 422
+
+
+def test_08c_update_profile_rejects_invalid_max_hr(client, auth_header):
+    """补充用例：最大心率只接受成人骑行常见安全区间。"""
+
+    resp = client.put(
+        "/api/user/profile",
+        json={"max_hr": 260},
+        headers=auth_header,
+    )
+    assert resp.status_code == 422
 
 
 # ==================== 9-12：骑行统计 ====================

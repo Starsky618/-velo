@@ -90,7 +90,10 @@ def detect_breakthrough(
             return None
 
         # 3. 阈值判断：必须 > ftp × 1.05 才算突破
-        if result.ftp <= user.ftp * BREAKTHROUGH_THRESHOLD:
+        # FTP 估算接口给用户看的 suggested_ftp 会加 5W 产品偏移；突破检测要看 raw_ftp，
+        # 否则一次普通浮动会被“开心 +5W”推过阈值，误弹突破。
+        comparison_ftp = result.raw_ftp if result.raw_ftp is not None else result.ftp
+        if comparison_ftp <= user.ftp * BREAKTHROUGH_THRESHOLD:
             return None
 
         # 4. 防抖：把该用户已有 pending 标 expired / 用最新覆盖
