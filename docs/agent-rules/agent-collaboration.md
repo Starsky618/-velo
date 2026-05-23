@@ -688,6 +688,35 @@ Tim 可随时叫"现在 Codex 接手 / Claude 接手"——agent 不能反驳。
 | 紧急 hotfix | ❌ 不切换 |
 | 纯文档重构 | ❌ 不切换 |
 
+### §10.Y 任务路由表（单次派工 / 2026-05-24 Tim 拍）
+
+> §10 是"要不要双主驾切换主开发" / §10.Y 是"单次任务派谁干"。两者维度不同。
+> 由 `scripts/user_prompt_mental_check.py` hook 在 prompt 含派工 keyword 时自动注入到 Claude 视野。
+
+**核心原则**：CEO 不当 CTO 也不当 VP——Tim 决定**谁干什么** / 不纠结"谁是主开发"。每次任务按类型分派 / 让每个 AI 干它强项。
+
+**读者**：Tim + Claude 主对话。Codex 不在读者列表（它是被指派的执行者 / 只需要单次任务清晰描述）。
+
+| 任务类型 | 默认派谁 | 为啥 |
+|---|---|---|
+| 产品 brainstorm / 战略 / 中文 push back | Claude 主对话 | 中文 + brainstorming + superpowers 生态 |
+| 写长 spec / 战术 PRD / 文档 | Claude 主 agent 自做 | 默认禁派 codex 大文档（>50K token 卡死实证 / `feedback_main_agent_as_middle_manager` §2.1）|
+| 仿现有模式批量代码（如新模块复刻） | 派 Codex（异源） | 代码训练偏好 + 异源思考碰撞 |
+| 跨 3+ 模块 / 500+ 行实施 | 派 Codex | 复杂度 + 三审分工 |
+| 单文件 < 200 行实施 | Claude 主 agent 自做 | subagent overhead 不值 |
+| Code review（commit 前） | 异源（Claude 写派 Codex 审 / 反之）| 多样性保险 / 见 §4 场景 B |
+| HTML mockup / demo / 可视化 | Claude 主对话 | 中文 sprint context + brainstorming |
+| Migration / Alembic 迁移脚本 | 派 Codex 写 + 三审 | DDL 严谨度 |
+| 测试 fixture / 单元测试 | 派 Codex 写 | 代码训练偏好 |
+| 紧急 hotfix | Claude 主 agent 自做 | 速度优先 |
+
+**反指标**（默认禁派 Codex / 已有实证）：
+- 改核心规范（CLAUDE.md / skill / agent-rules）—— 中文场景理解偏差
+- 内容已在 Claude 上下文中 —— 重派 overhead 反而长 5-10×
+- 大文档（> 800 字 / > 1500 行 / spec / plans）—— Codex CLI > 50K token 卡死
+
+**Tim 主权**：Tim 可随时拍"这次派 X / 这次自己干 / 这次切 Codex 主"——agent 不反驳。
+
 ### §10.X 工作交接桥梁机制（v2.0 / Tim 实证识别）
 
 **Why**：会话上下文有限——agent 工作记忆里只能装当前 session 内容。新 session 启动时所有规则虽存在但**不在视野** → 决策时不会主动引用。**没有交接桥梁 = 上一次会话的精华断层**。
