@@ -38,6 +38,8 @@ Page({
     weight: null,                  // Sprint 9 task-6：体重（kg）/ 可选 / 算 W/kg 用
     birthYear: null,               // Sprint 10：出生年份 / 后端不存 age / 用来兜底估算最大心率
     displayAge: null,              // Sprint 10：前端展示年龄 / 不回写后端
+    birthYearOptions: [],          // 出生年份滚轮选项：今年 → 1900
+    birthYearIndex: 0,             // 当前出生年份在滚轮里的位置
     maxHr: null,                   // Sprint 10：最大心率 / FTP 自动估算的心率门槛
     stravaBound: false,
     // Sprint 9 task-6：FTP 估算弹窗状态
@@ -58,6 +60,7 @@ Page({
       wx.redirectTo({ url: '/pages/profile/profile' })
       return
     }
+    this._ensureBirthYearOptions()
     this._fetchProfile()
     this._fetchStravaStatus()
     // Sprint 9 task-8：每次进 settings 时拉 pending breakthrough / 有则弹窗
@@ -72,6 +75,7 @@ Page({
     api.get('/api/user/profile')
       .then((p) => {
         const birthYear = p.birth_year != null ? p.birth_year : null
+        const birthYearIndex = this._birthYearIndex(birthYear)
         // 三审 Important 修：用 != null 不用 ||（防 truthiness 陷阱 / 即使 ftp=0 也不会被当 null）
         // FTP schema 范围 50-500 / 实际 0 不会出现 / 但防御性写法
         // Sprint 9 task-6：同步拉 weight / 一起 setData（避免两次渲染闪烁）
@@ -80,6 +84,7 @@ Page({
           weight: p.weight != null ? p.weight : null,
           birthYear: birthYear,
           displayAge: this._ageFromBirthYear(birthYear),
+          birthYearIndex: birthYearIndex,
           maxHr: p.max_hr != null ? p.max_hr : null,
         })
       })
@@ -105,6 +110,36 @@ Page({
   },
 
   /**
+   * 初始化出生年份滚轮选项。
+   *
+   * 类比：把 1900 年到今年做成一排刻度，picker 滚轮只负责选刻度；
+   * 真正存库的还是 birth_year，不存会过期的 age。
+   */
+  _ensureBirthYearOptions() {
+    if (this.data.birthYearOptions.length > 0) return
+    const currentYear = new Date().getFullYear()
+    const options = []
+    for (let year = currentYear; year >= 1900; year--) {
+      options.push(year)
+    }
+    this.setData({ birthYearOptions: options })
+  },
+
+  /**
+   * 找出生年份在滚轮里的位置；没设置时默认落在约 30 岁，少滚一点。
+   */
+  _birthYearIndex(birthYear) {
+    this._ensureBirthYearOptions()
+    const currentYear = new Date().getFullYear()
+    if (!birthYear) {
+      const defaultIndex = this.data.birthYearOptions.indexOf(currentYear - 30)
+      return defaultIndex >= 0 ? defaultIndex : 0
+    }
+    const index = this.data.birthYearOptions.indexOf(birthYear)
+    return index >= 0 ? index : 0
+  },
+
+  /**
    * 拉 Strava 绑定状态
    * 实证字段：app/strava/service_token.py:71 返字段 = "bound" (boolean / "connected" 别名同义)
    */
@@ -118,15 +153,34 @@ Page({
       })
   },
 
+  onEditFtp() {
+    const that = this
+    wx.showActionSheet({
+      itemList: [
+        this.data.ftp ? '手动修改 FTP' : '手动填写 FTP',
+        this.data.ftp ? '重新估算 FTP' : '让系统估算',
+      ],
+      success: function (res) {
+        if (res.tapIndex === 0) {
+          that._showEditFtpModal()
+          return
+        }
+        if (res.tapIndex === 1) {
+          that.onEstimateFtp()
+        }
+      },
+    })
+  },
+
   /**
-   * 编辑 FTP——wx.showModal editable 唤起原生输入框
+   * 手动编辑 FTP——wx.showModal editable 唤起原生输入框
    *
    * 校验顺序：
    *   1. 用户取消 → 直接 return（不弹 toast）
    *   2. 解析整数 + 边界 50-500 → 不通过 toast 提示用户
    *   3. PUT 后端 → 后端再次 422 兜底（schema Field ge=50 le=500）
    */
-  onEditFtp() {
+  _showEditFtpModal() {
     const that = this
     wx.showModal({
       title: '编辑 FTP',
@@ -201,45 +255,32 @@ Page({
   },
 
   /**
-   * 编辑出生年份——只存年份，不存动态 age。
+   * 滚轮选择出生年份——只存年份，不存动态 age。
    *
    * 类比：身份证上写的是出生年份；年龄每天都会变，后端按当前年份临时算。
    * 这个字段只在用户没填最大心率时兜底，估算置信度最多 low。
    */
-  onEditBirthYear() {
+  onBirthYearPickerChange(e) {
     const that = this
-    const currentYear = new Date().getFullYear()
-    const current = this.data.birthYear ? String(this.data.birthYear) : ''
-    wx.showModal({
-      title: '编辑出生年份',
-      content: '',
-      editable: true,
-      placeholderText: current || '例如 1994',
-      success: function (res) {
-        if (!res.confirm) return
-        const raw = (res.content || '').trim()
-        if (!raw) return
-        const birthYear = parseInt(raw, 10)
-        if (isNaN(birthYear) || birthYear < 1900 || birthYear > currentYear) {
-          wx.showToast({ title: '出生年份不合法', icon: 'none' })
-          return
-        }
-        api.put('/api/user/profile', { birth_year: birthYear })
-          .then(function () {
-            that.setData({
-              birthYear: birthYear,
-              displayAge: that._ageFromBirthYear(birthYear),
-            })
-            wx.showToast({ title: '出生年份已更新', icon: 'success' })
-          })
-          .catch(function (err) {
-            wx.showToast({
-              title: (err && err.message) || '更新失败',
-              icon: 'none',
-            })
-          })
-      },
-    })
+    const index = Number(e.detail.value)
+    const birthYear = this.data.birthYearOptions[index]
+    if (!birthYear) return
+
+    api.put('/api/user/profile', { birth_year: birthYear })
+      .then(function () {
+        that.setData({
+          birthYear: birthYear,
+          displayAge: that._ageFromBirthYear(birthYear),
+          birthYearIndex: index,
+        })
+        wx.showToast({ title: '出生年份已更新', icon: 'success' })
+      })
+      .catch(function (err) {
+        wx.showToast({
+          title: (err && err.message) || '更新失败',
+          icon: 'none',
+        })
+      })
   },
 
   /**
@@ -288,7 +329,7 @@ Page({
    * 流程：
    *   1. showLoading "估算中"（最长 3 秒 / 后端跑 scipy curve_fit 一般 < 1 秒）
    *   2. GET /api/user/me/ftp-estimate → EstimationResultResponse
-   *   3. 弹自定义 modal 显示结果 / 用户点"用这个" → onAcceptEstimate / 点"手动填" → 关弹窗
+   *   3. 弹自定义 modal 显示结果 / 用户点"用这个" → onAcceptEstimate / 点"手动填" → 打开手动输入
    *
    * 失败兜底：estimator 抛异常 → 500 → catch toast "估算失败 请手动填"
    * insufficient 兜底：返 ftp=null → modal 显示"历史活动数据不足"引导手动填
@@ -356,13 +397,30 @@ Page({
   },
 
   /**
-   * Sprint 9 task-6：关闭估算弹窗（点遮罩 / 点"手动填" / 点取消都走这里）
+   * Sprint 9 task-6：关闭估算弹窗（点遮罩 / 点取消都走这里）
    */
   onCloseEstimateModal() {
     this.setData({
       ftpEstimateModal: false,
       estimateResult: null,
     })
+  },
+
+  /**
+   * 系统估算不可用时，直接接到手动 FTP 输入框。
+   *
+   * 类比：先把当前弹窗这扇门关上，再打开手动填写的小窗口；
+   * setTimeout 让小程序先完成遮罩关闭，避免两个弹窗挤在同一帧。
+   */
+  onManualFillFromEstimate() {
+    const that = this
+    this.setData({
+      ftpEstimateModal: false,
+      estimateResult: null,
+    })
+    setTimeout(function () {
+      that._showEditFtpModal()
+    }, 0)
   },
 
   /**

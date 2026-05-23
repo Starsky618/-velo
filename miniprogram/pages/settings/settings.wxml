@@ -22,7 +22,7 @@
   <view class="section">
     <view class="section-title">账号资料</view>
 
-    <!-- FTP 行：未设时多一个"让系统估算"按钮（Sprint 9 task-6 / 入口前置） -->
+    <!-- FTP 行：点击后在操作菜单里选择手动编辑 / 系统估算，避免页面常驻大按钮 -->
     <!-- task-6 Critical fix (quality reviewer 2026-05-21 抓 / 微信硬上限 #2)：button 嵌 flex 行拦截兄弟 tap →
          button 移到 row 外单独一行 / 保留 row-value "未设置" + "›" 手动填入口 -->
     <view class="row" bindtap="onEditFtp">
@@ -32,11 +32,6 @@
         <text class="row-arrow">›</text>
       </view>
     </view>
-    <button
-      class="estimate-btn-block"
-      wx:if="{{!ftp}}"
-      bindtap="onEstimateFtp"
-      size="mini">让系统估算</button>
     <text class="section-hint">骑行实力评估的核心参数 / 影响功率区间统计</text>
 
     <!-- 体重行（Sprint 9 task-6 / 可选 / 算 W/kg 用） -->
@@ -50,14 +45,20 @@
     <text class="section-hint">可选 / 用于计算 W/kg（功重比 / 衡量爬坡能力）</text>
 
     <!-- 年龄 + 最大心率（Sprint 10 / 后端存 birth_year，不存会过期的 age） -->
-    <view class="row" bindtap="onEditBirthYear">
-      <text class="row-label">年龄</text>
-      <view class="row-right">
-        <text class="row-value">{{displayAge ? displayAge + ' 岁' : '未设置'}}</text>
-        <text class="row-arrow">›</text>
+    <picker
+      mode="selector"
+      range="{{birthYearOptions}}"
+      value="{{birthYearIndex}}"
+      bindchange="onBirthYearPickerChange">
+      <view class="row">
+        <text class="row-label">年龄</text>
+        <view class="row-right">
+          <text class="row-value">{{displayAge ? displayAge + ' 岁' : '未设置'}}</text>
+          <text class="row-arrow">›</text>
+        </view>
       </view>
-    </view>
-    <text class="section-hint">编辑时填写出生年份 / 用于缺少最大心率时估算心率门槛</text>
+    </picker>
+    <text class="section-hint">滚轮选择出生年份 / 用于缺少最大心率时估算心率门槛</text>
 
     <view class="row" bindtap="onEditMaxHr">
       <text class="row-label">最大心率</text>
@@ -92,7 +93,7 @@
       </view>
       <view class="modal-actions">
         <button class="modal-btn primary-btn" bindtap="onAcceptEstimate" wx:if="{{estimateResult.ftp}}">用这个值</button>
-        <button class="modal-btn cancel-btn" bindtap="onCloseEstimateModal">手动填</button>
+        <button class="modal-btn cancel-btn" bindtap="onManualFillFromEstimate">手动填</button>
       </view>
     </view>
   </view>
