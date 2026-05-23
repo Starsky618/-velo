@@ -75,6 +75,12 @@
       <text class="stats-period" wx:if="{{stats.goal_percent !== null && stats.goal_percent !== undefined}}">目标 {{stats.goal_percent}}%</text>
     </view>
 
+    <view class="weekly-goal-progress" wx:if="{{stats.goal_percent !== null && stats.goal_percent !== undefined}}">
+      <view class="goal-progress-track">
+        <view class="goal-progress-fill" style="width: {{stats.goal_percent > 100 ? 100 : stats.goal_percent}}%;"></view>
+      </view>
+    </view>
+
     <view class="stats-grid">
       <view class="stats-cell" wx:if="{{stats.distance !== null && stats.distance !== undefined}}">
         <view class="stats-value">{{f.km(stats.distance)}}</view>
@@ -95,10 +101,21 @@
     </view>
   </view>
 
+  <!-- 功率曲线：已有组件 / 只在我的页挂载，不新增后端接口 -->
+  <power-curve-card />
+
   <!-- ============== 块 3：热图（复用既有 heatmap-card 组件 / 含原生 <map> + polylines） ============== -->
   <!-- Tim 2026-05-16 真用拍：原占位 area 不真渲染腾讯地图 → 改用既有组件
        组件 self-contained / 自己调 GET /api/user/me/heatmap + 用 <map> 渲染 polylines / 不需要 profile 传数据 -->
   <heatmap-card />
+
+  <view class="profile-action-card" bindtap="onTapHonor">
+    <view class="action-main">
+      <text class="action-title">我的荣誉</text>
+      <text class="action-subtitle">查看 KOM 和赛段前十成绩</text>
+    </view>
+    <text class="action-arrow">›</text>
+  </view>
 
   <!-- 城市勋章墙 Tim 2026-05-16 真用拍砍（莫名其妙 / 后端 + endpoint 保留 / 仅前端隐藏）
        未来想恢复时取消注释 medals-section 即可 -->

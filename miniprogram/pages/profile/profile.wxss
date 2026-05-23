@@ -329,6 +329,20 @@
   border-radius: 16rpx;
 }
 
+.goal-progress-track {
+  width: 100%;
+  height: 10rpx;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 999rpx;
+}
+
+.goal-progress-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 999rpx;
+}
+
 /* 徽章行（task-2 / chip 样式） */
 .badge-row {
   margin-top: 24rpx;
@@ -373,6 +387,10 @@
 .stats-period {
   font-size: 22rpx;
   color: var(--color-text-3);
+}
+
+.weekly-goal-progress {
+  margin-bottom: 24rpx;
 }
 
 .stats-grid {
@@ -498,6 +516,39 @@
   border-radius: 24rpx;
 }
 
+.profile-action-card {
+  margin: 0 24rpx 24rpx;
+  padding: 28rpx 32rpx;
+  background: var(--color-card);
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.action-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.action-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.action-subtitle {
+  font-size: 22rpx;
+  color: var(--color-text-3);
+}
+
+.action-arrow {
+  font-size: 40rpx;
+  color: var(--color-text-3);
+  line-height: 1;
+}
+
 .section-title-row {
   display: flex;
   align-items: baseline;
@@ -523,4 +574,3 @@
   text-align: center;
   padding: 24rpx 0;
 }
-

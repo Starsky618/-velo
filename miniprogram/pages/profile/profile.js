@@ -349,6 +349,10 @@ Page({
     wx.navigateTo({ url: '/pages/settings/settings' });
   },
 
+  onTapHonor() {
+    wx.navigateTo({ url: '/pages/honor/honor' });
+  },
+
   // 未登录态点击登录（Tim 2026-05-16 三次真用：仍卡 loading / app.login 既不 resolve 也不 reject）
   // 修法：加 5s 兜底 timeout + 全程 console.log / 下次卡能从 console 看到卡哪步 + toast 必出错
   onLogin() {

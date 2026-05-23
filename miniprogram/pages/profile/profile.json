@@ -6,6 +6,7 @@
   "enablePullDownRefresh": true,
   "usingComponents": {
     "ride-card": "/components/ride-card/ride-card",
-    "heatmap-card": "/components/heatmap-card/heatmap-card"
+    "heatmap-card": "/components/heatmap-card/heatmap-card",
+    "power-curve-card": "/components/power-curve-card/power-curve-card"
   }
 }
