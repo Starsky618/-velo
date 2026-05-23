@@ -316,8 +316,8 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 ssh ubuntu@114.132.190.245 "cd ~/velo && git pull origin main"
 
 # 2. rebuild 所有受影响容器（不是 restart / restart 不会拿新代码）
-# ⚠ 2026-05-20 实证：只 rebuild api 漏 worker / 让 worker NPC hook 静默失效 30 分钟
-# api / worker / persona-scanner / cleanup / monitor 共享 `build: .` 同一 image
+# ⚠ 2026-05-20 实证：只 rebuild api 漏 worker / 让 worker NPC hook 静默失效 30 分钟（Persona 已砍 / 教训留底）
+# api / worker / cleanup / monitor / scheduler / curation-pool-cron 共享 `build: .` 同一 image
 # 改任意 app/*.py 都要 rebuild 该 service 对应的容器（worker 改了必 rebuild worker）
 # 最稳：不指定 service / docker 自动 rebuild + 重启所有受影响容器
 ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build"

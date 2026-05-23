@@ -290,7 +290,7 @@ POST /api/coach/refresh
 ### 5.2 部署
 
 - `.env` 加 `QWEATHER_API_KEY=xxx`
-- `docker-compose.yml` 加 `coach-scheduler` 容器（参照现有 `persona-scanner` 结构 / cron 表达式触发早上 6 点北京时间）
+- `docker-compose.yml` 加 `coach-scheduler` 容器（参照现有 `cleanup` 容器结构 / cron 表达式触发早上 6 点北京时间）
 - 部署 SOP：和风天气 key 进 .env → `docker compose up -d --build` → `alembic upgrade head` → curl 真 endpoint 验证（按 velo CLAUDE.md 部署 SOP 4 步）
 
 ### 5.3 测试
