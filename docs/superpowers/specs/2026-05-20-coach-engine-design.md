@@ -169,13 +169,16 @@ def classify_user(user, db):
 
 ### 3.3 状态判断（不假装有 HRV）
 
-TSB 阈值用 TrainingPeaks PMC 公开标准（实施时再精确定 / 不凭设计稿现在拍）。3 档：
+TSB 阈值 4 档（2026-05-25 Tim 拍 / 跟 Sprint 10 模块 B 一致 / 详 `docs/prd/sprint-10-prd.md` §2.3 + §10 ★2）：
 
-- 状态饱满（TSB > +X）
-- 状态 OK（中间）
-- 状态一般（TSB < -X）
+- **状态饱满** fresh（TSB > +10）
+- **状态 OK** ok（-10 ≤ TSB ≤ +10）
+- **累** tired（-20 ≤ TSB < -10）
+- **过累** overreached（TSB < -20）
 
 全部基于 TSS·CTL·ATL·TSB / **不用 HRV / 不用静息心率**。
+
+> 历史：本节 v0.1 原写 3 档（未拍阈值）/ 2026-05-25 跟 Sprint 10 模块 B 拍板时统一升 4 档（"过累"是严肃骑手"该歇了"的关键信号 / 单独成档）。本设计稿后续章节（§4.2 prompt schema / Sprint 12 实施）都按 4 档枚举字符串（fresh / ok / tired / overreached）对接 daily_training_load.status_band。
 
 ### 3.4 天气接入
 
@@ -191,7 +194,6 @@ TSB 阈值用 TrainingPeaks PMC 公开标准（实施时再精确定 / 不凭设
 
 | 文件 | 干啥 |
 |---|---|
-| `training_load.py` | TSS / CTL / ATL / TSB 公式（纯函数 / 不查 DB）|
 | `classifier.py` | 用户分层（纯函数）|
 | `weather.py` | 和风天气 client（HTTP + 重试 + 错误兜底）|
 | `prompt_builder.py` | DeepSeek prompt 拼装（4 段卡片）|
@@ -199,6 +201,8 @@ TSB 阈值用 TrainingPeaks PMC 公开标准（实施时再精确定 / 不凭设
 | `router.py` | GET /api/coach/today endpoint |
 | `models.py` | CoachOutput ORM |
 | `MANIFEST.md` | 资产清单（参照 persona MANIFEST 写法）|
+
+> **跨 sprint 复用**：CTL/ATL/TSB/TSS 公式 + 4 档状态分类已在 **Sprint 10 模块 B ship 到 `app/training/training_load.py`**（纯函数 / 不查 DB / 详 `docs/prd/sprint-10-prd.md` §2）/ 本目录**不重复实现** / 本 sprint coach `service.py` 直接 `from app.training.training_load import calculate_daily_ctl, calculate_daily_atl, calculate_tsb, classify_tsb_status, format_status_label`。共享逻辑识别红线（CLAUDE.md spec 自审 #2）= 禁止两处实现同一套公式。
 
 新建 `scripts/coach_morning_scheduler.py` —— 早上 6 点 cron 跑 / 给所有活跃用户生成当日 coach_outputs。
 
