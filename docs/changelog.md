@@ -1,5 +1,39 @@
 # VELO 开发变更日志
 
+## 2026-05-23 → 25: 双主驾协作机制系统化 + dev-guide HTML 升级正式版 ✅
+
+**主轴**：从"dev-guide.md 老了 / 看不懂架构"出发 / 走通"Claude × Codex 模块化协作 + cross-project 复用 pattern" / 收尾把 dev-guide markdown 升级 HTML v4 七 tab 正式版。
+
+**6 个 commit 完整链**：
+
+- `0d55eb9` feat(agent-collab): §10.Y 任务路由表 v1 + hook 关键词触发自动注入
+- `ef4f2e1` feat(agent-collab): §10.Y v2 双端对称 hook（.codex/hooks.json 新建）+ 借鉴外部 AI Coding 文档（角色画像 / 决策三轴 / 5 字段速查）
+- `ee9587c` feat(hook): D 方案 4 通道动态注入（路由 / 模块 / PRD / SOP）+ SessionStart 精简兜底
+- `7d5aff6` docs: 双主驾协作认知闭环产出（dev-guide-demo + task skill spec + Codex Sprint 10 原型）
+- `3b68b12` docs(dev-guide): 升级正式版 HTML v4 替代 stale markdown（mv + rm + README:245 改）
+- `80f77e4` docs(dev-guide): 补 v4 Tab 6/7 内容（3b68b12 漏 stage 修复）
+
+**核心设计沉淀**（cross-project reusable pattern）：
+
+- **§10.Y 双主驾分工原则表 v2**：角色画像（Codex 任务执行器 / Claude 结对同事）+ 决策三轴（歧义 / 可测 / 可回滚）+ 10 类任务路由 + Codex 反指标 3 条 + 派 Codex 5 字段 issue 速查 + Tim 主权条款
+- **三层架构**：~/.codex/AGENTS.md（精简规则）+ Hook（动态 4 通道注入）+ Skill（完整工作流）
+- **task skill spec**（`docs/superpowers/specs/2026-05-24-task-skill-spec.md` / ~600 行 / 给 codex-skill-creator）：5-phase SOP（Specify / Plan / Task / Execute / Verify）+ 5 测试场景 + 跨项目"约定大于配置"加载
+- **双端 hook 对称**：`.claude/settings.json` + `.codex/hooks.json` 跑同一脚本 `scripts/user_prompt_mental_check.py`（4 通道 + cap 200 行）
+- **dev-guide.html v4**：7 tab 可交互可视化（数据流 / 模块对比 / 扩展沙盘 / 判断层 trigger / 协作机制 / 反馈环 / 物理拓扑）/ 1246 行 single-file / 0 依赖 / 替代 stale markdown 203 行
+
+**task skill 真用回归**：Tim 在 Codex Desktop 用 task skill 跑 Sprint 10 PRD 准备阶段 → Codex 教科书级表现（识别 §10.Y 反指标 "大文档" / 反向 push back 建议 Claude 主写 / 自荐预读 + 原型 + 异源审角色 / file:line 实证 4 处引用 0 脑补）/ 产出 `docs/prototypes/sprint10-pmc-demo.html`。
+
+**元洞察**：双 agent 切换的人类信息传递是结构性瓶颈 / 我们当前架构（shared filesystem + §10.Y 边界 + task skill push back + 4 通道 hook）已最小化 / 完全消除需 MCP / 工程量大 / 单人项目不值得。Tim 切换时用 5 字段一句话上下文（`[切自 X / 用 Y skill / 跑 Z 任务 / 它建议 W / 上次 commit: hash]`）即可。
+
+**关键决策（Tim 拍）**：
+- D 方案动态加载（不是单 §10.Y 注入 / 升级为 4 通道按 prompt 内容自适应）
+- 否决 `project.yml` 引入（约定大于配置 / Tim 维护负担最小化）
+- 砍 Hook 通道 5 well-framed 诊断（启发式准确率低 / 让 skill 自己判断）
+- 否决"完全平等双向对话"（Codex 装等价 brainstorming 是工程量过大 / 模块化非镜像才是真平等）
+- dev-guide.md 替代选 B（mv HTML + 删 .md / 单文件 / 维护负担最简）
+
+---
+
 ## 2026-05-19 → 22: Sprint 7+8 Strava 同步链全 ship ✅
 
 **主轴**：从"Strava 上传后 velo 看不到 / 跑步徒步污染骑行列表"修到"Strava 上传 7-15 秒 velo 完整显示 + 跑步永不入库"。
