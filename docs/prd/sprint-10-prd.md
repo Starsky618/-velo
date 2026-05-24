@@ -7,7 +7,7 @@
 > - PRD 可写必要技术约束 + 字段类型方向
 > - UI/UX 只写页面结构 / 信息优先级 / 流程 / 状态，**不写视觉参数**
 >
-> **维护**：Tim + Claude 协作。版本 **v0.1**（首版 / 待 spec 双审 + Codex 异源审）。
+> **维护**：Tim + Claude 协作。版本 **v0.2**（2026-05-25 / 第四轮 Codex 异源审收敛 / 修 Critical 1 + Important 3 / task-5+task-7 合并为 6 task / 真 head 命令改 `alembic heads`）。
 >
 > **上游路线图**：`docs/superpowers/specs/2026-05-20-training-analytics-roadmap.md`（模块 B = 本 Sprint）。
 >
@@ -22,15 +22,14 @@
 **用户故事**：
 > 张三周末打开 velo / 进"我的"页 → 点"训练分析" → 看 30 天曲线 → 绿线（健身度）从 50 涨到 68 / 黄线（疲劳度）今天 80 偏高 / 蓝线（状态）-12 → 顶部状态卡说"状态：累 / TSB -12 / 你这周累计 TSS 450 / 周中可以安排个轻松骑"→ 心里有数：再扛一两天 / 周三轻松骑 / 周六大组继续上量。
 
-**7 个子任务**：
+**6 个子任务**（v0.2 合并 task-5+task-7 / 符合 CLAUDE.md "一期任务数 ≤ 6"硬规则）：
 
 - **后端 task-1**：DB 新表 `daily_training_load` + Alembic 迁移（down_revision = `sprint10_user_hr_profile`）+ ORM 模型 `app/training/models.py`（**task-3 backfill 脚本 import 依赖 / 不能拖到 task-4 才建**）
 - **后端 task-2**：训练负荷算法（纯函数 `app/training/training_load.py` / TSS·CTL·ATL·TSB·4 档状态分类 / **Sprint 12 coach-engine 直接 import 复用 / 不重复实现**）
-- **后端 task-3**：一次性历史回填脚本（你账号 295 条 + 全用户 / 按时间序滑窗递推 / 跳过 GPX 无 TSS 活动）
+- **后端 task-3**：一次性历史回填脚本（你账号 295 条 + 全用户 / 按时间序滑窗递推 / 跳过 GPX 无 TSS 活动 / **抽 helper `backfill_daily_training_load_for_user(db, user_id)` 给 task-6 import_scheduler 完工后调**）
 - **后端 task-4**：`GET /api/training/load` endpoint（30 / 90 / 365 天三档 / 返曲线 + summary）
-- **前端 task-5**：训练日历页（`miniprogram/pages/training-calendar/` 新建 / canvas 三条曲线 + 顶部状态卡 + 空数据状态）
-- **后端 task-6**：worker 增量更新（新活动解析完后写当日 `daily_training_load` / 按北京时间归日 / SAVEPOINT 隔离）
-- **前端 task-7**：入口位置（"我的"页二级入口 / 不挤 Sprint 12 的动态 tab 顶部大卡）
+- **前端 task-5**：训练日历页（`miniprogram/pages/training-calendar/` 新建 / canvas 三条曲线 + 顶部状态卡 + 空数据状态）+ "我的"页二级入口（profile.wxml 加"训练分析"二级入口 / 不挤 Sprint 12 的动态 tab 顶部大卡）
+- **后端 task-6**：worker 增量更新（worker.py + worker_strava.py 单条 hook 算当日 / **import_scheduler 路径不挂单条 hook**——tier2 完工时调一次 task-3 backfill helper 全量正序递推 / 防倒序处理 CTL/ATL 时序错乱 / 2026-05-25 Codex 异源审实证）
 
 **预估工期**：**7 天**（路线图 §3 时间表 / 比 Sprint 9 简单 / 没新弹窗 / 没拟合算法 / 主要是 SQL 滑窗 + 一张曲线图）。
 
@@ -84,7 +83,7 @@
 | **当前 head** | **`sprint10_user_hr_profile`** ✓ | [migrations/versions/sprint10_user_hr_profile.py:11] |
 | 下游 down_revision | `sprint9_persona_cleanup` | 链路：sprint9_training_metrics → sprint9_breakthrough_events → sprint9_persona_cleanup → sprint10_user_hr_profile |
 | 本 sprint task-1 down_revision | **`sprint10_user_hr_profile`** | 必须接最新 head / 不能写 `sprint9_breakthrough_events` 或 `sprint9_persona_cleanup` |
-| memory stale 提示 | `project_velo_current_position.md` line 10/96 把当前 head 写成 `sprint9_persona_cleanup` / **真 head 是 `sprint10_user_hr_profile`**（hotfix 已 ship / memory 未刷）| spec subagent 起手必跑 `ls migrations/versions/ | tail -3` 实证 / 不要被 memory 误导 |
+| memory stale 提示 | `project_velo_current_position.md` line 10/96 把当前 head 写成 `sprint9_persona_cleanup` / **真 head 是 `sprint10_user_hr_profile`**（hotfix 已 ship / memory 未刷）| spec subagent 起手必跑 `sudo docker compose exec -T api python3 -m alembic heads`（**不要用 `ls migrations/versions/ \| tail -3`** / 字符串排序 `sprint10` < `sprint8` < `sprint9` / tail 看不到 sprint10）/ 不要被 memory 误导 |
 
 ### save_parse_result 真现状（`app/activity/worker.py:387`）
 
@@ -93,14 +92,14 @@
 - `app/strava/worker_strava.py:233`（Strava webhook 实时同步 worker）
 - `app/strava/import_scheduler.py:507`（Strava 历史批量导入 scheduler）
 
-**task-6 实施约束**（按第二轮 spec+集成审 grep 实证 worker.py:260-371 修正 / 2026-05-25）：
+**task-6 实施约束**（v0.2 / 第二轮 spec+集成审 + 第四轮 Codex 异源审收敛 / 2026-05-25）：
 - ⚠ **hook 不挂在 `save_parse_result` 内部** —— save_parse_result docstring 明示"不调 db.commit() / 由 caller 控制事务边界"
-- **hook 挂在 caller 的 `db.commit()` 之前 / activity.status='completed' 之后**（仿 worker.py:261-263 注释 + 现有 5 个 hook 同 pattern / 都在 commit 之前 + SAVEPOINT 隔离）
+- **单条 hook 挂在 caller 的 `db.commit()` 之前 / activity.status='completed' 之后**（仿 worker.py:261-263 注释 + 现有 5 个 hook 同 pattern / 都在 commit 之前 + SAVEPOINT 隔离）
 - 设计哲学：daily_training_load 跟 activity 主流程绑同一事务 / activity 解析失败外层 rollback 时 daily_training_load 跟着 rollback 是预期语义（防孤儿数据）
-- 3 个 caller 精确挂入点：
+- **2 个 caller 加单条 hook + 1 个 caller 走完工 backfill**（v0.2 修正 / import_scheduler 倒序处理会让 CTL/ATL 时序错乱）：
   - `app/activity/worker.py` `_do_parse()` 步骤 10.5-10.8 hook chain 末尾加"步骤 10.9" / 在 line 371 commit 之前
   - `app/strava/worker_strava.py` 进入 `_strava_post_parse_hooks()` 函数（line 281-370）末尾加第 6 个 hook block / 不在 caller 层另挂
-  - `app/strava/import_scheduler.py` 现有 `db.commit()`（约 line 564）之前加 SAVEPOINT block
+  - **`app/strava/import_scheduler.py` 不挂单条 hook** / 改成 tier2 完工（`import_task.status='completed'` 赋值后）调一次 `backfill_daily_training_load_for_user(db, user_id)`（task-3 抽的 helper / 正序全量递推）
 - SAVEPOINT pattern 仿 worker.py:351-369 breakthrough hook 精确写法（双层 try/except / `nested.rollback()` 不动外层 / 不加内层 `db.commit()`）/ 详 §6.3
 
 ### 当前生产 DB 状态（你账号 user_id=2 / Sprint 9 ship 后）
@@ -273,7 +272,8 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
 - 两段流程：
   - **dry-run 段**（默认 / 无 `--apply` 参数）：扫一个用户（默认 user_id=2 = Tim）/ 算出 365 天 daily_training_load / 打印前 10 行 + 最后 10 行 + summary（CTL 范围 / ATL 范围 / TSB 范围）/ 不写表
   - **apply 段**（`--apply --user-id X` 或 `--all-users`）：实际写表
-- 单用户算法（每用户独立）：
+- **抽 helper `backfill_daily_training_load_for_user(db, user_id) -> int` 函数**（返回写入行数 / 给 task-6 import_scheduler 完工后调）/ 脚本 main() 只负责 dry-run flag + for 循环 + sleep 节流 / 真正算法逻辑在 helper 里。
+- 单用户算法（每用户独立 / 在 helper 内）：
   1. 拉该用户最早 completed cycling 活动 started_at → 北京时间归日 → 作为 start_date
   2. 从 start_date 走到今天 / 每天一个循环：
      - 拉该日所有 completed cycling 活动 + tss 不为 NULL（自动跳过 GPX 无 TSS）
@@ -361,7 +361,7 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
       }
     }
     ```
-  - 字段精度（Tim 2026-05-25 拍 / §10 ★6）：ctl/atl/tsb 1 位小数 / tss_today 1 位小数 / weekly_tss 整数
+  - 字段精度（Tim 2026-05-25 拍 / §8 ★6）：ctl/atl/tsb 1 位小数 / tss_today 1 位小数 / weekly_tss 整数
 - status_label 转换：service.py 查完表后 / 对 summary.current_status_band 调 `training_load.format_status_label()` 返中文（"状态饱满" / "状态 OK" / "累" / "过累"）/ 填入 `current_status_label`。**这一步在 service 层做 / 不在 schema 自动算 / 不在前端硬编码**（Sprint 12 coach-engine 直接读 status_band 原始枚举 / current_status_label 是给小程序前端展示用）
 - 性能约束：30 天返 30 个点 / 90 天返 90 个点 / 1y 返 365 个点 / 单次查询 < 200ms
 - 缺数据填充语义（澄清 §4.7 边界）：
@@ -406,16 +406,21 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
 
 ---
 
-## 5. 子任务 task-5：训练日历页前端
+## 5. 子任务 task-5：训练日历页前端 + 我的页二级入口
+
+> **v0.2 合并**：原 task-5（训练日历页）+ 原 task-7（入口位置）合并为本 task / 同前端 PR 自然 / 符合 CLAUDE.md "一期任务数 ≤ 6"硬规则。
 
 ### 5.1 用户目标
-张三周末打开 velo / 进训练日历页 / 一眼看清三条曲线 + 顶部状态卡 / 不用研究 PMC 是什么。
+张三周末打开 velo / 在"我的"页找到"训练分析"入口 / 点进训练日历页 / 一眼看清三条曲线 + 顶部状态卡 / 不用研究 PMC 是什么。**严肃骑手能找到入口 / 轻度用户感知不到 / 不挤 Sprint 12 的动态 tab 顶部大卡**。
 
 ### 5.2 使用场景
-- 张三周末复盘上周训练 / 想知道是不是该歇了
+- 张三周末复盘上周训练 / 进"我的"页 → 点"训练分析" → 想知道是不是该歇了
 - 张三周三决定明天上不上量 / 看 TSB 决定
+- 新用户进 velo / 默认看动态 tab / 不会主动去"我的"二级 / 也不被推训练分析（避免被淹）
 
 ### 5.3 功能范围
+
+**A. 训练日历页**：
 - 新建页 `miniprogram/pages/training-calendar/training-calendar.{wxml,wxss,js,json}`
 - `miniprogram/app.json` pages 列表加 `pages/training-calendar/training-calendar`（**加到列表末尾 / 不要插到第一行 / app.json pages 第一项是默认启动页 / 误插会让用户开 App 直接进训练日历而不是动态 feed**）
 - 页面结构（从上到下）：
@@ -439,8 +444,18 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
      - 曲线图区不画 / 显示一张占位插图（不显示假数据曲线 / 防误导）
 - wx:if 严格控制：summary 缺失 → 整页空数据态 / 不显示 "-" 占位符（memory `feedback_no_dash_placeholder.md`）
 
+**B. "我的"页二级入口**：
+- 改 `miniprogram/pages/profile/profile.wxml` 加一行：
+  - 文案"训练分析" + 副标"看 30/90/全年训练负荷曲线"
+  - 位置：放在已有"我的荣誉"入口下方（commit `a195355` 已加我的荣誉 / 风格对齐）
+  - 点击 wx.navigateTo 到 `pages/training-calendar/training-calendar`
+- **入口常显 / 不依赖 user_stats 粗筛**（v0.2 Codex 异源审修正 / 2026-05-25）：
+  - 原 v0.1 写"用 user_stats 判断 ≥1 条 cycling 活动"——但 `profile.js:150` 调的是 `period=week` / `schemas.py:163,167` rides 是**本周次数** / 严肃老用户本周休息 → rides=0 → 入口被错误隐藏
+  - 改为：**入口常显 / 不做粗筛**；进训练日历页后由训练日历页空数据态接管（`summary.data_complete=false` → 显示"再骑 N 天能看到完整曲线"+ 占位插图 / 不画假曲线）
+  - 收益：① 老用户永远找得到入口 ② 简化代码（不需要 period=all 新 endpoint）③ 一致 UX（"入口在 / 进去看真实状态"比"入口忽隐忽现"友好）
+
 ### 5.4 用户流程
-1. 张三进"我的"页 → 看到"训练分析"二级入口（task-7）→ 点击
+1. 张三进"我的"页 → 看到"训练分析"二级入口（永远显示 / 不消失）→ 点击
 2. 进训练日历页 → 默认 30 天 tab → loading 转圈
 3. canvas 画完三条曲线 / 顶部状态卡渲染
 4. 张三点 90 天 tab → 重新拉数据 → canvas 重画
@@ -462,9 +477,10 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
 - 用户 PullDownRefresh：重新拉数据 + 重画
 
 ### 5.8 验收标准
-- 真用回归你账号：打开训练日历页 / 30 天曲线三条线都出来 / 顶部状态卡正确
+- 真用回归你账号：进"我的"页 → 看到"训练分析"入口（永远显示）→ 点击进训练日历页 → 30 天曲线三条线都出来 / 顶部状态卡正确
 - 切 90 天 / 1y / 都能渲染
-- 测试账号（无数据）：打开页看到空数据态 + 不显示曲线
+- 测试账号（无活动）：进"我的"页 **入口仍显示**（v0.2 改 / 不再 wx:if 隐藏）→ 点击进训练日历页看到空数据态 + 不显示曲线
+- 严肃老用户本周休息场景（user_stats?period=week → rides=0）：入口仍显示（v0.2 防误藏 / Codex 异源审实证 fix）
 - 真机回归 2 台机型（你的 iPhone + 一台 Android）/ canvas 2d 都正常渲染
 
 ### 5.9 不做项
@@ -473,8 +489,11 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
 - 不做"曲线导出图片分享"（v1.5+）
 - 不做"和上月对比箭头"（前端不算）
 - 不写 LLM 风格的长文案推荐（4 档短标签 + 1 行硬编码就够 / Sprint 12 教练总结才上 LLM 长文）
+- 不做"首页通知红点"提示训练分析（Sprint 12 LLM 教练总结才主动推 / 本 sprint 不挤）
+- 不做"详情页跳训练日历"按钮（路径太散 / 不增加入口噪音）
+- 不在动态 tab 顶部加大卡（保留给 Sprint 12 coach-engine）
 
-**来源**：路线图 §1 模块 B 用户故事 + Tim 2026-05-25 拍 4 档状态文案 + memory feedback_no_dash_placeholder / feedback_wechat_miniprogram_hard_limits 已踩坑沉淀。
+**来源**：路线图 §1 + §6.2 + Tim 2026-05-25 拍 4 档状态文案 + 二级入口策略 + memory feedback_no_dash_placeholder / feedback_wechat_miniprogram_hard_limits 已踩坑沉淀 + 2026-05-25 Codex 异源审"入口常显防误藏"修正。
 
 ---
 
@@ -484,9 +503,9 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
 用户上传 / 同步新活动后 / 当日 `daily_training_load` 自动更新 / 用户下次进训练日历页能看到今天的数据 / 不用等次日 cron。
 
 ### 6.2 使用场景
-- 张三今天骑完 / Strava 同步 → worker_strava 处理 → 写完 activity 后 hook 更新当日 PMC
-- 张三上传 GPX/FIT → worker 处理 → 同 hook
-- Strava 历史批量导入（绑定时拉 200 条）→ import_scheduler 处理 → 同 hook（但批量场景每条都触发可能慢 / 评估是否走最后一条触发批量重算）
+- 张三今天骑完 / Strava 同步 → worker_strava 处理 → 写完 activity 后单条 hook 更新当日 PMC
+- 张三上传 GPX/FIT → worker 处理 → 同单条 hook
+- **Strava 历史批量导入（绑定时拉 200 条）→ import_scheduler tier2 倒序处理（最新先 / `import_scheduler.py:440` `order_by(started_at.desc())`）→ 不挂单条 hook**（倒序触发会让 CTL/ATL 时序错乱 / CTL 正序递推依赖前一日 / 倒序处理时每日 CTL 都基于"过去无历史"=0 起步 / 曲线全错）→ **tier2 完工时调一次 `backfill_daily_training_load_for_user(db, user_id)`**（task-3 抽的 helper / 正序全量递推 / 一次性算对所有日）/ 2026-05-25 Codex 异源审实证
 
 ### 6.3 功能范围
 
@@ -495,10 +514,10 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
 - 关键事实（grep 实证）：worker.py:261-263 注释明写"hook 落在 status='completed' 赋值后、db.commit 前——这样 detector 写的 notification 与 activity.status 在同一 transaction 提交（一致性 OK）"。现有 5 个 hook（dedupe / detect_5min_power_progress / activity.city / user.city / breakthrough_detector）全部在 line 371 `db.commit()` **之前** + 用 `db.begin_nested()` SAVEPOINT 隔离。
 - 设计哲学：daily_training_load 跟 activity 主流程绑同一事务 / activity 解析失败外层 rollback 时 daily_training_load 跟着 rollback **是预期语义**（防孤儿数据：activity 不存在但当日负荷已更新）。SAVEPOINT 只防止"hook 自己出错炸了外层 activity.status"。
 - helper 函数：`update_daily_load_for_activity(db, user, activity)` 写在 `app/training/service.py` / 内部用 try/except 兜底 / **不在 helper 内调 `db.commit()` / 也不在 caller hook block 内调 `db.commit()`**（caller 现有 `db.commit()` 统一提交）。
-- **3 个 caller 精确挂入点**（不能共享 / 因为 3 caller hook 组织方式不同 / 全部仿 worker.py:345-369 breakthrough hook 写法）：
+- **2 个 caller 加单条 hook + 1 个 caller 走完工 backfill**（v0.2 Codex 异源审修正）：
   - `app/activity/worker.py` `_do_parse()`：现有 hook chain（步骤 10.5-10.8）末尾加"步骤 10.9：daily_training_load 增量更新" / 紧跟 breakthrough hook（line 345-369）之后 / **在 line 371 `db.commit()` 之前**
   - `app/strava/worker_strava.py`：进入 `_strava_post_parse_hooks()` 函数（line 281-370）末尾加第 6 个 hook block / 在 line 266 `db.commit()` 之前（仿现有 5 hook 同 pattern / 不在 caller 层另挂）
-  - `app/strava/import_scheduler.py`：现有 `db.commit()`（约 line 564）**之前** 加 SAVEPOINT block / 仿同样 pattern
+  - **`app/strava/import_scheduler.py`：不挂单条 hook**（tier2 倒序处理会让 CTL/ATL 时序错乱）/ 改成在 tier2 全部完工（`import_task.status='completed'` 赋值后）调一次 `backfill_daily_training_load_for_user(db, import_task.user_id)` / 一次性正序递推全部历史。具体挂入点：`import_scheduler.py` tier2 完工分支（grep `status="completed"` 找位置）加 try/except 兜底（backfill 失败 log + 不影响 import_task 状态）
 - SAVEPOINT block pattern（仿 worker.py:351-369 breakthrough hook 精确写法 / 双层 try/except / **无内层 `db.commit()`** / **except 用 `nested.rollback()` 不动外层事务**）：
   ```python
   # 在 caller activity.status='completed' 之后、db.commit() 之前
@@ -528,13 +547,15 @@ helper 内部逻辑（写在 `app/training/service.py`）：
   5. upsert 到 `daily_training_load`（UNIQUE 冲突 → UPDATE）
   6. 更新 weekly_tss：`db.flush()` 后 SELECT SUM(tss_today) WHERE date BETWEEN (bj_date-6) AND bj_date → round() 整数 / 写回该日 daily_training_load.weekly_tss 列
 
-**批量导入优化**（import_scheduler 200 条历史一次拉）：
-- 决定方向：每条都触发 hook（简单 / 慢一点但 100 用户量级可接受）
-- 兜底：如真慢可加 batch 模式（只在最后一条触发批量算 200 天）/ 本 sprint 不做 / 等真用回归发现再加
+**批量导入策略**（v0.2 Codex 异源审修正 / 不再"每条都触发 hook"）：
+- import_scheduler tier2 路径**不挂单条 hook**（防 CTL/ATL 时序错乱）
+- tier2 完工时调一次 `backfill_daily_training_load_for_user(db, user_id)` 全量正序递推
+- 收益：① 解决倒序时序错乱 ② 同时消解 reviewer-integration 第一轮抓的"40000 ops 峰值"性能 hot spot（不再 200 × 4 ops 逐条触发）
+- 兜底：backfill 失败 log + 不影响 import_task.status / 用户下次同步 Strava 触发新 tier2 完工再跑（自愈）
 
 **部署边界**（集成审 Important 1）：
-- 改的代码涉及 `app/activity/worker.py` + `app/strava/worker_strava.py` + `app/strava/import_scheduler.py` + 新 `app/training/service.py`
-- worker / scheduler / cleanup / curation-pool-cron 4 个容器 + api 共享 `build: .` 同一 image
+- 改的代码涉及 `app/activity/worker.py`（单条 hook）+ `app/strava/worker_strava.py`（单条 hook）+ `app/strava/import_scheduler.py`（tier2 完工调 backfill）+ 新 `app/training/service.py` + `scripts/backfill_daily_training_load.py`
+- api / worker / scheduler / cleanup / curation-pool-cron 5 个容器共享 `build: .` 同一 image / 改 import_scheduler.py 必 rebuild scheduler 容器
 - **部署 SOP 必跑** `docker compose up -d --build`（不指定 service / 让 docker 自动 rebuild 所有受影响容器）/ **不能只 rebuild worker**（2026-05-20 Persona 漏 rebuild scheduler 实证）
 
 ### 6.4 用户流程
@@ -569,99 +590,45 @@ helper 内部逻辑（写在 `app/training/service.py`）：
 
 ---
 
-## 7. 子任务 task-7：入口位置（"我的"页二级入口）
+## 7. 跨子任务约束
 
-### 7.1 用户目标
-严肃骑手能找到训练日历页 / 轻度用户感知不到 / 不挤 Sprint 12 的动态 tab 顶部大卡。
-
-### 7.2 使用场景
-- 你周末打开 velo / 进"我的"页 / 看到"训练分析"入口 / 点进去看曲线
-- 新用户进 velo / 默认看动态 tab / 不会主动去"我的"二级 / 也不被推训练分析（避免被淹）
-
-### 7.3 功能范围
-- 改 `miniprogram/pages/profile/profile.wxml` 加一行：
-  - 文案"训练分析" + 副标"看 30/90/全年训练负荷曲线"
-  - 位置：放在已有"我的荣誉"入口下方（commit `a195355` 已加我的荣誉 / 风格对齐）
-  - 点击 wx.navigateTo 到 `pages/training-calendar/training-calendar`
-- **空数据态处理**（`feedback_no_dash_placeholder.md`）：
-  - 不显示"训练分析" wx:if= 用户有 ≥ 1 条 cycling 活动（粗筛 / 不用真查 daily_training_load 表 / 防 profile 页加载慢）
-  - 用户 0 活动 → 整个"训练分析"入口隐藏 / 不显示空入口
-
-### 7.4 用户流程
-1. 你打开 velo → 我的 tab
-2. 滚到中间 → 看到"训练分析"入口
-3. 点击 → 进训练日历页
-
-### 7.5 页面&状态
-- 入口结构：图标 + 文字 + 右箭头（跟"我的荣誉"对齐 / 不创新）
-- 用户 0 cycling 活动时整块 wx:if 隐藏
-
-### 7.6 数据需求
-- 输入：profile.js 已有的 user_stats（含活动数 / 不需新接口）
-- 输出：wx:if 控制是否显示入口
-
-### 7.7 异常情况
-- profile 页加载失败 → 入口默认不显示（默认安全）
-
-### 7.8 验收标准
-- 你账号打开"我的"页 → 看到"训练分析"入口
-- 测试账号（0 活动）→ 不显示入口
-- 点击入口跳转到训练日历页 / 不卡顿
-
-### 7.9 不做项
-- 不做"首页通知红点"提示训练分析（Sprint 12 LLM 教练总结才主动推 / 本 sprint 不挤）
-- 不做"详情页跳训练日历"按钮（路径太散 / 不增加入口噪音）
-- 不在动态 tab 顶部加大卡（保留给 Sprint 12 coach-engine）
-
-**来源**：路线图 §6.2 + Tim 2026-05-25 拍二级入口策略 + 防 Sprint 12 抢入口。
-
----
-
-## 8. 子任务 task-8（预留 / Sprint 10 不做）
-
-（无 / Sprint 10 只 7 个 task / 此章节占位防 task 编号跳号 / spec subagent 起手可直接跳过）
-
----
-
-## 9. 跨子任务约束
-
-### 9.1 时区统一（北京时间 UTC+8）
+### 7.1 时区统一（北京时间 UTC+8）
 - 所有"日"边界按北京时间（UTC+8）
 - **`app/training/service.py` + `scripts/backfill_daily_training_load.py` 内独立声明 `_BJ_TZ = timezone(timedelta(hours=8))`**（仿 `app/notification/progress_detector.py:46` 同 pattern / 但**不跨模块 import 私有符号 `_BJ_TZ`** / 私有变量带下划线前缀外部 import 是反模式 / 各模块独立声明同 pattern 更安全）
 - daily_training_load.date 字段存 DATE 类型（不带时区）/ 写入前必转北京时间日期
 - 一天起点 = 北京时间 0:00（不是 6:00 / 跟 weekly_tss 滚动 7 天对齐）
 
-### 9.2 性能约束
+### 7.2 性能约束
 - task-2 纯函数：单次调用 < 1ms（指数加权简单计算）
 - task-3 回填脚本：单用户 < 30 秒 / 10 用户全跑 < 10 分钟
 - task-4 endpoint：单次响应 < 200ms（30/90/365 天查询走索引）
 - task-5 训练日历页首屏：< 1.5 秒（含 endpoint + canvas 渲染）
 - task-6 hook：单 activity 增量更新 < 100ms（含 last_ctl 查询 + tss_today SUM + upsert + weekly_tss SUM 4 个 DB 操作）
-- **task-6 Strava 批量导入 hot spot 预警**（集成审 hot spot #2）：import_scheduler 首次绑定拉 200 条历史 / 每条触发 hook = 200 × 4 DB ops = 800 次额外 SELECT/INSERT。100 用户峰值（多人同时绑 Strava）× 200 条 = 40000 ops。**真用回归回归 4** 必须实测 import_scheduler 日志单次 tick 耗时 / 如 > 30 秒说明 batch 模式（合并最后一次算）有必要 / 等真发现再加 / 本 sprint 不预先优化
+- **task-6 Strava 批量导入策略**（v0.2 / Codex 异源审 Critical 1 修法）：import_scheduler tier2 路径不挂单条 hook / 完工时调一次 `backfill_daily_training_load_for_user` 全量正序递推 / 单次执行 < 30 秒（200 条历史 × 单日 ~4 DB ops = ~800 ops 一次性）/ 顺便消解第二轮 reviewer-integration 抓的"40000 ops 峰值"hot spot（不再 200 条逐条触发）
 
-### 9.3 兜底
+### 7.3 兜底
 - task-3 回填失败：log + 用户下次进训练日历页看到"曲线数据不全 / 请联系客服"（暂不实现自动重试 / 看真用情况）
 - task-4 endpoint 异常：返 503 / 前端 toast / 不影响其他页面
 - task-5 canvas 渲染失败：toast + 占位插图
 - task-6 hook 失败：SAVEPOINT 回滚 / 不影响 save_parse_result 主流程 / 下次同用户新活动 hook 触发时会重算当日
 
-### 9.4 真用回归路径（按 memory `feedback_real_usage_vs_mock_blindspot.md`）
+### 7.4 真用回归路径（按 memory `feedback_real_usage_vs_mock_blindspot.md`）
 - **回归 1**（task-3 部署后）：你账号打开训练日历页 → 看到完整 90 天曲线 → CTL 数字符合直觉（你过去半年训练量 → CTL 应在 40-70 区间）
 - **回归 2**（task-6 部署后 GPX 路径）：你上传 1 条新 GPX → 等 worker 处理完 → 进训练日历页 → 当日曲线点更新（tss_today 反映新活动）
 - **回归 3**（task-6 部署后 Strava webhook 路径）：你 Strava 上传一条新活动 → webhook 同步 → 进训练日历页 → 当日曲线更新
-- **回归 4**（task-6 Strava 批量导入路径 / 集成审 Important 6 必加）：用测试账号走完整 Strava 绑定流程 → import_scheduler 拉 200 条历史 → `SELECT COUNT(*) FROM daily_training_load WHERE user_id=X` 跟 completed cycling 实际天数吻合（非零 / 不丢日子）/ 这条路径覆盖 SAVEPOINT 边界 + scheduler 容器 rebuild 两个 Critical 风险点
+- **回归 4**（task-6 Strava 批量导入路径 / v0.2 Codex 异源审 Critical 1 强化）：用测试账号走完整 Strava 绑定流程 → import_scheduler 拉 200 条历史 + tier2 完工触发 backfill helper → **跟完整 backfill 结果逐日比对**（不只是 COUNT(*) / 而是 SELECT date, ctl, atl, tsb 对照 / 验证 CTL/ATL 正序递推没错乱）/ 这条路径覆盖 SAVEPOINT 边界 + scheduler 容器 rebuild + Codex 抓的倒序时序错乱三个 Critical 风险点
 - **回归 5**（task-5 真机）：iPhone + Android 各开一次 / 三条曲线都正常 / 不卡死 / 1y tab 渲染 1095 点（3 线 × 365）低端机不超 setTimeout 100ms 兜底
 - **回归 6**（4 档状态文案）：你拍 4 种状态下的截图（fresh / ok / tired / overreached）+ 看文案是否得体 / 不批评用户 / 不夸张
 
-### 9.5 spec subagent 起手必做（防 stale）
-- `ls migrations/versions/ | tail -3` 确认 alembic head 真值（**当前 = `sprint10_user_hr_profile` / memory current_position line 10/96 stale**）
+### 7.5 spec subagent 起手必做（防 stale）
+- `sudo docker compose exec -T api python3 -m alembic heads` 确认 alembic head 真值（**当前 = `sprint10_user_hr_profile` / memory current_position line 10/96 stale**）/ **不要用 `ls migrations/versions/ | tail -3`**（字符串排序陷阱：sprint10 < sprint8 < sprint9 / tail 看不到 sprint10 / 2026-05-25 Codex 异源审实证）
 - 真 DB 查"current activity counts"：`SELECT COUNT(*) FROM activities WHERE user_id=2 AND status='completed' AND activity_type='cycling'` / 应 ≥ 295
 - 真 DB 查 tss 覆盖率：`SELECT COUNT(*) FROM activities WHERE user_id=2 AND tss IS NOT NULL` / 应 ≈ 184
 - 真 DB 查 normalized_power 覆盖：`SELECT COUNT(*) FROM activities WHERE user_id=2 AND normalized_power IS NULL AND activity_type='cycling' AND status='completed'` / 应 ≈ 111
 
 ---
 
-## 10. 待 Tim 过 PRD 时拍板的剩余决策
+## 8. 待 Tim 过 PRD 时拍板的剩余决策
 
 > 写到这里发现 4 个核心决策（架构 / 状态档 / 回填 / GPX 处理）已拍 / 但写章节过程中又产生几个细节决策点 / 列在这里集中拍。
 
@@ -695,3 +662,8 @@ helper 内部逻辑（写在 `app/training/service.py`）：
   - Critical #4 main.py 注册 → §4.8 验收明确加 include_router
   - Critical #5 task-3 ORM import → models.py 在 task-1 建（不拖到 task-4）
   - Important #1-8：容器 rebuild / last_ctl 查询 / weekly_tss flush / BJ 时区 / 缺日补 0 语义 / status_label 转换 / app.json 顺序 / Strava 批量真用回归
+- **v0.2 第四轮 Codex 异源审收敛（2026-05-25 / Critical 1 + Important 3 全修）**：
+  - Critical 1 Strava 历史导入 CTL/ATL 时序错乱 → import_scheduler tier2 不挂单条 hook / 完工后调 backfill helper 全量正序递推（task-3 抽 helper）+ 真用回归改"逐日比对"非 COUNT(*)
+  - Important 1 profile 入口误藏 → 入口常显 / 不依赖 user_stats?period=week 粗筛 / 由训练日历页空数据态接管
+  - Important 2 `ls | tail -3` 不可靠 → 改 `alembic heads`（字符串排序陷阱 sprint10 < sprint8 < sprint9）
+  - Important 3 7 task 超 ≤ 6 硬规则 → 合并原 task-5（训练日历页）+ 原 task-7（入口）为新 task-5 / 6 task
