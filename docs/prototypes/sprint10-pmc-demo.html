@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sprint 10 训练分析演示</title>
+  <style>
+    :root {
+      --bg: #eef2f0;
+      --panel: #ffffff;
+      --ink: #15171a;
+      --muted: #687076;
+      --line: #d7ded9;
+      --green: #197356;
+      --amber: #b87818;
+      --blue: #2d66c3;
+      --red: #c94b42;
+      --soft-green: #e8f4ee;
+      --soft-blue: #eaf0fb;
+      --soft-amber: #fbf1df;
+      --soft-red: #fae9e6;
+      --shadow: 0 12px 28px rgba(31, 45, 38, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .app {
+      width: min(430px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      background: #f8faf8;
+      border-left: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      padding: 18px 18px 12px;
+      background: rgba(248, 250, 248, 0.96);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 32px;
+    }
+
+    .back {
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--ink);
+      font-size: 20px;
+      line-height: 28px;
+    }
+
+    .date {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    h1 {
+      margin: 18px 0 0;
+      font-size: 29px;
+      line-height: 1.08;
+      font-weight: 850;
+      letter-spacing: 0;
+    }
+
+    main {
+      padding: 14px 14px 30px;
+    }
+
+    .card {
+      margin-top: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .hero {
+      margin-top: 0;
+      padding: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #f7fbf9 100%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 750;
+      color: var(--red);
+      background: var(--soft-red);
+    }
+
+    .hero h2 {
+      margin: 14px 0 0;
+      font-size: 24px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      margin: 10px 0 0;
+      color: #33383c;
+      font-size: 16px;
+      line-height: 1.55;
+    }
+
+    .decision {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .button {
+      height: 44px;
+      border-radius: 8px;
+      border: 1px solid var(--ink);
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .button.primary {
+      color: #fff;
+      background: var(--ink);
+    }
+
+    .button.secondary {
+      color: var(--ink);
+      background: #fff;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .metric {
+      padding: 12px 9px;
+      min-height: 92px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .metric label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 26px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .section-head {
+      padding: 14px 14px 8px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .section-head p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .why-list,
+    .source-list,
+    .llm-list {
+      padding: 0 14px 14px;
+    }
+
+    .why-item,
+    .source-item,
+    .llm-item {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 10px;
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .why-item:first-child,
+    .source-item:first-child,
+    .llm-item:first-child {
+      border-top: 0;
+    }
+
+    .num {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--ink);
+      font-size: 14px;
+      font-weight: 850;
+    }
+
+    .why-item h3,
+    .source-item h3,
+    .llm-item h3 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    .why-item p,
+    .source-item p,
+    .llm-item p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .week {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+      padding: 2px 14px 14px;
+    }
+
+    .day {
+      min-height: 84px;
+      padding: 8px 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+      text-align: center;
+    }
+
+    .day b {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .day span {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      margin: 9px auto 0;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--green);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .day small {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.15;
+    }
+
+    .day.rest span {
+      background: var(--blue);
+    }
+
+    .day.hard span {
+      background: var(--amber);
+    }
+
+    .day.warn span {
+      background: var(--red);
+    }
+
+    .tabs {
+      display: inline-grid;
+      grid-template-columns: repeat(3, 1fr);
+      width: 158px;
+      padding: 2px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #eef2f0;
+    }
+
+    .tabs button {
+      height: 28px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 750;
+    }
+
+    .tabs button.active {
+      color: var(--ink);
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    }
+
+    .chart-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 14px 4px;
+    }
+
+    .chart-head h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 230px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 0 14px 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      margin-right: 5px;
+      border-radius: 50%;
+    }
+
+    .formula {
+      margin: 0 14px 14px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f3f6f4;
+      color: #30363a;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .formula code {
+      display: block;
+      margin-top: 4px;
+      color: #111;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      white-space: normal;
+    }
+
+    .note {
+      margin: 0 14px 14px;
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--soft-blue);
+      color: #24415f;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .safe-area {
+      height: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="nav">
+        <button class="back" aria-label="返回">‹</button>
+        <div class="date">5月24日 周日</div>
+      </div>
+      <h1>今天怎么练</h1>
+      <div class="date">训练分析 · 先给建议，再给专业曲线</div>
+    </header>
+
+    <main>
+      <section class="card hero">
+        <div class="eyebrow">建议降低强度</div>
+        <h2>今天别硬冲，骑 45 分钟轻松有氧就够了。</h2>
+        <p>过去 7 天的疲劳涨得比体能快。你不是没进步，而是身体还没把训练消化完。</p>
+        <div class="decision">
+          <button class="button primary">接受今天建议</button>
+          <button class="button secondary">看原因</button>
+        </div>
+      </section>
+
+      <section class="summary-grid" aria-label="状态摘要">
+        <div class="metric">
+          <label>体能</label>
+          <strong style="color: var(--green)">68</strong>
+          <span>6 周慢慢涨</span>
+        </div>
+        <div class="metric">
+          <label>疲劳</label>
+          <strong style="color: var(--amber)">80</strong>
+          <span>本周偏高</span>
+        </div>
+        <div class="metric">
+          <label>今日状态</label>
+          <strong style="color: var(--blue)">-12</strong>
+          <span>适合收一收</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>为什么这么建议</h2>
+          <p>这里先用人话解释，不强迫用户懂 PMC 三条线。</p>
+        </div>
+        <div class="why-list">
+          <div class="why-item">
+            <div class="num" style="background: var(--red)">1</div>
+            <div>
+              <h3>周六那次爬坡让疲劳明显升高</h3>
+              <p>那次骑行 TSS 115，是本周最重的一次。它让短期疲劳升得很快。</p>
+            </div>
+          </div>
+          <div class="why-item">
+            <div class="num" style="background: var(--amber)">2</div>
+            <div>
+              <h3>体能在变好，但还需要恢复</h3>
+              <p>体能像慢慢涨的水位，疲劳像突然下的大雨。今天大雨还没退。</p>
+            </div>
+          </div>
+          <div class="why-item">
+            <div class="num" style="background: var(--blue)">3</div>
+            <div>
+              <h3>今天的目标不是变强，而是不把身体压垮</h3>
+              <p>轻松骑能保持习惯，也给明后天留出更好的训练空间。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>本周已经发生了什么</h2>
+          <p>这不是自动排课表，而是把你真实骑过的活动翻译成训练压力。</p>
+        </div>
+        <div class="week">
+          <div class="day"><b>一</b><span>42</span><small>轻松</small></div>
+          <div class="day hard"><b>二</b><span>96</span><small>间歇</small></div>
+          <div class="day rest"><b>三</b><span>0</span><small>休息</small></div>
+          <div class="day hard"><b>四</b><span>88</span><small>节奏</small></div>
+          <div class="day"><b>五</b><span>51</span><small>恢复</small></div>
+          <div class="day warn"><b>六</b><span>115</span><small>爬坡</small></div>
+          <div class="day rest"><b>日</b><span>0</span><small>建议休</small></div>
+        </div>
+        <div class="note">如果未来要做“本周训练计划”，它应该由训练目标 + 今日状态 + 可训练时间生成；不能只拿这 7 个数字假装排课。</div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>数据从哪来</h2>
+          <p>后端先算清楚数字，大模型只负责把数字讲成用户能执行的话。</p>
+        </div>
+        <div class="source-list">
+          <div class="source-item">
+            <div class="num">1</div>
+            <div>
+              <h3>每次骑行先算 TSS</h3>
+              <p>用本次骑行时长、标准化功率、当时锁定的 FTP 算出训练分数。</p>
+            </div>
+          </div>
+          <div class="source-item">
+            <div class="num">2</div>
+            <div>
+              <h3>把每天的 TSS 加起来</h3>
+              <p>一天多次骑行就合并成当天总压力；没有功率或 FTP 的活动先不参与。</p>
+            </div>
+          </div>
+          <div class="source-item">
+            <div class="num">3</div>
+            <div>
+              <h3>算三种状态</h3>
+              <p>体能看 42 天慢变化，疲劳看 7 天快变化，今日状态 = 体能 - 疲劳。</p>
+            </div>
+          </div>
+        </div>
+        <div class="formula">
+          后端公式草案：
+          <code>TSS = 时长秒 × NP × IF / (FTP × 3600) × 100</code>
+          <code>IF = NP / FTP</code>
+          <code>今日状态 = CTL - ATL</code>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>大模型放在哪里</h2>
+          <p>大模型不是裁判，它像一个会说人话的教练助理。</p>
+        </div>
+        <div class="llm-list">
+          <div class="llm-item">
+            <div class="num" style="background: var(--green)">算</div>
+            <div>
+              <h3>数字由后端算</h3>
+              <p>TSS、体能、疲劳、今日状态这些必须可复查，不能让模型自由发挥。</p>
+            </div>
+          </div>
+          <div class="llm-item">
+            <div class="num" style="background: var(--blue)">写</div>
+            <div>
+              <h3>模型写 4 段建议</h3>
+              <p>标题、综合分析、训练决定、风险提醒。没数据就老实说数据不足。</p>
+            </div>
+          </div>
+          <div class="llm-item">
+            <div class="num" style="background: var(--red)">禁</div>
+            <div>
+              <h3>不假装知道身体恢复</h3>
+              <p>现在拿不到 HRV、睡眠、静息心率，所以不能写“你昨晚恢复很好”。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="chart-head">
+          <h2>专业曲线</h2>
+          <div class="tabs" aria-label="日期范围">
+            <button class="active" data-range="30">30天</button>
+            <button data-range="90">90天</button>
+            <button data-range="365">全年</button>
+          </div>
+        </div>
+        <div class="section-head" style="padding-top: 0">
+          <p>懂训练的人可以看这张；普通用户只需要先看上面的建议和原因。</p>
+        </div>
+        <canvas id="pmcChart" width="800" height="460"></canvas>
+        <div class="legend">
+          <span><i class="dot" style="background: var(--green)"></i>体能</span>
+          <span><i class="dot" style="background: var(--amber)"></i>疲劳</span>
+          <span><i class="dot" style="background: var(--blue)"></i>今日状态</span>
+        </div>
+      </section>
+      <div class="safe-area"></div>
+    </main>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("pmcChart");
+    const ctx = canvas.getContext("2d");
+    const ranges = {
+      30: {
+        ctl: [50, 52, 54, 55, 58, 61, 63, 64, 66, 68],
+        atl: [46, 61, 58, 72, 68, 74, 70, 76, 86, 80],
+        tsb: [4, -9, -4, -17, -10, -13, -7, -12, -20, -12]
+      },
+      90: {
+        ctl: [38, 41, 43, 45, 48, 51, 55, 58, 63, 68],
+        atl: [34, 48, 39, 57, 52, 66, 60, 73, 88, 80],
+        tsb: [4, -7, 4, -12, -4, -15, -5, -15, -25, -12]
+      },
+      365: {
+        ctl: [22, 25, 31, 28, 35, 46, 52, 57, 62, 68],
+        atl: [18, 33, 26, 41, 39, 57, 64, 58, 86, 80],
+        tsb: [4, -8, 5, -13, -4, -11, -12, -1, -24, -12]
+      }
+    };
+
+    let currentRange = "30";
+
+    function drawLine(values, color, yMin, yMax, padding, width, height) {
+      ctx.beginPath();
+      values.forEach((value, index) => {
+        const x = padding.left + (index / (values.length - 1)) * width;
+        const y = padding.top + (1 - (value - yMin) / (yMax - yMin)) * height;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 5;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.stroke();
+    }
+
+    function drawChart() {
+      const data = ranges[currentRange];
+      const padding = { top: 24, right: 30, bottom: 38, left: 44 };
+      const width = canvas.width - padding.left - padding.right;
+      const height = canvas.height - padding.top - padding.bottom;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = "#dbe2dd";
+      ctx.lineWidth = 2;
+      for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (i / 4) * height;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(canvas.width - padding.right, y);
+        ctx.stroke();
+      }
+
+      const zeroY = padding.top + (1 - (0 + 30) / 120) * height;
+      ctx.strokeStyle = "#bfc8c2";
+      ctx.beginPath();
+      ctx.moveTo(padding.left, zeroY);
+      ctx.lineTo(canvas.width - padding.right, zeroY);
+      ctx.stroke();
+
+      drawLine(data.ctl, "#197356", -30, 90, padding, width, height);
+      drawLine(data.atl, "#b87818", -30, 90, padding, width, height);
+      drawLine(data.tsb, "#2d66c3", -30, 90, padding, width, height);
+
+      ctx.fillStyle = "#687076";
+      ctx.font = "24px -apple-system, BlinkMacSystemFont, sans-serif";
+      ctx.fillText("蓝线低于 0：疲劳暂时压过体能", padding.left, canvas.height - 12);
+    }
+
+    document.querySelectorAll(".tabs button").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".tabs button").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        currentRange = button.dataset.range;
+        drawChart();
+      });
+    });
+
+    drawChart();
+  </script>
+</body>
+</html>

@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VELO mental model · Tim 专属 · v2</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --card: #ffffff;
+    --text: #1c1917;
+    --text-2: #57534e;
+    --text-3: #a8a29e;
+    --border: #e7e5e4;
+    --accent: #0891b2;
+    --green: #16a34a;
+    --amber: #d97706;
+    --red: #dc2626;
+    --blue: #2563eb;
+    --purple: #9333ea;
+    --pink: #db2777;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+  header { margin-bottom: 32px; }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; }
+  .subtitle { color: var(--text-2); font-size: 15px; }
+  .principle {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border-left: 4px solid var(--amber);
+    padding: 16px 20px;
+    border-radius: 8px;
+    margin: 20px 0 28px;
+    font-size: 14.5px;
+    line-height: 1.7;
+  }
+  .principle strong { color: #92400e; }
+
+  /* tabs */
+  nav.tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+    overflow-x: auto;
+  }
+  nav.tabs button {
+    background: none;
+    border: none;
+    padding: 12px 18px;
+    font-size: 15px;
+    color: var(--text-2);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  nav.tabs button:hover:not(:disabled) { color: var(--text); }
+  nav.tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  nav.tabs button:disabled { color: var(--text-3); cursor: not-allowed; }
+  nav.tabs button:disabled::after { content: " (待填)"; font-size: 12px; }
+  nav.tabs button.trigger { color: #b91c1c; }
+  nav.tabs button.trigger.active { color: var(--red); border-bottom-color: var(--red); }
+
+  .tab-section { display: none; }
+  .tab-section.active { display: block; }
+  h2 { font-size: 22px; font-weight: 600; margin: 32px 0 6px; letter-spacing: -0.01em; }
+  h2 + .h2-sub { color: var(--text-2); font-size: 14px; margin-bottom: 20px; }
+
+  /* ===== 双线流程图 ===== */
+  .flowchart { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 32px; margin-bottom: 28px; }
+  .flow-grid { display: grid; grid-template-columns: 1fr 80px 1fr; gap: 0; align-items: stretch; }
+  .flow-col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .flow-col.center { justify-content: center; border-left: 2px dashed var(--border); border-right: 2px dashed var(--border); background: linear-gradient(180deg, transparent 0%, #fef3c7 50%, transparent 100%); }
+  .flow-header { font-size: 13px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; padding: 4px 10px; border-radius: 4px; }
+  .flow-header.left { background: #fff7ed; color: #c2410c; }
+  .flow-header.right { background: #f0fdf4; color: #15803d; }
+  .flow-node { width: 100%; max-width: 320px; background: var(--card); border: 2px solid var(--border); border-radius: 10px; padding: 12px 16px; text-align: center; transition: all 0.2s; cursor: help; position: relative; }
+  .flow-node:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(8,145,178,0.15); }
+  .flow-node .title { font-weight: 600; font-size: 14px; }
+  .flow-node .file { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--text-2); margin-top: 2px; }
+  .flow-node .desc { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+  .flow-arrow { color: var(--text-3); font-size: 18px; height: 8px; line-height: 8px; }
+
+  .flow-node.l1 { border-color: #fbbf24; background: #fffbeb; }
+  .flow-node.l2 { border-color: #fb923c; background: #fff7ed; }
+  .flow-node.l3 { border-color: #f87171; background: #fef2f2; }
+  .flow-node.r1 { border-color: #34d399; background: #ecfdf5; }
+  .flow-node.r2 { border-color: #22c55e; background: #f0fdf4; }
+  .flow-node.r3 { border-color: #10b981; background: #d1fae5; }
+  .flow-node.merge { border-color: #d97706; background: linear-gradient(135deg, #fef3c7 0%, #fcd34d 100%); width: 100%; max-width: 460px; padding: 16px 20px; }
+  .flow-node.merge .title { color: #92400e; font-size: 16px; }
+  .flow-node.merge .tag { display: inline-block; background: #f59e0b; color: white; font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; font-weight: 600; }
+  .flow-node.shared { border-color: var(--purple); background: #faf5ff; max-width: 460px; }
+  .flow-node.shared .title { color: var(--purple); }
+  .flow-node.db { border-color: #6366f1; background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%); max-width: 320px; }
+  .flow-node.db .title { color: #4338ca; }
+
+  .merge-row { grid-column: 1 / 4; display: flex; justify-content: center; margin: 12px 0; position: relative; }
+  .merge-row::before, .merge-row::after { content: ""; position: absolute; top: -8px; width: 25%; height: 16px; border-bottom: 2px solid var(--text-3); }
+  .merge-row::before { left: 12.5%; border-right: 2px solid var(--text-3); }
+  .merge-row::after { right: 12.5%; border-left: 2px solid var(--text-3); }
+
+  .shared-row { grid-column: 1 / 4; display: flex; justify-content: center; }
+
+  /* ===== 看图三件事 ===== */
+  .takeaway { background: linear-gradient(135deg, #ecfeff 0%, #f0f9ff 100%); border-left: 4px solid var(--accent); padding: 20px 24px; border-radius: 8px; margin-top: 28px; }
+  .takeaway h3 { font-size: 16px; margin-bottom: 12px; color: var(--accent); }
+  .takeaway ol { padding-left: 22px; }
+  .takeaway li { margin-bottom: 10px; font-size: 14.5px; }
+  .takeaway li strong { color: var(--text); }
+  .takeaway .quote { font-size: 13px; color: var(--text-2); display: block; margin-top: 4px; font-style: italic; }
+
+  /* ===== 模块卡片 grid（替换 Tab 2 表格 / 降视觉密度）===== */
+  .module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .mod-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .mod-card:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+  .mod-card.open { border-color: var(--accent); box-shadow: 0 4px 12px rgba(8,145,178,0.1); }
+  .mod-card .name {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-weight: 600;
+    color: var(--accent);
+    font-size: 15px;
+    margin-bottom: 6px;
+  }
+  .mod-card .reverse {
+    color: #991b1b;
+    font-size: 13.5px;
+    background: #fef2f2;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border-left: 2px solid var(--red);
+    line-height: 1.55;
+  }
+  .mod-card .reverse-prefix {
+    display: block;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #b91c1c;
+    margin-bottom: 2px;
+    font-weight: 600;
+  }
+  .mod-card .detail {
+    display: none;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+    font-size: 13.5px;
+    line-height: 1.7;
+  }
+  .mod-card.open .detail { display: block; }
+  .mod-card .detail .line { margin-bottom: 8px; }
+  .mod-card .detail .lbl {
+    display: inline-block;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-2);
+    font-weight: 600;
+    background: #f5f5f4;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-right: 6px;
+    vertical-align: 1px;
+  }
+  .mod-card .detail .lbl.do { background: #ecfeff; color: var(--accent); }
+  .mod-card .detail .lbl.bnd { background: #faf5ff; color: var(--purple); }
+  .mod-card .toggle-hint {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-3);
+  }
+  .mod-card.open .toggle-hint::after { content: "（点击收起）"; }
+  .mod-card:not(.open) .toggle-hint::after { content: "点击看「干一件事」+「边界规则」"; }
+
+  /* ===== 扩展沙盘 ===== */
+  .sandbox { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin-top: 20px; }
+  .sandbox-tabs { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+  .sandbox-tab { padding: 10px 16px; background: #f5f5f4; border: 2px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.15s; font-family: inherit; }
+  .sandbox-tab:hover { border-color: var(--accent); }
+  .sandbox-tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .sandbox-content { display: none; }
+  .sandbox-content.active { display: block; }
+  .sandbox-content .verdict { font-size: 18px; font-weight: 600; margin-bottom: 16px; padding: 14px 18px; border-radius: 8px; }
+  .sandbox-content .verdict.zero { background: #ecfdf5; color: #065f46; border-left: 4px solid var(--green); }
+  .sandbox-content .verdict.small { background: #fffbeb; color: #92400e; border-left: 4px solid var(--amber); }
+  .sandbox-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .sandbox-card { padding: 18px; border-radius: 10px; border: 1px solid var(--border); }
+  .sandbox-card.change { background: #fef2f2; border-color: #fecaca; }
+  .sandbox-card.reuse { background: #f0fdf4; border-color: #bbf7d0; }
+  .sandbox-card h4 { font-size: 14px; margin-bottom: 10px; font-weight: 600; }
+  .sandbox-card.change h4 { color: var(--red); }
+  .sandbox-card.reuse h4 { color: var(--green); }
+  .sandbox-card ul { padding-left: 18px; font-size: 13.5px; }
+  .sandbox-card li { margin-bottom: 6px; color: var(--text-2); }
+  .sandbox-card li strong { color: var(--text); }
+
+  /* ===== Tab 4 trigger 清单 ===== */
+  .trigger-intro {
+    background: linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%);
+    border: 1px solid #fecaca;
+    border-left: 4px solid var(--red);
+    padding: 18px 22px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    font-size: 14.5px;
+  }
+  .trigger-intro strong { color: #991b1b; }
+  .trigger-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .trig {
+    background: var(--card);
+    border: 1px solid #fecaca;
+    border-left: 4px solid var(--red);
+    border-radius: 10px;
+    padding: 16px 18px;
+    transition: all 0.15s;
+  }
+  .trig:hover { box-shadow: 0 4px 12px rgba(220,38,38,0.1); transform: translateY(-1px); }
+  .trig .num {
+    display: inline-block;
+    background: var(--red);
+    color: white;
+    font-weight: 700;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-right: 6px;
+    vertical-align: 2px;
+  }
+  .trig .head { font-weight: 600; font-size: 15.5px; margin-bottom: 10px; color: #7f1d1d; }
+  .trig .role {
+    background: #fef9c3;
+    border-left: 2px solid #ca8a04;
+    padding: 6px 10px;
+    margin: 6px 0;
+    font-size: 13px;
+    border-radius: 4px;
+  }
+  .trig .role strong { color: #854d0e; font-weight: 600; }
+  .trig .role.ai { background: #eff6ff; border-color: var(--blue); }
+  .trig .role.ai strong { color: #1e40af; }
+  .trig .ex {
+    margin-top: 10px;
+    font-size: 12.5px;
+    color: var(--text-2);
+    background: #fafaf9;
+    padding: 10px 12px;
+    border-radius: 6px;
+    line-height: 1.6;
+  }
+  .trig .ex strong { color: var(--text); }
+  .trig .ex code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    background: #fff;
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11.5px;
+  }
+
+  .safe-zone {
+    background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+    border: 1px solid #bbf7d0;
+    border-left: 4px solid var(--green);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+  }
+  .safe-zone h3 { font-size: 15px; color: #065f46; margin-bottom: 10px; font-weight: 600; }
+  .safe-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .safe-chip {
+    background: white;
+    border: 1px solid #86efac;
+    color: #065f46;
+    padding: 4px 10px;
+    border-radius: 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .safe-zone .note { margin-top: 12px; font-size: 12.5px; color: #15803d; font-style: italic; }
+
+  .workflow {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-top: 8px;
+  }
+  .workflow h3 { font-size: 16px; margin-bottom: 14px; color: var(--accent); }
+  .workflow .step { display: flex; gap: 14px; padding: 10px 0; border-bottom: 1px dashed var(--border); align-items: flex-start; }
+  .workflow .step:last-child { border-bottom: none; }
+  .workflow .step .step-num {
+    width: 28px; height: 28px;
+    background: var(--accent); color: white;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px;
+    flex-shrink: 0;
+  }
+  .workflow .step .step-body { font-size: 14px; line-height: 1.7; flex: 1; }
+  .workflow .step .step-body strong { color: var(--text); }
+  .workflow .step .step-body .if-hit { color: var(--red); font-weight: 600; }
+  .workflow .step .step-body .if-pass { color: var(--green); font-weight: 600; }
+
+  /* ===== Tab 5 · 协作机制 ===== */
+  .role-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .role-card { background: var(--card); border: 2px solid var(--border); border-radius: 12px; padding: 24px; position: relative; }
+  .role-card.codex { border-color: var(--blue); background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%); }
+  .role-card.claude { border-color: #f97316; background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); }
+  .role-card .role-avatar { font-size: 36px; margin-bottom: 8px; }
+  .role-card .role-name { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .role-card.codex .role-name { color: #1e40af; }
+  .role-card.claude .role-name { color: #c2410c; }
+  .role-card .role-tagline { font-size: 14px; color: var(--text-2); margin-bottom: 16px; font-style: italic; }
+  .role-card .role-points { list-style: none; padding: 0; }
+  .role-card .role-points li { padding: 6px 0; font-size: 14px; padding-left: 18px; position: relative; }
+  .role-card .role-points li::before { content: "·"; position: absolute; left: 6px; font-weight: 700; color: var(--text-3); }
+  .role-card .role-fear { margin-top: 14px; padding: 10px 12px; background: white; border-radius: 6px; font-size: 12.5px; color: var(--text-2); border-left: 3px solid var(--text-3); }
+
+  .axis-board { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .axis-row { display: grid; grid-template-columns: 100px 1fr; gap: 16px; align-items: center; padding: 12px 0; border-bottom: 1px dashed var(--border); }
+  .axis-row:last-child { border-bottom: none; }
+  .axis-label { font-weight: 600; font-size: 15px; color: var(--text); }
+  .axis-track { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 12px; align-items: center; }
+  .axis-end { padding: 8px 14px; border-radius: 8px; font-size: 13px; text-align: center; }
+  .axis-end.left { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+  .axis-end.right { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+  .axis-arrow { font-size: 12px; color: var(--text-2); font-weight: 600; white-space: nowrap; }
+  .axis-arrow.right { color: var(--text-2); }
+
+  .hook-flow { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .hook-node { background: #f5f5f4; border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; text-align: center; }
+  .hook-node.entry { background: #fef3c7; border-color: #fbbf24; }
+  .hook-node.trigger-node { background: linear-gradient(135deg, #faf5ff 0%, #e9d5ff 100%); border-color: var(--purple); }
+  .hook-node.output { background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-color: var(--green); }
+  .hook-node .hook-title { font-weight: 600; font-size: 14px; }
+  .hook-node .hook-desc { font-size: 12.5px; color: var(--text-2); margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .hook-channels { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+  .channel-card { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .channel-card.c1 { border-left: 3px solid var(--red); }
+  .channel-card.c2 { border-left: 3px solid var(--accent); }
+  .channel-card.c3 { border-left: 3px solid var(--purple); }
+  .channel-card.c4 { border-left: 3px solid var(--amber); }
+  .channel-card .ch-num { font-size: 10.5px; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; }
+  .channel-card .ch-title { font-weight: 600; font-size: 14px; margin: 2px 0 6px; }
+  .channel-card .ch-trigger { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--text-2); background: #fafaf9; padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; }
+  .channel-card .ch-output { font-size: 12px; color: var(--green); font-weight: 500; }
+
+  .issue-fields { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 20px; }
+  .issue-row { display: grid; grid-template-columns: 36px 100px 1fr; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px dashed var(--border); }
+  .issue-row:last-child { border-bottom: none; }
+  .issue-num { width: 28px; height: 28px; background: var(--accent); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
+  .issue-name { font-weight: 600; font-size: 14.5px; color: var(--accent); }
+  .issue-desc { font-size: 14px; color: var(--text-2); }
+
+  @media (max-width: 720px) {
+    .role-cards { grid-template-columns: 1fr; }
+    .axis-row { grid-template-columns: 1fr; }
+    .axis-track { grid-template-columns: 1fr; }
+    .hook-channels { grid-template-columns: 1fr; }
+    .issue-row { grid-template-columns: 36px 1fr; }
+    .issue-row .issue-desc { grid-column: 1 / 3; padding-left: 50px; }
+  }
+
+  footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--text-3); font-size: 13px; text-align: center; }
+
+  @media (max-width: 720px) {
+    .sandbox-grid { grid-template-columns: 1fr; }
+    .flow-grid { grid-template-columns: 1fr; }
+    .flow-col.center { display: none; }
+    .trigger-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>VELO 架构 mental model · v2</h1>
+    <p class="subtitle">Tim 专属 · 数据流 + 模块关系 + 扩展沙盘 + 判断层 trigger 清单</p>
+  </header>
+
+  <div class="principle">
+    <strong>看这份文档的方式</strong>
+    不要试图"读完"它 / 它是一张<strong>思维地图</strong>。
+    遇到具体问题跳到对应 tab / hover 元素看细节 / 不需要的部分别看。
+    每个画面只回答<strong>一个判断层问题</strong>。
+  </div>
+
+  <nav class="tabs">
+    <button class="active" data-tab="flow">数据流（两路汇合）</button>
+    <button data-tab="compare">模块对比</button>
+    <button data-tab="sandbox">扩展沙盘</button>
+    <button class="trigger" data-tab="trigger">⚠ 判断层 trigger 清单</button>
+    <button data-tab="collab">协作机制</button>
+    <button disabled>反馈环</button>
+    <button disabled>物理拓扑</button>
+  </nav>
+
+  <!-- ========== Tab 1: 数据流 ========== -->
+  <section class="tab-section active" id="tab-flow">
+    <h2>骑行数据怎么进 velo 的</h2>
+    <p class="h2-sub">两条入口路径 / 在一个统一格式上汇合 / 之后 100% 共享</p>
+
+    <div class="flowchart">
+      <div class="flow-grid">
+        <div class="flow-col">
+          <div class="flow-header left">路径 A · GPX/FIT 上传</div>
+          <div class="flow-node l1"><div class="title">用户手动上传</div><div class="desc">挑文件 / 点上传</div></div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-node l1"><div class="title">router 接收</div><div class="file">app/activity/router.py</div><div class="desc">写文件到磁盘 / 入队</div></div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-node l2"><div class="title">worker 干活</div><div class="file">app/activity/worker.py</div><div class="desc">后台异步处理</div></div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-node l3"><div class="title">翻译官</div><div class="file">parsing/gpx_parser.py<br>parsing/fit_parser.py</div><div class="desc">文件 → 标准格式</div></div>
+        </div>
+
+        <div class="flow-col center">
+          <div style="text-align:center; color: var(--text-3); font-size: 12px; padding: 16px 0;">两条<br>独立<br>路径</div>
+        </div>
+
+        <div class="flow-col">
+          <div class="flow-header right">路径 B · Strava 同步</div>
+          <div class="flow-node r1"><div class="title">用户在 Strava 骑</div><div class="desc">骑完 7-15 秒后</div></div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-node r1"><div class="title">Strava 主动叫我</div><div class="file">webhook → strava/router.py</div><div class="desc">推送 activity_id</div></div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-node r2"><div class="title">worker 干活</div><div class="file">strava/worker_strava.py</div><div class="desc">拉数据 + 处理</div></div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-node r3"><div class="title">翻译官</div><div class="file">parsing/strava_adapter.py</div><div class="desc">JSON → 标准格式</div></div>
+        </div>
+
+        <div class="merge-row">
+          <div class="flow-node merge">
+            <div class="title">⟁ 汇合点 · ParseResult <span class="tag">两路在此变一路</span></div>
+            <div class="desc">parsing/types.py 定义的统一格式 · 后续流程不再分流</div>
+          </div>
+        </div>
+
+        <div class="shared-row" style="flex-direction:column; align-items:center; gap:8px;">
+          <div class="flow-arrow">↓</div>
+          <div class="flow-node shared"><div class="title">纠偏统一处理</div><div class="file">parsing/coord_normalizer.py</div><div class="desc">中国境内 GCJ-02 → WGS84 / 两条路共享</div></div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-node shared"><div class="title">共享入库函数</div><div class="file">activity/worker.py::save_parse_result()</div><div class="desc">strava/worker_strava.py:35 直接 import 它 / 不重复造</div></div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-node db"><div class="title">postgres</div><div class="desc">activities + trackpoints 表</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="takeaway">
+      <h3>看这张图你能直接看到三件事</h3>
+      <ol>
+        <li><strong>两条路在 ParseResult 处汇合 / 不重复</strong><span class="quote">strava 拉数据 + parsing 翻译 + activity 入库 / 各干一件事 / 串联非重复。</span></li>
+        <li><strong>parsing/ 是"翻译中心"概念 / 不是格式特化</strong><span class="quote">里面 3 个翻译官（gpx / fit / strava）平等并列 / 互不依赖 / 砍掉任一个不影响其他。未来加 garmin / igpsport 就是加第 4 / 5 个翻译官。</span></li>
+        <li><strong>ParseResult 是<u>架构边界</u> / 是你判断层最该懂的概念</strong><span class="quote">这是 §1.2 你说的"被约束下涌现的秩序"——一个统一格式让 N 条路汇合 / 系统不爆炸。</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ========== Tab 2: 模块对比（简化版 / 卡片 grid）========== -->
+  <section class="tab-section" id="tab-compare">
+    <h2>用"逆向"定义每个模块</h2>
+    <p class="h2-sub">默认只看"砍了会丢什么"（红框）/ 点击卡片再看"干一件事"+"边界规则"</p>
+
+    <div class="module-grid" id="mod-grid">
+      <div class="mod-card" data-key="strava">
+        <div class="name">app/strava/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>用户没法绑 Strava / GPX 上传不受影响</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>第三方数据搬运：OAuth 授权 + webhook 监听 + 历史补传调度</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>只碰自己的 strava_imports / strava_tokens 表 / 拿到数据交给 parsing 翻译</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+
+      <div class="mod-card" data-key="parsing">
+        <div class="name">app/parsing/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>所有数据进不来 / 全瘫（GPX / Strava 都翻译不了）</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>各种源头数据 → 统一翻译成 ParseResult（纯计算 / 不碰 DB）</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>纯函数 / 不碰 DB / 不碰文件系统 / 接收参数返回结果</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+
+      <div class="mod-card" data-key="activity">
+        <div class="name">app/activity/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>数据翻译完了没人组装入库 / 整套流瘫</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>骑行活动业务编排：调用 parsing + 入库 + 状态机 + 触发后续</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>唯一允许写 activities / trackpoints 表的模块 / 是 strava 的下游</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+
+      <div class="mod-card" data-key="segment">
+        <div class="name">app/segment/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>数据有了但没人算"我第几名" / 排行榜消失</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>赛段定义和匹配 + 排行榜计算</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>activity 的下游 / 不能反向调 activity</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+
+      <div class="mod-card" data-key="user">
+        <div class="name">app/user/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>没法登录 / 没法看个人聚合数据</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>用户身份 + 个人统计（登录 / 资料 / 总览 / 热力图）</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>大部分主路径不依赖业务模块 / v5 例外 import activity 算 power-curve</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+
+      <div class="mod-card" data-key="notification">
+        <div class="name">app/notification/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>骑完没人提醒"你刷新了 5km PR" / 用户少一份激励</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>检测值得通知的事件（PR / KOM / 朋友新骑）+ 推送</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>所有业务模块的下游 / 内部用 SAVEPOINT 隔离失败</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+
+      <div class="mod-card" data-key="admin">
+        <div class="name">app/admin/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>没法在后台改数据 / 但小程序业务不受影响</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>管理后台反向控制（admin H5 所有 endpoint）</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>独立 router + 独立权限校验 / 不允许越过应用层直改 DB</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+
+      <div class="mod-card" data-key="monitor">
+        <div class="name">app/monitor/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>出问题没人喊 / 但业务不受影响</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>系统健康探针 + 告警通道</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>log-only 模式 / 不接通飞书（D 决策已记 memory）</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+
+      <div class="mod-card" data-key="middleware">
+        <div class="name">app/middleware/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>恶意刷 API 无防护 / 但本地能跑</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>全局拦截器（限流 / 请求日志 / CORS）</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>应用最外层 / 不碰业务逻辑</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+
+      <div class="mod-card" data-key="storage">
+        <div class="name">app/storage/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>上传文件没法落地</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>GPX 文件系统读写（上传文件存哪 / 怎么读）</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>物理存储抽象 / 未来换 OSS 时只改这</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+
+      <div class="mod-card" data-key="agent">
+        <div class="name">app/agent/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>curation / 未来 coach 没法调 LLM / 主业务不受影响</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>LLM 接入层（DeepSeek / OpenAI client 包装）</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>所有 LLM 调用集中在这 / 不允许其他模块直连</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+
+      <div class="mod-card" data-key="common">
+        <div class="name">app/common/</div>
+        <div class="reverse"><span class="reverse-prefix">砍了会丢什么</span>小工具重复实现 / 不致命</div>
+        <div class="detail">
+          <div class="line"><span class="lbl do">干一件事</span>跨模块共享小工具（geo 计算 / 不归任一模块独占）</div>
+          <div class="line"><span class="lbl bnd">边界规则</span>克制 / 只放真共享的 / 别变垃圾桶</div>
+        </div>
+        <div class="toggle-hint"></div>
+      </div>
+    </div>
+
+    <div class="takeaway">
+      <h3>用这页能秒答的判断层问题</h3>
+      <ol>
+        <li><strong>"这个新功能该建在哪个模块？"</strong> — 看它砍了影响什么 / 影响和哪个模块逆向一致</li>
+        <li><strong>"AI 想让 A 调 B / 行不行？"</strong> — 点开看 B 的"边界规则" / 反向调 = 红线</li>
+        <li><strong>"两个模块功能像 / 是不是重复了？"</strong> — 点开看"干一件事" / 描述不同 = 不重复 / 一样 = 重构信号</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ========== Tab 3: 扩展沙盘 ========== -->
+  <section class="tab-section" id="tab-sandbox">
+    <h2>假如要接 Garmin / igpsport / sellin · 该改哪 / 不改哪</h2>
+    <p class="h2-sub">不是真做 / 是给你看"扩展时判断层操作长啥样"</p>
+
+    <div class="sandbox">
+      <div class="sandbox-tabs">
+        <button class="sandbox-tab active" data-sb="file">场景 A：对方给文件（FIT / GPX）</button>
+        <button class="sandbox-tab" data-sb="api">场景 B：对方给 API（OAuth）</button>
+      </div>
+
+      <div class="sandbox-content active" id="sb-file">
+        <div class="verdict zero">✓ 0 行新代码 · 直接复用 GPX 上传链路</div>
+        <p style="margin-bottom: 16px; color: var(--text-2); font-size: 14.5px;">
+          典型场景：Garmin Connect 导出 .fit / iGPSport 导出 .gpx / sellin 导出 .gpx /
+          用户在他们平台下载文件 → 在 velo 点上传 → 选这个文件 → 完事。
+        </p>
+        <div class="sandbox-grid">
+          <div class="sandbox-card change">
+            <h4>✕ 不需要改的</h4>
+            <ul>
+              <li>parsing/ — fit_parser / gpx_parser 已覆盖</li>
+              <li>activity/ — 上传链路已支持</li>
+              <li>postgres schema — ParseResult 已兼容所有源</li>
+              <li>前端 — upload 页已支持选文件</li>
+            </ul>
+          </div>
+          <div class="sandbox-card reuse">
+            <h4>✓ 全 reusable</h4>
+            <ul>
+              <li>全链路开箱即用</li>
+              <li>用户体验路径：选文件 → 点上传</li>
+              <li>判断层零成本 / 翻译层零成本</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="sandbox-content" id="sb-api">
+        <div class="verdict small">⚠ 需要 2 件事 · 但 80% reusable</div>
+        <p style="margin-bottom: 16px; color: var(--text-2); font-size: 14.5px;">
+          典型场景：iGPSport / sellin / Garmin Connect 提供 OAuth API /
+          用户授权后我们自动同步（仿 Strava 模式）。
+        </p>
+        <div class="sandbox-grid">
+          <div class="sandbox-card change">
+            <h4>✱ 需要新建的</h4>
+            <ul>
+              <li><strong>app/garmin/</strong> 模块（仿 strava 结构）<br>—— OAuth + webhook（如果对方支持）+ 同步调度 + worker</li>
+              <li><strong>parsing/garmin_adapter.py</strong>（仿 strava_adapter）<br>—— 把对方 API 返回的 JSON → ParseResult</li>
+              <li><strong>2 张 DB 表</strong>：garmin_imports + garmin_tokens（仿 strava 表结构）</li>
+              <li><strong>前端</strong>：profile 加"绑定 Garmin"按钮</li>
+            </ul>
+          </div>
+          <div class="sandbox-card reuse">
+            <h4>✓ 全 reusable / 不动</h4>
+            <ul>
+              <li><strong>parsing/coord_normalizer</strong> — 纠偏统一处理</li>
+              <li><strong>activity/save_parse_result</strong> — 入库共享函数</li>
+              <li><strong>activity / segment / notification</strong> — 下游全自动跑</li>
+              <li><strong>postgres activities/trackpoints schema</strong> — 0 改</li>
+              <li><strong>所有展示前端</strong>（detail / explore / honor）</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="takeaway">
+      <h3>这个沙盘想让你看到的事</h3>
+      <ol>
+        <li><strong>架构 trade-off 当年付得值</strong> — 当时多花时间把"翻译"和"搬运"分开 / 今天扩展时省下来。</li>
+        <li><strong>未来你拍"接哪个数据源"是判断层决策</strong> — 用户量 / 集成成本 / 数据完整度 / 都是产品判断。技术成本固定 = 加一个翻译官 + 可选加一个搬运模块。</li>
+        <li><strong>反例 — Persona Engine</strong> 当时跟 activity 混在一起 / 砍的时候连根拔起 / 5 stage 才清完。每加一个新模块都该问："砍它能不能干净？"</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ========== Tab 4: 判断层 trigger 清单 ========== -->
+  <section class="tab-section" id="tab-trigger">
+    <h2>判断层 trigger 清单 · 你"安心不懂剩下的"机制</h2>
+    <p class="h2-sub">命中任一红色 trigger = 停下叫 Tim / 没命中 = 放心交 AI</p>
+
+    <div class="trigger-intro">
+      <strong>怎么用：</strong>review AI 写的 diff 时打开浏览器对照查 / 不用记 / 每月 review 一次清单本身 / 新踩到的坑加进来 / 老 trigger 失效划掉 / 让清单跟项目一起进化。
+    </div>
+
+    <h3 style="font-size:16px; color: var(--red); margin-bottom: 12px;">🔴 必须停下来叫 Tim 的 6 条</h3>
+
+    <div class="trigger-grid">
+      <div class="trig">
+        <div class="head"><span class="num">1</span>新数据源 / 新模块</div>
+        <div class="role"><strong>你拍：</strong>走哪条架构路径（用文件 vs 用 API / 复用 ParseResult 还是新汇合点）</div>
+        <div class="role ai"><strong>AI 干：</strong>实现细节（仿 strava 结构 / 写代码）</div>
+        <div class="ex"><strong>真实例子</strong>：接 Garmin / iGPSport / sellin · 加 Coach Engine 模块 · 新建 worker 类型 · 加 admin-h5 之外的新前端</div>
+      </div>
+
+      <div class="trig">
+        <div class="head"><span class="num">2</span>改状态机</div>
+        <div class="role"><strong>你拍：</strong>状态完整性 + 异常恢复路径 + 旧数据 migrate</div>
+        <div class="role ai"><strong>AI 干：</strong>实现 transition 代码 + 加锁</div>
+        <div class="ex">
+          <strong>当前真实状态机</strong>（grep 实证 / 改之前打开看）：<br>
+          · <code>activity.status</code>：5 个值 = pending → processing → completed / failed / importing<br>
+          · <code>strava_imports.status</code>：3 个值 = active / paused / completed
+        </div>
+      </div>
+
+      <div class="trig">
+        <div class="head"><span class="num">3</span>改跨模块契约</div>
+        <div class="role"><strong>你拍：</strong>所有下游模块要不要同步改 / 旧路径会不会 break</div>
+        <div class="role ai"><strong>AI 干：</strong>批量改下游 + 测试</div>
+        <div class="ex"><strong>跨模块契约清单</strong>：<br>
+          · <code>ParseResult</code>（parsing/types.py 定义 / 所有翻译官输出 / 入库读）<br>
+          · <code>OAuth scope</code>（read / read_all / Strava 扩展过一次踩过坑）<br>
+          · <code>save_parse_result()</code> 签名（GPX worker + Strava worker 都 import）
+        </div>
+      </div>
+
+      <div class="trig">
+        <div class="head"><span class="num">4</span>改核心表 schema</div>
+        <div class="role"><strong>你拍：</strong>是不是真要动核心 / 能不能放新表（防火墙原则）</div>
+        <div class="role ai"><strong>AI 干：</strong>写 Alembic 迁移</div>
+        <div class="ex">
+          <strong>核心 4 表（v4 教训 / 不能随便动）</strong>：<br>
+          · <code>users</code> · <code>activities</code> · <code>segments</code> · <code>segment_efforts</code><br>
+          <em>新功能默认放新表 / 除非修 bug 才动核心表</em>
+        </div>
+      </div>
+
+      <div class="trig">
+        <div class="head"><span class="num">5</span>新业务决策</div>
+        <div class="role"><strong>你拍：</strong>解决真需求吗 / 装饰还是指导 / 反馈环上还是装饰</div>
+        <div class="role ai"><strong>AI 干：</strong>实现你拍的方案</div>
+        <div class="ex"><strong>过往真实例子</strong>：<br>
+          · Persona Engine（装饰展示 / 全砍 / 5 stage 清理）<br>
+          · FTP 智能估算（指导 / 留 / 反馈环上）<br>
+          · PMC 训练负荷（Sprint 10 / 是装饰还是指导? 先想清楚再拍）
+        </div>
+      </div>
+
+      <div class="trig">
+        <div class="head"><span class="num">6</span>AI 想"优化"已有模式</div>
+        <div class="role"><strong>你拍：</strong>是真优化 / 还是踩了历史 trade-off</div>
+        <div class="role ai"><strong>AI 干：</strong>实施你认可的优化</div>
+        <div class="ex"><strong>典型 AI"善意优化"</strong>：<br>
+          · 简化去重逻辑（踩过 strava_activity_id 防重的设计意图）<br>
+          · 状态机加新值"看起来更合理"<br>
+          · OAuth 流程"重构"<br>
+          · 反向依赖（segment 调 activity / activity 调 strava）<br>
+          · 跳过 save_parse_result 走自己的入库
+        </div>
+      </div>
+    </div>
+
+    <div class="safe-zone">
+      <h3>🟢 看到下面这些 · 不用复查 / 放心交 AI</h3>
+      <div class="safe-chips">
+        <span class="safe-chip">函数实现</span>
+        <span class="safe-chip">SQL 语法</span>
+        <span class="safe-chip">Pydantic schema</span>
+        <span class="safe-chip">try/catch / retry</span>
+        <span class="safe-chip">timeout 参数</span>
+        <span class="safe-chip">测试 fixture / mock</span>
+        <span class="safe-chip">字段命名</span>
+        <span class="safe-chip">注释</span>
+        <span class="safe-chip">N+1 优化</span>
+        <span class="safe-chip">索引 / 缓存</span>
+        <span class="safe-chip">DB 连接池</span>
+        <span class="safe-chip">内存泄漏</span>
+        <span class="safe-chip">DDOS 防御</span>
+        <span class="safe-chip">DNS 缓存</span>
+        <span class="safe-chip">高并发优化</span>
+      </div>
+      <p class="note">基础设施类（DDOS / 内存 / 高并发 / 容器 OOM）100 用户量级根本到不了 / 真到那天你已经能招得起运维。AI 在这类问题上比你懂。</p>
+    </div>
+
+    <div class="workflow">
+      <h3>👀 你 review AI diff 时的工作流</h3>
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">打开 AI 写的 diff（VSCode / git show / Codex CLI 输出）</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">一边看一边对照上面 <strong>6 条 trigger</strong> · 心里过一遍</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <span class="if-pass">没命中 trigger ✓</span> → diff 全是翻译层细节 → 看大致流程 OK 就 pass / 不深究<br>
+          <span class="if-hit">命中 trigger ⚠</span> → 停下来 → 在对话里跟 AI 把这一条对清楚（拍方向 / 不是看代码）
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body"><strong>commit 前最后一查</strong>：再扫一遍 6 条 trigger / 都没踩 = 放心 commit</div>
+      </div>
+    </div>
+
+    <div class="takeaway">
+      <h3>这清单的元价值</h3>
+      <ol>
+        <li><strong>"安心地不懂"是真本事</strong> — 不是放弃理解 / 是知道<u>什么时候不必懂</u>。这才是 AI native 架构师的核心能力。</li>
+        <li><strong>清单本身要进化</strong> — 每月你 review / 新坑加进来 / 老 trigger 失效划掉。跟着项目长大。</li>
+        <li><strong>这不是检查表 / 是 mental model</strong> — review 多了 6 条会自动浮现在脑子里 / 不需要每次打开。但前期对照查很重要。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ========== Tab 5: 协作机制 ========== -->
+  <section class="tab-section" id="tab-collab">
+    <h2>你跟 Claude / Codex 工作时 · 系统自动跑什么</h2>
+    <p class="h2-sub">§10.Y v2 + 4 通道 hook 系统 / 2026-05-24 落地 / 双端对称 (.claude/settings.json + .codex/hooks.json)</p>
+
+    <!-- 段 1 · 角色画像 -->
+    <h3 style="font-size: 18px; margin-top: 28px;">角色画像（一眼秒懂谁干啥）</h3>
+    <div class="role-cards">
+      <div class="role-card codex">
+        <div class="role-avatar">🤖</div>
+        <div class="role-name">Codex</div>
+        <div class="role-tagline">任务执行器</div>
+        <ul class="role-points">
+          <li>清楚边界 / 验收标准明确</li>
+          <li>有可运行命令</li>
+          <li>跑得快 / 反馈短</li>
+          <li>批量机械改 / 测试 / 迁移</li>
+        </ul>
+        <div class="role-fear">最怕：含糊的成功标准（"帮我优化下"）</div>
+      </div>
+
+      <div class="role-card claude">
+        <div class="role-avatar">💬</div>
+        <div class="role-name">Claude</div>
+        <div class="role-tagline">结对同事</div>
+        <ul class="role-points">
+          <li>先理解上下文 / 追问意图</li>
+          <li>解释取舍 / 暴露隐藏假设</li>
+          <li>跨文件 / 跨模块改</li>
+          <li>读陌生代码 / 写长 spec / 中文 brainstorm</li>
+        </ul>
+        <div class="role-fear">最适合：你还在权衡架构路线</div>
+      </div>
+    </div>
+
+    <!-- 段 2 · 决策三轴 -->
+    <h3 style="font-size: 18px; margin-top: 36px;">决策三轴（脑子里装的）</h3>
+    <p class="h2-sub" style="margin-bottom: 20px;">任何任务先过 3 个属性 / 3 轴中 ≥ 2 偏一边 → 派那边</p>
+    <div class="axis-board">
+      <div class="axis-row">
+        <div class="axis-label">歧义度</div>
+        <div class="axis-track">
+          <div class="axis-end left">低 / spec 清晰 / 工单可写</div>
+          <div class="axis-arrow">→ 偏 Codex</div>
+          <div class="axis-end right">高 / 需求模糊 / 在权衡</div>
+          <div class="axis-arrow right">→ 偏 Claude</div>
+        </div>
+      </div>
+      <div class="axis-row">
+        <div class="axis-label">可测性</div>
+        <div class="axis-track">
+          <div class="axis-end left">高 / pytest / curl 能验</div>
+          <div class="axis-arrow">→ 偏 Codex</div>
+          <div class="axis-end right">低 / 靠人类判断</div>
+          <div class="axis-arrow right">→ 偏 Claude</div>
+        </div>
+      </div>
+      <div class="axis-row">
+        <div class="axis-label">可回滚</div>
+        <div class="axis-track">
+          <div class="axis-end left">可 / 改坏能回退</div>
+          <div class="axis-arrow">→ 偏 Codex</div>
+          <div class="axis-end right">不可 / 跨模块连锁</div>
+          <div class="axis-arrow right">→ 偏 Claude</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 段 3 · 4 通道 hook -->
+    <h3 style="font-size: 18px; margin-top: 36px;">4 通道 hook 流程（你看不见的后台）</h3>
+    <p class="h2-sub" style="margin-bottom: 20px;">你自然输入 prompt / hook 在你看不见的地方按内容动态加载相关上下文</p>
+    <div class="hook-flow">
+      <div class="hook-node entry">
+        <div class="hook-title">你输入 prompt</div>
+        <div class="hook-desc">例：&quot;派 codex 改 strava 然后部署&quot;</div>
+      </div>
+      <div style="text-align: center; font-size: 24px; color: var(--text-3); margin: 8px 0;">↓</div>
+      <div class="hook-node trigger-node">
+        <div class="hook-title">hook 4 通道并行扫描（总注入 ≤ 200 行 cap）</div>
+      </div>
+      <div class="hook-channels">
+        <div class="channel-card c1">
+          <div class="ch-num">通道 1</div>
+          <div class="ch-title">派工 keyword</div>
+          <div class="ch-trigger">派 codex · 实施 · 动手 · review · commit ...</div>
+          <div class="ch-output">→ agent-collab §10.Y 整段（70 行）</div>
+        </div>
+        <div class="channel-card c2">
+          <div class="ch-num">通道 2</div>
+          <div class="ch-title">模块名（自适应扫 app/）</div>
+          <div class="ch-trigger">strava · activity · parsing · segment · user ...</div>
+          <div class="ch-output">→ app/*/__init__.py docstring</div>
+        </div>
+        <div class="channel-card c3">
+          <div class="ch-num">通道 3</div>
+          <div class="ch-title">sprint / PRD 名（含别名）</div>
+          <div class="ch-trigger">PMC · FTP · sprint 9 · coach engine · 训练负荷 ...</div>
+          <div class="ch-output">→ docs/prd/ + docs/superpowers/specs/ 顶部摘要</div>
+        </div>
+        <div class="channel-card c4">
+          <div class="ch-num">通道 4</div>
+          <div class="ch-title">SOP keyword</div>
+          <div class="ch-trigger">部署 · 调试 · 排查 · commit 前 ...</div>
+          <div class="ch-output">→ CLAUDE.md 对应 SOP 章节</div>
+        </div>
+      </div>
+      <div style="text-align: center; font-size: 24px; color: var(--text-3); margin: 8px 0;">↓</div>
+      <div class="hook-node output">
+        <div class="hook-title">Claude / Codex 拿到 prompt + 注入内容</div>
+        <div class="hook-desc">双端对称 · 同一 user_prompt_mental_check.py 脚本</div>
+      </div>
+    </div>
+
+    <!-- 段 4 · 派 Codex 5 字段速查 -->
+    <h3 style="font-size: 18px; margin-top: 36px;">派 Codex 5 字段 issue 速查</h3>
+    <p class="h2-sub" style="margin-bottom: 20px;">Tim 1 句话 → Claude 翻译成 5 字段 → 派给 Codex</p>
+    <div class="issue-fields">
+      <div class="issue-row">
+        <div class="issue-num">1</div>
+        <div class="issue-name">背景</div>
+        <div class="issue-desc">上下文 / 当前状态 / 为什么做</div>
+      </div>
+      <div class="issue-row">
+        <div class="issue-num">2</div>
+        <div class="issue-name">目标</div>
+        <div class="issue-desc">要做到什么样 / 验收标准</div>
+      </div>
+      <div class="issue-row">
+        <div class="issue-num">3</div>
+        <div class="issue-name">验收命令</div>
+        <div class="issue-desc">pytest / curl / grep file:line 实证</div>
+      </div>
+      <div class="issue-row">
+        <div class="issue-num">4</div>
+        <div class="issue-name">不要碰</div>
+        <div class="issue-desc">哪些文件 / 哪些模块 / 哪些规则不能动</div>
+      </div>
+      <div class="issue-row">
+        <div class="issue-num">5</div>
+        <div class="issue-name">失败处理</div>
+        <div class="issue-desc">报错时停下还是继续 / 重试几次</div>
+      </div>
+    </div>
+
+    <div class="takeaway" style="background: linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%); border-left-color: var(--red);">
+      <h3 style="color: var(--red);">⚠ 典型误区</h3>
+      <p style="font-size: 14.5px; margin-top: 8px;">只说 <strong>"帮我优化一下"</strong> · Codex 不知道你担心架构风险 / 产品语义 / 还是上线稳定性 / 它努力做但可能做错地方。</p>
+      <p style="font-size: 14.5px; margin-top: 8px;">好的说法：<strong>"优化哪条路径 + 目标指标是什么 + 不能牺牲什么 + 如何证明改完没坏"</strong></p>
+    </div>
+
+    <div class="takeaway">
+      <h3>这页想让你看到的元洞察</h3>
+      <ol>
+        <li><strong>你的 prompt 不用变长 / 变 sharp 就行</strong> — hook 后台自动加 context / 你只给意图 + 触发词</li>
+        <li><strong>Codex 反指标 ≠ "Codex 不行"</strong> — 是它专业边界 / 命中反指标 Codex 有权 push back（双主驾对称权利）</li>
+        <li><strong>这套机制是 cross-project pattern</strong> — 未来 v6 别项目复制：1 份 hook 脚本 + 2 份配置（Claude / Codex）+ 1 份 §10.Y 风格分工文档</li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    v3 · 2026-05-24 · 新增 Tab 5 协作机制（§10.Y v2 + 4 通道 hook 可视化）· 所有事实 grep 实证 file:line<br>
+    实证来源：app/parsing/__init__.py · app/strava/worker_strava.py:33-35 · app/activity/worker.py:387 · app/activity/models.py:36-39,56 · app/strava/models.py:14,73 · scripts/user_prompt_mental_check.py · .codex/hooks.json
+  </footer>
+</div>
+
+<script>
+  document.querySelectorAll('nav.tabs button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  document.querySelectorAll('.sandbox-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const parent = btn.closest('.sandbox');
+      parent.querySelectorAll('.sandbox-tab').forEach(b => b.classList.remove('active'));
+      parent.querySelectorAll('.sandbox-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('sb-' + btn.dataset.sb).classList.add('active');
+    });
+  });
+
+  // Tab 2 模块卡片点击展开 / 收起
+  document.querySelectorAll('.mod-card').forEach(card => {
+    card.addEventListener('click', () => {
+      card.classList.toggle('open');
+    });
+  });
+</script>
+</body>
+</html>
