@@ -175,3 +175,278 @@ ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exe
 ## 8. 下游接口约定
 
 task-3 backfill 只调 `calculate_daily_ctl` / `calculate_daily_atl` / `calculate_tsb` / `classify_tsb_status`，然后自己 upsert + round 写表（`docs/prd/sprint-10-prd.md:276-288`）。task-4 `app/training/service.py` 查表后调 `format_status_label(status_band)` 填 `summary.current_status_label`，不让前端硬编码（`docs/prd/sprint-10-prd.md:336-365`, `docs/prd/sprint-10-prd.md:391-397`）。task-6 hook helper 同样只调前 4 个算法函数，`format_status_label` 不进写表链路（`docs/prd/sprint-10-prd.md:542-548`）。Sprint 12 coach-engine `service.py` 必须 import 5 个全部，禁止在 `app/agent/coach/` 复制公式（`docs/superpowers/specs/2026-05-20-coach-engine-design.md:191-205`）。
+
+---
+
+# Sprint 10 Task-3 Codex Handoff
+> 范围：只给执行 spec subagent 的工程手册；新增历史回填脚本和脚本测试，不写 endpoint / worker / 小程序页面。依据：上次 commit `d28e327` 已由 `git log --oneline -1` 验证为 task-2 plan ship。
+
+## 1. 用户故事 + 起手必跑
+
+张三已经骑了一年，Sprint 10 上线当天点进训练日历，不应该只看到今天一条空线；脚本要像搬家前把旧账本录进新系统，把历史活动按北京时间一天一天算成训练负荷。
+
+```bash
+git log --oneline -1
+rg -n "class DailyTrainingLoad|__tablename__|UniqueConstraint|idx_dtl_user_date" app/training/models.py docs/plans/sprint-10-handoff.md
+rg -n "def calculate_daily_ctl|def calculate_daily_atl|def calculate_tsb|def classify_tsb_status|def format_status_label" app/training/training_load.py docs/plans/sprint-10-handoff.md
+nl -ba scripts/backfill_max_cadence_and_power_zones.py | sed -n '31,205p'
+nl -ba docs/prd/sprint-10-prd.md | sed -n '255,319p'
+```
+
+先实证 task-1 ORM 和 task-2 五函数都已落地；当前 handoff 里 task-1 字段合同在 `docs/plans/sprint-10-handoff.md:32-43`，task-2 五函数签名在 `docs/plans/sprint-10-handoff.md:132-137`，PRD 把 task-3 helper 写死为 `backfill_daily_training_load_for_user(db, user_id) -> int`（`docs/prd/sprint-10-prd.md:265-288`）。
+
+## 2. 文件改动清单
+
+- new `scripts/backfill_daily_training_load.py`：仿 `scripts/backfill_max_cadence_and_power_zones.py` 的 argparse / logging / SessionLocal 结构（`scripts/backfill_max_cadence_and_power_zones.py:33-47`, `scripts/backfill_max_cadence_and_power_zones.py:138-209`）。⚠ **旗标逻辑与模板相反**：模板默认写 DB / `--dry-run` 才安全；本脚本默认 dry-run / `--apply` 才写 DB（PRD §3.3 line 273）。**不要照抄模板的 `--dry-run` 旗标** / 用 `--apply` 模式防"默认跑就写 DB"安全事故。
+- new `tests/test_backfill_daily_training_load.py`：用测试 DB 造用户 + completed cycling 活动，证明 dry-run 不写、apply 写入、复跑更新不重复。
+- keep `app/training/training_load.py` unchanged：只 import task-2 五函数，不复制公式（`docs/plans/sprint-10-handoff.md:132-140`）。
+- keep `app/training/models.py` unchanged：只 import task-1 ORM，不在脚本里重新声明字段名（`docs/plans/sprint-10-handoff.md:32-43`）。
+- keep worker / router / miniprogram unchanged：这些分别是 task-4/5/6 范围（`docs/prd/sprint-10-prd.md:323-340`, `docs/prd/sprint-10-prd.md:409-456`, `docs/prd/sprint-10-prd.md:500-520`）。
+
+## 3. 核心决策
+
+脚本默认 dry-run，只有显式 `--apply` 才写 DB；支持 `--user-id X` 和 `--all-users`，不让“少打一个参数”变成生产写入。helper 只做一个用户的正序计算 + flush/upsert，返回写入行数；`main()` 负责 commit / rollback / sleep，task-6 的 scheduler 调用方也能决定外层事务。北京时间在脚本里独立声明 `_BJ_TZ = timezone(timedelta(hours=8))`，不跨模块 import 私有变量（`docs/prd/sprint-10-prd.md:595-599`）。活动输入只吃 completed cycling + `tss is not None`，因为 Activity 已有 `tss` / `started_at` / `activity_type` 字段（`app/activity/models.py:86-94`, `app/activity/models.py:100-108`）。**算法每日步骤明确调 task-2 五函数 / 不自己算公式**：`calculate_daily_ctl(last_ctl, tss_today)` + `calculate_daily_atl(last_atl, tss_today)` + `calculate_tsb(ctl, atl)` + `classify_tsb_status(tsb)`（共享逻辑红线 / 详 `docs/plans/sprint-10-handoff.md:132-137`）。节流 sleep 0.5s 来源 PRD §7.2 性能约束（10 用户 < 10 分钟 / 0.5s × 10 = 5 秒额外开销可接受）。
+
+## 4. 单测列表
+
+新增 7 个 pytest case：dry-run 返回 preview 且 DB count 不变；apply 单用户写入多日；复跑同一用户行数不增长（**PRD §3.8 验收 ③**）；无 completed cycling 活动返回 0；某日多个活动合并 tss；**首日 last_ctl=None 起步时第一天 ctl 接近 `tss_today * (1 - exp(-1/42))`**（不测函数被调次数 / 测 observable output / PRD §3.8 数学验收）；**`--all-users` 路径写入 2 fixture 用户都有 daily_training_load 行**（PRD §3.8 验收 ④）。验收命令：
+
+```bash
+python3 -m pytest tests/test_backfill_daily_training_load.py
+python3 -m scripts.backfill_daily_training_load --user-id 2
+python3 -m scripts.backfill_daily_training_load --apply --user-id 2
+python3 -m scripts.backfill_daily_training_load --apply --all-users
+```
+
+## 5. 5 字段 issue 草稿
+
+背景：Sprint 10 要让老用户上线第一天就看到 90 天 / 全年曲线，PRD 要 task-3 写一次性回填脚本，并把 helper 留给 task-6 scheduler 完工后复用（`docs/prd/sprint-10-prd.md:255-288`）。目标：新增 `scripts/backfill_daily_training_load.py` + `tests/test_backfill_daily_training_load.py`，默认 dry-run，`--apply` 才写表，helper 返回写入行数。验收命令 shell：`python3 -m pytest tests/test_backfill_daily_training_load.py && python3 -m scripts.backfill_daily_training_load --user-id 2`。不要碰：router/service/worker/miniprogram/PRD；不要改 task-1 ORM 字段和 task-2 函数签名。失败处理：若 task-1/2 实现文件不存在或签名不匹配，停下报 Tim；若单 task 卡 >30 min，段末标 `⚠ task-3 部分跑`。
+
+## 6. commit message 模板
+
+commit message：`feat(training): sprint10 task-3 daily load backfill`
+
+正文模板：`Add dry-run/apply backfill script for daily_training_load, with reusable per-user helper and tests. Reuse task-2 training load helpers and task-1 ORM; no endpoint, worker, or miniprogram changes.`
+
+## 7. 部署 SOP
+
+部署像把旧账本导入新库：先确认表已迁移，再 dry-run 看数字，再 apply。生产命令：
+
+```bash
+ssh ubuntu@114.132.190.245 "cd ~/velo && git pull origin main"
+ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build"
+ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T api python3 -m alembic upgrade head"
+ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T api python3 -m scripts.backfill_daily_training_load --user-id 2"
+# ⚠ dry-run 验收门：肉眼确认 CTL 范围合理（≥ 30 / ≤ 90 / PRD §3.8 验收 ①）+ 跨度天数 ≈ 295 条历史 / 14 个月 / 否则 STOP 报 Tim
+ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T api python3 -m scripts.backfill_daily_training_load --apply --user-id 2"
+```
+
+## 8. 下游接口约定
+
+task-4 只读 `daily_training_load`，不现场补算历史；task-6 import_scheduler 完工只调 `backfill_daily_training_load_for_user(db, user_id)` 做全量正序递推，不挂倒序单条 hook（`docs/prd/sprint-10-prd.md:508-520`, `docs/prd/sprint-10-prd.md:607`）。Sprint 12 仍读同一张表和 task-2 五函数，不在 coach-engine 复制算法。
+
+---
+
+# Sprint 10 Task-4 Codex Handoff
+> 范围：只给执行 spec subagent 的工程手册；新增训练负荷后端查询接口和测试，不改回填脚本 / worker / 小程序页面。
+
+## 1. 用户故事 + 起手必跑
+
+张三点开训练日历页，前端只发一次请求，就拿到 30 天曲线点和顶部状态卡；后端像服务台，把表里的每日记录整理成前端能直接画的清单。
+
+```bash
+git log --oneline -1
+rg -n "class DailyTrainingLoad|idx_dtl_user_date|status_band" app/training/models.py docs/plans/sprint-10-handoff.md
+rg -n "def format_status_label|def calculate_daily_ctl|def calculate_daily_atl|def calculate_tsb|def classify_tsb_status" app/training/training_load.py docs/plans/sprint-10-handoff.md
+nl -ba app/main.py | sed -n '1,65p'
+nl -ba docs/prd/sprint-10-prd.md | sed -n '323,405p'
+```
+
+接口必须挂进 `app/main.py`，否则用户点页面永远 404；现有路由都靠 import router + `app.include_router(...)` 进入大门（`app/main.py:14-22`, `app/main.py:41-54`）。鉴权模式对齐 `GET /api/user/stats`（`app/user/router.py:141-153`）。
+
+## 2. 文件改动清单
+
+- new `app/training/router.py`：`APIRouter(prefix="/api/training", tags=["training"])`，提供 `GET /load`。
+- new `app/training/schemas.py`：响应 schema。**summary 必含字段**：`current_ctl/current_atl/current_tsb/tss_today` round 1 位（float）/ `weekly_tss` int / `current_status_band: str`（4 枚举不 round）/ `current_status_label: str`（中文不 round）/ **`data_complete: bool`（必填 / 不可 Optional）**；Pydantic v2 validator 风格可参考 `app/admin/schemas.py:6` 和 `app/admin/schemas.py:144-170`。
+- new `app/training/service.py`：查 `DailyTrainingLoad`，补缺日，调用 `format_status_label()` 填 summary 中文标签。
+- modify `app/main.py`：加 `from app.training.router import router as training_router` + `app.include_router(training_router)`（`app/main.py:41-54`）。
+- new `tests/test_training_load_api.py`：覆盖 30d / 90d / 1y / 无数据 / 非法 range / status_label 中文。
+
+## 3. 核心决策
+
+本 task 不重新定义字段名，读写都以 task-1 ORM 为准；schema 只负责把返回给小程序的数字修成 1 位，service 负责查表和补缺日。`summary.current_status_label` 必须由 service 调 `format_status_label(summary.current_status_band)` 填，不放 schema 自动算、不让前端硬编码（`docs/prd/sprint-10-prd.md:364-365`, `docs/plans/sprint-10-handoff.md:177`）。**3 种数据状态分支**（PRD §4.3 + §4.7 完整边界）：① 完全无记录 → `points=[]` + 全 0 summary + `data_complete=false`；② **有记录但总天数 < 14 → 返实际 points（不补 0 到 window 长度）+ `data_complete=false`**（前端文案"再骑 N 天能看完整曲线"/ PRD §4.7 line 387）；③ ≥ 14 天 → 窗口内缺日补 0 点（tss_today=0 代入 `calculate_daily_ctl/atl` 走自然衰减递推 / 不是直接 ctl=0）+ `data_complete=true`。
+
+## 4. 单测列表
+
+新增 7 个 pytest case：30d 返回 30 个点；90d / 1y range 分别返回目标长度；无记录用户返回空 points + `data_complete=false`；非法 range 422；schema round 1 位；`current_status_label` 是中文；**mock 13 天历史 → 返 13 个点 + `data_complete=false`**（PRD §4.7 line 387 < 14 天分支必测）。验收命令：
+
+```bash
+python3 -m pytest tests/test_training_load_api.py
+python3 -c "from app.main import app; print(any('/api/training/load' in getattr(r, 'path', '') for r in app.routes))"
+python3 -c "from app.training.training_load import format_status_label; print(format_status_label('tired'))"
+```
+
+## 5. 5 字段 issue 草稿
+
+背景：task-5 训练日历页需要一次请求拿曲线和顶部状态卡；PRD 要 `app/training/{router,service,schemas}.py` + `app/main.py` 注册路由（`docs/prd/sprint-10-prd.md:323-341`）。目标：实现 `GET /api/training/load?range=30d|90d|1y`，只返当前登录用户数据，数字 1 位小数，summary 带中文状态。验收命令 shell：`python3 -m pytest tests/test_training_load_api.py && python3 -c "from app.main import app; print(app)"`。不要碰：backfill/worker/miniprogram/PRD；不要改 task-2 五函数。失败处理：若 task-1 ORM 或 task-2 `format_status_label` 缺失，停下报 Tim；若单 task 卡 >30 min，段末标 `⚠ task-4 部分跑`。
+
+## 6. commit message 模板
+
+commit message：`feat(training): sprint10 task-4 load endpoint`
+
+正文模板：`Add /api/training/load router, schemas, service, and app registration. Round API floats to one decimal and fill current_status_label through task-2 format_status_label.`
+
+## 7. 部署 SOP
+
+本 task 新增 API，大门和服务进程都要更新。生产命令：
+
+```bash
+ssh ubuntu@114.132.190.245 "cd ~/velo && git pull origin main"
+ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build"
+ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T api python3 -m pytest tests/test_training_load_api.py"
+ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T api python3 -c 'from app.main import app; print([r.path for r in app.routes if r.path.startswith(\"/api/training\")])'"
+```
+
+## 8. 下游接口约定
+
+task-5 只调 `GET /api/training/load?range=30d|90d|1y`，不自己拼多接口；task-6 只写表，不改 response schema。Sprint 12 coach-engine 读原始 `status_band`，小程序展示才用 `current_status_label`（`docs/prd/sprint-10-prd.md:365`）。
+
+---
+
+# Sprint 10 Task-5 Codex Handoff
+> 范围：只给执行 spec subagent 的工程手册；新增小程序训练日历页 + 我的页入口，不改后端接口 / worker / 回填脚本。
+
+## 1. 用户故事 + 起手必跑
+
+张三周末打开“我的”，看到“训练分析”，点进去马上看见状态卡和三条曲线；入口永远在，不因为他这周休息就消失，让严肃老用户不用猜产品把功能藏哪了。
+
+```bash
+git log --oneline -1
+nl -ba miniprogram/app.json | sed -n '1,20p'
+nl -ba miniprogram/pages/profile/profile.wxml | sed -n '104,122p'
+nl -ba miniprogram/pages/profile/profile.js | sed -n '147,156p;347,354p'
+rg -n "canvas|type=\"2d\"|setTimeout\\(function \\(\\)|createSelectorQuery|hidden=\\\"" miniprogram/pages miniprogram/components
+```
+
+PRD 已拍训练页四文件 + app.json 末尾注册（`docs/prd/sprint-10-prd.md:421-441`），入口常显是为了避开 `period=week` 误藏：profile 当前确实只取本周统计（`miniprogram/pages/profile/profile.js:147-156`），而入口位置可贴在“我的荣誉”下方（`miniprogram/pages/profile/profile.wxml:112-118`）。
+
+## 2. 文件改动清单
+
+- new `miniprogram/pages/training-calendar/training-calendar.wxml`：状态卡、时间窗 tab、canvas、空数据态。
+- new `miniprogram/pages/training-calendar/training-calendar.wxss`：4 档状态卡背景色 + canvas 稳定高度。
+- new `miniprogram/pages/training-calendar/training-calendar.js`：调 task-4 接口、切 30d/90d/1y、`setTimeout(fn, 100)` 后画 canvas。
+- new `miniprogram/pages/training-calendar/training-calendar.json`：页面标题。
+- modify `miniprogram/pages/profile/profile.wxml` + `.js`：加常显入口和 `onTapTrainingAnalysis()`。
+- modify `miniprogram/app.json`：把 `pages/training-calendar/training-calendar` 加到 pages 末尾，不能插第一项（`miniprogram/app.json:2-15`）。
+
+## 3. 核心决策
+
+canvas 节点用 `<canvas type="2d" id="pmc-chart">`，渲染前用 `setData(..., callback)` 再 `setTimeout(fn, 100)`，对齐现有功率曲线的低端机兜底（`miniprogram/components/power-curve-card/power-curve-card.js:201-205`, `miniprogram/components/power-curve-card/power-curve-card.js:234-252`）。三条线只画 task-4 返回的 `points`，状态卡只吃 `summary`；完全空数据不画假曲线。入口复用 `profile-action-card` 样式，不新增一套卡片体系（`miniprogram/pages/profile/profile.wxss:519-550`）。
+
+## 4. 单测 / 真机验收列表
+
+小程序本仓没有自动 UI 测试，本 task 用 grep + 真机验收。至少覆盖：app.json 页面不是第一项；入口常显且 navigateTo 地址正确；30d/90d/1y 请求路径正确；canvas 有 100ms 兜底；空数据态不画曲线。可跑命令：
+
+```bash
+python3 -m json.tool miniprogram/app.json >/tmp/velo-app-json-check.txt
+rg -n "pages/training-calendar/training-calendar|onTapTrainingAnalysis|/api/training/load|pmc-chart|setTimeout" miniprogram
+rg -n 'wx:if=|hidden=' miniprogram/pages/training-calendar/training-calendar.wxml   # 验证空数据态 wxml 控制（单引号包裹避免 shell 引号歧义）
+rg -n '状态饱满|状态 OK|建议中低|强烈建议休息' miniprogram/pages/training-calendar/training-calendar.js   # 验证 4 档文案硬编码（PRD §5.3 line 431-434）
+```
+
+## 5. 5 字段 issue 草稿
+
+背景：Sprint 10 的用户可见价值在训练日历页；PRD 要训练页四文件、我的页入口常显、app.json 追加到末尾、canvas 三曲线和顶部状态卡（`docs/prd/sprint-10-prd.md:409-456`）。目标：用户从“我的”进入训练分析，看到 30/90/全年训练负荷曲线；无数据用户看到空态，不看假曲线。验收命令 shell：`python3 -m json.tool miniprogram/app.json && rg -n "pages/training-calendar/training-calendar|onTapTrainingAnalysis|pmc-chart" miniprogram`。不要碰：后端 task-4 接口、worker、回填脚本；不要用 user_stats 判断是否显示入口。失败处理：若小程序开发者工具 canvas 初次渲染不稳定，先保留 setTimeout 100ms 兜底并报 Tim；若单 task 卡 >30 min，段末标 `⚠ task-5 部分跑`。
+
+## 6. commit message 模板
+
+commit message：`feat(miniprogram): sprint10 task-5 training calendar`
+
+正文模板：`Add training calendar page, permanent profile entry, app.json registration, and canvas rendering for CTL/ATL/TSB. Keep entry always visible and let page empty state handle no-data users.`
+
+## 7. 部署 SOP
+
+本 task 是小程序前端，先本地开发者工具真机看，再发版；后端必须先有 task-4 接口。检查命令：
+
+```bash
+python3 -m json.tool miniprogram/app.json >/tmp/velo-app-json-check.txt
+rg -n "pages/training-calendar/training-calendar" miniprogram/app.json
+rg -n "GET /api/training/load|/api/training/load|range" miniprogram/pages/training-calendar miniprogram/utils/api.js
+```
+
+真机回归按 PRD：你账号 30d 三线出来，90d / 1y 可切；无活动测试号入口仍显示，进去只看空态（`docs/prd/sprint-10-prd.md:479-485`）。
+
+## 8. 下游接口约定
+
+task-5 不重新解释训练负荷，只展示 task-4 response；顶部卡背景按 `summary.current_status_band` 四档，文案可前端短句硬编码，但 `current_status_label` 用后端给的中文。Sprint 12 如果要主动推教练总结，另走动态 tab 大卡，不挤本页入口（`docs/prd/sprint-10-prd.md:486-494`）。
+
+---
+
+# Sprint 10 Task-6 Codex Handoff
+> 范围：只给执行 spec subagent 的工程手册；新增增量写表 helper 和 2 条单活动 hook，Strava 历史批量导入只在 tier2 完工后调 task-3 helper。
+
+## 1. 用户故事 + 起手必跑
+
+张三今天上传一条 GPX 或 Strava 同步一条新骑行，活动处理完成时，当天训练负荷也顺手更新；他下次打开训练日历，今天的点已经在图上，不用等人手动跑回填。
+
+```bash
+git log --oneline -1
+nl -ba app/activity/worker.py | sed -n '260,371p'
+nl -ba app/strava/worker_strava.py | sed -n '230,370p'
+nl -ba app/strava/import_scheduler.py | sed -n '423,448p;590,607p'
+rg -n "backfill_daily_training_load_for_user|update_daily_load_for_activity|def calculate_daily_ctl|class DailyTrainingLoad" app scripts docs/plans/sprint-10-handoff.md
+```
+
+hook 位置必须在 caller `db.commit()` 前；GPX worker 现有 5 个 hook 都在 `activity.status='completed'` 后、`db.commit()` 前（`app/activity/worker.py:260-371`），Strava webhook worker 也是 `_strava_post_parse_hooks()` 后再 commit（`app/strava/worker_strava.py:262-266`）。import_scheduler tier2 当前是最新优先（`app/strava/import_scheduler.py:432-441`），所以不能逐条触发 CTL/ATL 正序递推。
+
+## 2. 文件改动清单
+
+- modify `app/training/service.py`：新增 `update_daily_load_for_activity(db, user, activity)`，内部独立声明 `_BJ_TZ`。
+- modify `app/activity/worker.py`：breakthrough hook 后、`db.commit()` 前加步骤 10.9，SAVEPOINT 包住 daily load helper。
+- modify `app/strava/worker_strava.py`：在 `_strava_post_parse_hooks()` 末尾加第 6 个 hook block，不在 caller 层另挂。
+- modify `app/strava/import_scheduler.py`：`activity is None` 完工分支（line 444-448 / 实证 `import_task.status = "completed"` → `logger.info` → `return`）。**backfill 必须插在现有 `return` 语句之前** / `import_task.status = "completed"` 设置之后 + `db.commit()` 之后 / try/except 兜底调 `backfill_daily_training_load_for_user(db, import_task.user_id)`。⚠ **不要加在 return 之后** / early-return 分支死代码永远跑不到。
+- modify / add tests：`tests/test_training_daily_load_hook.py`，必要时补 `tests/test_strava_import_scheduler.py`。
+- keep `app/strava/import_scheduler.py` single-activity path free of daily-load hook；只做完工 backfill（`docs/prd/sprint-10-prd.md:508-520`）。
+
+## 3. 核心决策
+
+单活动 helper 只调 task-2 前 4 个函数，不调 `format_status_label()`；展示中文是 task-4 的事（`docs/plans/sprint-10-handoff.md:177`）。helper 不 `commit()`，hook block 也不 `commit()`，只 `db.flush()`；caller 现有提交统一把 activity.status 和 daily_training_load 一起落库。SAVEPOINT 模式照抄 breakthrough 双层 try/except，失败只 `nested.rollback()`，不碰外层事务（`app/activity/worker.py:345-371`）。Strava tier2 完工调 task-3 helper 全量正序递推；backfill 失败只 log，不影响 import_task completed 状态（`docs/prd/sprint-10-prd.md:550-559`）。
+
+## 4. 单测列表
+
+新增 8 个 pytest case：GPX hook 成功写当天行；Strava webhook hook 成功写当天行；activity.tss 为 None 时只用同日其他活动求和；**activity.started_at 为 NULL（脏数据）→ helper 跳过 + log warn / 不影响主流程**（PRD §6.7 漏覆盖补）；已有当天行走更新；最近历史记录不限 7 天；helper 异常时 SAVEPOINT 不污染 activity commit；import_scheduler 完工调用 backfill helper 且不逐条 hook。验收命令：
+
+```bash
+python3 -m pytest tests/test_training_daily_load_hook.py
+python3 -m pytest tests/test_strava_import_scheduler.py
+python3 -c "from app.training.service import update_daily_load_for_activity; print(update_daily_load_for_activity)"
+```
+
+## 5. 5 字段 issue 草稿
+
+背景：task-3 只解决历史，task-6 要让新活动自动更新当天训练负荷；PRD 已拍 2 个 caller 加单条 hook，Strava 历史批量导入完工后走 backfill helper（`docs/prd/sprint-10-prd.md:500-589`）。目标：实现 `update_daily_load_for_activity(db, user, activity)` + GPX/Strava webhook hook + import_scheduler 完工 backfill。验收命令 shell：`python3 -m pytest tests/test_training_daily_load_hook.py tests/test_strava_import_scheduler.py`。不要碰：小程序页面、task-4 response schema、task-3 dry-run CLI 行为；不要在 helper 或 hook 里加内层 `db.commit()`。失败处理：若 SAVEPOINT 测试出现事务污染，先停下收窄到 GPX worker 一条路径；若单 task 卡 >30 min，段末标 `⚠ task-6 部分跑`。
+
+## 6. commit message 模板
+
+commit message：`feat(training): sprint10 task-6 daily load hooks`
+
+正文模板：`Add incremental daily_training_load update helper, GPX and Strava single-activity hooks, and tier2 completion backfill for Strava imports. Keep hooks inside caller transactions with SAVEPOINT isolation and no inner commit.`
+
+## 7. 部署 SOP
+
+本 task 同时影响 api / worker / scheduler，必须全量 build；scheduler 不 rebuild 就拿不到 import_scheduler 完工 backfill。生产命令：
+
+```bash
+# 本地先跑 pytest（生产容器跑 pytest 有 SQLite/PG dialect 问题 / 陷阱清单 #15）
+python3 -m pytest tests/test_training_daily_load_hook.py tests/test_strava_import_scheduler.py
+# 本地全过后才部署
+ssh ubuntu@114.132.190.245 "cd ~/velo && git pull origin main"
+ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build"   # 不指定 service / api+worker+scheduler 共享 build:.
+# 真用回归（PRD §7.4 回归 4 / 不只 COUNT(*) / 必须逐日 CTL/ATL/TSB 比对完整 backfill 结果）
+ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T db psql -U velo -d velo -c 'SELECT date, ctl, atl, tsb FROM daily_training_load WHERE user_id=2 ORDER BY date DESC LIMIT 30;'"
+# 若 webhook 新活动触发 hook：30 秒后再跑一次上面 SQL / 确认当日 tss_today 反映新活动
+```
+
+## 8. 下游接口约定
+
+task-5 用户看到的是 task-4 查询结果，task-6 只保证新活动把表更新好；不做删活动回退、不做 ftp 变更后重算、不做每天 0 点全用户 cron（`docs/prd/sprint-10-prd.md:584-587`）。Sprint 12 如果要用当天状态做教练总结，直接读 daily_training_load，不能再绕开 task-2 算法函数。
