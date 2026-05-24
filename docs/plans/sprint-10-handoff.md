@@ -98,3 +98,80 @@ ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exe
 - task-4：查 `DailyTrainingLoad`，按 `user_id + date range` 走 `idx_dtl_user_date`，返回 30/90/365 天曲线和 summary（`docs/prd/sprint-10-prd.md:323-340`, `docs/prd/sprint-10-prd.md:383-396`）。
 - task-6：单条活动 hook 更新当天行；helper 不 `commit()`，由 caller 统一提交；Strava tier2 不逐条 hook，完工后调 task-3 helper（`docs/prd/sprint-10-prd.md:515-548`, `docs/prd/sprint-10-prd.md:607`）。
 - Sprint 12：coach engine 读 `CTL/ATL/TSB/weekly_tss`，并复用 `app.training.training_load`，不重复实现公式（`docs/prd/sprint-10-prd.md:14`, `docs/superpowers/specs/2026-05-20-coach-engine-design.md:205`, `docs/superpowers/specs/2026-05-20-coach-engine-design.md:233-239`）。
+
+---
+
+# Sprint 10 Task-2 Codex Handoff
+> 范围：只给执行 spec subagent 的工程手册；只新增纯函数算法层和对应单测，不查 DB、不写 service/router/backfill/worker。依据：上次 commit `f37f976` 只把 task-1 plan 写进本文；本段继续追加 task-2，不改 PRD / 不写代码。
+
+## 1. 起手必跑
+
+执行者先像校准功率计一样把公式、边界和本仓库纯函数风格复测一遍；PRD 已把 task-2 定成 `app/training/training_load.py` 纯函数模块（`docs/prd/sprint-10-prd.md:191-207`），公式来自 Sprint 10 PRD + coach-engine 同步稿（`docs/prd/sprint-10-prd.md:208-218`, `docs/superpowers/specs/2026-05-20-coach-engine-design.md:149-157`）。
+
+```bash
+nl -ba docs/prd/sprint-10-prd.md | sed -n '191,249p;595,603p;646,656p'
+nl -ba docs/superpowers/specs/2026-05-20-coach-engine-design.md | sed -n '145,207p'
+nl -ba app/activity/power_zones.py | sed -n '1,180p'
+nl -ba app/activity/ftp_estimator.py | sed -n '1,140p'
+rg --files tests | rg "power|ftp|training|load|activity.py"
+test -f tests/test_power_zones.py && nl -ba tests/test_power_zones.py | sed -n '1,140p' || nl -ba tests/test_activity.py | sed -n '34,61p'
+nl -ba tests/test_power_curve.py | sed -n '1,120p'
+nl -ba tests/test_ftp_estimator.py | sed -n '69,140p'
+```
+
+现有参照点：`power_zones.py` 是纯计算、不碰 DB 的模块说明（`app/activity/power_zones.py:1-18`），`calculate_power_curve` 明确把 `power=0` 当合法值（`app/activity/power_zones.py:150-180`, `app/activity/power_zones.py:165-166`），FTP 估算器用 dataclass + 手算 fixture 验证数学输出（`app/activity/ftp_estimator.py:78-120`, `tests/test_ftp_estimator.py:69-106`），功率区间 fixture 目前在 `tests/test_activity.py` 而不是独立 `tests/test_power_zones.py`（`tests/test_activity.py:36-61`）。
+
+## 2. 文件改动清单
+
+新增 `app/training/training_load.py`，约 90-140 行：模块 docstring + 5 个纯函数 + 私有常量 / helper；新增 `tests/test_training_load.py`，约 120-180 行：纯单测、无 DB fixture；不动 `requirements.txt`、不动 `app/activity/*`、不动 `app/training/models.py/service.py/router.py`、不动 `scripts/backfill_daily_training_load.py`。边界来自 PRD：task-2 只写算法，task-3 才回填，task-4 才查表和 label 转换，task-6 才挂 worker hook（`docs/prd/sprint-10-prd.md:191-199`, `docs/prd/sprint-10-prd.md:265-288`, `docs/prd/sprint-10-prd.md:336-365`, `docs/prd/sprint-10-prd.md:515-548`）。
+
+## 3. 函数签名 + 算法决策
+
+5 个对外签名锁死，后续下游禁止改名；类型标注按 PRD 写 `float`，但运行时必须把 `None` 视为 0.0，因为 PRD 明确首日/无活动要容忍 None（`docs/prd/sprint-10-prd.md:230-238`）。
+
+```python
+def calculate_daily_ctl(last_ctl: float, tss_today: float) -> float: ...
+def calculate_daily_atl(last_atl: float, tss_today: float) -> float: ...
+def calculate_tsb(ctl: float, atl: float) -> float: ...
+def classify_tsb_status(tsb: float) -> str: ...
+def format_status_label(band: str) -> str: ...
+```
+
+CTL 用 `last_ctl * exp(-1 / 42) + tss_today * (1 - exp(-1 / 42))`，ATL 同式但 tau=7，TSB=`ctl - atl`（`docs/prd/sprint-10-prd.md:208-213`, `docs/superpowers/specs/2026-05-20-coach-engine-design.md:149-157`）。纯函数返 raw float，不在函数内 round；写表/接口调用方按字段合同 round 1 位，避免 backfill 365 天递推时双重 round 积累误差（`docs/prd/sprint-10-prd.md:230-233`, `docs/prd/sprint-10-prd.md:638-639`）。阈值边界按 PRD 闭区间落低档：`+10.0 -> ok`、`+10.1 -> fresh`、`-10.0 -> ok`、`-10.1 -> tired`、`-20.0 -> tired`、`-20.1 -> overreached`（`docs/prd/sprint-10-prd.md:214-218`, `docs/superpowers/specs/2026-05-20-coach-engine-design.md:172-181`）。`format_status_label` 只返短中文：fresh=`状态饱满` / ok=`状态 OK` / tired=`累` / overreached=`过累`（`docs/prd/sprint-10-prd.md:207`, `docs/prd/sprint-10-prd.md:245-249`）。
+
+## 4. 单测列表
+
+新增 9 个 pytest case：1) `calculate_daily_ctl(50, 80)` 约等于 50.71（PRD 手算实证，`docs/prd/sprint-10-prd.md:219-221`）；2) ATL 同公式用 tau=7 验证自然衰减；3) `last_ctl=0/tss_today=0` 返 0；4) `calculate_tsb(65.3, 78.1)` 返 raw float、不 round；5) 6 个 TSB 边界逐项断言（`+10.0/+10.1/-10.0/-10.1/-20.0/-20.1`）；6) `last_ctl=None` / `last_atl=None` 视为 0.0；7) `tss_today=None` 视为 0.0；8) 负 tss 抛 `ValueError`；9) 4 档中文 label + 模块独立 import。测试文件风格对齐现有纯函数测试：不碰 DB / 文件系统，用直接构造输入断言输出（`tests/test_power_curve.py:1-6`, `tests/test_power_curve.py:27-86`）。
+
+```bash
+python3 -m pytest tests/test_training_load.py
+python3 -c "import app.training.training_load"
+python3 -c "from app.training.training_load import calculate_daily_ctl; print(round(calculate_daily_ctl(50, 80), 2))"
+```
+
+## 5. 5 字段 issue 草稿
+
+背景：Sprint 10 task-2 是训练负荷地基算法层，给 task-3 历史回填、task-4 endpoint、task-6 worker hook 和 Sprint 12 coach-engine 共用；PRD 和 coach-engine 都要求公式只在 `app.training.training_load` 实现一次（`docs/prd/sprint-10-prd.md:28`, `docs/prd/sprint-10-prd.md:288`, `docs/superpowers/specs/2026-05-20-coach-engine-design.md:205`）。目标：新增 `app/training/training_load.py` + `tests/test_training_load.py`，实现 5 个签名、None/负数边界、4 档阈值和中文 label。验收命令 shell：`python3 -m pytest tests/test_training_load.py && python3 -c "import app.training.training_load"`。不要碰：PRD、requirements、DB、service/router/backfill/worker、`app/activity/*`。失败处理：若发现 PRD §2.3 的 round 口径和本 handoff 的 raw float 冲突无法过审，停下让 Tim/Claude 拍板，不在代码里临场改接口。
+
+## 6. commit message 模板
+
+commit message：`feat(training): sprint10 task-2 training load formulas`
+
+正文模板：`Add pure CTL/ATL/TSB/status helpers and unit tests for Sprint 10 task-2. Keep outputs raw floats; callers round at write/API boundaries. No DB, service, router, backfill, or worker changes.`
+
+## 7. 部署 SOP
+
+task-2 不动 endpoint / worker / schema，但新模块会被 task-3/4/6 和 Sprint 12 import；部署仍按完整 4 步走，像换了一块公共工具板，先 build 新镜像再让后续任务使用。`docker compose up -d --build` 不指定 service 是安全默认，task-1 handoff 已用同样全量 build + alembic 验证节奏（`docs/plans/sprint-10-handoff.md:81-90`）。
+
+```bash
+ssh ubuntu@114.132.190.245 "cd ~/velo && git pull origin main"
+ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build"
+ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T api python3 -c 'import app.training.training_load; print(\"training_load import ok\")'"
+ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T api python3 -m pytest tests/test_training_load.py"
+```
+
+容器 rebuild 评估：本 task 只加 Python 源码；`api` / `worker` / `cleanup` / `monitor` / `scheduler` / `curation-pool-cron` 都是 `build: .`，全量 build 会让这些同镜像服务拿到新模块（`docker-compose.yml:40-43`, `docker-compose.yml:65-69`, `docker-compose.yml:90-94`, `docker-compose.yml:128-145`, `docker-compose.yml:158-165`, `docker-compose.yml:176-181`）。没有 Alembic 迁移，不需要 `alembic upgrade head`，但若同批部署夹带 task-1 或其他 sprint 迁移，仍按生产 SOP 跑 upgrade（`docs/prd/sprint-10-prd.md:601-607`）。
+
+## 8. 下游接口约定
+
+task-3 backfill 只调 `calculate_daily_ctl` / `calculate_daily_atl` / `calculate_tsb` / `classify_tsb_status`，然后自己 upsert + round 写表（`docs/prd/sprint-10-prd.md:276-288`）。task-4 `app/training/service.py` 查表后调 `format_status_label(status_band)` 填 `summary.current_status_label`，不让前端硬编码（`docs/prd/sprint-10-prd.md:336-365`, `docs/prd/sprint-10-prd.md:391-397`）。task-6 hook helper 同样只调前 4 个算法函数，`format_status_label` 不进写表链路（`docs/prd/sprint-10-prd.md:542-548`）。Sprint 12 coach-engine `service.py` 必须 import 5 个全部，禁止在 `app/agent/coach/` 复制公式（`docs/superpowers/specs/2026-05-20-coach-engine-design.md:191-205`）。

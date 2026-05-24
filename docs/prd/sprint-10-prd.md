@@ -202,7 +202,7 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
 - 新文件 `app/training/training_load.py`（**Sprint 12 coach-engine §3.5 已同步更新为 import 本路径 / 单一真相源 / 不在 `app/agent/coach/` 重复实现一套公式**）：
   - `calculate_daily_ctl(last_ctl: float, tss_today: float) -> float` —— 指数加权 / 时间常数 42 天
   - `calculate_daily_atl(last_atl: float, tss_today: float) -> float` —— 指数加权 / 时间常数 7 天
-  - `calculate_tsb(ctl: float, atl: float) -> float` —— 简单减法 round 1 位
+  - `calculate_tsb(ctl: float, atl: float) -> float` —— 简单减法 / **返 raw float 不 round / 调用方按字段合同 round 1 位**（防 365 天递推双重 round 累积误差 / 跟 §2.6 line 233 一致 / 2026-05-25 Codex 异源审抓 PRD 内部矛盾修齐）
   - `classify_tsb_status(tsb: float) -> str` —— 返 4 档之一（fresh / ok / tired / overreached）
   - `format_status_label(band: str) -> str` —— 返中文文案（"状态饱满" / "状态 OK" / "累" / "过累"）
 - 公式参考 coach-engine §3.1（行业标准 / TrainingPeaks PMC / 不发明公式）：
