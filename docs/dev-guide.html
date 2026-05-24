@@ -330,6 +330,56 @@
   .workflow .step .step-body .if-hit { color: var(--red); font-weight: 600; }
   .workflow .step .step-body .if-pass { color: var(--green); font-weight: 600; }
 
+  /* ===== Tab 6 · 反馈环 ===== */
+  .loop-board { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 32px 28px; margin-bottom: 24px; }
+  .loop-chain { display: flex; flex-wrap: wrap; align-items: stretch; justify-content: center; gap: 8px; }
+  .loop-node { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px solid #f59e0b; border-radius: 10px; padding: 12px 14px; text-align: center; min-width: 110px; flex: 0 0 auto; }
+  .loop-node .ln-title { font-weight: 600; font-size: 14px; color: #92400e; }
+  .loop-node .ln-sub { font-size: 11.5px; color: var(--text-2); margin-top: 2px; }
+  .loop-node.n1 { background: linear-gradient(135deg, #fef3c7, #fde68a); border-color: #f59e0b; }
+  .loop-node.n2 { background: linear-gradient(135deg, #fed7aa, #fdba74); border-color: #ea580c; }
+  .loop-node.n3 { background: linear-gradient(135deg, #fecaca, #fca5a5); border-color: #dc2626; }
+  .loop-node.n4 { background: linear-gradient(135deg, #fbcfe8, #f9a8d4); border-color: #db2777; }
+  .loop-node.n5 { background: linear-gradient(135deg, #ddd6fe, #c4b5fd); border-color: #7c3aed; }
+  .loop-node.n6 { background: linear-gradient(135deg, #c7d2fe, #a5b4fc); border-color: #4f46e5; }
+  .loop-node.n7 { background: linear-gradient(135deg, #a5f3fc, #67e8f9); border-color: #0891b2; }
+  .loop-arrow { display: flex; align-items: center; color: var(--text-3); font-size: 18px; font-weight: 600; }
+  .loop-return { text-align: center; font-size: 14px; color: var(--accent); margin-top: 18px; font-weight: 600; }
+
+  .loop-weak-table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 20px 0; background: var(--card); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+  .loop-weak-table th { background: #f5f5f4; padding: 12px 16px; text-align: left; font-size: 12.5px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); }
+  .loop-weak-table td { padding: 14px 16px; font-size: 13.5px; vertical-align: top; border-bottom: 1px solid var(--border); line-height: 1.65; }
+  .loop-weak-table tr:last-child td { border-bottom: none; }
+  .loop-weak-table .lwt-node { font-weight: 600; color: var(--text); white-space: nowrap; }
+  .loop-weak-table .lwt-weak { color: #b91c1c; }
+  .loop-weak-table .lwt-evidence { color: var(--text-2); font-size: 12.5px; font-style: italic; }
+
+  /* ===== Tab 7 · 物理拓扑 ===== */
+  .topo-board { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 32px 28px; }
+  .topo-layer { display: flex; justify-content: center; margin: 8px 0; }
+  .topo-box { background: var(--card); border: 2px solid var(--border); border-radius: 10px; padding: 14px 18px; text-align: center; min-width: 140px; }
+  .topo-box.user { background: #eff6ff; border-color: var(--blue); }
+  .topo-box.server { background: #faf5ff; border-color: var(--purple); min-width: 280px; }
+  .topo-box .tb-title { font-weight: 600; font-size: 14px; }
+  .topo-box .tb-sub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+  .topo-connector { text-align: center; color: var(--text-3); font-size: 16px; margin: 4px 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .topo-containers { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; padding: 16px; background: #f5f5f4; border-radius: 10px; margin-top: 12px; }
+  .topo-container { background: white; border: 2px solid var(--green); border-radius: 8px; padding: 10px 12px; text-align: center; font-size: 12.5px; }
+  .topo-container.share-build { border-color: var(--purple); background: #faf5ff; }
+  .topo-container .tc-name { font-weight: 600; font-size: 13px; color: var(--text); }
+  .topo-container .tc-role { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+  .topo-container .tc-build-tag { display: inline-block; font-size: 9.5px; background: var(--purple); color: white; padding: 1px 5px; border-radius: 3px; margin-top: 4px; font-weight: 600; }
+
+  .topo-story { margin-top: 22px; padding: 18px 22px; background: linear-gradient(135deg, #ecfeff 0%, #f0f9ff 100%); border-left: 3px solid var(--accent); border-radius: 8px; font-size: 14px; line-height: 1.8; }
+  .topo-story strong { color: var(--accent); }
+
+  .deploy-sop { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin-top: 20px; }
+  .deploy-sop h4 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
+  .deploy-sop .sop-step { display: flex; gap: 12px; padding: 8px 0; align-items: flex-start; }
+  .deploy-sop .sop-num { width: 24px; height: 24px; background: var(--accent); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0; }
+  .deploy-sop .sop-body { font-size: 13.5px; line-height: 1.7; }
+  .deploy-sop .sop-body code { font-family: ui-monospace, "SF Mono", Menlo, monospace; background: #f5f5f4; padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+
   /* ===== Tab 5 · 协作机制 ===== */
   .role-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .role-card { background: var(--card); border: 2px solid var(--border); border-radius: 12px; padding: 24px; position: relative; }
@@ -420,8 +470,8 @@
     <button data-tab="sandbox">扩展沙盘</button>
     <button class="trigger" data-tab="trigger">⚠ 判断层 trigger 清单</button>
     <button data-tab="collab">协作机制</button>
-    <button disabled>反馈环</button>
-    <button disabled>物理拓扑</button>
+    <button data-tab="loop">反馈环</button>
+    <button data-tab="topo">物理拓扑</button>
   </nav>
 
   <!-- ========== Tab 1: 数据流 ========== -->
@@ -992,9 +1042,175 @@
     </div>
   </section>
 
+  <!-- ========== Tab 6: 反馈环 ========== -->
+  <section class="tab-section" id="tab-loop">
+    <h2>velo 反馈环 · 你产品的命门</h2>
+    <p class="h2-sub">7 个节点首尾相接 / 环上最脆弱的一节 = 你最该投入的地方</p>
+
+    <div class="loop-board">
+      <div class="loop-chain">
+        <div class="loop-node n1"><div class="ln-title">用户骑车</div><div class="ln-sub">动机起点</div></div>
+        <div class="loop-arrow">→</div>
+        <div class="loop-node n2"><div class="ln-title">上传 GPX</div><div class="ln-sub">or Strava 同步</div></div>
+        <div class="loop-arrow">→</div>
+        <div class="loop-node n3"><div class="ln-title">系统解析</div><div class="ln-sub">app/activity worker</div></div>
+        <div class="loop-arrow">→</div>
+        <div class="loop-node n4"><div class="ln-title">匹配赛段</div><div class="ln-sub">app/segment matcher</div></div>
+        <div class="loop-arrow">→</div>
+        <div class="loop-node n5"><div class="ln-title">更新排行榜</div><div class="ln-sub">postgres</div></div>
+        <div class="loop-arrow">→</div>
+        <div class="loop-node n6"><div class="ln-title">看到排名</div><div class="ln-sub">用户激励瞬间</div></div>
+        <div class="loop-arrow">→</div>
+        <div class="loop-node n7"><div class="ln-title">继续骑</div><div class="ln-sub">动机闭环</div></div>
+      </div>
+      <div class="loop-return">↺ 闭环回到"用户骑车"（n1）/ 这是 velo 自给自足系统的核心</div>
+    </div>
+
+    <h3 style="font-size: 18px; margin-top: 32px;">每节点的最脆弱点（拍 sprint 前对照看）</h3>
+    <table class="loop-weak-table">
+      <thead>
+        <tr><th style="width: 16%;">环节</th><th style="width: 44%;">当前最脆弱点</th><th style="width: 40%;">实证 / 历史教训</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="lwt-node">用户骑车</td><td class="lwt-weak">用户不知道为啥要骑 velo 而非别处（动机层）</td><td class="lwt-evidence">v5 Persona Engine 教训 · 装饰展示不改变行为</td></tr>
+        <tr><td class="lwt-node">上传 GPX</td><td class="lwt-weak">用户忘 / 没自动同步会大量数据丢失</td><td class="lwt-evidence">Sprint 7+8 Strava 同步链 · 130 行脏数据清</td></tr>
+        <tr><td class="lwt-node">系统解析</td><td class="lwt-weak">worker 崩 / activity 卡 processing</td><td class="lwt-evidence">v4 worker 重入 + 僵尸扫描已修</td></tr>
+        <tr><td class="lwt-node">匹配赛段</td><td class="lwt-weak">PostGIS 覆盖率算法精度 / DEM 物理上限</td><td class="lwt-evidence">v5 task-3.A.6 · max_gradient 6 次迭代砍掉</td></tr>
+        <tr><td class="lwt-node">更新排行榜</td><td class="lwt-weak">N+1 查询 / 大表查询慢</td><td class="lwt-evidence">tech-debt 持续记录 · 100 用户量级不致命</td></tr>
+        <tr><td class="lwt-node">看到排名</td><td class="lwt-weak">前端展示 / 实时性 / 通知触达</td><td class="lwt-evidence">Sprint 4 v2 polish · 6 次 hotfix 链</td></tr>
+        <tr><td class="lwt-node">继续骑</td><td class="lwt-weak">激励是否真激励（产品判断层）</td><td class="lwt-evidence">FTP 智能化（指导 ✓）vs Persona（装饰 ✗）</td></tr>
+      </tbody>
+    </table>
+
+    <div class="takeaway">
+      <h3>你拍 sprint 主轴前的 3 问（每次必跑）</h3>
+      <ol>
+        <li><strong>这功能在加固哪个环节 / 还是装饰它边上的展示层？</strong><span class="quote">环上 = 必做 · 边上 = 装饰 · Persona Engine 是装饰 / 砍 · FTP 智能化是环上 / 留</span></li>
+        <li><strong>当前最脆弱的环节是哪一节？</strong><span class="quote">用户骑了但 X 不到位 · X 就是你下一个 sprint 的主轴 · 不脆弱的环节别拍</span></li>
+        <li><strong>砍掉这功能 / 环上少一节吗？</strong><span class="quote">少 = 必做 · 不少 = 装饰 · 反向思维识别装饰最准</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ========== Tab 7: 物理拓扑 ========== -->
+  <section class="tab-section" id="tab-topo">
+    <h2>容器 / 数据库 / 服务器 物理关系</h2>
+    <p class="h2-sub">Postgres / Redis / Docker / 服务器 之间什么关系 · 部署 SOP 在哪一层跑</p>
+
+    <div class="topo-board">
+      <div class="topo-layer">
+        <div class="topo-box user">
+          <div class="tb-title">用户手机</div>
+          <div class="tb-sub">微信小程序</div>
+        </div>
+      </div>
+      <div class="topo-connector">↓ HTTPS</div>
+      <div class="topo-layer">
+        <div class="topo-box server">
+          <div class="tb-title">服务器 114.132.190.245</div>
+          <div class="tb-sub">Ubuntu · Docker 跑这上面</div>
+        </div>
+      </div>
+      <div class="topo-connector">↓ docker-compose 编排 11 容器</div>
+      <div class="topo-containers">
+        <div class="topo-container share-build">
+          <div class="tc-name">api</div>
+          <div class="tc-role">FastAPI · 用户请求都走这</div>
+          <div class="tc-build-tag">build:.</div>
+        </div>
+        <div class="topo-container share-build">
+          <div class="tc-name">worker</div>
+          <div class="tc-role">后台干活的<br>解析 / 同步</div>
+          <div class="tc-build-tag">build:.</div>
+        </div>
+        <div class="topo-container share-build">
+          <div class="tc-name">scheduler</div>
+          <div class="tc-role">定时器<br>每分钟问一次</div>
+          <div class="tc-build-tag">build:.</div>
+        </div>
+        <div class="topo-container share-build">
+          <div class="tc-name">cleanup</div>
+          <div class="tc-role">僵尸扫描<br>5 分钟一轮</div>
+          <div class="tc-build-tag">build:.</div>
+        </div>
+        <div class="topo-container share-build">
+          <div class="tc-name">monitor</div>
+          <div class="tc-role">健康探针<br>log-only</div>
+          <div class="tc-build-tag">build:.</div>
+        </div>
+        <div class="topo-container share-build">
+          <div class="tc-name">curation-pool-cron</div>
+          <div class="tc-role">候选池<br>每周一刷</div>
+          <div class="tc-build-tag">build:.</div>
+        </div>
+        <div class="topo-container">
+          <div class="tc-name">caddy</div>
+          <div class="tc-role">门口反代<br>HTTPS / SSL</div>
+        </div>
+        <div class="topo-container">
+          <div class="tc-name">postgres</div>
+          <div class="tc-role">主数据库<br>所有数据存这</div>
+        </div>
+        <div class="topo-container">
+          <div class="tc-name">redis</div>
+          <div class="tc-role">暂存站<br>缓存 + 任务队列</div>
+        </div>
+        <div class="topo-container">
+          <div class="tc-name">db-backup</div>
+          <div class="tc-role">自动备份<br>每日</div>
+        </div>
+        <div class="topo-container">
+          <div class="tc-name">admin-h5</div>
+          <div class="tc-role">管理后台<br>独立 image</div>
+        </div>
+      </div>
+
+      <div class="topo-story">
+        <strong>用一个用户故事讲完拓扑：</strong>
+        小明在小程序点"上传 GPX" → HTTPS 到服务器 → <strong>caddy</strong>（门口反代）转给 <strong>api 容器</strong>（前台接待）→
+        api 不亲自解析（费时间会卡）→ 把"解析这个文件"扔进 <strong>redis 队列</strong>（待办盒子）→
+        <strong>worker 容器</strong>盯着 redis → 看到活立刻干 → 干完写进 <strong>postgres</strong>（永久档案柜）→
+        小明下次刷新看到结果。
+        <br><br>
+        <strong>scheduler</strong> 是另一条腿——它每分钟自己问一遍"有没有 Strava 历史活动没拉完"，有的话也扔进 redis 队列让 worker 处理。
+        <br><br>
+        紫色"build:."标签 = 共享同一 Docker image / 改 app/*.py 时 <u>6 个容器都要 rebuild</u>（不止 api）/ 这是 2026-05-20 Persona task-4 翻车的根因。
+      </div>
+    </div>
+
+    <div class="deploy-sop">
+      <h4>部署 SOP · 4 步顺序不可乱（CLAUDE.md 实证）</h4>
+      <div class="sop-step">
+        <div class="sop-num">1</div>
+        <div class="sop-body">服务器 <code>git pull</code> 拉最新代码</div>
+      </div>
+      <div class="sop-step">
+        <div class="sop-num">2</div>
+        <div class="sop-body">rebuild 所有受影响容器（不是 restart）：<code>docker compose up -d --build</code><br>⚠ 不指定 service 让 docker 自动重启所有受影响 / 避免漏（2026-05-20 实证）</div>
+      </div>
+      <div class="sop-step">
+        <div class="sop-num">3</div>
+        <div class="sop-body">跑 <code>alembic upgrade head</code>（硬性 · 哪怕你这次没改 schema · 别人加的迁移要一起跑）</div>
+      </div>
+      <div class="sop-step">
+        <div class="sop-num">4</div>
+        <div class="sop-body">curl 真 endpoint 验证（不只看 <code>docker ps Up</code> · 2026-05-09 三次踩坑实证）</div>
+      </div>
+    </div>
+
+    <div class="takeaway">
+      <h3>这页帮你脑里浮现一张图</h3>
+      <ol>
+        <li><strong>用户请求路径</strong>：手机 → HTTPS → 服务器 → caddy → api → redis → worker → postgres → 返回用户</li>
+        <li><strong>共享 build 容器有 6 个</strong>：api / worker / scheduler / cleanup / monitor / curation-pool-cron · 改任一 app/*.py 都要 rebuild 全部</li>
+        <li><strong>独立容器有 5 个</strong>：caddy / postgres / redis / db-backup / admin-h5 · 不共享 build · 单独管理</li>
+      </ol>
+    </div>
+  </section>
+
   <footer>
-    v3 · 2026-05-24 · 新增 Tab 5 协作机制（§10.Y v2 + 4 通道 hook 可视化）· 所有事实 grep 实证 file:line<br>
-    实证来源：app/parsing/__init__.py · app/strava/worker_strava.py:33-35 · app/activity/worker.py:387 · app/activity/models.py:36-39,56 · app/strava/models.py:14,73 · scripts/user_prompt_mental_check.py · .codex/hooks.json
+    v4 · 2026-05-25 · 补完 Tab 6 反馈环（7 节点 + 脆弱点表）+ Tab 7 物理拓扑（11 容器 + 部署 SOP）· 7 tab 全启用<br>
+    实证来源：app/* 模块边界 · scripts/user_prompt_mental_check.py · .codex/hooks.json · CLAUDE.md 部署 SOP · 历史 sprint 踩坑（Persona / Strava 同步 / 部署翻车）
   </footer>
 </div>
 
