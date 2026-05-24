@@ -80,6 +80,15 @@ def test_preview_returns_rows_without_writing(db, test_user):
     assert db.query(DailyTrainingLoad).count() == 0
 
 
+def test_preview_uses_shared_half_up_rounding(db, test_user):
+    """历史回填也要按共享小数规则舍入，避免旧账本和实时写入显示不一致。"""
+    _insert_activity(db, test_user.id, day_offset=0, tss=65.25)
+
+    preview = preview_daily_training_load_for_user(db, test_user.id)
+
+    assert preview[0].tss_today == 65.3
+
+
 def test_backfill_user_writes_daily_rows(db, test_user):
     """apply 单用户会从最早骑行日写到今天。"""
     _insert_activity(db, test_user.id, day_offset=-1, tss=80.0)

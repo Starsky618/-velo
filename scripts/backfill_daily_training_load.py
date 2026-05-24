@@ -28,6 +28,7 @@ from app.training.training_load import (
     calculate_daily_ctl,
     calculate_tsb,
     classify_tsb_status,
+    round_1 as _round_1,
 )
 from app.training.service import _acquire_user_daily_load_lock
 from app.user.models import User  # noqa: F401 — standalone 脚本必须显式 import 外键表
@@ -68,11 +69,6 @@ def _to_bj_date(value: datetime) -> date:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(_BJ_TZ).date()
-
-
-def _round_1(value: float) -> float:
-    """统一写表精度：CTL/ATL/TSB/TSS 都保留 1 位。"""
-    return round(value, 1)
 
 
 def _get_start_date(db, user_id: int) -> date | None:
