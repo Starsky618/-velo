@@ -242,7 +242,7 @@ velo 工作流由两套大脑支撑：
 | `docs/data-flow-guide.md` | 9 条数据流动态链路 | 修跨模块 bug |
 | `docs/adr/README.md` | 10 份 ADR 总表 + 按场景索引 | 有人提议改决策时 |
 | `docs/adr/001-010-*.md` | 单条决策的完整论证 | 需要权威先例时 |
-| `docs/dev-guide.md` | Vibe Coding 开发者指南 | 颜颜 / CCF 上手 velo 时 |
+| `docs/dev-guide.html` | Tim 专属 mental model 速查（7 tab 可交互 / 浏览器打开）| Tim 自己用 / 架构 + 协作机制全景速查 |
 
 ### C. 运行规则（硬约束）
 
