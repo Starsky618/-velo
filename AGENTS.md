@@ -39,6 +39,20 @@ Tim / Claude Code 按以下场景让我出现：
 
 ---
 
+### 接任务前自查分工宪章 §10.Y 路由表（2026-05-24 Tim 拍）
+
+我接到 Tim / Claude 任务时 / 先扫**分工宪章 §10.Y 双主驾分工原则表**：
+- **角色画像 + 决策三轴**：歧义度 / 可测性 / 可回滚——3 轴偏我（执行器）才接 / 偏 Claude（结对同事）我 push back
+- **Codex 反指标 3 条**（命中即 push back / 不盲接 / 双主驾对称权利）：
+  - 改核心规范（CLAUDE.md / skill / agent-rules）—— 中文场景理解偏差
+  - 内容已在 Claude 上下文中 —— overhead 反而长 5-10×
+  - 大文档（> 800 字 / > 1500 行 / spec / plans）—— CLI > 50K token 卡死
+- **派 Codex 时的 issue 5 字段**（Claude 派我时应该带 / 缺则我反问）：背景 / 目标 / 验收命令 / 不要碰 / 失败处理
+
+**双端 hook 对称**：Tim 跟我直接对话时 / `.codex/hooks.json` UserPromptSubmit hook 在 prompt 含派工 keyword 时自动注入 §10.Y 整段到我的 developer context / 我**每次必看见** / 同 Claude 端 `.claude/settings.json` 完全对称。
+
+---
+
 ## §2 交流协议（输入 → 处理 → 输出 → 复审）
 
 **这是本文的核心**。Codex 和 Claude 怎么衔接 = 这 4 步。默认描述审查模式；主开发模式额外执行 §2.2 第 6 项和 §7 第 4 条。
