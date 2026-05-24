@@ -61,7 +61,9 @@
       <text class="empty-subtitle">我们需要至少 14 天数据，才能算出更稳定的健身度</text>
     </view>
 
-    <view class="canvas-wrap" wx:else>
+    <!-- 陷阱 #17 防御：canvas 永远在 DOM / 只用 hidden 切显隐 / 不用 wx:if/wx:else -->
+    <!-- 否则 dataComplete 翻 true 那一帧 canvas 2d node 未 ready / 90% 设备折线图不渲染 -->
+    <view class="canvas-wrap" hidden="{{loading || loadError || !dataComplete}}">
       <canvas type="2d" id="pmc-chart" class="pmc-chart"></canvas>
     </view>
   </view>

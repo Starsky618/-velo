@@ -7,6 +7,7 @@
 输入/输出数据流：输入是按北京时间自然日汇总后的 TSS 与上一日快照；输出给 daily_training_load 表、训练日历 API 和后续教练总结读取。
 """
 
+from decimal import Decimal, ROUND_HALF_UP
 from math import exp
 
 
@@ -54,19 +55,19 @@ def _calculate_exponential_load(
 
 
 def calculate_daily_ctl(
-    previous_ctl: float | int | None,
+    last_ctl: float | int | None,
     tss_today: float | int | None,
 ) -> float:
-    """计算今天 CTL：长期体能，42 天慢速响应。"""
-    return _calculate_exponential_load(previous_ctl, tss_today, CTL_TIME_CONSTANT_DAYS)
+    """计算今天 CTL：长期体能，42 天慢速响应。参数名 last_ctl 为 plan §8 + Sprint 12 coach-engine 锁定的下游合同签名，禁止改名。"""
+    return _calculate_exponential_load(last_ctl, tss_today, CTL_TIME_CONSTANT_DAYS)
 
 
 def calculate_daily_atl(
-    previous_atl: float | int | None,
+    last_atl: float | int | None,
     tss_today: float | int | None,
 ) -> float:
-    """计算今天 ATL：短期疲劳，7 天快速响应。"""
-    return _calculate_exponential_load(previous_atl, tss_today, ATL_TIME_CONSTANT_DAYS)
+    """计算今天 ATL：短期疲劳，7 天快速响应。参数名 last_atl 为下游合同签名，禁止改名。"""
+    return _calculate_exponential_load(last_atl, tss_today, ATL_TIME_CONSTANT_DAYS)
 
 
 def calculate_tsb(ctl: float | int | None, atl: float | int | None) -> float:
@@ -95,3 +96,16 @@ def format_status_label(status_band: str) -> str:
         return _STATUS_LABELS[status_band]
     except KeyError as exc:
         raise ValueError(f"unknown status_band: {status_band}") from exc
+
+
+def round_1(value: float) -> float:
+    """
+    全链路统一的 1 位小数四舍五入（ROUND_HALF_UP / 符合用户直觉）。
+
+    写表（service.py）和 API 序列化（schemas.py）必须共用这一个实现：
+    Python 内置 round() 是银行家舍入（round half to even），同一原始值在
+    DB 和接口会出现两种结果（如 65.25 → round()=65.2 / ROUND_HALF_UP=65.3）。
+    先 round(_, 10) 消浮点尾差，再 Decimal 量化到 0.1。
+    """
+    stable_value = round(float(value), 10)
+    return float(Decimal(str(stable_value)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))

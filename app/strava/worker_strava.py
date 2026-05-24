@@ -380,7 +380,7 @@ def _strava_post_parse_hooks(db, activity) -> None:
         try:
             user = db.query(User).filter_by(id=activity.user_id).first()
             if user is not None:
-                db.flush()
+                # 不在这里 flush：update_daily_load_for_activity 内部开头已 flush（防双重 flush）
                 update_daily_load_for_activity(db, user, activity)
             nested_dtl.commit()
         except Exception:

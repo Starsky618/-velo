@@ -30,6 +30,7 @@ from app.training.training_load import (
     calculate_tsb,
     classify_tsb_status,
     format_status_label,
+    round_1 as _round_1,
 )
 from app.user.models import User
 
@@ -59,11 +60,6 @@ def _to_bj_date(value: datetime) -> date:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(_BJ_TZ).date()
-
-
-def _round_1(value: float) -> float:
-    """统一写表精度：CTL / ATL / TSB / TSS 都保留 1 位。"""
-    return round(float(value), 1)
 
 
 def _zero_summary() -> TrainingLoadSummary:
@@ -154,14 +150,21 @@ def _acquire_user_daily_load_lock(db: Session, user_id: int) -> None:
     这像两个人同时改同一本账本前先拿钥匙：单活动 hook 和历史 backfill
     都排队进入，避免一个人刚写完今天，另一个人用旧预览把它覆盖掉。
     SQLite 测试库没有 advisory lock，直接跳过。
+
+    ⚠ 锁作用域：pg_advisory_xact_lock 是事务级锁。在 worker hook 的 SAVEPOINT
+    内获取后，nested.rollback() **不会**提前释放它——锁一直持有到外层 db.commit()。
+    这是预期行为（锁保护窗口覆盖整个外层事务），但 worker 并发扩容时同用户其他
+    活动会等到外层 commit 而非 nested.commit，未来排查串行延迟时注意这点。
+    namespace 用 hashtext('daily-training-load') 跟项目既有 advisory lock 惯例
+    （dedupe_service / service_create 都用 hashtext 自描述字符串）一致，防裸整数碰撞。
     """
     bind = db.get_bind()
     if bind.dialect.name != "postgresql":
         return
 
     db.execute(
-        text("SELECT pg_advisory_xact_lock(:namespace, :user_id)"),
-        {"namespace": 10, "user_id": int(user_id)},
+        text("SELECT pg_advisory_xact_lock(hashtext('daily-training-load'), :user_id)"),
+        {"user_id": int(user_id)},
     )
 
 

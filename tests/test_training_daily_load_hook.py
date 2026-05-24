@@ -227,10 +227,11 @@ def test_postgres_user_daily_load_lock_uses_transaction_advisory_lock():
 
     training_service._acquire_user_daily_load_lock(fake_db, 7)
 
+    # namespace 用 hashtext('daily-training-load') 跟项目既有 advisory lock 惯例一致（防裸整数碰撞）
     assert fake_db.calls == [
         (
-            "SELECT pg_advisory_xact_lock(:namespace, :user_id)",
-            {"namespace": 10, "user_id": 7},
+            "SELECT pg_advisory_xact_lock(hashtext('daily-training-load'), :user_id)",
+            {"user_id": 7},
         )
     ]
 
@@ -275,8 +276,8 @@ def test_strava_webhook_hook_rolls_back_daily_load_savepoint(db, test_user, monk
     assert db.get(Activity, activity.id).status == "completed"
 
 
-def test_strava_import_scheduler_completion_backfills_after_completed_commit(db, test_user, monkeypatch):
-    """tier2 没有 importing 活动时，先提交 completed，再跑全量 backfill。"""
+def test_strava_import_scheduler_completion_backfills_with_savepoint(db, test_user, monkeypatch):
+    """tier2 完工：status 设 completed 后用 SAVEPOINT 跑全量 backfill，不提前 db.commit（status+updated_at+backfill 由 caller 统一提交，防僵尸扫描器在回填期间误判）。"""
     from app.strava import import_scheduler
     import scripts.backfill_daily_training_load as backfill_module
 
@@ -301,11 +302,8 @@ def test_strava_import_scheduler_completion_backfills_after_completed_commit(db,
 
     import_scheduler._run_tier2(db, client=None, import_task=import_task, user=test_user)
 
-    assert calls == [
-        ("commit", "completed"),
-        ("backfill", test_user.id, "completed"),
-        ("commit", "completed"),
-    ]
+    # _run_tier2 完工分支不调 db.commit（SAVEPOINT release 不算 db.commit）/ status 已设 completed 才跑 backfill
+    assert calls == [("backfill", test_user.id, "completed")]
     assert import_task.status == "completed"
 
 
@@ -352,6 +350,7 @@ def test_strava_import_scheduler_backfills_only_after_tier2_completion():
     activity_block = text[text.index("# ---- 适配 + 写入 ----"):text.index("# ---- 赛段匹配")]
 
     assert "backfill_daily_training_load_for_user" in complete_block
-    assert complete_block.index('import_task.status = "completed"') < complete_block.index("db.commit()")
-    assert complete_block.index("db.commit()") < complete_block.index("backfill_daily_training_load_for_user")
+    # status 设 completed 在 backfill 之前 / backfill 用 SAVEPOINT 隔离 / 不提前 db.commit（caller 统一提交）
+    assert complete_block.index('import_task.status = "completed"') < complete_block.index("backfill_daily_training_load_for_user")
+    assert "db.begin_nested()" in complete_block
     assert "update_daily_load_for_activity" not in activity_block

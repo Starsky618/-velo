@@ -1,19 +1,15 @@
 """训练负荷 API 的请求/响应格式，像给小程序画图准备的一张固定菜单。"""
 
 from typing import Literal
-from decimal import Decimal, ROUND_HALF_UP
 
 from pydantic import BaseModel, ConfigDict, field_validator
+
+# 全链路统一的 1 位小数实现（写表 + API 序列化共用 / 防 DB 值与接口值舍入不一致）
+from app.training.training_load import round_1 as _round_1
 
 
 TrainingLoadRange = Literal["30d", "90d", "1y"]
 StatusBand = Literal["fresh", "ok", "tired", "overreached"]
-
-
-def _round_1(value: float) -> float:
-    """所有曲线数字统一保留 1 位，避免前端各页面各自四舍五入。"""
-    stable_value = round(float(value), 10)
-    return float(Decimal(str(stable_value)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
 class TrainingLoadPoint(BaseModel):
