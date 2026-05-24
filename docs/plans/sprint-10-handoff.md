@@ -205,7 +205,7 @@ nl -ba docs/prd/sprint-10-prd.md | sed -n '255,319p'
 
 ## 3. 核心决策
 
-脚本默认 dry-run，只有显式 `--apply` 才写 DB；支持 `--user-id X` 和 `--all-users`，不让“少打一个参数”变成生产写入。helper 只做一个用户的正序计算 + flush/upsert，返回写入行数；`main()` 负责 commit / rollback / sleep，task-6 的 scheduler 调用方也能决定外层事务。北京时间在脚本里独立声明 `_BJ_TZ = timezone(timedelta(hours=8))`，不跨模块 import 私有变量（`docs/prd/sprint-10-prd.md:595-599`）。活动输入只吃 completed cycling + `tss is not None`，因为 Activity 已有 `tss` / `started_at` / `activity_type` 字段（`app/activity/models.py:86-94`, `app/activity/models.py:100-108`）。**算法每日步骤明确调 task-2 五函数 / 不自己算公式**：`calculate_daily_ctl(last_ctl, tss_today)` + `calculate_daily_atl(last_atl, tss_today)` + `calculate_tsb(ctl, atl)` + `classify_tsb_status(tsb)`（共享逻辑红线 / 详 `docs/plans/sprint-10-handoff.md:132-137`）。节流 sleep 0.5s 来源 PRD §7.2 性能约束（10 用户 < 10 分钟 / 0.5s × 10 = 5 秒额外开销可接受）。
+脚本默认 dry-run，只有显式 `--apply` 才写 DB；支持 `--user-id X` 和 `--all-users`，不让“少打一个参数”变成生产写入。helper 只做一个用户的正序计算 + flush/upsert，返回写入行数；`main()` 负责 commit / rollback / sleep，task-6 的 scheduler 调用方也能决定外层事务。upsert 命中已有行时必须显式刷新 `updated_at=func.now()`，因为复跑回填和 task-6 增量更新都靠它证明“今天这页账本刚被重算过”。北京时间在脚本里独立声明 `_BJ_TZ = timezone(timedelta(hours=8))`，不跨模块 import 私有变量（`docs/prd/sprint-10-prd.md:595-599`）。活动起点从最早 completed cycling + `started_at is not None` 开始；每日 TSS 求和只吃 `tss is not None`，所以全是 GPX 无 TSS 的用户也会写出从首日到今天的 0 曲线，符合 PRD §3.7。**算法每日步骤明确调 task-2 五函数 / 不自己算公式**：`calculate_daily_ctl(last_ctl, tss_today)` + `calculate_daily_atl(last_atl, tss_today)` + `calculate_tsb(ctl, atl)` + `classify_tsb_status(tsb)`（共享逻辑红线 / 详 `docs/plans/sprint-10-handoff.md:132-137`）。节流 sleep 0.5s 来源 PRD §7.2 性能约束（10 用户 < 10 分钟 / 0.5s × 10 = 5 秒额外开销可接受）。
 
 ## 4. 单测列表
 
@@ -410,7 +410,7 @@ hook 位置必须在 caller `db.commit()` 前；GPX worker 现有 5 个 hook 都
 
 ## 3. 核心决策
 
-单活动 helper 只调 task-2 前 4 个函数，不调 `format_status_label()`；展示中文是 task-4 的事（`docs/plans/sprint-10-handoff.md:177`）。helper 不 `commit()`，hook block 也不 `commit()`，只 `db.flush()`；caller 现有提交统一把 activity.status 和 daily_training_load 一起落库。SAVEPOINT 模式照抄 breakthrough 双层 try/except，失败只 `nested.rollback()`，不碰外层事务（`app/activity/worker.py:345-371`）。Strava tier2 完工调 task-3 helper 全量正序递推；backfill 失败只 log，不影响 import_task completed 状态（`docs/prd/sprint-10-prd.md:550-559`）。
+单活动 helper 只调 task-2 前 4 个函数，不调 `format_status_label()`；展示中文是 task-4 的事（`docs/plans/sprint-10-handoff.md:177`）。helper 不 `commit()`，hook block 也不 `commit()`，只 `db.flush()`；caller 现有提交统一把 activity.status 和 daily_training_load 一起落库。upsert 命中当天已有行时必须显式刷新 `updated_at=func.now()`，覆盖“GPX 无 TSS 但今日账本被重算”的验收场景。SAVEPOINT 模式照抄 breakthrough 双层 try/except，失败只 `nested.rollback()`，不碰外层事务（`app/activity/worker.py:345-371`）。Strava tier2 完工调 task-3 helper 全量正序递推；backfill 失败只 log，不影响 import_task completed 状态（`docs/prd/sprint-10-prd.md:550-559`）。
 
 ## 4. 单测列表
 
@@ -441,7 +441,7 @@ commit message：`feat(training): sprint10 task-6 daily load hooks`
 python3 -m pytest tests/test_training_daily_load_hook.py tests/test_strava_import_scheduler.py
 # 本地全过后才部署
 ssh ubuntu@114.132.190.245 "cd ~/velo && git pull origin main"
-ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build"   # 不指定 service / api+worker+scheduler 共享 build:.
+ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build"   # 不指定 service / 所有 build:. 服务共享 image
 # 真用回归（PRD §7.4 回归 4 / 不只 COUNT(*) / 必须逐日 CTL/ATL/TSB 比对完整 backfill 结果）
 ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T db psql -U velo -d velo -c 'SELECT date, ctl, atl, tsb FROM daily_training_load WHERE user_id=2 ORDER BY date DESC LIMIT 30;'"
 # 若 webhook 新活动触发 hook：30 秒后再跑一次上面 SQL / 确认当日 tss_today 反映新活动

@@ -19,6 +19,7 @@ from app.segment.router import (
     user_effort_router,
 )
 from app.strava.router import router as strava_router
+from app.training.router import router as training_router
 from app.user.router import router as user_router
 
 # 创建 FastAPI 应用实例
@@ -46,6 +47,8 @@ app.include_router(segment_router)
 app.include_router(user_effort_router)
 app.include_router(activity_segment_router)
 app.include_router(admin_router)
+# 训练负荷模块——PMC 曲线（CTL/ATL/TSB）和训练日历顶部状态卡
+app.include_router(training_router)
 # Strava 集成模块——OAuth 授权、Webhook 回调、历史导入等
 app.include_router(strava_router)
 # 通知模块——PR/KOM 通知列表 + 用户荣誉表

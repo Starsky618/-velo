@@ -117,6 +117,14 @@
     <text class="action-arrow">›</text>
   </view>
 
+  <view class="profile-action-card" bindtap="onTapTrainingAnalysis">
+    <view class="action-main">
+      <text class="action-title">训练分析</text>
+      <text class="action-subtitle">看 30/90/全年训练负荷曲线</text>
+    </view>
+    <text class="action-arrow">›</text>
+  </view>
+
   <!-- 城市勋章墙 Tim 2026-05-16 真用拍砍（莫名其妙 / 后端 + endpoint 保留 / 仅前端隐藏）
        未来想恢复时取消注释 medals-section 即可 -->
 

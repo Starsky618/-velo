@@ -113,11 +113,11 @@
 
 **为什么不复用 persona_outputs**：persona_outputs 设计是"短文案台账"/ text_snapshot 存的是单句字符串。教练总结是 4 段卡片 + 数据快照 / 强行塞 JSON 是 schema 漂移。
 
-### 2.3 改动 3：训练负荷 / 天气都不存表 / 实时算 / 实时拉
+### 2.3 改动 3：训练负荷读 Sprint 10 日快照 / 天气实时拉
 
-- **训练负荷**：每次 worker 跑教练总结时 SQL 滑窗算 / 100 用户 × 6 周历史 = 毫秒级
+- **训练负荷**：读取 Sprint 10 的 `daily_training_load` 日快照 + 复用 `app.training.service` 的缺日补点逻辑；不能裸读最新表行，也不能在 Coach 模块重写 CTL/ATL/TSB 公式
 - **天气**：每次跑教练总结调和风 API / 一天 ~50 次 × 50000/月免费额度 / 充裕
-- 后续真慢了再加 `activity_load` 表 / 现在不做
+- `coach_outputs.load_snapshot` 只存生成时快照，方便排查当时 LLM 看到了什么；训练负荷权威数据仍在 `daily_training_load`
 
 ### 2.4 改动 4：新建 Alembic 迁移 `coach_engine_init.py`
 
@@ -202,7 +202,7 @@ TSB 阈值 4 档（2026-05-25 Tim 拍 / 跟 Sprint 10 模块 B 一致 / 详 `doc
 | `models.py` | CoachOutput ORM |
 | `MANIFEST.md` | 资产清单（参照 persona MANIFEST 写法）|
 
-> **跨 sprint 复用**：CTL/ATL/TSB/TSS 公式 + 4 档状态分类已在 **Sprint 10 模块 B ship 到 `app/training/training_load.py`**（纯函数 / 不查 DB / 详 `docs/prd/sprint-10-prd.md` §2）/ 本目录**不重复实现** / 本 sprint coach `service.py` 直接 `from app.training.training_load import calculate_daily_ctl, calculate_daily_atl, calculate_tsb, classify_tsb_status, format_status_label`。共享逻辑识别红线（CLAUDE.md spec 自审 #2）= 禁止两处实现同一套公式。
+> **跨 sprint 复用**：CTL/ATL/TSB/TSS 公式 + 4 档状态分类已在 **Sprint 10 模块 B ship 到 `app/training/training_load.py`**（纯函数 / 不查 DB / 详 `docs/prd/sprint-10-prd.md` §2）/ 缺日补点和当前状态摘要在 `app/training/service.py` / 本目录**不重复实现** / 本 sprint coach `service.py` 只调用 training 模块对外服务拿训练负荷快照。共享逻辑识别红线（CLAUDE.md spec 自审 #2）= 禁止两处实现同一套公式或绕过缺日补点逻辑。
 
 新建 `scripts/coach_morning_scheduler.py` —— 早上 6 点 cron 跑 / 给所有活跃用户生成当日 coach_outputs。
 

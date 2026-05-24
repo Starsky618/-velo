@@ -445,6 +445,19 @@ def _run_tier2(
         # 所有 importing 活动都处理完了
         import_task.status = "completed"
         logger.info("导入全部完成 import_id=%d", import_task.id)
+        db.commit()
+        try:
+            from scripts.backfill_daily_training_load import backfill_daily_training_load_for_user
+
+            backfill_daily_training_load_for_user(db, import_task.user_id)
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "导入完成后的 daily_training_load 回填失败 import_id=%d user_id=%d",
+                import_task.id,
+                import_task.user_id,
+            )
         return
 
     strava_id = activity.strava_activity_id

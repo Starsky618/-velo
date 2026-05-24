@@ -1,0 +1,175 @@
+page {
+  background: #F2F1F6;
+}
+
+.training-page {
+  min-height: 100vh;
+  padding: 24rpx;
+  box-sizing: border-box;
+}
+
+.status-card {
+  border-radius: 24rpx;
+  padding: 32rpx;
+  color: #ffffff;
+  margin-bottom: 24rpx;
+}
+
+.status-fresh {
+  background: #2EAD6B;
+}
+
+.status-ok {
+  background: #506070;
+}
+
+.status-tired {
+  background: #D8842F;
+}
+
+.status-overreached {
+  background: #C9574C;
+}
+
+.status-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-bottom: 28rpx;
+}
+
+.status-label {
+  font-size: 42rpx;
+  font-weight: 700;
+}
+
+.status-copy {
+  font-size: 24rpx;
+  opacity: 0.92;
+}
+
+.status-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12rpx;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.metric-value {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.metric-label {
+  font-size: 20rpx;
+  opacity: 0.82;
+}
+
+.range-tabs {
+  display: flex;
+  background: #ffffff;
+  border-radius: 18rpx;
+  padding: 8rpx;
+  margin-bottom: 24rpx;
+}
+
+.range-tab {
+  flex: 1;
+  text-align: center;
+  padding: 18rpx 0;
+  border-radius: 14rpx;
+  color: #6B7280;
+  font-size: 26rpx;
+}
+
+.range-tab.active {
+  background: #111827;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.chart-card {
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 28rpx;
+}
+
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.chart-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #111827;
+}
+
+.legend {
+  display: flex;
+  gap: 14rpx;
+}
+
+.legend-item {
+  font-size: 20rpx;
+  font-weight: 600;
+}
+
+.legend-item.ctl {
+  color: #2EAD6B;
+}
+
+.legend-item.atl {
+  color: #E6A23C;
+}
+
+.legend-item.tsb {
+  color: #2F80ED;
+}
+
+.canvas-wrap {
+  width: 100%;
+  height: 500rpx;
+}
+
+.pmc-chart {
+  width: 100%;
+  height: 500rpx;
+}
+
+.loading-state,
+.error-state,
+.empty-state {
+  min-height: 500rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #6B7280;
+}
+
+.empty-emoji {
+  font-size: 76rpx;
+  margin-bottom: 24rpx;
+}
+
+.empty-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 12rpx;
+}
+
+.empty-subtitle {
+  font-size: 24rpx;
+  color: #8A8F98;
+  line-height: 1.5;
+}

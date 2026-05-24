@@ -11,7 +11,8 @@
     "pages/user/user",
     "pages/segment/segment",
     "pages/segment-efforts/segment-efforts",
-    "pages/strava-auth/strava-auth"
+    "pages/strava-auth/strava-auth",
+    "pages/training-calendar/training-calendar"
   ],
   "window": {
     "navigationBarBackgroundColor": "#ffffff",

@@ -288,6 +288,7 @@ def _strava_post_parse_hooks(db, activity) -> None:
     3. _set_activity_city（activity.city / 起点城市）
     4. user.city 推断（仅 user.city 为 None 时）
     5. FTP Breakthrough 检测（Sprint 9 task-8 / settings 弹窗）
+    6. daily_training_load 增量更新（Sprint 10 task-6 / 训练日历账本）
     """
     # 1. detect_5min_power_progress
     try:
@@ -368,6 +369,27 @@ def _strava_post_parse_hooks(db, activity) -> None:
             nested_bt.rollback()
     except Exception:
         pass
+
+    # 6. daily_training_load 增量更新（Sprint 10 task-6）
+    # 与 GPX worker 同语义：activity 已 completed，但外层还没 commit；
+    # 这里用 SAVEPOINT 保证账本写失败不污染 Strava 活动主流程。
+    try:
+        from app.training.service import update_daily_load_for_activity
+
+        nested_dtl = db.begin_nested()
+        try:
+            user = db.query(User).filter_by(id=activity.user_id).first()
+            if user is not None:
+                db.flush()
+                update_daily_load_for_activity(db, user, activity)
+            nested_dtl.commit()
+        except Exception:
+            nested_dtl.rollback()
+    except Exception:
+        logger.exception(
+            "strava update_daily_load hook outer SAVEPOINT failed activity_id=%s",
+            activity.id,
+        )
 
 
 def _wipe_activity_derived_data(db, activity) -> None:

@@ -368,6 +368,26 @@ def _do_parse(db, activity_id: int) -> None:
                 activity.id,
             )
 
+    # ===== 步骤 10.9：增量更新每日训练负荷（Sprint 10 task-6）=====
+    # 这一步像给训练日历补当天账本：activity 已经 completed，但还没 commit，
+    # 所以 daily_training_load 和 activity.status 会在同一个外层事务里一起落库。
+    # SAVEPOINT 只保护这个 hook 自己，避免训练负荷写入失败把主活动卡在 processing。
+    if not is_duplicate:
+        try:
+            from app.training.service import update_daily_load_for_activity
+
+            nested_dtl = db.begin_nested()
+            try:
+                update_daily_load_for_activity(db, user, activity)
+                nested_dtl.commit()
+            except Exception:
+                nested_dtl.rollback()
+        except Exception:
+            logger.exception(
+                "update_daily_load hook outer SAVEPOINT failed activity_id=%s",
+                activity.id,
+            )
+
     db.commit()
 
     # ===== 步骤 11：触发 Segment 匹配 =====

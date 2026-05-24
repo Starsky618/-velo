@@ -28,6 +28,7 @@ from app.database import Base
 import app.user.models       # noqa: F401 — users 表
 import app.activity.models   # noqa: F401 — activities + trackpoints 表
 import app.segment.models    # noqa: F401 — segments + segment_efforts 表
+import app.training.models   # noqa: F401 — daily_training_load 表
 
 # Alembic 配置对象（读取 alembic.ini）
 config = context.config

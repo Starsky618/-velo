@@ -26,7 +26,7 @@
 
 - **后端 task-1**：DB 新表 `daily_training_load` + Alembic 迁移（down_revision = `sprint10_user_hr_profile`）+ ORM 模型 `app/training/models.py`（**task-3 backfill 脚本 import 依赖 / 不能拖到 task-4 才建**）
 - **后端 task-2**：训练负荷算法（纯函数 `app/training/training_load.py` / TSS·CTL·ATL·TSB·4 档状态分类 / **Sprint 12 coach-engine 直接 import 复用 / 不重复实现**）
-- **后端 task-3**：一次性历史回填脚本（你账号 295 条 + 全用户 / 按时间序滑窗递推 / 跳过 GPX 无 TSS 活动 / **抽 helper `backfill_daily_training_load_for_user(db, user_id)` 给 task-6 import_scheduler 完工后调**）
+- **后端 task-3**：一次性历史回填脚本（你账号 295 条 + 全用户 / 按时间序滑窗递推 / GPX 无 TSS 当天按 0 参与每日账本 / **抽 helper `backfill_daily_training_load_for_user(db, user_id)` 给 task-6 import_scheduler 完工后调**）
 - **后端 task-4**：`GET /api/training/load` endpoint（30 / 90 / 365 天三档 / 返曲线 + summary）
 - **前端 task-5**：训练日历页（`miniprogram/pages/training-calendar/` 新建 / canvas 三条曲线 + 顶部状态卡 + 空数据状态）+ "我的"页二级入口（profile.wxml 加"训练分析"二级入口 / 不挤 Sprint 12 的动态 tab 顶部大卡）
 - **后端 task-6**：worker 增量更新（worker.py + worker_strava.py 单条 hook 算当日 / **import_scheduler 路径不挂单条 hook**——tier2 完工时调一次 task-3 backfill helper 全量正序递推 / 防倒序处理 CTL/ATL 时序错乱 / 2026-05-25 Codex 异源审实证）
@@ -276,14 +276,14 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
 - 单用户算法（每用户独立 / 在 helper 内）：
   1. 拉该用户最早 completed cycling 活动 started_at → 北京时间归日 → 作为 start_date
   2. 从 start_date 走到今天 / 每天一个循环：
-     - 拉该日所有 completed cycling 活动 + tss 不为 NULL（自动跳过 GPX 无 TSS）
+     - 拉该日所有 completed cycling 活动 + tss 不为 NULL（只在 TSS 求和里跳过 GPX 无 TSS；当天账本仍按 0 写入）
      - 求和得 tss_today
      - 调 `calculate_daily_ctl(last_ctl, tss_today)` / `calculate_daily_atl(last_atl, tss_today)`
      - 算 TSB + 4 档分类
      - upsert 到 `daily_training_load`（按 UNIQUE(user_id, date) 冲突 → UPDATE）
      - **`db.flush()`**（让 SELECT SUM 同事务内可见 / 否则查不到本循环刚 upsert 的行 → weekly_tss 偏低）
      - 算 weekly_tss = round(SUM(tss_today)) WHERE date BETWEEN (当日-6) AND 当日 / 写回该日 daily_training_load 行
-  3. 单用户全部循环完毕后 `db.commit()` / 走到下一个用户
+  3. helper 只 `db.flush()` 不 `commit()`；脚本 main() 或 task-6 调用方决定外层 `commit()` / `rollback()`，避免 scheduler 复用时提前提交 import_task 状态
 - 节流：每用户处理完 sleep 0.5 秒 / 不会冲击 DB
 - **共享逻辑**：所有算法调 task-2 的 `training_load.py` 函数 / 不在 backfill 重复实现（防两套逻辑漂移）
 
@@ -300,7 +300,7 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
 
 ### 3.7 异常情况
 - 用户 0 条 cycling 活动 → 脚本 log "user_id=X 无历史活动 / skip" / 不写任何行
-- 用户全部活动都是 GPX 无 TSS → 脚本算出所有 daily 都 tss_today=0 + CTL/ATL 衰减到 ~0 / 写表但是 fresh 档（TSB=0）/ Sprint 11/12 评估是否在前端隐藏 PMC 入口
+- 用户全部活动都是 GPX 无 TSS → 脚本算出所有 daily 都 tss_today=0 + CTL/ATL 衰减到 ~0 / 写表但是 ok 档（TSB=0，落在 -10 到 +10）/ Sprint 11/12 评估是否在前端隐藏 PMC 入口
 - DB 错误 → 单用户事务回滚 / 不影响其他用户 / log + continue
 - 用户最早活动是 2024 年 / 跨度超 365 天 → 仍然算全部 / 不截断（CTL/ATL 指数加权 / 早期数据影响很小但留底）
 
@@ -340,7 +340,7 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
   - 在 `app/main.py` 加 `from app.training.router import router as training_router` + `app.include_router(training_router)`
   - 验收：curl 真 endpoint 返 200 / 不是 404
 - endpoint 设计方向：
-  - `GET /api/training/load?range=30d|90d|1y`（**待 Tim 拍**：是否分三个 endpoint / 推荐单 endpoint + query param）
+  - `GET /api/training/load?range=30d|90d|1y`（单 endpoint + query param，已作为 task-4 / task-5 合同）
   - 鉴权：JWT 必填 / 只返当前用户数据
   - 响应字段方向：
     ```
@@ -544,7 +544,7 @@ helper 内部逻辑（写在 `app/training/service.py`）：
   2. 拿该用户该日 daily_training_load 记录（如存在）+ 该用户**最近一条 date < bj_date 的记录**（拿 last_ctl/last_atl / **`ORDER BY date DESC LIMIT 1` / 不限 N 天范围** / 否则用户 2 周没骑车曲线会断崖回 0）
   3. 拿该用户该日**所有 completed cycling + tss 不 NULL** 的活动 → 求和 tss_today
   4. 调 `training_load.py` 算出新 ctl/atl/tsb/status_band
-  5. upsert 到 `daily_training_load`（UNIQUE 冲突 → UPDATE）
+  5. upsert 到 `daily_training_load`（UNIQUE 冲突 → UPDATE / 命中已有行时显式刷新 `updated_at=func.now()`）
   6. 更新 weekly_tss：`db.flush()` 后 SELECT SUM(tss_today) WHERE date BETWEEN (bj_date-6) AND bj_date → round() 整数 / 写回该日 daily_training_load.weekly_tss 列
 
 **批量导入策略**（v0.2 Codex 异源审修正 / 不再"每条都触发 hook"）：
@@ -555,7 +555,7 @@ helper 内部逻辑（写在 `app/training/service.py`）：
 
 **部署边界**（集成审 Important 1）：
 - 改的代码涉及 `app/activity/worker.py`（单条 hook）+ `app/strava/worker_strava.py`（单条 hook）+ `app/strava/import_scheduler.py`（tier2 完工调 backfill）+ 新 `app/training/service.py` + `scripts/backfill_daily_training_load.py`
-- api / worker / scheduler / cleanup / curation-pool-cron 5 个容器共享 `build: .` 同一 image / 改 import_scheduler.py 必 rebuild scheduler 容器
+- 所有 `build: .` 服务共享同一 image / 改 import_scheduler.py 必 rebuild scheduler 容器，避免手工列服务时漏掉同 image 的后台进程
 - **部署 SOP 必跑** `docker compose up -d --build`（不指定 service / 让 docker 自动 rebuild 所有受影响容器）/ **不能只 rebuild worker**（2026-05-20 Persona 漏 rebuild scheduler 实证）
 
 ### 6.4 用户流程
@@ -652,7 +652,7 @@ helper 内部逻辑（写在 `app/training/service.py`）：
   - 存每日快照表（防全年曲线每次重算）
   - 4 档状态阈值（fresh / ok / tired / overreached / TSB 边界 +10 -10 -20）
   - 一次性历史回填（你账号 295 条 / 部署后立刻看 90 天曲线）
-  - GPX 无 TSS 活动跳过（不引入 hrTSS / 等 Sprint 12 coach-engine 内部如需要再单评）
+  - GPX 无 TSS 活动不引入 hrTSS；每日 TSS 按 0 参与账本（等 Sprint 12 coach-engine 内部如需要再单评）
 - 算法公式：行业标准 / TrainingPeaks PMC 公开（CTL τ=42 / ATL τ=7）/ 不发明
 - 工程实证：Sprint 9 backfill_max_cadence_and_power_zones.py 脚本框架可复用 / SAVEPOINT 隔离 pattern 在 progress_detector / dedupe 已有先例 / **hook 挂在 caller `db.commit()` 之前 + SAVEPOINT 隔离** 仿 worker.py:351-369 breakthrough_detector hook 同 pattern（第二轮 spec+集成审 grep 实证 worker.py:261 注释明示"hook 落在 status='completed' 赋值后、db.commit 前"）
 - 第二轮双审收敛（2026-05-25 / Critical 5 + Important 8 + Nit 4 全修）：

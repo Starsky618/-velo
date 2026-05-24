@@ -1,0 +1,68 @@
+<!-- 训练日历页 —— CTL / ATL / TSB 三曲线 -->
+<view class="training-page">
+  <view class="status-card status-{{summary.current_status_band || 'ok'}}" wx:if="{{summary}}">
+    <view class="status-main">
+      <text class="status-label">{{summary.current_status_label}}</text>
+      <text class="status-copy">{{statusCopy}}</text>
+    </view>
+    <view class="status-metrics">
+      <view class="metric">
+        <text class="metric-value">{{summary.current_ctl}}</text>
+        <text class="metric-label">CTL</text>
+      </view>
+      <view class="metric">
+        <text class="metric-value">{{summary.current_atl}}</text>
+        <text class="metric-label">ATL</text>
+      </view>
+      <view class="metric">
+        <text class="metric-value">{{summary.current_tsb}}</text>
+        <text class="metric-label">TSB</text>
+      </view>
+      <view class="metric">
+        <text class="metric-value">{{summary.weekly_tss}}</text>
+        <text class="metric-label">本周 TSS</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="range-tabs">
+    <view
+      wx:for="{{ranges}}"
+      wx:key="value"
+      class="range-tab {{currentRange === item.value ? 'active' : ''}}"
+      data-range="{{item.value}}"
+      bindtap="onRangeTap"
+    >
+      <text>{{item.label}}</text>
+    </view>
+  </view>
+
+  <view class="chart-card">
+    <view class="chart-header">
+      <text class="chart-title">训练负荷曲线</text>
+      <view class="legend" wx:if="{{dataComplete}}">
+        <text class="legend-item ctl">CTL</text>
+        <text class="legend-item atl">ATL</text>
+        <text class="legend-item tsb">TSB</text>
+      </view>
+    </view>
+
+    <view class="loading-state" wx:if="{{loading}}">
+      <text>加载中...</text>
+    </view>
+
+    <view class="error-state" wx:elif="{{loadError}}">
+      <text class="empty-title">训练分析加载失败 / 请重试</text>
+    </view>
+
+    <view class="empty-state" wx:elif="{{!dataComplete}}">
+      <text class="empty-emoji">📈</text>
+      <text class="empty-title">再骑 {{daysToComplete}} 天能看到完整训练负荷曲线</text>
+      <text class="empty-subtitle">我们需要至少 14 天数据，才能算出更稳定的健身度</text>
+    </view>
+
+    <view class="canvas-wrap" wx:else>
+      <canvas type="2d" id="pmc-chart" class="pmc-chart"></canvas>
+    </view>
+  </view>
+</view>

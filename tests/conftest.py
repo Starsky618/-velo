@@ -284,9 +284,11 @@ def db():
     # Sprint 9 task-8：BreakthroughEvent ORM 字段都是 SQLite 兼容（Integer/String/DateTime）
     # 直接建表 / 让 ORM 测试能跑（不需要简化版 _breakthrough_events_table）
     from app.activity.models import BreakthroughEvent
+    from app.training.models import DailyTrainingLoad
     User.__table__.create(bind=_test_engine, checkfirst=True)
     _test_metadata.create_all(bind=_test_engine)
     BreakthroughEvent.__table__.create(bind=_test_engine, checkfirst=True)
+    DailyTrainingLoad.__table__.create(bind=_test_engine, checkfirst=True)
 
     session = _TestSession()
     try:
@@ -294,6 +296,7 @@ def db():
     finally:
         session.close()
         # 删表：测试结束后把所有表清掉，下次重建
+        DailyTrainingLoad.__table__.drop(bind=_test_engine, checkfirst=True)
         BreakthroughEvent.__table__.drop(bind=_test_engine, checkfirst=True)
         _test_metadata.drop_all(bind=_test_engine)
         User.__table__.drop(bind=_test_engine, checkfirst=True)
