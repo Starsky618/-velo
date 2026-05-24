@@ -420,7 +420,7 @@ Codex 比 Claude 便宜，但**不是免费**。
 | 紧急 hotfix | 速度优先 |
 | 改动低风险 + 双审已覆盖 | 比如加 docstring / rename |
 | 重复性任务（同类已扫过）| 第 1 条扫，剩下依样画 |
-| **大文档撰写**（spec / plans / > 800 字 / > 1500 行）⭐**硬禁止** | codex CLI 单 task 输入+输出 > 50K token 几乎必卡（已知 bug 链 #13738/#14048/#18723 + spec-v5 实证卡死 30+ 分钟）。**默认路径**：主 agent 自己写（chunk by chunk）→ 写完派 codex review-only |
+| **大文档撰写**（spec / plans / > 800 字 / > 1500 行）⭐ **通道决定**（2026-05-25 B 对照实验更新）| **Claude Code 插件 / MCP 通道（codex:codex-rescue / mcp__codex__codex）→ 硬禁止**：单 task 输入+输出 > 50K token 几乎必卡（#13738/#14048/#18723 + spec-v5 卡死 30+ 分钟）。<br/>**Codex Desktop 原生 app 通道 → 推荐**：2026-05-25 Sprint 10 task-1 plan 实验实证 Codex Desktop 100 行 / 30+ file:line 全真 / 抓 Claude 漏 2 Critical。<br/>**默认路径**：PRD/战略 → Claude 主写 / **plans/spec 实施细节 → Codex Desktop 原生写 + Claude 异源审** |
 
 **跳过了必须在 commit message 写理由**——留痕便于复盘。
 
@@ -728,7 +728,8 @@ Tim 可随时叫"现在 Codex 接手 / Claude 接手"——agent 不能反驳。
 | 任务类型 | 默认派谁 | 为啥 |
 |---|---|---|
 | 产品 brainstorm / 战略 / 中文 push back | Claude 主对话 | 中文 + brainstorming + superpowers 生态 |
-| 写长 spec / 战术 PRD / 文档 | Claude 主 agent 自做 | 默认禁派 codex 大文档（>50K token 卡死实证 / `feedback_main_agent_as_middle_manager` §2.1）|
+| 写长 spec / 战术 PRD / 战略文档 | Claude 主 agent 自做 | 中文 + brainstorming + 战略上下文 |
+| **写 plans / spec 实施细节 / 工程视角执行手册** | **Codex Desktop 原生写 + Claude 异源审**（2026-05-25 B 对照实验拍）| Codex 抓实施细节比 Claude 更准 / 详 §5 大文档通道行 + memory `feedback_main_agent_as_middle_manager` §2.1 通道 B |
 | 仿现有模式批量代码（如新模块复刻） | 派 Codex（异源） | 代码训练偏好 + 异源思考碰撞 |
 | 跨 3+ 模块 / 500+ 行实施 | 派 Codex | 复杂度 + 三审分工 |
 | 单文件 < 200 行实施 | Claude 主 agent 自做 | subagent overhead 不值 |
@@ -744,7 +745,7 @@ Tim 可随时叫"现在 Codex 接手 / Claude 接手"——agent 不能反驳。
 
 - 改核心规范（CLAUDE.md / skill / agent-rules）—— 中文场景理解偏差
 - 内容已在 Claude 上下文中 —— 重派 overhead 反而长 5-10×
-- 大文档（> 800 字 / > 1500 行 / spec / plans）—— Codex CLI > 50K token 卡死
+- 大文档（> 800 字 / > 1500 行 / spec / plans）通过 **Claude Code 插件 / MCP 通道**（codex:codex-rescue / mcp__codex__codex）—— Codex CLI > 50K token 卡死。**Codex Desktop 原生 app 不在此列**（2026-05-25 Sprint 10 task-1 plan B 对照实验实证：Codex Desktop 写 100 行 plans / 30+ file:line 全真 / 抓 Claude 漏 2 Critical / 详 memory `feedback_main_agent_as_middle_manager` §2.1 通道 B）—— 大文档 plans/spec 实施细节默认走 Codex Desktop 通道
 
 ---
 
