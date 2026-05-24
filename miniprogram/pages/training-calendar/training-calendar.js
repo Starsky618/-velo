@@ -28,6 +28,7 @@ Page({
     summary: null,
     points: [],
     dataComplete: false,
+    insufficientPower: false,
     statusCopy: '',
     daysToComplete: 14,
   },
@@ -60,12 +61,19 @@ Page({
         const summary = res && res.summary ? res.summary : null
         const points = res && Array.isArray(res.points) ? res.points : []
         const dataComplete = !!(summary && summary.data_complete && points.length > 0)
+        const insufficientPower = !!(summary && summary.insufficient_power_data)
         const statusBand = summary && summary.current_status_band ? summary.current_status_band : 'ok'
         const statusLabel = summary && summary.current_status_label ? summary.current_status_label : '状态 OK'
         const daysToComplete = Math.max(0, 14 - points.length)
-        const statusCopy = dataComplete
-          ? (STATUS_COPY[statusBand] || STATUS_COPY.ok)
-          : '再骑 ' + daysToComplete + ' 天能看到完整训练负荷曲线'
+        // 文案三态：有数据 → 状态短句 / 功率不足 → 提示功率 / 否则（<14天）→ 再骑 N 天
+        let statusCopy
+        if (dataComplete) {
+          statusCopy = STATUS_COPY[statusBand] || STATUS_COPY.ok
+        } else if (insufficientPower) {
+          statusCopy = '功率数据不足 / 需要更多有功率计的骑行记录'
+        } else {
+          statusCopy = '再骑 ' + daysToComplete + ' 天能看到完整训练负荷曲线'
+        }
         if (summary) summary.current_status_label = statusLabel
 
         that.setData({
@@ -73,6 +81,7 @@ Page({
           summary: summary,
           points: points,
           dataComplete: dataComplete,
+          insufficientPower: insufficientPower,
           statusCopy: statusCopy,
           daysToComplete: daysToComplete,
         }, function () {

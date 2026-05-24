@@ -52,8 +52,11 @@ def _seed_daily_loads(db, user_id: int, days: int):
         )
 
 
-def test_training_load_30d_returns_30_points(client, db, test_user, auth_header):
+def test_training_load_30d_returns_30_points(client, db, test_user, auth_header, monkeypatch):
     """用户打开 30 天 tab，一次请求拿到 30 个画图点和顶部状态卡。"""
+    # 本 test 专注曲线渲染逻辑 / 不测覆盖率门槛 / mock 覆盖率达标（门槛单独 test）
+    import app.training.service as training_service
+    monkeypatch.setattr(training_service, "_recent_tss_coverage", lambda *a, **k: 1.0)
     _seed_daily_loads(db, test_user.id, 30)
 
     resp = client.get("/api/training/load?range=30d", headers=auth_header)
@@ -101,6 +104,7 @@ def test_training_load_no_records_returns_empty_points(client, auth_header):
         "tss_today": 0.0,
         "weekly_tss": 0,
         "data_complete": False,
+        "insufficient_power_data": False,
     }
 
 
@@ -180,8 +184,10 @@ def test_training_load_13_days_history_is_incomplete(client, db, test_user, auth
     assert data["summary"]["data_complete"] is False
 
 
-def test_training_load_fills_missing_day_with_natural_decay(client, db, test_user, auth_header):
+def test_training_load_fills_missing_day_with_natural_decay(client, db, test_user, auth_header, monkeypatch):
     """历史足够时，窗口内缺日要补 0 TSS，并让 CTL/ATL 自然衰减。"""
+    import app.training.service as training_service
+    monkeypatch.setattr(training_service, "_recent_tss_coverage", lambda *a, **k: 1.0)
     _seed_daily_loads(db, test_user.id, 14)
     missing_date = _today_bj() - timedelta(days=1)
     db.query(DailyTrainingLoad).filter_by(user_id=test_user.id, date=missing_date).delete()
@@ -197,3 +203,31 @@ def test_training_load_fills_missing_day_with_natural_decay(client, db, test_use
     assert missing_point["ctl"] > 0.0
     assert missing_point["atl"] > 0.0
     assert missing_point["status_band"] in {"fresh", "ok", "tired", "overreached"}
+
+
+def test_training_load_insufficient_power_coverage_hides_curve(client, db, test_user, auth_header, monkeypatch):
+    """最近 42 天 TSS 覆盖率 < 50% 时不展示 PMC：data_complete=false + insufficient_power_data=true（防 CTL 失真误导）。"""
+    import app.training.service as training_service
+    monkeypatch.setattr(training_service, "_recent_tss_coverage", lambda *a, **k: 0.3)
+    _seed_daily_loads(db, test_user.id, 30)  # 历史够长（>14 天）/ 但功率覆盖率不足
+
+    resp = client.get("/api/training/load?range=30d", headers=auth_header)
+
+    data = resp.json()
+    assert resp.status_code == 200
+    assert data["summary"]["data_complete"] is False
+    assert data["summary"]["insufficient_power_data"] is True
+
+
+def test_training_load_sufficient_power_coverage_shows_curve(client, db, test_user, auth_header, monkeypatch):
+    """覆盖率 >= 50% + 历史够长 → 正常展示完整曲线。"""
+    import app.training.service as training_service
+    monkeypatch.setattr(training_service, "_recent_tss_coverage", lambda *a, **k: 0.8)
+    _seed_daily_loads(db, test_user.id, 30)
+
+    resp = client.get("/api/training/load?range=30d", headers=auth_header)
+
+    data = resp.json()
+    assert data["summary"]["data_complete"] is True
+    assert data["summary"]["insufficient_power_data"] is False
+    assert len(data["points"]) == 30

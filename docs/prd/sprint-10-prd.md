@@ -384,7 +384,8 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
 
 ### 4.7 异常情况
 - 用户无任何 daily_training_load 记录（新用户 / 还没跑过 task-3 也没 task-6 hook）→ 返 `points=[]` + `summary.data_complete=false` + `current_ctl=0` 等全 0
-- 用户有但 < 14 天 → 返实际有的 + `data_complete=false`（前端文案"再骑 N 天能看完整曲线"）
+- 用户有但 < 14 天 → 返实际有的 + `data_complete=false` + `insufficient_power_data=false`（前端文案"再骑 N 天能看完整曲线"）
+- **TSS 覆盖率门槛**（2026-05-25 Tim 拍 / dry-run 真用回归暴露：Tim 账号最近 30 天 16 活动仅 2 条有功率 → CTL 失真到 4.8 / TSB -116）：历史够长（≥14 天）但**最近 42 天 completed cycling 活动 TSS 覆盖率 < 50%** → `data_complete=false` + **`insufficient_power_data=true`** → 前端显示"功率数据不足 / 需要更多有功率计的骑行记录"（不画失真曲线 / 跟砍 max_gradient 同判断：数据达不到精度就别显示）。窗口对齐 CTL 时间常数 42 天 / 不随 range 变。覆盖率 = 有 tss 的 cycling 活动数 ÷ 总数（最近 42 天）
 - range 非法值（如 `range=7d`）→ 422 Validation Error
 - 鉴权失败 → 401
 
@@ -439,8 +440,9 @@ spec subagent 起手第一个 task / 没字段就什么都做不了 / 是后续�
      - y 轴：左 CTL/ATL 范围（0-100）/ 右 TSB 范围（-30 ~ +30）
      - 图例：右上角小字（CTL / ATL / TSB 三色）
      - **canvas 2d 用 `<canvas type="2d" id="pmc-chart"></canvas>` + setData callback `setTimeout(fn, 100)` 兜底**（防 wx.nextTick race / memory `feedback_wechat_miniprogram_hard_limits.md` 类陷阱）
-  4. **空数据态**（`summary.data_complete=false`）：
-     - 状态卡部分文案改"再骑 N 天能看到完整训练负荷曲线 / 我们需要至少 14 天数据才能算出健身度"
+  4. **空数据态**（`summary.data_complete=false`）/ 按 `insufficient_power_data` 文案分流：
+     - `insufficient_power_data=true`（最近 42 天功率覆盖率 < 50%）→ ⚡"功率数据不足 / 训练负荷曲线需要更多有功率计的骑行记录"
+     - `insufficient_power_data=false`（< 14 天历史）→ 📈"再骑 N 天能看到完整训练负荷曲线 / 我们需要至少 14 天数据才能算出健身度"
      - 曲线图区不画 / 显示一张占位插图（不显示假数据曲线 / 防误导）
 - wx:if 严格控制：summary 缺失 → 整页空数据态 / 不显示 "-" 占位符（memory `feedback_no_dash_placeholder.md`）
 

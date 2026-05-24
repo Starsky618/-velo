@@ -55,6 +55,12 @@
       <text class="empty-title">训练分析加载失败 / 请重试</text>
     </view>
 
+    <view class="empty-state" wx:elif="{{insufficientPower}}">
+      <text class="empty-emoji">⚡</text>
+      <text class="empty-title">功率数据不足</text>
+      <text class="empty-subtitle">训练负荷曲线需要更多有功率计的骑行记录（最近的骑行大多没有功率数据）</text>
+    </view>
+
     <view class="empty-state" wx:elif="{{!dataComplete}}">
       <text class="empty-emoji">📈</text>
       <text class="empty-title">再骑 {{daysToComplete}} 天能看到完整训练负荷曲线</text>

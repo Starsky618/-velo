@@ -43,6 +43,10 @@ _RANGE_DAYS: dict[TrainingLoadRange, int] = {
     "1y": 365,
 }
 _MIN_COMPLETE_DAYS = 14
+# TSS 覆盖率门槛：最近 42 天（CTL 窗口）completed cycling 活动有功率算出 TSS 的占比
+# < 50% → 不展示 PMC（功率数据不足 / 防 CTL 失真误导用户 / 2026-05-25 Tim 拍 dry-run 暴露）
+_COVERAGE_WINDOW_DAYS = 42
+_MIN_TSS_COVERAGE = 0.5
 
 
 def _today_bj() -> date:
@@ -73,7 +77,38 @@ def _zero_summary() -> TrainingLoadSummary:
         tss_today=0.0,
         weekly_tss=0,
         data_complete=False,
+        insufficient_power_data=False,
     )
+
+
+def _recent_tss_coverage(db: Session, user_id: int) -> float:
+    """
+    最近 42 天 completed cycling 活动的 TSS 覆盖率（有功率算出 TSS 的占比）。
+
+    为什么要这道门槛：CTL 是 42 天滑窗，最近活动大量无功率（无 TSS）时
+    CTL 会失真偏低（如严肃骑手真实 CTL 50+ 但因最近多无功率骑行被算成 5）。
+    覆盖率 < 50% 时不展示 PMC，避免误导用户（跟砍 max_gradient 同一判断：
+    数据达不到精度就别显示）。窗口对齐 CTL 时间常数 42 天，不随 API range 变。
+    无活动返 0.0（让 < 14 天历史那条逻辑接管）。
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=_COVERAGE_WINDOW_DAYS)
+    row = (
+        db.query(
+            func.count(Activity.id).label("total"),
+            func.count(Activity.tss).label("has_tss"),
+        )
+        .filter(
+            Activity.user_id == user_id,
+            Activity.status == "completed",
+            Activity.activity_type == "cycling",
+            Activity.started_at >= cutoff,
+        )
+        .first()
+    )
+    total = int(row.total or 0) if row is not None else 0
+    if total == 0:
+        return 0.0
+    return int(row.has_tss or 0) / total
 
 
 def _row_to_point(row: DailyTrainingLoad) -> TrainingLoadPoint:
@@ -88,7 +123,12 @@ def _row_to_point(row: DailyTrainingLoad) -> TrainingLoadPoint:
     )
 
 
-def _make_summary(point: TrainingLoadPoint, weekly_tss: int, data_complete: bool) -> TrainingLoadSummary:
+def _make_summary(
+    point: TrainingLoadPoint,
+    weekly_tss: int,
+    data_complete: bool,
+    insufficient_power_data: bool = False,
+) -> TrainingLoadSummary:
     """用最后一个曲线点生成顶部状态卡。"""
     return TrainingLoadSummary(
         current_ctl=point.ctl,
@@ -99,6 +139,7 @@ def _make_summary(point: TrainingLoadPoint, weekly_tss: int, data_complete: bool
         tss_today=point.tss_today,
         weekly_tss=weekly_tss,
         data_complete=data_complete,
+        insufficient_power_data=insufficient_power_data,
     )
 
 
@@ -380,7 +421,10 @@ def get_training_load_response(
         )
 
     history_days = (stats.last_date - stats.first_date).days + 1
-    data_complete = history_days >= _MIN_COMPLETE_DAYS
+    has_history = history_days >= _MIN_COMPLETE_DAYS
+    # 覆盖率门槛：历史够长但最近 42 天功率数据不足 → 不展示（防 CTL 失真误导）
+    insufficient_power_data = has_history and _recent_tss_coverage(db, user_id) < _MIN_TSS_COVERAGE
+    data_complete = has_history and not insufficient_power_data
     window_rows = (
         db.query(DailyTrainingLoad)
         .filter(
@@ -397,7 +441,12 @@ def get_training_load_response(
         if not actual_points:
             return TrainingLoadResponse(range=load_range, points=[], summary=_zero_summary())
         latest_row = window_rows[-1]
-        summary = _make_summary(actual_points[-1], latest_row.weekly_tss, data_complete=False)
+        summary = _make_summary(
+            actual_points[-1],
+            latest_row.weekly_tss,
+            data_complete=False,
+            insufficient_power_data=insufficient_power_data,
+        )
         return TrainingLoadResponse(range=load_range, points=actual_points, summary=summary)
 
     seed = _query_latest_before(db, user_id, start_day)

@@ -43,6 +43,9 @@ class TrainingLoadSummary(BaseModel):
     tss_today: float
     weekly_tss: int
     data_complete: bool
+    # 区分 data_complete=false 的两种原因：< 14 天历史（再骑几天）vs 功率数据不足（最近 42 天 TSS 覆盖率 < 50%）
+    # 前端按此分流文案：功率不足时显示"需要更多有功率计的骑行" / 而非"再骑 N 天"
+    insufficient_power_data: bool = False
 
     @field_validator("current_ctl", "current_atl", "current_tsb", "tss_today")
     @classmethod
