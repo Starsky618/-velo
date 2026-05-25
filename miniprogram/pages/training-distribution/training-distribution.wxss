@@ -322,3 +322,28 @@ page {
   font-size: 22rpx;
   color: #5C6470;
 }
+
+/* 训练分布圆饼图：conic-gradient 实心圆 + 中间白圆盖出环形（donut）。
+   小程序 view 不支持 ::after 伪元素，所以用一个内圈 view 当"挖空"。
+   背景的 conic-gradient 由 js 按三组真实占比动态算好，经 inline style 注入。 */
+.donut-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 28rpx;
+}
+
+.donut {
+  width: 240rpx;
+  height: 240rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.donut-hole {
+  width: 132rpx;
+  height: 132rpx;
+  border-radius: 50%;
+  background: #ffffff;
+}

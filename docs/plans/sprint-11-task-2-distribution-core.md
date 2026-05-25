@@ -134,7 +134,7 @@ GROUPS = [
 5. `mixed`：其他。
 
 数据不足：
-- `activity_count < 3` 或 `total_power_seconds < 10800`，返回 `data_complete=False`。
+- `activity_count < 2` 或 `total_power_seconds < 10800`，返回 `data_complete=False`。（门槛 3→2 / Tim 2026-05-25 拍）
 - 本接口 `insufficient_power_data == (not data_complete)`。
 - 不足时 `current_type=None`，`actions=[]`，`week_plan=[]`。
 
@@ -154,7 +154,7 @@ GROUPS = [
 8. `test_classifies_polarized`
 9. `test_classifies_pyramidal`
 10. `test_classifies_mixed`
-11. `test_data_incomplete_when_activity_count_less_than_three`
+11. `test_data_incomplete_when_activity_count_below_two`
 12. `test_data_incomplete_when_total_power_under_three_hours`
 13. `test_payload_does_not_include_min_w_or_max_w`
 14. `test_week_plan_has_seven_structured_items_for_complete_data`

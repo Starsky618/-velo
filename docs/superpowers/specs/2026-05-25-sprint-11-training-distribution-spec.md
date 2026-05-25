@@ -200,7 +200,7 @@ def build_training_distribution_payload(stats: dict) -> dict:
 5. `mixed`：其他情况。
 
 数据不足：
-- `activity_count < 3`，或 `total_power_seconds < 10800`，返回 `data_complete=false`。
+- `activity_count < 2`，或 `total_power_seconds < 10800`，返回 `data_complete=false`。（门槛 3→2：Tim 2026-05-25 拍 / 真实最近 6 周仅 2 次有功率骑行；3 小时时间门槛仍兜底样本量，单次不判训练结构）
 - 不足时只解释“功率数据还不够”，不冒充教练给建议。
 - 数据不足时也必须返回完整响应字段，避免前端猜默认值：
   - `current_type = None`
@@ -209,7 +209,7 @@ def build_training_distribution_payload(stats: dict) -> dict:
   - `target_label = "先补记录"`
   - `target_description = "先多记录几次有功率计的骑行，再让 velo 判断训练时间怎么分布。"`
   - `headline = "功率数据还不够，先别急着判断训练结构。"`
-  - `explanation = "最近 6 周至少需要 3 条有功率区间的骑行，且总有功率时间达到 3 小时。"`
+  - `explanation = "最近 6 周至少需要 2 条有功率区间的骑行，且总有功率时间达到 3 小时。"`
   - `actions = []`
   - `week_plan = []`
 

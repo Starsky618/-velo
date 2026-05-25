@@ -183,7 +183,8 @@ def test_z1_only_complete_data_falls_back_to_mixed():
     assert len(payload["week_plan"]) == 7
 
 
-def test_data_incomplete_when_activity_count_less_than_three():
+def test_data_incomplete_when_activity_count_below_two():
+    # 门槛 3→2 后：1 条仍不足（1 < 2）；2 条达标见 test_two_activities_with_enough_seconds_is_complete
     distribution = _module()
     stats = distribution.aggregate_power_zones([_zones(z2=4000)])
 
@@ -254,3 +255,26 @@ def test_empty_or_all_zero_input_returns_incomplete_payload():
     assert zero_payload["data_complete"] is False
     assert empty_payload["total_power_seconds"] == 0
     assert zero_payload["total_power_seconds"] == 0
+
+
+def test_two_activities_with_enough_seconds_is_complete():
+    # 门槛从 3 降到 2（Tim 真实最近 6 周只骑 2 次有功率）：2 条 + 总时长达标即判定，不再卡 3 条
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z2=4400, z3=2000)] * 2)
+    payload = distribution.build_training_distribution_payload(stats)
+
+    assert payload["activity_count"] == 2
+    assert payload["data_complete"] is True
+    assert payload["current_type"] is not None
+
+
+def test_sweet_spot_explanation_embeds_dynamic_tempo_percent():
+    # 动态百分比：sweet_spot 解释里嵌入真实中强度占比（demo 那种"你有 47% 卡在中间"，比"较多时间"更戳人）
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900)] * 3)
+    payload = distribution.build_training_distribution_payload(stats)
+
+    assert payload["current_type"] == "sweet_spot"
+    tempo_pct = next(g["percent"] for g in payload["groups"] if g["key"] == "tempo_threshold")
+    assert f"{tempo_pct}%" in payload["explanation"]
+    assert "{tempo}" not in payload["explanation"]  # 占位符必须被真实数字替换

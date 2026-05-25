@@ -96,7 +96,7 @@
 - `exclude_zero=true` 时，受影响字段：`raw_zones[].seconds/percent`（仅 Z1 的 seconds 变 + 全体 percent 因分母变而变）、`total_power_seconds`、`total_power_hours`。
 - **不受影响字段**：`groups`、`current_type`、`current_label/description`、`headline`、`explanation`、`actions`、`week_plan`、`activity_count`、`data_complete`、`insufficient_power_data`。
 
-> 注意：`data_complete` 的门槛（activity_count≥3 且 total_power_seconds≥10800）**仍用含 0W 的原始 total 判定**——排除 0W 是展示口径，不改"数据够不够"的判定，避免开关一开就把人踢进"数据不足"。这条要写进测试。
+> 注意：`data_complete` 的门槛（activity_count≥2 且 total_power_seconds≥10800）**仍用含 0W 的原始 total 判定**——排除 0W 是展示口径，不改"数据够不够"的判定，避免开关一开就把人踢进"数据不足"。这条要写进测试。
 
 ---
 

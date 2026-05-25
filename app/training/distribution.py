@@ -25,7 +25,7 @@ GROUPS = [
     ("tempo_threshold", "中强度", ["Z3", "Z4"], "最容易堆累"),
     ("high_intensity", "高强度", ["Z5", "Z6"], "刺激偏少"),
 ]
-MIN_COMPLETE_ACTIVITIES = 3
+MIN_COMPLETE_ACTIVITIES = 2
 MIN_COMPLETE_SECONDS = 10_800
 
 _INSUFFICIENT_COPY = {
@@ -35,7 +35,7 @@ _INSUFFICIENT_COPY = {
     "target_label": "先补记录",
     "target_description": "先多记录几次有功率计的骑行，再让 velo 判断训练时间怎么分布。",
     "headline": "功率数据还不够，先别急着判断训练结构。",
-    "explanation": "最近 6 周至少需要 3 条有功率区间的骑行，且总有功率时间达到 3 小时。",
+    "explanation": "最近 6 周至少需要 2 条有功率区间的骑行，且总有功率时间达到 3 小时。",
     "actions": [],
     "week_plan": [],
 }
@@ -47,7 +47,7 @@ _TYPE_COPY = {
         "target_label": "更分明的 80 / 20",
         "target_description": "更多轻松骑打底，保留少量真正高强度，训练更分明。",
         "headline": "你最近练得太挤在中间，容易累，但突破感不强。",
-        "explanation": "过去 6 周，你有较多时间卡在节奏和阈值区。下周先把一次中强度骑换成轻松长骑，让身体有空间吸收训练。",
+        "explanation": "过去 6 周，你有 {tempo}% 时间卡在节奏和阈值区。下周先把一次中强度骑换成轻松长骑，让身体有空间吸收训练。",
         "actions": [
             ("换成轻松长骑", "把一次节奏骑换成 90 分钟轻松骑：目标是让 Z2 时间涨起来，能完整说话，不追速度。"),
             ("保留短间歇", "保留一次短间歇：例如 5 组 3 分钟高强度，中间充分恢复。"),
@@ -277,6 +277,15 @@ def build_training_distribution_payload(stats: dict) -> dict:
         return {**base_payload, **_INSUFFICIENT_COPY}
 
     copy = _TYPE_COPY[current_type]
+    # 动态百分比：把三组真实占比填进解释文案（demo 那种"你有 47% 时间卡在中间"比"较多时间"更戳人）。
+    # 没有 {} 占位的文案 format 后原样不变，所以目前只有 sweet_spot 的 {tempo} 会被填充；
+    # 将来想给别的类型加动态数字，只需在对应 explanation 里写 {endurance}/{tempo}/{high} 占位。
+    group_pct = {g["key"]: g["percent"] for g in (stats.get("groups") or [])}
+    explanation = copy["explanation"].format(
+        endurance=group_pct.get("endurance", 0),
+        tempo=group_pct.get("tempo_threshold", 0),
+        high=group_pct.get("high_intensity", 0),
+    )
     return {
         **base_payload,
         "current_type": current_type,
@@ -285,7 +294,7 @@ def build_training_distribution_payload(stats: dict) -> dict:
         "target_label": copy["target_label"],
         "target_description": copy["target_description"],
         "headline": copy["headline"],
-        "explanation": copy["explanation"],
+        "explanation": explanation,
         "actions": [{"title": title, "body": body} for title, body in copy["actions"]],
         "week_plan": [{"day": day, "title": title, "focus": focus} for day, title, focus in copy["week_plan"]],
     }

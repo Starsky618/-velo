@@ -10,18 +10,59 @@
     <text class="state-subtitle">请重试</text>
   </view>
 
-  <view class="state-panel" wx:elif="{{insufficientPower}}">
-    <text class="state-title">功率数据不足</text>
-    <text class="state-subtitle">{{distribution.headline}}</text>
-    <text class="state-body">{{distribution.explanation}}</text>
-    <view class="source-list">
-      <view class="source-item" wx:for="{{rawZones}}" wx:key="zone">
-        <text>{{item.zone}}</text>
-        <text>{{item.seconds}} 秒</text>
-        <text>{{item.percent}}%</text>
+  <block wx:elif="{{insufficientPower}}">
+    <view class="state-panel">
+      <text class="state-title">功率数据不足</text>
+      <text class="state-subtitle">{{distribution.headline}}</text>
+      <text class="state-body">{{distribution.explanation}}</text>
+    </view>
+
+    <view class="option-row">
+      <view class="option-copy">
+        <text class="option-title">不计滑行/停顿时间</text>
+        <text class="option-subtitle">只看真实蹬踏时间</text>
+      </view>
+      <switch checked="{{excludeZero}}" bindchange="onExcludeZeroChange" color="#2EAD6B" />
+    </view>
+
+    <view class="section">
+      <view class="section-head">
+        <text class="section-title">最近 6 周时间分布</text>
+        <text class="section-subtitle">数据还不够判断练法，但时间花在哪是真实的</text>
+      </view>
+      <view class="donut-wrap" wx:if="{{donutStyle}}">
+        <view class="donut" style="background: {{donutStyle}};">
+          <view class="donut-hole"></view>
+        </view>
+      </view>
+      <view class="group-list">
+        <view class="group-row" wx:for="{{groups}}" wx:key="key">
+          <view class="group-main">
+            <text class="group-label">{{item.label}}</text>
+            <text class="group-role">{{item.role}}</text>
+          </view>
+          <view class="group-bar">
+            <view class="group-fill group-fill-{{index}}" style="width: {{item.percent}}%;"></view>
+          </view>
+          <text class="group-percent">{{item.percent}}%</text>
+        </view>
       </view>
     </view>
-  </view>
+
+    <view class="section">
+      <view class="section-head">
+        <text class="section-title">数据从哪来</text>
+        <text class="section-subtitle">每条有功率骑行上传时已经拆成 Z1-Z6</text>
+      </view>
+      <view class="source-list">
+        <view class="source-item" wx:for="{{rawZones}}" wx:key="zone">
+          <text>{{item.zone}}</text>
+          <text>{{item.name}}</text>
+          <text>{{item.percent}}%</text>
+        </view>
+      </view>
+    </view>
+  </block>
 
   <view wx:else>
     <view class="hero-card">
@@ -52,6 +93,11 @@
       <view class="section-head">
         <text class="section-title">最近 6 周时间分布</text>
         <text class="section-subtitle">看每一分钟落在哪个强度里</text>
+      </view>
+      <view class="donut-wrap" wx:if="{{donutStyle}}">
+        <view class="donut" style="background: {{donutStyle}};">
+          <view class="donut-hole"></view>
+        </view>
       </view>
       <view class="group-list">
         <view class="group-row" wx:for="{{groups}}" wx:key="key">
