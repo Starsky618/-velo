@@ -8,19 +8,19 @@
     <view class="status-metrics">
       <view class="metric">
         <text class="metric-value">{{summary.current_ctl}}</text>
-        <text class="metric-label">CTL</text>
+        <text class="metric-label">健身度 CTL</text>
       </view>
       <view class="metric">
         <text class="metric-value">{{summary.current_atl}}</text>
-        <text class="metric-label">ATL</text>
+        <text class="metric-label">疲劳 ATL</text>
       </view>
       <view class="metric">
         <text class="metric-value">{{summary.current_tsb}}</text>
-        <text class="metric-label">TSB</text>
+        <text class="metric-label">状态 TSB</text>
       </view>
       <view class="metric">
         <text class="metric-value">{{summary.weekly_tss}}</text>
-        <text class="metric-label">本周 TSS</text>
+        <text class="metric-label">本周训练量</text>
       </view>
     </view>
   </view>
@@ -45,6 +45,11 @@
         <text class="legend-item atl">ATL</text>
         <text class="legend-item tsb">TSB</text>
       </view>
+    </view>
+    <view class="chart-guide" wx:if="{{dataComplete}}">
+      <text>绿线慢慢涨：长期体能在变厚</text>
+      <text>黄线冲高：最近练得猛，身体更累</text>
+      <text>蓝线低于 -10：更适合轻松骑或休息</text>
     </view>
 
     <view class="loading-state" wx:if="{{loading}}">

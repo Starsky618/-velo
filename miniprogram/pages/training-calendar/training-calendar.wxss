@@ -103,7 +103,7 @@ page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20rpx;
+  margin-bottom: 12rpx;
 }
 
 .chart-title {
@@ -132,6 +132,16 @@ page {
 
 .legend-item.tsb {
   color: #2F80ED;
+}
+
+.chart-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-bottom: 18rpx;
+  color: #6B7280;
+  font-size: 22rpx;
+  line-height: 1.45;
 }
 
 .canvas-wrap {

@@ -59,6 +59,19 @@ def test_training_calendar_range_tab_drives_api_range_param():
     assert "api.get('/api/training/load', { range: range })" in js
 
 
+def test_training_calendar_explains_metrics_in_plain_language():
+    """训练分析不是给懂 PMC 的人背缩写，要把图翻译成用户能行动的语言。"""
+    wxml = _read(TRAINING_PAGE / "training-calendar.wxml")
+
+    assert "健身度 CTL" in wxml
+    assert "疲劳 ATL" in wxml
+    assert "状态 TSB" in wxml
+    assert "本周训练量" in wxml
+    assert "绿线慢慢涨" in wxml
+    assert "黄线冲高" in wxml
+    assert "蓝线低于 -10" in wxml
+
+
 def test_training_calendar_canvas_and_empty_state_are_safe():
     """canvas 需要 100ms 兜底；空数据态不能画假曲线。"""
     wxml = _read(TRAINING_PAGE / "training-calendar.wxml")
