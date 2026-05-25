@@ -56,6 +56,34 @@ agent 私有 memory（Claude `~/.claude/.../memory/` / Codex session history）*
 
 ---
 
+## §0.5 双主驾监督闭环（自迭代反熵系统 / 2026-05-25 Tim 拍固化）
+
+> velo agent 协作的反熵监督系统。**检测层已强**（双审 + Codex 异源审 + pytest + dry-run + Tim 真用回归 = 5 层 / 单 agent 失误率高但多源 0 漏网 / Sprint 10 实证 Claude 5 失误全被抓）。本章固化的是**学习层自动化 + 熵阀门**——让系统每次出错自动变强、且定期自清，把 Tim 从高强度技术决策解放。
+>
+> **反贪部门三精髓 = 三支柱**：独立性（监督方不被被监督方俘获）+ 案例制度化（每案堵漏洞）+ 清冗员（不臃肿）。
+
+**① 双重独立性（写≠审 + TDD 红绿）——抓幻觉的命根**
+- **写≠审**：写代码的 agent 不审自己（Codex 写 → Claude 异源审 / 反之）。2026-05-25 Sprint 10 实证：Codex 自跑 6 reviewer 全漏 / Claude 异源审才抓 2 Critical（canvas 陷阱 #17 / 参数名偏离合同）。
+- **TDD 红→绿先行**（A 档新业务逻辑强制 / 走 `superpowers:test-driven-development` skill）：先写失败测试（红 / 测试定义"对"是什么）→ 再写实现（绿）。**测试者 ≠ 实现者**（Claude 写测试定规格 / Codex 写实现 / 或反之 = 第二重独立性 / 测试不被实现俘获）。
+- 反例（Sprint 10 翻车点）：Codex 写实现 + 自己写测试 + 自己跑过（测试后置 + 同源）→ 测试配合实现 / 不抓幻觉。**最后跑 pytest ≠ TDD**——这是 Sprint 10 幻觉率高的根因之一（Tim 2026-05-25 识别）。
+
+**② 每个 Critical 触发"制度化 + 砍冗"双动作——自迭代 + 反熵**
+- 异源审 / 真用回归抓到 Critical → 不只修这次 → 强制一问"能变成下次自动防住的规则 / 测试 / hook 吗？"→ 能就沉淀（陷阱清单 / commit 前 checklist / 测试模板 / 走 `/neat`）。
+- **同时砍一条废规则**（80% 高频例外 / 已被覆盖 / 详 §12 规则成熟度）。**加新防御必砍旧 = 净熵不增**。光加是臃肿（Tim 警觉的熵增源）/ 光砍是退化 / 两个咬合 = 负熵。
+
+**③ grep 标记强制——治"怕幻觉"**
+- 每个事实断言带 `[✓ grep]`（file:line 实证）或 `[🟡 未验证]`（推断 / 凭印象）。**Tim 审计标记不审内容**。信任建立在可审计证据上 / 不是"信 agent 不幻觉"（agent 必幻觉 / 系统抓得住才是真信任）。
+
+**④ Tim 只守两闸门——减少高强度决策**
+- **产品判断闸门**：建什么 / 砍什么 / 数据够不够上线（如 Sprint 10 覆盖率门槛 D 决策）—— 机器替代不了。
+- **真用回归闸门**：骑车 / 打开 App / 数字符不符合物理直觉（Sprint 9 ftp 117W、Sprint 10 CTL 失真 4.8 都来自这里）—— Tim 超能力。
+- 技术细节 / 派谁写 / 格式 / commit message → **agent 自拍 + 一句话汇报**。Tim 不裁决选择题 / 不审判断不了的代码细节（产品设计师看不出 SAVEPOINT 对错 = 无效安全感）。
+
+**⑤ 检测层封顶——防监督机构自身臃肿**
+- 检测层（reviewer 数 / 审查轮次 / 规则条数）**不再净增**。新需求优先"替换"现有零件 / 不叠加。§12 规则成熟度 + 协议②砍冗 = 熵阀门。
+
+---
+
 ## §1 角色定位
 
 ### 双主驾视角（2026-04-29 v2.0 升级）
@@ -88,7 +116,7 @@ Claude 和 Codex 都可承担"主开发"或"审查方"角色，按任务边界�
 
 | 档 | 特征 | 主开发 | 审查方 | 典型场景 |
 |---|---|---|---|---|
-| **A 全外包** | 纯逻辑 / 单文件 / 客观标准 | 🟨 Codex | 跳过（双审已覆盖）| 写单测 / 补覆盖率 / 纯函数实现 / typo / 死代码 / lint / docstring / 按陷阱清单扫 |
+| **A 全外包** | 纯逻辑 / 单文件 / 客观标准 | 🟨 Codex（新业务逻辑走 TDD / 测试者≠实现者）| **新业务逻辑：写≠审异源审（§0.5 协议①凌驾）/ trivial（typo/lint/docstring/死代码）：可跳** | 写单测 / 补覆盖率 / 纯函数实现 / typo / 死代码 / lint / docstring / 按陷阱清单扫 |
 | **B 混合协作** | 跨文件单模块 / 有 spec / 单 task < 50K token | 🟦 Claude 决策 + 🟨 Codex 执行（**也可反过来**）| 异源（另一方）| 集成层（router/service）/ 浅 bug 修 / Alembic 迁移 / 复杂状态机 / 代码审查 / 大文档 review-only |
 | **C 不外包** | 跨模块决策 / 和人沟通 / 产品判断 | 🟦 Claude | — | PRD / spec 撰写 / 架构讨论 / 和 Tim 沟通 / 9 阶段 ③④⑤ / 跨模块 bug 调查 / 集成审 |
 
@@ -127,7 +155,7 @@ CLAUDE.md 标注的纯函数（不碰 DB / 不碰文件系统）：
 | # | 问 | Yes → 路由 |
 |---|---|---|
 | 1 | 单文件 / 单函数？ | A 档 |
-| 2 | 写测试 / 补文档 / 修 lint / 扫陷阱？ | A 档 |
+| 2 | 写测试 / 补文档 / 修 lint / 扫陷阱？ | A 档（**TDD 写测试：测试者≠实现者 / 见 §0.5 协议① + §4 场景 A** / 补文档/lint trivial 可跳审）|
 | 3 | 跨文件单模块 + 有 spec 约束？ | B 档（**主开发可 Claude 也可 Codex**）|
 | 4 | 跨模块 / 涉及数据流？ | C 档主导 + B 档审 |
 | 5 | 涉及和 Tim 沟通 / 架构决策 / 产品判断？ | C 档 |
@@ -146,19 +174,12 @@ CLAUDE.md 标注的纯函数（不碰 DB / 不碰文件系统）：
                                                        └─ 修法不成立 → 撤回方案 / 替代方案 → 重新批判裁决
 ```
 
-**主开发自审是必要环节**——双主驾下没有第三 agent，writer 必须用 §4.0 互审五问表自审一次（抓 Critical / Important 自修后再报 draft），让 reviewer 异源审专注抓 writer 自己的盲区。跳过自审 = 字面违反 CLAUDE.md 开发原则 #8 三审硬规则；双主驾下"writer 自审 + reviewer 异源审"= 三审等价覆盖。
+**核心规则已升级到 §0.5 协议①（写≠审双向对称 + TDD）**。本状态机保留两个独特要点：
 
-撤回路径必须显式画进状态机；否则 reviewer 容易把"批判裁决"误读成"必须 patch"，再次掉进"风险成立 = 修法成立"陷阱。撤回不是失败，是机制工作。
+- **主开发自审是必要环节**（**B/C 档适用** / A 档 trivial 如 typo/lint/docstring 可跳自审直接报 / A 档新业务逻辑仍走 §0.5 写≠审）：双主驾下 writer 先用 §4.0 互审五问表自审（抓 Critical/Important 自修）→ 再报 draft → reviewer 异源审专注抓 writer 盲区。"writer 自审 + reviewer 异源审"= CLAUDE.md 开发原则 #8 三审等价覆盖。
+- **撤回路径必须显式画进状态机**：否则 reviewer 把"批判裁决"误读成"必须 patch"，掉进"风险成立 = 修法成立"陷阱。撤回不是失败，是机制工作。
 
-实证（2026-05-04 task-3.A.x）：
-- task-3.A.2 互审：Claude 撤回 A 路径（worker 守卫会误伤 task-3.A.3 手动入口），改 B 补偿回滚收敛
-- task-3.A.2 → 3.C.1：codex 主开发未自审 → Claude 一审兜抓 Important 5/5（spec drift / DB+Queue 一致性 / 异常翻译 / spec 砍城市维度 / prune 实施超 spec）。Claude 兜底成功但属字面违规三审（少 codex 自审环节）；本次升级状态机补对称化
-
-实证（2026-05-05 task-3.B.1 D.4 / 双向对称补全 / Tim 拍"旁观者清"原则）：
-- **场景**：codex 主开发 D.4 → Claude 集成审抓 2 Important（I1 typing 错误 + I2 modal 文案）→ 根因溯源是 Claude 在 D.2 整改时自己 Edit 写错的 typing `AxiosError<{ detail?: string }>`（FastAPI Pydantic 422 detail 实际是 `string | list[{loc, msg, type}]` union） → D.3 D.4 codex 主开发模仿 baseline pattern 抄了 → 三处复利
-- **整改**：Claude 主开发抽 `getErrorDetail` 公共 helper / 跨 D.2 D.3 D.4 三处统一切 → **派 codex 异源审 Claude 的整改**
-- **结果**：codex 异源审通过 0 Critical 0 Important / 评 "整体质量高于 baseline D.2/D.3 codex 主开发轮"
-- **教训**：双主驾互审必须**双向对称**——codex 主开发 → Claude 异源审（已实证）+ Claude 主开发 → codex 异源审（本次补）。Claude 错误也会被 codex "抄"成系统性盲区（baseline pattern 复利），单向审查只防 codex 错误，没防 Claude 错误传染 codex。**任一方向单审 = 盲区暴露**
+**双向对称实证（精简留教训 / 详细案例已归档 changelog）**：Claude 错误也会被 Codex"抄"成系统性盲区（baseline pattern 复利 / 2026-05-05 task-3.B.1 D.4 typing 错三处复利实证）。**任一方向单审 = 盲区暴露**——这正是 §0.5 协议①"写≠审"的根因。
 
 ---
 
@@ -188,37 +209,42 @@ reviewer 报告 Critical / Important 时按互审五问表过一遍；不是每�
 | 是否有旧符号残留要 grep？ | 防 doc drift（范围 5 类规则文件，详见 CLAUDE.md §7 mental check 第 5 问） |
 | 这条经验对另一个 agent 不可见会不会重蹈覆辙？ | 决定升 docs 还是留 memory |
 
-### 场景 A：写单元测试
+### 场景 A：TDD 写测试（红→绿 / 测试者≠实现者）
 
-**触发**：纯函数刚实现完 / 要补覆盖率 / 想加边界用例
+**触发**：A 档新业务逻辑开工（**测试先行 / 不是实现完补测试**）——按 §0.5 协议① TDD 红绿。
 
-**调用**：`Agent(subagent_type: "codex:codex-rescue", prompt: ...)`
+> **关键升级（2026-05-25 Tim 拍）**：测试**先于实现**写（红→绿），且**测试者 ≠ 实现者**（双重独立性 / 测试不被实现俘获）。Sprint 10 翻车点：Codex 写实现 + 自写测试 + 自跑过（后置 + 同源）→ 测试配合实现不抓幻觉。**最后跑 pytest ≠ TDD**。
 
-**Prompt 骨架**：
+**调用**：`Agent(subagent_type: "codex:codex-rescue", prompt: ...)` 或走 `superpowers:test-driven-development` skill
+
+**TDD 流程**：
+1. **红**：测试者（如 Claude）从 spec/PRD 抽契约 → 写失败测试（定义"对"是什么 / 此时实现还没写 / 测试必红）
+2. **绿**：实现者（如 Codex / ≠ 测试者）写代码让测试过 / 不许改测试迁就实现
+3. 实现者跑测试全绿 → 异源审（写≠审 / §0.5 协议①）→ commit
+
+**Prompt 骨架（红 / 写测试）**：
 ```
-你是 velo 项目的单测写手。
+你是 velo TDD 测试先行写手。实现尚未写 / 你的测试此刻应该失败（红）。
 
-## 被测对象
-- 文件：<path>:<line-range>
+## 被测契约（从 spec-vN.md §X / PRD 抽 / 不看实现）
 - 函数签名：<signature>
-- 契约（从 spec-vN.md §X 抽）：<输入/输出/异常>
+- 输入/输出/异常：<contract>
 
 ## 项目约束
 - 纯函数不碰 DB / 文件系统（CLAUDE.md §纯函数规则）
-- 测试框架：pytest
-- 项目技术栈陷阱：见 CLAUDE.md §技术栈陷阱清单（重点：Python truthiness / naive-aware datetime / or 短路）
+- 技术栈陷阱：CLAUDE.md §技术栈陷阱清单（truthiness / naive-aware datetime / or 短路）
 
 ## 任务
-1. 写覆盖以下场景：正常值 / 边界（null/0/空/极端大值）/ 异常路径
-2. 每个测试带一句中文 docstring 说明意图
-3. 测试命名：test_<函数>_<场景>
-4. 测试之间独立，不共享 fixture 状态
+1. 覆盖：正常值 / 边界（null/0/空/极端大值）/ 异常路径
+2. 每个测试一句中文 docstring 说明意图
+3. test_<函数>_<场景> 命名 / 测试间独立不共享 fixture
+4. **测试断言基于契约 / 不基于任何已存在实现**（防测试被实现俘获）
 
 ## 输出
-完整可运行的测试文件内容。**不修改被测代码**。
+完整测试文件。**此刻跑应该红**（实现未写）。
 ```
 
-**验收**：跑 `pytest tests/<new_file>` 通过 → 接受。失败 → 喂日志让 Codex 修。
+**验收**：① 写测试时跑 → 红（证明测试真在验证 / 不是空过）② 实现写完跑 → 绿 ③ 实现者 ≠ 测试者（独立性）。三者缺一不算 TDD。
 
 ---
 
