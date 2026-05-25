@@ -42,6 +42,7 @@ def calculate_power_zones(trackpoints: list[dict], ftp: int) -> list[dict] | Non
 
     返回：
         6 个区间的列表，每个包含 zone/name/min_w/max_w/seconds/percent
+        Z1 额外包含 zero_seconds，用来记录 0W 滑行/停顿时间
         如果轨迹中没有任何功率数据，返回 None
     """
     if len(trackpoints) < 2 or ftp <= 0:
@@ -49,6 +50,7 @@ def calculate_power_zones(trackpoints: list[dict], ftp: int) -> list[dict] | Non
 
     # 初始化每个区间的累计时间（秒）
     zone_seconds = [0] * 6
+    zero_seconds = 0
     total_power_seconds = 0
 
     # 遍历相邻轨迹点，把每段时间归入对应功率区间
@@ -70,6 +72,9 @@ def calculate_power_zones(trackpoints: list[dict], ftp: int) -> list[dict] | Non
         zone_idx = _get_zone_index(power_w, ftp)
 
         zone_seconds[zone_idx] += dt
+        # 0W 是"骑着但没蹬"的合法功率读数；以后若要扩展成 1-3W 阈值，只改这一处口径。
+        if power_w == 0:
+            zero_seconds += dt
         total_power_seconds += dt
 
     # 没有任何有效的功率数据 → 返回 None
@@ -94,14 +99,17 @@ def calculate_power_zones(trackpoints: list[dict], ftp: int) -> list[dict] | Non
         seconds = round(zone_seconds[i])
         percent = round(seconds / total_power_seconds * 100)
 
-        result.append({
+        item = {
             "zone": zone_def["zone"],
             "name": zone_def["name"],
             "min_w": min_w,
             "max_w": max_w,
             "seconds": seconds,
             "percent": percent,
-        })
+        }
+        if i == 0:
+            item["zero_seconds"] = round(zero_seconds)
+        result.append(item)
 
     return result
 

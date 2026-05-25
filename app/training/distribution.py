@@ -171,7 +171,7 @@ def normalize_power_zones(value: list[dict] | str | None) -> list[dict]:
     return []
 
 
-def aggregate_power_zones(zone_sets: list[list[dict]]) -> dict:
+def aggregate_power_zones(zone_sets: list[list[dict]], exclude_zero: bool = False) -> dict:
     """累计 Z1-Z6 秒数、raw 百分比和三组页面分布。
 
     入参约定：每个 zone_set 必须是已经过 normalize_power_zones 清洗的 list[dict]。
@@ -180,21 +180,30 @@ def aggregate_power_zones(zone_sets: list[list[dict]]) -> dict:
     好处：避免"边界和核心各清洗一半"的隐性矛盾——将来谁改了一侧，另一侧也不会被静默拖坏。
     """
     zone_seconds = {zone: 0 for zone in ZONE_ORDER}
+    total_zero_seconds = 0
     for zone_set in zone_sets:
         for item in zone_set:
             zone = item.get("zone")
             if zone not in zone_seconds:
                 continue
             zone_seconds[zone] += _safe_seconds(item.get("seconds"))
+            if zone == "Z1":
+                total_zero_seconds += _safe_seconds(item.get("zero_seconds"))
 
     total_power_seconds = sum(zone_seconds.values())
     classification_seconds = sum(zone_seconds[zone] for zone in ZONE_ORDER if zone != "Z1")
+    display_zone_seconds = dict(zone_seconds)
+    if exclude_zero:
+        # exclude_zero 只改变页面展示口径：像从总账里临时划掉"滑行/等灯"这类 0W 时间，
+        # 原始 zone_seconds 仍保留给分类和 data_complete，避免开关一开就改变训练类型。
+        display_zone_seconds["Z1"] = max(0, zone_seconds["Z1"] - total_zero_seconds)
+    display_total_power_seconds = sum(display_zone_seconds.values())
     raw_zones = [
         {
             "zone": zone,
             "name": ZONE_NAMES[zone],
-            "seconds": zone_seconds[zone],
-            "percent": _percent(zone_seconds[zone], total_power_seconds),
+            "seconds": display_zone_seconds[zone],
+            "percent": _percent(display_zone_seconds[zone], display_total_power_seconds),
         }
         for zone in ZONE_ORDER
     ]
@@ -216,8 +225,8 @@ def aggregate_power_zones(zone_sets: list[list[dict]]) -> dict:
         "activity_count": activity_count,
         "zone_seconds": zone_seconds,
         "classification_seconds": classification_seconds,
-        "total_power_seconds": total_power_seconds,
-        "total_power_hours": round(total_power_seconds / 3600, 1),
+        "total_power_seconds": display_total_power_seconds,
+        "total_power_hours": round(display_total_power_seconds / 3600, 1),
         "data_complete": data_complete,
         "insufficient_power_data": not data_complete,
         "raw_zones": raw_zones,

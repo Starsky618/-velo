@@ -29,8 +29,9 @@ def get_training_load(
 @router.get("/distribution", response_model=schemas.TrainingDistributionResponse)
 def get_training_distribution(
     range: schemas.TrainingDistributionRange = Query("6w"),
+    exclude_zero: bool = Query(False),
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """获取当前用户最近 6 周训练结构。"""
-    return distribution_service.get_training_distribution_response(db, user_id, range)
+    return distribution_service.get_training_distribution_response(db, user_id, range, exclude_zero=exclude_zero)

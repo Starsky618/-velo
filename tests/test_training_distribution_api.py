@@ -18,9 +18,12 @@ def _utc_for_bj_day(day_offset: int, hour: int = 12) -> datetime:
     return datetime(target.year, target.month, target.day, hour, 0, 0, tzinfo=_BJ_TZ).astimezone(timezone.utc)
 
 
-def _zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900, z6=0):
+def _zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900, z6=0, z1_zero=0):
+    z1_item = {"zone": "Z1", "name": "恢复", "min_w": 0, "max_w": 129, "seconds": z1, "percent": 9}
+    if z1_zero:
+        z1_item["zero_seconds"] = z1_zero
     return [
-        {"zone": "Z1", "name": "恢复", "min_w": 0, "max_w": 129, "seconds": z1, "percent": 9},
+        z1_item,
         {"zone": "Z2", "name": "耐力", "min_w": 130, "max_w": 176, "seconds": z2, "percent": 40},
         {"zone": "Z3", "name": "节奏", "min_w": 177, "max_w": 211, "seconds": z3, "percent": 27},
         {"zone": "Z4", "name": "阈值", "min_w": 212, "max_w": 247, "seconds": z4, "percent": 15},
@@ -157,6 +160,32 @@ def test_training_distribution_raw_zones_are_privacy_safe(client, db, test_user,
 
     assert resp.status_code == 200
     assert all("min_w" not in zone and "max_w" not in zone for zone in resp.json()["raw_zones"])
+    assert all("zero_seconds" not in zone for zone in resp.json()["raw_zones"])
+
+
+def test_training_distribution_exclude_zero_query_changes_only_raw_display_totals(client, db, test_user, auth_header):
+    for day in (1, 2, 3):
+        _insert_activity(
+            db,
+            test_user.id,
+            power_zones=_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900, z1_zero=700),
+            started_at=_utc_for_bj_day(-day),
+        )
+
+    normal = client.get("/api/training/distribution?range=6w", headers=auth_header).json()
+    excluded = client.get("/api/training/distribution?range=6w&exclude_zero=true", headers=auth_header).json()
+
+    assert normal["current_type"] == excluded["current_type"]
+    assert normal["groups"] == excluded["groups"]
+    assert normal["headline"] == excluded["headline"]
+    assert normal["actions"] == excluded["actions"]
+    assert normal["data_complete"] is True
+    assert excluded["data_complete"] is True
+    assert normal["total_power_seconds"] == 33000
+    assert excluded["total_power_seconds"] == 30900
+    assert normal["raw_zones"][0]["seconds"] == 3000
+    assert excluded["raw_zones"][0]["seconds"] == 900
+    assert normal["raw_zones"][1]["seconds"] == excluded["raw_zones"][1]["seconds"]
 
 
 def test_training_distribution_accepts_sqlite_json_string_power_zones(client, db, test_user, auth_header):

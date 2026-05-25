@@ -8,9 +8,12 @@ def _module():
     return importlib.import_module("app.training.distribution")
 
 
-def _zones(z1=0, z2=0, z3=0, z4=0, z5=0, z6=0):
+def _zones(z1=0, z2=0, z3=0, z4=0, z5=0, z6=0, z1_zero=0):
+    z1_item = {"zone": "Z1", "name": "恢复", "min_w": 0, "max_w": 129, "seconds": z1, "percent": 0}
+    if z1_zero:
+        z1_item["zero_seconds"] = z1_zero
     return [
-        {"zone": "Z1", "name": "恢复", "min_w": 0, "max_w": 129, "seconds": z1, "percent": 0},
+        z1_item,
         {"zone": "Z2", "name": "耐力", "min_w": 130, "max_w": 176, "seconds": z2, "percent": 0},
         {"zone": "Z3", "name": "节奏", "min_w": 177, "max_w": 211, "seconds": z3, "percent": 0},
         {"zone": "Z4", "name": "阈值", "min_w": 212, "max_w": 247, "seconds": z4, "percent": 0},
@@ -70,6 +73,64 @@ def test_raw_zones_percent_uses_total_with_z1():
     assert _raw_zone(payload, "Z4")["percent"] == 15
     assert _raw_zone(payload, "Z5")["percent"] == 8
     assert _raw_zone(payload, "Z6")["percent"] == 0
+
+
+def test_aggregate_exclude_zero_removes_only_z1_zero_time_from_display_total():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones(
+        [_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900, z1_zero=700)] * 3,
+        exclude_zero=True,
+    )
+    payload = distribution.build_training_distribution_payload(stats)
+
+    assert _raw_zone(payload, "Z1")["seconds"] == 900
+    assert _raw_zone(payload, "Z2")["seconds"] == 13200
+    assert payload["total_power_seconds"] == 30900
+    assert payload["total_power_hours"] == 8.6
+    assert _raw_zone(payload, "Z1")["percent"] == 3
+    assert _raw_zone(payload, "Z2")["percent"] == 43
+
+
+def test_aggregate_exclude_zero_keeps_groups_and_classification_unchanged():
+    distribution = _module()
+    zone_sets = [_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900, z1_zero=700)] * 3
+    normal_payload = distribution.build_training_distribution_payload(distribution.aggregate_power_zones(zone_sets))
+    exclude_payload = distribution.build_training_distribution_payload(
+        distribution.aggregate_power_zones(zone_sets, exclude_zero=True)
+    )
+
+    assert exclude_payload["current_type"] == normal_payload["current_type"]
+    assert exclude_payload["current_label"] == normal_payload["current_label"]
+    assert exclude_payload["headline"] == normal_payload["headline"]
+    assert exclude_payload["groups"] == normal_payload["groups"]
+
+
+def test_aggregate_exclude_zero_uses_original_total_for_data_complete():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z1=3000, z2=700, z1_zero=2500)] * 3, exclude_zero=True)
+    payload = distribution.build_training_distribution_payload(stats)
+
+    assert payload["data_complete"] is True
+    assert payload["insufficient_power_data"] is False
+    assert payload["total_power_seconds"] == 3600
+
+
+def test_aggregate_exclude_zero_treats_missing_zero_seconds_as_zero():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z1=1000, z2=3000)] * 3, exclude_zero=True)
+    payload = distribution.build_training_distribution_payload(stats)
+
+    assert _raw_zone(payload, "Z1")["seconds"] == 3000
+    assert payload["total_power_seconds"] == 12000
+
+
+def test_aggregate_exclude_zero_clamps_dirty_zero_seconds_to_z1_seconds():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z1=100, z2=3600, z1_zero=999)] * 3, exclude_zero=True)
+    payload = distribution.build_training_distribution_payload(stats)
+
+    assert _raw_zone(payload, "Z1")["seconds"] == 0
+    assert payload["total_power_seconds"] == 10800
 
 
 def test_threshold_wins_before_sweet_spot_when_z4_reaches_30_percent():

@@ -40,6 +40,14 @@
       </view>
     </view>
 
+    <view class="option-row">
+      <view class="option-copy">
+        <text class="option-title">不计滑行/停顿时间</text>
+        <text class="option-subtitle">只看真实蹬踏时间</text>
+      </view>
+      <switch checked="{{excludeZero}}" bindchange="onExcludeZeroChange" color="#2EAD6B" />
+    </view>
+
     <view class="section">
       <view class="section-head">
         <text class="section-title">最近 6 周时间分布</text>

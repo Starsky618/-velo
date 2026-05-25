@@ -17,7 +17,7 @@ from app.training.service import _bj_day_start_utc, _today_bj
 WINDOW_DAYS = 42
 
 
-def get_training_distribution_response(db: Session, user_id: int, range: str = "6w") -> dict:
+def get_training_distribution_response(db: Session, user_id: int, range: str = "6w", exclude_zero: bool = False) -> dict:
     """获取当前用户最近 6 周训练结构。"""
     if range != "6w":
         raise ValueError("training distribution range only supports 6w")
@@ -47,7 +47,7 @@ def get_training_distribution_response(db: Session, user_id: int, range: str = "
         normalized = normalize_power_zones(row.power_zones)
         if normalized:
             zone_sets.append(normalized)
-    stats = aggregate_power_zones(zone_sets)
+    stats = aggregate_power_zones(zone_sets, exclude_zero=exclude_zero)
     payload = build_training_distribution_payload(stats)
     return {
         "range": range,

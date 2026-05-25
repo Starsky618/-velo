@@ -45,8 +45,21 @@ def test_training_distribution_js_uses_distribution_endpoint_only():
     """页面只能请求训练结构接口，不能自己拉活动列表拼结果。"""
     js = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.js")
 
-    assert "api.get('/api/training/distribution', { range: '6w' })" in js
+    assert "api.get('/api/training/distribution', params)" in js
     assert "/api/activities" not in js
+
+
+def test_training_distribution_exclude_zero_switch_is_persisted_and_sent_to_api():
+    """页面开关要记住用户选择，并把 exclude_zero 传给后端。"""
+    js = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.js")
+    wxml = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.wxml")
+
+    assert "training_distribution_exclude_zero" in js
+    assert "wx.getStorageSync" in js
+    assert "wx.setStorageSync" in js
+    assert "exclude_zero" in js
+    assert 'bindchange="onExcludeZeroChange"' in wxml
+    assert "不计滑行/停顿时间" in wxml
 
 
 def test_training_distribution_wxml_uses_backend_copy_fields():

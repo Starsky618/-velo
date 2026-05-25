@@ -158,6 +158,7 @@ class Activity(Base):
 
     # 功率区间分布（依赖用户 FTP，无 FTP 则为 NULL）
     # 格式：[{zone:"Z1", name:"恢复", min_w, max_w, seconds, percent}, ...]
+    # Z1 可额外带 zero_seconds，像在"恢复区总时间"里贴一张便签，标出其中多少秒是 0W 滑行/停顿
     # 用途：展示骑行强度分布，帮助训练分析
     power_zones = Column(JSONB, nullable=True)
 
