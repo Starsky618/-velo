@@ -29,7 +29,7 @@ def get_training_load(
 @router.get("/distribution", response_model=schemas.TrainingDistributionResponse)
 def get_training_distribution(
     range: schemas.TrainingDistributionRange = Query("6w"),
-    exclude_zero: bool = Query(False),
+    exclude_zero: bool = Query(True),
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

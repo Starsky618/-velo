@@ -171,7 +171,7 @@ def normalize_power_zones(value: list[dict] | str | None) -> list[dict]:
     return []
 
 
-def aggregate_power_zones(zone_sets: list[list[dict]], exclude_zero: bool = False) -> dict:
+def aggregate_power_zones(zone_sets: list[list[dict]], exclude_zero: bool = True) -> dict:
     """累计 Z1-Z6 秒数、raw 百分比和三组页面分布。
 
     入参约定：每个 zone_set 必须是已经过 normalize_power_zones 清洗的 list[dict]。

@@ -13,8 +13,8 @@
 ## 派工 5 字段速览
 
 1. **背景**：训练结构页（`/api/training/distribution`）的原始区间分布里，Z1（恢复区）被"骑行中不蹬踏"的 0W 时间灌水，导致 Z1 占比虚高、区间比例参考性下降。
-2. **目标**：给训练结构页一个"不计滑行/停顿（0W）时间"的开关。打开后 Z1 扣掉 0W 那部分，区间比例只反映真实蹬踏时间。2026-05-26 Tim 追加要求：单次活动详情页的功率区间也默认按真实蹬踏时间展示。两处都只改展示口径，别动其它功率指标。
-3. **验收命令**：见 §7（pytest 新增测试 + 现有训练分布/负荷套件回归 + curl 验证 exclude_zero 双态）。
+2. **目标**：训练结构页和单次活动详情页都默认按真实蹬踏时间展示功率区间，不再给用户选择是否包含 0W 的开关。两处都只改展示口径，别动其它功率指标。
+3. **验收命令**：见 §7（pytest 新增测试 + 现有训练分布/负荷套件回归 + curl 验证默认不计 0W）。
 4. **不要碰**：见 §4 红线清单（分类判断 / groups / 文案 / power_curve / FTP / TSS / power_zones list 结构 / 核心表）。
 5. **失败处理**：任何一步发现现状与 §0 事实表不符 → **停下来报告，不要脑补继续**。历史数据 backfill（§6）单独跑、单独验证，不和代码改动混在一个 commit。
 
@@ -34,17 +34,17 @@
 | worker 写入点 | `app/activity/worker.py:473` `activity.power_zones = result.power_zones` | ParseResult 透传，无需改 |
 | 训练分布聚合 | `app/training/distribution.py:174` `aggregate_power_zones` / `:222` `classify_distribution` | 分类分母 `classification_seconds` 本就剔除 Z1（`:185`），**排除 0W 不影响分类** |
 | 训练分布响应 schema | `app/training/schemas.py:68` `TrainingDistributionZone`（`extra="forbid"`，仅 zone/name/seconds/percent）| raw_zones 输出不带 zero_seconds，扣减在聚合层完成 |
-| endpoint | `app/training/router.py:29` `GET /api/training/distribution` | 加 `exclude_zero` query 参数 |
+| endpoint | `app/training/router.py:29` `GET /api/training/distribution` | `exclude_zero` 默认 true；旧调用仍可显式传 false 兼容 |
 
 ---
 
 ## §1 需求（做到什么样）
 
-用户在训练结构页看到一个开关："不计滑行/停顿时间"。
+用户在训练结构页看到的功率区间默认就是"真实蹬踏时间"。
 
-- **关**（默认）：和现在完全一样，Z1 含 0W，比例不变。
-- **开**：Z1 只统计真实蹬踏的低强度时间（扣掉 0W），`total_power_seconds` 同步扣，所有区间百分比按新分母重算。Z2-Z6 的秒数不变，但因为分母变小，它们的百分比会相应变大。
-- 开关状态前端记住（小程序 `wx.setStorageSync`），下次进页面沿用。
+- **默认**：Z1 只统计真实蹬踏的低强度时间（扣掉 0W），`total_power_seconds` 同步扣，所有区间百分比按新分母重算。Z2-Z6 的秒数不变，但因为分母变小，它们的百分比会相应变大。
+- **不再给用户开关**：产品规则从"两套口径让用户选"收成"一套默认口径"，避免用户看到两个结果反而不知道该信哪个。
+- **兼容旧调用**：后端仍保留 `exclude_zero=false` query 通道，便于测试和旧客户端过渡；小程序不暴露这个入口。
 - **判定 0W 的口径**：精确 `power == 0`（v1）。理由：功率计停踩主流记 0，先做最简最确定的；若未来发现部分功率计记 1-3W 的滑行漏网，再讨论改成 `< 阈值`。实现处留一行注释标这个扩展点。
 
 ---
@@ -66,7 +66,7 @@
 
 ### 改动 2：`aggregate_power_zones` 接收 exclude 开关（distribution.py）
 
-聚合多条活动时，累计一个 `total_zero_seconds`（各活动 Z1 dict 的 `zero_seconds` 之和，缺失按 0）。当 `exclude_zero=True`：
+聚合多条活动时，累计一个 `total_zero_seconds`（各活动 Z1 dict 的 `zero_seconds` 之和，缺失按 0）。`exclude_zero` 默认 true；当 `exclude_zero=True`：
 
 - `Z1.seconds_effective = Z1.seconds - total_zero_seconds`（夹 0 保护，不为负）
 - `total_power_seconds_effective = total_power_seconds - total_zero_seconds`
@@ -74,23 +74,23 @@
 - `total_power_hours` 用扣减后的值
 - **`classification_seconds`（Z2-Z6）不变 / `groups` 不变 / 分类不变 / 文案不变**
 
-### 改动 3：endpoint + service 透传开关（router.py / distribution_service.py）
+### 改动 3：endpoint + service 默认不计 0W（router.py / distribution_service.py）
 
-- `router.py`：`GET /api/training/distribution` 加 `exclude_zero: bool = Query(False)`
-- `distribution_service.get_training_distribution_response` 加 `exclude_zero: bool = False` 参数，透传给 `aggregate_power_zones`
+- `router.py`：`GET /api/training/distribution` 保留 `exclude_zero` query，但默认 `Query(True)`
+- `distribution_service.get_training_distribution_response` 保留 `exclude_zero` 参数，但默认 `True`，透传给 `aggregate_power_zones`
 
-### 改动 4：前端开关（miniprogram/pages/training-distribution/）
+### 改动 4：前端固定真实蹬踏口径（miniprogram/pages/training-distribution/）
 
-- 页面加一个 switch/toggle："不计滑行/停顿时间"
-- `wx.setStorageSync` 记住状态，`onLoad` 读取，请求带 `exclude_zero`
-- 切换开关 → 重新请求 → 重渲染 raw_zones
+- 页面不再展示 switch/toggle
+- 不读写 `wx.setStorageSync`，不保留 `excludeZero` 状态
+- 请求固定带 `exclude_zero: true`，重渲染 raw_zones
 
 ---
 
 ## §3 接口与输入输出
 
 **请求**：`GET /api/training/distribution?range=6w&exclude_zero=true`
-- `exclude_zero`：bool，默认 false。
+- `exclude_zero`：bool，默认 true。旧客户端可显式传 false 得到含 0W 的历史口径，但小程序不再暴露这个选择。
 
 **响应**：字段结构与现状**完全一致**（`TrainingDistributionResponse`），不新增字段。
 - `exclude_zero=true` 时，受影响字段：`raw_zones[].seconds/percent`（仅 Z1 的 seconds 变 + 全体 percent 因分母变而变）、`total_power_seconds`、`total_power_hours`。
@@ -139,7 +139,10 @@
 **新增测试点**（纯函数 + API）：
 - `calculate_power_zones`：含 0W 点的 trackpoints → Z1 dict 有 `zero_seconds` 且 = 0W 段 dt 之和；全程无 0W → `zero_seconds == 0`；power=None 的点不计入 zero_seconds 也不计入任何区间。
 - `aggregate_power_zones`：`exclude_zero=True` 时 Z1.seconds 和 total 各扣 total_zero_seconds、percent 按新分母、Z2-Z6 seconds 不变、classification_seconds 不变、groups 不变。
+- `aggregate_power_zones` 默认等同 `exclude_zero=True`；旧含 0W 口径必须显式传 `exclude_zero=False`。
 - `exclude_zero=True/False` 两态下 `current_type` / `groups` / 文案完全一致（证明分类不受影响）。
+- `GET /api/training/distribution?range=6w` 默认等同 `exclude_zero=true`。
+- 小程序训练结构页不出现 switch、不读写 `training_distribution_exclude_zero`，固定请求 `exclude_zero: true`。
 - `data_complete` 用含 0W 原始 total 判定（exclude_zero 不把人踢进数据不足）。
 - 缺 `zero_seconds` 字段的老活动（dict 无此 key）→ 按 0 处理不报错。
 
@@ -151,12 +154,12 @@ pytest tests/test_training_load_api.py
 git diff --check
 ```
 
-**curl 双态验证**（部署后）：
+**curl 验证**（部署后）：
 ```
-GET /api/training/distribution?range=6w               # 关：Z1 含 0W（现状）
-GET /api/training/distribution?range=6w&exclude_zero=true  # 开：Z1 扣 0W / total 变小 / 分类与文案不变
+GET /api/training/distribution?range=6w                    # 默认：Z1 扣 0W / total 变小
+GET /api/training/distribution?range=6w&exclude_zero=false # 兼容：Z1 含 0W（旧口径）
 ```
-对比两次响应：`groups` / `current_type` / 文案应完全相同；`raw_zones` 的 Z1 seconds 和全体 percent 应不同。
+对比两次响应：`groups` / `current_type` / 文案应完全相同；默认响应应等同 `exclude_zero=true`；显式 false 的 `raw_zones` Z1 seconds 和全体 percent 可不同。
 
 ---
 
@@ -164,4 +167,4 @@ GET /api/training/distribution?range=6w&exclude_zero=true  # 开：Z1 扣 0W / t
 
 - 代码层改完按 CLAUDE.md 三重审判：Claude 双审（spec 忠诚 + 集成）+ Codex 异源（若本 task 由 Codex 主写，则反过来 Claude 异源审）。
 - backfill 脚本属"动生产数据"高风险 → 走 §6 dry-run gate。
-- 部署：纯后端改动 rebuild api（worker/scheduler 不依赖 distribution）；前端开关随小程序上传；backfill 在 api 部署后单独跑。
+- 部署：纯后端改动 rebuild api（worker/scheduler 不依赖 distribution）；小程序页面随小程序上传；backfill 在 api 部署后单独跑。

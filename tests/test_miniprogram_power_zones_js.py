@@ -76,32 +76,21 @@ def test_format_power_zone_rows_adds_readable_time_without_changing_backend_perc
     assert rows[1]["timeText"] == "30分"
 
 
-def test_training_distribution_switch_refetches_with_exclude_zero_and_updates_raw_zones():
-    """训练结构页开关必须重新请求，并把后端双态 raw_zones 刷到页面上。"""
+def test_training_distribution_always_fetches_pedaling_time_without_switch_state():
+    """训练结构页固定请求不计 0W 的结果，不保留用户开关状态。"""
     result = _run_node(
         """
         ;(async function () {
           const apiPath = require.resolve('./miniprogram/utils/api.js')
           const calls = []
-          const storageWrites = []
-          const responses = [
-            {
-              data_complete: true,
-              insufficient_power_data: false,
-              groups: [{ key: 'endurance', label: '耐力', percent: 100 }],
-              raw_zones: [{ zone: 'Z1', name: '恢复', seconds: 1000, percent: 75 }],
-              actions: [],
-              week_plan: []
-            },
-            {
-              data_complete: true,
-              insufficient_power_data: false,
-              groups: [{ key: 'endurance', label: '耐力', percent: 100 }],
-              raw_zones: [{ zone: 'Z1', name: '恢复', seconds: 400, percent: 44 }],
-              actions: [],
-              week_plan: []
-            }
-          ]
+          const response = {
+            data_complete: true,
+            insufficient_power_data: false,
+            groups: [{ key: 'endurance', label: '耐力', percent: 100 }],
+            raw_zones: [{ zone: 'Z1', name: '恢复', seconds: 400, percent: 44 }],
+            actions: [],
+            week_plan: []
+          }
           require.cache[apiPath] = {
             id: apiPath,
             filename: apiPath,
@@ -109,13 +98,11 @@ def test_training_distribution_switch_refetches_with_exclude_zero_and_updates_ra
             exports: {
               get: function (url, params) {
                 calls.push({ url: url, params: params })
-                return Promise.resolve(responses.shift())
+                return Promise.resolve(response)
               }
             }
           }
           global.wx = {
-            getStorageSync: function () { return false },
-            setStorageSync: function (key, value) { storageWrites.push({ key: key, value: value }) },
             stopPullDownRefresh: function () {},
             showToast: function () {}
           }
@@ -128,14 +115,12 @@ def test_training_distribution_switch_refetches_with_exclude_zero_and_updates_ra
             setData: function (patch) { Object.assign(this.data, patch) }
           })
 
-          await page.fetchDistribution(false)
-          page.onExcludeZeroChange({ detail: { value: true } })
-          await new Promise(function (resolve) { setImmediate(resolve) })
+          await page.onLoad()
 
           process.stdout.write(JSON.stringify({
             calls: calls,
-            storageWrites: storageWrites,
-            excludeZero: page.data.excludeZero,
+            hasExcludeZero: Object.prototype.hasOwnProperty.call(page.data, 'excludeZero'),
+            hasSwitchHandler: typeof page.onExcludeZeroChange === 'function',
             rawZones: page.data.rawZones
           }))
         })().catch(function (err) {
@@ -145,10 +130,10 @@ def test_training_distribution_switch_refetches_with_exclude_zero_and_updates_ra
         """
     )
 
-    assert result["calls"][0]["params"]["exclude_zero"] is False
-    assert result["calls"][1]["params"]["exclude_zero"] is True
-    assert result["storageWrites"][0]["value"] is True
-    assert result["excludeZero"] is True
+    assert len(result["calls"]) == 1
+    assert result["calls"][0]["params"]["exclude_zero"] is True
+    assert result["hasExcludeZero"] is False
+    assert result["hasSwitchHandler"] is False
     assert result["rawZones"][0]["seconds"] == 400
     assert result["rawZones"][0]["percent"] == 44
     assert result["rawZones"][0]["timeText"] == "7分"

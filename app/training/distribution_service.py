@@ -17,7 +17,7 @@ from app.training.service import _bj_day_start_utc, _today_bj
 WINDOW_DAYS = 42
 
 
-def get_training_distribution_response(db: Session, user_id: int, range: str = "6w", exclude_zero: bool = False) -> dict:
+def get_training_distribution_response(db: Session, user_id: int, range: str = "6w", exclude_zero: bool = True) -> dict:
     """获取当前用户最近 6 周训练结构。"""
     if range != "6w":
         raise ValueError("training distribution range only supports 6w")

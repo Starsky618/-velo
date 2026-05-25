@@ -17,18 +17,10 @@
       <text class="state-body">{{distribution.explanation}}</text>
     </view>
 
-    <view class="option-row">
-      <view class="option-copy">
-        <text class="option-title">不计滑行/停顿时间</text>
-        <text class="option-subtitle">只看真实蹬踏时间</text>
-      </view>
-      <switch checked="{{excludeZero}}" bindchange="onExcludeZeroChange" color="#2EAD6B" />
-    </view>
-
     <view class="section">
       <view class="section-head">
         <text class="section-title">最近 6 周时间分布</text>
-        <text class="section-subtitle">数据还不够判断练法，但时间花在哪是真实的</text>
+        <text class="section-subtitle">默认不计 0W，只看真实蹬踏时间</text>
       </view>
       <view class="chart-split">
         <view class="donut-wrap" wx:if="{{donutStyle}}">
@@ -98,18 +90,10 @@
       </view>
     </view>
 
-    <view class="option-row">
-      <view class="option-copy">
-        <text class="option-title">不计滑行/停顿时间</text>
-        <text class="option-subtitle">只看真实蹬踏时间</text>
-      </view>
-      <switch checked="{{excludeZero}}" bindchange="onExcludeZeroChange" color="#2EAD6B" />
-    </view>
-
     <view class="section">
       <view class="section-head">
         <text class="section-title">最近 6 周时间分布</text>
-        <text class="section-subtitle">看每一分钟落在哪个强度里</text>
+        <text class="section-subtitle">默认不计 0W，看每一分钟真实蹬踏落在哪个强度里</text>
       </view>
       <view class="chart-split">
         <view class="donut-wrap" wx:if="{{donutStyle}}">

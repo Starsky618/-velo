@@ -88,34 +88,6 @@ page {
   gap: 6rpx;
 }
 
-.option-row {
-  background: #ffffff;
-  border-radius: 24rpx;
-  padding: 26rpx 32rpx;
-  margin-bottom: 24rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24rpx;
-}
-
-.option-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-}
-
-.option-title {
-  font-size: 28rpx;
-  font-weight: 700;
-  color: #111827;
-}
-
-.option-subtitle {
-  font-size: 22rpx;
-  color: #6B7280;
-}
-
 .meta-value {
   font-size: 34rpx;
   font-weight: 800;

@@ -163,7 +163,7 @@ def test_training_distribution_raw_zones_are_privacy_safe(client, db, test_user,
     assert all("zero_seconds" not in zone for zone in resp.json()["raw_zones"])
 
 
-def test_training_distribution_exclude_zero_query_changes_only_raw_display_totals(client, db, test_user, auth_header):
+def test_training_distribution_defaults_to_exclude_zero_but_keeps_legacy_include_query(client, db, test_user, auth_header):
     for day in (1, 2, 3):
         _insert_activity(
             db,
@@ -172,20 +172,24 @@ def test_training_distribution_exclude_zero_query_changes_only_raw_display_total
             started_at=_utc_for_bj_day(-day),
         )
 
-    normal = client.get("/api/training/distribution?range=6w", headers=auth_header).json()
+    default = client.get("/api/training/distribution?range=6w", headers=auth_header).json()
+    included = client.get("/api/training/distribution?range=6w&exclude_zero=false", headers=auth_header).json()
     excluded = client.get("/api/training/distribution?range=6w&exclude_zero=true", headers=auth_header).json()
 
-    assert normal["current_type"] == excluded["current_type"]
-    assert normal["groups"] == excluded["groups"]
-    assert normal["headline"] == excluded["headline"]
-    assert normal["actions"] == excluded["actions"]
-    assert normal["data_complete"] is True
+    assert default["current_type"] == included["current_type"] == excluded["current_type"]
+    assert default["groups"] == included["groups"] == excluded["groups"]
+    assert default["headline"] == included["headline"] == excluded["headline"]
+    assert default["actions"] == included["actions"] == excluded["actions"]
+    assert default["data_complete"] is True
+    assert included["data_complete"] is True
     assert excluded["data_complete"] is True
-    assert normal["total_power_seconds"] == 33000
+    assert default["total_power_seconds"] == 30900
+    assert included["total_power_seconds"] == 33000
     assert excluded["total_power_seconds"] == 30900
-    assert normal["raw_zones"][0]["seconds"] == 3000
+    assert default["raw_zones"][0]["seconds"] == 900
+    assert included["raw_zones"][0]["seconds"] == 3000
     assert excluded["raw_zones"][0]["seconds"] == 900
-    assert normal["raw_zones"][1]["seconds"] == excluded["raw_zones"][1]["seconds"]
+    assert included["raw_zones"][1]["seconds"] == excluded["raw_zones"][1]["seconds"]
 
 
 def test_training_distribution_accepts_sqlite_json_string_power_zones(client, db, test_user, auth_header):

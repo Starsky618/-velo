@@ -91,10 +91,28 @@ def test_aggregate_exclude_zero_removes_only_z1_zero_time_from_display_total():
     assert _raw_zone(payload, "Z2")["percent"] == 43
 
 
+def test_aggregate_defaults_to_pedaling_time_but_can_include_zero_for_legacy_call():
+    """纯函数默认也采用真实蹬踏口径；旧含 0W 口径必须显式传 false。"""
+    distribution = _module()
+    zone_sets = [_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900, z1_zero=700)] * 3
+
+    default_payload = distribution.build_training_distribution_payload(distribution.aggregate_power_zones(zone_sets))
+    included_payload = distribution.build_training_distribution_payload(
+        distribution.aggregate_power_zones(zone_sets, exclude_zero=False)
+    )
+
+    assert default_payload["total_power_seconds"] == 30900
+    assert included_payload["total_power_seconds"] == 33000
+    assert _raw_zone(default_payload, "Z1")["seconds"] == 900
+    assert _raw_zone(included_payload, "Z1")["seconds"] == 3000
+
+
 def test_aggregate_exclude_zero_keeps_groups_and_classification_unchanged():
     distribution = _module()
     zone_sets = [_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900, z1_zero=700)] * 3
-    normal_payload = distribution.build_training_distribution_payload(distribution.aggregate_power_zones(zone_sets))
+    normal_payload = distribution.build_training_distribution_payload(
+        distribution.aggregate_power_zones(zone_sets, exclude_zero=False)
+    )
     exclude_payload = distribution.build_training_distribution_payload(
         distribution.aggregate_power_zones(zone_sets, exclude_zero=True)
     )

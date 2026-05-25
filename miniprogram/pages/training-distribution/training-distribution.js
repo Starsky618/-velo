@@ -6,7 +6,6 @@
  */
 const api = require('../../utils/api')
 const powerZones = require('../../utils/power-zones')
-const EXCLUDE_ZERO_STORAGE_KEY = 'training_distribution_exclude_zero'
 
 // 把三组占比拼成 conic-gradient 圆饼图背景（颜色和下方横条一一对应：耐力绿 / 中强度橙 / 高强度红）。
 // 累积角度法：每组从上一组结束的百分比起、到累加后的百分比止，依次铺色，三段刚好转一圈。
@@ -34,7 +33,6 @@ Page({
     dataComplete: false,
     insufficientPower: false,
     distribution: null,
-    excludeZero: false,
     donutStyle: '',
     groups: [],
     rawZones: [],
@@ -43,9 +41,7 @@ Page({
   },
 
   onLoad() {
-    var excludeZero = wx.getStorageSync(EXCLUDE_ZERO_STORAGE_KEY) === true
-    this.setData({ excludeZero: excludeZero })
-    this.fetchDistribution(excludeZero)
+    return this.fetchDistribution()
   },
 
   onPullDownRefresh() {
@@ -54,10 +50,9 @@ Page({
     })
   },
 
-  fetchDistribution(excludeZero) {
+  fetchDistribution() {
     const that = this
-    var shouldExcludeZero = excludeZero === undefined ? this.data.excludeZero : excludeZero
-    var params = { range: '6w', exclude_zero: shouldExcludeZero }
+    var params = { range: '6w', exclude_zero: true }
     this.setData({ loading: true, loadError: false })
 
     return api.get('/api/training/distribution', params)
@@ -96,12 +91,5 @@ Page({
           duration: 3000,
         })
       })
-  },
-
-  onExcludeZeroChange(e) {
-    var excludeZero = !!(e && e.detail && e.detail.value)
-    wx.setStorageSync(EXCLUDE_ZERO_STORAGE_KEY, excludeZero)
-    this.setData({ excludeZero: excludeZero })
-    this.fetchDistribution(excludeZero)
   },
 })

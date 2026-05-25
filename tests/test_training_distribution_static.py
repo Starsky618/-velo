@@ -49,17 +49,20 @@ def test_training_distribution_js_uses_distribution_endpoint_only():
     assert "/api/activities" not in js
 
 
-def test_training_distribution_exclude_zero_switch_is_persisted_and_sent_to_api():
-    """页面开关要记住用户选择，并把 exclude_zero 传给后端。"""
+def test_training_distribution_fixed_pedaling_time_without_user_switch():
+    """训练结构页固定展示真实蹬踏时间，不再把 0W 口径选择权交给用户。"""
     js = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.js")
     wxml = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.wxml")
 
-    assert "training_distribution_exclude_zero" in js
-    assert "wx.getStorageSync" in js
-    assert "wx.setStorageSync" in js
-    assert "exclude_zero" in js
-    assert 'bindchange="onExcludeZeroChange"' in wxml
-    assert "不计滑行/停顿时间" in wxml
+    assert "exclude_zero: true" in js
+    assert "training_distribution_exclude_zero" not in js
+    assert "wx.getStorageSync" not in js
+    assert "wx.setStorageSync" not in js
+    assert "excludeZero" not in js
+    assert "onExcludeZeroChange" not in js
+    assert "<switch" not in wxml
+    assert 'bindchange="onExcludeZeroChange"' not in wxml
+    assert "默认不计 0W" in wxml
 
 
 def test_training_distribution_wxml_uses_backend_copy_fields():
@@ -88,7 +91,7 @@ def test_training_distribution_wxml_renders_groups_actions_and_week_plan():
 
 
 def test_training_distribution_shows_raw_power_zones_next_to_donut():
-    """饼图旁边必须直接展示 Z1-Z6；否则 exclude_zero 开关看起来像没反应。"""
+    """饼图旁边必须直接展示 Z1-Z6，让用户一眼看到真实蹬踏时间分布。"""
     js = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.js")
     wxml = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.wxml")
     wxss = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.wxss")
