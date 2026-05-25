@@ -53,6 +53,18 @@ Tim / Claude Code 按以下场景让我出现：
 
 ---
 
+### 部署 / hotfix 后上生产 → 必读 `docs/agent-rules/deploy-sop.md`
+
+我作为主开发（B 档）或浅 bug 修复完成代码后，若改动是 user-facing 且要上生产：
+- **commit ≠ ship**：commit 完代码还在本地 / 生产没动 / 用户看不到
+- 部署前过 `deploy-sop.md` 6 步 SOP（push → pull → 清 Redis → rebuild → alembic → curl verify → grep 前端入口）
+- 生产报错按 `deploy-sop.md` §5 因果链排查（先看容器栈，别猜应用层）
+- 跳过：纯文档 / spec / tooling-only / 多 commit 的中间 commit
+
+> 含"部署"keyword 的 prompt 会触发 `scripts/user_prompt_mental_check.py` 的 SOP_MAP 自动注入部署 SOP 精华到双端视野（Claude + Codex）。
+
+---
+
 ## §2 交流协议（输入 → 处理 → 输出 → 复审）
 
 **这是本文的核心**。Codex 和 Claude 怎么衔接 = 这 4 步。默认描述审查模式；主开发模式额外执行 §2.2 第 6 项和 §7 第 4 条。

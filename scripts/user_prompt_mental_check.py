@@ -24,6 +24,7 @@ from typing import Optional
 VELO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_COLLAB = VELO_ROOT / "docs/agent-rules/agent-collaboration.md"
 CLAUDE_MD = VELO_ROOT / "CLAUDE.md"
+DEPLOY_SOP = VELO_ROOT / "docs/agent-rules/deploy-sop.md"
 
 EVIDENCE = """<evidence-ledger-before-response>
 回答前先确认：
@@ -72,7 +73,7 @@ def channel_1_routing(prompt: str) -> Optional[str]:
 
 SOP_MAP = [
     # (keyword, file, section_marker, max_lines)
-    ("部署", CLAUDE_MD, "## 部署经验", 40),
+    ("部署", DEPLOY_SOP, "# velo 部署 SOP", 18),
     ("调试", CLAUDE_MD, "## 🔍 调试 / 排查硬规则", 30),
     ("排查", CLAUDE_MD, "## 🔍 调试 / 排查硬规则", 30),
     ("commit 前", CLAUDE_MD, "## 🔴 commit 前 4 问", 20),

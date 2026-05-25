@@ -311,38 +311,11 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 
 > **核心教训：本地测试全绿 ≠ 生产能跑。** 测试用 SQLite + mock，不连真 Docker/PostgreSQL/Strava API。
 
-### 部署 SOP（每次部署必跑 4 步，顺序不可乱）
+📖 **完整部署 SOP（单一真相源）→ `docs/agent-rules/deploy-sop.md`**
 
-```bash
-# 1. 服务器 pull 最新代码
-ssh ubuntu@114.132.190.245 "cd ~/velo && git pull origin main"
+6 步 SOP（push → pull → 清 Redis → rebuild → alembic → curl verify → grep 前端入口）+ Pre-deploy checklist + 部署后真用回归 6 类盲区 + 故障排查因果链 + 运维脚本纪律 + SSH 脱敏，全在该文件。含"部署"keyword 的 prompt 由 `scripts/user_prompt_mental_check.py` 的 SOP_MAP 自动注入该文件摘要到双端视野（Claude + Codex）。
 
-# 2. rebuild 所有受影响容器（不是 restart / restart 不会拿新代码）
-# ⚠ 2026-05-20 实证：只 rebuild api 漏 worker / 让 worker NPC hook 静默失效 30 分钟（Persona 已砍 / 教训留底）
-# api / worker / cleanup / monitor / scheduler / curation-pool-cron 共享 `build: .` 同一 image
-# 改任意 app/*.py 都要 rebuild 该 service 对应的容器（worker 改了必 rebuild worker）
-# 最稳：不指定 service / docker 自动 rebuild + 重启所有受影响容器
-ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build"
-# 边界确定时才指定（仅改 router.py 等只影响 api）：
-# ssh ubuntu@114.132.190.245 "cd ~/velo && sudo docker compose up -d --build api"
-
-# 3. 跑 alembic upgrade（硬性必跑 / 哪怕你"觉得这次没改 schema"）
-#    2026-05-15 实证：跳过这步 = 生产新代码引用未建表 / 全 endpoint 500
-ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T api python3 -m alembic upgrade head"
-
-# 4. curl 真 endpoint 验证（不只看 docker ps Up）
-ssh ubuntu@114.132.190.245 "sudo docker compose -f ~/velo/docker-compose.yml exec -T api python3 -c \"import urllib.request,json; print(json.load(urllib.request.urlopen('http://localhost:8000/api/segments/1'))['id'])\""
-```
-
-**为什么 alembic upgrade 升成硬性步骤**：并行开发时，**任何 sprint 加了迁移文件，所有人部署时都得跑**——哪怕你这次没改 schema。2026-05-15 实证：Tim 隐私 sprint 加了 `activity_privacy` 表迁移，我做坡度 sprint 部署时没跑 → 生产全 endpoint 500。
-
-### 部署前强制检查清单
-
-- [ ] **requirements.txt 完整**？本地 pip install 的新包都写进去
-- [ ] **docker-compose.yml 同步**？.env 加新变量 → docker-compose 的 environment 也加
-- [ ] **Alembic 迁移在 PostgreSQL 上能跑**？不要在迁移脚本中用 Python try/except 包 DDL——PG 事务 abort 后所有后续 SQL 都失败。用 `DO $$ EXCEPTION` 块隔离
-- [ ] **第三方 OAuth 回调地址配了**？代码里写 redirect_uri 不够，第三方平台后台也要配
-- [ ] **服务器能连 GitHub**？大陆服务器不稳定。备用：本地 scp 上传 / 服务器 sed 改文件
+> ⚠ 历史的 4 步 SOP / checklist 已迁入 deploy-sop.md 并升级为 6 步——CLAUDE.md 不再保留正文，避免两处漂移。
 
 ### 服务器信息
 

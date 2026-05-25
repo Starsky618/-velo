@@ -7,6 +7,8 @@
 > **核心信条**：**本地测试全绿 ≠ 生产能跑**。测试用 SQLite + mock，不连真 Docker / PostgreSQL / Strava API。`commit ≠ ship`——commit 完代码还在本地，用户连的是生产，没部署 = 用户看不到改动。
 >
 > **来源**：合并自 Claude 侧 9 条 memory（deploy-curl-verify / deploy-rebuild-all-containers / diagnosis-container-stack-first / real-usage-vs-mock-blindspot / ssh-remote-secret-redact / standalone-script-orm-loading / logger-warning-narrative-trap / throttling-real-rate-limit / oneshot-cron-sentinel / alert-channel-deferred）+ `~/.claude/skills/deploy` skill。本文已把 mock 盲区从 skill 旧版的 5 类**更新到 6 类**（补 2026-05-21 Sprint 9 算法语义错实证）。
+>
+> **⚠ 若你是被 hook 自动注入看到这段** = 这只是本文顶部摘要。部署前请读全文 §2（6 步 SOP）+ §3（checklist）+ §5（排查因果链），别只看这段。
 
 ---
 
