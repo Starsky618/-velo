@@ -1,5 +1,26 @@
 # VELO 开发变更日志
 
+## 2026-05-25: Sprint 10 PMC 训练负荷曲线 ✅（双主驾协作里程碑 / Codex Desktop 首次主写代码）
+
+**主轴**：模块 B 训练负荷曲线（CTL/ATL/TSB）上生产 / 同时验证"Codex Desktop 主写 + Claude 异源审"分工。
+
+**协作机制突破（本 session 元产出 / 比代码更重要）**：
+- **plans 派 Codex Desktop 原生写**：B 对照实验实证 Codex 写 task-1 plan 抓 Claude 漏的 2 Critical（migrations/env.py import + conftest fixture）→ 工作流升级"通道决定行为"（Codex Desktop 原生 OK / Claude Code 插件写大文档 ban）
+- **代码首次 Codex Desktop 主写全 6 task**（2669 行）+ Claude 异源审读真 diff 抓 2 Critical（canvas 陷阱 #17 重现 / 参数名偏离 plan 合同）+ 5 Important / Codex 自跑 6 reviewer 全漏 → 印证异源审是必须不是 nice-to-have
+- **Tim 介入从 20 次砍到 ~4 次**：mega-brief 一次 copy + Codex 串行跑 + Claude 4 reviewer 并行审 + 后台监控自动触发
+
+**commit 链**：`f6ff00d`（6 task 实施）→ `a514881`（双审 fix 2C+3I）→ `b400c60`（round 统一）→ `2292048`（覆盖率门槛）
+
+**dry-run 真用回归救场**：Tim 账号最近 42 天功率覆盖率 11.1% → CTL 失真 4.8（真实应 40-70）/ TSB -116 → Tim 拍覆盖率 < 50% 不展示 PMC（跟砍 max_gradient 同判断 / 防鬼图）。分阶部署（dry-run 先看）让鬼数据卡在生产门外。
+
+**部署全链路**：push → rebuild 所有容器 → alembic 真 PG（idx date DESC + CHECK + FK 全对）→ 回填 1493 天 → 覆盖率门槛验证 → 真机"⚡功率数据不足"
+
+**遗留 P2**：覆盖率门槛固定 42 天 / 全年视图被一刀切挡（`docs/tech-debt.md` / 留下次修 range 联动）
+
+**测试**：733 passed / 0 fail
+
+---
+
 ## 2026-05-23 → 25: 双主驾协作机制系统化 + dev-guide HTML 升级正式版 ✅
 
 **主轴**：从"dev-guide.md 老了 / 看不懂架构"出发 / 走通"Claude × Codex 模块化协作 + cross-project 复用 pattern" / 收尾把 dev-guide markdown 升级 HTML v4 七 tab 正式版。
