@@ -278,3 +278,21 @@ def test_sweet_spot_explanation_embeds_dynamic_tempo_percent():
     tempo_pct = next(g["percent"] for g in payload["groups"] if g["key"] == "tempo_threshold")
     assert f"{tempo_pct}%" in payload["explanation"]
     assert "{tempo}" not in payload["explanation"]  # 占位符必须被真实数字替换
+
+
+def test_all_type_explanations_have_no_unfilled_placeholder():
+    # 5 种类型的 explanation 都嵌了动态百分比（Tim 2026-05-26 顺手补全）；
+    # 复用各分类代表数据触发，确认占位符全部被真实数字替换、无 { } 残留（否则前端会原样显示 "{endurance}"）。
+    distribution = _module()
+    cases = {
+        "sweet_spot": [_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900)] * 3,
+        "polarized": [_zones(z1=800, z2=8200, z3=600, z4=1000, z5=900, z6=300)] * 3,
+        "pyramidal": [_zones(z1=700, z2=6000, z3=2500, z4=500, z5=800, z6=200)] * 3,
+        "threshold": [_zones(z1=500, z2=3500, z3=1500, z4=3000, z5=1500, z6=500)] * 3,
+        "mixed": [_zones(z1=500, z2=3500, z3=2500, z4=1000, z5=2500, z6=500)] * 3,
+    }
+    for expected_type, zone_sets in cases.items():
+        payload = distribution.build_training_distribution_payload(distribution.aggregate_power_zones(zone_sets))
+        assert payload["current_type"] == expected_type
+        assert "{" not in payload["explanation"], expected_type
+        assert "}" not in payload["explanation"], expected_type
