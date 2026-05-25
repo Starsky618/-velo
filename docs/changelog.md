@@ -1,5 +1,37 @@
 # VELO 开发变更日志
 
+## 2026-05-26: Sprint 11 训练分布分析 ✅（模块 C / 真机反馈驱动多轮迭代）
+
+**主轴**：训练分布（Polarized / Pyramidal / Sweet Spot / Threshold / Mixed 五类型）上生产 / Codex 主写核心 + Claude 异源审 / Tim 真机反馈驱动多轮增量，最终收束为默认不计 0W 的单一展示口径。
+
+**7 commit 链**：
+- `7426b6e` feat：训练分布核心（Codex 主写 / 纯函数 distribution.py + service + `GET /api/training/distribution` + 小程序页 + 75 测试）
+- `5e2b576` fix：Claude 异源审收敛（aggregate 去重复 normalize + 不足态文案断言）
+- `c17bec4` feat：task-6 排滑行 0W 开关 + 历史回填脚本（power_zones 记 Z1.zero_seconds / exclude_zero 只扣展示口径不碰分类 / snapshot_ftp 重算避免污染历史区间）
+- `907ecf4` feat：v2（门槛 3→2 + sweet_spot 动态百分比 + 圆饼图 conic-gradient + 数据不足态补开关）
+- `77dca05` feat：全 5 类型 explanation 动态百分比
+- `05338fc` fix：按 Sprint11 demo 精修训练结构 UI，饼图右侧直接展示 Z1-Z6；活动详情页默认按真实蹬踏时间展示功率区间
+- `93e820e` fix：训练结构页删掉 0W 开关，前端 / router / service / 纯函数默认统一不计 0W；`exclude_zero=false` 仅保留为旧口径兼容和测试通道
+
+**真机反馈驱动迭代（产品打磨范例 / Tim 每次真机一看就暴露一个真问题）**：
+1. Z1 占 79% 被滑行 0W 灌水 → 加"不计滑行/停顿"开关（只扣 Z1 展示 / 分类分母本就剔除 Z1 不受影响）
+2. 历史活动开开关无效果（老 power_zones 无 zero_seconds）→ backfill 重算 184 条
+3. 卡在"数据不足"（最近 6 周仅 2 次有功率 < 3 条门槛）→ 门槛 3→2（3h 时间门槛兜底）→ 解锁 Pyramidal 分类
+4. 数据不足态看不到开关 → 补到不足态 + 圆饼图
+5. 要 demo 那种动态百分比 → 全类型 explanation 嵌真实占比 + conic-gradient 圆饼图
+6. 开关影响的 raw_zones 埋得太深，用户视觉上像"按钮无效" → 饼图右侧直接展示 Z1-Z6 秒数/百分比
+7. 产品口径最终收束：所有功率区间分析默认不计 0W，不再把"含不含 0W"交给用户选择
+
+**backfill 184 条**：本地无真 DB（velo 既定架构 = 本地 SQLite 测试 / 真数据只在生产容器）→ dry-run + apply 都在生产 api 容器内跑 / 默认 dry-run gate / 0 失败。
+
+**生产验证**：服务器已部署到 `93e820e`。Tim user_id=2 → data_complete=True / current_type=pyramidal / 耐力 60% · 中强度 31% · 高强度 9% / explanation 含动态数字。部署后 curl 验证：默认响应等同 `exclude_zero=true`（total=11243 / Z1=5002），显式 `exclude_zero=false` 保留旧含 0W 口径（total=24479 / Z1=18238），groups 不变。
+
+**异源审实证**：Claude 审 Codex 写的核心 + task-6 / 自己写的 v2 也派双审（防长会话末端疲劳）/ 多轮 Critical=0 / 抓 5+ Important（双重 normalize / backfill 缺口 / 门槛文档漂移 / 圆饼图 round 白缝 / 文档仍写开关）全修。
+
+**遗留 follow-up**：① 小程序待 Tim 用微信开发者工具上传发布（服务器部署不会自动发布小程序包）② 发布后真机复核圆饼图 conic-gradient；若旧设备白块则换 SVG ③ tech-debt 记 2 项 P3（range 死防御 / activity_type 索引）。无新 alembic 迁移（power_zones JSONB 加字段不需迁移）。
+
+---
+
 ## 2026-05-25: Sprint 10 PMC 训练负荷曲线 ✅（双主驾协作里程碑 / Codex Desktop 首次主写代码）
 
 **主轴**：模块 B 训练负荷曲线（CTL/ATL/TSB）上生产 / 同时验证"Codex Desktop 主写 + Claude 异源审"分工。

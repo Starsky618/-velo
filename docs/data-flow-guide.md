@@ -1549,6 +1549,26 @@ strava:   与 notification 同层 —— 依赖 user + activity + segment + pars
 
 ---
 
+## 链路 19：训练分布（Sprint 11 / 五类型 + 排滑行 0W）
+
+**读路径（用户主动看 / 纯同步 / 无写入无 hook）**：
+`GET /api/training/distribution?range=6w&exclude_zero=bool`（默认 true；小程序固定 true）→ `distribution_service` 查当前用户最近 6 周 completed cycling + power_zones IS NOT NULL 活动（复用 `service.py` 北京时间 helper）→ 纯函数 `distribution.py`：
+- `aggregate_power_zones`：累计 Z1-Z6 秒数 + 三组（耐力 Z2 / 中强度 Z3-Z4 / 高强度 Z5-Z6）
+- `classify_distribution`：threshold(Z4≥30%) → sweet_spot(Z3-Z4≥40%) → polarized(Z2≥70%+Z5+≥8%) → pyramidal(Z2>Z3-Z4>Z5+) → mixed / **分母剔除 Z1**
+- `build_payload`：五类型文案 + explanation 嵌真实占比 + 圆饼图 groups percent
+
+**exclude_zero 排滑行 0W**：0W（滑行/等灯）只落 Z1 → 展示口径只扣 Z1 秒数 + total，**不碰分类**（分母本就剔除 Z1）。小程序默认不计 0W，不再给用户开关；`exclude_zero=false` 只作为旧调用/测试兼容通道。zero_seconds 在 `power_zones.py calculate_power_zones` 上传时同 dt 口径记入 Z1 dict（历史活动靠 `scripts/backfill_power_zone_zero_seconds.py` 用 snapshot_ftp 重算补 / 本地无真 DB → dry-run+apply 都在生产容器跑）。
+
+**关键不变式**：
+- raw_zones 禁带 min_w/max_w（反推 FTP）/ schema extra=forbid
+- data_complete 门槛 activity_count≥2 且 total≥10800（含 0W 原始 total / exclude_zero 不改判定）
+- 分类/groups/文案不受 exclude_zero 影响（只 raw_zones 展示变）
+- 默认响应必须等同 `exclude_zero=true`；`exclude_zero=false` 只为旧调用和测试保留，不出现在小程序 UI
+
+**详**：`docs/prd/sprint-11-prd.md` + `docs/superpowers/specs/2026-05-25-sprint-11-training-distribution-spec.md` + `docs/changelog.md` 2026-05-26 段
+
+---
+
 ## 未实现链路(易踩坑)
 
 **以下链路在 PRD v0 中规划过但实际未实现**,agent 不要假设存在:

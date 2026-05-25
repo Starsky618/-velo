@@ -152,8 +152,8 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 - **训练分析线**：`docs/superpowers/specs/2026-05-20-training-analytics-roadmap.md`（5 模块 6-8 周）
   - **Sprint 9 模块 A（FTP 智能化）✅ 2026-05-21 ship**：8 task + 9 hotfix / 详 `docs/prd/sprint-9-prd.md` + `docs/changelog.md` 2026-05-20→21 段
   - **Sprint 10 模块 B（PMC 训练负荷曲线 CTL/ATL/TSB）✅ 2026-05-25 ship**：6 task / Codex Desktop 首次主写代码 + Claude 异源审 / 详 `docs/prd/sprint-10-prd.md` + `docs/changelog.md` 2026-05-25 段
-  - **当前主线**：Sprint 11 模块 C（训练分布 Polarized/Pyramidal/SweetSpot）待开新 PRD
-  - Sprint 12 LLM 教练总结预留设计：`docs/superpowers/specs/2026-05-20-coach-engine-design.md`
+  - **Sprint 11 模块 C（训练分布 Polarized/Pyramidal/SweetSpot）✅ 2026-05-26 ship**：7 commit（`7426b6e` Codex 主写 → `93e820e`）/ 默认不计滑行 0W（不再给用户开关）+ 184 条 backfill + 门槛 3→2 + 圆饼图 conic-gradient + 全类型动态百分比 + demo 风格 UI / 服务器已部署到 `93e820e` / 详 `docs/changelog.md` 2026-05-26 段 / 遗留：小程序待上传发布 + 真机发布后再复核圆饼图
+  - **当前主线**：Sprint 12 模块 D（LLM 教练总结）待开 PRD / 产品形态愿景见 memory `project_velo_sprint12_coach_vision`（两场景：骑前每日教练 + 骑后分段复盘）+ 设计稿 `docs/superpowers/specs/2026-05-20-coach-engine-design.md`
   - **P1 tech debt**：FTP HR-gated 自动估算已替代旧 CP3 盲扫；Tim 当前仍因合格 20min 心率+功率窗口不足返回 insufficient（`docs/tech-debt.md`）/ 继续真用观察
   - **Sprint 10 收尾**：PMC 覆盖率门槛已按 range 联动（30d=42 天 / 90d=90 天 / 1y=365 天），训练分析图已补人话读图提示；剩余只是真用观察，不再作为 Sprint 10 阻断项
 

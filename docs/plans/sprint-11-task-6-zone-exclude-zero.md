@@ -124,7 +124,7 @@
 
 ## §6 历史数据 backfill（单独 commit / 单独跑 / 单独验证）
 
-历史活动的 `power_zones` 没有 `zero_seconds`，不 backfill 的话最近 6 周老活动开开关无效果。
+历史活动的 `power_zones` 没有 `zero_seconds`，不 backfill 的话最近 6 周老活动即使默认不计 0W 也扣不出滑行时间。
 
 - 脚本：遍历 `completed` + `cycling` + `power_zones IS NOT NULL` 的活动，从 trackpoint **复用 `calculate_power_zones` 重算**整条 power_zones（带上新的 `zero_seconds`），写回。
 - 用什么 FTP：用该活动 user 的**当前 ftp**（与 `backfill_ftp.py` 现有 pattern 一致）。注意这会让历史 power_zones 的区间边界按当前 ftp 重算——若不希望动 Z1-Z6 边界，则改为"只补 zero_seconds 字段、不覆盖 seconds"，但那要保证 0W 统计口径和原 seconds 一致（见 §5 陷阱 1）。**两条路二选一，在 commit message 写清选哪条及理由。**
