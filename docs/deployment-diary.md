@@ -426,3 +426,17 @@ sudo docker compose restart admin-h5   # 让 admin-h5 nginx 重新解析 api hos
 - 闰年 2/29 注册用户周年永远不触发（小概率边界）
 - N+1 查询 _check_milestone_distance（100 用户量级可接受）
 
+---
+
+## 2026-05-25：Sprint 10 小程序前端开发版本上传
+
+**范围**：只分发小程序前端，不部署服务器。后端代码与生产容器未变。
+
+**本地源码**：`b11d985`（包含 `3c24dd1` 训练分析读图说明 + `b11d985` Sprint 10 文档状态收尾），已 `git push origin main`。
+
+**微信开发者工具 CLI**：
+- `cli islogin`：已登录，IDE service port `http://127.0.0.1:55858`
+- `cli preview --project /Users/macbookair/Desktop/velo/miniprogram --qr-format terminal`：成功，包体 `175.2 KB`
+- `cli upload --project /Users/macbookair/Desktop/velo/miniprogram --version 2026.05.25.1519 --desc '训练分析读图说明 + Sprint10收尾'`：成功，包体 `177.9 KB`
+
+**注意**：预览二维码写文件模式曾因 `二维码输出路径无效或不存在` 失败；终端二维码模式可用。后续若要自动保存二维码图片，先单独验证 `--qr-output` 的路径规则。
