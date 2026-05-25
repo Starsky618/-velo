@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sprint 11 训练分布演示</title>
+  <style>
+    :root {
+      --bg: #edf1ee;
+      --panel: #ffffff;
+      --ink: #151719;
+      --muted: #687178;
+      --line: #d8dfda;
+      --green: #1b7a55;
+      --blue: #2768c5;
+      --amber: #b97817;
+      --red: #c85045;
+      --violet: #6a56b8;
+      --soft-green: #e7f4ed;
+      --soft-blue: #e9f0fb;
+      --soft-amber: #fbf0df;
+      --soft-red: #fae8e5;
+      --soft-violet: #efecfb;
+      --shadow: 0 12px 30px rgba(30, 45, 38, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .app {
+      width: min(430px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      background: #f8faf8;
+      border-left: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      padding: 18px 18px 12px;
+      background: rgba(248, 250, 248, 0.96);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 32px;
+    }
+
+    .back,
+    .icon-button {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--ink);
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .date {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    h1 {
+      margin: 18px 0 0;
+      font-size: 29px;
+      line-height: 1.08;
+      font-weight: 850;
+      letter-spacing: 0;
+    }
+
+    main {
+      padding: 14px 14px 30px;
+    }
+
+    .card {
+      margin-top: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .hero {
+      margin-top: 0;
+      padding: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #fbf7ef 100%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 760;
+      color: var(--amber);
+      background: var(--soft-amber);
+    }
+
+    .hero h2 {
+      margin: 14px 0 0;
+      font-size: 24px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      margin: 10px 0 0;
+      color: #33383c;
+      font-size: 16px;
+      line-height: 1.55;
+    }
+
+    .decision {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .button {
+      height: 44px;
+      border-radius: 8px;
+      border: 1px solid var(--ink);
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .button.primary {
+      color: #fff;
+      background: var(--ink);
+    }
+
+    .button.secondary {
+      color: var(--ink);
+      background: #fff;
+    }
+
+    .section-head {
+      padding: 14px 14px 8px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .section-head p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .metric {
+      min-height: 98px;
+      padding: 12px 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .metric label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 24px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 146px 1fr;
+      gap: 14px;
+      align-items: center;
+      padding: 4px 14px 16px;
+    }
+
+    .donut {
+      position: relative;
+      width: 142px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background:
+        conic-gradient(
+          var(--green) 0 44%,
+          var(--amber) 44% 91%,
+          var(--red) 91% 100%
+        );
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+    }
+
+    .donut::after {
+      position: absolute;
+      inset: 31px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #fff;
+      color: var(--ink);
+      content: "6周";
+      font-size: 20px;
+      font-weight: 850;
+    }
+
+    .legend-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .zone-row {
+      display: grid;
+      grid-template-columns: 40px 1fr 42px;
+      gap: 8px;
+      align-items: center;
+      min-height: 34px;
+      color: #33383c;
+      font-size: 13px;
+    }
+
+    .zone-key {
+      font-weight: 850;
+    }
+
+    .bar {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #edf1ee;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+    }
+
+    .zone-value {
+      color: var(--muted);
+      text-align: right;
+      font-weight: 760;
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 4px 14px 14px;
+    }
+
+    .compare-box {
+      min-height: 122px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+    }
+
+    .compare-box strong {
+      display: block;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .compare-box b {
+      display: block;
+      margin-top: 10px;
+      font-size: 26px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .compare-box span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .plan-list,
+    .source-list {
+      padding: 0 14px 14px;
+    }
+
+    .plan-item,
+    .source-item {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 10px;
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .plan-item:first-child,
+    .source-item:first-child {
+      border-top: 0;
+    }
+
+    .num {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--ink);
+      font-size: 14px;
+      font-weight: 850;
+    }
+
+    .plan-item h3,
+    .source-item h3 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    .plan-item p,
+    .source-item p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .week {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+      padding: 4px 14px 14px;
+    }
+
+    .day {
+      min-height: 90px;
+      padding: 8px 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+      text-align: center;
+    }
+
+    .day b {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .day span {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      margin: 8px auto 0;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--green);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .day small {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.15;
+    }
+
+    .day.mid span {
+      background: var(--amber);
+    }
+
+    .day.hard span {
+      background: var(--red);
+    }
+
+    .day.rest span {
+      background: var(--blue);
+    }
+
+    .warning {
+      margin: 0 14px 14px;
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--soft-blue);
+      color: #24415f;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .safe-area {
+      height: 12px;
+    }
+
+    @media (max-width: 360px) {
+      .split {
+        grid-template-columns: 1fr;
+      }
+
+      .donut {
+        margin: 0 auto;
+      }
+
+      .compare {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="nav">
+        <button class="back" aria-label="返回">‹</button>
+        <div class="date">最近 6 周</div>
+        <button class="icon-button" aria-label="刷新">↻</button>
+      </div>
+      <h1>训练结构</h1>
+      <div class="date">看最近 6 周，你到底怎么练</div>
+    </header>
+
+    <main>
+      <section class="card hero">
+        <div class="eyebrow">Sweet Spot 倾向</div>
+        <h2>你最近练得太挤在中间，容易累，但突破感不强。</h2>
+        <p>过去 6 周，你有 47% 的时间卡在节奏和阈值区。下周先把一次中强度骑换成轻松长骑，让身体有空间吸收训练。</p>
+        <div class="decision">
+          <button class="button primary">看下周怎么改</button>
+          <button class="button secondary">看数据来源</button>
+        </div>
+      </section>
+
+      <section class="summary-grid" aria-label="训练结构摘要">
+        <div class="metric">
+          <label>有效记录</label>
+          <strong style="color: var(--green)">16h</strong>
+          <span>最近 6 周有功率</span>
+        </div>
+        <div class="metric">
+          <label>中强度</label>
+          <strong style="color: var(--amber)">47%</strong>
+          <span>最容易堆累</span>
+        </div>
+        <div class="metric">
+          <label>高强度</label>
+          <strong style="color: var(--red)">9%</strong>
+          <span>刺激偏少</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>最近 6 周时间分布</h2>
+          <p>不是看骑了多少公里，而是看每一分钟落在哪个强度里。</p>
+        </div>
+        <div class="split">
+          <div class="donut" aria-label="训练分布饼图"></div>
+          <div class="legend-list">
+            <div class="zone-row">
+              <span class="zone-key" style="color: var(--green)">Z2</span>
+              <div class="bar"><span style="width: 44%; background: var(--green)"></span></div>
+              <span class="zone-value">44%</span>
+            </div>
+            <div class="zone-row">
+              <span class="zone-key" style="color: var(--amber)">Z3-Z4</span>
+              <div class="bar"><span style="width: 47%; background: var(--amber)"></span></div>
+              <span class="zone-value">47%</span>
+            </div>
+            <div class="zone-row">
+              <span class="zone-key" style="color: var(--red)">Z5+</span>
+              <div class="bar"><span style="width: 9%; background: var(--red)"></span></div>
+              <span class="zone-value">9%</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>你现在像哪种练法</h2>
+          <p>这不是给你贴标签，而是告诉你训练时间花在了哪里。</p>
+        </div>
+        <div class="compare">
+          <div class="compare-box">
+            <strong>当前</strong>
+            <b style="color: var(--amber)">Sweet Spot</b>
+            <span>时间紧、想快点见效时常见，但中强度堆多了会觉得天天都累。</span>
+          </div>
+          <div class="compare-box">
+            <strong>建议方向</strong>
+            <b style="color: var(--green)">80 / 20</b>
+            <span>更多轻松骑打底，保留少量真正高强度，训练更分明。</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>下周先改 3 件事</h2>
+          <p>不要求你马上变专业，只先改最容易产生差别的一周。</p>
+        </div>
+        <div class="plan-list">
+          <div class="plan-item">
+            <div class="num" style="background: var(--green)">1</div>
+            <div>
+              <h3>把一次节奏骑换成 90 分钟轻松骑</h3>
+              <p>目标是让 Z2 时间涨起来。你应该能完整说话，不追速度。</p>
+            </div>
+          </div>
+          <div class="plan-item">
+            <div class="num" style="background: var(--red)">2</div>
+            <div>
+              <h3>保留一次短间歇</h3>
+              <p>例如 5 组 3 分钟高强度，中间充分恢复。少而狠，不要天天半累不累。</p>
+            </div>
+          </div>
+          <div class="plan-item">
+            <div class="num" style="background: var(--amber)">3</div>
+            <div>
+              <h3>阈值骑只留一次</h3>
+              <p>如果本周已经爬坡或拉扯很多，就不要再补一场硬骑。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>一周会变成这样</h2>
+          <p>把训练判断落到一周安排，明天打开就知道该骑什么。</p>
+        </div>
+        <div class="week">
+          <div class="day"><b>一</b><span>Z2</span><small>45 分</small></div>
+          <div class="day hard"><b>二</b><span>Z5</span><small>短间歇</small></div>
+          <div class="day rest"><b>三</b><span>休</span><small>恢复</small></div>
+          <div class="day"><b>四</b><span>Z2</span><small>90 分</small></div>
+          <div class="day mid"><b>五</b><span>Z3</span><small>轻节奏</small></div>
+          <div class="day"><b>六</b><span>Z2</span><small>长骑</small></div>
+          <div class="day rest"><b>日</b><span>休</span><small>看状态</small></div>
+        </div>
+        <div class="warning">如果最近 6 周功率记录太少，这页应该先显示“数据不足”，不要硬给训练类型。假建议比没有建议更伤信任。</div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>数据从哪来</h2>
+          <p>每条有功率的骑行，上传时已经拆成 Z1-Z6 六个时间段。</p>
+        </div>
+        <div class="source-list">
+          <div class="source-item">
+            <div class="num">1</div>
+            <div>
+              <h3>每条活动先按 FTP 分区</h3>
+              <p>Z1 到 Z6 存的是秒数和占比。FTP 没填、功率缺失时，这条活动不参与。</p>
+            </div>
+          </div>
+          <div class="source-item">
+            <div class="num">2</div>
+            <div>
+              <h3>把最近 6 周同类分区加起来</h3>
+              <p>Z2 单独看；Z3-Z4 合并成中强度；Z5-Z6 合并成高强度。</p>
+            </div>
+          </div>
+          <div class="source-item">
+            <div class="num">3</div>
+            <div>
+              <h3>再翻译成一句训练判断</h3>
+              <p>后端先判类型，前端负责让用户知道下周应该改哪里。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="safe-area"></div>
+    </main>
+  </div>
+</body>
+</html>

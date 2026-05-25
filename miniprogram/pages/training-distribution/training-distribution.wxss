@@ -1,0 +1,296 @@
+page {
+  background: #F2F1F6;
+}
+
+.distribution-page {
+  min-height: 100vh;
+  padding: 24rpx;
+  box-sizing: border-box;
+}
+
+.state-panel,
+.hero-card,
+.section {
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 32rpx;
+  margin-bottom: 24rpx;
+}
+
+.state-panel {
+  min-height: 520rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 16rpx;
+}
+
+.state-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #111827;
+}
+
+.state-subtitle,
+.state-body {
+  font-size: 24rpx;
+  color: #6B7280;
+  line-height: 1.6;
+}
+
+.hero-card {
+  background: #111827;
+  color: #ffffff;
+}
+
+.hero-label {
+  font-size: 24rpx;
+  color: #9AE6B4;
+  font-weight: 600;
+}
+
+.hero-title {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 40rpx;
+  line-height: 1.25;
+  font-weight: 800;
+}
+
+.hero-copy {
+  display: block;
+  margin-top: 18rpx;
+  font-size: 25rpx;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.hero-meta {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20rpx;
+  margin-top: 28rpx;
+}
+
+.hero-meta > view {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.meta-value {
+  font-size: 34rpx;
+  font-weight: 800;
+}
+
+.meta-label {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-bottom: 24rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #111827;
+}
+
+.section-subtitle {
+  font-size: 23rpx;
+  color: #6B7280;
+}
+
+.group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+}
+
+.group-row {
+  display: grid;
+  grid-template-columns: 130rpx 1fr 70rpx;
+  align-items: center;
+  gap: 18rpx;
+}
+
+.group-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.group-label {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #111827;
+}
+
+.group-role {
+  font-size: 20rpx;
+  color: #8A8F98;
+}
+
+.group-bar {
+  height: 16rpx;
+  background: #EEF0F3;
+  border-radius: 999rpx;
+  overflow: hidden;
+}
+
+.group-fill {
+  height: 100%;
+  border-radius: 999rpx;
+}
+
+.group-fill-0 {
+  background: #2EAD6B;
+}
+
+.group-fill-1 {
+  background: #E6A23C;
+}
+
+.group-fill-2 {
+  background: #C9574C;
+}
+
+.group-percent {
+  text-align: right;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #111827;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18rpx;
+}
+
+.compare-box {
+  padding: 24rpx;
+  border-radius: 20rpx;
+  background: #F7F8FA;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.compare-box.target {
+  background: #F0FAF4;
+}
+
+.compare-kicker {
+  font-size: 20rpx;
+  color: #8A8F98;
+}
+
+.compare-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #111827;
+}
+
+.compare-copy {
+  font-size: 22rpx;
+  color: #5C6470;
+  line-height: 1.5;
+}
+
+.action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+}
+
+.action-item {
+  display: flex;
+  gap: 20rpx;
+}
+
+.action-index {
+  flex: 0 0 44rpx;
+  height: 44rpx;
+  line-height: 44rpx;
+  border-radius: 22rpx;
+  text-align: center;
+  background: #111827;
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.action-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.action-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #111827;
+}
+
+.action-body {
+  font-size: 23rpx;
+  color: #5C6470;
+  line-height: 1.55;
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8rpx;
+}
+
+.week-day {
+  min-height: 116rpx;
+  border-radius: 16rpx;
+  background: #F7F8FA;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+}
+
+.week-name {
+  font-size: 20rpx;
+  color: #8A8F98;
+}
+
+.week-title {
+  font-size: 23rpx;
+  font-weight: 700;
+  color: #111827;
+}
+
+.week-focus {
+  font-size: 18rpx;
+  color: #5C6470;
+}
+
+.source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  width: 100%;
+}
+
+.source-item {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #EEF0F3;
+  font-size: 22rpx;
+  color: #5C6470;
+}

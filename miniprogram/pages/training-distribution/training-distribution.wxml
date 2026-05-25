@@ -1,0 +1,125 @@
+<!-- 训练结构页 —— 把最近 6 周 Z1-Z6 翻译成训练类型和下周行动 -->
+<view class="distribution-page">
+  <view class="state-panel" wx:if="{{loading}}">
+    <text class="state-title">加载中</text>
+    <text class="state-subtitle">正在读取最近 6 周训练结构</text>
+  </view>
+
+  <view class="state-panel" wx:elif="{{loadError}}">
+    <text class="state-title">训练结构加载失败</text>
+    <text class="state-subtitle">请重试</text>
+  </view>
+
+  <view class="state-panel" wx:elif="{{insufficientPower}}">
+    <text class="state-title">功率数据不足</text>
+    <text class="state-subtitle">{{distribution.headline}}</text>
+    <text class="state-body">{{distribution.explanation}}</text>
+    <view class="source-list">
+      <view class="source-item" wx:for="{{rawZones}}" wx:key="zone">
+        <text>{{item.zone}}</text>
+        <text>{{item.seconds}} 秒</text>
+        <text>{{item.percent}}%</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:else>
+    <view class="hero-card">
+      <text class="hero-label">{{distribution.current_label}}</text>
+      <text class="hero-title">{{distribution.headline}}</text>
+      <text class="hero-copy">{{distribution.explanation}}</text>
+      <view class="hero-meta">
+        <view>
+          <text class="meta-value">{{distribution.total_power_hours}}h</text>
+          <text class="meta-label">最近 6 周有功率</text>
+        </view>
+        <view>
+          <text class="meta-value">{{distribution.activity_count}}</text>
+          <text class="meta-label">参与统计骑行</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-head">
+        <text class="section-title">最近 6 周时间分布</text>
+        <text class="section-subtitle">看每一分钟落在哪个强度里</text>
+      </view>
+      <view class="group-list">
+        <view class="group-row" wx:for="{{groups}}" wx:key="key">
+          <view class="group-main">
+            <text class="group-label">{{item.label}}</text>
+            <text class="group-role">{{item.role}}</text>
+          </view>
+          <view class="group-bar">
+            <view class="group-fill group-fill-{{index}}" style="width: {{item.percent}}%;"></view>
+          </view>
+          <text class="group-percent">{{item.percent}}%</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-head">
+        <text class="section-title">你现在像哪种练法</text>
+        <text class="section-subtitle">这不是贴标签，是看训练时间花在哪里</text>
+      </view>
+      <view class="compare-grid">
+        <view class="compare-box">
+          <text class="compare-kicker">当前</text>
+          <text class="compare-title">{{distribution.current_label}}</text>
+          <text class="compare-copy">{{distribution.current_description}}</text>
+        </view>
+        <view class="compare-box target">
+          <text class="compare-kicker">建议方向</text>
+          <text class="compare-title">{{distribution.target_label}}</text>
+          <text class="compare-copy">{{distribution.target_description}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-head">
+        <text class="section-title">下周先改 3 件事</text>
+        <text class="section-subtitle">先改最容易产生差别的一周</text>
+      </view>
+      <view class="action-list">
+        <view class="action-item" wx:for="{{actions}}" wx:key="title">
+          <text class="action-index">{{index + 1}}</text>
+          <view class="action-copy">
+            <text class="action-title">{{item.title}}</text>
+            <text class="action-body">{{item.body}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-head">
+        <text class="section-title">一周会变成这样</text>
+        <text class="section-subtitle">明天打开就知道该骑什么</text>
+      </view>
+      <view class="week-grid">
+        <view class="week-day" wx:for="{{weekPlan}}" wx:key="day">
+          <text class="week-name">{{item.day}}</text>
+          <text class="week-title">{{item.title}}</text>
+          <text class="week-focus">{{item.focus}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-head">
+        <text class="section-title">数据从哪来</text>
+        <text class="section-subtitle">每条有功率骑行上传时已经拆成 Z1-Z6</text>
+      </view>
+      <view class="source-list">
+        <view class="source-item" wx:for="{{rawZones}}" wx:key="zone">
+          <text>{{item.zone}}</text>
+          <text>{{item.name}}</text>
+          <text>{{item.percent}}%</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

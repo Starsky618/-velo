@@ -125,6 +125,14 @@
     <text class="action-arrow">›</text>
   </view>
 
+  <view class="profile-action-card" bindtap="onTapTrainingDistribution">
+    <view class="action-main">
+      <text class="action-title">训练结构</text>
+      <text class="action-subtitle">看最近 6 周训练时间怎么分布</text>
+    </view>
+    <text class="action-arrow">›</text>
+  </view>
+
   <!-- 城市勋章墙 Tim 2026-05-16 真用拍砍（莫名其妙 / 后端 + endpoint 保留 / 仅前端隐藏）
        未来想恢复时取消注释 medals-section 即可 -->
 

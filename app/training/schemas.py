@@ -9,6 +9,8 @@ from app.training.training_load import round_1 as _round_1
 
 
 TrainingLoadRange = Literal["30d", "90d", "1y"]
+TrainingDistributionRange = Literal["6w"]
+TrainingDistributionType = Literal["polarized", "pyramidal", "sweet_spot", "threshold", "mixed"]
 StatusBand = Literal["fresh", "ok", "tired", "overreached"]
 
 
@@ -61,3 +63,71 @@ class TrainingLoadResponse(BaseModel):
     range: TrainingLoadRange
     points: list[TrainingLoadPoint]
     summary: TrainingLoadSummary
+
+
+class TrainingDistributionZone(BaseModel):
+    """Z1-Z6 原始累计区间，只保留用户可看的安全字段。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    zone: Literal["Z1", "Z2", "Z3", "Z4", "Z5", "Z6"]
+    name: str
+    seconds: int
+    percent: int
+
+
+class TrainingDistributionGroup(BaseModel):
+    """页面三组训练时间，像把六个抽屉合并成三类给用户看。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: Literal["endurance", "tempo_threshold", "high_intensity"]
+    label: str
+    zones: list[str]
+    seconds: int
+    percent: int
+    role: str
+
+
+class TrainingDistributionAction(BaseModel):
+    """下周先改的一件事。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    body: str
+
+
+class TrainingDistributionWeekItem(BaseModel):
+    """一周示意安排里的一天。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    day: str
+    title: str
+    focus: str
+
+
+class TrainingDistributionResponse(BaseModel):
+    """训练结构接口响应：判断、原因、分布和下周行动建议。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    range: TrainingDistributionRange
+    window_days: int
+    activity_count: int
+    total_power_seconds: int
+    total_power_hours: float
+    data_complete: bool
+    insufficient_power_data: bool
+    current_type: TrainingDistributionType | None
+    current_label: str
+    current_description: str
+    target_label: str
+    target_description: str
+    headline: str
+    explanation: str
+    groups: list[TrainingDistributionGroup]
+    raw_zones: list[TrainingDistributionZone]
+    actions: list[TrainingDistributionAction]
+    week_plan: list[TrainingDistributionWeekItem]

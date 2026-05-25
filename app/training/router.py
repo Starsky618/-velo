@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.training import schemas, service
+from app.training import distribution_service, schemas, service
 
 
 router = APIRouter(prefix="/api/training", tags=["training"])
@@ -24,3 +24,13 @@ def get_training_load(
 ):
     """获取当前用户的训练负荷曲线。"""
     return service.get_training_load_response(db, user_id, range)
+
+
+@router.get("/distribution", response_model=schemas.TrainingDistributionResponse)
+def get_training_distribution(
+    range: schemas.TrainingDistributionRange = Query("6w"),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """获取当前用户最近 6 周训练结构。"""
+    return distribution_service.get_training_distribution_response(db, user_id, range)

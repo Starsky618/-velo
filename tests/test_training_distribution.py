@@ -1,0 +1,191 @@
+"""Sprint 11 训练结构纯函数测试：把 6 周功率区间翻译成用户能看懂的训练类型。"""
+
+import json
+import importlib
+
+
+def _module():
+    return importlib.import_module("app.training.distribution")
+
+
+def _zones(z1=0, z2=0, z3=0, z4=0, z5=0, z6=0):
+    return [
+        {"zone": "Z1", "name": "恢复", "min_w": 0, "max_w": 129, "seconds": z1, "percent": 0},
+        {"zone": "Z2", "name": "耐力", "min_w": 130, "max_w": 176, "seconds": z2, "percent": 0},
+        {"zone": "Z3", "name": "节奏", "min_w": 177, "max_w": 211, "seconds": z3, "percent": 0},
+        {"zone": "Z4", "name": "阈值", "min_w": 212, "max_w": 247, "seconds": z4, "percent": 0},
+        {"zone": "Z5", "name": "VO2max", "min_w": 248, "max_w": 282, "seconds": z5, "percent": 0},
+        {"zone": "Z6", "name": "无氧", "min_w": 283, "max_w": None, "seconds": z6, "percent": 0},
+    ]
+
+
+def _payload_for(zone_set):
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([zone_set, zone_set, zone_set])
+    return distribution.build_training_distribution_payload(stats)
+
+
+def _group(payload, key):
+    return next(item for item in payload["groups"] if item["key"] == key)
+
+
+def _raw_zone(payload, zone):
+    return next(item for item in payload["raw_zones"] if item["zone"] == zone)
+
+
+def test_normalize_power_zones_accepts_list():
+    distribution = _module()
+    value = _zones(z2=60)
+
+    assert distribution.normalize_power_zones(value) == value
+
+
+def test_normalize_power_zones_accepts_json_string():
+    distribution = _module()
+    value = _zones(z2=60)
+
+    assert distribution.normalize_power_zones(json.dumps(value, ensure_ascii=False)) == value
+
+
+def test_normalize_power_zones_rejects_malformed_json_as_empty():
+    distribution = _module()
+
+    assert distribution.normalize_power_zones("{broken") == []
+
+
+def test_aggregate_uses_group_denominator_without_z1():
+    payload = _payload_for(_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900, z6=0))
+
+    assert _group(payload, "endurance")["percent"] == 44
+    assert _group(payload, "tempo_threshold")["percent"] == 47
+    assert _group(payload, "high_intensity")["percent"] == 9
+
+
+def test_raw_zones_percent_uses_total_with_z1():
+    payload = _payload_for(_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900, z6=0))
+
+    assert _raw_zone(payload, "Z1")["percent"] == 9
+    assert _raw_zone(payload, "Z2")["percent"] == 40
+    assert _raw_zone(payload, "Z3")["percent"] == 27
+    assert _raw_zone(payload, "Z4")["percent"] == 15
+    assert _raw_zone(payload, "Z5")["percent"] == 8
+    assert _raw_zone(payload, "Z6")["percent"] == 0
+
+
+def test_threshold_wins_before_sweet_spot_when_z4_reaches_30_percent():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones(
+        [_zones(z1=500, z2=3500, z3=1500, z4=3000, z5=1500, z6=500)] * 3
+    )
+
+    assert distribution.classify_distribution(stats) == "threshold"
+    assert distribution.build_training_distribution_payload(stats)["current_type"] == "threshold"
+
+
+def test_classifies_sweet_spot():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900)] * 3)
+
+    assert distribution.classify_distribution(stats) == "sweet_spot"
+
+
+def test_classifies_polarized():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z1=800, z2=8200, z3=600, z4=1000, z5=900, z6=300)] * 3)
+
+    assert distribution.classify_distribution(stats) == "polarized"
+
+
+def test_classifies_pyramidal():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z1=700, z2=6000, z3=2500, z4=500, z5=800, z6=200)] * 3)
+
+    assert distribution.classify_distribution(stats) == "pyramidal"
+
+
+def test_classifies_mixed():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z1=500, z2=3500, z3=2500, z4=1000, z5=2500, z6=500)] * 3)
+
+    assert distribution.classify_distribution(stats) == "mixed"
+
+
+def test_z1_only_complete_data_falls_back_to_mixed():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z1=3600)] * 3)
+    payload = distribution.build_training_distribution_payload(stats)
+
+    assert payload["data_complete"] is True
+    assert payload["insufficient_power_data"] is False
+    assert payload["current_type"] == "mixed"
+    assert payload["actions"]
+    assert len(payload["week_plan"]) == 7
+
+
+def test_data_incomplete_when_activity_count_less_than_three():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z2=4000)])
+
+    payload = distribution.build_training_distribution_payload(stats)
+
+    assert payload["data_complete"] is False
+    assert payload["insufficient_power_data"] is True
+    assert payload["current_type"] is None
+    assert payload["actions"] == []
+    assert payload["week_plan"] == []
+
+
+def test_data_incomplete_when_total_power_under_three_hours():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([_zones(z2=1000)] * 3)
+    payload = distribution.build_training_distribution_payload(stats)
+
+    assert payload["data_complete"] is False
+    assert payload["current_label"] == "功率数据不足"
+    assert payload["actions"] == []
+    assert payload["week_plan"] == []
+
+
+def test_payload_does_not_include_min_w_or_max_w():
+    payload = _payload_for(_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900))
+
+    assert all("min_w" not in zone and "max_w" not in zone for zone in payload["raw_zones"])
+
+
+def test_week_plan_has_seven_structured_items_for_complete_data():
+    payload = _payload_for(_zones(z1=1000, z2=4400, z3=3000, z4=1700, z5=900))
+
+    assert len(payload["week_plan"]) == 7
+    assert all(set(item) == {"day", "title", "focus"} for item in payload["week_plan"])
+
+
+def test_missing_zone_is_treated_as_zero_seconds():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones([[{"zone": "Z2", "name": "耐力", "seconds": 3600}]] * 3)
+    payload = distribution.build_training_distribution_payload(stats)
+
+    assert _raw_zone(payload, "Z1")["seconds"] == 0
+    assert _raw_zone(payload, "Z6")["seconds"] == 0
+    assert payload["total_power_seconds"] == 10800
+
+
+def test_non_numeric_seconds_is_ignored_without_crashing():
+    distribution = _module()
+    stats = distribution.aggregate_power_zones(
+        [[{"zone": "Z2", "name": "耐力", "seconds": 3600}, {"zone": "Z3", "name": "节奏", "seconds": "bad"}]] * 3
+    )
+    payload = distribution.build_training_distribution_payload(stats)
+
+    assert _raw_zone(payload, "Z3")["seconds"] == 0
+    assert payload["total_power_seconds"] == 10800
+
+
+def test_empty_or_all_zero_input_returns_incomplete_payload():
+    distribution = _module()
+    empty_payload = distribution.build_training_distribution_payload(distribution.aggregate_power_zones([]))
+    zero_payload = distribution.build_training_distribution_payload(distribution.aggregate_power_zones([_zones()] * 3))
+
+    assert empty_payload["data_complete"] is False
+    assert zero_payload["data_complete"] is False
+    assert empty_payload["total_power_seconds"] == 0
+    assert zero_payload["total_power_seconds"] == 0
