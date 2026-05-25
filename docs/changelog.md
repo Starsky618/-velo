@@ -9,13 +9,13 @@
 - **代码首次 Codex Desktop 主写全 6 task**（2669 行）+ Claude 异源审读真 diff 抓 2 Critical（canvas 陷阱 #17 重现 / 参数名偏离 plan 合同）+ 5 Important / Codex 自跑 6 reviewer 全漏 → 印证异源审是必须不是 nice-to-have
 - **Tim 介入从 20 次砍到 ~4 次**：mega-brief 一次 copy + Codex 串行跑 + Claude 4 reviewer 并行审 + 后台监控自动触发
 
-**commit 链**：`f6ff00d`（6 task 实施）→ `a514881`（双审 fix 2C+3I）→ `b400c60`（round 统一）→ `2292048`（覆盖率门槛）
+**commit 链**：`f6ff00d`（6 task 实施）→ `a514881`（双审 fix 2C+3I）→ `b400c60`（round 统一）→ `2292048`（覆盖率门槛）→ `21cebb4`（覆盖率按 range 联动）→ `3c24dd1`（图表人话解释）
 
 **dry-run 真用回归救场**：Tim 账号最近 42 天功率覆盖率 11.1% → CTL 失真 4.8（真实应 40-70）/ TSB -116 → Tim 拍覆盖率 < 50% 不展示 PMC（跟砍 max_gradient 同判断 / 防鬼图）。分阶部署（dry-run 先看）让鬼数据卡在生产门外。
 
 **部署全链路**：push → rebuild 所有容器 → alembic 真 PG（idx date DESC + CHECK + FK 全对）→ 回填 1493 天 → 覆盖率门槛验证 → 真机"⚡功率数据不足"
 
-**遗留 P2**：覆盖率门槛固定 42 天 / 全年视图被一刀切挡（`docs/tech-debt.md` / 留下次修 range 联动）
+**收尾修正**：原 P2“覆盖率固定 42 天 / 全年被一刀切挡”已改成按 range 判断；训练分析页也补了“绿线/黄线/蓝线怎么看”的用户提示。Sprint 10 不再有阻断项，后续只做真实用户观察。
 
 **测试**：733 passed / 0 fail
 
@@ -1393,4 +1393,3 @@ velo 终于有"老登 NPC"了——一个 35 岁、骑龄 10+ 年、半句话不
 - 微信开发者工具上传体验版 / 真打开 profile / 真上传 PR / 真测沉寂 / ...
 - 模板覆盖率 ≥ 80%（168 × 80% ≈ 134 条被触发过 / SQL 查 persona_outputs 验）
 - deployment-diary 真用激活记录
-

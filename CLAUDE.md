@@ -155,7 +155,7 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
   - **当前主线**：Sprint 11 模块 C（训练分布 Polarized/Pyramidal/SweetSpot）待开新 PRD
   - Sprint 12 LLM 教练总结预留设计：`docs/superpowers/specs/2026-05-20-coach-engine-design.md`
   - **P1 tech debt**：FTP HR-gated 自动估算已替代旧 CP3 盲扫；Tim 当前仍因合格 20min 心率+功率窗口不足返回 insufficient（`docs/tech-debt.md`）/ 继续真用观察
-  - **P2 tech debt**：PMC 覆盖率门槛固定 42 天窗口 / 全年视图被一刀切挡（`docs/tech-debt.md` / Sprint 10 遗留 / 下次修 range 联动）
+  - **Sprint 10 收尾**：PMC 覆盖率门槛已按 range 联动（30d=42 天 / 90d=90 天 / 1y=365 天），训练分析图已补人话读图提示；剩余只是真用观察，不再作为 Sprint 10 阻断项
 
 **历史档案**
 - **变更记录**：`docs/changelog.md`
@@ -359,4 +359,3 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 - **当前位置 + 下一步 + 起手必读** → memory `project_velo_current_position.md`（每次 /clear 后先 grep）
 - **历史 task 进度细节 / commit hash / D 决策** → memory `project_velo_full_progress_history.md`（按需 grep）
 - **跨期复盘 / 最新 ship 总结** → `docs/changelog.md`
-
