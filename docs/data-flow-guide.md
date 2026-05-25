@@ -1524,6 +1524,31 @@ strava:   与 notification 同层 —— 依赖 user + activity + segment + pars
 
 ---
 
+## 链路 18：训练负荷 PMC（Sprint 10 / CTL·ATL·TSB）
+
+**写入（3 通道 / 全在 caller `db.commit()` 之前 + SAVEPOINT 隔离 / 仿 worker.py:351-369 breakthrough hook）**：
+1. GPX/FIT 上传 → `worker.py _do_parse` 步骤 10.9 → `update_daily_load_for_activity`
+2. Strava webhook → `worker_strava.py _strava_post_parse_hooks` 第 6 hook → 同 helper
+3. Strava 历史导入 → `import_scheduler.py` tier2 完工（**不逐条 hook** / 倒序处理会让 CTL/ATL 时序错乱）→ 调 `backfill_daily_training_load_for_user` 全量正序递推
+
+**helper（`app/training/service.py update_daily_load_for_activity`）**：
+- started_at(UTC) 转北京时间归日 → `pg_advisory_xact_lock(hashtext('daily-training-load'), user_id)` 用户级事务锁（防 worker+scheduler 并发写同日 race）→ 拉前一日 ctl/atl → `training_load.py` 纯函数算 CTL(τ=42)/ATL(τ=7)/TSB → upsert `daily_training_load`（UNIQUE(user_id,date)）→ 重算 weekly_tss
+- **只 flush 不 commit**：外层 caller 统一提交 / activity 解析失败 rollback 时 daily_training_load 跟着回退 = 防孤儿数据
+
+**查询（`GET /api/training/load?range=30d|90d|1y`）**：
+- 拉窗口 daily_training_load → 缺日补点（tss=0 走自然衰减 / 非直接写 0）→ summary
+- **覆盖率门槛**：最近 42 天 cycling 活动 TSS 覆盖率 < 50% → `insufficient_power_data=true` + data_complete=false → 前端"⚡功率数据不足"（防 CTL 失真误导 / dry-run 实证 Tim 覆盖率 11.1% → CTL 失真 4.8）
+
+**关键不变式**：
+- TSS 来源 = `activity.tss`（Sprint 9 已写 / GPX 无功率 NULL → 跳过不算入负荷）
+- 时区：started_at 必转北京时间归日（各模块独立声明 `_BJ_TZ` / 不跨模块 import 私有符号）
+- CTL/ATL/TSB 公式只在 `app/training/training_load.py` 实现一次（Sprint 12 coach 复用 / 禁重复实现）
+- 覆盖率门槛固定 42 天窗口 → P2 tech-debt：全年视图被一刀切挡 / 待 range 联动
+
+**详**：`docs/prd/sprint-10-prd.md` v0.2 + `docs/plans/sprint-10-handoff.md` + `docs/tech-debt.md` P2
+
+---
+
 ## 未实现链路(易踩坑)
 
 **以下链路在 PRD v0 中规划过但实际未实现**,agent 不要假设存在:

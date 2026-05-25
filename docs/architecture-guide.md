@@ -61,7 +61,7 @@
 
 ---
 
-## 2. 业务模块(8+1)
+## 2. 业务模块(10+1)
 
 ### 2.1 模块清单
 
@@ -77,6 +77,7 @@
 | **monitor** | `app/monitor/` | **350 行** | **v5** | **worker 软目标监控（processing_health 4min + 飞书告警）+ admin H5 端到端探针（admin_h5_health 静态站 + 反代）** |
 | **common** | `app/common/` | **80 行** | **v5** | **跨模块工具：地理函数 / haversine / city 推断 / 单向依赖最下方（任意业务模块可向下用）** |
 | **admin** | `app/admin/` | **885 行** | **v5** | **管理后台 12 endpoint（whoami / curation-pool / ai/segment-drafts / segments admin CRUD / from-activity / from-gpx / activities/{id}/trackpoints）/ 编排其他模块 service / require_admin 依赖把关** |
+| **training** | `app/training/` | **~400 行** | **Sprint 10** | **PMC 训练负荷曲线：training_load.py 纯函数（CTL τ=42/ATL τ=7/TSB/4 档分类）+ daily_training_load 表 + GET /api/training/load（覆盖率门槛 < 50% 不展示）+ 3 写入通道 hook（worker/worker_strava/import_scheduler）/ 防火墙独立模块 / Sprint 12 coach 复用公式** |
 
 ### 2.2 模块内部结构(统一约定)
 
