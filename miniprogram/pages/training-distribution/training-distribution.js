@@ -5,6 +5,7 @@
  * 页面只展示后端给的判断、文案和分布数据，不从活动列表自己拼结果。
  */
 const api = require('../../utils/api')
+const powerZones = require('../../utils/power-zones')
 const EXCLUDE_ZERO_STORAGE_KEY = 'training_distribution_exclude_zero'
 
 // 把三组占比拼成 conic-gradient 圆饼图背景（颜色和下方横条一一对应：耐力绿 / 中强度橙 / 高强度红）。
@@ -72,7 +73,7 @@ Page({
           distribution: res || null,
           groups: groups,
           donutStyle: buildDonutStyle(groups),
-          rawZones: res && Array.isArray(res.raw_zones) ? res.raw_zones : [],
+          rawZones: powerZones.formatPowerZoneRows(res && Array.isArray(res.raw_zones) ? res.raw_zones : []),
           actions: res && Array.isArray(res.actions) ? res.actions : [],
           weekPlan: res && Array.isArray(res.week_plan) ? res.week_plan : [],
         })

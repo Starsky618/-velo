@@ -14,6 +14,7 @@
 
 var api = require('../../utils/api')
 var bindchart = require('../../utils/bindchart')
+var powerZones = require('../../utils/power-zones')
 
 // ────── 纯工具函数（不依赖页面实例，可独立测试） ──────
 
@@ -155,6 +156,7 @@ Page({
         if (data.normalized_power != null) data.normalized_power = Math.round(data.normalized_power)
         if (data.intensity_factor != null) data.intensity_factor = data.intensity_factor.toFixed(2)  // 0.85 这种
         if (data.tss != null) data.tss = Math.round(data.tss)
+        data.power_zones = powerZones.buildPedalingPowerZones(data.power_zones)
         if (Array.isArray(data.splits)) {
           for (var si = 0; si < data.splits.length; si++) {
             var sp = data.splits[si]

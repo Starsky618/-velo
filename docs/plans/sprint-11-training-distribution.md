@@ -123,7 +123,7 @@ Activity.power_zones IS NOT NULL
 
 ### 可删除边界
 
-删除 Sprint 11 时只撤 `/distribution` route、新 schema、新 service、新纯函数、新页面、新入口和 Sprint 11 测试。
+删除 Sprint 11 训练结构页面/API 部分时只撤 `/distribution` route、新 schema、新 service、新纯函数、新页面、新入口和 Sprint 11 页面/API 专属测试。2026-05-26 后 `miniprogram/utils/power-zones.js` 被活动详情页复用，不能按 Sprint 11 页面资产直接删除。
 
 不得删除或改坏：
 - `/api/training/load`
@@ -132,6 +132,8 @@ Activity.power_zones IS NOT NULL
 - `app/training/models.py`
 - `daily_training_load`
 - GPX / Strava worker 里的 Sprint 10 训练负荷 hook
+- `miniprogram/pages/detail/` 的功率区间展示
+- `miniprogram/utils/power-zones.js` 中仍被活动详情页使用的展示函数
 
 ## 具体任务票
 

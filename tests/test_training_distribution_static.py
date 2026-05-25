@@ -87,6 +87,36 @@ def test_training_distribution_wxml_renders_groups_actions_and_week_plan():
     assert "{{item.focus}}" in wxml
 
 
+def test_training_distribution_shows_raw_power_zones_next_to_donut():
+    """饼图旁边必须直接展示 Z1-Z6；否则 exclude_zero 开关看起来像没反应。"""
+    js = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.js")
+    wxml = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.wxml")
+    wxss = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.wxss")
+
+    assert "power-zones" in js
+    assert "formatPowerZoneRows" in js
+    assert "res.raw_zones" in js
+    assert 'class="chart-split"' in wxml
+    assert 'class="raw-zone-list"' in wxml
+    assert 'wx:for="{{rawZones}}"' in wxml
+    assert "{{item.timeText}}" in wxml
+    assert ".chart-split" in wxss
+    assert ".raw-zone-row" in wxss
+
+
+def test_activity_detail_defaults_power_zones_to_pedaling_time():
+    """单次活动详情页默认不含 0W，和训练结构页的真实蹬踏口径一致。"""
+    js = _read(MINI / "pages" / "detail" / "detail.js")
+    wxml = _read(MINI / "pages" / "detail" / "detail.wxml")
+    util = _read(MINI / "utils" / "power-zones.js")
+
+    assert "power-zones" in js
+    assert "buildPedalingPowerZones(data.power_zones)" in js
+    assert "zero_seconds" in util
+    assert "默认不计 0W" in wxml
+    assert "Z{{item.zone}}" not in wxml
+
+
 def test_training_distribution_states_are_present():
     """页面必须覆盖 loading / error / 数据不足 / 正常四态。"""
     wxml = _read(TRAINING_DISTRIBUTION_PAGE / "training-distribution.wxml")

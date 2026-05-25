@@ -94,7 +94,8 @@ git diff --check
 - `sweet_spot` / `polarized` / `pyramidal` / `mixed` 都有测试。
 
 ### 可删除边界
-- 删除 Sprint 11 只需撤 `/distribution` route、新 schema、新 service、新纯函数、新页面、新入口和 Sprint 11 测试。
+- 删除 Sprint 11 训练结构页面/API 部分只需撤 `/distribution` route、新 schema、新 service、新纯函数、新页面、新入口和 Sprint 11 页面/API 专属测试。
+- 2026-05-26 后 `miniprogram/utils/power-zones.js` 被活动详情页复用；删除 Sprint 11 时不能直接删这个共享工具，除非活动详情页已不再 import。
 - `/api/training/load` 测试继续通过。
 - 未改 `app/activity/worker.py` / `app/strava/worker_strava.py` 的 Sprint 10 hook。
 - 未改 DB 迁移。

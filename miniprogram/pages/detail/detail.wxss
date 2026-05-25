@@ -550,7 +550,8 @@
 .zone-time {
   font-size: 20rpx;
   color: var(--color-text-3);
-  width: 80rpx;
+  width: 128rpx;
+  line-height: 1.25;
   flex-shrink: 0;
 }
 

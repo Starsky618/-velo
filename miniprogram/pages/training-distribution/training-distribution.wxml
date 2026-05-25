@@ -30,9 +30,26 @@
         <text class="section-title">最近 6 周时间分布</text>
         <text class="section-subtitle">数据还不够判断练法，但时间花在哪是真实的</text>
       </view>
-      <view class="donut-wrap" wx:if="{{donutStyle}}">
-        <view class="donut" style="background: {{donutStyle}};">
-          <view class="donut-hole"></view>
+      <view class="chart-split">
+        <view class="donut-wrap" wx:if="{{donutStyle}}">
+          <view class="donut" style="background: {{donutStyle}};">
+            <view class="donut-hole"></view>
+          </view>
+        </view>
+        <view class="raw-zone-list">
+          <view class="raw-zone-row" wx:for="{{rawZones}}" wx:key="zone">
+            <view class="raw-zone-main">
+              <text class="raw-zone-key raw-zone-key-{{index}}">{{item.zoneLabel || item.zone}}</text>
+              <text class="raw-zone-name">{{item.name}}</text>
+            </view>
+            <view class="raw-zone-track">
+              <view class="raw-zone-fill raw-zone-fill-{{index}}" style="width: {{item.percent > 0 ? item.percent : 0.5}}%;"></view>
+            </view>
+            <view class="raw-zone-meta">
+              <text class="raw-zone-percent">{{item.percent}}%</text>
+              <text class="raw-zone-time">{{item.timeText}}</text>
+            </view>
+          </view>
         </view>
       </view>
       <view class="group-list">
@@ -94,9 +111,26 @@
         <text class="section-title">最近 6 周时间分布</text>
         <text class="section-subtitle">看每一分钟落在哪个强度里</text>
       </view>
-      <view class="donut-wrap" wx:if="{{donutStyle}}">
-        <view class="donut" style="background: {{donutStyle}};">
-          <view class="donut-hole"></view>
+      <view class="chart-split">
+        <view class="donut-wrap" wx:if="{{donutStyle}}">
+          <view class="donut" style="background: {{donutStyle}};">
+            <view class="donut-hole"></view>
+          </view>
+        </view>
+        <view class="raw-zone-list">
+          <view class="raw-zone-row" wx:for="{{rawZones}}" wx:key="zone">
+            <view class="raw-zone-main">
+              <text class="raw-zone-key raw-zone-key-{{index}}">{{item.zoneLabel || item.zone}}</text>
+              <text class="raw-zone-name">{{item.name}}</text>
+            </view>
+            <view class="raw-zone-track">
+              <view class="raw-zone-fill raw-zone-fill-{{index}}" style="width: {{item.percent > 0 ? item.percent : 0.5}}%;"></view>
+            </view>
+            <view class="raw-zone-meta">
+              <text class="raw-zone-percent">{{item.percent}}%</text>
+              <text class="raw-zone-time">{{item.timeText}}</text>
+            </view>
+          </view>
         </view>
       </view>
       <view class="group-list">

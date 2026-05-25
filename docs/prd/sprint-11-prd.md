@@ -70,7 +70,7 @@ Sprint 11 只新增训练结构这一组零件：
 
 ### 可拔插要求
 
-删掉 Sprint 11 新文件 + 从 `app.json` 和 profile 入口移除新页面后：
+删掉 Sprint 11 训练结构页面/API 新文件 + 从 `app.json` 和 profile 入口移除新页面后：
 - `/api/training/load` 仍可用。
 - 活动上传 / Strava 同步仍可用。
 - 活动详情的功率区间仍可用。
@@ -83,13 +83,17 @@ Sprint 11 只新增训练结构这一组零件：
 - `app/training/router.py` 里 `/distribution` 这一段
 - `miniprogram/pages/training-distribution/`
 - `profile` 新入口和新跳转函数
-- Sprint 11 专属测试
+- Sprint 11 页面/API 专属测试
+
+注意：2026-05-26 后 `miniprogram/utils/power-zones.js` 也服务活动详情页；删除 Sprint 11 时不能直接删它，除非先确认活动详情页已不再 import。
 
 删除时不能碰：
 - `app/training/service.py` 的 `/load` 服务
 - `app/training/training_load.py`
 - `app/training/models.py` 的 `daily_training_load`
 - `app/activity/worker.py` / `app/strava/worker_strava.py` 里 Sprint 10 训练负荷 hook
+- `miniprogram/pages/detail/` 的功率区间展示
+- `miniprogram/utils/power-zones.js` 中仍被活动详情页使用的展示函数
 
 ---
 

@@ -165,15 +165,18 @@
 
     <!-- 功率区间可视化 -->
     <view class="zones" wx:if="{{activity.power_zones.length}}">
-      <view class="zones-meta" wx:if="{{activity.snapshot_ftp}}">按 FTP {{activity.snapshot_ftp}}W 算</view>
+      <view class="zones-meta">
+        <text wx:if="{{activity.snapshot_ftp}}">按 FTP {{activity.snapshot_ftp}}W 算 / </text>
+        <text>默认不计 0W</text>
+      </view>
       <view class="zones-label">功率区间分布</view>
       <view class="zone-row" wx:for="{{activity.power_zones}}" wx:key="zone">
-        <text class="zone-tag" style="background: {{item.color || '#FF9500'}};">Z{{item.zone}}</text>
+        <text class="zone-tag" style="background: {{item.color || '#FF9500'}};">{{item.zoneLabel || item.zone}}</text>
         <view class="zone-track">
           <view class="zone-fill" style="width: {{item.percent > 0 ? item.percent : 0.5}}%; background: {{item.color || '#FF9500'}};"></view>
         </view>
         <text class="zone-pct">{{item.percent}}%</text>
-        <text class="zone-time">{{item.name || ''}}</text>
+        <text class="zone-time">{{item.name || ''}} {{item.timeText || ''}}</text>
       </view>
     </view>
   </view>

@@ -217,7 +217,7 @@ def build_training_distribution_payload(stats: dict) -> dict:
 
 ## 6. 删除边界
 
-删 Sprint 11 只能撤这些：
+删 Sprint 11 训练结构页面/API 部分只能撤这些：
 - `app/training/distribution.py`
 - `app/training/distribution_service.py`
 - `app/training/schemas.py` 里 Sprint 11 的 schema 类
@@ -225,7 +225,9 @@ def build_training_distribution_payload(stats: dict) -> dict:
 - `miniprogram/pages/training-distribution/`
 - `miniprogram/app.json` 新页面注册
 - `miniprogram/pages/profile/` 新入口和新跳转函数
-- Sprint 11 专属测试
+- Sprint 11 页面/API 专属测试
+
+2026-05-26 后 `miniprogram/utils/power-zones.js` 被活动详情页复用；删 Sprint 11 时不能直接删这个共享工具，除非先撤掉活动详情页依赖。
 
 不能撤这些：
 - `/api/training/load`
@@ -234,6 +236,8 @@ def build_training_distribution_payload(stats: dict) -> dict:
 - `app/training/models.py`
 - `daily_training_load` 表
 - GPX / Strava worker 里 Sprint 10 的 daily training load hook
+- `miniprogram/pages/detail/` 的功率区间展示
+- `miniprogram/utils/power-zones.js` 中仍被活动详情页使用的展示函数
 
 ---
 
