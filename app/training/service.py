@@ -43,9 +43,13 @@ _RANGE_DAYS: dict[TrainingLoadRange, int] = {
     "1y": 365,
 }
 _MIN_COMPLETE_DAYS = 14
-# TSS 覆盖率门槛：最近 42 天（CTL 窗口）completed cycling 活动有功率算出 TSS 的占比
-# < 50% → 不展示 PMC（功率数据不足 / 防 CTL 失真误导用户 / 2026-05-25 Tim 拍 dry-run 暴露）
-_COVERAGE_WINDOW_DAYS = 42
+# TSS 覆盖率门槛：30d 仍看 CTL 关心的最近 42 天；90d/1y 按用户正在看的时间窗判断。
+# 这样最近几周无功率不会一刀切挡住全年历史曲线，但 30d 当前状态卡仍不会展示失真的 CTL。
+_COVERAGE_WINDOW_DAYS_BY_RANGE: dict[TrainingLoadRange, int] = {
+    "30d": 42,
+    "90d": 90,
+    "1y": 365,
+}
 _MIN_TSS_COVERAGE = 0.5
 
 
@@ -66,6 +70,11 @@ def _to_bj_date(value: datetime) -> date:
     return value.astimezone(_BJ_TZ).date()
 
 
+def _bj_day_start_utc(target_day: date) -> datetime:
+    """把北京时间某天 00:00 翻译成 UTC，像给查询画一条清楚的日历起跑线。"""
+    return datetime(target_day.year, target_day.month, target_day.day, tzinfo=_BJ_TZ).astimezone(timezone.utc)
+
+
 def _zero_summary() -> TrainingLoadSummary:
     """完全没有账本时的空状态卡。"""
     return TrainingLoadSummary(
@@ -81,17 +90,25 @@ def _zero_summary() -> TrainingLoadSummary:
     )
 
 
-def _recent_tss_coverage(db: Session, user_id: int) -> float:
+def _range_tss_coverage(db: Session, user_id: int, load_range: TrainingLoadRange) -> float:
     """
-    最近 42 天 completed cycling 活动的 TSS 覆盖率（有功率算出 TSS 的占比）。
+    当前 range 对应窗口内 completed cycling 活动的 TSS 覆盖率（有功率算出 TSS 的占比）。
 
     为什么要这道门槛：CTL 是 42 天滑窗，最近活动大量无功率（无 TSS）时
     CTL 会失真偏低（如严肃骑手真实 CTL 50+ 但因最近多无功率骑行被算成 5）。
     覆盖率 < 50% 时不展示 PMC，避免误导用户（跟砍 max_gradient 同一判断：
-    数据达不到精度就别显示）。窗口对齐 CTL 时间常数 42 天，不随 API range 变。
+    数据达不到精度就别显示）。
+
+    但 90d / 1y 是用户回看历史趋势，不应该被最近 42 天一刀切挡住；
+    所以覆盖率窗口跟 range 联动，30d 仍用 42 天保护当前状态卡。
     无活动返 0.0（让 < 14 天历史那条逻辑接管）。
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=_COVERAGE_WINDOW_DAYS)
+    window_days = _COVERAGE_WINDOW_DAYS_BY_RANGE[load_range]
+    today = _today_bj()
+    start_day = today - timedelta(days=window_days - 1)
+    end_day = today + timedelta(days=1)
+    start_utc = _bj_day_start_utc(start_day)
+    end_utc = _bj_day_start_utc(end_day)
     row = (
         db.query(
             func.count(Activity.id).label("total"),
@@ -101,7 +118,8 @@ def _recent_tss_coverage(db: Session, user_id: int) -> float:
             Activity.user_id == user_id,
             Activity.status == "completed",
             Activity.activity_type == "cycling",
-            Activity.started_at >= cutoff,
+            Activity.started_at >= start_utc,
+            Activity.started_at < end_utc,
         )
         .first()
     )
@@ -422,8 +440,8 @@ def get_training_load_response(
 
     history_days = (stats.last_date - stats.first_date).days + 1
     has_history = history_days >= _MIN_COMPLETE_DAYS
-    # 覆盖率门槛：历史够长但最近 42 天功率数据不足 → 不展示（防 CTL 失真误导）
-    insufficient_power_data = has_history and _recent_tss_coverage(db, user_id) < _MIN_TSS_COVERAGE
+    # 覆盖率门槛：历史够长但当前 range 的功率数据不足 → 不展示（防 CTL/历史趋势失真误导）
+    insufficient_power_data = has_history and _range_tss_coverage(db, user_id, load_range) < _MIN_TSS_COVERAGE
     data_complete = has_history and not insufficient_power_data
     window_rows = (
         db.query(DailyTrainingLoad)

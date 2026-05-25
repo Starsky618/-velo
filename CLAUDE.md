@@ -154,7 +154,7 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
   - **Sprint 10 模块 B（PMC 训练负荷曲线 CTL/ATL/TSB）✅ 2026-05-25 ship**：6 task / Codex Desktop 首次主写代码 + Claude 异源审 / 详 `docs/prd/sprint-10-prd.md` + `docs/changelog.md` 2026-05-25 段
   - **当前主线**：Sprint 11 模块 C（训练分布 Polarized/Pyramidal/SweetSpot）待开新 PRD
   - Sprint 12 LLM 教练总结预留设计：`docs/superpowers/specs/2026-05-20-coach-engine-design.md`
-  - **P1 tech debt**：ftp_estimator 算 ftp=117W vs Tim 真实 1200s best 250W（`docs/tech-debt.md`）/ 专题待排
+  - **P1 tech debt**：FTP HR-gated 自动估算已替代旧 CP3 盲扫；Tim 当前仍因合格 20min 心率+功率窗口不足返回 insufficient（`docs/tech-debt.md`）/ 继续真用观察
   - **P2 tech debt**：PMC 覆盖率门槛固定 42 天窗口 / 全年视图被一刀切挡（`docs/tech-debt.md` / Sprint 10 遗留 / 下次修 range 联动）
 
 **历史档案**

@@ -47,6 +47,18 @@ def test_training_calendar_files_and_api_contract_exist():
     assert "/api/user/stats" not in js
 
 
+def test_training_calendar_range_tab_drives_api_range_param():
+    """用户切 30/90/全年 tab 后，请求参数必须跟 currentRange 一起变。"""
+    wxml = _read(TRAINING_PAGE / "training-calendar.wxml")
+    js = _read(TRAINING_PAGE / "training-calendar.js")
+
+    assert 'data-range="{{item.value}}"' in wxml
+    assert 'bindtap="onRangeTap"' in wxml
+    assert "this.setData({ currentRange: range }" in js
+    assert "const range = this.data.currentRange" in js
+    assert "api.get('/api/training/load', { range: range })" in js
+
+
 def test_training_calendar_canvas_and_empty_state_are_safe():
     """canvas 需要 100ms 兜底；空数据态不能画假曲线。"""
     wxml = _read(TRAINING_PAGE / "training-calendar.wxml")

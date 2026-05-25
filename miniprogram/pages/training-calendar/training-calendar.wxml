@@ -58,7 +58,7 @@
     <view class="empty-state" wx:elif="{{insufficientPower}}">
       <text class="empty-emoji">⚡</text>
       <text class="empty-title">功率数据不足</text>
-      <text class="empty-subtitle">训练负荷曲线需要更多有功率计的骑行记录（最近的骑行大多没有功率数据）</text>
+      <text class="empty-subtitle">训练负荷曲线需要更多有功率计的骑行记录（当前时间范围内功率记录偏少）</text>
     </view>
 
     <view class="empty-state" wx:elif="{{!dataComplete}}">

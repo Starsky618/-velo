@@ -80,6 +80,16 @@ velo Persona Engine Sprint 启动 / NPC 老登人格规范 + 50 条精选 + 信�
 
 ---
 
+### Layer 5: 部署执行层 — `deploy-sop.md`（2026-05-25 新增）
+
+**部署 / hotfix 上生产前必读**。velo 部署动作的**单一真相源**——6 步 SOP、Pre-deploy checklist、部署后真用回归 6 类盲区、故障排查因果链、运维脚本纪律、SSH 脱敏硬约束。
+
+合并自 Claude 侧 9 条部署 memory + deploy skill,服务**所有要把代码推上生产的 agent**（Codex 主开发 / hotfix 后部署尤其必读）。
+
+**使用场景**:任何 `git push` → 服务器部署的动作前,先过这份 SOP;生产报错排查时按 §5 因果链走;不能只 commit 完说"修好了"——`commit ≠ ship`。
+
+---
+
 ## Agent 工作流:何时读哪份
 
 ```

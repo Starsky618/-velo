@@ -6,58 +6,25 @@
 
 ---
 
-## 🔴 P1：ftp_estimator 算 ftp=117W vs Tim 真实 1200s best 250W（Sprint 9 task-5 / 2026-05-21 Tim 真用回归）
+## 🔴 P1：FTP 自动估算真实数据仍不足（HR-gated 已替代旧 CP3 盲扫 / 2026-05-25 本 session 排查）
 
-`app/activity/ftp_estimator.py` 在 Tim 账号上算 ftp=117W / confidence=high / r2=0.981（commit `5ba4229` 修完滑窗 bug 后）。但 **Tim 自报 1200s 历史最佳 ≈ 250W** / 算法跑出 1200s best=142.6W → **差 100W+** = **算法或数据真有错**（不是产品语义偏差）。
+**历史根因**：Sprint 9 的旧 `ftp_estimator` 曾盲扫功率 best efforts，Tim 账号算出 ftp=117W / confidence=high / r2=0.981，但 Tim 自报 1200s 历史最佳约 250W。这个问题不该靠“把所有活动都塞进 CP3”继续修，因为日常骑行不等于全力测试。
 
-**实证矛盾**：
-- 算法输出（_extract_best_efforts user_id=2）：180s=218.6W / 300s=185.2W / 600s=156.5W / **1200s=142.6W** / 3600s=115.5W
-- Tim 主观真实：1200s 历史最佳 **≈ 250W**
+**当前代码状态**：
+- `estimate_ftp_for_user` 已改成 `p20_hr_gated_cp3_check`：20min 心率+功率窗口是主锚点，CP3 只做一致性校验。
+- 候选池只看最近 90 天 `completed cycling`，最多采纳最近 10 条“有合格窗口”的活动；这里的 10 是上限，不是必须凑满 10 条。
+- 合格窗口必须在同一个连续窗口里 `power_coverage >= 90%` 且 `hr_coverage >= 80%`；20min 还要平均心率 ≥ 85% 用户 maxHR。
+- 活动级 `avg_power/avg_hr` 不再做 SQL 预过滤；trackpoint 里的功率/心率缺失交给窗口覆盖率判断，避免把有用原始点提前误杀。
 
-**可能原因（未排查 / 留 Sprint 10 后专题）**：
-1. `history_days=180` 6 个月窗口截掉了 Tim 真实 250W 那条活动（在更早时间）
-2. `Activity.avg_power.isnot(None)` 过滤掉了某些有 trackpoint power 但 avg_power 缺的活动
-3. `Trackpoint.power.isnot(None)` 过滤后数据稀疏 / 滑窗 left/right 推进出 bug
-4. 新算法时间加权 `power[i-1] × dt[i]` 约定有偏（prev_power 代表段 / 但首尾段可能算错）
-5. 跨活动取最大时漏数据
+**本 session 排查结论**：
+- Tim 已能在设置页填写出生年份 / 最大心率并触发自动估算；前端体验问题基本处理完。
+- 自动估算仍返回 `insufficient`，不是“系统没读到活动”，而是当前规则下缺少最近 90 天内同一 20min 窗口同时满足功率、心率、强度门槛的活动。
+- 这属于保守正确：没有足够强的心率+功率证据时，系统宁可让用户手动填，也不再给一个看似精确但实际误导的 FTP。
 
-**当前修复了什么**：commit `5ba4229` 修了滑窗 90% 容差 + index 计数平均 2 个 bug / 单调性恢复（修前 300s=278 > 180s=218 物理矛盾消除）/ 但 estimator 输出值依然跟真实数据不符 → 修了 bug 但没解决根问题。
-
-**Tim 2026-05-21 拍**：留 tech debt / Sprint 9 不再修（context 已超长）/ Sprint 10 后开"FTP 估算精度专题"。
-
-**Sprint 9 当前生产影响**：
-- estimator 单用户只服务"新用户首次填 ftp"场景 → Tim 已 ftp=210 不受影响
-- Breakthrough 检测依赖 estimator → Tim 账号永远算不出真突破（estimator 值偏低 / 不触发 1.05 阈值）
-- 实际危害：低（用户能手动填 ftp / 新功能不依赖估算输出）
-
-**修复触发条件**：
-- 新用户大量进入 / 需要靠 estimator 给 ftp 初值（v0.5-v1.0）
-- 或 Sprint 12 LLM 教练总结需要更准的 ftp / IF / TSS 输入
-
-**修法草稿**（未来专题）：
-1. 排查阶段：拉 Tim 真实最强 1200s 活动 / 看 trackpoints 是否完整 / 跟 estimator 算的对照
-2. 算法改进：考虑用 NP（已有字段）代替 best efforts 拟合 / 或 history_days=730 扩大窗口 / 或加 IF > 0.85 high-quality 活动过滤
-
----
-
-## 🟡 P2：PMC 覆盖率门槛固定 42 天窗口 / 全年视图被一刀切挡（2026-05-25 Tim 真机回归发现）
-
-`app/training/service.py` 的 `_recent_tss_coverage` 固定看**最近 42 天**（`_COVERAGE_WINDOW_DAYS=42`）/ 30d/90d/1y 三个 range 共用同一覆盖率判断。
-
-**问题**：Tim 账号最近 42 天功率覆盖率 11.1% < 50% → 三个 tab 全显示"⚡功率数据不足"。但全年（1y）视图本该展示历史有功率的时段（Tim 2023-2024 有大量功率活动 / 历史覆盖率可能 > 50%）→ 被"最近 42 天"一刀切挡掉 = 误伤。
-
-**根因**：覆盖率门槛设计只考虑"最近 CTL 准确性"（对 30d 视图合理）/ 没考虑"全年视图看历史趋势"应该用对应 range 的覆盖率。Claude 写覆盖率门槛时的设计盲点（窗口固定没跟 range 联动）。
-
-**修法草稿（下次 / Sprint 11 或 hotfix）**：
-1. 覆盖率窗口跟 range 联动：30d → 最近 42 天 / 90d → 最近 90 天 / 1y → 全年覆盖率
-2. 或分段展示：有功率时段正常画曲线 / 无功率时段标灰 + 提示（不整页挡）
-3. 或：门槛只挡"最近段 CTL 数字准确性"/ 历史曲线照常展示
-
-**当前生产影响**：中（有多年历史 + 历史有功率的用户全年视图看不到趋势 / 但 MVP 用户少 / Tim 自己暂时看不到全年训练趋势）
-
-**修复触发**：Tim 想看全年训练趋势 / 或历史功率覆盖率高的用户反馈全年看不到
-
-**2026-05-25 Tim 拍**：本 session 已重 / 留下次修。
+**仍需后续观察**：
+- 真骑一段时间后，用实际高强度 20min 数据验证估算值是否接近体感 FTP。
+- 若长期大量用户都 `insufficient`，再考虑前端展示“还差什么数据”（如缺 20min 高强度窗口 / 缺心率 / 缺功率）或后端返回诊断原因。
+- Breakthrough 仍依赖估算器；在真实合格窗口不足前，不应把自动突破当核心反馈来源。
 
 ---
 

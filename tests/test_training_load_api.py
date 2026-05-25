@@ -1,9 +1,48 @@
 """Sprint 10 task-4：训练负荷曲线 API 测试。"""
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
+from app.activity.models import Activity
 from app.training.models import DailyTrainingLoad
 from scripts.backfill_daily_training_load import _today_bj
+
+
+_BJ_TZ = timezone(timedelta(hours=8))
+
+
+def _utc_for_bj_day(day_offset: int, hour: int = 12) -> datetime:
+    bj_day = _today_bj() + timedelta(days=day_offset)
+    return datetime(
+        bj_day.year,
+        bj_day.month,
+        bj_day.day,
+        hour,
+        0,
+        0,
+        tzinfo=_BJ_TZ,
+    ).astimezone(timezone.utc)
+
+
+def _insert_activity_for_coverage(
+    db,
+    user_id: int,
+    *,
+    day_offset: int,
+    tss: float | None,
+) -> None:
+    db.add(
+        Activity(
+            user_id=user_id,
+            title="训练负荷覆盖率测试骑行",
+            status="completed",
+            activity_type="cycling",
+            distance=30000.0,
+            duration=3600,
+            tss=tss,
+            started_at=_utc_for_bj_day(day_offset),
+        )
+    )
+    db.commit()
 
 
 def _insert_daily_load(
@@ -56,7 +95,7 @@ def test_training_load_30d_returns_30_points(client, db, test_user, auth_header,
     """用户打开 30 天 tab，一次请求拿到 30 个画图点和顶部状态卡。"""
     # 本 test 专注曲线渲染逻辑 / 不测覆盖率门槛 / mock 覆盖率达标（门槛单独 test）
     import app.training.service as training_service
-    monkeypatch.setattr(training_service, "_recent_tss_coverage", lambda *a, **k: 1.0)
+    monkeypatch.setattr(training_service, "_range_tss_coverage", lambda *a, **k: 1.0)
     _seed_daily_loads(db, test_user.id, 30)
 
     resp = client.get("/api/training/load?range=30d", headers=auth_header)
@@ -187,7 +226,7 @@ def test_training_load_13_days_history_is_incomplete(client, db, test_user, auth
 def test_training_load_fills_missing_day_with_natural_decay(client, db, test_user, auth_header, monkeypatch):
     """历史足够时，窗口内缺日要补 0 TSS，并让 CTL/ATL 自然衰减。"""
     import app.training.service as training_service
-    monkeypatch.setattr(training_service, "_recent_tss_coverage", lambda *a, **k: 1.0)
+    monkeypatch.setattr(training_service, "_range_tss_coverage", lambda *a, **k: 1.0)
     _seed_daily_loads(db, test_user.id, 14)
     missing_date = _today_bj() - timedelta(days=1)
     db.query(DailyTrainingLoad).filter_by(user_id=test_user.id, date=missing_date).delete()
@@ -208,7 +247,7 @@ def test_training_load_fills_missing_day_with_natural_decay(client, db, test_use
 def test_training_load_insufficient_power_coverage_hides_curve(client, db, test_user, auth_header, monkeypatch):
     """最近 42 天 TSS 覆盖率 < 50% 时不展示 PMC：data_complete=false + insufficient_power_data=true（防 CTL 失真误导）。"""
     import app.training.service as training_service
-    monkeypatch.setattr(training_service, "_recent_tss_coverage", lambda *a, **k: 0.3)
+    monkeypatch.setattr(training_service, "_range_tss_coverage", lambda *a, **k: 0.3)
     _seed_daily_loads(db, test_user.id, 30)  # 历史够长（>14 天）/ 但功率覆盖率不足
 
     resp = client.get("/api/training/load?range=30d", headers=auth_header)
@@ -222,7 +261,7 @@ def test_training_load_insufficient_power_coverage_hides_curve(client, db, test_
 def test_training_load_sufficient_power_coverage_shows_curve(client, db, test_user, auth_header, monkeypatch):
     """覆盖率 >= 50% + 历史够长 → 正常展示完整曲线。"""
     import app.training.service as training_service
-    monkeypatch.setattr(training_service, "_recent_tss_coverage", lambda *a, **k: 0.8)
+    monkeypatch.setattr(training_service, "_range_tss_coverage", lambda *a, **k: 0.8)
     _seed_daily_loads(db, test_user.id, 30)
 
     resp = client.get("/api/training/load?range=30d", headers=auth_header)
@@ -231,3 +270,25 @@ def test_training_load_sufficient_power_coverage_shows_curve(client, db, test_us
     assert data["summary"]["data_complete"] is True
     assert data["summary"]["insufficient_power_data"] is False
     assert len(data["points"]) == 30
+
+
+def test_training_load_1y_coverage_uses_365d_range_not_recent_42d(client, db, test_user, auth_header):
+    """全年 tab 要看全年覆盖率：最近 42 天差可以挡 30d，但不能一刀切挡 1y。"""
+    _seed_daily_loads(db, test_user.id, 365)
+    for index in range(36):
+        _insert_activity_for_coverage(db, test_user.id, day_offset=-35 + index, tss=None)
+    for index in range(4):
+        _insert_activity_for_coverage(db, test_user.id, day_offset=-3 + index, tss=70.0)
+    for index in range(60):
+        _insert_activity_for_coverage(db, test_user.id, day_offset=-300 + index, tss=80.0)
+
+    resp_30d = client.get("/api/training/load?range=30d", headers=auth_header)
+    resp_1y = client.get("/api/training/load?range=1y", headers=auth_header)
+
+    assert resp_30d.status_code == 200
+    assert resp_1y.status_code == 200
+    assert resp_30d.json()["summary"]["insufficient_power_data"] is True
+    assert resp_30d.json()["summary"]["data_complete"] is False
+    assert resp_1y.json()["summary"]["insufficient_power_data"] is False
+    assert resp_1y.json()["summary"]["data_complete"] is True
+    assert len(resp_1y.json()["points"]) == 365
