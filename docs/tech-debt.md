@@ -609,6 +609,24 @@ admin H5 草稿审核生产真用 / Tim 改稿 7 条 approved（segment_id 6/8/9
 
 ---
 
+## 🟢 P3：Sprint 11 训练分布 service 层 range 校验是死防御代码（2026-05-25 Claude 异源审）
+
+`app/training/distribution_service.py:22-23` `if range != "6w": raise ValueError(...)`。但 router 层 `app/training/router.py:31` 已用 `schemas.TrainingDistributionRange = Literal["6w"]` 做 query 校验——非法值在 FastAPI 路由层就返回 422，永远到不了 service。这段 ValueError 实际触发不到，且若真触发会变成 500 而非 422（FastAPI 不把裸 ValueError 转 HTTP）。属无害冗余，但会误导维护者以为"还有第二层防线"，其实这层是假的。
+
+**为什么不立即删**：功能无影响 / 100 用户量级零风险 / 删它纯属洁癖。下次给 range 加多档（如 12w）时顺手清，或确认就让 router Literal 做单一防线。
+
+---
+
+## 🟢 P3：Sprint 11 训练分布查询缺 activity_type 复合索引覆盖（2026-05-25 Claude 异源审）
+
+`app/training/distribution_service.py:32-43` 查询 filter 含 `user_id + status=completed + activity_type=cycling + duplicate_of IS NULL + started_at 双边界`。现有索引 `app/activity/models.py:181-182` 只有 `idx_activities_user_status`（user_id, status）和 `idx_activities_user_started`（user_id, started_at），**没有 activity_type**。PG 会用 user_status 索引先筛、再对 activity_type 做行内过滤。
+
+**为什么不立即修**：100 用户 / 每人百余活动量级，筛完 status=completed 的行已很少，行内过滤 activity_type 成本可忽略。用户量上千 + 单用户活动数破千后再评估。
+
+**修法草稿**：`Index("idx_activities_user_status_type", "user_id", "status", "activity_type")` + Alembic 迁移；或确认训练分布查询频次低、不值得加索引。
+
+---
+
 ## 清理节奏
 
 > 每期 10-20% 时间处理 P1，P2 评估性价比再决定。

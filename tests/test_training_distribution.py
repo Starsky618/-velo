@@ -133,6 +133,10 @@ def test_data_incomplete_when_activity_count_less_than_three():
     assert payload["current_type"] is None
     assert payload["actions"] == []
     assert payload["week_plan"] == []
+    # spec §7 line 257：数据不足时 current_description / target_description 也必须是确定文案，
+    # 锁住 _INSUFFICIENT_COPY，将来有人改文案测试会立刻报警，不会静默漂移。
+    assert payload["current_description"] == "最近 6 周有功率区间的骑行还不够，暂时不能判断训练结构。"
+    assert payload["target_description"] == "先多记录几次有功率计的骑行，再让 velo 判断训练时间怎么分布。"
 
 
 def test_data_incomplete_when_total_power_under_three_hours():

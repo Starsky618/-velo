@@ -172,10 +172,16 @@ def normalize_power_zones(value: list[dict] | str | None) -> list[dict]:
 
 
 def aggregate_power_zones(zone_sets: list[list[dict]]) -> dict:
-    """累计 Z1-Z6 秒数、raw 百分比和三组页面分布。"""
+    """累计 Z1-Z6 秒数、raw 百分比和三组页面分布。
+
+    入参约定：每个 zone_set 必须是已经过 normalize_power_zones 清洗的 list[dict]。
+    清洗（string→list、过滤非 dict）只在数据进入系统的边界做一次，由调用方
+    distribution_service 负责；本函数信任这份契约、不再重复 normalize。
+    好处：避免"边界和核心各清洗一半"的隐性矛盾——将来谁改了一侧，另一侧也不会被静默拖坏。
+    """
     zone_seconds = {zone: 0 for zone in ZONE_ORDER}
     for zone_set in zone_sets:
-        for item in normalize_power_zones(zone_set):
+        for item in zone_set:
             zone = item.get("zone")
             if zone not in zone_seconds:
                 continue
