@@ -17,7 +17,7 @@ var bindchart = require('../../utils/bindchart')
 var powerZones = require('../../utils/power-zones')
 
 var CHART_COLORS = {
-  speed: '#3F7EDB',
+  speed: '#487CD0',
   power: '#B268E6',
   hr: '#D9504F',
   cadence: '#D14FBA',

@@ -200,7 +200,7 @@ function drawCursorOverlay(ctx, state, activeIndex) {
   drawRoundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 6)
   ctx.fillStyle = color
   ctx.fill()
-  ctx.fillStyle = '#000000'
+  ctx.fillStyle = '#FFFFFF'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
   ctx.font = '12px -apple-system, sans-serif'

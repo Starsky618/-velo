@@ -428,7 +428,7 @@
   border-radius: 8rpx;
 }
 
-.section-dot.speed { background: #3F7EDB; }
+.section-dot.speed { background: #487CD0; }
 .section-dot.power { background: #B268E6; }
 .section-dot.hr { background: #D9504F; }
 .section-dot.cadence { background: #D14FBA; }
