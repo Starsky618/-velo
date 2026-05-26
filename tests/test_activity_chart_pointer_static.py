@@ -50,3 +50,27 @@ def test_bindchart_pointer_layer_is_optional_and_uses_active_index():
     assert "getNearestIndexFromTouch" in js
     assert "page.__bindchartStates" in js
     assert "if (opts.activeIndex != null)" in js
+
+
+def test_chart_colors_use_strava_reference_palette():
+    js = _read("miniprogram/pages/detail/detail.js")
+    wxss = _read("miniprogram/pages/detail/detail.wxss")
+
+    for color in ["#4D83D8", "#B268E6", "#D9504F", "#D14FBA", "#BFC1BB"]:
+        assert color in js or color in wxss
+
+
+def test_pointer_style_is_solid_black_with_bubble_above_plot():
+    bindchart = _read("miniprogram/utils/bindchart.js")
+    detail = _read("miniprogram/pages/detail/detail.js")
+
+    assert "var pad = { top: 56" in bindchart
+    assert "var pad = { top: 56" in detail
+    assert "var bubbleY = 4" in bindchart
+    assert "var bubbleY = 4" in detail
+    assert "ctx.strokeStyle = '#000000'" in bindchart
+    assert "ctx.fillStyle = '#000000'" in bindchart
+    assert "ctx.strokeStyle = '#000000'" in detail
+    assert "ctx.fillStyle = '#000000'" in detail
+    assert "setLineDash" not in bindchart
+    assert "setLineDash" not in detail

@@ -178,29 +178,24 @@ function drawCursorOverlay(ctx, state, activeIndex) {
 
   // 竖线像一根透明尺子，告诉用户当前读的是路上的哪一个点。
   ctx.save()
-  ctx.strokeStyle = 'rgba(20, 20, 20, 0.55)'
-  ctx.lineWidth = 1
-  if (ctx.setLineDash) ctx.setLineDash([3, 3])
-  ctx.beginPath()
-  ctx.moveTo(x, pad.top)
-  ctx.lineTo(x, pad.top + chartH)
-  ctx.stroke()
-  if (ctx.setLineDash) ctx.setLineDash([])
-
-  ctx.fillStyle = '#FFFFFF'
-  ctx.strokeStyle = color
+  ctx.strokeStyle = '#000000'
   ctx.lineWidth = 2
   ctx.beginPath()
-  ctx.arc(x, y, 4, 0, Math.PI * 2)
-  ctx.fill()
+  ctx.moveTo(x, pad.top - 10)
+  ctx.lineTo(x, pad.top + chartH)
   ctx.stroke()
+
+  ctx.fillStyle = '#000000'
+  ctx.beginPath()
+  ctx.arc(x, y, 4.5, 0, Math.PI * 2)
+  ctx.fill()
 
   var valueText = formatTooltipValue(rawYData[idx], state.yUnit)
   var distanceText = (Math.round(xData[idx] * 100) / 100).toFixed(2) + ' km'
-  var bubbleW = clamp(Math.max(valueText.length * 7 + 20, 86), 86, 132)
-  var bubbleH = 38
+  var bubbleW = clamp(Math.max(valueText.length * 7 + 24, 92), 92, 140)
+  var bubbleH = 42
   var bubbleX = clamp(x - bubbleW / 2, pad.left, width - pad.right - bubbleW)
-  var bubbleY = pad.top + 6
+  var bubbleY = 4
 
   drawRoundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 6)
   ctx.fillStyle = color
@@ -264,6 +259,8 @@ function bindLineChart(page, selector, opts) {
   var fill = opts.fill !== undefined ? opts.fill : true
   var smoothWindow = opts.smooth || 0
   var bgElevation = opts.bgElevation || null
+  var fillAlpha = opts.fillAlpha != null ? opts.fillAlpha : 0.78
+  var bgElevationAlpha = opts.bgElevationAlpha != null ? opts.bgElevationAlpha : 0.58
 
   // 平滑处理（消除锯齿）
   var yData = smoothWindow > 1 ? smoothData(rawYData, smoothWindow) : rawYData
@@ -295,7 +292,7 @@ function bindLineChart(page, selector, opts) {
       ctx.clearRect(0, 0, width, height)
 
       // 布局参数
-      var pad = { top: 12, right: 16, bottom: 28, left: 44 }
+      var pad = { top: 56, right: 16, bottom: 28, left: 44 }
       var chartW = width - pad.left - pad.right
       var chartH = height - pad.top - pad.bottom
 
@@ -409,7 +406,7 @@ function bindLineChart(page, selector, opts) {
           ctx.lineTo(lastValidX, pad.top + chartH)
           ctx.lineTo(toX(xData[0]), pad.top + chartH)
           ctx.closePath()
-          ctx.fillStyle = 'rgba(180, 180, 180, 0.45)'
+          ctx.fillStyle = 'rgba(191, 193, 187, ' + bgElevationAlpha + ')'
           ctx.fill()
         }
       }
@@ -439,7 +436,7 @@ function bindLineChart(page, selector, opts) {
           ctx.lineTo(toX(seg[seg.length - 1].x), pad.top + chartH)
           ctx.lineTo(toX(seg[0].x), pad.top + chartH)
           ctx.closePath()
-          ctx.fillStyle = hexToRgba(color, 0.5)
+          ctx.fillStyle = hexToRgba(color, fillAlpha)
           ctx.fill()
         }
       }

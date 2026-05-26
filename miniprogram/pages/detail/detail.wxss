@@ -358,7 +358,7 @@
 /* Canvas 容器：固定高度，宽度撑满卡片 */
 .elevation-canvas-wrap {
   width: 100%;
-  height: 300rpx;
+  height: 360rpx;
 }
 
 .elevation-canvas {
@@ -396,7 +396,7 @@
 
 .chart-canvas-wrap {
   width: 100%;
-  height: 280rpx;
+  height: 340rpx;
   margin-bottom: 20rpx;
 }
 
@@ -428,10 +428,10 @@
   border-radius: 8rpx;
 }
 
-.section-dot.speed { background: #5AC8FA; }
-.section-dot.power { background: #AF52DE; }
-.section-dot.hr { background: #FF2D55; }
-.section-dot.cadence { background: #FF6B9D; }
+.section-dot.speed { background: #4D83D8; }
+.section-dot.power { background: #B268E6; }
+.section-dot.hr { background: #D9504F; }
+.section-dot.cadence { background: #D14FBA; }
 .section-dot.split { background: #AF52DE; }
 
 .section-title {

@@ -16,6 +16,15 @@ var api = require('../../utils/api')
 var bindchart = require('../../utils/bindchart')
 var powerZones = require('../../utils/power-zones')
 
+var CHART_COLORS = {
+  speed: '#4D83D8',
+  power: '#B268E6',
+  hr: '#D9504F',
+  cadence: '#D14FBA',
+  elevation: '#BFC1BB',
+  elevationLine: '#A7A9A2',
+}
+
 // ────── 纯工具函数（不依赖页面实例，可独立测试） ──────
 
 /**
@@ -331,28 +340,28 @@ Page({
       speed: {
         selector: '#speedCanvas',
         yData: data.speeds,
-        color: '#1565C0',
+        color: CHART_COLORS.speed,
         yUnit: 'km/h',
         smooth: 7,
       },
       power: {
         selector: '#powerCanvas',
         yData: data.powers,
-        color: '#AF52DE',
+        color: CHART_COLORS.power,
         yUnit: 'W',
         smooth: 5,
       },
       hr: {
         selector: '#hrCanvas',
         yData: data.heart_rates,
-        color: '#FF2D55',
+        color: CHART_COLORS.hr,
         yUnit: 'bpm',
         smooth: 5,
       },
       cadence: {
         selector: '#cadenceCanvas',
         yData: data.cadences,
-        color: '#FF6B9D',
+        color: CHART_COLORS.cadence,
         yUnit: 'rpm',
         smooth: 5,
       },
@@ -486,7 +495,7 @@ Page({
 
         // ── 布局参数 ──
         // 为坐标轴标签留出空间：左侧放 Y 轴数字，底部放 X 轴数字
-        var pad = { top: 12, right: 16, bottom: 28, left: 44 }
+        var pad = { top: 56, right: 16, bottom: 28, left: 44 }
         var chartW = width - pad.left - pad.right
         var chartH = height - pad.top - pad.bottom
 
@@ -569,7 +578,7 @@ Page({
         ctx.lineTo(toX(data[0].distance), pad.top + chartH)
         ctx.closePath()
         // Strava 的海拔填充是半透明灰色
-        ctx.fillStyle = 'rgba(190, 190, 190, 0.5)'
+        ctx.fillStyle = CHART_COLORS.elevation
         ctx.fill()
 
         // ── 4. 画顶部描边线（地形的"轮廓线"） ──
@@ -578,7 +587,7 @@ Page({
         for (var i = 1; i < data.length; i++) {
           ctx.lineTo(toX(data[i].distance), toY(data[i].elevation))
         }
-        ctx.strokeStyle = 'rgba(150, 150, 150, 0.9)'
+        ctx.strokeStyle = CHART_COLORS.elevationLine
         ctx.lineWidth = 1.5
         ctx.stroke()
 
@@ -619,29 +628,24 @@ Page({
           var cx = toX(point.distance)
           var cy = toY(point.elevation)
           ctx.save()
-          ctx.strokeStyle = 'rgba(20, 20, 20, 0.55)'
-          ctx.lineWidth = 1
-          if (ctx.setLineDash) ctx.setLineDash([3, 3])
-          ctx.beginPath()
-          ctx.moveTo(cx, pad.top)
-          ctx.lineTo(cx, pad.top + chartH)
-          ctx.stroke()
-          if (ctx.setLineDash) ctx.setLineDash([])
-
-          ctx.fillStyle = '#FFFFFF'
-          ctx.strokeStyle = 'rgba(120, 120, 120, 0.95)'
+          ctx.strokeStyle = '#000000'
           ctx.lineWidth = 2
           ctx.beginPath()
-          ctx.arc(cx, cy, 4, 0, Math.PI * 2)
-          ctx.fill()
+          ctx.moveTo(cx, pad.top - 10)
+          ctx.lineTo(cx, pad.top + chartH)
           ctx.stroke()
+
+          ctx.fillStyle = '#000000'
+          ctx.beginPath()
+          ctx.arc(cx, cy, 4.5, 0, Math.PI * 2)
+          ctx.fill()
 
           var valueText = Math.round(point.elevation) + ' m'
           var distanceText = (Math.round(point.distance * 100) / 100).toFixed(2) + ' km'
           var bubbleW = 92
-          var bubbleH = 38
+          var bubbleH = 42
           var bubbleX = Math.max(pad.left, Math.min(width - pad.right - bubbleW, cx - bubbleW / 2))
-          var bubbleY = pad.top + 6
+          var bubbleY = 4
           var radius = 6
           ctx.beginPath()
           ctx.moveTo(bubbleX + radius, bubbleY)
@@ -654,7 +658,7 @@ Page({
           ctx.lineTo(bubbleX, bubbleY + radius)
           ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY)
           ctx.closePath()
-          ctx.fillStyle = 'rgba(120, 120, 120, 0.95)'
+          ctx.fillStyle = CHART_COLORS.elevation
           ctx.fill()
           ctx.fillStyle = '#FFFFFF'
           ctx.textAlign = 'center'
