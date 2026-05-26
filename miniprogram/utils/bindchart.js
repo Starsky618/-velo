@@ -15,6 +15,7 @@
  *     fill: true,
  *     smooth: 5,                    // 移动平均窗口，消除锯齿
  *     bgElevation: elevationArray,  // 灰色海拔背景叠加
+ *     activeIndex: 120,             // 可选：手指当前吸附到第几个点
  *   })
  *
  * 注意：调用时 canvas 必须已在 DOM 中（放在 setData 回调或 wx.nextTick 里）。
@@ -106,6 +107,129 @@ function getDpr() {
   return _cachedDpr
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function findNearestIndex(xData, targetX) {
+  if (!xData || !xData.length) return null
+  var left = 0
+  var right = xData.length - 1
+  while (left < right) {
+    var mid = Math.floor((left + right) / 2)
+    if (xData[mid] < targetX) left = mid + 1
+    else right = mid
+  }
+  if (left <= 0) return 0
+  var prev = left - 1
+  return Math.abs(xData[left] - targetX) < Math.abs(xData[prev] - targetX)
+    ? left
+    : prev
+}
+
+function findNearestDrawableIndex(yData, activeIndex) {
+  if (!yData || !yData.length) return null
+  var idx = clamp(activeIndex, 0, yData.length - 1)
+  if (yData[idx] != null) return idx
+  for (var offset = 1; offset < yData.length; offset++) {
+    var left = idx - offset
+    var right = idx + offset
+    if (left >= 0 && yData[left] != null) return left
+    if (right < yData.length && yData[right] != null) return right
+  }
+  return null
+}
+
+function formatTooltipValue(value, yUnit) {
+  if (value == null) return '-'
+  if (yUnit === 'W' || yUnit === 'bpm' || yUnit === 'rpm' || yUnit === 'm') {
+    return Math.round(value) + ' ' + yUnit
+  }
+  return (Math.round(value * 10) / 10).toFixed(1) + (yUnit ? ' ' + yUnit : '')
+}
+
+function drawRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  ctx.lineTo(x + r, y + h)
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+  ctx.lineTo(x, y + r)
+  ctx.quadraticCurveTo(x, y, x + r, y)
+  ctx.closePath()
+}
+
+function drawCursorOverlay(ctx, state, activeIndex) {
+  var xData = state.xData
+  var yData = state.yData
+  var rawYData = state.rawYData || yData
+  var idx = findNearestDrawableIndex(yData, activeIndex)
+  if (idx == null || xData[idx] == null) return
+
+  var x = state.toX(xData[idx])
+  var y = state.toY(yData[idx])
+  var pad = state.pad
+  var chartH = state.chartH
+  var width = state.width
+  var color = state.color
+
+  // 竖线像一根透明尺子，告诉用户当前读的是路上的哪一个点。
+  ctx.save()
+  ctx.strokeStyle = 'rgba(20, 20, 20, 0.55)'
+  ctx.lineWidth = 1
+  if (ctx.setLineDash) ctx.setLineDash([3, 3])
+  ctx.beginPath()
+  ctx.moveTo(x, pad.top)
+  ctx.lineTo(x, pad.top + chartH)
+  ctx.stroke()
+  if (ctx.setLineDash) ctx.setLineDash([])
+
+  ctx.fillStyle = '#FFFFFF'
+  ctx.strokeStyle = color
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.arc(x, y, 4, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+
+  var valueText = formatTooltipValue(rawYData[idx], state.yUnit)
+  var distanceText = (Math.round(xData[idx] * 100) / 100).toFixed(2) + ' km'
+  var bubbleW = clamp(Math.max(valueText.length * 7 + 20, 86), 86, 132)
+  var bubbleH = 38
+  var bubbleX = clamp(x - bubbleW / 2, pad.left, width - pad.right - bubbleW)
+  var bubbleY = pad.top + 6
+
+  drawRoundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 6)
+  ctx.fillStyle = color
+  ctx.fill()
+  ctx.fillStyle = '#FFFFFF'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.font = '12px -apple-system, sans-serif'
+  ctx.fillText(valueText, bubbleX + bubbleW / 2, bubbleY + 6)
+  ctx.font = '10px -apple-system, sans-serif'
+  ctx.fillText(distanceText, bubbleX + bubbleW / 2, bubbleY + 22)
+  ctx.restore()
+}
+
+function getNearestIndexFromTouch(page, selector, touch) {
+  if (!page || !selector || !touch || !page.__bindchartStates) return null
+  var state = page.__bindchartStates[selector]
+  if (!state || !state.xData || !state.xData.length) return null
+
+  var touchX = touch.x != null ? touch.x : touch.clientX
+  if (touchX == null || !state.chartW) return null
+  var localX = touchX
+  if (state.left != null) localX = touchX - state.left
+  localX = clamp(localX, state.pad.left, state.width - state.pad.right)
+  var ratio = (localX - state.pad.left) / state.chartW
+  var targetX = ratio * state.maxX
+  return findNearestIndex(state.xData, targetX)
+}
+
 // ────── 主绘图函数 ──────
 
 /**
@@ -122,6 +246,7 @@ function getDpr() {
  * @param {boolean} [opts.fill=true] - 是否填充线条下方
  * @param {number} [opts.smooth=0] - 移动平均窗口大小（0=不平滑）
  * @param {Array<number|null>} [opts.bgElevation] - 海拔数据（画灰色背景轮廓）
+ * @param {number|null} [opts.activeIndex] - 可选：当前手指吸附的点
  */
 function bindLineChart(page, selector, opts) {
   var xData = opts.xData
@@ -145,13 +270,14 @@ function bindLineChart(page, selector, opts) {
 
   var query = page.createSelectorQuery()
   query.select(selector)
-    .fields({ node: true, size: true })
+    .fields({ node: true, size: true, rect: true })
     .exec(function (res) {
       if (!res || !res[0] || !res[0].node) return
 
       var canvas = res[0].node
       var width = res[0].width
       var height = res[0].height
+      var left = res[0].left || 0
       var ctx = canvas.getContext('2d')
 
       // Retina 适配
@@ -184,6 +310,24 @@ function bindLineChart(page, selector, opts) {
       // 坐标转换
       function toX(val) { return pad.left + (val / maxX) * chartW }
       function toY(val) { return pad.top + (1 - (val - minY) / yRange) * chartH }
+
+      page.__bindchartStates = page.__bindchartStates || {}
+      page.__bindchartStates[selector] = {
+        left: left,
+        width: width,
+        height: height,
+        pad: pad,
+        chartW: chartW,
+        chartH: chartH,
+        maxX: maxX,
+        xData: xData,
+        yData: yData,
+        rawYData: rawYData,
+        yUnit: yUnit,
+        color: color,
+        toX: toX,
+        toY: toY,
+      }
 
       // ── 1. 网格线 ──
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)'
@@ -332,6 +476,10 @@ function bindLineChart(page, selector, opts) {
         if (xTicks[t] <= 0) continue
         ctx.fillText(xTicks[t] + ' ' + xUnit, toX(xTicks[t]), pad.top + chartH + 8)
       }
+
+      if (opts.activeIndex != null) {
+        drawCursorOverlay(ctx, page.__bindchartStates[selector], opts.activeIndex)
+      }
     })
 }
 
@@ -342,4 +490,5 @@ module.exports = {
   formatNum: formatNum,
   hexToRgba: hexToRgba,
   getDpr: getDpr,
+  getNearestIndexFromTouch: getNearestIndexFromTouch,
 }

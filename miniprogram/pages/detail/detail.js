@@ -119,6 +119,8 @@ Page({
   // 海拔剖面原始数据 — 不放 data 里，因为不需要渲染到模板，
   // 放 data 里会触发不必要的 setData 序列化开销
   elevationData: null,
+  chartCursors: null,
+  activeChart: null,
 
   onLoad: function (options) {
     if (options.id) {
@@ -268,10 +270,11 @@ Page({
    */
   fetchTimeseries: function (id) {
     var that = this
-    api.get('/api/activities/' + id + '/timeseries?points=500')
+    api.get('/api/activities/' + id + '/timeseries?points=1200')
       .then(function (data) {
         if (!data || !data.distances || data.distances.length < 2) return
         that.timeseriesData = data
+        that.chartCursors = {}
         that.setData({
           hasTimeseries: true,
           hasPowerChart: !!data.powers,
@@ -300,59 +303,119 @@ Page({
     var data = this.timeseriesData
     if (!data) return
 
+    var chartKeys = ['speed', 'power', 'hr', 'cadence']
+    for (var i = 0; i < chartKeys.length; i++) {
+      this._drawTimeseriesChart(chartKeys[i])
+    }
+  },
+
+  _selectorForChart: function (chartKey) {
+    var selectors = {
+      elevation: '#elevationCanvas',
+      speed: '#speedCanvas',
+      power: '#powerCanvas',
+      hr: '#hrCanvas',
+      cadence: '#cadenceCanvas',
+    }
+    return selectors[chartKey] || ''
+  },
+
+  _getTimeseriesChartConfig: function (chartKey) {
+    var data = this.timeseriesData
+    if (!data) return null
+
     // 所有曲线图共享海拔背景（灰色剪影，让你一眼看出"慢是因为爬坡"）
     var bgEle = data.elevations
-
-    // 速度曲线（深蓝，平滑窗口 7 消除停车骤降和 GPS 锯齿）
-    if (data.speeds) {
-      bindchart.bindLineChart(this, '#speedCanvas', {
-        xData: data.distances,
+    var configs = {
+      speed: {
+        selector: '#speedCanvas',
         yData: data.speeds,
         color: '#1565C0',
         yUnit: 'km/h',
-        fill: true,
         smooth: 7,
-        bgElevation: bgEle,
-      })
-    }
-
-    // 功率曲线（紫色）
-    if (data.powers) {
-      bindchart.bindLineChart(this, '#powerCanvas', {
-        xData: data.distances,
+      },
+      power: {
+        selector: '#powerCanvas',
         yData: data.powers,
         color: '#AF52DE',
         yUnit: 'W',
-        fill: true,
         smooth: 5,
-        bgElevation: bgEle,
-      })
-    }
-
-    // 心率曲线（红色）
-    if (data.heart_rates) {
-      bindchart.bindLineChart(this, '#hrCanvas', {
-        xData: data.distances,
+      },
+      hr: {
+        selector: '#hrCanvas',
         yData: data.heart_rates,
         color: '#FF2D55',
         yUnit: 'bpm',
-        fill: true,
         smooth: 5,
-        bgElevation: bgEle,
-      })
-    }
-
-    // 踏频曲线（粉红）
-    if (data.cadences) {
-      bindchart.bindLineChart(this, '#cadenceCanvas', {
-        xData: data.distances,
+      },
+      cadence: {
+        selector: '#cadenceCanvas',
         yData: data.cadences,
         color: '#FF6B9D',
         yUnit: 'rpm',
-        fill: true,
         smooth: 5,
-        bgElevation: bgEle,
-      })
+      },
+    }
+    var cfg = configs[chartKey]
+    if (!cfg || !cfg.yData) return null
+    cfg.xData = data.distances
+    cfg.bgElevation = bgEle
+    return cfg
+  },
+
+  _drawTimeseriesChart: function (chartKey) {
+    var cfg = this._getTimeseriesChartConfig(chartKey)
+    if (!cfg) return
+
+    var cursorIndex = this.chartCursors && this.chartCursors[chartKey] != null
+      ? this.chartCursors[chartKey]
+      : null
+    bindchart.bindLineChart(this, cfg.selector, {
+      xData: cfg.xData,
+      yData: cfg.yData,
+      color: cfg.color,
+      yUnit: cfg.yUnit,
+      fill: true,
+      smooth: cfg.smooth,
+      bgElevation: cfg.bgElevation,
+      activeIndex: cursorIndex,
+    })
+  },
+
+  onChartTouchStart: function (e) {
+    this._updateChartCursor(e)
+  },
+
+  onChartTouchMove: function (e) {
+    this._updateChartCursor(e)
+  },
+
+  onChartTouchEnd: function (e) {
+    this._updateChartCursor(e)
+  },
+
+  _updateChartCursor: function (e) {
+    var chartKey = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.chart
+      : ''
+    var selector = this._selectorForChart(chartKey)
+    if (!selector) return
+
+    var touch = (e.touches && e.touches[0]) ||
+      (e.changedTouches && e.changedTouches[0])
+    if (!touch) return
+
+    var idx = bindchart.getNearestIndexFromTouch(this, selector, touch)
+    if (idx == null) return
+
+    this.chartCursors = this.chartCursors || {}
+    this.chartCursors[chartKey] = idx
+    this.activeChart = chartKey
+
+    if (chartKey === 'elevation') {
+      this.drawElevationProfile()
+    } else {
+      this._drawTimeseriesChart(chartKey)
     }
   },
 
@@ -375,13 +438,14 @@ Page({
 
     var query = wx.createSelectorQuery()
     query.select('#elevationCanvas')
-      .fields({ node: true, size: true })
+      .fields({ node: true, size: true, rect: true })
       .exec(function (res) {
         if (!res || !res[0] || !res[0].node) return
 
         var canvas = res[0].node
         var width = res[0].width
         var height = res[0].height
+        var left = res[0].left || 0
         var ctx = canvas.getContext('2d')
 
         // ── Retina 适配 ──
@@ -423,6 +487,22 @@ Page({
         // 坐标转换函数：数据空间 → 画布像素
         function toX(dist) { return pad.left + (dist / maxDist) * chartW }
         function toY(ele) { return pad.top + (1 - (ele - minEle) / eleRange) * chartH }
+
+        var xData = []
+        for (var xi = 0; xi < data.length; xi++) {
+          xData.push(data[xi].distance)
+        }
+        that.__bindchartStates = that.__bindchartStates || {}
+        that.__bindchartStates['#elevationCanvas'] = {
+          left: left,
+          width: width,
+          height: height,
+          pad: pad,
+          chartW: chartW,
+          chartH: chartH,
+          maxX: maxDist,
+          xData: xData,
+        }
 
         // ── 1. 画网格线（最浅的灰色，不抢主角） ──
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)'
@@ -504,6 +584,62 @@ Page({
         for (var t = 0; t < xTicks.length; t++) {
           if (xTicks[t] <= 0) continue
           ctx.fillText(xTicks[t] + ' km', toX(xTicks[t]), pad.top + chartH + 8)
+        }
+
+        var cursorIndex = that.chartCursors && that.chartCursors.elevation != null
+          ? that.chartCursors.elevation
+          : null
+        if (cursorIndex != null) {
+          cursorIndex = Math.max(0, Math.min(data.length - 1, cursorIndex))
+          var point = data[cursorIndex]
+          var cx = toX(point.distance)
+          var cy = toY(point.elevation)
+          ctx.save()
+          ctx.strokeStyle = 'rgba(20, 20, 20, 0.55)'
+          ctx.lineWidth = 1
+          if (ctx.setLineDash) ctx.setLineDash([3, 3])
+          ctx.beginPath()
+          ctx.moveTo(cx, pad.top)
+          ctx.lineTo(cx, pad.top + chartH)
+          ctx.stroke()
+          if (ctx.setLineDash) ctx.setLineDash([])
+
+          ctx.fillStyle = '#FFFFFF'
+          ctx.strokeStyle = 'rgba(120, 120, 120, 0.95)'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.arc(cx, cy, 4, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.stroke()
+
+          var valueText = Math.round(point.elevation) + ' m'
+          var distanceText = (Math.round(point.distance * 100) / 100).toFixed(2) + ' km'
+          var bubbleW = 92
+          var bubbleH = 38
+          var bubbleX = Math.max(pad.left, Math.min(width - pad.right - bubbleW, cx - bubbleW / 2))
+          var bubbleY = pad.top + 6
+          var radius = 6
+          ctx.beginPath()
+          ctx.moveTo(bubbleX + radius, bubbleY)
+          ctx.lineTo(bubbleX + bubbleW - radius, bubbleY)
+          ctx.quadraticCurveTo(bubbleX + bubbleW, bubbleY, bubbleX + bubbleW, bubbleY + radius)
+          ctx.lineTo(bubbleX + bubbleW, bubbleY + bubbleH - radius)
+          ctx.quadraticCurveTo(bubbleX + bubbleW, bubbleY + bubbleH, bubbleX + bubbleW - radius, bubbleY + bubbleH)
+          ctx.lineTo(bubbleX + radius, bubbleY + bubbleH)
+          ctx.quadraticCurveTo(bubbleX, bubbleY + bubbleH, bubbleX, bubbleY + bubbleH - radius)
+          ctx.lineTo(bubbleX, bubbleY + radius)
+          ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY)
+          ctx.closePath()
+          ctx.fillStyle = 'rgba(120, 120, 120, 0.95)'
+          ctx.fill()
+          ctx.fillStyle = '#FFFFFF'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'top'
+          ctx.font = '12px -apple-system, sans-serif'
+          ctx.fillText(valueText, bubbleX + bubbleW / 2, bubbleY + 6)
+          ctx.font = '10px -apple-system, sans-serif'
+          ctx.fillText(distanceText, bubbleX + bubbleW / 2, bubbleY + 22)
+          ctx.restore()
         }
       })
   },

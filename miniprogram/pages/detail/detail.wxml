@@ -80,7 +80,12 @@
       <text class="elevation-title">海拔</text>
     </view>
     <view class="elevation-canvas-wrap">
-      <canvas type="2d" id="elevationCanvas" class="elevation-canvas"></canvas>
+      <canvas type="2d" id="elevationCanvas" class="elevation-canvas"
+              data-chart="elevation"
+              bindtouchstart="onChartTouchStart"
+              bindtouchmove="onChartTouchMove"
+              bindtouchend="onChartTouchEnd"
+              bindtouchcancel="onChartTouchEnd"></canvas>
     </view>
     <view class="elevation-stats">
       <view class="elevation-stat-row">
@@ -101,7 +106,12 @@
       <text class="section-title">速度</text>
     </view>
     <view class="chart-canvas-wrap" hidden="{{!hasTimeseries}}">
-      <canvas type="2d" id="speedCanvas" class="chart-canvas"></canvas>
+      <canvas type="2d" id="speedCanvas" class="chart-canvas"
+              data-chart="speed"
+              bindtouchstart="onChartTouchStart"
+              bindtouchmove="onChartTouchMove"
+              bindtouchend="onChartTouchEnd"
+              bindtouchcancel="onChartTouchEnd"></canvas>
     </view>
     <view class="metric-list">
       <view class="metric-row">
@@ -130,7 +140,12 @@
       <text class="section-title">功率</text>
     </view>
     <view class="chart-canvas-wrap" hidden="{{!hasTimeseries || !hasPowerChart}}">
-      <canvas type="2d" id="powerCanvas" class="chart-canvas"></canvas>
+      <canvas type="2d" id="powerCanvas" class="chart-canvas"
+              data-chart="power"
+              bindtouchstart="onChartTouchStart"
+              bindtouchmove="onChartTouchMove"
+              bindtouchend="onChartTouchEnd"
+              bindtouchcancel="onChartTouchEnd"></canvas>
     </view>
     <view class="metric-list">
       <view class="metric-row">
@@ -188,7 +203,12 @@
       <text class="section-title">心率</text>
     </view>
     <view class="chart-canvas-wrap" hidden="{{!hasTimeseries || !hasHrChart}}">
-      <canvas type="2d" id="hrCanvas" class="chart-canvas"></canvas>
+      <canvas type="2d" id="hrCanvas" class="chart-canvas"
+              data-chart="hr"
+              bindtouchstart="onChartTouchStart"
+              bindtouchmove="onChartTouchMove"
+              bindtouchend="onChartTouchEnd"
+              bindtouchcancel="onChartTouchEnd"></canvas>
     </view>
     <view class="metric-list">
       <view class="metric-row">
@@ -209,7 +229,12 @@
       <text class="section-title">踏频</text>
     </view>
     <view class="chart-canvas-wrap">
-      <canvas type="2d" id="cadenceCanvas" class="chart-canvas"></canvas>
+      <canvas type="2d" id="cadenceCanvas" class="chart-canvas"
+              data-chart="cadence"
+              bindtouchstart="onChartTouchStart"
+              bindtouchmove="onChartTouchMove"
+              bindtouchend="onChartTouchEnd"
+              bindtouchcancel="onChartTouchEnd"></canvas>
     </view>
     <view class="metric-list">
       <view class="metric-row" wx:if="{{activity.avg_cadence}}">

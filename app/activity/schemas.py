@@ -221,6 +221,10 @@ class TimeseriesResponse(BaseModel):
     无传感器数据的字段整个数组为 null（不是数组里每个元素为 null）。
     """
     distances: list[float]                        # 累计公里数（X 轴）
+    times: list[Optional[int]] = Field(default_factory=list)  # 距离活动开始的秒数
+    original_indices: list[int] = Field(default_factory=list)  # 对应原始 trackpoint.seq
+    sample_step_m: float = 0.0                    # 本次图表约多少米一个可吸附点
+    resolution_label: str = ""                    # 前端可直接展示/调试的读数密度说明
     elevations: list[Optional[float]]             # 海拔 m
     speeds: list[Optional[float]]                 # 速度 km/h
     powers: Optional[list[Optional[float]]] = None       # 功率 W（无功率计则整个为 null）

@@ -513,6 +513,31 @@ def _sample_indices(total: int, max_points: int) -> list[int]:
     return [round(i * (total - 1) / (max_points - 1)) for i in range(max_points)]
 
 
+def _target_sample_step_m(total_distance_m: float) -> float:
+    """
+    按骑行总距离决定“手指每滑一格大概跳多少米”。
+
+    可以把它想成地图缩放：
+    - 10km 小地图可以把路灯都画出来，所以 50m 一个点
+    - 100km 长骑要看整体节奏，200m 一个点更像 Strava 的分析图
+    - 200km+ 超长骑再粗一点，避免前端塞太多点导致图变卡
+    """
+    if total_distance_m <= 20_000:
+        return 50.0
+    if total_distance_m <= 80_000:
+        return 100.0
+    if total_distance_m <= 180_000:
+        return 200.0
+    return float(min(500.0, max(300.0, total_distance_m / 1000.0)))
+
+
+def _resolution_label(sample_step_m: float) -> str:
+    """把采样距离翻译成人能读懂的标签。"""
+    if sample_step_m < 1000:
+        return f"约 {int(round(sample_step_m))}m/点"
+    return f"约 {round(sample_step_m / 1000, 1)}km/点"
+
+
 def _cumulative_distances(rows) -> list[float]:
     """
     预计算所有轨迹点的累计距离（米），返回等长数组。
@@ -533,31 +558,89 @@ def _cumulative_distances(rows) -> list[float]:
     return cum
 
 
+def _distance_values(rows) -> list[float]:
+    """
+    优先使用数据库里的累计距离；老数据没有 distance 时再回退 GPS 逐点计算。
+
+    Strava/FIT 已经给了更稳定的 distance stream，这就像码表自己记的里程；
+    老 GPX 没有这列时，我们才用经纬度现场补算。
+    """
+    distances = []
+    for row in rows:
+        if row.distance is None:
+            return _cumulative_distances(rows)
+        distances.append(float(row.distance))
+
+    if len(distances) < 2 or distances[-1] <= 0:
+        return _cumulative_distances(rows)
+
+    for idx in range(1, len(distances)):
+        if distances[idx] < distances[idx - 1]:
+            return _cumulative_distances(rows)
+    return distances
+
+
+def _sample_indices_by_distance(
+    cum_distances: list[float], sample_step_m: float, max_points: int
+) -> list[int]:
+    """
+    按累计距离抽样，而不是按数组序号抽样。
+
+    用户手指滑图时关心的是“我骑到第几公里发生了什么”，不是“这是第几个原始点”。
+    所以这里像在路边每隔一段距离插一面小旗，前端手指会吸附到最近的小旗。
+    """
+    total = len(cum_distances)
+    if total <= 2:
+        return list(range(total))
+
+    sampled = [0]
+    next_target = sample_step_m
+    for idx in range(1, total):
+        if cum_distances[idx] + 1e-6 >= next_target:
+            sampled.append(idx)
+            while next_target <= cum_distances[idx] + 1e-6:
+                next_target += sample_step_m
+
+    if sampled[-1] != total - 1:
+        sampled.append(total - 1)
+
+    if len(sampled) <= max_points:
+        return sampled
+
+    reduced_positions = _sample_indices(len(sampled), max_points)
+    return [sampled[pos] for pos in reduced_positions]
+
+
 # GPS 抖动过滤阈值：骑行不可能超过 120 km/h
 # 与 gpx_parser.py 中的漂移过滤保持一致
 _MAX_CYCLING_SPEED_KMH = 120
 
 
-def _build_timeseries_arrays(rows, sampled_indices, cum_distances) -> dict:
+def _build_timeseries_arrays(rows, sampled_indices, cum_distances, sample_step_m) -> dict:
     """
     从采样点构建前端可直接画图的数组。
 
     每个采样点提取：距离、海拔、速度、功率、心率、踏频。
-    速度由相邻采样点的 距离差/时间差 计算，天然平滑。
-    第一个点的速度为 None（没有"前一段"可参照）。
+    速度优先使用 Trackpoint.speed（码表/Strava 已平滑的瞬时速度），
+    老数据没有 speed 时再用相邻采样点距离差/时间差补算。
     无传感器数据的字段整个数组返回 None（而非数组里填 None）。
     """
-    distances, elevations, speeds = [], [], []
+    distances, times, original_indices, elevations, speeds = [], [], [], [], []
     powers_list, hr_list, cadence_list = [], [], []
     has_power = has_hr = has_cadence = False
+    start_ts = rows[0].timestamp
 
     for pos, idx in enumerate(sampled_indices):
         row = rows[idx]
         dist_m = cum_distances[idx]
 
-        # 速度：当前采样点和上一个采样点之间的 距离差/时间差
+        # 速度：优先取逐点 speed。可以把它理解为码表当时显示的“瞬时速度”。
         speed = None
-        if pos > 0:
+        if row.speed is not None:
+            speed = round(float(row.speed) * 3.6, 1)
+            if speed > _MAX_CYCLING_SPEED_KMH:
+                speed = None
+        elif pos > 0:
             prev_idx = sampled_indices[pos - 1]
             prev_row = rows[prev_idx]
             if row.timestamp and prev_row.timestamp:
@@ -569,6 +652,11 @@ def _build_timeseries_arrays(rows, sampled_indices, cum_distances) -> dict:
                         speed = None
 
         distances.append(round(dist_m / 1000, 3))
+        if start_ts and row.timestamp:
+            times.append(int((row.timestamp - start_ts).total_seconds()))
+        else:
+            times.append(None)
+        original_indices.append(int(row.seq) if row.seq is not None else int(idx))
         elevations.append(round(row.elevation, 1) if row.elevation is not None else None)
         speeds.append(speed)
 
@@ -586,6 +674,10 @@ def _build_timeseries_arrays(rows, sampled_indices, cum_distances) -> dict:
 
     return {
         "distances": distances,
+        "times": times,
+        "original_indices": original_indices,
+        "sample_step_m": sample_step_m,
+        "resolution_label": _resolution_label(sample_step_m),
         "elevations": elevations,
         "speeds": speeds,
         "powers": powers_list if has_power else None,
@@ -595,15 +687,15 @@ def _build_timeseries_arrays(rows, sampled_indices, cum_distances) -> dict:
 
 
 def get_activity_timeseries(
-    db: Session, activity_id: int, user_id: int, max_points: int = 500
+    db: Session, activity_id: int, user_id: int, max_points: int = 1200
 ) -> dict:
     """
-    获取骑行的时序数据——从原始轨迹点中等间隔采样，返回前端可直接画图的数组。
+    获取骑行的时序数据——从原始轨迹点中按距离采样，返回前端可直接画图的数组。
 
     类比：原始 trackpoints 好比一段 4K 视频（每帧都有），
-    而前端屏幕只有几百个像素宽——全量返回是浪费。
-    这个函数就是"降分辨率"：从几万个点中均匀抽出 500 个代表，
-    保留整体趋势，丢弃人眼分辨不出的细节。
+    而前端图表是一条可以用手滑的时间尺。
+    这个函数不是简单按点数抽帧，而是按骑行距离插“小旗”：
+    短骑小旗更密，长骑小旗更疏，让用户滑动时读到接近瞬时的值。
 
     内存预估：50000 行 x 7 列 ≈ 15MB，cum_distances ≈ 0.4MB，
     输出列表 ≈ 2.4MB。峰值 ~18MB，受 _MAX_TRACKPOINTS 上限保护。
@@ -620,6 +712,7 @@ def get_activity_timeseries(
     # ── 查询轨迹点（只取需要的列，不加载 geom 大字段，节省内存） ──
     rows = (
         db.query(
+            Trackpoint.seq,
             Trackpoint.latitude,
             Trackpoint.longitude,
             Trackpoint.elevation,
@@ -627,6 +720,8 @@ def get_activity_timeseries(
             Trackpoint.heart_rate,
             Trackpoint.power,
             Trackpoint.cadence,
+            Trackpoint.speed,
+            Trackpoint.distance,
         )
         .filter(Trackpoint.activity_id == activity_id)
         .order_by(Trackpoint.seq)
@@ -637,10 +732,12 @@ def get_activity_timeseries(
     if total < 2:
         raise ValueError("轨迹点不足，无法生成时序数据")
 
-    # 三步流水线：采样 → 算距离 → 构建数组
-    indices = _sample_indices(total, max_points)
-    cum_dist = _cumulative_distances(rows)
-    data = _build_timeseries_arrays(rows, indices, cum_dist)
+    # 三步流水线：算距离 → 按距离采样 → 构建数组
+    cum_dist = _distance_values(rows)
+    total_distance_m = cum_dist[-1] if cum_dist and cum_dist[-1] > 0 else float(activity.distance or 0)
+    sample_step_m = _target_sample_step_m(total_distance_m)
+    indices = _sample_indices_by_distance(cum_dist, sample_step_m, max_points)
+    data = _build_timeseries_arrays(rows, indices, cum_dist, sample_step_m)
 
     # task-4.6：他人查看时按 hide_power / hide_heartrate 把对应时序数组挖空成 None
     # 前端 detail.js 检测 powers=null → hasPowerChart=false → 功率曲线卡片整块消失

@@ -173,15 +173,15 @@ def delete_activity(
 @router.get("/{activity_id}/timeseries", response_model=schemas.TimeseriesResponse)
 def get_activity_timeseries(
     activity_id: int,
-    points: int = Query(500, ge=50, le=2000, description="采样点数"),
+    points: int = Query(1200, ge=50, le=2000, description="采样点数上限"),
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     获取骑行时序数据（供前端画速度/功率/心率曲线）。
 
-    从原始轨迹点中等间隔采样，返回等长数组。
-    points 参数控制采样密度，默认 500（手机屏幕够用）。
+    从原始轨迹点中按距离采样，返回等长数组。
+    points 参数只做上限保护；真正的读数间距由骑行总距离自动决定。
     """
     try:
         data = service.get_activity_timeseries(db, activity_id, user_id, points)
