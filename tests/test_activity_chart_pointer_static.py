@@ -31,6 +31,7 @@ def test_detail_js_has_single_chart_cursor_state_without_global_linking():
     js = _read("miniprogram/pages/detail/detail.js")
 
     assert "chartCursors" in js
+    assert "_scheduleChartRedraw" in js
     assert "onChartTouchStart" in js
     assert "onChartTouchMove" in js
     assert "onChartTouchEnd" in js

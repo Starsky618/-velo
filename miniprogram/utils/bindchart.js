@@ -220,10 +220,17 @@ function getNearestIndexFromTouch(page, selector, touch) {
   var state = page.__bindchartStates[selector]
   if (!state || !state.xData || !state.xData.length) return null
 
-  var touchX = touch.x != null ? touch.x : touch.clientX
-  if (touchX == null || !state.chartW) return null
-  var localX = touchX
-  if (state.left != null) localX = touchX - state.left
+  if (!state.chartW) return null
+  var localX
+  if (touch.x != null) {
+    // canvas 事件里的 x 已经是“离 canvas 左上角多远”，不能再减 canvas.left。
+    // 否则用户点右边，读数会整体被推到左边。
+    localX = touch.x
+  } else {
+    var touchX = touch.clientX != null ? touch.clientX : touch.pageX
+    if (touchX == null) return null
+    localX = state.left != null ? touchX - state.left : touchX
+  }
   localX = clamp(localX, state.pad.left, state.width - state.pad.right)
   var ratio = (localX - state.pad.left) / state.chartW
   var targetX = ratio * state.maxX

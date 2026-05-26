@@ -121,6 +121,7 @@ Page({
   elevationData: null,
   chartCursors: null,
   activeChart: null,
+  _chartRedrawTimers: null,
 
   onLoad: function (options) {
     if (options.id) {
@@ -409,14 +410,37 @@ Page({
     if (idx == null) return
 
     this.chartCursors = this.chartCursors || {}
+    if (this.chartCursors[chartKey] === idx && this.activeChart === chartKey) return
     this.chartCursors[chartKey] = idx
     this.activeChart = chartKey
+    this._scheduleChartRedraw(chartKey, e.type === 'touchstart' || e.type === 'touchend')
+  },
 
+  _redrawChartNow: function (chartKey) {
     if (chartKey === 'elevation') {
       this.drawElevationProfile()
     } else {
       this._drawTimeseriesChart(chartKey)
     }
+  },
+
+  _scheduleChartRedraw: function (chartKey, immediate) {
+    this._chartRedrawTimers = this._chartRedrawTimers || {}
+    if (immediate) {
+      if (this._chartRedrawTimers[chartKey]) {
+        clearTimeout(this._chartRedrawTimers[chartKey])
+        this._chartRedrawTimers[chartKey] = null
+      }
+      this._redrawChartNow(chartKey)
+      return
+    }
+
+    if (this._chartRedrawTimers[chartKey]) return
+    var that = this
+    this._chartRedrawTimers[chartKey] = setTimeout(function () {
+      that._chartRedrawTimers[chartKey] = null
+      that._redrawChartNow(chartKey)
+    }, 32)
   },
 
   /**
