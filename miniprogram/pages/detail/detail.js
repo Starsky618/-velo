@@ -17,7 +17,7 @@ var bindchart = require('../../utils/bindchart')
 var powerZones = require('../../utils/power-zones')
 
 var CHART_COLORS = {
-  speed: '#4D83D8',
+  speed: '#3F7EDB',
   power: '#B268E6',
   hr: '#D9504F',
   cadence: '#D14FBA',
@@ -660,7 +660,7 @@ Page({
           ctx.closePath()
           ctx.fillStyle = CHART_COLORS.elevation
           ctx.fill()
-          ctx.fillStyle = '#FFFFFF'
+          ctx.fillStyle = '#000000'
           ctx.textAlign = 'center'
           ctx.textBaseline = 'top'
           ctx.font = '12px -apple-system, sans-serif'

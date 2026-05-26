@@ -56,7 +56,7 @@ def test_chart_colors_use_strava_reference_palette():
     js = _read("miniprogram/pages/detail/detail.js")
     wxss = _read("miniprogram/pages/detail/detail.wxss")
 
-    for color in ["#4D83D8", "#B268E6", "#D9504F", "#D14FBA", "#BFC1BB"]:
+    for color in ["#3F7EDB", "#B268E6", "#D9504F", "#D14FBA", "#BFC1BB"]:
         assert color in js or color in wxss
 
 
@@ -72,5 +72,6 @@ def test_pointer_style_is_solid_black_with_bubble_above_plot():
     assert "ctx.fillStyle = '#000000'" in bindchart
     assert "ctx.strokeStyle = '#000000'" in detail
     assert "ctx.fillStyle = '#000000'" in detail
+    assert "ctx.fillStyle = '#FFFFFF'" not in bindchart
     assert "setLineDash" not in bindchart
     assert "setLineDash" not in detail
