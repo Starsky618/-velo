@@ -1,379 +1,236 @@
-# Coach Engine Design — 骑行教练总结设计稿
+# Coach Engine Design v2 — 骑后洞察引擎
 
-> **本文件性质**：Sprint 12 模块 D 的详细设计文档 / brainstorm 标准产物
-> **上游路线图**：`docs/superpowers/specs/2026-05-20-training-analytics-roadmap.md` 模块 D
-> **维护**：Tim + Claude brainstorm 协作（2026-05-20 / 走完 brainstorm skill Step 1-5）
-> **版本**：v0.1（首版 / 等 Sprint 9-11 ship 后转 `docs/prd/sprint-12-prd.md`）
-
----
-
-## 0. 来源 + 上游 + Tim 拍过的关键决定
-
-### 0.1 来源
-
-- 2026-05-20 Tim + Claude brainstorm 全过程对话
-- research subagent 调研：国际产品 + 算法 + 中国天气 API + 微信小程序限制 + LLM prompt 工程
-- 跟另一线 brainstorm（roadmap.md / sprint-9-prd.md）合并讨论：原"规则版"改 LLM 版
-
-### 0.2 跟另一线的关系
-
-- 本文件 = `roadmap.md` 模块 D 的详细设计（LLM 版 / 替代原"规则版"）
-- **前置依赖**：Sprint 9（FTP 智能化）+ Sprint 10（PMC 训练负荷曲线）+ Sprint 11（训练分布）必须先 ship
-- **本设计不本 sprint 实施**：Sprint 9-11 全 ship 后 Sprint 12 开工时拿本文件转 `docs/prd/sprint-12-prd.md`
-
-### 0.3 Tim 拍过的关键决定（按 brainstorm 时间序）
-
-1. **产品定位**：装饰展示 vs 主动指导 / 选指导层（详 memory `feedback_decoration_vs_guidance_velo_persona_lesson.md` + 全局 CLAUDE.md §2.1）
-2. **触发场景**：早上推 + 骑完复盘并行 / 但本 sprint 骑前优先
-3. **训练目标来源**：用户在 profile 手动填一次（5 选 1）/ 留空 LLM 不写"今日目标"主观句
-4. **入口路径**：动态 tab 顶部大卡 + 点击进完整"今天"页（不新建 tab）
-5. **用户分层**：no_data / partial_data / full_data 三层
-6. **LLM 失败处理**：自动回退现有算法选一条
-7. **速率限制**：每用户每天 **4 次**手动刷新
-8. **早上 cron 时间**：**6 点**跑（不是 8 点）
-9. **persona 处理**：暂停不删 / 整目录晾着 / ship 后看真实反应再判断
-10. **HRV / RPE 永久不做**（research 实证 / velo 拿不到 / 装就崩塌）
+> **版本**：v2（2026-05-26 重大转向）。v0.1 原设计是"骑前每日教练"（早上 6 点推 4 段卡片）；本次 Tim + Claude 8 轮深度 brainstorm 把 Sprint 12 主线**转向"骑后洞察引擎"**——挖用户自己看不出的骑行真相。原"骑前每日教练"场景**降级为未来另一场景**（见 §10，不删，仍有效）。
+>
+> **本文件性质**：Sprint 12 设计稿 / 突出核心思想 / **暂不开工**（原因见 §9：数据飞轮未转起来 + 社交/地图接口未建）。等数据底座成熟后拿本文件转 `docs/prd/sprint-12-prd.md`。
+>
+> **本次讨论性质**：Tim 自评"第一次大模型开发方面的深度探讨"。核心是产品哲学 + AI 工程方法论,不是落地施工。
+>
+> **维护**：Tim + Claude brainstorm 协作（2026-05-26）。
 
 ---
 
-## 1. 产品形态
+## 0. 核心思想结晶（1 + 3 + 2 + 1）—— 全文的灵魂
 
-### 1.1 用户故事
+> 这是今天 8 轮讨论提炼出的最高密度结论。后面各节都是它的展开。未来迭代先读这一节。
 
-接了 Strava + 有 6 周以上历史的严肃骑手早上 6 点 / 打开 velo / 默认动态 tab / 顶部看到大卡：
+**1 个定位转向**
+- 从"按公里报数的工具（SaaS）"→"挖你看不见的自己的教练（RaaS）"：**给判断,不给数字。**
 
-```
-┌─────────────────────────────────┐
-│ 🎯 低风险 Zone 2 有氧打底日       │
-│ 27° 多云 / 高湿度 / 今日有雾     │
-│ 60-75 分钟 / 避免冲刺            │
-│              [点击看完整建议 →]   │
-└─────────────────────────────────┘
+**3 条不可动摇的地基**
+- **真需求** = 用户盯着数据看一天也看不出、必须靠算法挖出来的东西（有氧脱钩 / 骑手类型 / 跨活动模式）。把数据换个话术复述一遍（"这次比上次快 23 秒"）= **伪需求**,Strava 已有,用户自己看得出。
+- **守门员 > 算法**：宁缺毋滥、敢于沉默。不该算就闭嘴。**稳定靠谱是信任护城河**（Tim 拍）。一个偶尔沉默但每次开口都对的教练 > 一个天天说话但常说错的玩具。
+- **给判断不给数字**：脱钩 6.2% 是给算法和 LLM 看的,用户只看"你的耐力墙在 90 分钟"。绝对数字 / 曲线藏第二层,想刨根问底的人点开才给。
 
-（下面是原活动 feed）
-```
+**2 条 AI 工程心法**
+- **语言** = 个性化 × 信息密度,**温度来自"准"不来自腔调**;激励 = **差距 + 路径**（不是夸）。挫败感不来自"说真话",来自"说了真话却没给出路"。
+- **上下文工程** = **喂结论不喂数据**：算法挖矿,LLM 只做表达。**LLM 不会涌现洞察,只会涌现一个听起来对的谎**（velo `ftp_estimator.py:61` 自己栽过"虚假高置信度"的跟头）。
 
-点击大卡 → 进入完整"今天"页 / 4 段卡片：
-
-```
-27° 多云 / 高湿度 / 今日有雾
-
-【今日教练总结】
-
-低风险 Zone 2 有氧打底日
-
-你近 7 天累计骑行 230 公里 / TSS 累积 320 / 状态 OK。
-今天天气适合骑车但湿度高 + 有雾 / 建议缩短到
-60-75 分钟稳定 Zone 2 / 避免节奏骑和冲刺。注意补水。
-
-【训练决策】恢复一般 / 适合低中强度有氧堆量
-
-60-75 分钟 / 限制 Zone 2 / 避免 Zone 4 以上 /
-若体感灼热降到 Zone 1-2 恢复骑
-
-           （DeepSeek 已更新 06:00 / 刷新按钮）
-```
-
-### 1.2 三层用户看到不同内容
-
-| 用户类型 | 看到的内容 |
-|---|---|
-| **full_data**（接 Strava ≥ 6 周 + 有功率或心率） | 全 4 段卡片（上图）|
-| **partial_data**（接了 Strava 但 < 4 周历史） | 天气 + 本周累计 + 简单状态判断 / 不写训练负荷 |
-| **no_data**（没接 Strava / 没活动） | 只看到天气 + 一句"接 Strava 看本周状态" |
-
-### 1.3 关键约束
-
-- **训练目标**用户在 profile 手动填一次（5 选 1：endurance / ftp / long_distance / weight_loss / fun）/ 留空 LLM 不写"今日目标"
-- **状态 OK** 判断 = 看一周 TSS 累计 + 7 天 vs 28 天 TSB 对比 / **不假装有 HRV**
-- 抄截图语言风格（数据驱动 / 专业 / 有用）/ **不抄"HRV 偏低、静息心率偏高"那种装作有数据的句子**
+**1 条演进秩序**
+- 数据闭环分阶段、个人极先行、**agent 殿后**（让数据有序的是 schema + 算法,不是 agent;agent 是数据有序后的消费者,不是整理工）。跨活动模式挖掘有**数据飞轮**：越用越懂,冷启动弱、后期复利 = 护城河。
 
 ---
 
-## 2. 数据架构
+## 1. 产品形态：两个场景,抛弃机械每公里
 
-按 velo CLAUDE.md "防火墙式扩展 / 默认放新表 / 不动核心表"红线：
+**Tim 的关键产品判断**：骑行本质按"努力性质"划分（爬坡 / 冲刺 / 平路 / 下坡）,不是机械每公里。但**段是形式,洞察才是内核**——很多最硬的洞察根本不长在"段"上（整趟级 / 跨活动级）。所以先想清楚"挖什么洞察",再倒推要不要切段。
 
-### 2.1 改动 1：user 表加 `training_goal` 字段
-
-- String / nullable
-- 5 选 1 枚举：endurance / ftp / long_distance / weight_loss / fun
-- 用户在 profile 主动填 / 可改
-
-### 2.2 改动 2：新建 `coach_outputs` 表
-
-字段：
-
-- `id` / `user_id` / `generated_at`（生成时间）/ `source`（morning_scheduler / manual_refresh）
-- `cards_json`（4 段卡片完整 JSON）
-- `weather_snapshot`（生成时的天气 JSON / 留底排查用）
-- `load_snapshot`（生成时的 TSS/CTL/ATL/TSB JSON / 留底）
-
-策略：每用户每天最多一条 / 同日重生成覆盖。
-
-**为什么不复用 persona_outputs**：persona_outputs 设计是"短文案台账"/ text_snapshot 存的是单句字符串。教练总结是 4 段卡片 + 数据快照 / 强行塞 JSON 是 schema 漂移。
-
-### 2.3 改动 3：训练负荷读 Sprint 10 日快照 / 天气实时拉
-
-- **训练负荷**：读取 Sprint 10 的 `daily_training_load` 日快照 + 复用 `app.training.service` 的缺日补点逻辑；不能裸读最新表行，也不能在 Coach 模块重写 CTL/ATL/TSB 公式
-- **天气**：每次跑教练总结调和风 API / 一天 ~50 次 × 50000/月免费额度 / 充裕
-- `coach_outputs.load_snapshot` 只存生成时快照，方便排查当时 LLM 看到了什么；训练负荷权威数据仍在 `daily_training_load`
-
-### 2.4 改动 4：新建 Alembic 迁移 `coach_engine_init.py`
-
-加 `user.training_goal` 字段 + 建 `coach_outputs` 表。
-
-### 2.5 不动
-
-- activity 表（核心表 / 防火墙红线）
-- user 表已有字段
-- persona_outputs 表（老 persona 完全晾着）
-- 整个 `app/agent/persona/` 目录
-
----
-
-## 3. 算法
-
-### 3.1 训练负荷公式（行业标准 / 不发明）
-
-```
-TSS = (时长秒 × NP × IF) / (FTP × 3600) × 100
-IF = NP / FTP
-```
-
-- velo activity 已有 `normalized_power`（FIT 自带 / GPX 无功率时为 NULL）
-- velo user 已有 `ftp`
-- 没功率 → 用 hrTSS（基于乳酸阈心率 LTHR ≈ 用户最大心率 × 0.85）
-- 都没有 → 跳过这次活动不算 TSS
-
-**CTL**（近 42 天体能 / 滑窗指数加权）：
-
-```
-CTL_today = CTL_yesterday × e^(-1/42) + TSS_today × (1 - e^(-1/42))
-```
-
-**ATL** 同公式 / 时间常数 = 7（近 7 天疲劳）
-
-**TSB = CTL - ATL**（正值 = 状态好 / 负值 = 疲劳）
-
-### 3.2 用户分层
-
-```python
-def classify_user(user, db):
-    if not has_strava and activity_count_30d == 0:
-        return "no_data"      # 看到天气 + 引导接 Strava
-    if weeks_history < 4 or not has_power_or_hr:
-        return "partial_data" # 看到天气 + 本周累计
-    return "full_data"        # 完整 4 段卡片
-```
-
-### 3.3 状态判断（不假装有 HRV）
-
-TSB 阈值 4 档（2026-05-25 Tim 拍 / 跟 Sprint 10 模块 B 一致 / 详 `docs/prd/sprint-10-prd.md` §2.3 + §10 ★2）：
-
-- **状态饱满** fresh（TSB > +10）
-- **状态 OK** ok（-10 ≤ TSB ≤ +10）
-- **累** tired（-20 ≤ TSB < -10）
-- **过累** overreached（TSB < -20）
-
-全部基于 TSS·CTL·ATL·TSB / **不用 HRV / 不用静息心率**。
-
-> 历史：本节 v0.1 原写 3 档（未拍阈值）/ 2026-05-25 跟 Sprint 10 模块 B 拍板时统一升 4 档（"过累"是严肃骑手"该歇了"的关键信号 / 单独成档）。本设计稿后续章节（§4.2 prompt schema / Sprint 12 实施）都按 4 档枚举字符串（fresh / ok / tired / overreached）对接 daily_training_load.status_band。
-
-### 3.4 天气接入
-
-和风天气 API：`https://devapi.qweather.com/v7/weather/now?location=lng,lat&key=...`
-
-注意 `user.city` 当前是字符串（grep 过 / `app/user/models.py:104`）/ 要转经纬度。一次性查 + 缓存到 user 表新加 `lat / lng` 字段（或新建 `user_geo` 表）/ 实施时自己拍。
-
-拿字段：温度 / 湿度 / 雾天气代码 501-509 / PM2.5 / 风速。
-
-### 3.5 文件分布
-
-新建 `app/agent/coach/` 整目录（参照 persona/ 结构 / 但完全独立 / 不互相 import）：
-
-| 文件 | 干啥 |
-|---|---|
-| `classifier.py` | 用户分层（纯函数）|
-| `weather.py` | 和风天气 client（HTTP + 重试 + 错误兜底）|
-| `prompt_builder.py` | DeepSeek prompt 拼装（4 段卡片）|
-| `service.py` | 顶层流水线（try/except 兜底）|
-| `router.py` | GET /api/coach/today endpoint |
-| `models.py` | CoachOutput ORM |
-| `MANIFEST.md` | 资产清单（参照 persona MANIFEST 写法）|
-
-> **跨 sprint 复用**：CTL/ATL/TSB/TSS 公式 + 4 档状态分类已在 **Sprint 10 模块 B ship 到 `app/training/training_load.py`**（纯函数 / 不查 DB / 详 `docs/prd/sprint-10-prd.md` §2）/ 缺日补点和当前状态摘要在 `app/training/service.py` / 本目录**不重复实现** / 本 sprint coach `service.py` 只调用 training 模块对外服务拿训练负荷快照。共享逻辑识别红线（CLAUDE.md spec 自审 #2）= 禁止两处实现同一套公式或绕过缺日补点逻辑。
-
-新建 `scripts/coach_morning_scheduler.py` —— 早上 6 点 cron 跑 / 给所有活跃用户生成当日 coach_outputs。
-
-**复用**：DeepSeek client `app/agent/segment_writer.py`（已就绪）。
-
----
-
-## 4. LLM 流水线
-
-### 4.1 DeepSeek prompt 结构
-
-```
-你是一个数据驱动的骑行教练。根据用户当前训练数据、天气、训练目标，
-给出今日骑行建议。语言风格：严肃、专业、有用，类似 TrainingPeaks
-训练分析报告。不要嘲讽、不要空话、不要假装知道你没见过的数据。
-
-输出严格 4 段 JSON：
-- headline: 标题 10-20 字（如"低风险 Zone 2 有氧打底日"）
-- analysis: 综合分析 80-150 字（融合训练负荷 + 天气 + 训练目标）
-- decision: 训练决策卡 / 含 zone / 时长 / 强度 / 60-100 字
-- warning: 恢复预警 / 风险提醒 30-80 字 / 没风险时 null
-
-不假装有的字段：HRV、静息心率、睡眠、夜间恢复。
-```
-
-按 research subagent 建议：用 user prompt 不用 system prompt / 不塞 few-shot examples / 指令简洁。
-
-### 4.2 数据 schema（按用户分层）
-
-| 层 | 喂 LLM 的内容 |
-|---|---|
-| **full_data** | training_goal + ftp + 训练负荷（CTL/ATL/TSB/weekly_tss）+ 天气 + 最近 7 条活动摘要 |
-| **partial_data** | training_goal + ftp + 天气 + 最近活动摘要（**不传训练负荷**）|
-| **no_data** | 天气 + flag `prompt_strava_binding: true`（让 LLM 写引导）|
-
-### 4.3 失败 fallback
-
-| 失败类型 | 处理 |
-|---|---|
-| 和风天气 API down | 跳过天气段 / LLM 写"无天气数据"版 |
-| DeepSeek API down / 超时 / 限速 | 写一条简单兜底文案到 coach_outputs（"今日天气 27° / 注意补水"）/ scheduler 下次 tick 重试 |
-| 用户 city 拿不到经纬度 | 用全国默认或用户最近活动城市 / 或不写天气段 |
-| Strava token 失效 | 该用户当日不跑 / 等下次 token refresh |
-| coach_outputs 写表失败 | 不影响其他用户（每用户独立事务）|
-
-**硬规则**：worker 跑教练总结**绝不阻塞其他业务**。任何失败 → log + 继续下一个用户。沿用 persona 宪法 §7.2 "失败不传染"原则。
-
-### 4.4 用户手动刷新
-
-```
-POST /api/coach/refresh
-```
-
-- 速率限制：每用户每天 **4 次**（防刷爆 LLM 余额）
-- 复用 generation pipeline / source 字段记 `manual_refresh`
-
-### 4.5 整体流水线
-
-```
-早上 6 点 coach_morning_scheduler 跑：
-  for user in 活跃用户:
-    try:
-      分层 → 拉天气 → 算训练负荷（仅 partial/full）
-      → 拼 prompt → 调 DeepSeek → 解析 4 段 JSON → 写 coach_outputs
-    except:
-      log + 继续下一个用户
-
-用户开 App → 动态 tab → 顶部大卡 → 点击 → "今天"页
-拿 GET /api/coach/today → 显示
-```
-
----
-
-## 5. 前端 + 部署 + 测试 + 验收
-
-### 5.1 前端
-
-**新建**：
-
-- `miniprogram/pages/today/today.{wxml,wxss,js,json}` —— 完整"今天"页 / 4 段卡片渲染
-- `miniprogram/utils/coach_fetch.js` —— `fetchCoachOutput()` / `refreshCoach()` 两个 helper
-
-**改动**：
-
-- `miniprogram/pages/home/home.{wxml,wxss,js}` —— 顶部加大卡片 / 点击 `wx.navigateTo` 到 `/pages/today/today`
-- `miniprogram/pages/profile/profile.{wxml,js}` —— 加 5 选 1 "训练目标"字段
-- `miniprogram/app.json` —— pages 列表加 `pages/today/today`
-
-### 5.2 部署
-
-- `.env` 加 `QWEATHER_API_KEY=xxx`
-- `docker-compose.yml` 加 `coach-scheduler` 容器（参照现有 `cleanup` 容器结构 / cron 表达式触发早上 6 点北京时间）
-- 部署 SOP：和风天气 key 进 .env → `docker compose up -d --build` → `alembic upgrade head` → curl 真 endpoint 验证（按 velo CLAUDE.md 部署 SOP 4 步）
-
-### 5.3 测试
-
-- 单元：`tests/test_coach_training_load.py`（TSS/CTL/ATL/TSB 公式）/ `test_coach_classifier.py`（用户分层）/ `test_coach_prompt_builder.py`（schema 拼装）
-- 集成：mock DeepSeek 跑完整 worker / 检查 coach_outputs 写入
-- 真用回归（按 memory `feedback_real_usage_vs_mock_blindspot.md`）：Tim 自用 + 几个铁哥们 / 早上 6 点真跑一次 / 看 4 段卡片真实质量
-
-### 5.4 验收标准
-
-| 验收点 | 标准 |
-|---|---|
-| Tim 自己用 | 早上 6 点起床打开 velo / 动态 tab 顶部大卡看到当日教练建议 / 点开 4 段卡片 / 内容真实有用（不假装有 HRV / 不空话）|
-| 其他用户 | 100 用户分层正确：有数据的 ~30 人看完整 4 段 / 4 周内数据的 ~40 人看简版 / 没数据的 ~30 人看天气 + 引导 |
-| LLM 成本 | ~100 次/天 × 几分钱 ≈ ¥3-5/天 / 月 ¥150 / 在 Tim 能接受范围 |
-| 错误率 | DeepSeek 调用失败率 < 5% / 失败用户当日看到兜底文案 / 不空白 |
-
----
-
-## 6. 关键事实表（research 实证 / 防未来 agent 凭印象写错）
-
-### 6.1 国内骑行 App 零 AI 教练（research subagent 2026-05-20）
-
-- 行者 / 黑鸟 / 咕咚 / 啊咔单车 **全部没有 AI 教练**
-- 国内 AI 教练 = 完整空白市场
-- **但壁垒不在 AI 而在硬件**（HRV / 静息心率拿不到）
-
-### 6.2 HRV / 静息心率 velo 永远拿不到（research 实证 / 永久不做依据）
-
-- 微信小程序 `wx.getWeRunData` **只返步数** / 没心率没 HRV
-- 微信小程序**不能直接调 Apple HealthKit**（开发者社区硬限制）
-- Strava API 官方明文**不返 HRV / 静息心率 / 恢复评分**
-- 蓝牙手环可连但每品牌协议不一 / 体验差
-- HRV 真测 = Polar H10 胸带 / Garmin 手表（velo 用户里 < 3% 有）
-- **结论**：Whoop / Garmin 模式的壁垒是硬件不是软件。velo 永久不做"假装有 HRV"的功能 / 装就崩塌
-
-### 6.3 国际对标（research subagent 2026-05-20）
-
-| 产品 | 关键特征 | velo 抄什么 |
-|---|---|---|
-| **TrainingPeaks** | 行业标杆 / 本身没 AI / PMC 图为主 | CTL/ATL/TSB 公式 |
-| **TrainerRoad** | 真 ML 自适应 / 数百次仿真 / 结构化任务非自然语言 | （不抄 / 我们用 LLM 自然语言）|
-| **Strava Athlete Intelligence** | 2025-2026 主推 / 生成式 AI 写"活动总结" / 数据解读 | **结构最像** / 抄 4 段卡片格式 |
-| **Whoop Coach**（OpenAI 驱动）| 最接近截图风格 / 壁垒是手环 | （不抄 / 我们没手环数据）|
-| **Garmin Daily Suggested** | 基于 HRV + Body Battery / 算法非 LLM / 短模板文案 | （不抄 / 我们没 HRV）|
-
-### 6.4 中国可用天气 API（research 实证）
-
-| API | 免费额度 | 关键字段 | 评估 |
+| 场景 | 时间尺度 | 入口 | 首发洞察 |
 |---|---|---|---|
-| **和风天气（QWeather）** | **50000 次/月** | 温度/湿度/能见度/雾代码/PM2.5/空气质量 | **首选** |
-| 心知天气 | QPS=1 | 湿度有 / PM2.5 需付费 | 适合缓存 / QPS 太低 |
-| 高德地图 | 5000/天 | 仅温度/风向/风力（无湿度无 PM2.5） | 字段不够 |
-| OpenWeatherMap | 1000/天 | 全字段 | 中国境内不稳 |
+| **骑后洞察** | 单次活动 | 活动详情页 | 有氧脱钩（这趟骑得怎样 / 你看不出的真相）|
+| **能力镜子** | 跨 90 天 | "我的"页常驻 | 骑手类型画像（你是谁）|
 
-### 6.5 DeepSeek prompt 工程要点（research 实证）
-
-- **用 user prompt 不用 system prompt**
-- **不要塞 few-shot examples**
-- **指令简洁**
-- DeepSeek 中文输出稳定性 OK
-- **真壁垒不是 prompt 写法 / 是输入数据丰富度**
+两个场景**分开做、分开放**（Tim 拍："可以分开,也必须分开"）。
 
 ---
 
-## 7. 不做项（明确划出来防 scope creep）
+## 2. 两个首发洞察 + 运动科学依据（已联网查证一手来源）
 
-- **HRV / 静息心率接入** → 永久不做（硬件壁垒 / 微信小程序拿不到 / 装作有 = 信任级事故）
-- **RPE 主观体感**（用户每天填体感）→ 永久不做（research 判断中国用户对填表接受度低 / 留存差）
-- **CTL/ATL/TSB 长期趋势可视化图** → v1.5+（不本 sprint）
-- **用户自定义早上推送时间** → v1.5+
-- **骑后教练复盘**（替代老登便利贴） → 下个 sprint（Sprint 12 之后）
-- **AI 教练对话**（用户跟 LLM 聊训练） → v2+（区别于本设计：本设计是定时推 4 段卡片 / 对话是用户主动跟 LLM 互动）
+> ⚠️ 这两个指标都有**严格的"使用禁区"**。在禁区里硬算 = 垃圾洞察 = 信任崩塌。守门员（§3）就是为此存在。
+
+### 2.1 有氧脱钩（Aerobic Decoupling / Pw:Hr）—— 衡量有氧耐力底子
+
+**算法**：把一段骑行对半切,各算 EF（效率 = 标准化功率 ÷ 平均心率）,比后半段相对前半段下降多少。
+- 公式：`EF1 = NP前半/HR前半`,`EF2 = NP后半/HR后半`,`脱钩% = (EF1−EF2)/EF1 × 100`
+- **分歧点（实施时拍）**：TrainingPeaks 官方用 Normalized Power;intervals.icu 用平均功率（且称 Friel 原始定义用平均值）。稳态下两者几乎相等,非稳态才分开。
+
+**阈值**（多来源一致）：< 5% = 有氧底子好 / > 5% = 还不够 / > 8% = 明显脱钩（怀疑补给、基础不足、疲劳）。
+
+**使用禁区（最关键,守门必须挡住）**：
+- 只对**稳态有氧骑**有效（Zone 2–低 Zone 3,VI ≈ 1）。间歇 / 比赛 / 集体骑 / 爬坡冲刺混合**根本不能算**（官方："反映的是努力的爆发性,不是骑手体能"）。
+- **≥ 20 分钟**才有意义（TrainingPeaks 官方硬线）;评估长程耐力 Friel 建议骑行 2–4 小时。
+- **cardiac drift 陷阱**：高温 / 脱水 / 疲劳 / 缺觉会让脱钩很难看,但那不是有氧基础差。**velo 拿不到体温/睡眠,所以不能武断下"有氧不足"结论**——可结合 Sprint 10 的 TSB：若用户本就疲劳,脱钩高更可能是疲劳而非有氧差。
+
+**数据需求**：逐点功率 + 心率时序（`trackpoints` ✅）+ 标准化功率（`activities.normalized_power` ✅）。**骑行缺功率不能用速度替代**（坡/风/滑行污染太大）。→ **velo 数据齐,直接能算。**
+
+**来源**：[TrainingPeaks 官方](https://help.trainingpeaks.com/hc/en-us/articles/204071724-Aerobic-Decoupling-Pw-Hr-and-Pa-HR-and-Efficiency-Factor-EF) / [Joe Friel](https://www.trainingpeaks.com/blog/aerobic-endurance-and-decoupling/) / [intervals.icu 作者公式](https://forum.intervals.icu/t/aerobic-decoupling-calculation-question/1823)
+
+### 2.2 骑手类型画像（Coggan Power Profile）—— 告诉用户"你是谁"
+
+**算法**：取 **5 秒 / 1 分钟 / 5 分钟 / FTP** 四个最大功率（W/kg）,对照 Coggan 基准表（8 档:Untrained → World Class,完整约 52 行连续梯度）,看四点**连线斜率**判型：
+- 左高右低 = **冲刺型**;左低右高 = **计时赛/爬坡型**;中间峰 = **追逐型**;水平线 = **全能型**。
+- **看相对位置定类型,看绝对档位定能力等级**（绝对档位藏第二层,默认跟过去的自己比）。
+
+**使用禁区（最关键）**：
+- 每个值必须是**真·接近全力**的努力,否则画像失真（Coggan 原话）。用户从没 5 秒全力冲过 → 5 秒数据无效,"冲刺弱"是假象。
+- 业界用 **90 天滚动窗口**取各时长历史最大值缓解;**某时长无全力数据 → 标"未测",绝不当真实能力展示**。
+- **体重准确性**直接进 W/kg 分母,误差等比例放大画像。给能力判断前体重必须准。
+
+**velo 现状（grep 实证）**：`ftp_estimator.py:75` 已算 180/300/600/1200/3600 秒（3/5/10/20/60 分钟）best power（O(n) 双指针滑窗）+ FTP（snapshot_ftp ✅）+ 体重（Sprint 9 ✅）。→ **中长时长现成,缺 5 秒 / 1 分钟短爆发窗,要补一段滑窗采样。**
+
+**来源**：[TrainingPeaks Power Profiling（含男女完整基准表）](https://www.trainingpeaks.com/blog/power-profiling/) / [High North](https://www.highnorth.co.uk/articles/power-profiling-cycling) / Coggan & Allen《Training and Racing with a Power Meter》
+
+---
+
+## 3. 守门员架构（信任的命门）
+
+**保证信任的不是把公式写对,是先有一个"该不该算"的守门员。** 一个金牌教练拿到数据第一句常是"这趟不是耐力骑,脱钩没意义,我不评"——**他敢于沉默**。
+
+- 脱钩：先验"稳态有氧 + ≥20 分钟"。不符 → **直接沉默,这趟不提脱钩。**
+- 画像：某时长无全力数据 → **标"未测",绝不展示假的"你这项弱"。**
+
+**实证锚**：velo 估 FTP 时栽过"3-4 个样本硬拟合 = 虚假高置信度"（`ftp_estimator.py:61`）。同一教训——**宁可说"这次算不了",绝不说一句不可信的话。**
+
+> **trade-off（Tim 已拍认）**：为真实准确,洞察会经常"无法提供"（不是稳态骑就没脱钩 / 没冲过刺画像就不全）。**用覆盖率换可信度,值得。** 破法：把数据缺口变成钩子——"想知道你是不是冲刺型?找段空路冲 15 秒,解锁完整画像"（但语言要让用户感觉被激励,不是被指责数据不全）。
+
+---
+
+## 4. RaaS + 渐进披露 UX
+
+**分界线**：`脱钩 6.2%` `5min 4.6 W/kg` 这些数字是给算法和 AI 看的,**不是给用户看的**。用户看到的永远是 **判断 + 这对你意味着什么 + 你该怎么办**。
+
+| ❌ SaaS 工具（玩具）| ✅ RaaS 结果（教练）|
+|---|---|
+| "有氧脱钩 6.2%" + EF 曲线图 | "这趟 2 小时耐力骑后半段你身体开始吃力——耐力底子还差一口气。接下来三周多堆 Z2 长距离,下次会稳得多。" |
+
+**SaaS 的致命问题不是"太冷",是"太通用"——换谁都能用。冷不致命,通用才致命。**
+
+**UX 三原则（防认知过载）**：
+1. **一次只推一个最重要的洞察**（系统判断"这趟最该说的一件事",只说那件;堆一堆 = 表格玩具）。
+2. **渐进披露**：默认一句判断 + 一个行动;想深究 → 点开看数字和图。
+3. **沉默是设计**：没可信洞察时这栏不出现,不凑废话。留白 > 噪音。
+
+---
+
+## 5. 语言设计（要求极高 / Tim 反复强调）
+
+**核心公式：差距 + 路径 = 激励;差距 − 路径 = 挫败。** 用户挫败不因你说真话,因你说了真话没给出路。
+
+**人格之辩的结论（重要 reframe）**：别在"腔调轴"上选人格（克制老炮 vs 冷静数据派 = 传统的人 vs 传统的工具,都不对）。
+> **AI native 的语言 = 个性化 × 信息密度,温度来自"准"。** 当 AI 说出一句你自己都没意识到、却完全正确的关于你的判断,那种"被看穿"比一万句"加油"更有温度。**把"个性化"和"密度"两个旋钮拧到底,腔调自己长出来。**
+
+**六条语气铁律**：
+1. 说身份不说缺陷（类型无好坏）;2. 短板必配优势的另一面;3. 跟自己比不甩档位;4. 缺口是"待解锁"不是"缺失";5. 能力是流动的不定性人;6. 跟用户站一起不居高临下。
+
+**prompt 固化（焊死,不靠 LLM 自由发挥）**：禁语清单（弱/短板/不足/初学者…）+ few-shot 对比教学（挫败版→激励版）+ 结构强制（任何指出差距的句子,同段必跟一个可做的下一步）+ 输出后语气安检。
+
+**诚实**：分寸没有公式,靠大量真实例子调教 + Tim 和铁哥们真用回归（"这句让我想骑车,还是想卸载?"）。第一版不完美,靠真用迭代上限。
+
+---
+
+## 6. 上下文工程（C 端大模型开发的本质）
+
+> **难点不在喂多少,在喂之前先用算法把数据嚼成洞察。你喂给 LLM 的是结论,不是数据。** 原始时序点丢给 LLM = 它瞎编或忽略。
+
+**六层上下文包**（反推自"你连续第 3 趟在 90 分钟掉效率 → 耐力墙在 90 分钟"这句话）：
+
+| 层 | 喂什么 | 谁产出 |
+|---|---|---|
+| 1 你是谁 | 耐力型 / FTP 250W / 目标:耐力 | rider type 算法 + profile |
+| 2 此刻状态 | TSB −5（略累但正常）| Sprint 10 |
+| 3 这趟事实 | 2h 稳态耐力骑 / 守门通过 | 守门员 |
+| 4 这趟洞察 | 脱钩 6.2% / 第 88 分钟起掉 | 脱钩算法 |
+| 5 历史模式 | **近 3 趟长骑均在 85–95min 掉效率** ← 个性化锚点 | 跨活动挖掘 |
+| 6 该说哪条 + 怎么说 | 焦点 + 严重度 + 必用锚点 + 语气约束 | 筛选器 + 语气规则 |
+
+**第 5 层是个性化的燃料**。"连续第 3 趟""90 分钟"这种锚点是**算法从历史挖的**,话痨给不出（不掌握数据）,工具给不出（只套模板）。**LLM 只点火,不挖矿。**
+
+**框架/模型/agent 判断**：DeepSeek 够用（这是表达任务非推理任务,真壁垒在上下文质量）。**当前是 pipeline 不是 agent**——单向（数据进→一句话出）,无多步推理/工具调用,**强行上 agent 框架 = 过度工程**。agent 留给未来"对话式教练"（多轮 + 记忆 + 追问）。
+
+---
+
+## 7. 跨活动模式挖掘（个性化的燃料 / 算法层）
+
+**本质：把同类的多次骑行叠在一起,找反复出现且稳定的规律。** 三步：
+
+1. **同类归组**：先按类型分组（耐力/间歇/通勤分开）,只在同类内挖。混挖 = 垃圾。
+2. **对齐 + 聚合**：每条按"进度 0–100%"归一化对齐,每个位置叠加求分布（均值 + 波动）。
+3. **守门升维**：反复 + 低波动 → 才叫"模式"敢说;偶发 + 飘忽 → 噪声,只说单次不升维。
+
+**模式类型（按价值排）**：
+- **反复拐点**（连续 3 趟 90min 掉效率 → 耐力墙）—— 最核心
+- **条件触发**（心率过 165 后掉速翻倍 → 阈值约 165）—— 更强,需更多数据
+- **停滞/异常**（5min 功率停滞 6 周该换刺激）—— 报停滞是洞察,报进步是伪需求
+
+**数据飞轮（关键产品洞察）**：模式挖掘是数据的函数。用户骑越多 → velo 越挖得出他的模式 → 越懂他。**冷启动弱、后期复利 = 护城河**（竞品抄得走算法,抄不走用户在你这儿的历史;数据是时间的函数,时间是壁垒）。
+
+---
+
+## 8. 数据闭环演进秩序（北极星 ≠ Sprint 12）
+
+**Tim 的北极星**："用户的完整数据系统 = 独属于他的 claude.md"——activity / 赛段（地形·历史·文化）/ 排名 / 路书 / 好友·关注·粉丝 / 热图 / 约骑 / 趋势 / 训练 / 俱乐部·社交圈,全进数据闭环,数据有序后做 agent。**方向对,但这是 velo 数年愿景,不是一期。**
+
+**velo 数据现状（grep 实证 / 12 张表）**：
+
+| 维度 | velo 现在真有吗 |
+|---|---|
+| 个人·训练 / 趋势 | ✅ Sprint 9/10/11（`daily_training_load` 等）|
+| 个人·空间·热图 | ✅ `get_user_heatmap`（`service_social.py:111`）|
+| 地理·赛段地形 / 排名 | ✅ `segments` / `leaderboard` |
+| 赛段历史/文化 | 🟡 半有（AI 文案 `segment_ai_drafts`,非结构化）|
+| 路书 / 好友 / 关注 / 粉丝 / 约骑 / 俱乐部 / 社交圈 | ❌ **全无**（连 follow 表都没有）|
+
+> **结构洞察：velo 数据闭环现在是个"瘸子"——个人+地理这条腿很壮,社交关系这条腿几乎没长出来。** 洞察的上限 = 数据的下限：没 follow 表就没"跟你关注的人比",没俱乐部表就没"跟你圈子比"。
+
+**演进阶段（不能跳级）**：
+
+| 阶段 | 能做的对比 | 前提 |
+|---|---|---|
+| **阶段 1（Sprint 12 ✅ 数据已全就位）** | 跟过去的自己 / 跟你在这赛段的历史 / 跟科学规范 / 跟你声明的目标 | 个人+地理已实 |
+| 阶段 2（社交线建起来后）| 跟相似的人 / 跟你关注的人 | 先建 follow 表 |
+| 阶段 3（俱乐部约骑建起来后）| 跟圈子 / 约骑伙伴 | 先建俱乐部/约骑 |
+| **阶段 4（全维度有序后）** | **agent**：多维关联、主动对话、跨维因果 | 前三阶都有序 |
+
+**洞察筛选器的对比维度**（Tim 列了路线/时间空间/人/圈子,补 3 个缺口）：
+- **跟"科学规范"比**（教练本质：你这周缺恢复日 —— 不跟人比,跟训练科学比）
+- **跟"你声明的目标"比**（知行合一：填了"提升 FTP"却全骑 Z2 —— 数据现成）
+- **控制变量的公平对比**（同段比先剥离风/温/疲劳,否则误导 —— cardiac drift 教训）
+
+---
+
+## 9. 现在为什么暂不开工（Tim 清醒判断 / 不是泄气）
+
+不是技术不行,是**两个前提没就位**：
+1. **数据飞轮没转起来**：100 用户量级、活跃用户活动数有限 → 跨活动模式叠不出可信规律,只能做单次洞察。
+2. **社交 / 地图架构反馈接口没建**：阶段 2/3 的人际/圈子对比无数据源（follow / 俱乐部 / 约骑表都不存在）。
+
+→ 无法做真正有用的 schema 字段 / 数据 / 提示词 / 上下文工程。**正确做法：等数据底座成熟 + 社交线起来,再拿本设计稿转 PRD。** 当下先让用户骑、让数据积累（飞轮 + 护城河）。
+
+---
+
+## 10. 未来另一场景：骑前每日教练（原 v0.1 / 降级保留）
+
+原 v0.1 设计的"早上 6 点推 4 段卡片（综合训练负荷 + 天气 + 目标）"仍是有效的未来功能,只是不再是 Sprint 12 主线。要点存档：
+- user 加 `training_goal`（5 选 1）/ 新建 `coach_outputs` 表 / 读 Sprint 10 `daily_training_load` 快照 / 和风天气 API（50000 次/月免费）/ 三层用户分层（no_data / partial / full）/ 早上 6 点 cron / 每天 4 次手动刷新上限 / DeepSeek 失败兜底。
+- **HRV / 静息心率 / RPE 永久不做**（research 实证：微信小程序 + Strava 都拿不到 / 装作有 = 信任级事故）。
+- 复用 DeepSeek client `app/agent/segment_writer.py`。
+
+---
+
+## 11. 不做项（防 scope creep）
+
+- HRV / 静息心率 / RPE → 永久不做（硬件壁垒）
+- 机械每公里点评 → 抛弃（改"努力性质"分段 / 但段是形式非内核）
+- 智能努力分段（爬坡/冲刺自动切）→ 算法复杂,且洞察不一定长在段上,**不作首发**,未来视价值再做
+- agent 框架 / 对话式教练 → 阶段 4（数据有序后）
+- 跟别人比 / 跟圈子比的洞察 → 阶段 2/3（社交线建成后）
+- 时光机 / 赛季突破等"数据复述"型 → 伪需求,不做
 
 ---
 
 ## 来源追溯
 
-- 2026-05-20 Tim + Claude brainstorm（这次对话 / brainstorm skill Step 1-5 走完）
-- research subagent 调研：网络 + GitHub 实证（5 国际对标 + 中国天气 API + 微信小程序限制 + 算法公式 + LLM prompt 工程）
-- 跟另一线 brainstorm（`docs/superpowers/specs/2026-05-20-training-analytics-roadmap.md` + `docs/prd/sprint-9-prd.md`）合并讨论：模块 D 规则版 → LLM 版
-- 元教训：memory `feedback_decoration_vs_guidance_velo_persona_lesson.md`（装饰展示 vs 主动指导）+ memory `feedback_llm_application_hybrid_split.md`（高频日常算法 / LLM 涌现场景 / NPC 写一次读多次例外）
+- 2026-05-26 Tim + Claude 8 轮深度 brainstorm（Tim 自评"第一次大模型开发深度探讨"）：每公里 → 努力段 → 赛段武器 → 伪需求 vs 真需求 → 守门员/信任 → RaaS → 语言/人格 reframe → 上下文工程 → 数据闭环秩序 → 模式挖掘
+- 运动科学查证（web-access skill / 2 并行 research subagent / 一手来源）：有氧脱钩 + Coggan Power Profile（来源 URL 见 §2）
+- velo 数据底座 grep 实证：`activity/models.py`（trackpoints/splits/power_zones）/ `ftp_estimator.py:75`（best power 滑窗）/ `segment/models.py` + `service_query.py`（赛段+排名+历史对比现成）/ `service_social.py:111`（热图）/ 12 张表清单（社交关系全无）
+- 关联记忆：[[project_velo_sprint12_coach_vision]] / [[feedback_ai_coach_product_principles]] / [[feedback_llm_application_hybrid_split]] / [[feedback_decoration_vs_guidance_velo_persona_lesson]] / [[feedback_no_fear_selling_use_judgment_framework]]
