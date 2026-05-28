@@ -748,3 +748,316 @@ def get_activity_timeseries(
             data["heart_rates"] = None
 
     return data
+
+
+# Strava Best Efforts 常见功率时长点。
+# 曲线本身支持任意秒数；这些点只是前端直接标注和快速读取的“路标”。
+_POWER_CURVE_BENCHMARKS_SEC = [
+    5, 15, 30, 60, 120, 180, 300, 480, 600, 900, 1200, 1800, 2700, 3600, 7200
+]
+
+
+def _empty_activity_power_curve(max_duration_sec: int = 0) -> dict:
+    """构造“没有可展示功率”的统一返回，避免各入口各写一版空态。"""
+    return {
+        "has_power": False,
+        "max_duration_sec": max(0, int(max_duration_sec or 0)),
+        "points": [],
+        "benchmarks": {},
+        "resolution_label": "无功率数据",
+    }
+
+
+def _activity_power_is_hidden(activity: Activity, viewer_user_id: int | None) -> bool:
+    """
+    判断当前查看者是否应该看不到功率。
+
+    本人永远能看自己的原始功率；别人看公开活动时，如果 owner 打开 hide_power，
+    曲线也必须像“没装功率计”一样消失，不能通过曲线反推出真实功率。
+    """
+    return (
+        viewer_user_id != activity.user_id
+        and activity.privacy is not None
+        and activity.privacy.hide_power
+    )
+
+
+def _load_activity_for_power_curve(db: Session, activity_id: int, user_id: int) -> Activity:
+    """功率曲线和 timeseries 共用的活动门禁：存在、可见、已完成。"""
+    activity = db.query(Activity).filter_by(id=activity_id).first()
+    if activity is None:
+        raise ValueError("活动不存在")
+    if not _can_view_activity(activity, user_id):
+        raise ValueError("活动不存在")
+    if activity.status != "completed":
+        raise ValueError("活动尚未解析完成")
+    return activity
+
+
+def _query_power_curve_rows(db: Session, activity_id: int):
+    """
+    只取功率曲线需要的轻量列。
+
+    distance 暂不参与计算，但保留在查询里：后续如果要在气泡里提示“这段发生在第几公里”，
+    不需要再改查询边界。
+    """
+    return (
+        db.query(
+            Trackpoint.seq,
+            Trackpoint.timestamp,
+            Trackpoint.power,
+            Trackpoint.distance,
+        )
+        .filter(Trackpoint.activity_id == activity_id)
+        .order_by(Trackpoint.seq)
+        .all()
+    )
+
+
+def _activity_elapsed_seconds(rows) -> int:
+    """
+    计算这条 activity 的 elapsed time 秒数。
+
+    只用 trackpoint 首尾 timestamp。
+
+    这张图的承诺是“从原始点重算本次 activity”，所以最长可查询时长也必须来自原始点。
+    activity.duration 可能来自上游摘要字段；一旦它比轨迹点更长，就会给曲线尾部补一段假 0W。
+    """
+    timestamps = [row.timestamp for row in rows if row.timestamp is not None]
+    if len(timestamps) >= 2:
+        span = int((timestamps[-1] - timestamps[0]).total_seconds())
+        if span > 0:
+            return span
+    return 0
+
+
+def _power_seconds_from_rows(rows, max_duration_sec: int) -> tuple[list[int], bool]:
+    """
+    把稀疏 trackpoints 还原成“每 1 秒一个功率”的数组。
+
+    类比把几张关键帧补成一段视频：
+    - 相邻点间隔 0~60 秒：认为前一个点的功率覆盖这段时间。
+    - 间隔大于 60 秒：像码表睡着了，中间填 0W，避免伪造持续输出。
+    - power=None：按 0W 进入平均值，但 has_power 仍只看原始点有没有真实功率。
+    """
+    if max_duration_sec <= 0:
+        return [], False
+
+    timestamps = [row.timestamp for row in rows if row.timestamp is not None]
+    if len(timestamps) < 2:
+        return [], any(row.power is not None for row in rows)
+
+    start_ts = timestamps[0]
+    seconds = [0] * max_duration_sec
+    has_power = any(row.power is not None for row in rows)
+
+    for idx in range(1, len(rows)):
+        prev = rows[idx - 1]
+        curr = rows[idx]
+        if prev.timestamp is None or curr.timestamp is None:
+            continue
+
+        start = int((prev.timestamp - start_ts).total_seconds())
+        end = int((curr.timestamp - start_ts).total_seconds())
+        if end <= start:
+            continue
+
+        start = max(0, min(start, max_duration_sec))
+        end = max(0, min(end, max_duration_sec))
+        if end <= start:
+            continue
+
+        gap = (curr.timestamp - prev.timestamp).total_seconds()
+        value = int(prev.power) if (prev.power is not None and 0 < gap <= 60) else 0
+        for sec in range(start, end):
+            seconds[sec] = value
+
+    return seconds, has_power
+
+
+def _prefix_power(power_by_second: list[int]) -> list[float]:
+    """前缀和：prefix[i] 表示前 i 秒的功率总和，用来 O(1) 查任意窗口总功率。"""
+    prefix = [0.0] * (len(power_by_second) + 1)
+    for idx, value in enumerate(power_by_second):
+        prefix[idx + 1] = prefix[idx] + value
+    return prefix
+
+
+def _best_power_effort_from_prefix(prefix: list[float], duration_sec: int) -> dict:
+    """
+    查某个持续时长下的最佳平均功率。
+
+    例：duration_sec=4080，就是拿一把 1小时08分 的尺子沿整条骑行逐秒滑动，
+    找平均功率最高的那一段，并返回这段从第几秒开始。
+    """
+    total_sec = len(prefix) - 1
+    if duration_sec < 1:
+        raise ValueError("持续时间必须大于 0 秒")
+    if total_sec < 1:
+        return {
+            "has_power": False,
+            "duration_sec": duration_sec,
+            "best_power_w": None,
+            "start_sec": None,
+            "end_sec": None,
+        }
+    if duration_sec > total_sec:
+        raise ValueError("持续时间超出活动长度")
+
+    best_sum = None
+    best_start = 0
+    for start in range(0, total_sec - duration_sec + 1):
+        window_sum = prefix[start + duration_sec] - prefix[start]
+        if best_sum is None or window_sum > best_sum:
+            best_sum = window_sum
+            best_start = start
+
+    best_power = (best_sum or 0.0) / duration_sec
+    return {
+        "has_power": True,
+        "duration_sec": duration_sec,
+        "best_power_w": round(best_power, 1),
+        "start_sec": best_start,
+        "end_sec": best_start + duration_sec,
+    }
+
+
+def _candidate_power_curve_durations(max_duration_sec: int) -> list[int]:
+    """
+    生成画曲线用的“聪明时长刻度”。
+
+    不是所有骑行都返回每一秒：短时段密、长时段稀，外加强制保留 Strava 常见成绩点。
+    前端若要任意秒数的最终读数，再调精确 effort 接口。
+    """
+    if max_duration_sec <= 0:
+        return []
+
+    durations = {1, max_duration_sec}
+
+    def add_range(start: int, end: int, step: int) -> None:
+        capped_end = min(end, max_duration_sec)
+        if start > capped_end:
+            return
+        durations.update(range(start, capped_end + 1, step))
+
+    add_range(1, 20 * 60, 1)
+    add_range(20 * 60 + 5, 60 * 60, 5)
+    add_range(60 * 60 + 15, 2 * 60 * 60, 15)
+    add_range(2 * 60 * 60 + 30, 4 * 60 * 60, 30)
+    add_range(4 * 60 * 60 + 60, max_duration_sec, 60)
+
+    for benchmark in _POWER_CURVE_BENCHMARKS_SEC:
+        if benchmark <= max_duration_sec:
+            durations.add(benchmark)
+
+    return sorted(durations)
+
+
+def _downsample_durations(durations: list[int], max_points: int, max_duration_sec: int) -> list[int]:
+    """
+    把候选时长压到前端可承受的点数，同时保留关键 benchmark。
+
+    这和 timeseries 的按距离抽样是同一思想：图上点数有限，但关键路标不能丢。
+    """
+    if len(durations) <= max_points:
+        return durations
+
+    keep = {1, max_duration_sec}
+    keep.update(b for b in _POWER_CURVE_BENCHMARKS_SEC if b <= max_duration_sec)
+    if len(keep) >= max_points:
+        return sorted(keep)[:max_points]
+
+    rest = [duration for duration in durations if duration not in keep]
+    budget = max_points - len(keep)
+    if budget > 0 and rest:
+        positions = _sample_indices(len(rest), budget)
+        keep.update(rest[pos] for pos in positions)
+    return sorted(keep)
+
+
+def _build_power_curve_result(power_by_second: list[int], max_points: int) -> dict:
+    """用秒级功率数组生成前端画图响应。"""
+    max_duration_sec = len(power_by_second)
+    prefix = _prefix_power(power_by_second)
+    durations = _candidate_power_curve_durations(max_duration_sec)
+    durations = _downsample_durations(durations, max_points, max_duration_sec)
+
+    points = [
+        {
+            key: value
+            for key, value in _best_power_effort_from_prefix(prefix, duration).items()
+            if key != "has_power"
+        }
+        for duration in durations
+    ]
+
+    benchmarks = {}
+    for duration in _POWER_CURVE_BENCHMARKS_SEC:
+        if duration > max_duration_sec:
+            continue
+        effort = _best_power_effort_from_prefix(prefix, duration)
+        benchmarks[str(duration)] = {k: v for k, v in effort.items() if k != "has_power"}
+
+    return {
+        "has_power": True,
+        "max_duration_sec": max_duration_sec,
+        "points": points,
+        "benchmarks": benchmarks,
+        "resolution_label": f"智能 {len(points)} 点 / 支持精确到秒查询",
+    }
+
+
+def get_activity_power_curve(
+    db: Session, activity_id: int, user_id: int, max_points: int = 1000
+) -> dict:
+    """
+    获取单次骑行的功率-持续时间曲线。
+
+    这是详情页里的“体能指纹”：横轴是持续多久，纵轴是这条骑行里该时长的最佳平均功率。
+    """
+    activity = _load_activity_for_power_curve(db, activity_id, user_id)
+    rows = _query_power_curve_rows(db, activity_id)
+    max_duration_sec = _activity_elapsed_seconds(rows)
+
+    if _activity_power_is_hidden(activity, user_id):
+        return _empty_activity_power_curve(max_duration_sec)
+
+    power_by_second, has_power = _power_seconds_from_rows(rows, max_duration_sec)
+    if not has_power or not power_by_second:
+        return _empty_activity_power_curve(max_duration_sec)
+
+    return _build_power_curve_result(power_by_second, max_points)
+
+
+def get_activity_power_curve_effort(
+    db: Session, activity_id: int, user_id: int, duration_sec: int
+) -> dict:
+    """
+    精确查询某个持续时长下的最佳平均功率。
+
+    前端拖动时可以先看抽样曲线；手指停住后调这个接口，让气泡读数精确到分秒。
+    """
+    activity = _load_activity_for_power_curve(db, activity_id, user_id)
+    rows = _query_power_curve_rows(db, activity_id)
+    max_duration_sec = _activity_elapsed_seconds(rows)
+
+    if _activity_power_is_hidden(activity, user_id):
+        return {
+            "has_power": False,
+            "duration_sec": duration_sec,
+            "best_power_w": None,
+            "start_sec": None,
+            "end_sec": None,
+        }
+
+    power_by_second, has_power = _power_seconds_from_rows(rows, max_duration_sec)
+    if not has_power or not power_by_second:
+        return {
+            "has_power": False,
+            "duration_sec": duration_sec,
+            "best_power_w": None,
+            "start_sec": None,
+            "end_sec": None,
+        }
+
+    return _best_power_effort_from_prefix(_prefix_power(power_by_second), duration_sec)

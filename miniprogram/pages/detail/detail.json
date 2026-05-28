@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "骑行详情"
+  "navigationBarTitleText": "骑行详情",
+  "usingComponents": {
+    "activity-power-curve-card": "/components/activity-power-curve-card/activity-power-curve-card"
+  }
 }
