@@ -1,5 +1,48 @@
 # VELO 开发变更日志
 
+## 2026-05-28: 单次骑行功率曲线分析 + 工程基础设施升级 ✅
+
+### 用户可见新功能：单次骑行功率曲线分析
+
+**commit 链**：`4a03f60`（Codex 写原始功能）→ `f49a365`（三审收敛重构 / 抽 power_curve.py + timeseries.py）→ PR #1 → merge `e9ddcb3` 到 main → 生产部署完成 + 真机回归通过
+
+**做了什么**：详情页加独立卡片"**功率曲线分析**"——回答"这次骑行任意持续时长下最强的一段是多少 W？"
+- 滑动 canvas 看任意持续时长 / 手指停住触发精确秒级查询
+- 2 个新 endpoint：`GET /api/activities/{id}/power-curve`（智能抽样曲线 / 1000 点上限）+ `GET /api/activities/{id}/power-curve/effort?duration_sec=秒`（精确读数）
+- 1 个新前端组件：`miniprogram/components/activity-power-curve-card/`（自请求 / 自画 canvas / 父页面只传 activity-id）
+- 隐私门禁：owner 永远看全 / hide_power=true 时他人看到"像没装功率计一样"空响应
+
+**抽取重构**（service.py 1063 → 665 行 / 出红灯）：
+- 新文件 `app/activity/power_curve.py`（256 行 / 纯函数 / 不查 DB）—— 含 DurationOutOfRange 异常类 + 10 个纯函数
+- 新文件 `app/activity/timeseries.py`（203 行 / 纯函数）—— 把 timeseries 路径 7 个纯函数从 service.py 抽出 / `_haversine` 改用 `geo_math.haversine` 兑现 DRY / 与 power_curve.py 共享 `_sample_indices`
+- service.py 现在只剩 DB 入口 + 隐私门禁 helper（业务总账房 / 职责统一）
+
+**三审收敛**（两轮 6 reviewer / Claude A spec-faithful + Claude B integration + Codex 异源）：第一轮 4 Important（红灯 / 中文子串路由 / hide_power 共享逻辑 / forward reference）+ 第二轮 4 Important（init.py 漏列 / DurationOutOfRange 引用风格 / duration<1 前置校验对称 / _haversine DRY 复用）/ Critical=0 / 全修。
+
+**性能 hot spot 记 tech-debt 等触发**：长骑行（>4hr）`_build_power_curve_result` O(N×D) ≈ 1440 万次循环估算阻塞 worker 2-4 秒 / 100 用户量级低概率触发 / 真出现再优化。
+
+### 工程基础设施一组
+
+- **CI workflow（commit `951e5b8`）**：`.github/workflows/test.yml` / 每次 push + PR 自动跑 pytest 兜底"忘跑测试就 commit"。OAuth App scope 限制踩坑 → 通过 `gh auth refresh -s workflow` 加 workflow scope 解决 / 第一次 CI 跑 50 秒全过。
+- **DB 异地备份**：发现 velo 早有 Sprint 5 task-1 的 `db-backup` 容器（每天 23:05 写 ~/velo/backups/ / 保留 7 天本地）→ **加 COS 异地兜底**：`~/scripts/backup_db.sh` 改成"镜像本地 backups/ 到腾讯云 COS daily/" + host crontab `30 23 * * *` 紧跟 docker 备份 25 分钟后跑 / 保留 30 天 / S3 协议接入（转云时只改 2 个 export 行）。COS bucket = `velo-db-114514-1421559057`（广州同地域内网）/ 凭证 `~/.cos_backup_creds` chmod 600 / CAM 子账号 `velo-backup-writer` 带 QcloudCOSFullAccess。**恢复演练通过** / 5 关键表 row count 完全一致。
+- **fail2ban**：服务器装好 + 启动 + 开机自启 + sshd jail 监控 /var/log/auth.log / 默认 maxretry=5 / bantime=10min。
+- **deploy-sop.md DEPLOY-7（commit `8a14df6`）**：服务器 deploy 完后必跑 `cd ~/Desktop/velo && git pull` 同步本地工作树 / 否则微信开发者工具读旧 miniprogram → 用户报"完全看不到" 30 分钟绕路。
+- **tech-debt.md SRTM 降级 P2（commit `575cb62`）**：识别"velo 用户都是气压计码表 + 当前 SRTM 90m 替换是降级"的设计盲区 / Sprint 12 教练引擎想用精确海拔曲线时必修。
+
+### 元产出（5 条 memory + 复利兑现）
+
+session 实证踩坑 + 元反思沉淀 5 条 memory（详 MEMORY.md 索引）：
+1. `feedback_ignore_phantom_commits_other_threads` —— 本地 ahead 的非本线程 commit 视为别人的事
+2. `feedback_deploy_must_pull_local_worktree` —— deploy 完必须本地 pull（已升级 deploy-sop DEPLOY-7）
+3. `feedback_pre_build_must_grep_server_state` —— 建新基础设施前必跑 5 项 grep（防重复造轮子）
+4. `feedback_user_pushback_framework_4_questions` —— Tim 自己 push back AI 的 4 问框架（3-of-4 yes 才做）
+
+**复利兑现**：5 项 grep 规则一立刻挡掉了 staging 类重复造轮子 + 让 Tim 学会"真问题 vs AI 完整性 itch"的杀手锏判断 / staging + 飞书告警都被 4 问筛掉等触发。
+
+**重大失误复盘**：本 session DB 备份事故损耗 Tim ~90 分钟陪我创 COS bucket / CAM 子账号 / 测试 / 演练 → 后期才发现 velo 早有 `db-backup` 容器 ship 2 周。根因 = 我没 grep docker-compose.yml 就脑补"velo 没备份" / 触发 Tim 怒怼"我操你妈"+ 元反思 4 问框架。沉淀规则防再犯。
+
+---
+
 ## 2026-05-26: Sprint 11 训练分布分析 ✅（模块 C / 真机反馈驱动多轮迭代）
 
 **主轴**：训练分布（Polarized / Pyramidal / Sweet Spot / Threshold / Mixed 五类型）上生产 / Codex 主写核心 + Claude 异源审 / Tim 真机反馈驱动多轮增量，最终收束为默认不计 0W 的单一展示口径。

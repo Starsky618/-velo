@@ -94,7 +94,7 @@ app/<模块名>/
 
 实际模块文件清单(v5 Sprint 2 部分推进 / 2026-04-30):
 
-- `app/activity/`: models / schemas / router / service / worker / simplify / power_zones（**v5 task-2.B.1** 加 `calculate_power_curve` / `calculate_power_curve_from_activities`）
+- `app/activity/`: models / schemas / router / service / worker / simplify / power_zones（**v5 task-2.B.1** 加 `calculate_power_curve` / `calculate_power_curve_from_activities`）/ **`power_curve.py` + `timeseries.py`**（**2026-05-28 抽取**：单次骑行功率曲线 + 时序数据两套纯函数模块 / service.py 从 1063 → 665 行 / 详 changelog 2026-05-28 段）
 - `app/segment/`: models / schemas / router / service / auto_match / matcher / coord_convert / _geo_utils / **algorithms** (v5) / **exceptions** (v5)
 - `app/parsing/`: gpx_parser / fit_parser / strava_adapter / stats_calculator / coord_normalizer / geo_math / types
 - `app/strava/`: models / router / service / client / import_scheduler
@@ -571,6 +571,8 @@ Strava 导入路径:
 | PATCH | `/api/activities/{id}` | 改标题等 |
 | DELETE | `/api/activities/{id}` | 删 |
 | GET | `/api/activities/{id}/timeseries` | 速度/心率/功率时间序列 |
+| **GET** | **`/api/activities/{id}/power-curve`** | **单次骑行功率曲线（智能抽样 / 1000 点上限 / 2026-05-28 ship）** |
+| **GET** | **`/api/activities/{id}/power-curve/effort`** | **单次骑行任意持续时长精确读数（duration_sec query / 配合滑动 canvas / 2026-05-28 ship）** |
 | GET | `/api/activities/{id}/status` | 轮询解析进度 |
 
 ### 5.3 赛段(8 / v5 +1)

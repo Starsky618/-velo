@@ -440,3 +440,48 @@ sudo docker compose restart admin-h5   # 让 admin-h5 nginx 重新解析 api hos
 - `cli upload --project /Users/macbookair/Desktop/velo/miniprogram --version 2026.05.25.1519 --desc '训练分析读图说明 + Sprint10收尾'`：成功，包体 `177.9 KB`
 
 **注意**：预览二维码写文件模式曾因 `二维码输出路径无效或不存在` 失败；终端二维码模式可用。后续若要自动保存二维码图片，先单独验证 `--qr-output` 的路径规则。
+
+---
+
+## 2026-05-28：单次骑行功率曲线分析 ship + 工程基础设施一组（CI / COS 异地备份 / fail2ban）
+
+**范围**：功能层 1 ship（用户可见单次骑行功率曲线分析） + 运维层 3 升级。详细变更见 `docs/changelog.md` 2026-05-28 段。本节只记**服务器侧关键参数 + 未来接手必知的配置位置**。
+
+### 新增运维资产清单
+
+| 资产 | 位置 | 用途 / 接手必知 |
+|---|---|---|
+| `.github/workflows/test.yml` | 仓库 | 每次 push + PR 自动跑 pytest（GitHub Actions / 公开仓库无限免费）。改 CI 配置需要 token 带 `workflow` scope（默认 OAuth App 没有 / 用 `gh auth refresh -s workflow` 临时加）|
+| `~/.cos_backup_creds` | 服务器 ubuntu home（chmod 600 / 不进 git） | 腾讯云 COS 凭证 / TENCENT_SECRET_ID + TENCENT_SECRET_KEY 两行 / 来自 CAM 子账号 `velo-backup-writer` |
+| `~/scripts/backup_db.sh` | 服务器 ubuntu home（host / 不在 docker） | 每天 23:30 跑 / 镜像 `~/velo/backups/` 到 COS bucket `velo-db-114514-1421559057/daily/` / S3 协议接入（rclone）/ 30 天保留 |
+| host crontab `30 23 * * *` | `crontab -l` 可见 | 调度 backup_db.sh / 紧跟 docker `db-backup` 容器（23:05）25 分钟后跑 |
+| fail2ban service | systemd enabled | SSH 防爆破 / 默认 maxretry=5 / bantime=10min / 监控 /var/log/auth.log |
+
+### COS 备份系统架构
+
+**两层防御**：
+1. **现有 docker `db-backup` 容器**（Sprint 5 task-1 ship / 不动）：每天 23:05 → `pg_dump | gzip` → `~/velo/backups/velo_YYYYMMDD_HHMMSS.sql.gz` / 本地 7 天滚动 / monitor 容器有 `backup_freshness` 探针
+2. **2026-05-28 新加 host cron**（异地兜底）：每天 23:30 → `rclone copy ~/velo/backups/ → velocos:velo-db-114514-1421559057/daily/` / COS 30 天滚动
+
+**为啥不用 docker 容器统一处理**：现有 `db-backup` 容器基于 `postgres:16-alpine`，里面没 rclone。强行往容器里塞 rclone 等于改 Dockerfile / 高耦合。host cron 只做"镜像同步" / 不重新 pg_dump / 单一真相源。
+
+**转云路径**（未来改阿里云 OSS / AWS S3）：只改 backup_db.sh 顶部 2 个 export 行（`RCLONE_CONFIG_VELOCOS_PROVIDER` + `_ENDPOINT`），其他不动。S3 协议全兼容。
+
+**恢复演练**：`~/scripts/velo_restore_drill.sh` 一行跑 / 拉最新 COS 备份 → 还原到临时 db `velo_restore_test` → 对比 5 关键表 row count → 删临时 db。**已演练通过 / 5 表 row count 完全一致**。
+
+### 服务器侧关键决策记录
+
+#### Q：为什么 fail2ban 用默认配置不自定义？
+Ubuntu 22.04 默认 sshd jail 已 enabled / maxretry=5 / bantime=10min。Tim 用 SSH key 不会触发密码失败计数 / 默认配置够。未来如果想看被尝试爆破的 IP：`sudo fail2ban-client status sshd`。
+
+#### Q：为什么 staging 没建？
+按 100 用户单人项目 ROI 4 问筛掉（详 memory `feedback_user_pushback_framework_4_questions`）—— 不做没人发现 ✗ / 用户感知不到 ✗ / 100 用户不需要 ✗ / 可回退 ✓ = 1/4 yes。等触发再回来建（用户 > 500 / 或某次 alembic 真炸 / 或大数据量性能改动）。
+
+#### Q：为什么飞书告警没接？
+同 4 问筛掉 = 1/4 yes。tech-debt 已记 / 真要时改 .env 一行即可激活（memory `project_velo_alert_channel_deferred`）。
+
+### 给未来 Agent 的硬规则（本 session 沉淀）
+
+1. **建任何"基础设施类"东西前必跑 5 项 grep**（memory `feedback_pre_build_must_grep_server_state`）—— 否则 90% 概率"提议的东西已存在"，重复造轮子。本 session DB 备份事故是反面教材：陪 Tim 跑 90 分钟创 COS bucket / CAM / 演练 → 后期才发现 velo 早有 db-backup 容器。
+2. **deploy SOP 加 DEPLOY-7 本地 git pull**（deploy-sop.md / commit `8a14df6`）—— 服务器 deploy 完后**必跑** `cd ~/Desktop/velo && git pull`，否则微信开发者工具读旧 miniprogram = 用户报"完全看不到"。
+3. **OAuth App token 改 `.github/workflows/` 会被拒**——错误信息 `refusing to allow an OAuth App ... without 'workflow' scope`。用 `gh auth refresh -s workflow --hostname github.com` 触发设备码授权 / Tim 浏览器 1 步授权后即可 push CI 文件。
