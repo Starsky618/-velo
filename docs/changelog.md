@@ -1,5 +1,62 @@
 # VELO 开发变更日志
 
+## 2026-05-29: 约骑模块 brainstorm + spec v1.8 + plans 4712 行 ship gate ✅（代码未实施）
+
+> **特点**：仅 brainstorm + spec + plans 三阶段完成 / **代码待 Codex Desktop 一气呵成实施 task 1-10**。velo v5 社交主线模块设计 + 元层 reviewer 工程升级。
+
+### design doc v1.8（8 轮三审收敛 / commit chain `89f71f2` → ... → `3349ae8`）
+
+**主轴**：velo v5 社交主线约骑模块设计 / Critical+Important=0 ship gate 达成 / 文档 530 行。
+
+- **v1 范围**：5 个功能（约骑活动 CRUD + segment 下拉 + 路书 GPX/FIT 上传 + 路线详情页约骑入口 + 媒体）/ ~16.5 天工程量 / 跨 3 sprint
+- **架构决策**：新建 2 模块 `app/meetup/` + `app/route_book/` / 防火墙隔离不动核心表 / **微信小程序备案约束 → 砍所有用户互动**（私信/关注/评论/点赞/打招呼）/ 路书复利原则（默认公开 / 不参与 KOM 排行 / 防野鸡 KOM 污染）
+- **关键产品决策**：路书 = 用户自建图纸 ≠ segment 精选赛段 / 状态机 `DRAFT → OPEN → (CANCELLED | COMPLETED)` / 出发前 30 min ±30s 截止报名+退出+取消 / 满员抢位 FOR UPDATE + populate_existing
+- **新表**：4 张新表（meetups + meetup_participants + meetup_media + route_books）+ partial unique on `creator_id WHERE status='DRAFT'` + 复合 CHECK on route_books（**方案 B**：service 层补 source_activity_id 校验 + DB 允许孤儿态 = 防 FK ON DELETE SET NULL 与 CHECK NOT NULL 死锁 / Tim 拍）
+- **路书 2 种创建**：上传 GPX/FIT（复用 `app/parsing/gpx_parser.py` + `fit_parser.py` 现有解析器）+ 从已骑活动衍生（trackpoints 反向转 LINESTRING / 含 IDOR 校验）
+- **反向 hook 2 处明确标记**：`app/user/service.py` 新增 `delete_user`（hook 顺序：先 cancel OPEN → 硬删 DRAFT → 删 user）+ `app/segment/router.py` 加 `/api/segments/{id}/upcoming-meetups`（spec §15.2 含删除 SOP）
+- **复盘**：项目级既有依赖漂移 surface（CLAUDE.md 声明"User ← Activity"但 `app/user/` 已反向 import `app/activity/` 7 处 / Sprint 9+10 训练分析引入 / 属项目级治理待办）
+
+### Codex Desktop ship plans 4712 行（commit `d8e610d`）
+
+- 1 README + 10 task 卡 / `docs/superpowers/plans/2026-05-28-meetup-module/`
+- 2 轮异源审 Critical+Important=0
+- 验证全跑：禁词 grep 空 / DAG 无循环 / file:line 实证 / task 结构（Files / TDD / Steps / Self-review / Commit）全过
+- **遗留**：README + task 卡英文（Codex 没遵守项目 §2.3 中文规则 / Tim 拍接受不重写 / 后续如阅读单独翻 README）
+
+### 元产出：reviewer 工程升级（commit `999a948`）
+
+**最大教训**：Tim 一次抽查发现 reviewer 12 次漏抓反向依赖 = **reviewer 工程系统性盲区**（不是 spec 设计差 / 8 轮收敛主因）。
+
+升级清单（跨平台 / `~/.claude/`）：
+- `reviewer-integration.md` Step 2.1-2.6 加强制 grep 清单（反向 import + 正向 import + 循环 import + 模块删除假想 SOP + 项目声明 vs 真 grep 漂移）
+- `reviewer-spec-faithful.md` Step 7.5 加架构层双保险
+- `docs/agent-rules/agent-collaboration.md` §4.0.1 项目级 grep 强制清单
+
+**Codex 异源价值再次实证（Round 6 FK+CHECK 死锁）**：Claude 双 reviewer 12 轮全漏 schema 联动 race / codex 抓出 / 该死锁 = `source_activity_id` 字段 ON DELETE SET NULL + CHECK NOT NULL 互斥 → activity DELETE 失败 / DB 级死锁。
+
+新 memory（3 条 / 详 MEMORY.md 索引）：
+1. `feedback_wechat_miniprogram_no_direct_social` — 微信备案约束硬规则
+2. `feedback_spec_bug_fix_before_plans` — spec Critical+Important=0 才进 plans
+3. `feedback_reviewer_must_grep_dependency` — reviewer 必强制 grep 架构层依赖
+
+### 收敛 stats
+
+```
+Round    1   2  3  4  5  6  7  8
+Critical 7   2  0  0  0  1  0  0 ✅
+Imp     13  10  9  2  5  0  1  0 ✅
+```
+
+每轮抓到的真问题（不是为找而找）：R1 IDOR/媒体上传顺序倒置 / R2 cron 实现细节 / R3 storage 签名 / R4 我 §15 文字事实错（service.py vs service_stats.py 张冠李戴）/ R5 main.py 挂载漏（codex 抓）/ R6 FK+CHECK 死锁（codex 抓）/ R7 字段表 markdown 被切。
+
+### 下一步（不在本 changelog 范围 / 等代码实施完再单独入条目）
+
+- Codex Desktop 一气呵成实施 task 1-10（不走 subagent-driven-development / 防同源审 + task-09 842 行 MCP 卡死风险）
+- 完成后回 Claude 派 reviewer 异源审整 sprint commit
+- ship gate Critical+Important=0 → 部署 + 真用回归（8 类 hot spot / 含满员抢位并发 / activity_derived 路书 LINESTRING / partial unique 并发 / admin 删 segment 后 snapshot 展示 / DRAFT 删除 storage 清理 / scheduler 双 tick 互不拖死 等）
+
+---
+
 ## 2026-05-28: 单次骑行功率曲线分析 + 工程基础设施升级 ✅
 
 ### 用户可见新功能：单次骑行功率曲线分析
