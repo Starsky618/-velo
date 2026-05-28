@@ -165,18 +165,32 @@ velo v5 阶段引入"约骑"作为社交模块——支持骑友发起 / 加入�
 | `file_type` | VARCHAR(8) | NULL / 仅 source='file_upload' 才填 / source='activity_derived' 时 NULL（见下方复合 CHECK）|
 | `source` | VARCHAR(32) | CHECK IN ('file_upload','activity_derived') / v1.5 修订 R4-N2：原 'gpx_upload' 改 'file_upload' 容纳 GPX+FIT |
 
-**v1.6 修订 R5-I5 完整复合 CHECK 约束**（alembic 显式 DDL）：
+**v1.7 修订 R6-Critical 复合 CHECK 约束**（**方案 B：source_activity_id NOT NULL 校验下沉到 service 层** / 避免 FK ON DELETE SET NULL 与 CHECK NOT NULL 死锁 / Tim 拍）：
 
 ```sql
--- file_type 取值 + source/file_type 联动一致性
+-- DB 层只校验 file_type / source 联动 / 不校验 source_activity_id NOT NULL
+-- （否则删 activity 时 SET NULL 触发 CHECK 报错让整条 DELETE 失败）
 ALTER TABLE route_books ADD CONSTRAINT ck_route_books_file_type_source CHECK (
-    (source = 'file_upload' AND file_type IN ('gpx', 'fit') AND file_id IS NOT NULL)
+    (source = 'file_upload' AND file_type IN ('gpx', 'fit') AND file_id IS NOT NULL AND source_activity_id IS NULL)
     OR
-    (source = 'activity_derived' AND file_type IS NULL AND file_id IS NULL AND source_activity_id IS NOT NULL)
+    (source = 'activity_derived' AND file_type IS NULL AND file_id IS NULL)
 );
 ```
 
-防止半状态写入：source='file_upload' 但 file_type=NULL / source='activity_derived' 但 file_type='gpx' 等。alembic 用 `op.create_check_constraint(...)` 添加。
+防止半状态写入：source='file_upload' 但 file_type=NULL / source='activity_derived' 但 file_type='gpx' / 等。alembic 用 `op.create_check_constraint(...)` 添加。
+
+**service 层补强校验**（**v1.7 修订 R6 / 由 service 层入口而非 DB CHECK 保障**）：
+```python
+# POST /api/route-books service.create_route_book(...)
+if source == 'activity_derived' and source_activity_id is None:
+    raise HTTPException(422, "activity_derived 必须提供 source_activity_id")
+# DB schema 允许 source_activity_id 后续被 ON DELETE SET NULL 变 NULL
+```
+
+**业务孤儿态语义**（**v1.7 修订 R6 / 源活动被删后路书仍有效**）：
+- 路书一旦创建 / 源 activity 被删 → `source_activity_id` 自动变 NULL（FK ON DELETE SET NULL）/ source 仍是 'activity_derived'
+- 业务层把此状态当作 "**源活动已删 / 路书仍可用作图纸**"（路书复利原则 / 路书不依赖 activity 存活）
+- 前端显示：路书详情页"衍生自活动"链接在 source_activity_id NULL 时隐藏（不显示坏链）
 | `source_activity_id` | INT | FK→activities.id NULL ON DELETE SET NULL |
 | `city` | VARCHAR(32) | NOT NULL `ck_route_books_city` 完整 7 枚举 |
 | `created_at` | TIMESTAMPTZ | |
