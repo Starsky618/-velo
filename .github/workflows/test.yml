@@ -1,0 +1,35 @@
+# velo 最简 CI：每次 push 和 PR 自动跑 pytest
+#
+# 干啥用：你本地忘跑 pytest 就 commit 了，GitHub 会替你跑一遍兜底。
+# 红绿状态显示在分支/PR 页面右上角小图标。
+#
+# 不做 CD（不自动部署生产）—— velo 走手工 6 步部署 SOP，保留"按一下确认"的暂停点。
+#
+# 不挂 PostgreSQL / Redis 服务 —— tests/ 用 SQLite fixture + mock，不依赖外部服务。
+# 实测本地 `python3 -m pytest tests/` 832 passed 56 skipped，CI 应同样结果。
+#
+# 触发：所有分支的 push + 任何 PR。
+
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pytest
+        run: pytest tests/ -q
