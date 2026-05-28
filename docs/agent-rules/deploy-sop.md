@@ -76,6 +76,14 @@ curl -s -H "Authorization: Bearer $TOKEN" "http://localhost:8000/<改动的 endp
 grep -rn "<按钮文案 或 endpoint key>" miniprogram/pages/ miniprogram/components/
 # 期望 ≥ 1 hit / 0 hit = 用户无法触达 = SOP 失效（2026-05-11：后端修好了但前端 0 个 OAuth 入口）
 # 纯后端 endpoint 改动不涉及用户主动触发 → 这步可跳（curl 就够）
+
+# DEPLOY-7  本地工作树 git pull（涉及 miniprogram/ 改动时硬性必跑 / 反复踩 ≥2 次的坑）
+# 微信开发者工具读的是本地 ~/Desktop/velo/miniprogram/ 源码，不是服务器代码
+# 服务器 deploy 完 + 本地工作树没 pull = IDE 看不到新组件 = 用户报"完全没有"
+# 现象：组件标签找不到 → wxml 静默跳过（不报错不显示）= "完全没有"的伪信号
+cd ~/Desktop/velo && git pull --no-rebase --no-edit
+# 之后微信开发者工具点编译刷新按钮，新组件出现
+# 纯后端改动（无 miniprogram/ diff）可跳
 ```
 
 ### 路径 B：scp + tar（备用 / 大陆服务器连 GitHub 不稳时）
