@@ -229,7 +229,31 @@ velo 用 SRTM 公开 DEM（30m / 90m 像素）测窄带状公路（5-10m 宽）�
 
 ---
 
-## 🟡 P2：Strava 老用户无 `needs_reauth` 状态机（2026-05-11 Strava scope 事故 codex round-2 抓）
+## 🟡 P2：赛段创建用 SRTM 替换气压计高程是降级（2026-05-28 Tim 怼"全部用户都是码表"识别 / 2026-05-15 决策的盲区）
+
+`app/segment/service_create.py:250` from-gpx 路径**无脑用 SRTM 90m DEM 替换 GPS 海拔**，2026-05-15 当时归因是"GPS 海拔 ±15m 噪声物理限制"。**但这归因把 GPX 海拔统一当手机 GPS 处理，没区分气压计源**。
+
+**事实**：velo 目标严肃公路车骑手 / 用户基本 100% 气压计码表（佳明 / Wahoo / iGPSPort）/ 上传的 GPX 海拔自带 ±0.1-1m 气压计精度。
+
+**当前代码效果**：
+- 用 ±3-5m 精度的 SRTM 90m 数据**替换** ±0.5m 精度的气压计数据 = **精度降级 6-10×**
+- 整条赛段总爬升仍合理（SRTM 平均误差小），但**单点海拔曲线**比用户码表自己显示的更糙
+- 用户在 Strava / 佳明 App 看曲线很精细，到 velo 看同样赛段反而粗糙 = 显眼劣势
+
+**为啥当年 SRTM 替换还"看起来对"**：
+- 短窗口 max_gradient 算法本身脆弱（气压计也会有 1-2m 瞬时抖动 → 100m 窗口算出虚高）
+- SRTM 90m 是空间平均（每像素 90m × 90m 平均海拔）→ 数据本身就被平滑过
+- **碰巧用"数据更平滑"压住了算法脆弱性** —— 但代价是精度降级
+
+**应该做的修法**（Step 3 海拔升级时一并）：
+1. 检测 GPX 是否含气压计源标识（GPX 1.1 `<extensions>` 含 `<ns3:atemp>` 或 `<gpxtpx:atemp>` / FIT 文件含 `enhanced_altitude` 字段 / Strava API 返 `device_watts=true` 含气压计）
+2. 气压计源：`elevation_profile` 信任 GPX 原数据 / **SRTM 只在严重异常点（如某点比邻点高 50m）做兜底**
+3. 手机 GPS 源：保留当前 SRTM 替换策略
+4. max_gradient 算法层独立优化（长窗口 + 异常剔除 + 群体融合）
+
+**与上一条关系**：max_gradient 是"算法+数据源"双重失真问题。改了这条（信任气压计）max_gradient 可能不需要等群体融合就能恢复显示。
+
+**为什么 P2 不 P1**：当前 max_gradient 已被砍前端（用户看不到坡度具体数字），avg_gradient 和总爬升数据用 SRTM 算仍在合理范围；用户体验上"曲线更糙"是隐性损失不是显性 bug。但**等 Sprint 12 教练引擎想用精确海拔曲线时（如"识别这次爬坡有几个发力段"）必须先修这条**。
 
 velo 升级 OAuth scope `activity:read` → `activity:read_all` 后（commit TBD），老用户的 token 还在 DB 里挂着但 scope 不足：
 - `app/strava/service.py:412` `get_strava_status` 只看 `strava_athlete_id IS NOT NULL` → 老用户显示 connected ✅
