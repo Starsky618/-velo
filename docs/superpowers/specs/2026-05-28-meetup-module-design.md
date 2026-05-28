@@ -55,7 +55,7 @@ velo v5 阶段引入"约骑"作为社交模块——支持骑友发起 / 加入�
 - ② 选已有路书（自己上传或活动衍生的 / 也含别人公开的路书）
 
 **用户自建路书 2 种方式**（陈哥要建一条新路书时 / 创建路书时用哪种）：
-- ① 上传 GPX 文件 + 输入路名 / 距离 / 爬升
+- ① 上传 **GPX 或 FIT** 文件 + 输入路名 / 距离 / 爬升（复用 📊 `app/parsing/gpx_parser.py` + `fit_parser.py` 现有解析器 / 与 activity 上传同 pattern `app/activity/service.py:46`）
 - ② 从我已骑过的活动衍生（一键转 / 自动算距离爬升）
 
 ### 3.2 阿杰加入约骑
@@ -161,8 +161,9 @@ velo v5 阶段引入"约骑"作为社交模块——支持骑友发起 / 加入�
 | `distance` | FLOAT | NOT NULL（米）|
 | `climb` | FLOAT | NULL |
 | `reference_line` | GEOMETRY(LINESTRING, 4326) | NOT NULL（复用 📊 `segment/models.py:69`）|
-| `gpx_file_id` | VARCHAR(512) | NULL（v1.3 同 R3-I1 改名 file_id）|
-| `source` | VARCHAR(32) | CHECK IN ('gpx_upload','activity_derived') |
+| `file_id` | VARCHAR(512) | NULL（v1.5 generic 化 / 不再叫 gpx_file_id / 容纳 GPX 或 FIT）|
+| `file_type` | VARCHAR(8) | NULL `ck_route_books_file_type` IN ('gpx','fit') / 仅 source='file_upload' 才填 / source='activity_derived' 时 NULL |
+| `source` | VARCHAR(32) | CHECK IN ('file_upload','activity_derived') / v1.5 修订 R4-N2：原 'gpx_upload' 改 'file_upload' 容纳 GPX+FIT |
 | `source_activity_id` | INT | FK→activities.id NULL ON DELETE SET NULL |
 | `city` | VARCHAR(32) | NOT NULL `ck_route_books_city` 完整 7 枚举 |
 | `created_at` | TIMESTAMPTZ | |
@@ -507,7 +508,7 @@ for file_id in file_ids:
 | Task | 范围 | 工程量 |
 |---|---|---|
 | Task 1 | 数据模型 + Alembic 迁移（4 表 + partial unique + CHECK + PostGIS 索引）| 1 天 |
-| Task 2 | 路书 service + API（CRUD + GPX 上传 + activity_derived + IDOR + ST_MakeLine + dialect 守卫 + storage 清理 + activity-candidates endpoint）| 2.5 天 |
+| Task 2 | 路书 service + API（CRUD + **GPX/FIT 上传**（复用 `app/parsing/gpx_parser` + `fit_parser` / activity 同 pattern）+ activity_derived + IDOR + ST_MakeLine + dialect 守卫 + storage 清理 + activity-candidates endpoint）| 2.5 天 |
 | Task 3 | 约骑 service（CRUD + 状态机 + 时间边界 + snapshot 字段自动填充 + `_load_and_authorize_meetup` helper + IntegrityError → 409 处理）| 2 天 |
 | Task 4 | 约骑 API（12 个 endpoint / 完整权限校验链）| 1.5 天 |
 | Task 5 | 加入 / 退出（FOR UPDATE + 并发测试）| 1 天 |
@@ -579,7 +580,7 @@ for file_id in file_ids:
 
 > **背景**：2026-05-28 Tim 抽查 spec 防火墙时一次发现 3 轮 12 次 reviewer 都漏抓的反向依赖问题。本节强制把"约骑模块到底依赖哪些 + 谁反向依赖它 + 删除时影响清单"全量画出来。
 
-### 15.1 完整依赖图（约骑生态正向依赖）
+### 15.1 完整依赖图（约骑生态正向依赖 + 既有反向漂移虚线）
 
 ```
                                         【顶层 entrypoint】
@@ -589,7 +590,8 @@ for file_id in file_ids:
 ┌──────────┐    ┌─────────────┐    ┌──────────┐    ┌─────────────┐    ┌──────────────┐
 │  user/   │ ← │  activity/   │ ← │ segment/  │ ← │ route_book/ │ ← │   meetup/    │
 └──────────┘    └─────────────┘    └──────────┘    └─────────────┘    └──────────────┘
-   ↑ ↑              ↑                  ↑                ↑ ↑                ↑
+   ↑ ↑ ⤴────────┘  (R4-N1 既有漂移虚线 / Sprint 9+10 引入 / 7 处反向 / 见 §15.4)
+   │ │              ↑                  ↑                ↑ ↑                ↑
    │ │              │                  │                │ │                │
    │ └─ user_id     └─ avg_speed       └─ name/         └─┴─ creator_id    └─ 自己
    │    nickname        trackpoints      distance/         + reference_line
@@ -599,6 +601,8 @@ for file_id in file_ids:
        └─ LocalStorage.upload/delete（app/storage/local.py:49/85）
 ```
 
+**箭头说明**：实线 ← = 设计的单向依赖（声明）/ 虚线 ⤴ = 既有反向漂移（Sprint 9+10 引入 / 不是 meetup 引入 / 但和 §15.2 计划反向 hook 一起算项目级架构治理待办）
+
 **正向依赖**（约骑读这些模块）：
 - `app/user/` — user_id (auth) / nickname
 - `app/activity/` — activities.avg_speed JOIN（详情页"骑友均速"）/ trackpoints（路书衍生反转 LINESTRING）/ activity.user_id（路书衍生 IDOR 校验）
@@ -607,14 +611,14 @@ for file_id in file_ids:
 - `app/route_book/` — 自己新建（约骑生态内部）
 - `scheduler.py` 项目根 — 顶层 entrypoint import meetup.cron
 
-### 15.2 反向 hook 清单（2 处 / spec 设计的有意反向 / 已 surface）
+### 15.2 反向 hook 清单（2 处 / spec 设计的有意反向 / **当前状态：待建** / R4-I3 措辞修正）
 
-| # | 位置 | 反向依赖说明 | 删除约骑模块时同步动作 |
-|---|---|---|---|
-| 1 | `app/user/service.py` 新增 `delete_user(db, user_id)` | `import app.meetup.models` + query Meetup（user → meetup）| 整个 `delete_user` 函数删 / 或砍 meetup query 那段 |
-| 2 | `app/segment/router.py` 加 `/api/segments/{id}/upcoming-meetups` endpoint | `import app.meetup.models` + query Meetup（segment → meetup）| 整个 endpoint 删（1 个 endpoint）|
+| # | 位置 | 当前状态 | 反向依赖说明 | 删除约骑模块时同步动作 |
+|---|---|---|---|---|
+| 1 | `app/user/service.py` 新增 `delete_user(db, user_id)` | **待建**（meetup 模块 ship 时同步加 / grep 2026-05-28：app/user/ 无 delete_user）| `import app.meetup.models` + query Meetup（user → meetup）| 整个 `delete_user` 函数删 / 或砍 meetup query 那段 |
+| 2 | `app/segment/router.py` 加 `/api/segments/{id}/upcoming-meetups` endpoint | **待建**（grep 2026-05-28：app/segment/router.py 无此 endpoint）| `import app.meetup.models` + query Meetup（segment → meetup）| 整个 endpoint 删（1 个 endpoint）|
 
-**反向 hook 数量**：2 处 / 不是 100% 完全独立 / 但**模块边界清晰**。
+**反向 hook 数量**：2 处（待建 / 计划反向）/ 不是 100% 完全独立 / 但**模块边界清晰 + 设计阶段就标记 + ship 时同步加**。
 
 **为什么接受反向 hook**：100 用户量级 / 工程务实 / 比 event listener 系统更轻 / Tim 2026-05-28 拍方案 A "承认局部反向 + spec 明确标记"。
 
@@ -622,8 +626,11 @@ for file_id in file_ids:
 
 按顺序执行：
 
-1. **数据库**：drop 4 张表
-   - `DROP TABLE meetup_media; DROP TABLE meetup_participants; DROP TABLE meetups; DROP TABLE route_books;`
+1. **数据库**：drop 4 张表（**顺序不可调换** / R4-I2 PostgreSQL DDL FK 约束规则：子表先于父表 / CASCADE 是 DML 行为不是 DDL 行为 / `DROP TABLE meetups` 时若 meetup_participants/meetup_media 仍存在会报 `ERROR: table meetups has dependent objects`）
+   - `DROP TABLE meetup_media;`（子表 / FK→meetups）
+   - `DROP TABLE meetup_participants;`（子表 / FK→meetups）
+   - `DROP TABLE meetups;`（父表 / 还引用 route_books）
+   - `DROP TABLE route_books;`（最底层）
    - drop partial unique index 自动随之消失
 
 2. **代码**：删 2 整个模块文件夹
@@ -642,19 +649,18 @@ for file_id in file_ids:
 
 **总改动量**：~10-20 行代码修改 + drop 4 表 + 2 目录删 = 5-15 分钟工作量。
 
-### 15.4 项目级既有依赖漂移（spec 顺便 surface）
+### 15.4 项目级既有依赖漂移（spec 顺便 surface / R4-I1 修正：精确 file:line + 数量）
 
-`grep` 实证 2026-05-28：velo CLAUDE.md 原则 4 声明 **"User ← Activity ← Segment ← Notification ← Strava"** 单向依赖，但实际：
+`grep` 实证 2026-05-28：velo CLAUDE.md 原则 4 声明 **"User ← Activity ← Segment ← Notification ← Strava"** 单向依赖，但实际 `app/user/` 已反向 import `app/activity/` **共 7 处**（不是原 spec 写的 4 处 / `service.py` 自己其实不 import / 真实落点是 router.py + service_stats.py + service_social.py）：
 
 ```
-app/user/router.py / service.py 已 import app/activity/ 4 处：
-- from app.activity.backfill_ftp import enqueue_backfill_ftp
-- from app.activity.ftp_estimator import estimate_ftp_for_user
-- from app.activity.models import Activity, Trackpoint, BreakthroughEvent
-- from app.activity.power_zones import calculate_power_curve_from_activities
+app/user/router.py:20-23  (4 行 / 含 backfill_ftp / ftp_estimator / Activity 等)
+app/user/service_stats.py:47-48  (2 行 / 训练负荷曲线)
+app/user/service_social.py:53  (1 行 / 社交统计)
+共 7 处反向 import / 全部由 Sprint 9+10 v5 训练分析功能引入
 ```
 
-= **`app/user/` 已反向 import `app/activity/`**（Sprint 9+10 v5 训练分析功能引入）
+注意：`app/user/service.py` 自己**不**反向 import activity / 这是 v1.4 spec 写错被 round 4 reviewer 抓的真 bug。
 
 **结论**：项目级 CLAUDE.md 单向依赖声明 vs 真实代码有漂移 / 不是本 spec 引入 / 但和约骑反向 hook（user → meetup / segment → meetup）一起属于**项目级架构治理待办**。建议未来专题处理（参考 memory `feedback_no_reverse_dep_in_compat_window` + agent-collab §4.0）。
 
