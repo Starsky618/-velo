@@ -164,6 +164,9 @@ velo v5 阶段引入"约骑"作为社交模块——支持骑友发起 / 加入�
 | `file_id` | VARCHAR(512) | NULL（v1.5 generic 化 / 不再叫 gpx_file_id / 容纳 GPX 或 FIT）|
 | `file_type` | VARCHAR(8) | NULL / 仅 source='file_upload' 才填 / source='activity_derived' 时 NULL（见下方复合 CHECK）|
 | `source` | VARCHAR(32) | CHECK IN ('file_upload','activity_derived') / v1.5 修订 R4-N2：原 'gpx_upload' 改 'file_upload' 容纳 GPX+FIT |
+| `source_activity_id` | INT | FK→activities.id NULL ON DELETE SET NULL / **仅 source='activity_derived' 时有值** / source='file_upload' 时必须 NULL（见下方复合 CHECK）|
+| `city` | VARCHAR(32) | NOT NULL `ck_route_books_city` 完整 7 枚举 |
+| `created_at` | TIMESTAMPTZ | |
 
 **v1.7 修订 R6-Critical 复合 CHECK 约束**（**方案 B：source_activity_id NOT NULL 校验下沉到 service 层** / 避免 FK ON DELETE SET NULL 与 CHECK NOT NULL 死锁 / Tim 拍）：
 
@@ -191,9 +194,6 @@ if source == 'activity_derived' and source_activity_id is None:
 - 路书一旦创建 / 源 activity 被删 → `source_activity_id` 自动变 NULL（FK ON DELETE SET NULL）/ source 仍是 'activity_derived'
 - 业务层把此状态当作 "**源活动已删 / 路书仍可用作图纸**"（路书复利原则 / 路书不依赖 activity 存活）
 - 前端显示：路书详情页"衍生自活动"链接在 source_activity_id NULL 时隐藏（不显示坏链）
-| `source_activity_id` | INT | FK→activities.id NULL ON DELETE SET NULL |
-| `city` | VARCHAR(32) | NOT NULL `ck_route_books_city` 完整 7 枚举 |
-| `created_at` | TIMESTAMPTZ | |
 
 **v1.2 visibility 决策**：v1 路书一律公开 / 不加 visibility 列 / v2 加。
 
