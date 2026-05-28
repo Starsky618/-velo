@@ -196,6 +196,9 @@
     </view>
   </view>
 
+  <!-- ====== 单次 activity 功率曲线分析（独立组件，自己请求/自己画图） ====== -->
+  <activity-power-curve-card activity-id="{{activity.id}}"></activity-power-curve-card>
+
   <!-- ====== 心率卡片（含曲线图） ====== -->
   <view class="section-card" wx:if="{{activity.avg_hr}}">
     <view class="section-header">

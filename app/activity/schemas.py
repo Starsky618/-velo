@@ -230,3 +230,45 @@ class TimeseriesResponse(BaseModel):
     powers: Optional[list[Optional[float]]] = None       # 功率 W（无功率计则整个为 null）
     heart_rates: Optional[list[Optional[float]]] = None  # 心率 bpm（无心率带则整个为 null）
     cadences: Optional[list[Optional[float]]] = None     # 踏频 rpm（无踏频传感器则整个为 null）
+
+
+# ========== 单次 activity 功率曲线（Strava power-duration curve） ==========
+
+class ActivityPowerCurvePoint(BaseModel):
+    """
+    功率曲线上的一个点——某个持续时长下，这条骑行里最强的一段。
+
+    duration_sec 是用户手指拖到的“持续多久”，best_power_w 是这段时间内的最佳平均功率。
+    start_sec / end_sec 告诉前端这段努力发生在活动开始后的第几秒到第几秒。
+    """
+    duration_sec: int
+    best_power_w: Optional[float] = None
+    start_sec: Optional[int] = None
+    end_sec: Optional[int] = None
+
+
+class ActivityPowerCurveResponse(BaseModel):
+    """
+    单次骑行功率曲线响应——给详情页独立“功率曲线分析”卡片画图用。
+
+    points 是智能抽样后的曲线点，benchmarks 是 Strava 常见固定时长成绩点。
+    前端滑动时先读 points；停住后再调精确 effort 接口查任意秒数。
+    """
+    has_power: bool
+    max_duration_sec: int
+    points: list[ActivityPowerCurvePoint]
+    benchmarks: dict[str, ActivityPowerCurvePoint]
+    resolution_label: str
+
+
+class ActivityPowerCurveEffortResponse(BaseModel):
+    """
+    单次骑行功率曲线精确查询响应——给用户拖动停止后的气泡读数用。
+
+    当 has_power=false 时，表示这条活动没有可展示功率，best_power_w/start/end 都为空。
+    """
+    has_power: bool
+    duration_sec: int
+    best_power_w: Optional[float] = None
+    start_sec: Optional[int] = None
+    end_sec: Optional[int] = None

@@ -1,0 +1,92 @@
+/**
+ * 单次 activity 功率曲线卡片样式。
+ *
+ * 视觉上贴着详情页现有 section-card：白底、轻阴影、紫色功率识别点。
+ * canvas 固定高度，拖动气泡在 canvas 内绘制，不额外挤压布局。
+ */
+
+.activity-power-curve-card {
+  margin: 0 24rpx 20rpx;
+  padding: 28rpx 28rpx 24rpx;
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 18rpx;
+}
+
+.section-dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 8rpx;
+}
+
+.section-dot.power {
+  background: #B268E6;
+}
+
+.card-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text-2);
+}
+
+.curve-state {
+  font-size: 26rpx;
+  color: var(--color-text-3);
+  text-align: center;
+  padding: 96rpx 0;
+}
+
+.curve-state.error {
+  color: var(--color-primary);
+}
+
+.curve-summary {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 4rpx;
+}
+
+.summary-main {
+  display: flex;
+  align-items: baseline;
+  gap: 16rpx;
+}
+
+.summary-power {
+  font-size: 42rpx;
+  line-height: 1;
+  font-weight: 700;
+  color: #8A22E6;
+}
+
+.summary-duration {
+  font-size: 26rpx;
+  color: var(--color-text-2);
+  font-weight: 600;
+}
+
+.summary-sub {
+  font-size: 22rpx;
+  color: var(--color-text-3);
+}
+
+.curve-canvas {
+  width: 100%;
+  height: 420rpx;
+}
+
+.resolution {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: var(--color-text-3);
+  text-align: right;
+}
