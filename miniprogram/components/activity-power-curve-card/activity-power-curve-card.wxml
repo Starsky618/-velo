@@ -1,0 +1,28 @@
+<!-- 单次 activity 功率曲线分析：组件自己请求、自己画 canvas，详情页只传 activity-id -->
+<view class="activity-power-curve-card" hidden="{{!visible && !loading && !error}}">
+  <view class="card-head">
+    <view class="section-dot power"></view>
+    <text class="card-title">功率曲线分析</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="curve-state">加载中...</view>
+  <view wx:elif="{{error}}" class="curve-state error" bindtap="retry">加载失败 · 点击重试</view>
+
+  <view class="curve-summary" hidden="{{!visible || loading || error}}">
+    <view class="summary-main">
+      <text class="summary-power">{{activePowerText}}</text>
+      <text class="summary-duration">{{activeDurationText}}</text>
+    </view>
+    <text class="summary-sub">{{activeRangeText}}</text>
+  </view>
+
+  <!-- canvas 必须 hidden 而不是 wx:if，避免 type="2d" 节点被销毁后重绘时机错乱 -->
+  <canvas type="2d" id="activityPowerCurveCanvas" class="curve-canvas"
+          hidden="{{!visible || loading || error}}"
+          bindtouchstart="onCurveTouchStart"
+          bindtouchmove="onCurveTouchMove"
+          bindtouchend="onCurveTouchEnd"
+          bindtouchcancel="onCurveTouchEnd"></canvas>
+
+  <text class="resolution" hidden="{{!visible || loading || error}}">{{resolutionLabel}}</text>
+</view>

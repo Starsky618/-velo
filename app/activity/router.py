@@ -192,6 +192,58 @@ def get_activity_timeseries(
     return data
 
 
+@router.get("/{activity_id}/power-curve", response_model=schemas.ActivityPowerCurveResponse)
+def get_activity_power_curve(
+    activity_id: int,
+    points: int = Query(1000, ge=50, le=2000, description="功率曲线画图点数上限"),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    获取单次骑行的功率曲线分析数据。
+
+    这张图回答的是：“这次骑行里，任意持续时长下最强的一段是多少 W？”
+    points 只控制画图点数；用户拖动停住后的精确读数走 effort 接口。
+    """
+    try:
+        data = service.get_activity_power_curve(db, activity_id, user_id, points)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    return data
+
+
+@router.get(
+    "/{activity_id}/power-curve/effort",
+    response_model=schemas.ActivityPowerCurveEffortResponse,
+)
+def get_activity_power_curve_effort(
+    activity_id: int,
+    duration_sec: int = Query(..., ge=1, description="要精确查询的持续时长（秒）"),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    精确查询某个持续时长下的最佳平均功率。
+
+    前端手指停住后调用这里，气泡就能显示精确到秒的功率和发生位置。
+    """
+    try:
+        data = service.get_activity_power_curve_effort(
+            db, activity_id, user_id, duration_sec
+        )
+    except service.DurationOutOfRange as e:
+        # duration_sec 不合法（≤0 或超出活动长度）是参数错，按 400 返回；
+        # 走自定义异常类型避免靠中文文案路由——未来文案改了不会静默挂
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    return data
+
+
 @router.get("/{activity_id}/status", response_model=schemas.ActivityStatusResponse)
 def get_activity_status(
     activity_id: int,
