@@ -209,6 +209,30 @@ reviewer 报告 Critical / Important 时按互审五问表过一遍；不是每�
 | 是否有旧符号残留要 grep？ | 防 doc drift（范围 5 类规则文件，详见 CLAUDE.md §7 mental check 第 5 问） |
 | 这条经验对另一个 agent 不可见会不会重蹈覆辙？ | 决定升 docs 还是留 memory |
 
+**§4.0.1 架构层强制 grep 清单（2026-05-28 工程升级 / 所有 reviewer 必跑 / 防反向依赖系统性漏抓）**
+
+reviewer 审 spec/PRD/design doc / 大改动代码 commit 时，**禁止凭 spec 描述判断"单向依赖通过"**——必须跑工具实证：
+
+```bash
+# 1. 反向 import 实证（新模块不应被上游 import）
+grep -rn "from app.X\|import app.X" app/上游模块/  # 空 = OK / 非空 = 反向依赖违规
+
+# 2. 正向 import 列清单
+grep -rh "^from app\.\|^import app\." app/X/*.py | sort -u
+
+# 3. 循环 import 风险
+grep -l "from app.A" app/B/  # 同时 grep B → A / 两个都非空 = Critical
+
+# 4. 模块删除假想 SOP（列反向 hook 清单 + file:line 实证）
+
+# 5. 项目 CLAUDE.md 声明 vs 真 grep 状态对照
+grep -A 1 "单向依赖\|依赖方向\|防火墙" CLAUDE.md docs/agent-rules/*.md
+```
+
+**输出要求**：reviewer 报告必含独立章节"架构层依赖审查"含：模块依赖图（ASCII）+ 反向 import 状态 + 反向 hook 清单（数量 + file:line）+ 漂移声明（声明 vs 实际）+ 循环 import 状态。
+
+**实证（2026-05-28 约骑模块 brainstorm session）**：约骑 spec 3 轮 12 次 reviewer 全部漏抓 `app/user/service.py delete_user → meetup` + `app/segment/router.py upcoming-meetups → meetup` 反向依赖 / Tim 一次抽查就发现。已升级 `~/.claude/agents/reviewer-integration.md` Step 2.1-2.6（主审）+ `reviewer-spec-faithful.md` Step 7.5（双保险）/ 详 memory [[feedback_reviewer_must_grep_dependency]]。
+
 ### 场景 A：TDD 写测试（红→绿 / 测试者≠实现者）
 
 **触发**：A 档新业务逻辑开工（**测试先行 / 不是实现完补测试**）——按 §0.5 协议① TDD 红绿。
