@@ -13,8 +13,10 @@
 - gpx_parser.py：GPX 文件解析器（Task 3.2）
 - power_zones.py：功率区间计算（Task 3.3）
 - simplify.py：Douglas-Peucker 轨迹简化（Task 3.4）
+- power_curve.py：单次骑行功率-持续时间滑窗（纯函数 / 不查 DB）
+- timeseries.py：时序数据按距离抽样打包（纯函数 / 不查 DB）
 - schemas.py：请求/响应格式定义
-- service.py：业务逻辑（上传校验、队列入队等）
+- service.py：业务逻辑（上传校验、队列入队、查询入口）
 - router.py：API 路由（/api/activities/...）
 - worker.py：异步任务函数（rq Worker 调用 parse_activity）
 

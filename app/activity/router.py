@@ -233,9 +233,11 @@ def get_activity_power_curve_effort(
         data = service.get_activity_power_curve_effort(
             db, activity_id, user_id, duration_sec
         )
+    except service.DurationOutOfRange as e:
+        # duration_sec 不合法（≤0 或超出活动长度）是参数错，按 400 返回；
+        # 走自定义异常类型避免靠中文文案路由——未来文案改了不会静默挂
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
-        if "持续时间" in str(e):
-            raise HTTPException(status_code=400, detail=str(e))
         raise HTTPException(status_code=404, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
