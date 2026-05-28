@@ -50,8 +50,13 @@ velo v5 阶段引入"约骑"作为社交模块——支持骑友发起 / 加入�
 
 周五晚 9 点 → velo "约骑" tab → 右下 FAB ➕ → 填字段 → 孩子哭了"保存草稿" → 周六早 5 点恢复 → 发布 → 卡片入约骑 tab list 顶部 / 1/6 人。
 
-**路线选择 2 种入口**：从 segment 列表选 / 从路书列表选
-**路书创建 2 种方式**：上传 GPX / 从我已骑活动衍生
+**约骑路线选两种来源**（陈哥点"路线"字段时弹出 2 个选项 / 二选一）：
+- ① 选已有赛段（紫金山南坡 / 西山环线 等 admin 团队精选的）
+- ② 选已有路书（自己上传或活动衍生的 / 也含别人公开的路书）
+
+**用户自建路书 2 种方式**（陈哥要建一条新路书时 / 创建路书时用哪种）：
+- ① 上传 GPX 文件 + 输入路名 / 距离 / 爬升
+- ② 从我已骑过的活动衍生（一键转 / 自动算距离爬升）
 
 ### 3.2 阿杰加入约骑
 
@@ -538,7 +543,7 @@ for file_id in file_ids:
 
 - [ ] **1**. 范围：① + ② + ③ + ⑤ + ⑦ / ④⑥ v6/v2，对吗？
 - [ ] **2**. 路书定义：路书 = 用户自建图纸 / segment = 管理员精选 / 路书不参与 KOM，对吗？
-- [ ] **3**. 路书 2 种创建方式（上传 GPX / 活动衍生）/ 路线选择 2 种入口（segment / 路书），对吗？
+- [ ] **3**. 路书 2 种创建方式（上传 GPX或FIT / 活动衍生）/ 路线选择 2 种入口（segment / 路书），对吗？
 - [ ] **4**. 状态机：DRAFT → OPEN → (CANCELLED \| COMPLETED) / DRAFT 可硬删 / OPEN 不可改字段 / 30 min ± 30s 截止，对吗？
 - [ ] **5**. 微信合规：v1 砍所有用户互动 / 允许单向看见，对吗？
 - [ ] **6**. 满员抢位：物理不可超员 / 退位补位，对吗？
@@ -570,11 +575,96 @@ for file_id in file_ids:
 
 ---
 
-## 15. 链接索引
+## 15. 完整依赖图 + 模块删除 SOP（v1.4 修订 / 防"地基不牢"）
+
+> **背景**：2026-05-28 Tim 抽查 spec 防火墙时一次发现 3 轮 12 次 reviewer 都漏抓的反向依赖问题。本节强制把"约骑模块到底依赖哪些 + 谁反向依赖它 + 删除时影响清单"全量画出来。
+
+### 15.1 完整依赖图（约骑生态正向依赖）
+
+```
+                                        【顶层 entrypoint】
+                                        scheduler.py（项目根）
+                                                  ↓ import meetup.cron
+                                                  ↓
+┌──────────┐    ┌─────────────┐    ┌──────────┐    ┌─────────────┐    ┌──────────────┐
+│  user/   │ ← │  activity/   │ ← │ segment/  │ ← │ route_book/ │ ← │   meetup/    │
+└──────────┘    └─────────────┘    └──────────┘    └─────────────┘    └──────────────┘
+   ↑ ↑              ↑                  ↑                ↑ ↑                ↑
+   │ │              │                  │                │ │                │
+   │ └─ user_id     └─ avg_speed       └─ name/         └─┴─ creator_id    └─ 自己
+   │    nickname        trackpoints      distance/         + reference_line
+   │                    (反转 LINESTRING) city
+   │                                                  
+   └─ storage/（共享 / 被 meetup + route_book 用 / 不属于业务依赖链）
+       └─ LocalStorage.upload/delete（app/storage/local.py:49/85）
+```
+
+**正向依赖**（约骑读这些模块）：
+- `app/user/` — user_id (auth) / nickname
+- `app/activity/` — activities.avg_speed JOIN（详情页"骑友均速"）/ trackpoints（路书衍生反转 LINESTRING）/ activity.user_id（路书衍生 IDOR 校验）
+- `app/segment/` — segments 列表（路线下拉）/ name/distance/city（snapshot 来源）
+- `app/storage/` — LocalStorage.upload/delete
+- `app/route_book/` — 自己新建（约骑生态内部）
+- `scheduler.py` 项目根 — 顶层 entrypoint import meetup.cron
+
+### 15.2 反向 hook 清单（2 处 / spec 设计的有意反向 / 已 surface）
+
+| # | 位置 | 反向依赖说明 | 删除约骑模块时同步动作 |
+|---|---|---|---|
+| 1 | `app/user/service.py` 新增 `delete_user(db, user_id)` | `import app.meetup.models` + query Meetup（user → meetup）| 整个 `delete_user` 函数删 / 或砍 meetup query 那段 |
+| 2 | `app/segment/router.py` 加 `/api/segments/{id}/upcoming-meetups` endpoint | `import app.meetup.models` + query Meetup（segment → meetup）| 整个 endpoint 删（1 个 endpoint）|
+
+**反向 hook 数量**：2 处 / 不是 100% 完全独立 / 但**模块边界清晰**。
+
+**为什么接受反向 hook**：100 用户量级 / 工程务实 / 比 event listener 系统更轻 / Tim 2026-05-28 拍方案 A "承认局部反向 + spec 明确标记"。
+
+### 15.3 模块删除 SOP（如果未来想砍约骑功能）
+
+按顺序执行：
+
+1. **数据库**：drop 4 张表
+   - `DROP TABLE meetup_media; DROP TABLE meetup_participants; DROP TABLE meetups; DROP TABLE route_books;`
+   - drop partial unique index 自动随之消失
+
+2. **代码**：删 2 整个模块文件夹
+   - `rm -rf app/meetup/ app/route_book/`
+
+3. **反向 hook 清理**（同 §15.2 表 / 2 处）：
+   - `app/user/service.py` 删 `delete_user` 函数或砍 meetup query 那段
+   - `app/segment/router.py` 删 `/api/segments/{id}/upcoming-meetups` endpoint
+
+4. **顶层 entrypoint**：
+   - `scheduler.py` 项目根删 `_meetup_tick_counter` 段（保留 strava import tick try/except 不动）
+
+5. **测试 + 部署**：
+   - pytest 全跑 / 应无 ImportError
+   - `docker compose up -d --build scheduler api`
+
+**总改动量**：~10-20 行代码修改 + drop 4 表 + 2 目录删 = 5-15 分钟工作量。
+
+### 15.4 项目级既有依赖漂移（spec 顺便 surface）
+
+`grep` 实证 2026-05-28：velo CLAUDE.md 原则 4 声明 **"User ← Activity ← Segment ← Notification ← Strava"** 单向依赖，但实际：
+
+```
+app/user/router.py / service.py 已 import app/activity/ 4 处：
+- from app.activity.backfill_ftp import enqueue_backfill_ftp
+- from app.activity.ftp_estimator import estimate_ftp_for_user
+- from app.activity.models import Activity, Trackpoint, BreakthroughEvent
+- from app.activity.power_zones import calculate_power_curve_from_activities
+```
+
+= **`app/user/` 已反向 import `app/activity/`**（Sprint 9+10 v5 训练分析功能引入）
+
+**结论**：项目级 CLAUDE.md 单向依赖声明 vs 真实代码有漂移 / 不是本 spec 引入 / 但和约骑反向 hook（user → meetup / segment → meetup）一起属于**项目级架构治理待办**。建议未来专题处理（参考 memory `feedback_no_reverse_dep_in_compat_window` + agent-collab §4.0）。
+
+---
+
+## 16. 链接索引
 
 - 用户故事 HTML：`.superpowers/brainstorm/56665-1779953873/content/user-story.html`
 - 微信合规 memory：[[feedback_wechat_miniprogram_no_direct_social]]
 - 并发处理 memory：[[feedback_savepoint_isolation_for_inner_modules]]
-- 三审收敛 memory：[[feedback_three_review_pipeline]] / [[feedback_spec_three_round_review_convergence]] / [[feedback_spec_bug_fix_before_plans]]
+- 三审收敛 memory：[[feedback_three_review_pipeline]] / [[feedback_spec_three_round_review_convergence]] / [[feedback_spec_bug_fix_before_plans]] / [[feedback_reviewer_must_grep_dependency]]
 - 战略 PRD：`docs/prd/velo-vision.md:355` / `velo-strategy.md:38-40` / `velo-product-spec.md:47`
 - 现有代码事实：`app/segment/models.py:55-117` / `app/user/models.py:37-51` / `app/storage/local.py:85` / `scheduler.py:1-50`（项目根）/ `app/notification/models.py:130-134`（partial unique 先例）
