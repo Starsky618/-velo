@@ -162,8 +162,21 @@ velo v5 阶段引入"约骑"作为社交模块——支持骑友发起 / 加入�
 | `climb` | FLOAT | NULL |
 | `reference_line` | GEOMETRY(LINESTRING, 4326) | NOT NULL（复用 📊 `segment/models.py:69`）|
 | `file_id` | VARCHAR(512) | NULL（v1.5 generic 化 / 不再叫 gpx_file_id / 容纳 GPX 或 FIT）|
-| `file_type` | VARCHAR(8) | NULL `ck_route_books_file_type` IN ('gpx','fit') / 仅 source='file_upload' 才填 / source='activity_derived' 时 NULL |
+| `file_type` | VARCHAR(8) | NULL / 仅 source='file_upload' 才填 / source='activity_derived' 时 NULL（见下方复合 CHECK）|
 | `source` | VARCHAR(32) | CHECK IN ('file_upload','activity_derived') / v1.5 修订 R4-N2：原 'gpx_upload' 改 'file_upload' 容纳 GPX+FIT |
+
+**v1.6 修订 R5-I5 完整复合 CHECK 约束**（alembic 显式 DDL）：
+
+```sql
+-- file_type 取值 + source/file_type 联动一致性
+ALTER TABLE route_books ADD CONSTRAINT ck_route_books_file_type_source CHECK (
+    (source = 'file_upload' AND file_type IN ('gpx', 'fit') AND file_id IS NOT NULL)
+    OR
+    (source = 'activity_derived' AND file_type IS NULL AND file_id IS NULL AND source_activity_id IS NOT NULL)
+);
+```
+
+防止半状态写入：source='file_upload' 但 file_type=NULL / source='activity_derived' 但 file_type='gpx' 等。alembic 用 `op.create_check_constraint(...)` 添加。
 | `source_activity_id` | INT | FK→activities.id NULL ON DELETE SET NULL |
 | `city` | VARCHAR(32) | NOT NULL `ck_route_books_city` 完整 7 枚举 |
 | `created_at` | TIMESTAMPTZ | |
@@ -390,8 +403,8 @@ while True:
 |---|---|---|
 | GET | `/api/route-books` | 列表（mine=1 / city）|
 | GET | `/api/route-books/{id}` | 详情 |
-| POST | `/api/route-books` | 创建（gpx_upload 或 activity_derived）|
-| DELETE | `/api/route-books/{id}` | 删除（inline creator 校验 / 含 gpx storage 清理）|
+| POST | `/api/route-books` | 创建（file_upload 或 activity_derived / file_upload 含 GPX/FIT）|
+| DELETE | `/api/route-books/{id}` | 删除（inline creator 校验 / 含 file storage 清理 / GPX 或 FIT 文件）|
 | GET | `/api/route-books/activity-candidates` | 从已有活动衍生路书的候选列表 |
 
 ### 现有模块扩展
@@ -508,9 +521,9 @@ for file_id in file_ids:
 | Task | 范围 | 工程量 |
 |---|---|---|
 | Task 1 | 数据模型 + Alembic 迁移（4 表 + partial unique + CHECK + PostGIS 索引）| 1 天 |
-| Task 2 | 路书 service + API（CRUD + **GPX/FIT 上传**（复用 `app/parsing/gpx_parser` + `fit_parser` / activity 同 pattern）+ activity_derived + IDOR + ST_MakeLine + dialect 守卫 + storage 清理 + activity-candidates endpoint）| 2.5 天 |
+| Task 2 | 路书 service + API（CRUD + **GPX/FIT 上传**（复用 `app/parsing/gpx_parser` + `fit_parser` / activity 同 pattern）+ activity_derived + IDOR + ST_MakeLine + dialect 守卫 + storage 清理 + activity-candidates endpoint）/ **v1.6 修订 R5-I4 storage 层无需改代码**：`app/storage/local.py:65` 扩展名由原文件名 `os.path.splitext` 决定 / FIT 自动存 `.fit` / 仅 `local.py:29` docstring 写"存到 .gpx 路径"是注释偏差不是 bug | 2.5 天 |
 | Task 3 | 约骑 service（CRUD + 状态机 + 时间边界 + snapshot 字段自动填充 + `_load_and_authorize_meetup` helper + IntegrityError → 409 处理）| 2 天 |
-| Task 4 | 约骑 API（12 个 endpoint / 完整权限校验链）| 1.5 天 |
+| Task 4 | 约骑 API（12 个 endpoint / 完整权限校验链）+ **v1.6 修订 R5-I2**：`app/main.py` 加 `from app.meetup.router import router as meetup_router` + `app.include_router(meetup_router)` / 同理路书 router 挂载 / 不挂载 = endpoint 全 404 | 1.5 天 |
 | Task 5 | 加入 / 退出（FOR UPDATE + 并发测试）| 1 天 |
 | Task 6 | 媒体上传 + 删除（MIME 白名单 + DB→storage 方向 + meetup_id == path）| 1 天 |
 | Task 7 | cron auto-complete + `app/user/service.py` delete_user hook（顺序保证）| 0.5 天 |
@@ -635,6 +648,7 @@ for file_id in file_ids:
 
 2. **代码**：删 2 整个模块文件夹
    - `rm -rf app/meetup/ app/route_book/`
+   - **v1.6 修订 R5-I2**：`app/main.py` 删 `include_router(meetup_router)` + `include_router(route_book_router)` 两行（**反挂载** / 不删会让 FastAPI 启动 ImportError）
 
 3. **反向 hook 清理**（同 §15.2 表 / 2 处）：
    - `app/user/service.py` 删 `delete_user` 函数或砍 meetup query 那段
@@ -649,7 +663,9 @@ for file_id in file_ids:
 
 **总改动量**：~10-20 行代码修改 + drop 4 表 + 2 目录删 = 5-15 分钟工作量。
 
-### 15.4 项目级既有依赖漂移（spec 顺便 surface / R4-I1 修正：精确 file:line + 数量）
+### 15.4 项目级既有依赖漂移（**v1.6 修订 R5-I3 scope 收紧 / 本节仅列与本 spec 相关的 user→activity 漂移**）
+
+> **scope 声明（R5-I3）**：本节**仅列与约骑模块涉及的 user→activity 漂移**（因约骑 §6.2 计划在 user.service.py 加 delete_user / 而 user 已反向 import activity / 与约骑反向 hook 同类型）。**全项目漂移**（user→segment / activity→segment/notification / segment→notification 等）属于项目级架构治理待办 / 不在本 spec scope。
 
 `grep` 实证 2026-05-28：velo CLAUDE.md 原则 4 声明 **"User ← Activity ← Segment ← Notification ← Strava"** 单向依赖，但实际 `app/user/` 已反向 import `app/activity/` **共 7 处**（不是原 spec 写的 4 处 / `service.py` 自己其实不 import / 真实落点是 router.py + service_stats.py + service_social.py）：
 
