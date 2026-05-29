@@ -198,6 +198,8 @@ if source == 'activity_derived' and source_activity_id is None:
 
 **v1.2 visibility 决策**：v1 路书一律公开 / 不加 visibility 列 / v2 加。
 
+**v1.9 重复路书决策**（2026-05-29 Tim task2 复审拍）：**允许**同一用户从同一活动衍生多条路书 / 不加 `(creator_id, source_activity_id)` 唯一约束 / 理由：用户可能想从一条长骑行剪裁多条不同路书，重复了自己删即可，不值得为防双击加约束。
+
 **路书衍生 IDOR 防御**：service 层 `POST /api/route-books` source='activity_derived' 必须 `activity.user_id == current_user` 否则 403。
 
 **v1.3 修订 R3-I9 路书端 IDOR 不对称说明**：路书端**不**共用 meetup 的 `_load_and_authorize_meetup` helper / route_book service 层 inline 校验 `route_book.creator_id == current_user`（路书无并发 race / 不需要 FOR UPDATE / inline 更轻）。

@@ -651,6 +651,22 @@ admin H5 草稿审核生产真用 / Tim 改稿 7 条 approved（segment_id 6/8/9
 
 ---
 
+## 🟢 P3：route_book file_upload 坐标无 isfinite/范围校验（2026-05-29 task2 Codex 异源审）
+
+`app/route_book/service.py` 的 `_route_payload_from_points` 用 f-string 拼 LINESTRING wkt，坐标来自 parser 原值搬运，只过滤了 None，没校验 NaN/Inf/经纬度越界。畸形坐标会生成畸形 WKT → 真 PG 写入时 500。
+
+**为什么不立即修**：GPX/FIT 是结构化文件，坐标畸形极罕见 + parser 上游已基本保证；100 用户量级零实际触发。修法草稿：入口 `math.isfinite` + lat∈[-90,90]/lon∈[-180,180] 过滤，过滤后 <2 有效点返回 422。
+
+---
+
+## 🟢 P3：route_book 列表无分页（2026-05-29 task2 Codex 异源审）
+
+`app/route_book/service.py` 的 `list_route_books` 直接 `.all()`，无 limit/offset，response 无 page/total（activity-candidates 已硬 limit 50）。spec §7 未要求分页，非 spec 违约。
+
+**为什么不立即修**：100 用户量级单用户路书数有限。修法：按项目约定 page+page_size（默认 20 / 最大 100）+ total。用户量上千再评估。
+
+---
+
 ## 清理节奏
 
 > 每期 10-20% 时间处理 P1，P2 评估性价比再决定。
