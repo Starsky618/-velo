@@ -106,6 +106,7 @@ velo v5 阶段引入"约骑"作为社交模块——支持骑友发起 / 加入�
 - `ck_meetups_pace_level`: `pace_level IN ('relaxed', 'cruise', 'training', 'race')`
 - `ck_meetups_max`: `max_participants >= 2 AND max_participants <= 20`
 - `ck_meetups_city` on snapshot_city: `IN ('beijing','shanghai','hangzhou','shenzhen','chengdu','taiyuan','unknown')`
+- `ck_meetups_time_order` on (start_time, estimated_end_time): `estimated_end_time > start_time`（**v1.9 修订 / Tim 2026-05-29 复审拍**：estimated_end_time 由后端公式算正常恒大于 start_time，此 CHECK 是防公式 bug 写入颠倒时间对的 DB 兜底）
 
 **索引**：
 - `(status, start_time)` / `(creator_id, status)` / **partial UNIQUE `(creator_id) WHERE status='DRAFT'`**（ORM + alembic 双声明 / 参照 📊 `notification/models.py:130-134`）
@@ -160,7 +161,7 @@ velo v5 阶段引入"约骑"作为社交模块——支持骑友发起 / 加入�
 | `name` | VARCHAR(128) | NOT NULL |
 | `distance` | FLOAT | NOT NULL（米）|
 | `climb` | FLOAT | NULL |
-| `reference_line` | GEOMETRY(LINESTRING, 4326) | NOT NULL（复用 📊 `segment/models.py:69`）|
+| `reference_line` | GEOMETRY(LINESTRING, 4326) | NOT NULL（**spatial_index=False** + 手动 GIST 索引 `idx_route_books_geom`；显式关掉 GeoAlchemy2 自动建索引，避免与手动命名索引在 PG 上重复建 / 比 📊 `segment/models.py:69` 旧写法更干净）|
 | `file_id` | VARCHAR(512) | NULL（v1.5 generic 化 / 不再叫 gpx_file_id / 容纳 GPX 或 FIT）|
 | `file_type` | VARCHAR(8) | NULL / 仅 source='file_upload' 才填 / source='activity_derived' 时 NULL（见下方复合 CHECK）|
 | `source` | VARCHAR(32) | CHECK IN ('file_upload','activity_derived') / v1.5 修订 R4-N2：原 'gpx_upload' 改 'file_upload' 容纳 GPX+FIT |
