@@ -8,6 +8,54 @@
 
 ---
 
+## §0 velo 是什么 · 现在长什么样（30 秒建立直觉）⭐
+
+> 这一页给**总建筑师和新人**：打开就知道 velo 是什么、长什么样、做到哪了。
+> 要看本质 → `prd/velo-vision.md`；要架构精确到字段 → `architecture-guide.md`；要看当前在做什么 → 最新 `prd/sprint-N-prd.md`。
+
+**一句话**：velo 是给中国一线城市严肃公路车骑手的「骑行身份图谱」——用 Letterboxd 记电影的方式记骑行：**每次骑车都沉淀成身份，每条赛段都是一个微型社区**。
+
+**核心引擎**（一切功能围着这条环转，环上最脆弱的点 = 最该投入的点）：
+
+```
+骑车 → 上传 / Strava 同步 → 解析 → 匹配赛段 → 排行榜 → 看到排名被激励 → 继续骑
+```
+
+**系统现在长什么样**：一个主引擎，挂着三组扩展——新功能默认开新房间，不拆主引擎的墙（防火墙式扩展）。
+
+```
+                      用户（严肃公路车骑手）
+                            │ 骑完车
+                            ▼
+  ══════════════════════════════════════════════════════════
+   🚲 主引擎 · 把骑行变成成绩和身份
+      上传 / Strava 同步 → 解析（GPX/FIT）→ 匹配赛段 → 排行榜
+      → 通知（破纪录 / 抢 KOM）→ 个人主页（你的赛段身份图谱）
+      模块：user · activity · parsing · segment · notification · strava
+  ══════════════════════════════════════════════════════════
+                            │ 骑行数据沉淀下来，长出三组新能力
+                            ▼
+   📊 训练大脑 · 看懂自己的身体
+      · 训练负荷（累不累）· 训练分布（练对没）
+      模块：training
+   ──────────────────────────────────────────────────────
+   🤝 社交房间 · 把路线变成一起骑　🚧 在建
+      · 约骑 meetup · 路书 route_book
+      模块：meetup · route_book（当前分支）
+   ──────────────────────────────────────────────────────
+   🔧 后勤 · 看不见但撑着主引擎运转
+      · AI 赛段写手 agent · 监控告警 monitor · 管理后台 admin
+      · 存储 / 工具 storage · common
+```
+
+**做到哪了**：
+
+- ✅ **已上线**：MVP（上传 → 赛段 → 排行）· Strava 接入 · 训练分析三件套（FTP 估算 / 训练负荷 PMC / 训练分布）
+- 🚧 **在建**：约骑 + 路书（当前分支 / spec + plans 见 `docs/superpowers/`）
+- 📋 **待开**：LLM 骑后教练总结（Sprint 12 / 设计稿见 `docs/superpowers/specs/2026-05-26-coach-architecture.md`）
+
+---
+
 ## §1 两条主轴（30 秒读完）
 
 velo 的文档**不是一个大通用文档**，是**两套为不同读者服务的平行体系 + 一套共享档案**。
@@ -238,12 +286,18 @@ velo 工作流由两套大脑支撑：
 | `docs/archive/spec-v1.md` ~ `spec-v4.md` | v1-v4 期已 ship 归档（含 sunset 注释防陷阱） | 历史参考 |
 | `docs/archive/plans-phaseN-README.md` | 历史已 ship 总调度（phase3-5 + sprint-*） | 历史参考 |
 | `docs/archive/plans-phaseN-task-N.X.md` | 历史已 ship 任务卡 | 历史参考 |
-| `docs/architecture-guide.md` | 系统静态全景：7 容器 / 6 模块 / 7 表 | 新人入职 / 加新模块 |
+| `docs/architecture-guide.md` | 系统静态全景（模块 / 容器 / 表 / 依赖图）| 新人入职 / 加新模块 |
 | `docs/data-flow-guide.md` | 9 条数据流动态链路 | 修跨模块 bug |
 | `docs/adr/README.md` | 10 份 ADR 总表 + 按场景索引 | 有人提议改决策时 |
 | `docs/adr/001-010-*.md` | 单条决策的完整论证 | 需要权威先例时 |
 | `docs/dev-guide.html` | Tim 专属 mental model 速查（7 tab 可交互 / 浏览器打开）| Tim 自己用 / 架构 + 协作机制全景速查 |
 | `docs/superpowers/specs/2026-05-24-task-skill-spec.md` | task skill 设计 brief（给 codex-skill-creator / 5-phase SOP / cross-project pattern）| 给 Codex 装 task skill 时 / 或迁移到别项目时 |
+| `docs/prd/sprint-9/10/11-prd.md` | 训练分析三件套战术 PRD（FTP 估算 / 训练负荷 PMC / 训练分布）| 改训练模块前 |
+| `docs/superpowers/specs/2026-05-25-sprint-11-training-distribution-spec.md` | 训练分布技术 spec | 改训练分布前 |
+| `docs/superpowers/specs/2026-05-28-meetup-module-design.md` | 约骑 + 路书模块设计（🚧 在建）| 改约骑 / 路书前 |
+| `docs/superpowers/plans/2026-05-28-meetup-module/` | 约骑 + 路书任务卡（02 路书 / 03 约骑 service / 04 约骑 API / 08 赛段约骑入口）| 执行约骑 / 路书时 |
+
+> ⚠️ `architecture-guide.md` 目前覆盖到训练分析；**约骑 / 路书在建、尚未收录**——看这两块去 §0 + `docs/superpowers/`。
 
 ### C. 运行规则（硬约束）
 
@@ -336,7 +390,7 @@ velo 工作流由两套大脑支撑：
 按顺序，30 分钟进入工作状态：
 
 1. **`/CLAUDE.md`**（项目根，8 分钟）—— 硬规则 + 技术栈陷阱 + 已知风险 + 部署清单
-2. **本文 `docs/README.md`**（你正在看，5 分钟）—— 整体地图 + 工作流
+2. **本文 `docs/README.md` §0 全景 + 全文**（你正在看，5 分钟）—— 先用 §0 建立"velo 是什么 / 长什么样"的宏观直觉，再看整体地图 + 工作流
 3. **`docs/agent-rules/product-decisions.md`**（agent 专属，5 分钟）—— 产品判断规则
 4. **`docs/architecture-guide.md`**（10 分钟速浏）—— 系统静态全景
 5. **当前期 `docs/spec-vN.md`**（2 分钟速浏）—— 在做什么
@@ -350,3 +404,5 @@ velo 工作流由两套大脑支撑：
 - 2026-04-17 初版：5 楼结构 + 9 阶段
 - **2026-04-23 v2 重构**：双轨读者分层 + 9 阶段 × 文档 × skill 全景表 + 每阶段执行卡 + 场景速查 + 5 分类目录地图；删除"5 楼办公楼"物理隐喻
 - **2026-04-28 v2.1**：撤回"派 codex 写 spec/plans"——§2.1 全景表 ④⑤ 行主导改回主 agent / §2.2 ④⑤ 卡加硬规则行禁派 codex 写正文（chunk by chunk 自己写 → 写完 codex review-only）。理由：codex CLI 长任务卡死 bug 链（#13738/#14048/#18723），实证 spec-v5 卡死 30+ 分钟
+- **2026-05-25**（git 有改动、当时漏留记录，今日补注）：neat-freak 同步 2026-05-23~25 双主驾协作机制 session 沉淀
+- **2026-05-30 v2.2**：新增 **§0 velo 全景章**（一句话本质 + 核心引擎反馈环 + "1 主引擎 / 3 组扩展"架构图 + 进度三态）——补上"产品本质 + 架构全貌"的人话入口；§5B 目录补约骑 / 路书 / 训练分析指针 + architecture-guide 行去掉写死的过时数字（原"7 容器 / 6 模块 / 7 表"）；§8 新人清单首读 §0
