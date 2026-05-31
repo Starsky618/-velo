@@ -48,3 +48,32 @@ from app.user.service_social import (  # noqa: F401 — 转导出
     invalidate_heatmap_cache,
     update_user_city,
 )
+
+
+def delete_user(db, user_id: int) -> None:
+    """删除用户前先收拾约骑生态：OPEN 取消，DRAFT 硬删，然后删用户本体。"""
+    from datetime import datetime, timezone
+
+    from app.meetup.models import Meetup
+    from app.meetup.service import _cleanup_meetup_storage, _delete_meetup_row_and_collect_files
+    from app.user.models import User
+
+    file_ids = []
+    with db.begin():
+        open_meetups = db.query(Meetup).filter(Meetup.creator_id == user_id, Meetup.status == "OPEN").all()
+        for meetup in open_meetups:
+            meetup.status = "CANCELLED"
+            meetup.cancelled_at = datetime.now(timezone.utc)
+
+        draft_ids = [
+            row.id
+            for row in db.query(Meetup.id).filter(Meetup.creator_id == user_id, Meetup.status == "DRAFT").all()
+        ]
+        for meetup_id in draft_ids:
+            file_ids.extend(_delete_meetup_row_and_collect_files(db, meetup_id))
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is not None:
+            db.delete(user)
+
+    _cleanup_meetup_storage(file_ids)

@@ -41,6 +41,30 @@ def _ensure_time_order(start: datetime, end: datetime) -> None:
         raise HTTPException(status_code=422, detail="estimated_end_time 必须晚于 start_time")
 
 
+def _delete_meetup_row_and_collect_files(db: Session, meetup_id: int) -> list[str]:
+    """只删除约骑相关数据库行并收集文件名，像先把相册目录抄下来再搬走柜子。"""
+    meetup = db.query(Meetup).filter(Meetup.id == meetup_id).first()
+    if meetup is None:
+        return []
+    file_ids = [
+        row.file_id
+        for row in db.query(MeetupMedia.file_id).filter(MeetupMedia.meetup_id == meetup.id).all()
+        if row.file_id
+    ]
+    db.query(MeetupMedia).filter(MeetupMedia.meetup_id == meetup.id).delete(synchronize_session=False)
+    db.delete(meetup)
+    return file_ids
+
+
+def _cleanup_meetup_storage(file_ids: list[str]) -> None:
+    """commit 后再删物理文件；DB 已经收好摊，storage 清理失败只记账等待后续清理。"""
+    for file_id in file_ids:
+        try:
+            _storage.delete(file_id)
+        except Exception:
+            logger.warning("清理约骑媒体文件失败 file_id=%s", file_id, exc_info=True)
+
+
 def _snapshot_from_route(db: Session, segment_id: int | None, route_book_id: int | None) -> dict:
     """从 segment 或 route_book 抄一份发布卡片快照，像给路线拍照留档。"""
     if (segment_id is None) == (route_book_id is None):
@@ -235,22 +259,10 @@ def delete_draft_meetup(db: Session, meetup_id: int, current_user_id: int) -> No
     )
     # 先收集媒体文件路径：CASCADE 会删 meetup_media 行，但 storage 物理文件要单独删，否则留孤儿文件（spec §8.4）。
     # 草稿阶段也可能已传媒体（POST media 只要求 creator 不限状态）。
-    file_ids = [
-        row.file_id
-        for row in db.query(MeetupMedia.file_id).filter(MeetupMedia.meetup_id == meetup.id).all()
-        if row.file_id
-    ]
-    db.query(MeetupMedia).filter(MeetupMedia.meetup_id == meetup.id).delete(synchronize_session=False)
-    db.delete(meetup)
+    file_ids = _delete_meetup_row_and_collect_files(db, meetup.id)
     db.commit()
     # commit 后再删 storage（DB 是 source of truth）：删失败只记日志不阻塞用户，孤儿文件留定期清理 v2。
-    for file_id in file_ids:
-        try:
-            _storage.delete(file_id)
-        except Exception:
-            # 捕获范围和 media_service.delete_meetup_media 保持一致：storage 后端未来可能换云存储、
-            # 抛非 OSError 异常，但已 commit 的删除不该因清理失败而回滚，记 traceback 留排查。
-            logger.warning("删草稿清理媒体文件失败 file_id=%s", file_id, exc_info=True)
+    _cleanup_meetup_storage(file_ids)
 
 
 def get_my_draft(db: Session, current_user_id: int) -> Meetup | None:
