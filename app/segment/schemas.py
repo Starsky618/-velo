@@ -198,6 +198,7 @@ class SegmentUpcomingMeetupItem(BaseModel):
     snapshot_climb: Optional[float] = None
     snapshot_city: str
     start_time: datetime
+    estimated_end_time: datetime
     meeting_point: str
     pace_level: str
     max_participants: int

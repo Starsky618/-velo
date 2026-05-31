@@ -72,7 +72,10 @@ def test_segment_upcoming_meetups_returns_public_open_future_items(client, db, t
     assert ids == [target.id]
     assert past.id not in ids
     assert cancelled.id not in ids
-    assert body["items"][0]["snapshot_route_name"] == "太山爬坡"
+    item = body["items"][0]
+    assert item["snapshot_route_name"] == "太山爬坡"
+    # 卡片要能显示"几点到几点"，结束时间必须返回且晚于开始时间（ISO 字符串同格式可直接比较）
+    assert item["estimated_end_time"] > item["start_time"]
 
 
 def test_segment_upcoming_endpoint_is_public_and_counts_participants(client, db, test_user):

@@ -247,6 +247,7 @@ def get_segment_upcoming_meetups(
                 snapshot_climb=meetup.snapshot_climb,
                 snapshot_city=meetup.snapshot_city,
                 start_time=meetup.start_time,
+                estimated_end_time=meetup.estimated_end_time,
                 meeting_point=meetup.meeting_point,
                 pace_level=meetup.pace_level,
                 max_participants=meetup.max_participants,
