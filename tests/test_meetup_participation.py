@@ -139,3 +139,42 @@ def test_join_service_uses_locked_meetup_loader():
     assert "check_time_cutoff=True" in join_block
     assert ".with_for_update()" in source
     assert ".populate_existing()" in source
+
+
+def test_join_inside_cutoff_returns_410(db, test_user, admin_user):
+    # join 和 leave 一样有时间边界：截止线内（start - 30min）不能再加入
+    meetup = _open_meetup(db, test_user.id, max_participants=3)
+    meetup.start_time = datetime.now(timezone.utc) + timedelta(minutes=20)
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        service.join_meetup(db, meetup.id, admin_user.id)
+
+    assert exc.value.status_code == 410
+
+
+def test_creator_cannot_leave_own_meetup(client, db, test_user, auth_header):
+    # 发起人不能退出自己发起的约骑——要退只能取消整个约骑，
+    # 否则约骑还挂在他名下、参与列表却没有他 = 没人负责的幽灵约骑（下游 task7/8 会踩）
+    meetup = _open_meetup(db, test_user.id, max_participants=3)
+
+    res = client.delete(f"/api/meetups/{meetup.id}/leave", headers=auth_header)
+
+    assert res.status_code == 403
+    assert res.json()["detail"] == "creator_cannot_leave"
+    # 守卫生效后发起人仍在参与列表
+    assert (
+        db.query(MeetupParticipant).filter_by(meetup_id=meetup.id, user_id=test_user.id).first()
+        is not None
+    )
+
+
+def test_delete_cancelled_meetup_returns_409_not_410(client, db, test_user, auth_header):
+    # 回归守卫：join/leave 需要的"已取消→410"不能渗透到删除端点。
+    # spec 要求删非 DRAFT 约骑返 409，删一个已取消的约骑必须是 409 而不是 410。
+    meetup = _open_meetup(db, test_user.id, max_participants=3)
+    client.post(f"/api/meetups/{meetup.id}/cancel", headers=auth_header)
+
+    res = client.delete(f"/api/meetups/{meetup.id}", headers=auth_header)
+
+    assert res.status_code == 409

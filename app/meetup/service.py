@@ -85,8 +85,13 @@ def _load_and_authorize_meetup(
     require_creator: bool = False,
     require_status: list[str] | None = None,
     check_time_cutoff: bool = False,
+    cancelled_returns_410: bool = False,
 ) -> Meetup:
-    """读取约骑并执行权限/状态/时间门禁，像门卫一次查完票和身份。"""
+    """读取约骑并执行权限/状态/时间门禁，像门卫一次查完票和身份。
+
+    cancelled_returns_410：只有 join/leave 才把"约骑已取消"当 410 返回（spec 错误码要求）。
+    delete/update/cancel 不传这个开关——它们遇到已取消的约骑按"状态不匹配"统一走 409
+    （spec：删非 DRAFT 约骑返 409）。这样 join 需要的 410 不会渗透到其他端点、改坏它们的错误码。"""
     meetup = (
         db.query(Meetup)
         .filter(Meetup.id == meetup_id)
@@ -99,7 +104,7 @@ def _load_and_authorize_meetup(
     if require_creator and meetup.creator_id != current_user_id:
         raise HTTPException(status_code=403, detail="not creator")
     if require_status and meetup.status not in require_status:
-        if meetup.status == "CANCELLED":
+        if cancelled_returns_410 and meetup.status == "CANCELLED":
             raise HTTPException(status_code=410, detail="meetup cancelled")
         raise HTTPException(status_code=409, detail=f"invalid status: {meetup.status}")
     if check_time_cutoff:
@@ -341,6 +346,7 @@ def join_meetup(db: Session, meetup_id: int, current_user_id: int) -> dict:
         current_user_id,
         require_status=["OPEN"],
         check_time_cutoff=True,
+        cancelled_returns_410=True,
     )
     existing = db.query(MeetupParticipant).filter_by(meetup_id=meetup.id, user_id=current_user_id).first()
     if existing is not None:
@@ -369,7 +375,12 @@ def leave_meetup(db: Session, meetup_id: int, current_user_id: int) -> dict:
         current_user_id,
         require_status=["OPEN"],
         check_time_cutoff=True,
+        cancelled_returns_410=True,
     )
+    # 发起人不能退出自己发起的约骑：要退只能取消整个约骑（走 cancel 端点）。
+    # 否则约骑还挂在他名下、参与列表却没有他 = 没人负责的幽灵约骑（下游 task7 自动完成 / task8 赛段卡都会踩）。
+    if meetup.creator_id == current_user_id:
+        raise HTTPException(status_code=403, detail="creator_cannot_leave")
     participant = db.query(MeetupParticipant).filter_by(meetup_id=meetup.id, user_id=current_user_id).first()
     if participant is None:
         raise HTTPException(status_code=409, detail="not_joined")
