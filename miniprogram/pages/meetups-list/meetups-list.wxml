@@ -1,0 +1,28 @@
+<view class="meetups-page">
+  <view class="topbar">
+    <view>
+      <view class="title">约骑</view>
+      <view class="subtitle">找一条路线，约一群人一起出发</view>
+    </view>
+    <button class="create-btn" bindtap="onTapCreate">发起约骑</button>
+  </view>
+
+  <view wx:if="{{loading && meetups.length === 0}}" class="state">加载中</view>
+  <view wx:elif="{{meetups.length === 0}}" class="state">暂时没有开放约骑</view>
+
+  <view wx:else class="list">
+    <view class="meetup-card" wx:for="{{meetups}}" wx:key="id" data-id="{{item.id}}" bindtap="onTapMeetup">
+      <view class="card-main">
+        <view class="route-name">{{item.snapshot_route_name}}</view>
+        <view class="time">{{item.timeText}}</view>
+      </view>
+      <view class="meeting">{{item.meeting_point}}</view>
+      <view class="metrics">
+        <text>{{item.distanceText}}</text>
+        <text>{{item.climbText}}</text>
+        <text>{{item.paceText}}</text>
+        <text class="{{item.full ? 'full' : ''}}">{{item.seatsText}}</text>
+      </view>
+    </view>
+  </view>
+</view>

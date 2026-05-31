@@ -13,7 +13,10 @@
     "pages/segment-efforts/segment-efforts",
     "pages/strava-auth/strava-auth",
     "pages/training-calendar/training-calendar",
-    "pages/training-distribution/training-distribution"
+    "pages/training-distribution/training-distribution",
+    "pages/meetups-list/meetups-list",
+    "pages/meetup-detail/meetup-detail",
+    "pages/meetup-create/meetup-create"
   ],
   "window": {
     "navigationBarBackgroundColor": "#ffffff",
