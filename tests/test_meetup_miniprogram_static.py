@@ -23,6 +23,14 @@ def test_meetup_pages_are_registered_at_app_json_tail():
     ]
 
 
+def test_meetup_tab_is_registered_in_tabbar():
+    # 约骑必须有底部 tab 入口（spec 用户故事："velo '约骑' tab"），否则用户进不去
+    app_json = json.loads(_read(MINI / "app.json"))
+    tab_paths = [tab["pagePath"] for tab in app_json["tabBar"]["list"]]
+    assert "pages/meetups-list/meetups-list" in tab_paths
+    assert len(app_json["tabBar"]["list"]) <= 5  # 微信 tabBar 上限 5 个
+
+
 def test_meetup_page_files_exist():
     for page in ("meetups-list", "meetup-detail", "meetup-create"):
         folder = MINI / "pages" / page

@@ -39,7 +39,9 @@ Page({
     loading: false,
   },
 
-  onLoad: function () {
+  onShow: function () {
+    // 列表是底部常驻 tab：用 onShow 而非 onLoad，每次切回（含发布约骑后返回）都刷新，
+    // 否则用户发完约骑回到列表看不到自己刚发的那条。loadMeetups 内有 loading 守卫防重入。
     this.loadMeetups(1)
   },
 

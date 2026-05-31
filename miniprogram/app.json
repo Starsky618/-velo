@@ -50,6 +50,12 @@
         "selectedIconPath": "assets/icons/upload-active.png"
       },
       {
+        "pagePath": "pages/meetups-list/meetups-list",
+        "text": "约骑",
+        "iconPath": "assets/icons/leaderboard.png",
+        "selectedIconPath": "assets/icons/leaderboard-active.png"
+      },
+      {
         "pagePath": "pages/profile/profile",
         "text": "我的",
         "iconPath": "assets/icons/profile.png",
