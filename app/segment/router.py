@@ -1,13 +1,14 @@
 """
 赛段模块的 API 路由——"赛道服务台"。
 
-六个窗口各有分工：
+七个窗口各有分工：
 1. POST /api/segments — 管理员创建赛段（"赛事审批窗口"）
 2. GET /api/segments — 查赛段列表（"赛道目录查询机"，v5 加 search/city/difficulty 三筛选卡）
 3. GET /api/segments/{id} — 查赛段详情 + TOP20 排行榜（v5 响应加 max_gradient/city/difficulty）
 4. GET /api/segments/{id}/leaderboard — 完整排行榜（分页+车型过滤）
 5. GET /api/segments/{id}/efforts/me — 即时反馈（v5 新增 / "骑完看进步"对比）
-6. GET /api/user/efforts — 当前用户的所有赛段成绩
+6. GET /api/segments/{id}/upcoming-meetups — 这条路线未来的开放约骑
+7. GET /api/user/efforts — 当前用户的所有赛段成绩
 
 注意事项：
 - 所有路由函数用 def（同步），禁止 async def
@@ -19,12 +20,15 @@
 
 import json
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user, get_optional_user
+from app.meetup.models import Meetup, MeetupParticipant
 from app.segment import schemas, service
 from app.segment.exceptions import SegmentOverlapError
 from app.segment.models import Segment
@@ -196,6 +200,61 @@ def get_segment(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return detail
+
+
+@router.get("/{segment_id}/upcoming-meetups", response_model=schemas.SegmentUpcomingMeetupsResponse)
+def get_segment_upcoming_meetups(
+    segment_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    查看某条赛段未来的开放约骑。
+
+    这是 spec 允许的可删除反向 hook：删约骑模块时整段 endpoint 一起删。
+    """
+    if db.get(Segment, segment_id) is None:
+        raise HTTPException(status_code=404, detail="segment not found")
+
+    now = datetime.now(timezone.utc)
+    meetups = (
+        db.query(Meetup)
+        .filter(
+            Meetup.segment_id == segment_id,
+            Meetup.status == "OPEN",
+            Meetup.start_time > now,
+        )
+        .order_by(Meetup.start_time.asc())
+        .limit(5)
+        .all()
+    )
+    meetup_ids = [meetup.id for meetup in meetups]
+    counts = {}
+    if meetup_ids:
+        rows = (
+            db.query(MeetupParticipant.meetup_id, func.count(MeetupParticipant.id))
+            .filter(MeetupParticipant.meetup_id.in_(meetup_ids))
+            .group_by(MeetupParticipant.meetup_id)
+            .all()
+        )
+        counts = {meetup_id: count for meetup_id, count in rows}
+
+    return schemas.SegmentUpcomingMeetupsResponse(
+        items=[
+            schemas.SegmentUpcomingMeetupItem(
+                id=meetup.id,
+                snapshot_route_name=meetup.snapshot_route_name,
+                snapshot_distance=meetup.snapshot_distance,
+                snapshot_climb=meetup.snapshot_climb,
+                snapshot_city=meetup.snapshot_city,
+                start_time=meetup.start_time,
+                meeting_point=meetup.meeting_point,
+                pace_level=meetup.pace_level,
+                max_participants=meetup.max_participants,
+                participants_count=counts.get(meetup.id, 0),
+            )
+            for meetup in meetups
+        ]
+    )
 
 
 @router.get("/{segment_id}/leaderboard", response_model=schemas.LeaderboardResponse)
