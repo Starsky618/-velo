@@ -243,7 +243,8 @@ def get_segment_upcoming_meetups(
             schemas.SegmentUpcomingMeetupItem(
                 id=meetup.id,
                 snapshot_route_name=meetup.snapshot_route_name,
-                snapshot_distance=meetup.snapshot_distance,
+                # 距离 DB 存米 → API 返 km（和赛段 API、约骑详情同口径）
+                snapshot_distance=round(meetup.snapshot_distance / 1000, 2),
                 snapshot_climb=meetup.snapshot_climb,
                 snapshot_city=meetup.snapshot_city,
                 start_time=meetup.start_time,

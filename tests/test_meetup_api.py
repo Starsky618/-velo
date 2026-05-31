@@ -116,6 +116,9 @@ def test_list_and_detail_are_public(client, db, auth_header):
     assert detail_res.json()["id"] == meetup_id
     # 详情页人数必须和列表页同口径，不能恒为 0（否则发布后详情显示"0 人参加"劝退用户）
     assert detail_res.json()["participants_count"] == 1
+    # 距离必须是 km（DB 存米，API 出口转 km）：28000 米 → 28.0 km，不能漏转把米当 km 返回
+    assert detail_res.json()["snapshot_distance"] == 28.0
+    assert list_res.json()["items"][0]["snapshot_distance"] == 28.0
 
 
 def test_create_rejects_extra_field(client, db, auth_header):

@@ -76,6 +76,8 @@ def test_segment_upcoming_meetups_returns_public_open_future_items(client, db, t
     assert item["snapshot_route_name"] == "太山爬坡"
     # 卡片要能显示"几点到几点"，结束时间必须返回且晚于开始时间（ISO 字符串同格式可直接比较）
     assert item["estimated_end_time"] > item["start_time"]
+    # 距离必须是 km（DB 存米，API 出口转 km）：10000 米 → 10.0 km
+    assert item["snapshot_distance"] == 10.0
 
 
 def test_segment_upcoming_endpoint_is_public_and_counts_participants(client, db, test_user):

@@ -25,7 +25,8 @@ def _response(meetup, participants_count=0, first_media_file_id=None) -> schemas
         segment_id=meetup.segment_id,
         route_book_id=meetup.route_book_id,
         snapshot_route_name=meetup.snapshot_route_name,
-        snapshot_distance=meetup.snapshot_distance,
+        # 距离 DB 存米 → API 返 km（和赛段 API /1000 同口径）；爬升保持米（前端按米显示，单位一致）
+        snapshot_distance=round(meetup.snapshot_distance / 1000, 2),
         snapshot_climb=meetup.snapshot_climb,
         snapshot_city=meetup.snapshot_city,
         start_time=meetup.start_time,
