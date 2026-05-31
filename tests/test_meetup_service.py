@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.meetup import service
-from app.meetup.models import MeetupParticipant
+from app.meetup.models import MeetupMedia, MeetupParticipant
 from app.route_book.models import RouteBook
 from app.segment.models import Segment
 
@@ -166,3 +166,66 @@ def test_load_and_authorize_creator_guard(db, test_user, admin_user):
         service._load_and_authorize_meetup(db, meetup.id, admin_user.id, require_creator=True)
 
     assert exc.value.status_code == 403
+
+
+def test_list_returns_participants_count(db, test_user):
+    # 覆盖补强：list 的 participants_count 聚合（改 GROUP BY 后行为应不变）
+    segment = _segment(db)
+    meetup = service.create_meetup(
+        db, test_user.id, segment.id, None, _start(), _start() + timedelta(hours=2), "A", "cruise", 4, None
+    )
+    service.publish_meetup(db, meetup.id, test_user.id)  # creator 计为 1 个 participant
+
+    result = service.list_meetups(db, status="OPEN")
+    assert result["total"] >= 1
+    assert result["participants_count"][meetup.id] == 1
+
+
+def test_cancel_succeeds_outside_cutoff(db, test_user):
+    # 覆盖补强：cancel 成功路径（cutoff 窗口外）
+    segment = _segment(db)
+    meetup = service.create_meetup(
+        db, test_user.id, segment.id, None, _start(), _start() + timedelta(hours=2), "A", "cruise", 4, None
+    )
+    service.publish_meetup(db, meetup.id, test_user.id)
+
+    cancelled = service.cancel_meetup(db, meetup.id, test_user.id)
+    assert cancelled.status == "CANCELLED"
+    assert cancelled.cancelled_at is not None
+
+
+def test_list_invalid_date_range_returns_422(db):
+    # date_range 格式非法不该穿透成 500，应返回 422
+    with pytest.raises(HTTPException) as exc:
+        service.list_meetups(db, date_range="not-a-valid-range")
+    assert exc.value.status_code == 422
+
+
+def test_update_rejects_end_before_start(db, test_user):
+    # 改约骑时间填反（结束早于开始）应返回 422，而不是真 PG 才 500（SQLite 无 CHECK 兜底）
+    segment = _segment(db)
+    meetup = service.create_meetup(
+        db, test_user.id, segment.id, None, _start(), _start() + timedelta(hours=3), "A", "cruise", 4, None
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        service.update_meetup(
+            db, meetup.id, test_user.id, estimated_end_time=datetime.now(timezone.utc) + timedelta(hours=1)
+        )
+    assert exc.value.status_code == 422
+
+
+def test_delete_draft_cleans_media_storage(db, test_user, monkeypatch):
+    # 草稿也能传媒体（spec POST media 只要求 creator 不限状态）；删草稿要连带清 storage（spec §8.4）
+    segment = _segment(db)
+    meetup = service.create_meetup(
+        db, test_user.id, segment.id, None, _start(), _start() + timedelta(hours=2), "A", "cruise", 4, None
+    )
+    db.add(MeetupMedia(meetup_id=meetup.id, type="image", file_id="202605/draft.jpg", seq=0))
+    db.commit()
+
+    deleted_files = []
+    monkeypatch.setattr("app.meetup.service._storage.delete", lambda fid: deleted_files.append(fid))
+
+    service.delete_draft_meetup(db, meetup.id, test_user.id)
+    assert "202605/draft.jpg" in deleted_files

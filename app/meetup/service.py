@@ -5,15 +5,22 @@
 输入/输出数据流：router 传入当前用户和表单字段；service 写 meetups/participants，返回 ORM 对象给 API 层翻译。
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.meetup.models import Meetup, MeetupMedia, MeetupParticipant
 from app.route_book.models import RouteBook
 from app.segment.models import Segment
+from app.storage.local import LocalStorage
+
+
+logger = logging.getLogger(__name__)
+_storage = LocalStorage()
 
 
 def _now_utc() -> datetime:
@@ -25,6 +32,13 @@ def _ensure_aware(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value
+
+
+def _ensure_time_order(start: datetime, end: datetime) -> None:
+    """预计结束必须晚于开始。DB 有 ck_meetups_time_order 兜底，但 service 层显式校验
+    能在真 PG CHECK 报错前就返回友好的 422，而不是让 IntegrityError 穿透成 500。"""
+    if end <= start:
+        raise HTTPException(status_code=422, detail="estimated_end_time 必须晚于 start_time")
 
 
 def _snapshot_from_route(db: Session, segment_id: int | None, route_book_id: int | None) -> dict:
@@ -88,7 +102,7 @@ def _load_and_authorize_meetup(
         raise HTTPException(status_code=409, detail=f"invalid status: {meetup.status}")
     if check_time_cutoff:
         cutoff = _ensure_aware(meetup.start_time) - timedelta(minutes=30, seconds=30)
-        if _now_utc() >= cutoff:
+        if _now_utc() > cutoff:
             raise HTTPException(status_code=410, detail="meetup cutoff passed")
     return meetup
 
@@ -109,14 +123,18 @@ def create_meetup(
     if existing is not None:
         raise _draft_exists_error(existing)
 
+    start_aware = _ensure_aware(start_time)
+    end_aware = _ensure_aware(estimated_end_time)
+    _ensure_time_order(start_aware, end_aware)
+
     snapshot = _snapshot_from_route(db, segment_id, route_book_id)
     meetup = Meetup(
         creator_id=current_user_id,
         status="DRAFT",
         segment_id=segment_id,
         route_book_id=route_book_id,
-        start_time=_ensure_aware(start_time),
-        estimated_end_time=_ensure_aware(estimated_end_time),
+        start_time=start_aware,
+        estimated_end_time=end_aware,
         meeting_point=meeting_point,
         pace_level=pace_level,
         max_participants=max_participants,
@@ -158,6 +176,9 @@ def update_meetup(db: Session, meetup_id: int, current_user_id: int, **changes) 
             if key in {"start_time", "estimated_end_time"} and value is not None:
                 value = _ensure_aware(value)
             setattr(meetup, key, value)
+
+    # 改完时间后用最终值校验顺序（用户可能只改了 start 或只改了 end 导致颠倒）
+    _ensure_time_order(_ensure_aware(meetup.start_time), _ensure_aware(meetup.estimated_end_time))
 
     db.commit()
     db.refresh(meetup)
@@ -205,8 +226,21 @@ def delete_draft_meetup(db: Session, meetup_id: int, current_user_id: int) -> No
         require_creator=True,
         require_status=["DRAFT"],
     )
+    # 先收集媒体文件路径：CASCADE 会删 meetup_media 行，但 storage 物理文件要单独删，否则留孤儿文件（spec §8.4）。
+    # 草稿阶段也可能已传媒体（POST media 只要求 creator 不限状态）。
+    file_ids = [
+        row.file_id
+        for row in db.query(MeetupMedia.file_id).filter(MeetupMedia.meetup_id == meetup.id).all()
+        if row.file_id
+    ]
     db.delete(meetup)
     db.commit()
+    # commit 后再删 storage（DB 是 source of truth）：删失败只记日志不阻塞用户，孤儿文件留定期清理 v2。
+    for file_id in file_ids:
+        try:
+            _storage.delete(file_id)
+        except OSError as e:
+            logger.warning("删草稿清理媒体文件失败 file_id=%s: %s", file_id, e)
 
 
 def get_my_draft(db: Session, current_user_id: int) -> Meetup | None:
@@ -230,9 +264,12 @@ def list_meetups(
     if pace:
         base = base.filter(Meetup.pace_level == pace)
     if date_range:
-        start_text, end_text = date_range.split(",", 1)
-        start_dt = _ensure_aware(datetime.fromisoformat(start_text))
-        end_dt = _ensure_aware(datetime.fromisoformat(end_text))
+        try:
+            start_text, end_text = date_range.split(",", 1)
+            start_dt = _ensure_aware(datetime.fromisoformat(start_text))
+            end_dt = _ensure_aware(datetime.fromisoformat(end_text))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="date_range 格式应为 '开始ISO,结束ISO'")
         base = base.filter(Meetup.start_time >= start_dt, Meetup.start_time <= end_dt)
 
     total = base.count()
@@ -247,13 +284,14 @@ def list_meetups(
     first_media = {}
 
     if meetup_ids:
-        rows = (
-            db.query(MeetupParticipant.meetup_id, MeetupParticipant.id)
+        # 用 SQL GROUP BY COUNT 聚合，不把全部 participant 行拉回内存（spec §6.1 R3-I6 N+1 修复模板）
+        count_rows = (
+            db.query(MeetupParticipant.meetup_id, func.count(MeetupParticipant.id))
             .filter(MeetupParticipant.meetup_id.in_(meetup_ids))
+            .group_by(MeetupParticipant.meetup_id)
             .all()
         )
-        for row in rows:
-            participants_count[row.meetup_id] = participants_count.get(row.meetup_id, 0) + 1
+        participants_count = {meetup_id: count for meetup_id, count in count_rows}
 
         media_rows = (
             db.query(MeetupMedia.meetup_id, MeetupMedia.file_id)
