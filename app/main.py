@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.activity.router import router as activity_router
 from app.admin.router import router as admin_router
+from app.meetup.router import router as meetup_router
+from app.route_book.router import router as route_book_router
 from app.segment.router import (
     activity_segment_router,
     router as segment_router,
@@ -46,6 +48,8 @@ app.include_router(activity_router)
 app.include_router(segment_router)
 app.include_router(user_effort_router)
 app.include_router(activity_segment_router)
+app.include_router(route_book_router)
+app.include_router(meetup_router)
 app.include_router(admin_router)
 # 训练负荷模块——PMC 曲线（CTL/ATL/TSB）和训练日历顶部状态卡
 app.include_router(training_router)
