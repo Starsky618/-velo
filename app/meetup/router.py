@@ -128,6 +128,18 @@ def cancel_meetup(meetup_id: int, current_user_id: int = Depends(get_current_use
     return _response(meetup, participants_count=service.count_participants(db, meetup.id))
 
 
+@router.post("/{meetup_id}/join", response_model=schemas.MeetupResponse)
+def join_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
+    result = service.join_meetup(db, meetup_id, current_user_id)
+    return _response(result["meetup"], participants_count=result["participants_count"])
+
+
+@router.delete("/{meetup_id}/leave", response_model=schemas.MeetupResponse)
+def leave_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
+    result = service.leave_meetup(db, meetup_id, current_user_id)
+    return _response(result["meetup"], participants_count=result["participants_count"])
+
+
 @router.delete("/{meetup_id}", status_code=204)
 def delete_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     service.delete_draft_meetup(db, meetup_id, current_user_id)

@@ -99,6 +99,8 @@ def _load_and_authorize_meetup(
     if require_creator and meetup.creator_id != current_user_id:
         raise HTTPException(status_code=403, detail="not creator")
     if require_status and meetup.status not in require_status:
+        if meetup.status == "CANCELLED":
+            raise HTTPException(status_code=410, detail="meetup cancelled")
         raise HTTPException(status_code=409, detail=f"invalid status: {meetup.status}")
     if check_time_cutoff:
         cutoff = _ensure_aware(meetup.start_time) - timedelta(minutes=30, seconds=30)
@@ -330,3 +332,50 @@ def count_participants(db: Session, meetup_id: int) -> int:
         .scalar()
         or 0
     )
+
+
+def join_meetup(db: Session, meetup_id: int, current_user_id: int) -> dict:
+    meetup = _load_and_authorize_meetup(
+        db,
+        meetup_id,
+        current_user_id,
+        require_status=["OPEN"],
+        check_time_cutoff=True,
+    )
+    existing = db.query(MeetupParticipant).filter_by(meetup_id=meetup.id, user_id=current_user_id).first()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="already_joined")
+
+    count = count_participants(db, meetup.id)
+    if count >= meetup.max_participants:
+        raise HTTPException(status_code=409, detail="meetup_full")
+
+    db.add(MeetupParticipant(meetup_id=meetup.id, user_id=current_user_id, is_creator=False))
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if "uq_meetup_participant_user" in str(exc.orig):
+            raise HTTPException(status_code=409, detail="already_joined")
+        raise
+    db.refresh(meetup)
+    return {"meetup": meetup, "participants_count": count + 1}
+
+
+def leave_meetup(db: Session, meetup_id: int, current_user_id: int) -> dict:
+    meetup = _load_and_authorize_meetup(
+        db,
+        meetup_id,
+        current_user_id,
+        require_status=["OPEN"],
+        check_time_cutoff=True,
+    )
+    participant = db.query(MeetupParticipant).filter_by(meetup_id=meetup.id, user_id=current_user_id).first()
+    if participant is None:
+        raise HTTPException(status_code=409, detail="not_joined")
+
+    count = count_participants(db, meetup.id)
+    db.delete(participant)
+    db.commit()
+    db.refresh(meetup)
+    return {"meetup": meetup, "participants_count": max(0, count - 1)}
