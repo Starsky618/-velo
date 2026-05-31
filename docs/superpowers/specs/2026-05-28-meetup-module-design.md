@@ -333,21 +333,28 @@ except IntegrityError as e:
 
 ```python
 def delete_user(db, user_id):
-    with db.begin():
-        # Step 1: 先 cancel 该用户发起的 OPEN 约骑
-        db.query(Meetup).filter_by(
-            creator_id=user_id, status='OPEN'
-        ).update({'status': 'CANCELLED', 'cancelled_at': func.now()})
-        
-        # Step 2: 硬删该用户的 DRAFT 约骑（含 storage 清理）
-        draft_ids = [m.id for m in db.query(Meetup.id).filter_by(
-            creator_id=user_id, status='DRAFT'
-        ).all()]
-        for mid in draft_ids:
-            _delete_meetup_with_storage_cleanup(db, mid)
-        
-        # Step 3: 最后才删 user（触发剩下 SET NULL cascade）
-        db.query(User).filter_by(id=user_id).delete()
+    # ⚠ 不要用 with db.begin()：真实注销端点用 Depends(get_db) 注入的 session
+    # 已因身份查询触发 autobegin（SessionLocal autocommit=False），再 with db.begin()
+    # 会抛 InvalidRequestError 500。三步在同一事务内做完后末尾一次 db.commit()，
+    # 和项目其他 service 统一（2026-06-01 task7 复审 reviewer 抓 + 亲验）。
+    # Step 1: 先 cancel 该用户发起的 OPEN 约骑
+    db.query(Meetup).filter_by(
+        creator_id=user_id, status='OPEN'
+    ).update({'status': 'CANCELLED', 'cancelled_at': func.now()})
+
+    # Step 2: 硬删该用户的 DRAFT 约骑（DB 行删除 + 收集 file_id，storage 留到 commit 后清）
+    draft_ids = [m.id for m in db.query(Meetup.id).filter_by(
+        creator_id=user_id, status='DRAFT'
+    ).all()]
+    file_ids = []
+    for mid in draft_ids:
+        file_ids.extend(_delete_meetup_row_and_collect_files(db, mid))
+
+    # Step 3: 最后才删 user（触发剩下 SET NULL cascade）
+    db.query(User).filter_by(id=user_id).delete()
+
+    db.commit()
+    _cleanup_meetup_storage(file_ids)  # commit 后再删物理文件，失败只记日志
 ```
 
 级联表：

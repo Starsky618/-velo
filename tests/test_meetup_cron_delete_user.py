@@ -117,7 +117,32 @@ def test_delete_user_uses_single_transaction():
     source = (ROOT / "app" / "user" / "service.py").read_text(encoding="utf-8")
     assert "def delete_user" in source
     block = source[source.index("def delete_user"):]
+    # 只看代码行（剥掉以 # 开头的整行注释），否则解释性注释里出现的
+    # "with db.begin()" / "db.commit()" 字面会污染静态断言（合同测试的脆弱点）。
+    code = "\n".join(ln for ln in block.splitlines() if not ln.strip().startswith("#"))
 
-    assert "with db.begin()" in block
-    assert "delete_draft_meetup(" not in block
-    assert "db.commit()" not in block
+    # 不能调用会各自 commit 的 delete_draft_meetup（中途 commit 破坏删号原子性）
+    assert "delete_draft_meetup(" not in code
+    # 必须用单次 db.commit() 收尾，且禁止 with db.begin()——真实注销端点注入的 session
+    # 已因身份查询触发 autobegin，再 with db.begin() 二次开启事务会抛 InvalidRequestError。
+    assert "with db.begin()" not in code
+    assert code.count("db.commit()") == 1
+
+
+def test_delete_user_works_when_session_in_active_transaction(db, test_user):
+    # 复现真实注销端点会话状态：端点先做身份查询触发 autobegin、session 处于活动事务，
+    # 再调 delete_user。delete_user 不能用 with db.begin() 二次开启事务（会抛 InvalidRequestError 500）。
+    from app.user.service import delete_user
+
+    user_id = test_user.id
+    open_meetup = _meetup(db, user_id, status="OPEN", start_delta=5, end_delta=8)
+    open_meetup_id = open_meetup.id
+
+    # 制造活动事务（模拟端点里 get_current_user 等先行查询）
+    db.query(User).filter(User.id == user_id).first()
+    assert db.in_transaction()
+
+    delete_user(db, user_id)  # 不能抛 InvalidRequestError
+
+    assert db.query(User).filter(User.id == user_id).first() is None
+    assert db.query(Meetup).filter(Meetup.id == open_meetup_id).first().status == "CANCELLED"
