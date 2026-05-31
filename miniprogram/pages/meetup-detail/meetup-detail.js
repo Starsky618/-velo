@@ -1,7 +1,8 @@
 const api = require('../../utils/api')
 
 function formatNumber(value, unit) {
-  if (value === undefined || value === null) return '--'
+  // 缺失返回空串，wxml 用 wx:if 整块隐藏（守"不显示占位符"规则），不返回 "--"
+  if (value === undefined || value === null) return ''
   return Number(value).toFixed(unit === 'km' ? 1 : 0) + ' ' + unit
 }
 
@@ -23,7 +24,7 @@ function paceText(value) {
     training: '训练',
     race: '强度',
   }
-  return map[value] || value || '--'
+  return map[value] || value || ''
 }
 
 function decorateMeetup(meetup) {

@@ -27,12 +27,26 @@
 
   <view wx:elif="{{currentStep === 'details'}}" class="panel">
     <view class="field">
-      <text>出发时间</text>
-      <input value="{{form.start_time}}" data-field="start_time" bindinput="updateField" />
+      <text>出发</text>
+      <view class="datetime">
+        <picker class="dt-date" mode="date" value="{{startDate}}" bindchange="onStartDateChange">
+          <view class="picker-value">{{startDate}}</view>
+        </picker>
+        <picker class="dt-time" mode="time" value="{{startTime}}" bindchange="onStartTimeChange">
+          <view class="picker-value">{{startTime}}</view>
+        </picker>
+      </view>
     </view>
     <view class="field">
       <text>预计结束</text>
-      <input value="{{form.estimated_end_time}}" data-field="estimated_end_time" bindinput="updateField" />
+      <view class="datetime">
+        <picker class="dt-date" mode="date" value="{{endDate}}" bindchange="onEndDateChange">
+          <view class="picker-value">{{endDate}}</view>
+        </picker>
+        <picker class="dt-time" mode="time" value="{{endTime}}" bindchange="onEndTimeChange">
+          <view class="picker-value">{{endTime}}</view>
+        </picker>
+      </view>
     </view>
     <view class="field">
       <text>集合点</text>
@@ -45,7 +59,7 @@
     <view class="field">
       <text>节奏</text>
       <picker mode="selector" range="{{paceOptions}}" range-key="label" bindchange="onPaceChange">
-        <view class="picker-value">{{form.pace_level}}</view>
+        <view class="picker-value">{{paceLabel}}</view>
       </picker>
     </view>
     <view class="field">
@@ -58,7 +72,11 @@
     <view class="summary-title">{{selectedRouteName}}</view>
     <view class="summary-row">
       <text>出发</text>
-      <text>{{form.start_time}}</text>
+      <text>{{startDate}} {{startTime}}</text>
+    </view>
+    <view class="summary-row">
+      <text>预计结束</text>
+      <text>{{endDate}} {{endTime}}</text>
     </view>
     <view class="summary-row">
       <text>集合点</text>

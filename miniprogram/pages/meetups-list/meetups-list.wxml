@@ -19,7 +19,7 @@
       <view class="meeting">{{item.meeting_point}}</view>
       <view class="metrics">
         <text>{{item.distanceText}}</text>
-        <text>{{item.climbText}}</text>
+        <text wx:if="{{item.climbText}}">{{item.climbText}}</text>
         <text>{{item.paceText}}</text>
         <text class="{{item.full ? 'full' : ''}}">{{item.seatsText}}</text>
       </view>

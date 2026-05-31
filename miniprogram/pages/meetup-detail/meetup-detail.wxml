@@ -13,7 +13,7 @@
         <text class="value">{{meetup.distanceText}}</text>
         <text class="label">距离</text>
       </view>
-      <view>
+      <view wx:if="{{meetup.climbText}}">
         <text class="value">{{meetup.climbText}}</text>
         <text class="label">爬升</text>
       </view>

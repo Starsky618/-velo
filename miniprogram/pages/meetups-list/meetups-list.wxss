@@ -94,9 +94,9 @@ page {
   color: #374151;
 }
 
+/* flex 而非固定 4 列：爬升缺失隐藏后剩 3 格仍均分铺满、不留空列 */
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
   gap: 12rpx;
   margin-top: 22rpx;
   font-size: 24rpx;
@@ -104,6 +104,7 @@ page {
 }
 
 .metrics text {
+  flex: 1;
   min-width: 0;
   padding: 12rpx 10rpx;
   border-radius: 12rpx;

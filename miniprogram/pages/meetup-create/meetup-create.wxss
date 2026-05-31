@@ -89,13 +89,34 @@ page {
 .picker-value {
   min-height: 68rpx;
   line-height: 68rpx;
+  padding: 0 20rpx;
+  border-radius: 12rpx;
+  background: #f3f4f6;
   font-size: 28rpx;
   color: #111827;
+}
+
+/* 出发/结束：日期占宽一点、时间窄一点，横向并排 */
+.datetime {
+  display: flex;
+  gap: 12rpx;
+}
+
+.datetime .dt-date {
+  flex: 3;
+}
+
+.datetime .dt-time {
+  flex: 2;
 }
 
 .field textarea {
   width: 100%;
   min-height: 160rpx;
+  padding: 16rpx 20rpx;
+  box-sizing: border-box;
+  border-radius: 12rpx;
+  background: #f3f4f6;
   font-size: 28rpx;
   line-height: 40rpx;
   color: #111827;

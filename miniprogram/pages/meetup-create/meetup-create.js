@@ -1,13 +1,35 @@
 const api = require('../../utils/api')
 
-function formatDistance(value) {
-  if (value === undefined || value === null) return '--'
+// 把后端距离（km 数值）拼成展示文本；缺失返回空串，调用方用空串判断不拼接（不显示 "-"）
+function distanceText(value) {
+  if (value === undefined || value === null) return ''
   return Number(value).toFixed(1) + ' km'
 }
 
-function nowIsoOffset(hours) {
-  var date = new Date(Date.now() + hours * 60 * 60 * 1000)
-  return date.toISOString()
+// 把爬升（m）拼成展示文本；缺失返回空串
+function climbText(value) {
+  if (value === undefined || value === null) return ''
+  return '爬升 ' + Math.round(Number(value)) + ' m'
+}
+
+// 把 JS Date 按设备本地时区（北京 UTC+8）拆成 picker 用的 date(YYYY-MM-DD) 和 time(HH:mm)
+function splitLocal(date) {
+  var y = date.getFullYear()
+  var m = String(date.getMonth() + 1).padStart(2, '0')
+  var d = String(date.getDate()).padStart(2, '0')
+  var hh = String(date.getHours()).padStart(2, '0')
+  var mm = String(date.getMinutes()).padStart(2, '0')
+  return { date: y + '-' + m + '-' + d, time: hh + ':' + mm }
+}
+
+// 把 picker 的本地 date + time 拼回 UTC ISO 字符串（后端按 UTC 存）。
+// 用 new Date(y,m,d,h,min) 走设备本地时区，再 toISOString() 转 UTC，时区闭环：
+// 用户在北京时间选"6月2日 14:30" → 存 UTC → 详情页 new Date 转回本地仍是 14:30。
+function toIso(dateStr, timeStr) {
+  var dp = dateStr.split('-')
+  var tp = timeStr.split(':')
+  var local = new Date(Number(dp[0]), Number(dp[1]) - 1, Number(dp[2]), Number(tp[0]), Number(tp[1]))
+  return local.toISOString()
 }
 
 Page({
@@ -21,9 +43,14 @@ Page({
     segments: [],
     routeBooks: [],
     activities: [],
+    // picker 显示用的本地时间分量（出发默认明天此刻、结束默认 +3h，onLoad 初始化）
+    startDate: '',
+    startTime: '',
+    endDate: '',
+    endTime: '',
     form: {
-      start_time: nowIsoOffset(24),
-      estimated_end_time: nowIsoOffset(27),
+      start_time: '',
+      estimated_end_time: '',
       meeting_point: '',
       pace_level: 'cruise',
       max_participants: 6,
@@ -35,11 +62,29 @@ Page({
       { value: 'training', label: '训练' },
       { value: 'race', label: '强度' },
     ],
+    paceLabel: '巡航',
     submitting: false,
   },
 
   onLoad: function () {
+    this.initDefaultTime()
     this.loadRoutes()
+  },
+
+  // 初始化默认时间：出发明天此刻，结束 +3h。拆成 picker 分量并拼好 ISO 存进 form。
+  initDefaultTime: function () {
+    var start = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    var end = new Date(Date.now() + 27 * 60 * 60 * 1000)
+    var s = splitLocal(start)
+    var e = splitLocal(end)
+    this.setData({
+      startDate: s.date,
+      startTime: s.time,
+      endDate: e.date,
+      endTime: e.time,
+      'form.start_time': toIso(s.date, s.time),
+      'form.estimated_end_time': toIso(e.date, e.time),
+    })
   },
 
   loadRoutes: function () {
@@ -65,10 +110,14 @@ Page({
     return items.map(function (item) {
       var name = item.name || item.title || '未命名路线'
       var climb = item.climb !== undefined ? item.climb : item.elevation_gain
+      // 距离和爬升缺失时不拼 "-"，只显示有值的部分（守"不显示占位符"规则）
+      var meta = distanceText(item.distance)
+      var ct = climbText(climb)
+      if (ct) meta = meta ? meta + ' · ' + ct : ct
       return Object.assign({}, item, {
         type: type,
         displayName: name,
-        displayMeta: formatDistance(item.distance) + ' · 爬升 ' + (climb === undefined || climb === null ? '--' : Math.round(Number(climb)) + ' m'),
+        displayMeta: meta,
       })
     })
   },
@@ -85,6 +134,26 @@ Page({
     })
   },
 
+  onStartDateChange: function (event) {
+    var value = event.detail.value
+    this.setData({ startDate: value, 'form.start_time': toIso(value, this.data.startTime) })
+  },
+
+  onStartTimeChange: function (event) {
+    var value = event.detail.value
+    this.setData({ startTime: value, 'form.start_time': toIso(this.data.startDate, value) })
+  },
+
+  onEndDateChange: function (event) {
+    var value = event.detail.value
+    this.setData({ endDate: value, 'form.estimated_end_time': toIso(value, this.data.endTime) })
+  },
+
+  onEndTimeChange: function (event) {
+    var value = event.detail.value
+    this.setData({ endTime: value, 'form.estimated_end_time': toIso(this.data.endDate, value) })
+  },
+
   nextStep: function () {
     if (this.data.currentStep === 'route') {
       if (!this.data.selectedSegmentId && !this.data.selectedRouteBookId && !this.data.selectedActivityId) {
@@ -97,6 +166,11 @@ Page({
     if (this.data.currentStep === 'details') {
       if (!this.data.form.meeting_point) {
         wx.showToast({ title: '填写集合点', icon: 'none' })
+        return
+      }
+      // 时间顺序前端先拦一次：结束必须晚于开始，免得到发布才被后端 422 退回
+      if (new Date(this.data.form.estimated_end_time) <= new Date(this.data.form.start_time)) {
+        wx.showToast({ title: '结束时间要晚于出发', icon: 'none' })
         return
       }
       this.setData({ currentStep: 'publish' })
@@ -120,7 +194,8 @@ Page({
 
   onPaceChange: function (event) {
     var index = Number(event.detail.value)
-    this.setData({ 'form.pace_level': this.data.paceOptions[index].value })
+    var option = this.data.paceOptions[index]
+    this.setData({ 'form.pace_level': option.value, paceLabel: option.label })
   },
 
   createOrUpdateDraft: function (payload) {
@@ -155,7 +230,7 @@ Page({
         wx.redirectTo({ url: '/pages/meetup-detail/meetup-detail?id=' + meetup.id })
       })
       .catch(function (err) {
-        wx.showToast({ title: err.message || '发布失败', icon: 'none' })
+        wx.showToast({ title: (err && err.message) || '发布失败', icon: 'none' })
       })
       .finally(function () {
         that.setData({ submitting: false })

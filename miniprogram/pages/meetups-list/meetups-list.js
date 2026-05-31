@@ -1,12 +1,12 @@
 const api = require('../../utils/api')
 
 function formatDistance(value) {
-  if (value === undefined || value === null) return '--'
+  if (value === undefined || value === null) return ''
   return Number(value).toFixed(1) + ' km'
 }
 
 function formatClimb(value) {
-  if (value === undefined || value === null) return '--'
+  if (value === undefined || value === null) return ''
   return Math.round(Number(value)) + ' m'
 }
 
@@ -28,7 +28,7 @@ function paceText(value) {
     training: '训练',
     race: '强度',
   }
-  return map[value] || value || '--'
+  return map[value] || value || ''
 }
 
 Page({

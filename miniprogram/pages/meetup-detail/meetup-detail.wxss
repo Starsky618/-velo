@@ -46,14 +46,15 @@ page {
   color: #e5e7eb;
 }
 
+/* 用 flex 而非固定 4 列 grid：爬升缺失隐藏后，剩下 3 格仍能均分铺满、不留空列 */
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
   gap: 12rpx;
   margin: 22rpx 0;
 }
 
 .metrics view {
+  flex: 1;
   min-width: 0;
   padding: 22rpx 10rpx;
   border-radius: 16rpx;

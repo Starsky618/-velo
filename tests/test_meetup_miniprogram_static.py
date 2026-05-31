@@ -95,6 +95,16 @@ def test_create_page_is_three_step_flow_and_uses_backend_state():
     assert "selectedActivityId" in js
     assert "currentStep" in wxml
     assert "路线" in wxml and "时间" in wxml and "发布" in wxml
+    # 时间必须用微信日期/时间选择器，不能用文本框让用户手敲 ISO 字符串
+    assert 'mode="date"' in wxml
+    assert 'mode="time"' in wxml
+
+
+def test_meetup_pages_have_no_dash_placeholder():
+    # Tim 2026-05-15 永久规则：前端永不显示 "-" 占位符，字段缺失整块隐藏（wx:if）
+    for page in ("meetups-list", "meetup-detail", "meetup-create"):
+        js = _read(MINI / "pages" / page / f"{page}.js")
+        assert "'--'" not in js, f"{page}.js 不应有 '--' 占位符"
 
 
 def test_v1_out_of_scope_features_are_absent():
