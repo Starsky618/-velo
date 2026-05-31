@@ -89,21 +89,26 @@ Page({
 
   loadRoutes: function () {
     var that = this
+    // 三个来源各自独立兜底：某个接口失败（如用户还没建路书、或某接口抖动）不该
+    // 让其他来源也消失。不用 Promise.all（任一 reject 全挂、赛段会跟着路书 404 一起空），
+    // 改成每个各自 catch 成 null，能拿到几样显示几样。
+    var safe = function (promise) {
+      return promise.then(function (res) { return (res && res.items) || [] }).catch(function () { return null })
+    }
     Promise.all([
-      api.getSegmentsList({ page: 1, page_size: 20 }),
-      api.getRouteBooksList({ mine: 1 }),
-      api.getRouteBookActivityCandidates(),
-    ])
-      .then(function (results) {
-        that.setData({
-          segments: that.decorateItems(results[0].items || [], 'segment'),
-          routeBooks: that.decorateItems(results[1].items || [], 'route_book'),
-          activities: that.decorateItems(results[2].items || [], 'activity'),
-        })
+      safe(api.getSegmentsList({ page: 1, page_size: 20 })),
+      safe(api.getRouteBooksList({ mine: 1 })),
+      safe(api.getRouteBookActivityCandidates()),
+    ]).then(function (results) {
+      if (results[0] === null && results[1] === null && results[2] === null) {
+        wx.showToast({ title: '路线加载失败', icon: 'none' })
+      }
+      that.setData({
+        segments: that.decorateItems(results[0] || [], 'segment'),
+        routeBooks: that.decorateItems(results[1] || [], 'route_book'),
+        activities: that.decorateItems(results[2] || [], 'activity'),
       })
-      .catch(function (err) {
-        wx.showToast({ title: err.message || '路线加载失败', icon: 'none' })
-      })
+    })
   },
 
   decorateItems: function (items, type) {
