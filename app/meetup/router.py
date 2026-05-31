@@ -80,7 +80,8 @@ def get_my_draft(current_user_id: int = Depends(get_current_user), db: Session =
 
 @router.get("/{meetup_id}", response_model=schemas.MeetupResponse)
 def get_meetup(meetup_id: int, db: Session = Depends(get_db)):
-    return _response(service.get_meetup_detail(db, meetup_id))
+    meetup = service.get_meetup_detail(db, meetup_id)
+    return _response(meetup, participants_count=service.count_participants(db, meetup.id))
 
 
 @router.post("", response_model=schemas.MeetupResponse)
@@ -117,12 +118,14 @@ def update_meetup(
 
 @router.post("/{meetup_id}/publish", response_model=schemas.MeetupResponse)
 def publish_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
-    return _response(service.publish_meetup(db, meetup_id, current_user_id), participants_count=1)
+    meetup = service.publish_meetup(db, meetup_id, current_user_id)
+    return _response(meetup, participants_count=service.count_participants(db, meetup.id))
 
 
 @router.post("/{meetup_id}/cancel", response_model=schemas.MeetupResponse)
 def cancel_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
-    return _response(service.cancel_meetup(db, meetup_id, current_user_id))
+    meetup = service.cancel_meetup(db, meetup_id, current_user_id)
+    return _response(meetup, participants_count=service.count_participants(db, meetup.id))
 
 
 @router.delete("/{meetup_id}", status_code=204)

@@ -70,10 +70,14 @@ def test_create_patch_publish_and_cancel_paths(client, db, auth_header):
     publish_res = client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
     assert publish_res.status_code == 200
     assert publish_res.json()["status"] == "OPEN"
+    # 发布后创建者自动占 1 个名额，响应里人数应真实反映而不是 0
+    assert publish_res.json()["participants_count"] == 1
 
     cancel_res = client.post(f"/api/meetups/{meetup_id}/cancel", headers=auth_header)
     assert cancel_res.status_code == 200
     assert cancel_res.json()["status"] == "CANCELLED"
+    # 取消不删参与记录，人数口径要和发布时一致
+    assert cancel_res.json()["participants_count"] == 1
 
 
 def test_delete_draft_returns_204(client, db, auth_header):
@@ -106,8 +110,12 @@ def test_list_and_detail_are_public(client, db, auth_header):
 
     assert list_res.status_code == 200
     assert list_res.json()["items"][0]["id"] == meetup_id
+    # 列表页人数走 SQL 聚合，发布后应为 1
+    assert list_res.json()["items"][0]["participants_count"] == 1
     assert detail_res.status_code == 200
     assert detail_res.json()["id"] == meetup_id
+    # 详情页人数必须和列表页同口径，不能恒为 0（否则发布后详情显示"0 人参加"劝退用户）
+    assert detail_res.json()["participants_count"] == 1
 
 
 def test_create_rejects_extra_field(client, db, auth_header):

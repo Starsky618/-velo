@@ -313,3 +313,20 @@ def get_meetup_detail(db: Session, meetup_id: int) -> Meetup:
     if meetup is None:
         raise HTTPException(status_code=404, detail="meetup not found")
     return meetup
+
+
+def count_participants(db: Session, meetup_id: int) -> int:
+    """查单个约骑当前参与人数。
+
+    为什么单独抽出来：列表页用 SQL GROUP BY 批量聚合人数（见 list_meetups），
+    但详情、发布、取消这些"返回单条约骑"的端点之前没查人数、用了默认 0，
+    结果同一个已发布约骑——列表显示 1 人、详情显示 0 人。
+    详情页是用户决定加不加入的关键页，显示"0 人参加"会直接劝退。
+    所以这三个端点统一调本函数，和列表页保持同一口径（COUNT 参与记录）。
+    """
+    return (
+        db.query(func.count(MeetupParticipant.id))
+        .filter(MeetupParticipant.meetup_id == meetup_id)
+        .scalar()
+        or 0
+    )
