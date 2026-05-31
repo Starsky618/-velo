@@ -82,3 +82,18 @@ class MeetupListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class MeetupMediaResponse(BaseModel):
+    """返回给小程序的一张约骑图片或视频记录。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    meetup_id: int
+    uploader_id: int | None = None
+    type: Literal["image", "video"]
+    file_id: str
+    caption: str | None = None
+    seq: int
+    created_at: datetime | None = None

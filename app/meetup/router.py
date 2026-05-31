@@ -5,12 +5,12 @@
 输入/输出数据流：输入是 JWT 用户和 JSON 请求；输出是 `MeetupResponse` 或 `MeetupListResponse`。
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.meetup import schemas, service
+from app.meetup import media_service, schemas, service
 
 
 router = APIRouter(prefix="/api/meetups", tags=["meetup"])
@@ -39,6 +39,31 @@ def _response(meetup, participants_count=0, first_media_file_id=None) -> schemas
         created_at=meetup.created_at,
         cancelled_at=meetup.cancelled_at,
         completed_at=meetup.completed_at,
+    )
+
+
+def _media_response(media) -> schemas.MeetupMediaResponse:
+    """把媒体 ORM 行翻译成小程序能直接展示的图片/视频记录。"""
+    return schemas.MeetupMediaResponse(
+        id=media.id,
+        meetup_id=media.meetup_id,
+        uploader_id=media.uploader_id,
+        type=media.type,
+        file_id=media.file_id,
+        caption=media.caption,
+        seq=media.seq,
+        created_at=media.created_at,
+    )
+
+
+def _live_response(db: Session, meetup, participants_count=None) -> schemas.MeetupResponse:
+    """单条约骑响应统一查人数和首图，避免列表页、详情页、操作返回口径分裂。"""
+    if participants_count is None:
+        participants_count = service.count_participants(db, meetup.id)
+    return _response(
+        meetup,
+        participants_count=participants_count,
+        first_media_file_id=service.get_first_media_file_id(db, meetup.id),
     )
 
 
@@ -75,13 +100,13 @@ def list_meetups(
 @router.get("/my-draft", response_model=schemas.MeetupResponse | None)
 def get_my_draft(current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     meetup = service.get_my_draft(db, current_user_id)
-    return _response(meetup) if meetup is not None else None
+    return _live_response(db, meetup) if meetup is not None else None
 
 
 @router.get("/{meetup_id}", response_model=schemas.MeetupResponse)
 def get_meetup(meetup_id: int, db: Session = Depends(get_db)):
     meetup = service.get_meetup_detail(db, meetup_id)
-    return _response(meetup, participants_count=service.count_participants(db, meetup.id))
+    return _live_response(db, meetup)
 
 
 @router.post("", response_model=schemas.MeetupResponse)
@@ -102,7 +127,7 @@ def create_meetup(
         max_participants=req.max_participants,
         description=req.description,
     )
-    return _response(meetup)
+    return _live_response(db, meetup, participants_count=0)
 
 
 @router.patch("/{meetup_id}", response_model=schemas.MeetupResponse)
@@ -113,31 +138,61 @@ def update_meetup(
     db: Session = Depends(get_db),
 ):
     changes = req.model_dump(exclude_unset=True)
-    return _response(service.update_meetup(db, meetup_id, current_user_id, **changes))
+    return _live_response(db, service.update_meetup(db, meetup_id, current_user_id, **changes))
 
 
 @router.post("/{meetup_id}/publish", response_model=schemas.MeetupResponse)
 def publish_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     meetup = service.publish_meetup(db, meetup_id, current_user_id)
-    return _response(meetup, participants_count=service.count_participants(db, meetup.id))
+    return _live_response(db, meetup)
 
 
 @router.post("/{meetup_id}/cancel", response_model=schemas.MeetupResponse)
 def cancel_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     meetup = service.cancel_meetup(db, meetup_id, current_user_id)
-    return _response(meetup, participants_count=service.count_participants(db, meetup.id))
+    return _live_response(db, meetup)
 
 
 @router.post("/{meetup_id}/join", response_model=schemas.MeetupResponse)
 def join_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     result = service.join_meetup(db, meetup_id, current_user_id)
-    return _response(result["meetup"], participants_count=result["participants_count"])
+    return _live_response(db, result["meetup"], participants_count=result["participants_count"])
 
 
 @router.delete("/{meetup_id}/leave", response_model=schemas.MeetupResponse)
 def leave_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     result = service.leave_meetup(db, meetup_id, current_user_id)
-    return _response(result["meetup"], participants_count=result["participants_count"])
+    return _live_response(db, result["meetup"], participants_count=result["participants_count"])
+
+
+@router.post("/{meetup_id}/media", response_model=schemas.MeetupMediaResponse)
+def upload_media(
+    meetup_id: int,
+    caption: str | None = Form(None),
+    file: UploadFile = File(...),
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    media = media_service.upload_meetup_media(
+        db,
+        meetup_id=meetup_id,
+        current_user_id=current_user_id,
+        filename=file.filename or "upload",
+        content_type=file.content_type or "",
+        file_bytes=file.file.read(),
+        caption=caption,
+    )
+    return _media_response(media)
+
+
+@router.delete("/{meetup_id}/media/{media_id}", status_code=204)
+def delete_media(
+    meetup_id: int,
+    media_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    media_service.delete_meetup_media(db, meetup_id, media_id, current_user_id)
 
 
 @router.delete("/{meetup_id}", status_code=204)

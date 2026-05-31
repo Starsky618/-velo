@@ -240,6 +240,7 @@ def delete_draft_meetup(db: Session, meetup_id: int, current_user_id: int) -> No
         for row in db.query(MeetupMedia.file_id).filter(MeetupMedia.meetup_id == meetup.id).all()
         if row.file_id
     ]
+    db.query(MeetupMedia).filter(MeetupMedia.meetup_id == meetup.id).delete(synchronize_session=False)
     db.delete(meetup)
     db.commit()
     # commit 后再删 storage（DB 是 source of truth）：删失败只记日志不阻塞用户，孤儿文件留定期清理 v2。
@@ -337,6 +338,17 @@ def count_participants(db: Session, meetup_id: int) -> int:
         .scalar()
         or 0
     )
+
+
+def get_first_media_file_id(db: Session, meetup_id: int) -> str | None:
+    """查约骑卡片首图，保证列表页和详情页看到同一张封面。"""
+    row = (
+        db.query(MeetupMedia.file_id)
+        .filter(MeetupMedia.meetup_id == meetup_id)
+        .order_by(MeetupMedia.seq.asc(), MeetupMedia.id.asc())
+        .first()
+    )
+    return row.file_id if row is not None else None
 
 
 def join_meetup(db: Session, meetup_id: int, current_user_id: int) -> dict:
