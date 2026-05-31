@@ -247,8 +247,10 @@ def delete_draft_meetup(db: Session, meetup_id: int, current_user_id: int) -> No
     for file_id in file_ids:
         try:
             _storage.delete(file_id)
-        except OSError as e:
-            logger.warning("删草稿清理媒体文件失败 file_id=%s: %s", file_id, e)
+        except Exception:
+            # 捕获范围和 media_service.delete_meetup_media 保持一致：storage 后端未来可能换云存储、
+            # 抛非 OSError 异常，但已 commit 的删除不该因清理失败而回滚，记 traceback 留排查。
+            logger.warning("删草稿清理媒体文件失败 file_id=%s", file_id, exc_info=True)
 
 
 def get_my_draft(db: Session, current_user_id: int) -> Meetup | None:
@@ -301,12 +303,19 @@ def list_meetups(
         )
         participants_count = {meetup_id: count for meetup_id, count in count_rows}
 
+        # 首图口径必须和详情页 get_first_media_file_id 完全一致（都取"现存序号最小那张"）。
+        # 不能用 seq==0 硬过滤：删掉首图后 seq=0 行不存在，列表页会变"无封面"而详情页仍有封面，
+        # 造成同一约骑两个样。按 (seq, id) 升序排，每个 meetup 第一条即首图。
         media_rows = (
             db.query(MeetupMedia.meetup_id, MeetupMedia.file_id)
-            .filter(MeetupMedia.meetup_id.in_(meetup_ids), MeetupMedia.seq == 0)
+            .filter(MeetupMedia.meetup_id.in_(meetup_ids))
+            .order_by(MeetupMedia.meetup_id, MeetupMedia.seq.asc(), MeetupMedia.id.asc())
             .all()
         )
-        first_media = {row.meetup_id: row.file_id for row in media_rows}
+        first_media = {}
+        for row in media_rows:
+            if row.meetup_id not in first_media:
+                first_media[row.meetup_id] = row.file_id
 
     return {
         "items": items,

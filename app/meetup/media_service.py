@@ -9,6 +9,7 @@ import html
 import logging
 
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.meetup.models import MeetupMedia
@@ -46,7 +47,10 @@ def upload_meetup_media(
     safe_caption = html.escape(caption) if caption else None
     if safe_caption is not None and len(safe_caption) > 128:
         raise HTTPException(status_code=422, detail="caption too long")
-    next_seq = db.query(MeetupMedia).filter(MeetupMedia.meetup_id == meetup.id).count()
+    # 序号取"现存最大序号 + 1"，不能用 count()：删掉中间某张后行数会和现存序号撞车
+    # （例如 seq=0,1,2 删 1 后 count()=2，与现存 seq=2 重复），导致排序错乱、换封面失效。
+    max_seq = db.query(func.max(MeetupMedia.seq)).filter(MeetupMedia.meetup_id == meetup.id).scalar()
+    next_seq = (max_seq + 1) if max_seq is not None else 0
     media = MeetupMedia(
         meetup_id=meetup.id,
         uploader_id=current_user_id,

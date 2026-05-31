@@ -315,3 +315,73 @@ def test_delete_draft_meetup_cleans_media_storage(db, test_user, monkeypatch):
 
     assert db.query(MeetupMedia).filter_by(id=media_id).first() is None
     assert deleted == ["202605/draft.jpg"]
+
+
+def _fake_storage_factory(uploaded):
+    class FakeStorage:
+        def upload(self, file_bytes, filename):
+            fid = f"202605/img-{len(uploaded)}.jpg"
+            uploaded.append(fid)
+            return fid
+
+        def delete(self, file_id):
+            return True
+
+    return FakeStorage()
+
+
+def test_first_media_consistent_after_deleting_first(client, db, auth_header, test_user, monkeypatch):
+    # 删掉首图后，列表页和详情页必须仍返回同一张封面（现存序号最小那张），不能一个有一个无。
+    meetup = _open_meetup(db, test_user.id)
+    uploaded = []
+    monkeypatch.setattr("app.meetup.media_service._storage", _fake_storage_factory(uploaded))
+
+    media_ids = []
+    for _ in range(3):
+        res = client.post(
+            f"/api/meetups/{meetup.id}/media",
+            files={"file": ("c.jpg", b"x", "image/jpeg")},
+            headers=auth_header,
+        )
+        assert res.status_code == 200
+        media_ids.append(res.json()["id"])
+
+    # 删第一张（seq=0）
+    assert client.delete(f"/api/meetups/{meetup.id}/media/{media_ids[0]}", headers=auth_header).status_code == 204
+
+    list_res = client.get("/api/meetups", params={"status": "OPEN"})
+    detail_res = client.get(f"/api/meetups/{meetup.id}")
+    list_first = next(i for i in list_res.json()["items"] if i["id"] == meetup.id)["first_media_file_id"]
+    detail_first = detail_res.json()["first_media_file_id"]
+
+    assert list_first == detail_first
+    assert list_first == uploaded[1]  # 删了 img-0 后，首图应是现存序号最小的 img-1
+
+
+def test_seq_not_reused_after_deleting_middle_media(client, db, auth_header, test_user, monkeypatch):
+    # 删中间媒体后再传，新图序号必须是 max+1，不能用 count() 和现存序号撞车。
+    meetup = _draft(db, test_user.id)
+    uploaded = []
+    monkeypatch.setattr("app.meetup.media_service._storage", _fake_storage_factory(uploaded))
+
+    media_ids = []
+    for _ in range(3):
+        res = client.post(
+            f"/api/meetups/{meetup.id}/media",
+            files={"file": ("c.jpg", b"x", "image/jpeg")},
+            headers=auth_header,
+        )
+        media_ids.append(res.json()["id"])
+    # 此时 seq = 0,1,2；删中间 seq=1
+    assert client.delete(f"/api/meetups/{meetup.id}/media/{media_ids[1]}", headers=auth_header).status_code == 204
+
+    res = client.post(
+        f"/api/meetups/{meetup.id}/media",
+        files={"file": ("c.jpg", b"x", "image/jpeg")},
+        headers=auth_header,
+    )
+    new_seq = db.query(MeetupMedia).filter_by(id=res.json()["id"]).first().seq
+    assert new_seq == 3  # max(0,2)+1，不是 count()=2
+
+    seqs = [m.seq for m in db.query(MeetupMedia).filter_by(meetup_id=meetup.id).all()]
+    assert len(seqs) == len(set(seqs))  # 现存序号无重复
