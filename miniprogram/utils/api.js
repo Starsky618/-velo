@@ -343,6 +343,11 @@ module.exports = {
     return request('/api/meetups' + buildQuery(params || {}), 'GET')
   },
 
+  // 个人页"我的约骑"：role='created' 我发起的 / 'joined' 我加入的
+  getMyMeetups: function (role, params) {
+    return request('/api/meetups/mine' + buildQuery(Object.assign({ role: role }, params || {})), 'GET')
+  },
+
   getMeetupDetail: function (meetupId) {
     return request('/api/meetups/' + meetupId, 'GET')
   },

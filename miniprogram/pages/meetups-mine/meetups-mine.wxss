@@ -1,0 +1,131 @@
+page {
+  background: #f2f1f6;
+}
+
+.mine-page {
+  min-height: 100vh;
+  padding: 24rpx;
+  box-sizing: border-box;
+}
+
+/* 顶部两 tab：我发起的 / 我加入的 */
+.tabs {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+
+.tab {
+  flex: 1;
+  height: 72rpx;
+  line-height: 72rpx;
+  text-align: center;
+  border-radius: 16rpx;
+  background: #fff;
+  color: #6b7280;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.tab.active {
+  background: #111827;
+  color: #fff;
+}
+
+.state {
+  margin-top: 180rpx;
+  text-align: center;
+  color: #86868b;
+  font-size: 28rpx;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.meetup-card {
+  padding: 24rpx;
+  border-radius: 16rpx;
+  background: #fff;
+  box-shadow: 0 8rpx 24rpx rgba(17, 24, 39, 0.06);
+}
+
+.card-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.route-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 32rpx;
+  line-height: 42rpx;
+  font-weight: 800;
+  color: #111827;
+}
+
+/* 状态药丸：开放玫红 / 草稿·已取消灰 / 已完成蓝 */
+.status-tag {
+  flex: 0 0 auto;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  line-height: 32rpx;
+  font-weight: 700;
+}
+
+.status-OPEN {
+  background: #fee2e2;
+  color: #ff2d55;
+}
+
+.status-DRAFT {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.status-CANCELLED {
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+
+.status-COMPLETED {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.time {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #ff2d55;
+  font-weight: 700;
+}
+
+.meeting {
+  margin-top: 10rpx;
+  font-size: 26rpx;
+  line-height: 36rpx;
+  color: #374151;
+}
+
+.metrics {
+  display: flex;
+  gap: 12rpx;
+  margin-top: 20rpx;
+  font-size: 24rpx;
+  color: #6b7280;
+}
+
+.metrics text {
+  flex: 1;
+  min-width: 0;
+  padding: 12rpx 10rpx;
+  border-radius: 12rpx;
+  background: #f8fafc;
+  text-align: center;
+}

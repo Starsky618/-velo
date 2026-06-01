@@ -5,6 +5,8 @@
 输入/输出数据流：输入是 JWT 用户和 JSON 请求；输出是 `MeetupResponse` 或 `MeetupListResponse`。
 """
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy.orm import Session
 
@@ -114,6 +116,28 @@ def list_meetups(
 def get_my_draft(current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     meetup = service.get_my_draft(db, current_user_id)
     return _live_response(db, meetup, current_user_id=current_user_id) if meetup is not None else None
+
+
+@router.get("/mine", response_model=schemas.MeetupListResponse)
+def get_my_meetups(
+    role: Literal["created", "joined"] = Query("created"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # 个人页"我的约骑"：created=我发起的 / joined=我加入别人的。必须登录（看自己的约骑）。
+    # 注意路由顺序：本端点在 /{meetup_id} 之前注册，否则 "mine" 会被当成 meetup_id。
+    result = service.list_my_meetups(db, current_user_id, role, page=page, page_size=page_size)
+    items = [
+        _response(
+            meetup,
+            participants_count=result["participants_count"].get(meetup.id, 0),
+            first_media_file_id=result["first_media"].get(meetup.id),
+        )
+        for meetup in result["items"]
+    ]
+    return schemas.MeetupListResponse(items=items, total=result["total"], page=page, page_size=page_size)
 
 
 @router.get("/{meetup_id}", response_model=schemas.MeetupResponse)

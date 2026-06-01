@@ -115,9 +115,27 @@ def test_create_page_is_three_step_flow_and_uses_backend_state():
 
 def test_meetup_pages_have_no_dash_placeholder():
     # Tim 2026-05-15 永久规则：前端永不显示 "-" 占位符，字段缺失整块隐藏（wx:if）
-    for page in ("meetups-list", "meetup-detail", "meetup-create"):
+    for page in ("meetups-list", "meetup-detail", "meetup-create", "meetups-mine"):
         js = _read(MINI / "pages" / page / f"{page}.js")
         assert "'--'" not in js, f"{page}.js 不应有 '--' 占位符"
+
+
+def test_my_meetups_page_registered_and_wired():
+    # 个人页"我的约骑"：注册 + 四件套存在 + 两 tab + 个人页有入口
+    app_json = json.loads(_read(MINI / "app.json"))
+    assert "pages/meetups-mine/meetups-mine" in app_json["pages"]
+    for suffix in ("js", "wxml", "wxss", "json"):
+        assert (MINI / "pages" / "meetups-mine" / f"meetups-mine.{suffix}").exists()
+
+    js = _read(MINI / "pages" / "meetups-mine" / "meetups-mine.js")
+    wxml = _read(MINI / "pages" / "meetups-mine" / "meetups-mine.wxml")
+    assert "api.getMyMeetups" in js
+    assert "created" in js and "joined" in js
+    assert "我发起的" in wxml and "我加入的" in wxml
+
+    profile_js = _read(MINI / "pages" / "profile" / "profile.js")
+    assert "onTapMyMeetups" in profile_js
+    assert "meetups-mine" in profile_js
 
 
 def test_v1_out_of_scope_features_are_absent():

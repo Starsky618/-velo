@@ -219,6 +219,32 @@ def test_detail_exposes_creator_and_joined_flags(client, db, auth_header):
     assert guest_res.json()["has_joined"] is False
 
 
+def test_my_meetups_created_and_joined(client, db, auth_header):
+    # 个人页"我的约骑"：我发起的 vs 我加入的（后者排除自己发起的，避免重复）
+    seg1 = _segment(db)
+    mine_id = client.post("/api/meetups", json=_payload(seg1.id), headers=auth_header).json()["id"]
+    client.post(f"/api/meetups/{mine_id}/publish", headers=auth_header)
+
+    # 别人发起一个并发布，我去加入
+    other_header = _auth_header_for(db, "mine-test-other")
+    seg2 = _segment(db)
+    other_id = client.post("/api/meetups", json=_payload(seg2.id), headers=other_header).json()["id"]
+    client.post(f"/api/meetups/{other_id}/publish", headers=other_header)
+    client.post(f"/api/meetups/{other_id}/join", headers=auth_header)
+
+    # 我发起的：含自己创建的、不含别人的
+    created = client.get("/api/meetups/mine?role=created", headers=auth_header).json()
+    created_ids = [i["id"] for i in created["items"]]
+    assert mine_id in created_ids
+    assert other_id not in created_ids
+
+    # 我加入的：含我加入别人的、不含自己发起的（即使发起人 publish 自动占位也排除）
+    joined = client.get("/api/meetups/mine?role=joined", headers=auth_header).json()
+    joined_ids = [i["id"] for i in joined["items"]]
+    assert other_id in joined_ids
+    assert mine_id not in joined_ids
+
+
 def test_main_mounts_meetup_and_route_book_routers():
     from app.main import app
 

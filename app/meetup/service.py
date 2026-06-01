@@ -269,6 +269,44 @@ def get_my_draft(db: Session, current_user_id: int) -> Meetup | None:
     return db.query(Meetup).filter(Meetup.creator_id == current_user_id, Meetup.status == "DRAFT").first()
 
 
+def _assemble_list_result(db: Session, base, page: int, page_size: int) -> dict:
+    """分页 + 聚合人数/首图。公开列表 list_meetups 和"我的约骑"list_my_meetups 共用，
+    避免两套聚合逻辑漂移（人数走 GROUP BY 防 N+1；首图按 (seq,id) 取最小、和详情页同口径）。"""
+    total = base.count()
+    items = (
+        base.order_by(Meetup.start_time.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    meetup_ids = [meetup.id for meetup in items]
+    participants_count = {}
+    first_media = {}
+    if meetup_ids:
+        count_rows = (
+            db.query(MeetupParticipant.meetup_id, func.count(MeetupParticipant.id))
+            .filter(MeetupParticipant.meetup_id.in_(meetup_ids))
+            .group_by(MeetupParticipant.meetup_id)
+            .all()
+        )
+        participants_count = {meetup_id: count for meetup_id, count in count_rows}
+        media_rows = (
+            db.query(MeetupMedia.meetup_id, MeetupMedia.file_id)
+            .filter(MeetupMedia.meetup_id.in_(meetup_ids))
+            .order_by(MeetupMedia.meetup_id, MeetupMedia.seq.asc(), MeetupMedia.id.asc())
+            .all()
+        )
+        for row in media_rows:
+            if row.meetup_id not in first_media:
+                first_media[row.meetup_id] = row.file_id
+    return {
+        "items": items,
+        "total": total,
+        "participants_count": participants_count,
+        "first_media": first_media,
+    }
+
+
 def list_meetups(
     db: Session,
     status: str | None = None,
@@ -294,47 +332,24 @@ def list_meetups(
             raise HTTPException(status_code=422, detail="date_range 格式应为 '开始ISO,结束ISO'")
         base = base.filter(Meetup.start_time >= start_dt, Meetup.start_time <= end_dt)
 
-    total = base.count()
-    items = (
-        base.order_by(Meetup.start_time.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
-    meetup_ids = [meetup.id for meetup in items]
-    participants_count = {}
-    first_media = {}
+    return _assemble_list_result(db, base, page, page_size)
 
-    if meetup_ids:
-        # 用 SQL GROUP BY COUNT 聚合，不把全部 participant 行拉回内存（spec §6.1 R3-I6 N+1 修复模板）
-        count_rows = (
-            db.query(MeetupParticipant.meetup_id, func.count(MeetupParticipant.id))
-            .filter(MeetupParticipant.meetup_id.in_(meetup_ids))
-            .group_by(MeetupParticipant.meetup_id)
-            .all()
+
+def list_my_meetups(db: Session, current_user_id: int, role: str, page: int = 1, page_size: int = 20) -> dict:
+    """个人页"我的约骑"。
+    role=created：我发起的（含草稿/已取消，便于发起人管理全部）；
+    role=joined：我加入别人的（排除自己发起的——发起人 publish 会自动占位，否则会和"我发起的"重复）。"""
+    if role == "created":
+        base = db.query(Meetup).filter(Meetup.creator_id == current_user_id)
+    elif role == "joined":
+        base = (
+            db.query(Meetup)
+            .join(MeetupParticipant, MeetupParticipant.meetup_id == Meetup.id)
+            .filter(MeetupParticipant.user_id == current_user_id, Meetup.creator_id != current_user_id)
         )
-        participants_count = {meetup_id: count for meetup_id, count in count_rows}
-
-        # 首图口径必须和详情页 get_first_media_file_id 完全一致（都取"现存序号最小那张"）。
-        # 不能用 seq==0 硬过滤：删掉首图后 seq=0 行不存在，列表页会变"无封面"而详情页仍有封面，
-        # 造成同一约骑两个样。按 (seq, id) 升序排，每个 meetup 第一条即首图。
-        media_rows = (
-            db.query(MeetupMedia.meetup_id, MeetupMedia.file_id)
-            .filter(MeetupMedia.meetup_id.in_(meetup_ids))
-            .order_by(MeetupMedia.meetup_id, MeetupMedia.seq.asc(), MeetupMedia.id.asc())
-            .all()
-        )
-        first_media = {}
-        for row in media_rows:
-            if row.meetup_id not in first_media:
-                first_media[row.meetup_id] = row.file_id
-
-    return {
-        "items": items,
-        "total": total,
-        "participants_count": participants_count,
-        "first_media": first_media,
-    }
+    else:
+        raise HTTPException(status_code=422, detail="role 必须是 created 或 joined")
+    return _assemble_list_result(db, base, page, page_size)
 
 
 def get_meetup_detail(db: Session, meetup_id: int) -> Meetup:
