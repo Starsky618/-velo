@@ -114,21 +114,23 @@
               bindtouchcancel="onChartTouchEnd"></canvas>
     </view>
     <view class="metric-list">
-      <view class="metric-row">
+      <!-- 缺失整行隐藏，不显示 - 占位（!= null 防 truthiness：0 视为合法值仍显示） -->
+      <view class="metric-row" wx:if="{{activity.avg_speed != null}}">
         <text class="metric-label">平均速度</text>
-        <text class="metric-value">{{activity.avg_speed != null ? activity.avg_speed : '-'}}<text class="metric-unit">km/h</text></text>
+        <text class="metric-value">{{activity.avg_speed}}<text class="metric-unit">km/h</text></text>
       </view>
-      <view class="metric-row">
+      <view class="metric-row" wx:if="{{activity.max_speed != null}}">
         <text class="metric-label">最大速度</text>
-        <text class="metric-value">{{activity.max_speed != null ? activity.max_speed : '-'}}<text class="metric-unit">km/h</text></text>
+        <text class="metric-value">{{activity.max_speed}}<text class="metric-unit">km/h</text></text>
       </view>
-      <view class="metric-row">
+      <!-- movingTimeText 缺失时 JS 返 ''，整行隐藏 -->
+      <view class="metric-row" wx:if="{{movingTimeText}}">
         <text class="metric-label">移动时间</text>
         <text class="metric-value">{{movingTimeText}}</text>
       </view>
-      <view class="metric-row">
+      <view class="metric-row" wx:if="{{durationText}}">
         <text class="metric-label">全程耗时</text>
-        <text class="metric-value">{{durationText || '-'}}</text>
+        <text class="metric-value">{{durationText}}</text>
       </view>
     </view>
   </view>
@@ -152,9 +154,10 @@
         <text class="metric-label">平均功率</text>
         <text class="metric-value power">{{activity.avg_power}}<text class="metric-unit">W</text></text>
       </view>
-      <view class="metric-row">
+      <!-- 缺失整行隐藏，不显示 - 占位 -->
+      <view class="metric-row" wx:if="{{activity.max_power != null}}">
         <text class="metric-label">最大功率</text>
-        <text class="metric-value">{{activity.max_power != null ? activity.max_power : '-'}}<text class="metric-unit">W</text></text>
+        <text class="metric-value">{{activity.max_power}}<text class="metric-unit">W</text></text>
       </view>
       <view class="metric-row" wx:if="{{activity.power_per_kg}}">
         <text class="metric-label">W/kg</text>
@@ -218,9 +221,10 @@
         <text class="metric-label">平均心率</text>
         <text class="metric-value hr">{{activity.avg_hr}}<text class="metric-unit">bpm</text></text>
       </view>
-      <view class="metric-row">
+      <!-- 缺失整行隐藏，不显示 - 占位 -->
+      <view class="metric-row" wx:if="{{activity.max_hr != null}}">
         <text class="metric-label">最大心率</text>
-        <text class="metric-value">{{activity.max_hr != null ? activity.max_hr : '-'}}<text class="metric-unit">bpm</text></text>
+        <text class="metric-value">{{activity.max_hr}}<text class="metric-unit">bpm</text></text>
       </view>
     </view>
   </view>
@@ -265,12 +269,14 @@
         <text class="split-cell" wx:if="{{activity.avg_hr}}">心率</text>
         <text class="split-cell">爬升</text>
       </view>
+      <!-- 表格列固定，缺失值留空（不渲染 - 占位）；直接渲染原值能正确显示 0，
+           而 || '-' 会把 0 误显示成 '-' -->
       <view class="split-row" wx:for="{{activity.splits}}" wx:key="index">
         <text class="split-cell km">{{index + 1}}</text>
-        <text class="split-cell">{{item.avg_speed || '-'}}</text>
-        <text class="split-cell" wx:if="{{activity.avg_power}}">{{item.avg_power || '-'}}</text>
-        <text class="split-cell" wx:if="{{activity.avg_hr}}">{{item.avg_hr || '-'}}</text>
-        <text class="split-cell">{{item.elevation_gain || '-'}}</text>
+        <text class="split-cell">{{item.avg_speed}}</text>
+        <text class="split-cell" wx:if="{{activity.avg_power}}">{{item.avg_power}}</text>
+        <text class="split-cell" wx:if="{{activity.avg_hr}}">{{item.avg_hr}}</text>
+        <text class="split-cell">{{item.elevation_gain}}</text>
       </view>
     </view>
   </view>

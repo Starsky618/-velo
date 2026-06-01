@@ -68,11 +68,13 @@
         <text class="meta-value">{{f.km(segment.distance)}}</text>
         <text class="meta-label">公里</text>
       </view>
-      <view class="meta-item">
+      <!-- 缺失整块隐藏，不显示 - 占位。用 segment.X != null 判存在（不能用 elevationGainText 真值判：
+           平路爬升 = 0，Math.round(0)=0 是 falsy 会被误隐藏；0 是合法值，要显示"0 米爬升"）-->
+      <view class="meta-item" wx:if="{{segment.elevation_gain != null}}">
         <text class="meta-value">{{elevationGainText}}</text>
         <text class="meta-label">米爬升</text>
       </view>
-      <view class="meta-item">
+      <view class="meta-item" wx:if="{{segment.avg_gradient != null}}">
         <text class="meta-value">{{avgGradientText}}</text>
         <text class="meta-label">平均坡度</text>
       </view>
@@ -80,16 +82,14 @@
   </view>
 
   <!-- ============ 区块 2：AI 介绍（segment.description） ============ -->
-  <view class="card intro-card">
+  <!-- 无介绍时整张卡片不显示（不展示"暂无介绍"占位文案） -->
+  <view class="card intro-card" wx:if="{{segment.description}}">
     <text class="card-title">关于这条赛段</text>
-    <view wx:if="{{segment.description}}">
+    <view>
       <text class="intro-text {{introExpanded ? 'expanded' : 'collapsed'}}">{{segment.description}}</text>
       <view class="expand-btn" wx:if="{{shouldShowExpand}}" bindtap="toggleIntro">
         <text>{{introExpanded ? '收起' : '展开'}}</text>
       </view>
-    </view>
-    <view wx:else class="empty-mini">
-      <text class="placeholder-text">暂无介绍</text>
     </view>
   </view>
 

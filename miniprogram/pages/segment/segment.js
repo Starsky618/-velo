@@ -107,9 +107,8 @@ Page({
     // 区块 1：第一屏
     segment: null,
     cityLabel: '',
-    elevationGainText: '-',
-    avgGradientText: '-',
-    maxGradientText: '-',
+    elevationGainText: '',
+    avgGradientText: '',
     hasElevationProfile: false,  // applySegment 里按 segment.elevation_profile 决定 true/false
 
     // 区块 2：AI 介绍
@@ -271,16 +270,13 @@ Page({
 
     const cityLabel = getCityLabel(segment.city)
 
-    // 4 数字防御：null / undefined → '-'
+    // 数字防御：null / undefined → ''（缺失时 wxml 整块隐藏，不显示 - 占位）
     const elevationGainText = (segment.elevation_gain === null || segment.elevation_gain === undefined)
-      ? '-'
+      ? ''
       : Math.round(segment.elevation_gain)
     const avgGradientText = (segment.avg_gradient === null || segment.avg_gradient === undefined)
-      ? '-'
+      ? ''
       : segment.avg_gradient.toFixed(1) + '%'
-    const maxGradientText = (segment.max_gradient === null || segment.max_gradient === undefined)
-      ? '-'
-      : segment.max_gradient.toFixed(1) + '%'
 
     // AI 介绍展开收起判断（80 字以上才显示展开按钮）
     const desc = segment.description || ''
@@ -299,7 +295,6 @@ Page({
       cityLabel,
       elevationGainText,
       avgGradientText,
-      maxGradientText,
       shouldShowExpand,
       hasElevationProfile,
     }, () => {

@@ -38,7 +38,7 @@
       <text class="honor-rank {{item.rank === 1 ? 'kom-rank' : ''}}">#{{item.rank}}</text>
       <view class="honor-body">
         <text class="honor-name">{{item.segment_name}}</text>
-        <text class="honor-meta">{{item.timeText}} · {{item.speedText}}</text>
+        <text class="honor-meta">{{item.timeText}}<text wx:if="{{item.speedText}}"> · {{item.speedText}}</text></text>
       </view>
     </view>
   </view>

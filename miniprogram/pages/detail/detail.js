@@ -203,8 +203,8 @@ Page({
           // 2026-05-20 Tim 拍：所有"时长"显示统一移动时间语义；明细诊断区保留两值对照不动
           durationText: that.formatDuration(data.duration),
           headerTimeText: that.formatDuration(data.moving_time != null ? data.moving_time : data.duration),
-          // 老活动 moving_time 为 NULL 显示 "-"；用 != null 防 truthiness 陷阱（0 视为合法）
-          movingTimeText: data.moving_time != null ? that.formatDuration(data.moving_time) : '-',
+          // 老活动 moving_time 为 NULL 时返 ''，wxml 整行隐藏（不显示 - 占位）；用 != null 防 truthiness 陷阱（0 视为合法）
+          movingTimeText: data.moving_time != null ? that.formatDuration(data.moving_time) : '',
           dateText: that.formatDate(data.started_at || data.created_at),
           hasElevation: eleData.length > 0,
           maxElevation: formatNum(maxEle),

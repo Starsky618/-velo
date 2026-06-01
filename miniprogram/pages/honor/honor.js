@@ -60,7 +60,8 @@ Page({
       segment_name: h.segment_name || '未命名赛段',
       rank: h.rank,
       timeText: formatHMS(h.elapsed_time || 0),
-      speedText: h.avg_speed != null ? h.avg_speed.toFixed(1) + ' km/h' : '-',
+      // 缺失时返 ''，wxml 不拼接 "· "（不显示 - 占位）
+      speedText: h.avg_speed != null ? h.avg_speed.toFixed(1) + ' km/h' : '',
     }
   },
 
