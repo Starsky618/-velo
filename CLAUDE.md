@@ -176,7 +176,7 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 1. **严格按 spec 任务顺序**，不跳步、不并行有依赖任务
 2. **每任务单独 commit**，格式 `feat(模块): 任务X.X 简要描述`
 3. **TDD 红→绿（A 档新业务逻辑硬性）**：测试先行（红）→ 实现（绿）/ 测试者≠实现者 / **最后跑 pytest ≠ TDD**。详 `agent-collaboration.md §0.5 协议①`
-4. **模块单向依赖**：User ← Activity ← Segment ← Notification ← Strava
+4. **模块单向依赖**：User ← Activity ← Segment ← Notification ← Strava ← RouteBook ← Meetup（meetup 依赖 segment/route_book，正向）。**例外：2 处 spec 明确批准的反向 hook**（Tim 2026-05-28 拍方案 A / 约骑 spec §15.2 + §15.3 删除 SOP）——① `app/user/service.py` `delete_user` 函数内**延迟 import** meetup（删号级联清约骑）② `app/segment/router.py` 顶层 import meetup.models（赛段页 upcoming-meetups）。新增反向依赖仍禁止，这 2 处是已登记债
 5. **不做 spec 没要求的功能 / 顺手优化**
 6. **稳扎稳打有疑必停**：架构不清晰 / 自查发现隐患 / 信心不足 → 立即停，与 Starsky 讨论再动手。宁可多花一天讨论，不带隐患赶进度
 7. **独立判断**：方案过度设计 / 时机不对 / 性价比低 → 直接反驳给替代方案（详见 architect 信条 3）
@@ -296,6 +296,7 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 | 18 | **nginx + docker hostname-based proxy_pass 缓存 IP**（2026-05-06 admin H5 502 事故实证）| `proxy_pass http://api:8000` 用 hostname 时 nginx 启动时解析一次就缓存；api 容器任何重启（OOM 自愈 / 部署 / docker prune）拿到新 IP → admin-h5 nginx 仍连旧 IP → 502。被 LoginPage catch-all "token 无效或过期"误显示 → 排查 30 分钟走错路径 | `resolver 127.0.0.11 valid=10s ipv6=off`（docker 内置 DNS）+ `set $upstream_api http://api:8000; proxy_pass $upstream_api;`（变量化 → nginx 不缓存 / 每次连接前重查）。10 秒内自动恢复，无需手动 restart 容器。**配套**：前端错误文案禁用 catch-all / 必须按状态码分流（401 / 403 / 5xx / 网络）|
 | 19 | **第三方依赖激活状态 mock 测试不到 / 真用才发现"喇叭没插电源"**（2026-05-06 task-monitor-admin-h5 实证）| 监测探针单测全 mock httpx + 11 测试通过；生产 .env 里 `FEISHU_BOT_WEBHOOK` 是空（Tim 从没用过飞书）→ 探测真生效但 webhook 推送进 logger.warning"未配置跳过"分支 / 告警进垃圾桶。Mock 测了"agent 调用了什么"，没测"通道真激活了"  | 部署高风险第三方依赖（飞书 / 微信 / SMTP / Stripe / Strava webhook 等）必须**有意激活回归**：部署后 24h 内 owner 故意触发一次失败场景，确认告警 / 回调 / 推送真到达。把激活状态写进 deployment-diary 防遗忘 |
 | 20 | **Strava OAuth scope `activity:read` 不返回私密活动**（2026-05-11 重大事故实证）| velo OAuth 默认申请 `read,activity:read` → Strava API 对 visibility="Only You" 活动**一律静默过滤**（不报错 / 列表少一条）；用户改成"公开"后是否立刻同步**官方文档无承诺**（可能 Strava 后端缓存 / indexing lag）；事故中 agent **跳过 grep `scope=`** 直奔 webhook / scheduler / token / dedupe 5 层中间链路 debug 30+ 分钟 + 给出错误"事故"叙事吓崩用户 | OAuth URL `scope=read,activity:read_all`（read_all 含 activity:read + 私密活动 + privacy zone data，Strava 官方文档原话）；**切换 scope 后用户必须在小程序重新点"绑定 Strava"一次**（旧 token 不会自动升级 scope，Strava 强制重新授权流程）；改完代码两处：`app/strava/service.py` build_authorize_url 旧版 + v4 版都要改 |
+| 21 | **`with db.begin()` 在已 autobegin 的 session 上抛 InvalidRequestError**（2026-06-01 约骑 task7 delete_user 实证）| `SessionLocal` 是 `autocommit=False`（SQLAlchemy 2.0 autobegin 默认）。真实端点用 `Depends(get_db)` 注入 session 后，任何一次 query（如 `get_current_user` 的鉴权查询）就触发 autobegin；service 内再 `with db.begin()` 二次开启事务 → `InvalidRequestError: A transaction is already begun` → 500。测试若在调用前最后一步是 `commit()`（session 不在事务中）会**侥幸通过**，不代表生产可用 | service 函数统一用末尾单次 `db.commit()`（和项目所有其他 service 一致），**禁止 `with db.begin()`**；要测真实端点场景就先 query 触发 autobegin 再调函数 |
 
 > **活文档**：每踩新陷阱在这加一条（不要回 architect skill 加——那里只留跨栈通用 3 条）。
 

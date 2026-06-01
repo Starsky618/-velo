@@ -1,5 +1,24 @@
 # VELO 开发变更日志
 
+## 2026-06-01: 约骑模块 task1-9 实施 ship + 发起人取消 + 个人页约骑记录 ✅（Codex 写 + Claude 逐 task 异源审 + 部署生产分支）
+
+> **特点**：约骑 design/plans（5-29）落地。Codex Desktop 写 task1-9，Claude 逐 task 异源双审 + 修 bug + 部署到生产 `codex/meetup-v1-task1` 分支（**未合 main**）。
+
+### 实施 + 复审（task1-9）
+- task1 建表 / task2 路书 / task3 约骑生命周期 service / task4 约骑 API / task5 加入退出（FOR UPDATE 防超员）/ task6 媒体墙 / task7 cron 自动完成 + 删号 hook / task8 赛段页 upcoming-meetups / task9 小程序 3 页
+- **Claude 双审抓的 bug（Codex 写、Claude 修）**：task4 详情人数恒 0 / task5 错误码回归（共享门卫 CANCELLED→410 污染 delete/update）/ task6 删媒体后首图口径分裂 + 序号撞号 / task7 `delete_user` 用 `with db.begin()` 接端点必 500（autobegin / 见技术栈陷阱 #21）/ task9 时间输入文本框敲 ISO（改 date+time picker）+ `--` 占位符违规
+- codex 系统性盲区观察：单点逻辑/算法/安全扎实，但跨端点一致性、共享代码影响、事务边界反复漏（task4/5/6/7 一致）
+
+### Tim 真用回归驱动的后续
+- **距离单位 bug**：约骑快照抄赛段距离漏 米→km，详情显示"10049 km"（实为 10km）。出口 `round(/1000, 2)`
+- **约骑 tab 入口**：task9 漏了 tabBar，补底部"约骑"tab（占位 leaderboard 图标**待换**）+ 列表 onShow 刷新
+- **发起人取消 + 详情角色按钮**：详情接口加 is_creator/has_joined（可选登录）+ 前端按身份显示 取消/退出/加入（保留出发前 30min 截止）
+- **个人页"我的约骑"**：profile 入口 + 两 tab（我发起的含草稿 / 我加入的排除自己发起）+ 后端 `GET /api/meetups/mine`
+
+### 部署
+- 服务器切 `codex/meetup-v1-task1` 分支部署（**不合 main**）+ alembic 建约骑 4 表 + rebuild api/scheduler + curl 验证。**反代是 caddy 不是 nginx**
+- 遗留 → `docs/tech-debt.md`（format 函数 3 页复制 / 正式约骑图标 / caddy 上传大小限制 / 删号端点接通 / 架构·数据流 guide 待补约骑章节）
+
 ## 2026-05-29: 约骑模块 brainstorm + spec v1.8 + plans 4712 行 ship gate ✅（代码未实施）
 
 > **特点**：仅 brainstorm + spec + plans 三阶段完成 / **代码待 Codex Desktop 一气呵成实施 task 1-10**。velo v5 社交主线模块设计 + 元层 reviewer 工程升级。
