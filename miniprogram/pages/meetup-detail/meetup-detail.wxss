@@ -112,21 +112,19 @@ page {
   color: #374151;
 }
 
+/* 底部只显示一个按钮（按身份：取消/退出/加入）或一行状态文案，单列全宽 */
 .actions {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16rpx;
   padding: 20rpx 24rpx calc(20rpx + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 -8rpx 24rpx rgba(17, 24, 39, 0.08);
 }
 
-.join,
-.leave {
+.actions button {
+  width: 100%;
   height: 82rpx;
   line-height: 82rpx;
   border-radius: 16rpx;
@@ -134,7 +132,9 @@ page {
   font-weight: 800;
 }
 
-.join {
+/* 加入和取消都用主色填充（取消是发起人的主操作）；退出是次操作用描边 */
+.join,
+.cancel {
   background: #ff2d55;
   color: #fff;
 }
@@ -143,4 +143,13 @@ page {
   background: #fff;
   color: #111827;
   border: 1rpx solid #d1d5db;
+}
+
+.status-hint {
+  height: 82rpx;
+  line-height: 82rpx;
+  text-align: center;
+  color: #86868b;
+  font-size: 28rpx;
+  font-weight: 700;
 }

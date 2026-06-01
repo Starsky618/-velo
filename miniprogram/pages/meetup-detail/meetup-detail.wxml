@@ -45,8 +45,10 @@
     </view>
 
     <view class="actions">
-      <button class="join" disabled="{{meetup.full || joining}}" bindtap="onTapJoin">{{meetup.full ? '已满员' : '加入'}}</button>
-      <button class="leave" disabled="{{joining}}" bindtap="onTapLeave">退出</button>
+      <button wx:if="{{meetup.canCancel}}" class="cancel" disabled="{{joining}}" bindtap="onTapCancel">取消约骑</button>
+      <button wx:elif="{{meetup.canLeave}}" class="leave" disabled="{{joining}}" bindtap="onTapLeave">退出</button>
+      <button wx:elif="{{meetup.canJoin}}" class="join" disabled="{{joining}}" bindtap="onTapJoin">加入</button>
+      <view wx:elif="{{meetup.statusHint}}" class="status-hint">{{meetup.statusHint}}</view>
     </view>
   </view>
 

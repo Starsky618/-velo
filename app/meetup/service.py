@@ -361,6 +361,17 @@ def count_participants(db: Session, meetup_id: int) -> int:
     )
 
 
+def is_participant(db: Session, meetup_id: int, user_id: int) -> bool:
+    """当前用户是否已加入该约骑（含发起人 publish 时自动占的位）。
+    详情接口用它告诉前端：该显示"退出"还是"加入"。"""
+    return (
+        db.query(MeetupParticipant.id)
+        .filter(MeetupParticipant.meetup_id == meetup_id, MeetupParticipant.user_id == user_id)
+        .first()
+        is not None
+    )
+
+
 def get_first_media_file_id(db: Session, meetup_id: int) -> str | None:
     """查约骑卡片首图，保证列表页和详情页看到同一张封面。"""
     row = (

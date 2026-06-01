@@ -81,6 +81,11 @@ def test_detail_page_joins_and_leaves_without_user_chat():
     assert "api.getMeetupDetail" in js
     assert "onTapJoin" in js
     assert "onTapLeave" in js
+    # 发起人取消：详情页按角色显示取消按钮（is_creator）+ 二次确认走 cancelMeetup
+    assert "onTapCancel" in js
+    assert "api.cancelMeetup" in js
+    assert "is_creator" in js
+    assert 'wx:if="{{meetup.canCancel}}"' in wxml
     assert "私信" not in wxml
     assert "评论" not in wxml
 

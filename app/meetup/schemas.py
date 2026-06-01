@@ -68,6 +68,10 @@ class MeetupResponse(BaseModel):
     description: str | None = None
     participants_count: int = 0
     first_media_file_id: str | None = None
+    # 当前请求者视角的两个标记：前端靠它决定详情页显示"取消/退出/加入"哪个按钮。
+    # 未登录（游客）时都为 False（详情仍可公开查看）。
+    is_creator: bool = False
+    has_joined: bool = False
     created_at: datetime | None = None
     cancelled_at: datetime | None = None
     completed_at: datetime | None = None

@@ -189,6 +189,36 @@ def test_cancel_returns_410_after_cutoff(client, db, auth_header):
     assert res.status_code == 410
 
 
+def test_detail_exposes_creator_and_joined_flags(client, db, auth_header):
+    # 详情要告诉前端"当前用户是不是发起人/加没加入"，前端才能显示对的按钮（取消/退出/加入）
+    segment = _segment(db)
+    meetup_id = client.post("/api/meetups", json=_payload(segment.id), headers=auth_header).json()["id"]
+    client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+
+    # 发起人视角：is_creator + has_joined（publish 自动把发起人占 1 个名额）都 True
+    creator_view = client.get(f"/api/meetups/{meetup_id}", headers=auth_header).json()
+    assert creator_view["is_creator"] is True
+    assert creator_view["has_joined"] is True
+
+    # 他人未加入视角：都 False
+    other_header = _auth_header_for(db, "detail-flags-other")
+    other_view = client.get(f"/api/meetups/{meetup_id}", headers=other_header).json()
+    assert other_view["is_creator"] is False
+    assert other_view["has_joined"] is False
+
+    # 他人加入后再看：has_joined 变 True（前端据此显示"退出"而非"加入"）
+    client.post(f"/api/meetups/{meetup_id}/join", headers=other_header)
+    joined_view = client.get(f"/api/meetups/{meetup_id}", headers=other_header).json()
+    assert joined_view["is_creator"] is False
+    assert joined_view["has_joined"] is True
+
+    # 游客（无 token）：详情仍可看（public 不变），标记都 False
+    guest_res = client.get(f"/api/meetups/{meetup_id}")
+    assert guest_res.status_code == 200
+    assert guest_res.json()["is_creator"] is False
+    assert guest_res.json()["has_joined"] is False
+
+
 def test_main_mounts_meetup_and_route_book_routers():
     from app.main import app
 

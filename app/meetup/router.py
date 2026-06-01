@@ -9,15 +9,22 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_optional_user
 from app.meetup import media_service, schemas, service
 
 
 router = APIRouter(prefix="/api/meetups", tags=["meetup"])
 
 
-def _response(meetup, participants_count=0, first_media_file_id=None) -> schemas.MeetupResponse:
-    """把 ORM 行翻译成 API 卡片，像把后台单据整理成前台可读票面。"""
+def _response(meetup, participants_count=0, first_media_file_id=None, current_user_id=None, db=None) -> schemas.MeetupResponse:
+    """把 ORM 行翻译成 API 卡片，像把后台单据整理成前台可读票面。
+
+    current_user_id + db：算当前请求者视角的 is_creator / has_joined（详情页角色按钮用）。
+    列表页不传（避免每条都查一次 has_joined 造成 N+1），默认都 False。"""
+    is_creator = current_user_id is not None and meetup.creator_id == current_user_id
+    has_joined = (
+        current_user_id is not None and db is not None and service.is_participant(db, meetup.id, current_user_id)
+    )
     return schemas.MeetupResponse(
         id=meetup.id,
         creator_id=meetup.creator_id,
@@ -37,6 +44,8 @@ def _response(meetup, participants_count=0, first_media_file_id=None) -> schemas
         description=meetup.description,
         participants_count=participants_count,
         first_media_file_id=first_media_file_id,
+        is_creator=is_creator,
+        has_joined=has_joined,
         created_at=meetup.created_at,
         cancelled_at=meetup.cancelled_at,
         completed_at=meetup.completed_at,
@@ -57,14 +66,17 @@ def _media_response(media) -> schemas.MeetupMediaResponse:
     )
 
 
-def _live_response(db: Session, meetup, participants_count=None) -> schemas.MeetupResponse:
-    """单条约骑响应统一查人数和首图，避免列表页、详情页、操作返回口径分裂。"""
+def _live_response(db: Session, meetup, participants_count=None, current_user_id=None) -> schemas.MeetupResponse:
+    """单条约骑响应统一查人数和首图，避免列表页、详情页、操作返回口径分裂。
+    current_user_id 透传给 _response 算角色标记（is_creator / has_joined）。"""
     if participants_count is None:
         participants_count = service.count_participants(db, meetup.id)
     return _response(
         meetup,
         participants_count=participants_count,
         first_media_file_id=service.get_first_media_file_id(db, meetup.id),
+        current_user_id=current_user_id,
+        db=db,
     )
 
 
@@ -101,13 +113,18 @@ def list_meetups(
 @router.get("/my-draft", response_model=schemas.MeetupResponse | None)
 def get_my_draft(current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     meetup = service.get_my_draft(db, current_user_id)
-    return _live_response(db, meetup) if meetup is not None else None
+    return _live_response(db, meetup, current_user_id=current_user_id) if meetup is not None else None
 
 
 @router.get("/{meetup_id}", response_model=schemas.MeetupResponse)
-def get_meetup(meetup_id: int, db: Session = Depends(get_db)):
+def get_meetup(
+    meetup_id: int,
+    current_user_id: int | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    # 详情仍 public（游客能看），但带 token 时算 is_creator/has_joined 给前端显示角色按钮
     meetup = service.get_meetup_detail(db, meetup_id)
-    return _live_response(db, meetup)
+    return _live_response(db, meetup, current_user_id=current_user_id)
 
 
 @router.post("", response_model=schemas.MeetupResponse)
@@ -128,7 +145,7 @@ def create_meetup(
         max_participants=req.max_participants,
         description=req.description,
     )
-    return _live_response(db, meetup, participants_count=0)
+    return _live_response(db, meetup, participants_count=0, current_user_id=current_user_id)
 
 
 @router.patch("/{meetup_id}", response_model=schemas.MeetupResponse)
@@ -139,31 +156,31 @@ def update_meetup(
     db: Session = Depends(get_db),
 ):
     changes = req.model_dump(exclude_unset=True)
-    return _live_response(db, service.update_meetup(db, meetup_id, current_user_id, **changes))
+    return _live_response(db, service.update_meetup(db, meetup_id, current_user_id, **changes), current_user_id=current_user_id)
 
 
 @router.post("/{meetup_id}/publish", response_model=schemas.MeetupResponse)
 def publish_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     meetup = service.publish_meetup(db, meetup_id, current_user_id)
-    return _live_response(db, meetup)
+    return _live_response(db, meetup, current_user_id=current_user_id)
 
 
 @router.post("/{meetup_id}/cancel", response_model=schemas.MeetupResponse)
 def cancel_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     meetup = service.cancel_meetup(db, meetup_id, current_user_id)
-    return _live_response(db, meetup)
+    return _live_response(db, meetup, current_user_id=current_user_id)
 
 
 @router.post("/{meetup_id}/join", response_model=schemas.MeetupResponse)
 def join_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     result = service.join_meetup(db, meetup_id, current_user_id)
-    return _live_response(db, result["meetup"], participants_count=result["participants_count"])
+    return _live_response(db, result["meetup"], participants_count=result["participants_count"], current_user_id=current_user_id)
 
 
 @router.delete("/{meetup_id}/leave", response_model=schemas.MeetupResponse)
 def leave_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     result = service.leave_meetup(db, meetup_id, current_user_id)
-    return _live_response(db, result["meetup"], participants_count=result["participants_count"])
+    return _live_response(db, result["meetup"], participants_count=result["participants_count"], current_user_id=current_user_id)
 
 
 @router.post("/{meetup_id}/media", response_model=schemas.MeetupMediaResponse)
