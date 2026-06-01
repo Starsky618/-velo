@@ -1,8 +1,8 @@
 # VELO 开发变更日志
 
-## 2026-06-01: 约骑模块 task1-9 实施 ship + 发起人取消 + 个人页约骑记录 ✅（Codex 写 + Claude 逐 task 异源审 + 部署生产分支）
+## 2026-06-01: 约骑模块 task1-9 实施 ship + 取消/个人页/照片墙 + 隐私修复 + Codex 异源审补审 ✅（已合 main + 部署生产）
 
-> **特点**：约骑 design/plans（5-29）落地。Codex Desktop 写 task1-9，Claude 逐 task 异源双审 + 修 bug + 部署到生产 `codex/meetup-v1-task1` 分支（**未合 main**）。
+> **特点**：约骑 design/plans（5-29）落地。Codex Desktop 写 task1-9，Claude 逐 task 异源双审 + 修 bug。后续补取消/个人页/照片墙（Claude 自写），**合 main 后补跑 Codex 异源审抓出 7 隐患并修**。现行 head `322510c`，生产已部署。
 
 ### 实施 + 复审（task1-9）
 - task1 建表 / task2 路书 / task3 约骑生命周期 service / task4 约骑 API / task5 加入退出（FOR UPDATE 防超员）/ task6 媒体墙 / task7 cron 自动完成 + 删号 hook / task8 赛段页 upcoming-meetups / task9 小程序 3 页
@@ -14,9 +14,22 @@
 - **约骑 tab 入口**：task9 漏了 tabBar，补底部"约骑"tab（占位 leaderboard 图标**待换**）+ 列表 onShow 刷新
 - **发起人取消 + 详情角色按钮**：详情接口加 is_creator/has_joined（可选登录）+ 前端按身份显示 取消/退出/加入（保留出发前 30min 截止）
 - **个人页"我的约骑"**：profile 入口 + 两 tab（我发起的含草稿 / 我加入的排除自己发起）+ 后端 `GET /api/meetups/mine`
+- **照片墙**：详情页展示/上传/删除 + caddy 静态服务 + body 55MB 限制
+
+### 隐私 Critical 修复（Codex 异源审抓 / Claude 双审漏）
+- caddy 原 `handle /uploads/*` 把整个 uploads 卷（混着所有人私密 GPX 轨迹）当静态文件公开 → 绕过隐私判断泄露轨迹。改 `handle /uploads/meetup_media/*`，照片存 `meetup_media/` 子目录与 GPX 隔离（`81d5d54`）
+
+### Codex 异源审补审（`322510c` / 补 CLAUDE.md 原则 8 漏跑的第三审）
+> 取消/个人页/照片墙是 Claude 自写仅 Claude 自审，漏了 Codex 异源第三审。补两路审 + 一轮复查，抓 7 issue：
+- **`/api/meetups/mine` is_creator/has_joined 永 False**（漏传 current_user_id）→ 个人页卡片按钮状态全错。按 role 批量置标记（无 N+1）
+- **media 上传孤儿文件**：storage 成功但 commit 失败无补偿删除（陷阱 #14）。加 try/except 补偿
+- **`_safe_path` startswith 同前缀绕过** → 改 commonpath；upload 加 subdir 白名单
+- 前端：照片墙加载失败静默吞（误显示"还没有照片"）/ uploadFile `JSON.parse` 未兜底致上传 loading 卡死 / meetups-mine 切 tab 时下拉刷新圈卡死（复查抓的回归）
+- 生产验证 `meetup_media` 0 行 → 隐私修复无老路径媒体，不需迁移
 
 ### 部署
-- 服务器切 `codex/meetup-v1-task1` 分支部署（**不合 main**）+ alembic 建约骑 4 表 + rebuild api/scheduler + curl 验证。**反代是 caddy 不是 nginx**
+- 合 main（`de7e21c` 起）+ alembic 建约骑 4 表 + `docker compose up -d --build` 全量 rebuild + curl 验证（list 200 / mine 401 / 根 GPX 404 不外泄）。**反代是 caddy 不是 nginx**
+- 遗留 → `docs/tech-debt.md`（format 函数 3 页复制 / 正式约骑图标 / 删号端点接通 / 架构·数据流 guide 待补约骑章节 / 真机图片需 https 域名）
 - 遗留 → `docs/tech-debt.md`（format 函数 3 页复制 / 正式约骑图标 / caddy 上传大小限制 / 删号端点接通 / 架构·数据流 guide 待补约骑章节）
 
 ## 2026-05-29: 约骑模块 brainstorm + spec v1.8 + plans 4712 行 ship gate ✅（代码未实施）

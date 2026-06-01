@@ -675,11 +675,11 @@ admin H5 草稿审核生产真用 / Tim 改稿 7 条 approved（segment_id 6/8/9
 
 ---
 
-## 🟡 P2：约骑媒体上传 caddy 无 body 大小限制（2026-06-01 约骑 task6）
+## 🟡 P2：约骑照片墙真机不可用——图片走 http 被微信拦（2026-06-01 Codex 异源审 I-1）
 
-媒体上传先 `file.file.read()` 整个读进内存才判大小，假称视频的 200MB 文件会先吃 200MB 内存。生产反代是 **caddy**（不是 nginx），未配 request body 上限。
+照片墙图片 URL 是 `http://114.132.190.245/uploads/meetup_media/...`。微信小程序**真机/发布环境**会拦 http 图片和上传请求（开发者工具不拦，所以本地看着正常）。照片墙在真机上图片加载不出来。
 
-**为什么不立即修**：100 用户 + creator-only 风险面小。修法：caddy 配 `request_body { max_size 55MB }`。部署约骑正式上线（合 main）前加。
+**为什么不立即修**：根因是全站还没 https 合法域名（域名备案未通过，整个 velo 真机都是这状态，不是约骑特有）。修法：备案通过后 baseUrl 换 https，caddy 自动签证书，`/uploads/meetup_media/*` 同步走 https。已加 `mediaError` 状态让加载失败显示"点此重试"而非静默空白。
 
 ---
 
