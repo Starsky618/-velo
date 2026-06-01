@@ -34,7 +34,10 @@ function toIso(dateStr, timeStr) {
 
 Page({
   data: {
-    steps: ['route', 'details', 'publish'],
+    // 四步向导：选路线 → 填详情 → 加照片 → 确认发布。
+    // 把"照片"插在 details 和 publish 之间，让发起人发布前就能给约骑配图，
+    // 而不是等发布后再回详情页补——发布即图文齐全，对围观者更有吸引力。
+    steps: ['route', 'details', 'media', 'publish'],
     currentStep: 'route',
     selectedSegmentId: null,
     selectedRouteBookId: null,
@@ -43,6 +46,14 @@ Page({
     segments: [],
     routeBooks: [],
     activities: [],
+    // meetupId：进入"照片"步骤时存出来的草稿 id。
+    // 为什么必须先有 id 才能加照片？因为上传接口是 /api/meetups/{id}/media，
+    // 照片必须挂在一条已存在的约骑记录上。所以照片这一步的前提就是"草稿已落库拿到 id"。
+    meetupId: null,
+    generatedRouteBookId: null, // "从骑行生成"时建出的路书 id 缓存：同一活动多次保存草稿复用同一条，不重复建（防孤儿路书）
+    savingDraft: false, // 存草稿进行中标记：防止 details→media 转场被连点两次重复建草稿
+    mediaList: [], // 照片墙：每项含 url（拼好的可显示地址）+ isVideo
+    mediaError: false, // 照片墙加载失败标记：true 时显示"加载失败"而非"还没有照片"，避免误导
     // picker 显示用的本地时间分量（出发默认明天此刻、结束默认 +3h，onLoad 初始化）
     startDate: '',
     startTime: '',
@@ -136,6 +147,8 @@ Page({
       selectedRouteBookId: type === 'route_book' ? id : null,
       selectedActivityId: type === 'activity' ? id : null,
       selectedRouteName: name,
+      // 换了路线选择 → 作废上次"从骑行生成"缓存的路书 id，否则改选别的活动还会复用旧路书（指错）
+      generatedRouteBookId: null,
     })
   },
 
@@ -178,16 +191,65 @@ Page({
         wx.showToast({ title: '结束时间要晚于出发', icon: 'none' })
         return
       }
+      // details → media 这一跳是关键：照片必须挂在已落库的约骑上，所以这里先把草稿存出来拿到 id。
+      // 存成功才放行进入"照片"步骤；存失败留在 details 让用户重试（saveDraft 内部已 toast）。
+      this.saveDraft()
+      return
+    }
+    if (this.data.currentStep === 'media') {
+      // 照片可选，不强制必须传，直接进发布确认页
       this.setData({ currentStep: 'publish' })
     }
   },
 
   prevStep: function () {
     if (this.data.currentStep === 'publish') {
+      this.setData({ currentStep: 'media' })
+    } else if (this.data.currentStep === 'media') {
       this.setData({ currentStep: 'details' })
     } else if (this.data.currentStep === 'details') {
       this.setData({ currentStep: 'route' })
     }
+  },
+
+  // 把当前表单存成草稿（或更新已有草稿），成功后进入"照片"步骤并回显已有照片。
+  // 设计要点：
+  // 1）首次进入：调 createOrUpdateDraft（内部已处理 409 draft_exists → 转 updateMeetup 复用旧草稿）。
+  // 2）已有 meetupId（用户从 media 退回 details 改了内容又前进）：直接 updateMeetup 复用同一条，
+  //    不再重复建，避免每来回一次就产生一条新草稿。
+  // 3）resolveRouteBookId：选的是"从骑行生成"时，要先把那条活动转成路书拿到 route_book_id。
+  saveDraft: function () {
+    var that = this
+    if (this.data.savingDraft) return // 防连点重复建
+    this.setData({ savingDraft: true })
+    wx.showLoading({ title: '保存中', mask: true })
+
+    this.resolveRouteBookId()
+      .then(function (routeBookId) {
+        var payload = Object.assign({}, that.data.form, {
+          segment_id: that.data.selectedSegmentId || null,
+          route_book_id: routeBookId || that.data.selectedRouteBookId || null,
+          max_participants: Number(that.data.form.max_participants),
+        })
+        // 已有草稿 id → 复用更新；否则建新草稿
+        if (that.data.meetupId) {
+          return api.updateMeetup(that.data.meetupId, payload)
+        }
+        return that.createOrUpdateDraft(payload)
+      })
+      .then(function (draft) {
+        // 进入照片步骤前先记下 id，再拉该草稿已有的照片（支持退回再进/复用旧草稿时回显）
+        that.setData({ meetupId: draft.id, currentStep: 'media' })
+        that.loadMedia()
+      })
+      .catch(function (err) {
+        // 存失败：不进入下一步，留在 details 让用户改了重试
+        wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' })
+      })
+      .finally(function () {
+        wx.hideLoading()
+        that.setData({ savingDraft: false })
+      })
   },
 
   updateField: function (event) {
@@ -217,20 +279,15 @@ Page({
   onPublish: function () {
     var that = this
     if (this.data.submitting) return
+    // 草稿已在进入"照片"步骤时建好，这里只需发布。
+    // 兜底：理论上走到 publish 必有 meetupId，缺失说明流程异常，直接报错不静默发空。
+    if (!this.data.meetupId) {
+      wx.showToast({ title: '草稿丢失，请退回重试', icon: 'none' })
+      return
+    }
     this.setData({ submitting: true })
 
-    this.resolveRouteBookId()
-      .then(function (routeBookId) {
-        var payload = Object.assign({}, that.data.form, {
-          segment_id: that.data.selectedSegmentId || null,
-          route_book_id: routeBookId || that.data.selectedRouteBookId || null,
-          max_participants: Number(that.data.form.max_participants),
-        })
-        return that.createOrUpdateDraft(payload)
-      })
-      .then(function (draft) {
-        return api.publishMeetup(draft.id)
-      })
+    api.publishMeetup(this.data.meetupId)
       .then(function (meetup) {
         wx.redirectTo({ url: '/pages/meetup-detail/meetup-detail?id=' + meetup.id })
       })
@@ -246,10 +303,91 @@ Page({
     if (!this.data.selectedActivityId) {
       return Promise.resolve(null)
     }
+    // 同一次"从骑行生成"已经建过路书就复用：否则用户从照片步退回改详情再前进，每次 saveDraft 都会
+    // 重新 POST /api/route-books 建一条新路书，旧的变孤儿留在"我的路书"里污染数据（Codex 异源审抓的回归）。
+    if (this.data.generatedRouteBookId) {
+      return Promise.resolve(this.data.generatedRouteBookId)
+    }
+    var that = this
     var name = this.data.selectedRouteName || '我的路线'
     return api.createRouteBookFromActivity(name, this.data.selectedActivityId)
       .then(function (routeBook) {
+        that.setData({ generatedRouteBookId: routeBook.id })
         return routeBook.id
       })
+  },
+
+  // —— 照片墙（镜像详情页逻辑：列表/上传/删除/预览）——
+  // 拉当前草稿的所有媒体，拼成可显示 URL（baseUrl + /uploads/ + file_id，caddy 静态服务）。
+  loadMedia: function () {
+    var that = this
+    if (!this.data.meetupId) return
+    api.getMeetupMedia(this.data.meetupId)
+      .then(function (list) {
+        var base = (getApp().globalData && getApp().globalData.baseUrl) || ''
+        that.setData({
+          mediaError: false,
+          mediaList: (list || []).map(function (m) {
+            return Object.assign({}, m, { url: base + '/uploads/' + m.file_id, isVideo: m.type === 'video' })
+          }),
+        })
+      })
+      .catch(function (err) {
+        // 加载失败不阻塞流程，但要让用户知道是"加载失败"而非"还没有照片"，避免误导（同详情页）
+        console.error('照片墙加载失败', err)
+        that.setData({ mediaError: true })
+      })
+  },
+
+  // 微信选图/视频 → 逐个上传到当前草稿 → 刷新照片墙。
+  // 用 Promise.all 并发上传，每个各自 catch 成 null（api.js 的 upload 已对 JSON.parse 做 try/catch
+  // 兜底，保证每个 Promise 一定 settle，不会卡死 loading）；只要有一个失败就提示"部分上传失败"。
+  onTapAddMedia: function () {
+    var that = this
+    if (!this.data.meetupId) return
+    wx.chooseMedia({
+      count: 9,
+      mediaType: ['image', 'video'],
+      success: function (res) {
+        wx.showLoading({ title: '上传中', mask: true })
+        var tasks = res.tempFiles.map(function (f) {
+          return api.uploadMeetupMedia(that.data.meetupId, f.tempFilePath).catch(function () { return null })
+        })
+        Promise.all(tasks)
+          .then(function (results) {
+            if (results.some(function (r) { return r === null })) {
+              wx.showToast({ title: '部分上传失败', icon: 'none' })
+            }
+            that.loadMedia()
+          })
+          .finally(function () {
+            wx.hideLoading()
+          })
+      },
+    })
+  },
+
+  onTapDeleteMedia: function (event) {
+    var that = this
+    var mediaId = event.currentTarget.dataset.id
+    wx.showModal({
+      title: '删除',
+      content: '删除这张照片/视频？',
+      success: function (modal) {
+        if (!modal.confirm) return
+        api.deleteMeetupMedia(that.data.meetupId, mediaId)
+          .then(function () { that.loadMedia() })
+          .catch(function (err) { wx.showToast({ title: (err && err.message) || '删除失败', icon: 'none' }) })
+      },
+    })
+  },
+
+  // 点图全屏预览（只在图片间预览，视频不进 previewImage）
+  onTapPreviewMedia: function (event) {
+    var url = event.currentTarget.dataset.url
+    var images = this.data.mediaList.filter(function (m) { return !m.isVideo }).map(function (m) { return m.url })
+    if (images.indexOf(url) >= 0) {
+      wx.previewImage({ current: url, urls: images })
+    }
   },
 })

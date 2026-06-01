@@ -2,6 +2,7 @@
   <view class="steps">
     <view class="{{currentStep === 'route' ? 'active' : ''}}">路线</view>
     <view class="{{currentStep === 'details' ? 'active' : ''}}">时间</view>
+    <view class="{{currentStep === 'media' ? 'active' : ''}}">照片</view>
     <view class="{{currentStep === 'publish' ? 'active' : ''}}">发布</view>
   </view>
 
@@ -68,7 +69,23 @@
     </view>
   </view>
 
-  <view wx:else class="panel summary">
+  <view wx:elif="{{currentStep === 'media'}}" class="panel">
+    <view class="media-head">
+      <text class="section-title">照片</text>
+      <text class="add-media" bindtap="onTapAddMedia">+ 加照片</text>
+    </view>
+    <view wx:if="{{mediaError}}" class="media-empty" bindtap="loadMedia">照片加载失败，点此重试</view>
+    <view wx:elif="{{mediaList.length === 0}}" class="media-empty">还没有照片，可选择性添加</view>
+    <view wx:else class="media-grid">
+      <view class="media-item" wx:for="{{mediaList}}" wx:key="id">
+        <video wx:if="{{item.isVideo}}" src="{{item.url}}" class="media-thumb"></video>
+        <image wx:else src="{{item.url}}" mode="aspectFill" class="media-thumb" data-url="{{item.url}}" bindtap="onTapPreviewMedia"></image>
+        <view class="media-del" data-id="{{item.id}}" catchtap="onTapDeleteMedia">×</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:elif="{{currentStep === 'publish'}}" class="panel summary">
     <view class="summary-title">{{selectedRouteName}}</view>
     <view class="summary-row">
       <text>出发</text>
