@@ -436,14 +436,22 @@ module.exports = {
           'Authorization': token ? 'Bearer ' + token : '',
         },
         success: function (res) {
+          // wx.uploadFile 返回的 data 是字符串，需手动 JSON.parse。但响应可能不是 JSON
+          // （反代返回 HTML 错误页 / 502 / 空 body）。裸 parse 抛错会让这个 Promise 既不 resolve
+          // 也不 reject → 永远 pending → 外层 Promise.all 卡死 → 上传 loading 永不关闭。必须包 try/catch
+          // 兜底，保证 Promise 一定 settle。
+          var data = null
+          try {
+            data = JSON.parse(res.data)
+          } catch (e) {
+            data = null
+          }
           if (res.statusCode >= 200 && res.statusCode < 300) {
-            // wx.uploadFile 返回的 data 是字符串，需要手动解析
-            resolve(JSON.parse(res.data))
+            resolve(data)
           } else {
-            var errData = JSON.parse(res.data || '{}')
             reject({
               code: res.statusCode,
-              message: errData.detail || '上传失败',
+              message: (data && data.detail) || '上传失败',
             })
           }
         },

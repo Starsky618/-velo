@@ -49,7 +49,8 @@
         <text class="section-title">照片墙</text>
         <text wx:if="{{meetup.is_creator}}" class="add-media" bindtap="onTapAddMedia">+ 加照片</text>
       </view>
-      <view wx:if="{{mediaList.length === 0}}" class="media-empty">还没有照片</view>
+      <view wx:if="{{mediaError}}" class="media-empty" bindtap="loadMedia">照片加载失败，点此重试</view>
+      <view wx:elif="{{mediaList.length === 0}}" class="media-empty">还没有照片</view>
       <view wx:else class="media-grid">
         <view class="media-item" wx:for="{{mediaList}}" wx:key="id">
           <video wx:if="{{item.isVideo}}" src="{{item.url}}" class="media-thumb"></video>

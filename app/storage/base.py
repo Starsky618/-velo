@@ -23,11 +23,14 @@ class StorageBackend(ABC):
     """
 
     @abstractmethod
-    def upload(self, file_bytes: bytes, filename: str) -> str:
+    def upload(self, file_bytes: bytes, filename: str, subdir: str = "") -> str:
         """
         上传文件。
-        参数：file_bytes 是文件内容（二进制），filename 是原始文件名。
-        返回：文件的唯一标识（本地实现返回相对路径，云存储返回 object key）。
+        参数：file_bytes 是文件内容（二进制），filename 是原始文件名，
+              subdir 是可选子目录（如约骑照片用 "meetup_media" 和私密 GPX 隔离开）。
+        返回：文件的唯一标识（本地实现返回相对路径含 subdir 前缀，云存储返回 object key）。
+
+        注意：将来换腾讯云 COS 实现时，subdir 隔离必须照样实现，否则约骑照片会和私密轨迹混在一起。
         """
         ...
 

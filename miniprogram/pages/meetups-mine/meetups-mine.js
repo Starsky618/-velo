@@ -88,8 +88,12 @@ Page({
         wx.showToast({ title: (err && err.message) || '加载失败', icon: 'none' })
       })
       .finally(function () {
-        that.setData({ loading: false })
+        // done()（停下拉刷新圈）必须无条件先调：否则下拉刷新期间切 tab，过期请求被下面的 guard
+        // 提前 return，stopPullDownRefresh 永不执行 → 刷新圈一直转（Codex 复查抓的回归）。
         if (done) done()
+        // loading 才是只有"当前 role"才该动的状态：过期请求别把新 tab 的 loading 提前置 false 闪空态。
+        if (that.data.role !== role) return
+        that.setData({ loading: false })
       })
   },
 

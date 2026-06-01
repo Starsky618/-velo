@@ -237,12 +237,22 @@ def test_my_meetups_created_and_joined(client, db, auth_header):
     created_ids = [i["id"] for i in created["items"]]
     assert mine_id in created_ids
     assert other_id not in created_ids
+    # created tab 每条都必须 is_creator=True，否则个人页卡片按钮状态全错（该显示"取消"却显示"加入"）。
+    # 之前 /mine 没把 current_user_id 传给响应组装函数，这两个标记永远 False，是 Codex 异源审抓到的 bug。
+    assert all(i["is_creator"] is True for i in created["items"])
+    # 锁死契约：created tab 只置 is_creator，has_joined 保持 False（发起人 UI 靠 is_creator 驱动）。
+    # 防止将来误把两个 flag 都置 True。
+    assert all(i["has_joined"] is False for i in created["items"])
 
     # 我加入的：含我加入别人的、不含自己发起的（即使发起人 publish 自动占位也排除）
     joined = client.get("/api/meetups/mine?role=joined", headers=auth_header).json()
     joined_ids = [i["id"] for i in joined["items"]]
     assert other_id in joined_ids
     assert mine_id not in joined_ids
+    # joined tab 每条都必须 has_joined=True（前端据此显示"退出"而非"加入"）
+    assert all(i["has_joined"] is True for i in joined["items"])
+    # 锁死契约：joined tab 只置 has_joined，is_creator 保持 False（这些都是别人发起的）
+    assert all(i["is_creator"] is False for i in joined["items"])
 
 
 def test_main_mounts_meetup_and_route_book_routers():

@@ -44,7 +44,6 @@ function decorateMeetup(meetup) {
     climbText: formatNumber(meetup.snapshot_climb, 'm'),
     paceText: paceText(meetup.pace_level),
     seatsText: count + '/' + max,
-    full: full,
     // 按身份显示唯一一个操作按钮：发起人→取消 / 已加入→退出 / 没加入且没满→加入
     canCancel: meetup.is_creator && isOpen && beforeCutoff,
     canLeave: !meetup.is_creator && meetup.has_joined && isOpen && beforeCutoff,
@@ -65,6 +64,7 @@ Page({
     loading: true,
     joining: false,
     mediaList: [], // 照片墙：每项含 url（拼好的可显示地址）+ isVideo
+    mediaError: false, // 照片墙加载失败标记：true 时显示"加载失败"而非"还没有照片"，避免误导
   },
 
   onLoad: function (options) {
@@ -166,13 +166,17 @@ Page({
       .then(function (list) {
         var base = (getApp().globalData && getApp().globalData.baseUrl) || ''
         that.setData({
+          mediaError: false,
           mediaList: (list || []).map(function (m) {
             return Object.assign({}, m, { url: base + '/uploads/' + m.file_id, isVideo: m.type === 'video' })
           }),
         })
       })
-      .catch(function () {
-        // 照片墙加载失败不阻塞详情主信息
+      .catch(function (err) {
+        // 加载失败不阻塞详情主信息，但必须让用户知道是"加载失败"而非"还没有照片"——
+        // 否则接口 401/500、图片域名没配 https 等任何失败都被吞成"没人发照片"，误导用户。
+        console.error('照片墙加载失败', err)
+        that.setData({ mediaError: true })
       })
   },
 

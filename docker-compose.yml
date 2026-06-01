@@ -211,7 +211,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
-      - uploads:/srv/uploads:ro    # 只读挂 uploads，caddy 静态服务约骑照片墙（/uploads/*）
+      - uploads:/srv/uploads:ro    # 只读挂 uploads；caddy 只静态服务 /uploads/meetup_media/* 子目录（绝不开整个 /uploads/*——根里混着私密 GPX 轨迹）
     depends_on:
       - api
 

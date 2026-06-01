@@ -137,6 +137,15 @@ def get_my_meetups(
         )
         for meetup in result["items"]
     ]
+    # "我的约骑"两个 tab 的角色是确定的：created tab 每条都是我发起的、joined tab 每条都是我加入别人的
+    # （见 service.list_my_meetups 的过滤条件）。按 role 批量置标记，省掉逐条查 has_joined 的 N+1，
+    # 也修掉了之前没传 current_user_id 给 _response 导致 is_creator/has_joined 永远 False、
+    # 个人页卡片按钮状态全错的 bug（该显示"取消/退出"却显示"加入"）。
+    for item in items:
+        if role == "created":
+            item.is_creator = True
+        else:
+            item.has_joined = True
     return schemas.MeetupListResponse(items=items, total=result["total"], page=page, page_size=page_size)
 
 

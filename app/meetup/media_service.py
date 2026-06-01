@@ -83,7 +83,17 @@ def upload_meetup_media(
         raise HTTPException(status_code=500, detail="media upload failed")
 
     media.file_id = file_id
-    db.commit()
+    # commit 可能因并发/约束失败。此时 storage 文件已落盘，若不补偿删除就成了"DB 无记录但磁盘有文件"
+    # 的孤儿文件（和 route_book 上传同口径 / 项目陷阱 #14：commit 前后的外部副作用必须有补偿路径）。
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        try:
+            _storage.delete(file_id)
+        except Exception:
+            logger.warning("孤儿媒体文件清理失败 file_id=%s", file_id, exc_info=True)
+        raise HTTPException(status_code=500, detail="media commit failed")
     db.refresh(media)
     return media
 

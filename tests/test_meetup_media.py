@@ -437,3 +437,54 @@ def test_localstorage_subdir_isolates_meetup_media(tmp_path, monkeypatch):
 
     assert media_id.startswith("meetup_media/")
     assert not gpx_id.startswith("meetup_media/")  # GPX 在根目录，caddy /uploads/meetup_media/* 服务不到它
+
+
+def test_localstorage_rejects_path_traversal(tmp_path, monkeypatch):
+    # I-4 修复（Codex 异源审）：subdir 不允许含路径分隔符 / .. / 绝对路径，file_id 也不能穿越，
+    # 防止把文件写到 / 读到 uploads 档案室外面。_safe_path 改用 commonpath 而非 startswith。
+    import pytest
+    import app.storage.local as local_mod
+
+    monkeypatch.setattr(local_mod.settings, "UPLOAD_DIR", str(tmp_path))
+    storage = local_mod.LocalStorage()
+
+    for bad in ["../evil", "a/b", "..", "/abs"]:
+        with pytest.raises(ValueError):
+            storage.upload(b"x", "x.jpg", subdir=bad)
+
+    with pytest.raises(ValueError):
+        storage.download("../../../etc/passwd")
+
+
+def test_upload_commit_failure_cleans_orphan_storage(db, test_user, monkeypatch):
+    # I-3 修复（Codex 异源审）：storage 写成功但 db.commit() 失败时，必须补偿删除文件，
+    # 否则留下"DB 无记录、磁盘有文件"的孤儿文件（陷阱 #14）。
+    import pytest
+    from fastapi import HTTPException
+    from app.meetup import media_service
+
+    meetup = _draft(db, test_user.id)
+    deleted = []
+
+    class FakeStorage:
+        def upload(self, file_bytes, filename, subdir=""):
+            return "meetup_media/202506/orphan.jpg"
+
+        def delete(self, file_id):
+            deleted.append(file_id)
+            return True
+
+    monkeypatch.setattr(media_service, "_storage", FakeStorage())
+
+    def boom():
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(db, "commit", boom)
+
+    with pytest.raises(HTTPException) as exc:
+        media_service.upload_meetup_media(
+            db, meetup.id, test_user.id, "x.jpg", "image/jpeg", b"jpg-bytes", None
+        )
+
+    assert exc.value.status_code == 500
+    assert deleted == ["meetup_media/202506/orphan.jpg"]  # 孤儿文件被补偿删除

@@ -42,7 +42,10 @@ class LocalStorage(StorageBackend):
         这个方法确保最终路径一定在档案室（UPLOAD_DIR）内部，出界就报错。
         """
         full = os.path.normpath(os.path.join(self.root, file_id))
-        if not full.startswith(self.root):
+        # 用 commonpath 而非 startswith 校验：startswith 会把 "/srv/uploads_evil" 误判成
+        # 在 "/srv/uploads" 内（同前缀目录绕过），commonpath 按路径分段比较，只有真正落在
+        # root 内部才通过，堵住这个潜在脚枪。
+        if os.path.commonpath([self.root, full]) != self.root:
             raise ValueError(f"非法文件路径: {file_id}")
         return full
 
@@ -58,6 +61,10 @@ class LocalStorage(StorageBackend):
         4. 保留原文件的扩展名（.gpx）
         5. 返回相对路径（含 subdir 前缀）作为文件标识，存入数据库
         """
+        # subdir 只允许简单目录名（防路径穿越）：当前调用方都硬编码（如 "meetup_media"），
+        # 但加白名单式校验，避免将来有人把用户输入透传进来后能写到 uploads 外面。
+        if subdir and (os.path.sep in subdir or (os.path.altsep and os.path.altsep in subdir) or ".." in subdir or os.path.isabs(subdir)):
+            raise ValueError(f"非法子目录: {subdir}")
         # 按年月归档，比如 2026年4月 → "202604"；subdir 非空时多一层隔离目录
         month_dir = datetime.now().strftime("%Y%m")
         rel_dir = os.path.join(subdir, month_dir) if subdir else month_dir
