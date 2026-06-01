@@ -5,9 +5,22 @@
 # 前置条件：域名 A 记录指向服务器 IP，服务器开放 80/443 端口。
 
 :80 {
+    # 上传体积上限：约骑媒体图 ≤5MB / 视频 ≤50MB，留余量 55MB。
+    # 在反代之前就拦超大请求，0 应用层内存消耗（防大文件先读进内存才被后端 413）。
+    request_body {
+        max_size 55MB
+    }
+
     # 赛段创建等管理工具（静态 HTML 文件）
     handle /tools/* {
         root * /app
+        file_server
+    }
+
+    # 用户上传媒体静态服务（约骑照片墙）：file_id 是 uuid 不可猜 + 内容本就公开（约骑详情 public）。
+    # caddy 容器挂 uploads volume 到 /srv/uploads，所以 /uploads/202605/x.jpg → /srv/uploads/202605/x.jpg
+    handle /uploads/* {
+        root * /srv
         file_server
     }
 

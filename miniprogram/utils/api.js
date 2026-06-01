@@ -352,6 +352,19 @@ module.exports = {
     return request('/api/meetups/' + meetupId, 'GET')
   },
 
+  // 约骑照片墙：列表（public）/ 上传（creator，走 wx.uploadFile multipart）/ 删除（creator 或上传者）
+  getMeetupMedia: function (meetupId) {
+    return request('/api/meetups/' + meetupId + '/media', 'GET')
+  },
+
+  uploadMeetupMedia: function (meetupId, filePath) {
+    return this.upload('/api/meetups/' + meetupId + '/media', filePath, 'file')
+  },
+
+  deleteMeetupMedia: function (meetupId, mediaId) {
+    return request('/api/meetups/' + meetupId + '/media/' + mediaId, 'DELETE')
+  },
+
   getMyMeetupDraft: function () {
     return request('/api/meetups/my-draft', 'GET')
   },

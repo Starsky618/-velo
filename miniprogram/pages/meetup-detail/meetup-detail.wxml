@@ -44,6 +44,21 @@
       <view class="description">{{meetup.description}}</view>
     </view>
 
+    <view class="section">
+      <view class="media-head">
+        <text class="section-title">照片墙</text>
+        <text wx:if="{{meetup.is_creator}}" class="add-media" bindtap="onTapAddMedia">+ 加照片</text>
+      </view>
+      <view wx:if="{{mediaList.length === 0}}" class="media-empty">还没有照片</view>
+      <view wx:else class="media-grid">
+        <view class="media-item" wx:for="{{mediaList}}" wx:key="id">
+          <video wx:if="{{item.isVideo}}" src="{{item.url}}" class="media-thumb"></video>
+          <image wx:else src="{{item.url}}" mode="aspectFill" class="media-thumb" data-url="{{item.url}}" bindtap="onTapPreviewMedia"></image>
+          <view wx:if="{{meetup.is_creator}}" class="media-del" data-id="{{item.id}}" catchtap="onTapDeleteMedia">×</view>
+        </view>
+      </view>
+    </view>
+
     <view class="actions">
       <button wx:if="{{meetup.canCancel}}" class="cancel" disabled="{{joining}}" bindtap="onTapCancel">取消约骑</button>
       <button wx:elif="{{meetup.canLeave}}" class="leave" disabled="{{joining}}" bindtap="onTapLeave">退出</button>

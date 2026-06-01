@@ -207,6 +207,12 @@ def leave_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user
     return _live_response(db, result["meetup"], participants_count=result["participants_count"], current_user_id=current_user_id)
 
 
+@router.get("/{meetup_id}/media", response_model=list[schemas.MeetupMediaResponse])
+def list_media(meetup_id: int, db: Session = Depends(get_db)):
+    # 照片墙数据源：public（详情页所有人能看约骑照片/视频），按 seq 升序
+    return [_media_response(m) for m in media_service.list_meetup_media(db, meetup_id)]
+
+
 @router.post("/{meetup_id}/media", response_model=schemas.MeetupMediaResponse)
 def upload_media(
     meetup_id: int,

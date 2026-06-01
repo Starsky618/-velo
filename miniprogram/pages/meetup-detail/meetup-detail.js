@@ -64,6 +64,7 @@ Page({
     meetup: null,
     loading: true,
     joining: false,
+    mediaList: [], // 照片墙：每项含 url（拼好的可显示地址）+ isVideo
   },
 
   onLoad: function (options) {
@@ -84,6 +85,7 @@ Page({
     api.getMeetupDetail(this.data.meetupId)
       .then(function (res) {
         that.setData({ meetup: decorateMeetup(res) })
+        that.loadMedia()
       })
       .catch(function (err) {
         wx.showToast({ title: err.message || '加载失败', icon: 'none' })
@@ -155,5 +157,71 @@ Page({
           })
       },
     })
+  },
+
+  // 照片墙：拉所有媒体，拼成可显示 URL（baseUrl + /uploads/ + file_id，caddy 静态服务）
+  loadMedia: function () {
+    var that = this
+    api.getMeetupMedia(this.data.meetupId)
+      .then(function (list) {
+        var base = (getApp().globalData && getApp().globalData.baseUrl) || ''
+        that.setData({
+          mediaList: (list || []).map(function (m) {
+            return Object.assign({}, m, { url: base + '/uploads/' + m.file_id, isVideo: m.type === 'video' })
+          }),
+        })
+      })
+      .catch(function () {
+        // 照片墙加载失败不阻塞详情主信息
+      })
+  },
+
+  // 仅 creator：微信选图/视频 → 逐个上传 → 刷新照片墙
+  onTapAddMedia: function () {
+    var that = this
+    wx.chooseMedia({
+      count: 9,
+      mediaType: ['image', 'video'],
+      success: function (res) {
+        wx.showLoading({ title: '上传中', mask: true })
+        var tasks = res.tempFiles.map(function (f) {
+          return api.uploadMeetupMedia(that.data.meetupId, f.tempFilePath).catch(function () { return null })
+        })
+        Promise.all(tasks)
+          .then(function (results) {
+            if (results.some(function (r) { return r === null })) {
+              wx.showToast({ title: '部分上传失败', icon: 'none' })
+            }
+            that.loadMedia()
+          })
+          .finally(function () {
+            wx.hideLoading()
+          })
+      },
+    })
+  },
+
+  onTapDeleteMedia: function (event) {
+    var that = this
+    var mediaId = event.currentTarget.dataset.id
+    wx.showModal({
+      title: '删除',
+      content: '删除这张照片/视频？',
+      success: function (modal) {
+        if (!modal.confirm) return
+        api.deleteMeetupMedia(that.data.meetupId, mediaId)
+          .then(function () { that.loadMedia() })
+          .catch(function (err) { wx.showToast({ title: (err && err.message) || '删除失败', icon: 'none' }) })
+      },
+    })
+  },
+
+  // 点图全屏预览（只在图片间预览，视频不进 previewImage）
+  onTapPreviewMedia: function (event) {
+    var url = event.currentTarget.dataset.url
+    var images = this.data.mediaList.filter(function (m) { return !m.isVideo }).map(function (m) { return m.url })
+    if (images.indexOf(url) >= 0) {
+      wx.previewImage({ current: url, urls: images })
+    }
   },
 })

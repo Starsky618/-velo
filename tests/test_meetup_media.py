@@ -385,3 +385,40 @@ def test_seq_not_reused_after_deleting_middle_media(client, db, auth_header, tes
 
     seqs = [m.seq for m in db.query(MeetupMedia).filter_by(meetup_id=meetup.id).all()]
     assert len(seqs) == len(set(seqs))  # 现存序号无重复
+
+
+def test_list_meetup_media_returns_all_ordered_public(client, db, test_user):
+    # 照片墙数据源：GET media 返回该约骑所有媒体，按 seq 升序，public（无需登录、详情页所有人能看）
+    meetup = _draft(db, test_user.id)
+    for i in range(3):
+        db.add(MeetupMedia(meetup_id=meetup.id, uploader_id=test_user.id, type="image", file_id=f"202606/p{i}.jpg", seq=i))
+    db.commit()
+
+    res = client.get(f"/api/meetups/{meetup.id}/media")  # 无 token
+
+    assert res.status_code == 200
+    items = res.json()
+    assert [m["file_id"] for m in items] == ["202606/p0.jpg", "202606/p1.jpg", "202606/p2.jpg"]
+    assert items[0]["type"] == "image"
+
+
+def test_upload_video_octet_stream_falls_back_by_extension(client, db, auth_header, test_user, monkeypatch):
+    # 微信 wx.uploadFile 传视频 content-type 常是 octet-stream，应按 .mp4 扩展名兜底放行不 415
+    meetup = _draft(db, test_user.id)
+
+    class FakeStorage:
+        def upload(self, file_bytes, filename):
+            assert filename.endswith(".mp4")
+            return "202606/v.mp4"
+
+    monkeypatch.setattr("app.meetup.media_service._storage", FakeStorage())
+
+    res = client.post(
+        f"/api/meetups/{meetup.id}/media",
+        data={},
+        files={"file": ("clip.mp4", b"video-bytes", "application/octet-stream")},
+        headers=auth_header,
+    )
+
+    assert res.status_code == 200
+    assert res.json()["type"] == "video"

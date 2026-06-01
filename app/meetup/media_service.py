@@ -38,6 +38,18 @@ def upload_meetup_media(
     caption: str | None,
 ) -> MeetupMedia:
     meetup = _load_and_authorize_meetup(db, meetup_id, current_user_id, require_creator=True)
+    # 微信 wx.uploadFile 上传视频时 content-type 常是 application/octet-stream 而非 video/mp4，
+    # 直接按白名单判会 415 让视频上传全失效。content-type 不在白名单时按文件扩展名兜底。
+    if content_type not in _MEDIA_RULES:
+        lower = filename.lower()
+        if lower.endswith(".mp4"):
+            content_type = "video/mp4"
+        elif lower.endswith((".jpg", ".jpeg")):
+            content_type = "image/jpeg"
+        elif lower.endswith(".png"):
+            content_type = "image/png"
+        elif lower.endswith(".webp"):
+            content_type = "image/webp"
     if content_type not in _MEDIA_RULES:
         raise HTTPException(status_code=415, detail="unsupported media type")
     media_type, max_size, ext = _MEDIA_RULES[content_type]
@@ -90,3 +102,13 @@ def delete_meetup_media(db: Session, meetup_id: int, media_id: int, current_user
         _storage.delete(file_id)
     except Exception:
         logger.warning("meetup media storage delete failed file_id=%s", file_id, exc_info=True)
+
+
+def list_meetup_media(db: Session, meetup_id: int) -> list:
+    """照片墙数据源：返回约骑所有媒体，按 (seq, id) 升序——和首图口径一致（首图即列表第一条）。"""
+    return (
+        db.query(MeetupMedia)
+        .filter(MeetupMedia.meetup_id == meetup_id)
+        .order_by(MeetupMedia.seq.asc(), MeetupMedia.id.asc())
+        .all()
+    )

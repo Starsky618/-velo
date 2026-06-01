@@ -86,6 +86,11 @@ def test_detail_page_joins_and_leaves_without_user_chat():
     assert "api.cancelMeetup" in js
     assert "is_creator" in js
     assert 'wx:if="{{meetup.canCancel}}"' in wxml
+    # 照片墙：creator 上传 + 列表展示 + 删除
+    assert "onTapAddMedia" in js
+    assert "api.getMeetupMedia" in js
+    assert "api.uploadMeetupMedia" in js
+    assert "照片墙" in wxml
     assert "私信" not in wxml
     assert "评论" not in wxml
 
