@@ -1,0 +1,155 @@
+page {
+  background: #f2f1f6;
+}
+
+.detail-page {
+  min-height: 100vh;
+  padding: 24rpx;
+  box-sizing: border-box;
+}
+
+.state {
+  margin-top: 220rpx;
+  text-align: center;
+  color: #86868b;
+  font-size: 28rpx;
+}
+
+.content {
+  padding-bottom: 148rpx;
+}
+
+.hero {
+  padding: 32rpx;
+  border-radius: 18rpx;
+  background: #111827;
+  color: #fff;
+}
+
+.route-name {
+  font-size: 42rpx;
+  line-height: 54rpx;
+  font-weight: 800;
+}
+
+.time {
+  margin-top: 18rpx;
+  font-size: 28rpx;
+  line-height: 38rpx;
+  color: #ffd6df;
+}
+
+.meeting {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  line-height: 36rpx;
+  color: #e5e7eb;
+}
+
+/* 用 flex 而非固定 4 列 grid：爬升缺失隐藏后，剩下 3 格仍能均分铺满、不留空列 */
+.metrics {
+  display: flex;
+  gap: 12rpx;
+  margin: 22rpx 0;
+}
+
+.metrics view {
+  flex: 1;
+  min-width: 0;
+  padding: 22rpx 10rpx;
+  border-radius: 16rpx;
+  background: #fff;
+  text-align: center;
+}
+
+.value,
+.label {
+  display: block;
+}
+
+.value {
+  font-size: 25rpx;
+  line-height: 34rpx;
+  font-weight: 800;
+  color: #111827;
+}
+
+.label {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  line-height: 30rpx;
+  color: #86868b;
+}
+
+.section {
+  margin-top: 22rpx;
+  padding: 26rpx;
+  border-radius: 16rpx;
+  background: #fff;
+}
+
+.section-title {
+  margin-bottom: 18rpx;
+  font-size: 30rpx;
+  line-height: 40rpx;
+  font-weight: 800;
+  color: #111827;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 12rpx 0;
+  font-size: 26rpx;
+  line-height: 36rpx;
+  color: #374151;
+}
+
+.description {
+  font-size: 27rpx;
+  line-height: 42rpx;
+  color: #374151;
+}
+
+/* 底部只显示一个按钮（按身份：取消/退出/加入）或一行状态文案，单列全宽 */
+.actions {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20rpx 24rpx calc(20rpx + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 -8rpx 24rpx rgba(17, 24, 39, 0.08);
+}
+
+.actions button {
+  width: 100%;
+  height: 82rpx;
+  line-height: 82rpx;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  font-weight: 800;
+}
+
+/* 加入和取消都用主色填充（取消是发起人的主操作）；退出是次操作用描边 */
+.join,
+.cancel {
+  background: #ff2d55;
+  color: #fff;
+}
+
+.leave {
+  background: #fff;
+  color: #111827;
+  border: 1rpx solid #d1d5db;
+}
+
+.status-hint {
+  height: 82rpx;
+  line-height: 82rpx;
+  text-align: center;
+  color: #86868b;
+  font-size: 28rpx;
+  font-weight: 700;
+}

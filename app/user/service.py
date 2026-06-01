@@ -48,3 +48,36 @@ from app.user.service_social import (  # noqa: F401 — 转导出
     invalidate_heatmap_cache,
     update_user_city,
 )
+
+
+def delete_user(db, user_id: int) -> None:
+    """删除用户前先收拾约骑生态：OPEN 取消，DRAFT 硬删，然后删用户本体。"""
+    from datetime import datetime, timezone
+
+    from app.meetup.models import Meetup
+    from app.meetup.service import _cleanup_meetup_storage, _delete_meetup_row_and_collect_files
+    from app.user.models import User
+
+    # 三步在同一事务内做完后一次性 commit 保证原子（cancel OPEN → 硬删 DRAFT → 删 user）。
+    # 不用 with db.begin()：真实注销端点注入的 session 已因身份查询触发 autobegin，
+    # 再 with db.begin() 二次开启事务会抛 InvalidRequestError 500；和项目其他 service 统一用末尾单次 db.commit()。
+    file_ids = []
+    open_meetups = db.query(Meetup).filter(Meetup.creator_id == user_id, Meetup.status == "OPEN").all()
+    for meetup in open_meetups:
+        meetup.status = "CANCELLED"
+        meetup.cancelled_at = datetime.now(timezone.utc)
+
+    draft_ids = [
+        row.id
+        for row in db.query(Meetup.id).filter(Meetup.creator_id == user_id, Meetup.status == "DRAFT").all()
+    ]
+    for meetup_id in draft_ids:
+        file_ids.extend(_delete_meetup_row_and_collect_files(db, meetup_id))
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is not None:
+        db.delete(user)
+
+    db.commit()
+    # commit 后再删物理文件（DB 是 source of truth）：删失败只记日志，不回滚已删的账号数据。
+    _cleanup_meetup_storage(file_ids)

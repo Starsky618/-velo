@@ -651,6 +651,54 @@ admin H5 草稿审核生产真用 / Tim 改稿 7 条 approved（segment_id 6/8/9
 
 ---
 
+## 🟢 P3：route_book file_upload 坐标无 isfinite/范围校验（2026-05-29 task2 Codex 异源审）
+
+`app/route_book/service.py` 的 `_route_payload_from_points` 用 f-string 拼 LINESTRING wkt，坐标来自 parser 原值搬运，只过滤了 None，没校验 NaN/Inf/经纬度越界。畸形坐标会生成畸形 WKT → 真 PG 写入时 500。
+
+**为什么不立即修**：GPX/FIT 是结构化文件，坐标畸形极罕见 + parser 上游已基本保证；100 用户量级零实际触发。修法草稿：入口 `math.isfinite` + lat∈[-90,90]/lon∈[-180,180] 过滤，过滤后 <2 有效点返回 422。
+
+---
+
+## 🟢 P3：route_book 列表无分页（2026-05-29 task2 Codex 异源审）
+
+`app/route_book/service.py` 的 `list_route_books` 直接 `.all()`，无 limit/offset，response 无 page/total（activity-candidates 已硬 limit 50）。spec §7 未要求分页，非 spec 违约。
+
+**为什么不立即修**：100 用户量级单用户路书数有限。修法：按项目约定 page+page_size（默认 20 / 最大 100）+ total。用户量上千再评估。
+
+---
+
+## 🟡 P2：约骑删号端点未接通（2026-06-01 约骑 task7）
+
+`app/user/service.py:delete_user` hook 已实现（cancel OPEN + 硬删 DRAFT 清 storage + 删 user），但**全项目无调用方**——没有注销 API。spec §15.2 标"待建"。
+
+**为什么不立即修**：当前无注销入口，hook 为未来接端点准备。注意 delete_user 已修对事务（用末尾 `db.commit()` 不用 `with db.begin()`，见技术栈陷阱 #21），接端点时直接调即可。
+
+---
+
+## 🟡 P2：约骑媒体上传 caddy 无 body 大小限制（2026-06-01 约骑 task6）
+
+媒体上传先 `file.file.read()` 整个读进内存才判大小，假称视频的 200MB 文件会先吃 200MB 内存。生产反代是 **caddy**（不是 nginx），未配 request body 上限。
+
+**为什么不立即修**：100 用户 + creator-only 风险面小。修法：caddy 配 `request_body { max_size 55MB }`。部署约骑正式上线（合 main）前加。
+
+---
+
+## 🟢 P3：约骑 format 函数三页复制（2026-06-01 约骑 task9 + 个人页）
+
+`meetups-list` / `meetup-detail` / `meetups-mine` 三页的 formatDistance / formatTime / paceText 等逐字复制。
+
+**为什么不立即修**：抽 `utils/meetup-format.js` 共享要改 3 页（已验证代码有回归风险），性价比一般。下次碰约骑前端顺手抽。
+
+---
+
+## 🟢 P3：约骑正式图标 + 架构/数据流 guide 待补约骑章节（2026-06-01）
+
+① 约骑底部 tab 用 leaderboard 占位图标，待 Tim 出正式 `meetup.png`+`meetup-active.png`（81×81，灰/玫红）换上。② `docs/architecture-guide.md` + `docs/data-flow-guide.md` 未含约骑模块（4 表 + 17 端点 + 2 处反向 hook），黑盒化债。
+
+**为什么不立即修**：图标需 Tim 出素材；guide 约骑章节是大块文档撰写，合 main 后单独派 subagent 补（防黑盒化收尾）。
+
+---
+
 ## 清理节奏
 
 > 每期 10-20% 时间处理 P1，P2 评估性价比再决定。

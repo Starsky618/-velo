@@ -14,12 +14,15 @@ def _read(path: Path) -> str:
 
 
 def test_training_calendar_still_registered_after_distribution_page_added():
-    """训练日历仍注册；Sprint 11 新训练结构页追加到末尾。"""
+    """训练日历仍注册；训练结构页保留在约骑页之前。"""
     app_json = json.loads(_read(MINI / "app.json"))
 
     assert app_json["pages"][0] == "pages/home/home"
     assert "pages/training-calendar/training-calendar" in app_json["pages"]
-    assert app_json["pages"][-1] == "pages/training-distribution/training-distribution"
+    pages = app_json["pages"]
+    assert "pages/training-distribution/training-distribution" in pages
+    assert pages.index("pages/training-calendar/training-calendar") < pages.index("pages/training-distribution/training-distribution")
+    assert pages.index("pages/training-distribution/training-distribution") < pages.index("pages/meetups-list/meetups-list")
 
 
 def test_profile_entry_is_always_visible_and_navigates_to_training_calendar():

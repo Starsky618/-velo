@@ -109,6 +109,14 @@
        组件 self-contained / 自己调 GET /api/user/me/heatmap + 用 <map> 渲染 polylines / 不需要 profile 传数据 -->
   <heatmap-card />
 
+  <view class="profile-action-card" bindtap="onTapMyMeetups">
+    <view class="action-main">
+      <text class="action-title">我的约骑</text>
+      <text class="action-subtitle">我发起的和我加入的骑行</text>
+    </view>
+    <text class="action-arrow">›</text>
+  </view>
+
   <view class="profile-action-card" bindtap="onTapHonor">
     <view class="action-main">
       <text class="action-title">我的荣誉</text>

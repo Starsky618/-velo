@@ -19,6 +19,7 @@ Strava 导入调度器——常驻进程，每 30s tick 一次。
 import logging
 import time
 
+from app.meetup.cron import run_meetup_complete_tick
 from app.strava.import_scheduler import run_import_tick
 
 
@@ -34,9 +35,11 @@ logger = logging.getLogger(__name__)
 # 比 30s tick 提速 ×2（30 条活动 15→7.5 分钟）/ 配合前端 importing 状态卡片让等待感知消失。
 # Tim 2026-05-06 真用回归发现 30s tick 在生产体验不可接受 / Q1 改动。
 _TICK_INTERVAL_SECONDS = 15
+_meetup_tick_counter = 0
 
 
 def main():
+    global _meetup_tick_counter
     logger.info("Strava scheduler 启动（tick 间隔 %ds）", _TICK_INTERVAL_SECONDS)
 
     while True:
@@ -46,6 +49,16 @@ def main():
             # 关键纪律：任何异常都不能让循环退出
             # logger.exception 会自动打印完整 traceback，便于诊断
             logger.exception("tick 执行失败")
+
+        try:
+            _meetup_tick_counter += 1
+            if _meetup_tick_counter >= 20:
+                run_meetup_complete_tick()
+                _meetup_tick_counter = 0
+        except Exception:
+            # meetup tick 和 Strava tick 互不拖累：约骑收尾失败不能让导入停摆。
+            logger.exception("meetup tick 失败")
+            _meetup_tick_counter = 0
 
         time.sleep(_TICK_INTERVAL_SECONDS)
 

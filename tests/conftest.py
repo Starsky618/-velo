@@ -242,6 +242,71 @@ _segment_ai_drafts_table = Table(
     Column("updated_at", DateTime(timezone=True)),
 )
 
+_route_books_table = Table(
+    "route_books",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("creator_id", Integer),
+    Column("name", String(128), nullable=False),
+    Column("distance", Float, nullable=False),
+    Column("climb", Float),
+    Column("reference_line", Text),
+    Column("file_id", String(512)),
+    Column("file_type", String(8)),
+    Column("source", String(32), nullable=False),
+    Column("source_activity_id", Integer),
+    Column("city", String(32), nullable=False, default="unknown"),
+    Column("created_at", DateTime(timezone=True)),
+)
+
+_meetups_table = Table(
+    "meetups",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("creator_id", Integer),
+    Column("status", String(16), nullable=False, default="DRAFT"),
+    Column("segment_id", Integer),
+    Column("route_book_id", Integer),
+    Column("snapshot_route_name", String(128), nullable=False),
+    Column("snapshot_distance", Float, nullable=False),
+    Column("snapshot_climb", Float),
+    Column("snapshot_city", String(32), nullable=False, default="unknown"),
+    Column("start_time", DateTime(timezone=True), nullable=False),
+    Column("estimated_end_time", DateTime(timezone=True), nullable=False),
+    Column("meeting_point", String(128), nullable=False),
+    Column("pace_level", String(16), nullable=False),
+    Column("max_participants", Integer, nullable=False),
+    Column("description", Text),
+    Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
+    Column("cancelled_at", DateTime(timezone=True)),
+    Column("completed_at", DateTime(timezone=True)),
+)
+
+_meetup_participants_table = Table(
+    "meetup_participants",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("meetup_id", Integer, nullable=False),
+    Column("user_id", Integer, nullable=False),
+    Column("is_creator", Boolean, nullable=False, default=False),
+    Column("joined_at", DateTime(timezone=True)),
+    UniqueConstraint("meetup_id", "user_id", name="uq_meetup_participant_user"),
+)
+
+_meetup_media_table = Table(
+    "meetup_media",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("meetup_id", Integer, nullable=False),
+    Column("uploader_id", Integer),
+    Column("type", String(16), nullable=False),
+    Column("file_id", String(512), nullable=False),
+    Column("caption", String(128)),
+    Column("seq", Integer, nullable=False, default=0),
+    Column("created_at", DateTime(timezone=True)),
+)
+
 # 通知表（SQLite 简化版，省略外键和 CHECK 约束以避免 SQLite 兼容性问题）
 # 注意：必须保留 UniqueConstraint，否则幂等测试（IntegrityError 防重复）无法验证
 _notifications_table = Table(

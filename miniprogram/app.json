@@ -13,7 +13,11 @@
     "pages/segment-efforts/segment-efforts",
     "pages/strava-auth/strava-auth",
     "pages/training-calendar/training-calendar",
-    "pages/training-distribution/training-distribution"
+    "pages/training-distribution/training-distribution",
+    "pages/meetups-mine/meetups-mine",
+    "pages/meetups-list/meetups-list",
+    "pages/meetup-detail/meetup-detail",
+    "pages/meetup-create/meetup-create"
   ],
   "window": {
     "navigationBarBackgroundColor": "#ffffff",
@@ -45,6 +49,12 @@
         "text": "上传",
         "iconPath": "assets/icons/upload.png",
         "selectedIconPath": "assets/icons/upload-active.png"
+      },
+      {
+        "pagePath": "pages/meetups-list/meetups-list",
+        "text": "约骑",
+        "iconPath": "assets/icons/leaderboard.png",
+        "selectedIconPath": "assets/icons/leaderboard-active.png"
       },
       {
         "pagePath": "pages/profile/profile",

@@ -1,0 +1,96 @@
+<view class="create-page" data-current="{{currentStep}}">
+  <view class="steps">
+    <view class="{{currentStep === 'route' ? 'active' : ''}}">路线</view>
+    <view class="{{currentStep === 'details' ? 'active' : ''}}">时间</view>
+    <view class="{{currentStep === 'publish' ? 'active' : ''}}">发布</view>
+  </view>
+
+  <view wx:if="{{currentStep === 'route'}}" class="panel">
+    <view class="section-title">赛段</view>
+    <view class="route-card {{selectedSegmentId === item.id ? 'selected' : ''}}" wx:for="{{segments}}" wx:key="id" data-type="segment" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+      <view>{{item.displayName}}</view>
+      <text>{{item.displayMeta}}</text>
+    </view>
+
+    <view class="section-title">我的路书</view>
+    <view class="route-card {{selectedRouteBookId === item.id ? 'selected' : ''}}" wx:for="{{routeBooks}}" wx:key="id" data-type="route_book" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+      <view>{{item.displayName}}</view>
+      <text>{{item.displayMeta}}</text>
+    </view>
+
+    <view class="section-title">从骑行生成</view>
+    <view class="route-card {{selectedActivityId === item.id ? 'selected' : ''}}" wx:for="{{activities}}" wx:key="id" data-type="activity" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+      <view>{{item.displayName}}</view>
+      <text>{{item.displayMeta}}</text>
+    </view>
+  </view>
+
+  <view wx:elif="{{currentStep === 'details'}}" class="panel">
+    <view class="field">
+      <text>出发</text>
+      <view class="datetime">
+        <picker class="dt-date" mode="date" value="{{startDate}}" bindchange="onStartDateChange">
+          <view class="picker-value">{{startDate}}</view>
+        </picker>
+        <picker class="dt-time" mode="time" value="{{startTime}}" bindchange="onStartTimeChange">
+          <view class="picker-value">{{startTime}}</view>
+        </picker>
+      </view>
+    </view>
+    <view class="field">
+      <text>预计结束</text>
+      <view class="datetime">
+        <picker class="dt-date" mode="date" value="{{endDate}}" bindchange="onEndDateChange">
+          <view class="picker-value">{{endDate}}</view>
+        </picker>
+        <picker class="dt-time" mode="time" value="{{endTime}}" bindchange="onEndTimeChange">
+          <view class="picker-value">{{endTime}}</view>
+        </picker>
+      </view>
+    </view>
+    <view class="field">
+      <text>集合点</text>
+      <input value="{{form.meeting_point}}" data-field="meeting_point" bindinput="updateField" placeholder="例如：汾河公园南门" />
+    </view>
+    <view class="field">
+      <text>人数上限</text>
+      <input type="number" value="{{form.max_participants}}" data-field="max_participants" bindinput="updateField" />
+    </view>
+    <view class="field">
+      <text>节奏</text>
+      <picker mode="selector" range="{{paceOptions}}" range-key="label" bindchange="onPaceChange">
+        <view class="picker-value">{{paceLabel}}</view>
+      </picker>
+    </view>
+    <view class="field">
+      <text>说明</text>
+      <textarea value="{{form.description}}" data-field="description" bindinput="updateField" placeholder="补充集合、补给或注意事项" />
+    </view>
+  </view>
+
+  <view wx:else class="panel summary">
+    <view class="summary-title">{{selectedRouteName}}</view>
+    <view class="summary-row">
+      <text>出发</text>
+      <text>{{startDate}} {{startTime}}</text>
+    </view>
+    <view class="summary-row">
+      <text>预计结束</text>
+      <text>{{endDate}} {{endTime}}</text>
+    </view>
+    <view class="summary-row">
+      <text>集合点</text>
+      <text>{{form.meeting_point}}</text>
+    </view>
+    <view class="summary-row">
+      <text>人数</text>
+      <text>{{form.max_participants}}</text>
+    </view>
+  </view>
+
+  <view class="bottom-actions">
+    <button wx:if="{{currentStep !== 'route'}}" class="ghost" bindtap="prevStep">上一步</button>
+    <button wx:if="{{currentStep !== 'publish'}}" class="primary" bindtap="nextStep">下一步</button>
+    <button wx:else class="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onPublish">发布约骑</button>
+  </view>
+</view>

@@ -189,6 +189,28 @@ class SegmentDetailResponse(BaseModel):
     leaderboard: list[LeaderboardEntry]
 
 
+class SegmentUpcomingMeetupItem(BaseModel):
+    """赛段详情页上的约骑小卡：告诉用户这条路线最近有没有人要一起骑。"""
+
+    id: int
+    snapshot_route_name: str
+    snapshot_distance: float
+    snapshot_climb: Optional[float] = None
+    snapshot_city: str
+    start_time: datetime
+    estimated_end_time: datetime
+    meeting_point: str
+    pace_level: str
+    max_participants: int
+    participants_count: int
+
+
+class SegmentUpcomingMeetupsResponse(BaseModel):
+    """某个赛段未来开放约骑列表。"""
+
+    items: list[SegmentUpcomingMeetupItem]
+
+
 # ========== 即时反馈（v5 task-1.A.3 新增） ==========
 
 class EffortCompareResponse(BaseModel):

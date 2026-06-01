@@ -85,6 +85,56 @@ function request(url, method, data) {
 }
 
 /**
+ * 表单请求专用：路书从已有骑行生成时，后端按 multipart/form 表单收字段。
+ *
+ * 类比：普通 request 像寄一个 JSON 文件；这里像在柜台填纸质表格，
+ * 每个格子单独交给后端，避免把表单接口误塞成 JSON。
+ */
+function requestForm(url, method, data) {
+  var app = getAppSafe()
+  var baseUrl = (app && app.globalData.baseUrl) || BASE_URL
+  var token = app && app.globalData.token
+
+  if (method === undefined) method = 'POST'
+  if (data === undefined) data = {}
+
+  return new Promise(function (resolve, reject) {
+    wx.request({
+      url: baseUrl + url,
+      method: method,
+      data: data,
+      header: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': token ? 'Bearer ' + token : '',
+      },
+      success: function (res) {
+        if (res.statusCode === 401) {
+          if (app) {
+            app.globalData.token = null
+          }
+          wx.removeStorageSync('token')
+          var detail = (res.data && res.data.detail) || '登录已过期，请重新登录'
+          reject({ code: 401, message: detail })
+          return
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(res.data)
+        } else {
+          var defaultMsg = res.statusCode >= 500 ? '服务器开小差了，请稍后重试' : '请求失败'
+          reject({
+            code: res.statusCode,
+            message: (res.data && res.data.detail) || defaultMsg,
+          })
+        }
+      },
+      fail: function () {
+        reject({ code: -1, message: '网络连接失败，请检查网络' })
+      },
+    })
+  })
+}
+
+/**
  * 把 params 对象拼成 URL query 字符串。
  *
  * 设计说明：
@@ -282,6 +332,72 @@ module.exports = {
    */
   updateActivityPrivacy: function (activityId, partial) {
     return request('/api/activities/' + activityId + '/privacy', 'PATCH', partial)
+  },
+
+  /**
+   * 拉取开放约骑列表。
+   *
+   * 后端已经统一返回人数和首图，这里只负责把筛选条件送过去。
+   */
+  getMeetupsList: function (params) {
+    return request('/api/meetups' + buildQuery(params || {}), 'GET')
+  },
+
+  // 个人页"我的约骑"：role='created' 我发起的 / 'joined' 我加入的
+  getMyMeetups: function (role, params) {
+    return request('/api/meetups/mine' + buildQuery(Object.assign({ role: role }, params || {})), 'GET')
+  },
+
+  getMeetupDetail: function (meetupId) {
+    return request('/api/meetups/' + meetupId, 'GET')
+  },
+
+  getMyMeetupDraft: function () {
+    return request('/api/meetups/my-draft', 'GET')
+  },
+
+  createMeetup: function (data) {
+    return request('/api/meetups', 'POST', data)
+  },
+
+  updateMeetup: function (meetupId, data) {
+    return request('/api/meetups/' + meetupId, 'PATCH', data)
+  },
+
+  publishMeetup: function (meetupId) {
+    return request('/api/meetups/' + meetupId + '/publish', 'POST', {})
+  },
+
+  cancelMeetup: function (meetupId) {
+    return request('/api/meetups/' + meetupId + '/cancel', 'POST', {})
+  },
+
+  deleteMeetup: function (meetupId) {
+    return request('/api/meetups/' + meetupId, 'DELETE')
+  },
+
+  joinMeetup: function (meetupId) {
+    return request('/api/meetups/' + meetupId + '/join', 'POST', {})
+  },
+
+  leaveMeetup: function (meetupId) {
+    return request('/api/meetups/' + meetupId + '/leave', 'DELETE')
+  },
+
+  getRouteBooksList: function (params) {
+    return request('/api/route-books' + buildQuery(params || {}), 'GET')
+  },
+
+  getRouteBookActivityCandidates: function () {
+    return request('/api/route-books/activity-candidates', 'GET')
+  },
+
+  createRouteBookFromActivity: function (name, activityId) {
+    return requestForm('/api/route-books', 'POST', {
+      name: name,
+      source: 'activity_derived',
+      source_activity_id: activityId,
+    })
   },
 
   /**

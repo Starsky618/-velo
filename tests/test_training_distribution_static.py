@@ -20,12 +20,15 @@ def test_training_distribution_files_exist():
 
 
 def test_training_distribution_registered_at_app_json_tail():
-    """新页追加到 app.json 末尾，不能抢走默认首页。"""
+    """训练结构页仍注册；后续新页可以继续追加，不能抢走默认首页。"""
     app_json = json.loads(_read(MINI / "app.json"))
 
     assert app_json["pages"][0] == "pages/home/home"
     assert "pages/training-calendar/training-calendar" in app_json["pages"]
-    assert app_json["pages"][-1] == "pages/training-distribution/training-distribution"
+    pages = app_json["pages"]
+    assert "pages/training-distribution/training-distribution" in pages
+    assert pages.index("pages/training-calendar/training-calendar") < pages.index("pages/training-distribution/training-distribution")
+    assert pages.index("pages/training-distribution/training-distribution") < pages.index("pages/meetups-list/meetups-list")
 
 
 def test_profile_has_training_distribution_entry():

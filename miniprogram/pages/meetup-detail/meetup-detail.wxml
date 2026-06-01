@@ -1,0 +1,56 @@
+<view class="detail-page">
+  <view wx:if="{{loading && !meetup}}" class="state">加载中</view>
+
+  <view wx:elif="{{meetup}}" class="content">
+    <view class="hero">
+      <view class="route-name">{{meetup.snapshot_route_name}}</view>
+      <view class="time">{{meetup.startText}}</view>
+      <view class="meeting">{{meetup.meeting_point}}</view>
+    </view>
+
+    <view class="metrics">
+      <view>
+        <text class="value">{{meetup.distanceText}}</text>
+        <text class="label">距离</text>
+      </view>
+      <view wx:if="{{meetup.climbText}}">
+        <text class="value">{{meetup.climbText}}</text>
+        <text class="label">爬升</text>
+      </view>
+      <view>
+        <text class="value">{{meetup.paceText}}</text>
+        <text class="label">节奏</text>
+      </view>
+      <view>
+        <text class="value">{{meetup.seatsText}}</text>
+        <text class="label">人数</text>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">时间</view>
+      <view class="row">
+        <text>出发</text>
+        <text>{{meetup.startText}}</text>
+      </view>
+      <view class="row">
+        <text>预计结束</text>
+        <text>{{meetup.endText}}</text>
+      </view>
+    </view>
+
+    <view class="section" wx:if="{{meetup.description}}">
+      <view class="section-title">说明</view>
+      <view class="description">{{meetup.description}}</view>
+    </view>
+
+    <view class="actions">
+      <button wx:if="{{meetup.canCancel}}" class="cancel" disabled="{{joining}}" bindtap="onTapCancel">取消约骑</button>
+      <button wx:elif="{{meetup.canLeave}}" class="leave" disabled="{{joining}}" bindtap="onTapLeave">退出</button>
+      <button wx:elif="{{meetup.canJoin}}" class="join" disabled="{{joining}}" bindtap="onTapJoin">加入</button>
+      <view wx:elif="{{meetup.statusHint}}" class="status-hint">{{meetup.statusHint}}</view>
+    </view>
+  </view>
+
+  <view wx:else class="state">没有找到这场约骑</view>
+</view>

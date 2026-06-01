@@ -106,6 +106,7 @@ velo v5 阶段引入"约骑"作为社交模块——支持骑友发起 / 加入�
 - `ck_meetups_pace_level`: `pace_level IN ('relaxed', 'cruise', 'training', 'race')`
 - `ck_meetups_max`: `max_participants >= 2 AND max_participants <= 20`
 - `ck_meetups_city` on snapshot_city: `IN ('beijing','shanghai','hangzhou','shenzhen','chengdu','taiyuan','unknown')`
+- `ck_meetups_time_order` on (start_time, estimated_end_time): `estimated_end_time > start_time`（**v1.9 修订 / Tim 2026-05-29 复审拍**：estimated_end_time 由后端公式算正常恒大于 start_time，此 CHECK 是防公式 bug 写入颠倒时间对的 DB 兜底）
 
 **索引**：
 - `(status, start_time)` / `(creator_id, status)` / **partial UNIQUE `(creator_id) WHERE status='DRAFT'`**（ORM + alembic 双声明 / 参照 📊 `notification/models.py:130-134`）
@@ -160,7 +161,7 @@ velo v5 阶段引入"约骑"作为社交模块——支持骑友发起 / 加入�
 | `name` | VARCHAR(128) | NOT NULL |
 | `distance` | FLOAT | NOT NULL（米）|
 | `climb` | FLOAT | NULL |
-| `reference_line` | GEOMETRY(LINESTRING, 4326) | NOT NULL（复用 📊 `segment/models.py:69`）|
+| `reference_line` | GEOMETRY(LINESTRING, 4326) | NOT NULL（**spatial_index=False** + 手动 GIST 索引 `idx_route_books_geom`；显式关掉 GeoAlchemy2 自动建索引，避免与手动命名索引在 PG 上重复建 / 比 📊 `segment/models.py:69` 旧写法更干净）|
 | `file_id` | VARCHAR(512) | NULL（v1.5 generic 化 / 不再叫 gpx_file_id / 容纳 GPX 或 FIT）|
 | `file_type` | VARCHAR(8) | NULL / 仅 source='file_upload' 才填 / source='activity_derived' 时 NULL（见下方复合 CHECK）|
 | `source` | VARCHAR(32) | CHECK IN ('file_upload','activity_derived') / v1.5 修订 R4-N2：原 'gpx_upload' 改 'file_upload' 容纳 GPX+FIT |
@@ -196,6 +197,8 @@ if source == 'activity_derived' and source_activity_id is None:
 - 前端显示：路书详情页"衍生自活动"链接在 source_activity_id NULL 时隐藏（不显示坏链）
 
 **v1.2 visibility 决策**：v1 路书一律公开 / 不加 visibility 列 / v2 加。
+
+**v1.9 重复路书决策**（2026-05-29 Tim task2 复审拍）：**允许**同一用户从同一活动衍生多条路书 / 不加 `(creator_id, source_activity_id)` 唯一约束 / 理由：用户可能想从一条长骑行剪裁多条不同路书，重复了自己删即可，不值得为防双击加约束。
 
 **路书衍生 IDOR 防御**：service 层 `POST /api/route-books` source='activity_derived' 必须 `activity.user_id == current_user` 否则 403。
 
@@ -330,21 +333,28 @@ except IntegrityError as e:
 
 ```python
 def delete_user(db, user_id):
-    with db.begin():
-        # Step 1: 先 cancel 该用户发起的 OPEN 约骑
-        db.query(Meetup).filter_by(
-            creator_id=user_id, status='OPEN'
-        ).update({'status': 'CANCELLED', 'cancelled_at': func.now()})
-        
-        # Step 2: 硬删该用户的 DRAFT 约骑（含 storage 清理）
-        draft_ids = [m.id for m in db.query(Meetup.id).filter_by(
-            creator_id=user_id, status='DRAFT'
-        ).all()]
-        for mid in draft_ids:
-            _delete_meetup_with_storage_cleanup(db, mid)
-        
-        # Step 3: 最后才删 user（触发剩下 SET NULL cascade）
-        db.query(User).filter_by(id=user_id).delete()
+    # ⚠ 不要用 with db.begin()：真实注销端点用 Depends(get_db) 注入的 session
+    # 已因身份查询触发 autobegin（SessionLocal autocommit=False），再 with db.begin()
+    # 会抛 InvalidRequestError 500。三步在同一事务内做完后末尾一次 db.commit()，
+    # 和项目其他 service 统一（2026-06-01 task7 复审 reviewer 抓 + 亲验）。
+    # Step 1: 先 cancel 该用户发起的 OPEN 约骑
+    db.query(Meetup).filter_by(
+        creator_id=user_id, status='OPEN'
+    ).update({'status': 'CANCELLED', 'cancelled_at': func.now()})
+
+    # Step 2: 硬删该用户的 DRAFT 约骑（DB 行删除 + 收集 file_id，storage 留到 commit 后清）
+    draft_ids = [m.id for m in db.query(Meetup.id).filter_by(
+        creator_id=user_id, status='DRAFT'
+    ).all()]
+    file_ids = []
+    for mid in draft_ids:
+        file_ids.extend(_delete_meetup_row_and_collect_files(db, mid))
+
+    # Step 3: 最后才删 user（触发剩下 SET NULL cascade）
+    db.query(User).filter_by(id=user_id).delete()
+
+    db.commit()
+    _cleanup_meetup_storage(file_ids)  # commit 后再删物理文件，失败只记日志
 ```
 
 级联表：
