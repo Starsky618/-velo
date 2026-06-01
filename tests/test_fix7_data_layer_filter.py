@@ -35,7 +35,9 @@ def _insert(
 ):
     """直接插活动到 _activities_table（绕 ORM / 完整控制字段）。"""
     if started_at is None:
-        started_at = datetime(2026, 5, 15, 10, 0, 0, tzinfo=timezone.utc)
+        # 本文件有“当前月统计”断言，默认活动时间必须跟运行当天同月，
+        # 否则跨到 2026-06 后会把测试数据排除在“本月”之外。
+        started_at = datetime.now(timezone.utc).replace(day=15, hour=10, minute=0, second=0, microsecond=0)
     db.execute(
         _activities_table.insert().values(
             user_id=user_id,
