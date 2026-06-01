@@ -60,7 +60,7 @@ def test_upload_media_creator_only_and_escapes_caption(client, db, auth_header, 
     meetup = _draft(db, test_user.id)
 
     class FakeStorage:
-        def upload(self, file_bytes, filename):
+        def upload(self, file_bytes, filename, subdir=""):
             assert file_bytes == b"jpg-bytes"
             assert filename.endswith(".jpg")
             return "202605/media.jpg"
@@ -123,7 +123,7 @@ def test_upload_media_rejects_long_caption_before_storage(client, db, auth_heade
     called = []
 
     class FakeStorage:
-        def upload(self, file_bytes, filename):
+        def upload(self, file_bytes, filename, subdir=""):
             called.append(filename)
             return "202605/too-long.jpg"
 
@@ -144,7 +144,7 @@ def test_upload_storage_failure_rolls_back_db_record(client, db, auth_header, te
     meetup = _draft(db, test_user.id)
 
     class FakeStorage:
-        def upload(self, file_bytes, filename):
+        def upload(self, file_bytes, filename, subdir=""):
             raise OSError("disk full")
 
     monkeypatch.setattr("app.meetup.media_service._storage", FakeStorage())
@@ -164,7 +164,7 @@ def test_upload_cancelled_meetup_keeps_creator_only_policy(client, db, auth_head
     service.cancel_meetup(db, meetup.id, test_user.id)
 
     class FakeStorage:
-        def upload(self, file_bytes, filename):
+        def upload(self, file_bytes, filename, subdir=""):
             return "202605/cancelled.jpg"
 
     monkeypatch.setattr("app.meetup.media_service._storage", FakeStorage())
@@ -183,7 +183,7 @@ def test_uploaded_media_becomes_first_media_in_list_and_detail(client, db, auth_
     meetup = _open_meetup(db, test_user.id)
 
     class FakeStorage:
-        def upload(self, file_bytes, filename):
+        def upload(self, file_bytes, filename, subdir=""):
             return "202605/first.jpg"
 
     monkeypatch.setattr("app.meetup.media_service._storage", FakeStorage())
@@ -207,7 +207,7 @@ def test_publish_response_keeps_first_media_after_draft_upload(client, db, auth_
     meetup = _draft(db, test_user.id)
 
     class FakeStorage:
-        def upload(self, file_bytes, filename):
+        def upload(self, file_bytes, filename, subdir=""):
             return "202605/draft-first.jpg"
 
     monkeypatch.setattr("app.meetup.media_service._storage", FakeStorage())
@@ -319,7 +319,7 @@ def test_delete_draft_meetup_cleans_media_storage(db, test_user, monkeypatch):
 
 def _fake_storage_factory(uploaded):
     class FakeStorage:
-        def upload(self, file_bytes, filename):
+        def upload(self, file_bytes, filename, subdir=""):
             fid = f"202605/img-{len(uploaded)}.jpg"
             uploaded.append(fid)
             return fid
@@ -407,7 +407,7 @@ def test_upload_video_octet_stream_falls_back_by_extension(client, db, auth_head
     meetup = _draft(db, test_user.id)
 
     class FakeStorage:
-        def upload(self, file_bytes, filename):
+        def upload(self, file_bytes, filename, subdir=""):
             assert filename.endswith(".mp4")
             return "202606/v.mp4"
 
@@ -422,3 +422,18 @@ def test_upload_video_octet_stream_falls_back_by_extension(client, db, auth_head
 
     assert res.status_code == 200
     assert res.json()["type"] == "video"
+
+
+def test_localstorage_subdir_isolates_meetup_media(tmp_path, monkeypatch):
+    # 隐私隔离核心（2026-06-01 修复）：约骑照片用 subdir 存 meetup_media/，file_id 带前缀；
+    # GPX 无 subdir 存根目录。caddy 只 serve /uploads/meetup_media/* → 私密 GPX 永远不被静态服务。
+    import app.storage.local as local_mod
+
+    monkeypatch.setattr(local_mod.settings, "UPLOAD_DIR", str(tmp_path))
+    storage = local_mod.LocalStorage()
+
+    media_id = storage.upload(b"img-bytes", "x.jpg", subdir="meetup_media")
+    gpx_id = storage.upload(b"track-bytes", "x.gpx")  # 无 subdir，模拟活动 GPX
+
+    assert media_id.startswith("meetup_media/")
+    assert not gpx_id.startswith("meetup_media/")  # GPX 在根目录，caddy /uploads/meetup_media/* 服务不到它

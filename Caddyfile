@@ -17,9 +17,11 @@
         file_server
     }
 
-    # 用户上传媒体静态服务（约骑照片墙）：file_id 是 uuid 不可猜 + 内容本就公开（约骑详情 public）。
-    # caddy 容器挂 uploads volume 到 /srv/uploads，所以 /uploads/202605/x.jpg → /srv/uploads/202605/x.jpg
-    handle /uploads/* {
+    # 约骑照片墙静态服务：**只 serve meetup_media/ 子目录，绝不能 serve /uploads/* 整个根**！
+    # uploads 根混着所有用户的私密活动 GPX 轨迹，serve 整个根会绕过 _can_view_activity 隐私判断
+    # 泄露轨迹（含家庭住址/常骑路线）。2026-06-01 Codex 异源审抓的隐私 Critical 修复。
+    # 约骑照片存在 uploads/meetup_media/，file_id 形如 meetup_media/202605/x.jpg。
+    handle /uploads/meetup_media/* {
         root * /srv
         file_server
     }

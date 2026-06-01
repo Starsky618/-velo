@@ -46,19 +46,22 @@ class LocalStorage(StorageBackend):
             raise ValueError(f"非法文件路径: {file_id}")
         return full
 
-    def upload(self, file_bytes: bytes, filename: str) -> str:
+    def upload(self, file_bytes: bytes, filename: str, subdir: str = "") -> str:
         """
         把文件存到本地硬盘。
 
         步骤：
-        1. 用当前年月创建子文件夹（如 202604），按月归档方便管理
-        2. 用 UUID 生成唯一文件名，避免不同用户上传同名文件互相覆盖
-        3. 保留原文件的扩展名（.gpx）
-        4. 返回相对路径作为文件标识，存入数据库
+        1. 可选 subdir 子目录隔离不同类文件（如约骑照片存 meetup_media/，避免和私密 GPX
+           混在 uploads 根、被 caddy 静态服务一起暴露——见隐私事故修复 2026-06-01）
+        2. 用当前年月创建子文件夹（如 202604），按月归档方便管理
+        3. 用 UUID 生成唯一文件名，避免不同用户上传同名文件互相覆盖
+        4. 保留原文件的扩展名（.gpx）
+        5. 返回相对路径（含 subdir 前缀）作为文件标识，存入数据库
         """
-        # 按年月归档，比如 2026年4月 → "202604"
+        # 按年月归档，比如 2026年4月 → "202604"；subdir 非空时多一层隔离目录
         month_dir = datetime.now().strftime("%Y%m")
-        dir_path = os.path.join(self.root, month_dir)
+        rel_dir = os.path.join(subdir, month_dir) if subdir else month_dir
+        dir_path = os.path.join(self.root, rel_dir)
         os.makedirs(dir_path, exist_ok=True)
 
         # 提取原文件扩展名（.gpx），拼上 UUID 作为新文件名
@@ -70,8 +73,9 @@ class LocalStorage(StorageBackend):
         with open(file_path, "wb") as f:
             f.write(file_bytes)
 
-        # 返回相对路径（如 "202604/a1b2c3d4.gpx"），存入数据库
-        return os.path.join(month_dir, unique_name)
+        # 返回相对路径（如 "meetup_media/202604/a1b2c3d4.jpg" 或 "202604/x.gpx"），存入数据库。
+        # file_id 含 subdir 前缀，download/delete 用它能定位，前端拼 URL 也带前缀。
+        return os.path.join(rel_dir, unique_name)
 
     def download(self, file_id: str) -> bytes:
         """

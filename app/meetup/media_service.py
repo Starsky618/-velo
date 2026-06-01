@@ -75,7 +75,9 @@ def upload_meetup_media(
     db.flush()
 
     try:
-        file_id = _storage.upload(file_bytes, f"meetup-{meetup.id}-media-{media.id}{ext}")
+        # 存到 meetup_media/ 子目录：和私密 GPX（uploads 根）隔离，caddy 只静态服务这个子目录，
+        # 否则约骑照片的静态服务会顺带把所有人的私密轨迹 GPX 也公开（2026-06-01 隐私事故修复）
+        file_id = _storage.upload(file_bytes, f"meetup-{meetup.id}-media-{media.id}{ext}", subdir="meetup_media")
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="media upload failed")
