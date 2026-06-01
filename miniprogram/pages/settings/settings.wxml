@@ -151,4 +151,11 @@
     <button class="full-width-btn danger-btn" bindtap="onLogout">退出登录</button>
   </view>
 
+  <!-- 区块 4：注销账号（最危险 / 不可逆 / 两步确认）-->
+  <view class="section">
+    <view class="section-title">注销账号</view>
+    <button class="full-width-btn danger-btn" bindtap="onDeleteAccount">注销账号</button>
+    <text class="section-hint">注销将彻底删除你的全部数据（骑行记录、赛段成绩、功率与训练数据），不可恢复。</text>
+  </view>
+
 </view>

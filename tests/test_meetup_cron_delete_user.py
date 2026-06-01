@@ -113,6 +113,71 @@ def test_delete_user_cancels_open_deletes_draft_and_storage(db, test_user, monke
     assert deleted_files == ["202606/draft.jpg"]
 
 
+def test_delete_user_purges_all_personal_data(db, test_user, monkeypatch):
+    """彻底注销（Tim 2026-06-01 拍）：删光骑行/赛段成绩/突破/Strava + 收集 GPX 文件清理 + 删 user。
+
+    这些子表的 user_id 是 RESTRICT（无级联），旧版 delete_user 只删约骑、直接 db.delete(user)
+    在生产 PG 上会被外键挡住抛 500。本测试锁死"全部个人数据被显式删干净"。"""
+    from datetime import datetime, timedelta, timezone
+
+    from app.activity.models import Activity, BreakthroughEvent
+    from app.segment.models import SegmentEffort
+    from app.strava.models import StravaImport
+    from app.user.models import User
+    from app.user.service import delete_user
+
+    user_id = test_user.id
+    seg = _segment(db)
+
+    act = Activity(user_id=user_id, status="completed", file_url="202606/ride.gpx")
+    db.add(act)
+    db.flush()
+    act_id = act.id
+
+    # 三类"挡路"子行（user_id RESTRICT）：赛段成绩 / 突破事件 / Strava 导入台账
+    db.add(SegmentEffort(segment_id=seg.id, activity_id=act_id, user_id=user_id,
+                         elapsed_time=600, start_index=0, end_index=10))
+    db.add(BreakthroughEvent(user_id=user_id, activity_id=act_id, old_ftp=200, suggested_ftp=220,
+                             expires_at=datetime.now(timezone.utc) + timedelta(days=7)))
+    db.add(StravaImport(user_id=user_id, strava_athlete_id=123456))
+
+    # 脏数据兜底（Codex 异源审 I1）：另一个用户的突破事件却挂在被注销用户的活动上。
+    # breakthrough_events.activity_id 是 RESTRICT，若只按 user_id 删会漏掉它，删活动时被外键挡住抛 500。
+    other = User(openid="del-user-dirty-bt", is_admin=False)
+    db.add(other)
+    db.flush()
+    dirty_bt = BreakthroughEvent(user_id=other.id, activity_id=act_id, old_ftp=180, suggested_ftp=200,
+                                 expires_at=datetime.now(timezone.utc) + timedelta(days=7))
+    db.add(dirty_bt)
+    db.commit()
+    dirty_bt_id = dirty_bt.id
+
+    deleted_files = []
+    monkeypatch.setattr("app.meetup.service._storage.delete", lambda fid: deleted_files.append(fid))
+
+    delete_user(db, user_id)
+
+    assert db.query(User).filter(User.id == user_id).first() is None
+    assert db.query(Activity).filter(Activity.user_id == user_id).count() == 0
+    assert db.query(SegmentEffort).filter(SegmentEffort.user_id == user_id).count() == 0
+    assert db.query(BreakthroughEvent).filter(BreakthroughEvent.user_id == user_id).count() == 0
+    assert db.query(StravaImport).filter(StravaImport.user_id == user_id).count() == 0
+    assert "202606/ride.gpx" in deleted_files  # 活动 GPX 文件被收集并清理
+    # 挂在被删活动上的"脏"突破事件也必须被清掉（否则 activity_id RESTRICT 外键会挡住删活动）
+    assert db.query(BreakthroughEvent).filter(BreakthroughEvent.id == dirty_bt_id).first() is None
+
+
+def test_delete_account_endpoint_requires_auth_and_deletes_self(client, db, auth_header, test_user):
+    """DELETE /api/user/me：无 token → 401；本人调用 → 204 且 user 被删。"""
+    from app.user.models import User
+
+    user_id = test_user.id
+    assert client.delete("/api/user/me").status_code == 401  # 未登录不能注销
+    res = client.delete("/api/user/me", headers=auth_header)
+    assert res.status_code == 204
+    assert db.query(User).filter(User.id == user_id).first() is None
+
+
 def test_delete_user_uses_single_transaction():
     source = (ROOT / "app" / "user" / "service.py").read_text(encoding="utf-8")
     assert "def delete_user" in source

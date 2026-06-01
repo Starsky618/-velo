@@ -313,6 +313,19 @@ def patch_me(
     return service.get_user_by_id(db, user_id)
 
 
+@router.delete("/me", status_code=204)
+def delete_my_account(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """注销账号：彻底删除当前用户及其全部个人数据（骑行 / 赛段成绩 / 功率突破 / Strava / 约骑草稿）。
+
+    不可逆操作。鉴权用 JWT 锁定本人——user_id 来自 token，只能注销自己，不接受路径/body 指定他人。
+    具体删除内容 + 外键删除顺序见 service.delete_user。前端必须二次确认 + 删后清 token 退出登录。"""
+    service.delete_user(db, user_id)
+    return None
+
+
 # ========== Sprint 9 task-6：FTP 智能估算 endpoint ==========
 #
 # 给 settings 页"让系统估算"按钮用——跑 CP 3-param 模型算用户 FTP。

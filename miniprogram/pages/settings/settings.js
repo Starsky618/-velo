@@ -631,4 +631,62 @@ Page({
       },
     })
   },
+
+  /**
+   * 注销账号——彻底删除全部个人数据（不可逆 / 比退出登录更严重 / 两步确认）。
+   *
+   * 流程：
+   *   1. 第一道 modal：警告删光所有数据 + 不可恢复 → 用户点"继续"
+   *   2. 第二道 modal：最终确认"无法撤销" → 用户点"确认注销"（多一道闸防手滑误触）
+   *   3. 调 api.deleteAccount()（DELETE /api/user/me）→ 成功后 app.logout() 清 token + 跳回 profile
+   *   4. 失败 toast 提示、不清本地状态（账号还在 / 可重试）
+   */
+  onDeleteAccount() {
+    wx.showModal({
+      title: '注销账号',
+      content: '注销会彻底删除你的全部数据（骑行记录、赛段成绩、功率与训练数据），且无法恢复。确定继续吗？',
+      confirmText: '继续',
+      confirmColor: '#e64340',
+      cancelText: '取消',
+      success: function (res) {
+        if (!res.confirm) return
+        wx.showModal({
+          title: '最后确认',
+          content: '确认彻底注销账号？此操作无法撤销。',
+          confirmText: '确认注销',
+          confirmColor: '#e64340',
+          cancelText: '再想想',
+          success: function (res2) {
+            if (!res2.confirm) return
+            wx.showLoading({ title: '注销中', mask: true })
+            api.deleteAccount()
+              .then(function () {
+                wx.hideLoading()
+                // 复用退出登录的清理（清 token / userId / userInfo + storage），兜底手动清防 app.logout 缺失
+                if (app && typeof app.logout === 'function') {
+                  app.logout()
+                } else {
+                  wx.removeStorageSync('token')
+                  wx.removeStorageSync('userId')
+                  if (app) {
+                    app.globalData.token = null
+                    app.globalData.userId = 0
+                    app.globalData.userInfo = null
+                  }
+                }
+                wx.showToast({ title: '账号已注销', icon: 'success' })
+                // 稍等让 toast 可见，再跳回 profile（未登录态显示"微信一键登录"）
+                setTimeout(function () {
+                  wx.redirectTo({ url: '/pages/profile/profile' })
+                }, 800)
+              })
+              .catch(function (err) {
+                wx.hideLoading()
+                wx.showToast({ title: (err && err.message) || '注销失败，请重试', icon: 'none' })
+              })
+          },
+        })
+      },
+    })
+  },
 })

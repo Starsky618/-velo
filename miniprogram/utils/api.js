@@ -191,6 +191,13 @@ module.exports = {
   getUserProfile: function (userId) { return request('/api/user/' + userId + '/profile', 'GET') },
 
   /**
+   * 注销账号：彻底删除当前用户及全部个人数据（骑行/赛段成绩/功率/Strava/约骑草稿）。
+   * 不可逆。后端 DELETE /api/user/me，鉴权用 JWT 锁定本人。成功后调用方须清 token 退出登录。
+   * @returns {Promise}
+   */
+  deleteAccount: function () { return request('/api/user/me', 'DELETE') },
+
+  /**
    * 拉取赛段列表（task-4.4 explore tab 瀑布流用）
    *
    * 类比：就像翻一本"全国赛段大全目录"——

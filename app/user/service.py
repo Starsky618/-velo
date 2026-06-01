@@ -51,33 +51,72 @@ from app.user.service_social import (  # noqa: F401 — 转导出
 
 
 def delete_user(db, user_id: int) -> None:
-    """删除用户前先收拾约骑生态：OPEN 取消，DRAFT 硬删，然后删用户本体。"""
+    """彻底注销用户：删光个人数据（骑行 / 赛段成绩 / 功率突破 / Strava / 约骑草稿）+ 删用户本体。
+
+    数据策略（Tim 2026-06-01 拍）：真注销 = 物理删除全部个人数据，连骑行记录和赛段成绩一起删。
+
+    删除顺序很关键：users.id 有一批"挡路"的外键引用——activities / segment_efforts /
+    breakthrough_events / strava_imports 的 user_id 都是 RESTRICT（没有 ON DELETE CASCADE），
+    不先把这些子行删掉，最后 db.delete(user) 会被外键约束挡住抛 500（旧版只删约骑就踩这个坑）。
+    breakthrough_events.activity_id 也是 RESTRICT，会挡住删 activities，所以它要在 activities 之前删。
+    路书（route_books.creator_id）是 SET NULL：作为可被别人约骑引用的共享路线定义保留为"无主"，
+    符合 spec"路书保留"原则，不随注销物理删。
+
+    全程单事务、末尾一次提交保证原子（注销端点注入的 session 已 autobegin，
+    禁止二次开启事务——见技术栈陷阱 #21，否则抛 InvalidRequestError）。"""
     from datetime import datetime, timezone
 
+    from sqlalchemy import or_
+
+    from app.activity.models import Activity, BreakthroughEvent
     from app.meetup.models import Meetup
     from app.meetup.service import _cleanup_meetup_storage, _delete_meetup_row_and_collect_files
+    from app.segment.models import SegmentEffort
+    from app.strava.models import StravaImport
     from app.user.models import User
 
-    # 三步在同一事务内做完后一次性 commit 保证原子（cancel OPEN → 硬删 DRAFT → 删 user）。
-    # 不用 with db.begin()：真实注销端点注入的 session 已因身份查询触发 autobegin，
-    # 再 with db.begin() 二次开启事务会抛 InvalidRequestError 500；和项目其他 service 统一用末尾单次 db.commit()。
-    file_ids = []
+    # commit 成功后再物理删的文件：约骑照片 + 活动 GPX 同在 uploads 存储后端，统一收集一次清理。
+    storage_files = []
+
+    # 1) 约骑：OPEN 取消（保留给已报名的人看到"已取消"）、DRAFT 硬删并收集照片文件。
+    #    creator_id 在删 user 时由外键 SET NULL 置空——已取消的约骑作为"无主记录"留给参与者。
     open_meetups = db.query(Meetup).filter(Meetup.creator_id == user_id, Meetup.status == "OPEN").all()
     for meetup in open_meetups:
         meetup.status = "CANCELLED"
         meetup.cancelled_at = datetime.now(timezone.utc)
-
     draft_ids = [
         row.id
         for row in db.query(Meetup.id).filter(Meetup.creator_id == user_id, Meetup.status == "DRAFT").all()
     ]
     for meetup_id in draft_ids:
-        file_ids.extend(_delete_meetup_row_and_collect_files(db, meetup_id))
+        storage_files.extend(_delete_meetup_row_and_collect_files(db, meetup_id))
 
+    # 2) 先拿到该用户所有活动的 id + GPX 文件路径（删行后就查不到了，breakthrough 兜底和文件清理都要用）。
+    activity_rows = db.query(Activity.id, Activity.file_url).filter(Activity.user_id == user_id).all()
+    activity_ids = [r.id for r in activity_rows]
+    storage_files.extend(r.file_url for r in activity_rows if r.file_url)
+
+    # 3) 显式删 RESTRICT 阻塞子行（不靠 DB 级联，SQLite 测试也能验、行为确定）。
+    db.query(SegmentEffort).filter(SegmentEffort.user_id == user_id).delete(synchronize_session=False)
+    # breakthrough_events 被 user_id 和 activity_id 两个 RESTRICT 外键约束：正常数据二者一致（突破事件
+    # 属于活动 owner），但为防脏数据（user_id 与活动 owner 不一致）删活动时被 activity_id RESTRICT 挡住抛 500，
+    # 两个方向都兜底删（Codex 异源审 I1）。
+    bt_filter = BreakthroughEvent.user_id == user_id
+    if activity_ids:
+        bt_filter = or_(bt_filter, BreakthroughEvent.activity_id.in_(activity_ids))
+    db.query(BreakthroughEvent).filter(bt_filter).delete(synchronize_session=False)
+    db.query(StravaImport).filter(StravaImport.user_id == user_id).delete(synchronize_session=False)
+
+    # 4) 删骑行活动行（trackpoints / activity_privacy / segment_efforts 由 activity_id 的
+    #    ON DELETE CASCADE 在 PG 自动级联清理）。
+    db.query(Activity).filter(Activity.user_id == user_id).delete(synchronize_session=False)
+
+    # 5) 删 user 本体：daily_training_load / meetup_participants / notifications(recipient) 由
+    #    user_id 的 ON DELETE CASCADE 自动级联；meetups / route_books 的 creator_id 等 SET NULL。
     user = db.query(User).filter(User.id == user_id).first()
     if user is not None:
         db.delete(user)
 
     db.commit()
     # commit 后再删物理文件（DB 是 source of truth）：删失败只记日志，不回滚已删的账号数据。
-    _cleanup_meetup_storage(file_ids)
+    _cleanup_meetup_storage(storage_files)
