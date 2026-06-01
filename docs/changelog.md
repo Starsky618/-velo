@@ -1,5 +1,16 @@
 # VELO 开发变更日志
 
+## 2026-06-02: 约骑创建照片步骤 + 注销账号 + tech-debt 清理 ✅（全程 Codex 异源审）
+
+> **特点**：补足约骑创建体验 + 上线账号注销（合规）+ 清约骑遗留 tech-debt。这几项都是 Claude 自写，
+> 吸取上一轮教训**全部补跑了 Codex 异源审**（原则 8：自写代码也必须异源审）。
+
+- **约骑创建加"照片"步骤**（`41f08f1`）：选路线→填详情→**加照片**→发布（之前只能发布后补图）。details→media 转场先存草稿拿 id，照片挂草稿上。Codex 异源审抓回归：从骑行生成路线退回再前进会重复建路书留孤儿 → 缓存 `generatedRouteBookId` 复用。
+- **格式化函数三页去重**（`46b1d30`）：list/detail/mine 重复的 formatTime/paceText/formatDistance 等抽到 `miniprogram/utils/meetup-format.js`。刻意和通用 `utils/format.js` 分开（后者 formatTime 是秒数→时长，约骑是时间戳→"6月2日 14:30"，同名不同义）。
+- **注销账号**（`9907480`）：Tim 拍"彻底物理删除全部个人数据"。`delete_user` 扩成完整级联删（按外键安全顺序删 efforts/breakthroughs/strava/activities 再删 user，旧版只删约骑会被外键挡住 500）+ 新端点 `DELETE /api/user/me`（JWT 锁本人）+ 设置页两步确认入口。Codex 异源审 I1：breakthrough_events.activity_id 也 RESTRICT，按 user_id OR activity_id 双向兜底删防脏数据。OPEN 约骑取消保留、路书置无主（有意决策）。全量 927 passed。
+- **文档/tech-debt 清理**（`040d530`）：架构·数据流 guide 补约骑章节（修子 agent 脑补路由总数 61→81）；tech-debt 删已完成项（删号端点/format 去重/guide 章节）。
+- 部署：后端 rebuild + curl 验证（DELETE /api/user/me 无 token 返 401）。前端本地重新编译已确认可见。
+
 ## 2026-06-01: 约骑模块 task1-9 实施 ship + 取消/个人页/照片墙 + 隐私修复 + Codex 异源审补审 ✅（已合 main + 部署生产）
 
 > **特点**：约骑 design/plans（5-29）落地。Codex Desktop 写 task1-9，Claude 逐 task 异源双审 + 修 bug。后续补取消/个人页/照片墙（Claude 自写），**合 main 后补跑 Codex 异源审抓出 7 隐患并修**。现行 head `322510c`，生产已部署。
