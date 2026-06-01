@@ -1,35 +1,6 @@
 const api = require('../../utils/api')
-
-function formatDistance(value) {
-  if (value === undefined || value === null) return ''
-  return Number(value).toFixed(1) + ' km'
-}
-
-function formatClimb(value) {
-  if (value === undefined || value === null) return ''
-  return Math.round(Number(value)) + ' m'
-}
-
-function formatTime(value) {
-  if (!value) return '待定'
-  var date = new Date(value)
-  if (isNaN(date.getTime())) return value
-  var month = date.getMonth() + 1
-  var day = date.getDate()
-  var hour = String(date.getHours()).padStart(2, '0')
-  var minute = String(date.getMinutes()).padStart(2, '0')
-  return month + '月' + day + '日 ' + hour + ':' + minute
-}
-
-function paceText(value) {
-  var map = {
-    relaxed: '休闲',
-    cruise: '巡航',
-    training: '训练',
-    race: '强度',
-  }
-  return map[value] || value || ''
-}
+// 格式化函数抽到 utils/meetup-format.js（约骑三页单一真相源），不再各页各抄一份
+const { formatDistance, formatClimb, formatTime, paceText } = require('../../utils/meetup-format')
 
 Page({
   data: {

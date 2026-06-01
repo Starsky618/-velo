@@ -1,31 +1,6 @@
 const api = require('../../utils/api')
-
-function formatNumber(value, unit) {
-  // 缺失返回空串，wxml 用 wx:if 整块隐藏（守"不显示占位符"规则），不返回 "--"
-  if (value === undefined || value === null) return ''
-  return Number(value).toFixed(unit === 'km' ? 1 : 0) + ' ' + unit
-}
-
-function formatTime(value) {
-  if (!value) return '待定'
-  var date = new Date(value)
-  if (isNaN(date.getTime())) return value
-  var month = date.getMonth() + 1
-  var day = date.getDate()
-  var hour = String(date.getHours()).padStart(2, '0')
-  var minute = String(date.getMinutes()).padStart(2, '0')
-  return month + '月' + day + '日 ' + hour + ':' + minute
-}
-
-function paceText(value) {
-  var map = {
-    relaxed: '休闲',
-    cruise: '巡航',
-    training: '训练',
-    race: '强度',
-  }
-  return map[value] || value || ''
-}
+// 格式化函数抽到 utils/meetup-format.js（约骑三页单一真相源），不再各页各抄一份
+const { formatDistance, formatClimb, formatTime, paceText } = require('../../utils/meetup-format')
 
 function decorateMeetup(meetup) {
   if (!meetup) return null
@@ -40,8 +15,8 @@ function decorateMeetup(meetup) {
   return Object.assign({}, meetup, {
     startText: formatTime(meetup.start_time),
     endText: formatTime(meetup.estimated_end_time),
-    distanceText: formatNumber(meetup.snapshot_distance, 'km'),
-    climbText: formatNumber(meetup.snapshot_climb, 'm'),
+    distanceText: formatDistance(meetup.snapshot_distance),
+    climbText: formatClimb(meetup.snapshot_climb),
     paceText: paceText(meetup.pace_level),
     seatsText: count + '/' + max,
     // 按身份显示唯一一个操作按钮：发起人→取消 / 已加入→退出 / 没加入且没满→加入
