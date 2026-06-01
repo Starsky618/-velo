@@ -10,9 +10,9 @@
 ## 目录
 
 1. [系统边界](#1-系统边界)
-2. [业务模块(6+1)](#2-业务模块61)
+2. [业务模块(11+1)](#2-业务模块111)
 3. [运行时容器(7)](#3-运行时容器7)
-4. [数据表(7)](#4-数据表7)
+4. [数据表(15)](#4-数据表15--sprint-13-3--persona-3-张-stage-3-待-drop)
 5. [API 汇总](#5-api-汇总)
 6. [前端结构](#6-前端结构)
 7. [依赖方向规则](#7-依赖方向规则)
@@ -61,7 +61,7 @@
 
 ---
 
-## 2. 业务模块(10+1)
+## 2. 业务模块(11+1)
 
 ### 2.1 模块清单
 
@@ -78,6 +78,7 @@
 | **common** | `app/common/` | **80 行** | **v5** | **跨模块工具：地理函数 / haversine / city 推断 / 单向依赖最下方（任意业务模块可向下用）** |
 | **admin** | `app/admin/` | **885 行** | **v5** | **管理后台 12 endpoint（whoami / curation-pool / ai/segment-drafts / segments admin CRUD / from-activity / from-gpx / activities/{id}/trackpoints）/ 编排其他模块 service / require_admin 依赖把关** |
 | **training** | `app/training/` | **~700 行** | **Sprint 10-11** | **PMC 训练负荷（training_load.py CTL τ=42/ATL τ=7/TSB/4 档 + daily_training_load 表 + GET /load + 3 写入通道 hook）+ Sprint 11 训练分布（distribution.py 纯函数五类型 Polarized/Pyramidal/SweetSpot/Threshold/Mixed + GET /distribution + 默认不计滑行 0W / `exclude_zero=false` 仅兼容旧口径 + conic-gradient 圆饼图 + 全类型动态百分比文案）/ 防火墙独立模块 / Sprint 12 coach 复用公式与分布** |
+| **meetup** | `app/meetup/` | **~650 行** | **Sprint 13（约骑模块）** | **约骑主表 + 报名表 + 媒体表（meetups / meetup_participants / meetup_media 三张表）/ 状态机 DRAFT→OPEN→COMPLETED/CANCELLED / 14 个 endpoint（创建草稿/发布/加入/退出/取消/删除 + 照片墙上传/列表/删除）/ scheduler 自动 completed / 照片存 meetup_media/ 子目录隔离私密 GPX** |
 
 ### 2.2 模块内部结构(统一约定)
 
@@ -106,6 +107,7 @@ app/<模块名>/
 - **`app/monitor/`** (v5): __init__ / processing_health（worker 软目标 4min）/ admin_h5_health（端到端探针 / 静态站 + 反代 / Redis SETNX 5min 去抖）
 - **`app/common/`** (v5): __init__ / geo（haversine / infer_city_from_coords）
 - **`app/admin/`** (v5): __init__ / dependencies（require_admin）/ schemas / router（12 endpoint）/ service（编排候选池 + AI 草稿 + segment / 含 _check_hausdorff_overlap 共享 helper）
+- **`app/meetup/`** (Sprint 13): models（Meetup / MeetupParticipant / MeetupMedia）/ schemas / router（14 endpoint）/ service（create/publish/join/leave/cancel/delete + list + 人数/首图聚合）/ media_service（upload/delete/list + meetup_media/ 子目录隔离）/ cron（complete_due_meetups / run_meetup_complete_tick，挂在 scheduler.py 每 20 tick≈5min 一次）
 
 ⚠️ agent 注意:
 - 新增模块必须遵守此结构,不得自创
@@ -126,6 +128,11 @@ app/<模块名>/
               └── strava ┘   monitor (v5：探活 / 仅读 activity.models / 不写业务表)
                   │
                   └─── common (v5：最下方 / 任意业务模块可向下依赖 / 自己不依赖任何业务模块)
+                  │
+                  └─── meetup (Sprint 13：依赖 segment.models + route_book.models + storage / 正向依赖链末端)
+                              ⚠️ 2 处 spec 批准反向 hook（已登记技术债）：
+                                 ① user/service.py:delete_user 延迟 import meetup（删号级联清约骑）
+                                 ② segment/router.py 顶层 import meetup.models（赛段页 upcoming-meetups）
 ```
 
 **实际依赖**(grep 验证,v5 end):
@@ -140,6 +147,7 @@ app/<模块名>/
 - `agent` (v5): **叶子节点** / 只读 `segment.models.Segment, SegmentAiDraft` + `user.models.User`（后者为 SQLAlchemy mapper 注册必须 import / agent/tasks.py:32-33）+ 写 `segment_ai_drafts` / 不反向 import segment.service / router / 通过参数 dict 输入（ADR-009 边界）
 - `monitor` (v5): 只读 `activity.models.Activity`（processing_health）+ 调外部 webhook + admin H5 反代探活 / **不写任何业务表**
 - `admin` (v5): 直 import `segment.service` + `activity.models`；通过 RQ 字符串 `"app.agent.tasks.generate_segment_draft_task"` 运行时绑定 `agent.tasks`（admin/service.py:18 / 不直接 import agent / 避免循环）。admin 是用户路径之上的"上层应用" / 只 require_admin 用户才能访问
+- `meetup` (Sprint 13): 依赖 `segment.models.Segment`（路线快照）+ `route_book.models.RouteBook`（另一种路线来源）+ `storage.local.LocalStorage`（媒体文件）/ 正向依赖链末端 / **2 处 spec 批准的反向 hook（已登记技术债，新增反向依赖仍禁止）**：① `app/user/service.py:delete_user`（line 57-58）延迟 import meetup.models + meetup.service（删号时级联 OPEN→CANCELLED / DRAFT 硬删）；② `app/segment/router.py`（line 31）顶层 import meetup.models（赛段详情页拉 upcoming-meetups）
 
 ⚠️ agent 注意:
 - strava **不是**"独立只出不入"——它反向消费 activity/segment 的 model 和 worker 函数,这是当前写入 Strava 导入活动的必经之路
@@ -263,7 +271,7 @@ app/<模块名>/
 
 ---
 
-## 4. 数据表(12 / v5 +2 / Persona 3 张 stage 3 待 drop)
+## 4. 数据表(15 / Sprint 13 +3 / Persona 3 张 stage 3 待 drop)
 
 ### 4.1 表清单
 
@@ -278,6 +286,9 @@ app/<模块名>/
 | `notifications` | v3（**v5 加 payload JSONB + 部分唯一索引 uniq_progress_notification_per_activity**） | 5k-50k | notification |
 | **`segment_ai_drafts`** | **v5** | **同 segments** | **agent**（pending→human_edited→approved/rejected 状态机 / segment_id UNIQUE FK）|
 | **`segment_curation_pool`** | **v5** | **30-500** | **segment**（admin 候选池 + 周期性脚本算分 / segment_id UNIQUE FK）|
+| **`meetups`** | **Sprint 13** | **量级同 users** | **meetup（约骑主表 / 状态机 DRAFT/OPEN/CANCELLED/COMPLETED / UNIQUE: 每用户只能有 1 个 DRAFT / pace_level 4 档枚举 / max_participants 2-20）** |
+| **`meetup_participants`** | **Sprint 13** | **量级同 meetups × N** | **meetup（报名表 / UNIQUE(meetup_id, user_id) 防重复占位 / is_creator 标记发起人）** |
+| **`meetup_media`** | **Sprint 13** | **量级同 meetups × N** | **meetup（照片/视频表 / type image/video / file_id 存 meetup_media/ 子目录路径 / seq 排序 / 物理文件存 uploads/meetup_media/）** |
 | ~~`persona_outputs`~~ | ~~Persona v0.1~~ | **193 行 / stage 3 待 drop** | **2026-05-21 模块清** / 数据已 pg_dump 归档 `docs/archive/persona-db-backup/` |
 | ~~`persona_templates`~~ | ~~Persona v0.1~~ | **168 行 / stage 3 待 drop** | 同上 |
 | ~~`persona_feedback`~~ | ~~Persona v0.1~~ | **0 行 / stage 3 待 drop** | 同上 / 0 行实证"装饰展示无人理"决策正确 |
@@ -499,8 +510,16 @@ users (1) ─── (N) activities ─── (N) trackpoints (CASCADE)
   │                                 ├─ effort_id (SET NULL) → segment_efforts
   │                                 └─ rival_user_id (SET NULL) → users
   │
-  └─── (1..N) strava_imports (同一 user 可有多条,同时只一条 active)
+  ├─── (1..N) strava_imports (同一 user 可有多条,同时只一条 active)
+  │
+  └─── (1..N) meetups (creator_id SET NULL，删号后约骑仍存在)
+                │
+                ├─── (N) meetup_participants (CASCADE / UNIQUE(meetup_id, user_id))
+                │
+                └─── (N) meetup_media (CASCADE / 物理文件存 uploads/meetup_media/ 子目录)
 ```
+
+约骑外键说明：`meetups.segment_id → segments SET NULL` / `meetups.route_book_id → route_books SET NULL`（路线来源二选一）。
 
 ### 4.4 Activity 状态机
 
@@ -541,6 +560,37 @@ Strava 导入路径:
 ```
 
 ⚠️ agent 注意: `active` 不叫 `running`,`completed` 不叫 `done`。
+
+### 4.6 Meetup 状态机
+
+```
+[不存在]
+   │ POST /api/meetups（creator 创建草稿）
+   ▼
+[DRAFT] ───── PATCH 修改细节 ─────────────────────────────────────┐
+   │          DELETE 草稿删除（CASCADE 清媒体/物理文件）                   │
+   │          POST /media 已可上传照片（发布前也能传）              ◄──────┘
+   │
+   │ POST /{id}/publish（creator 发布，creator 自动占一个名额）
+   ▼
+[OPEN] ──── 用户 POST /join（FOR UPDATE 防并发超员）──► 占名额
+   │         用户 DELETE /leave（creator 不能退，要退走 cancel）
+   │
+   │ POST /{id}/cancel（creator 取消 / 仅限出发前 30.5min 前）
+   │                   ─────────────────────────────────────────► [CANCELLED]
+   │
+   │ scheduler cron（每 15s tick / 20tick≈5min 跑一次）
+   │ estimated_end_time 已到 → complete_due_meetups()
+   ▼
+[COMPLETED]
+```
+
+⚠️ agent 注意：
+- 状态值全大写：`DRAFT` / `OPEN` / `CANCELLED` / `COMPLETED`（DB CHECK 约束 `ck_meetups_status` / 不要脑补小写）
+- 每个 creator **只能同时持有 1 个 DRAFT**（`uq_meetups_creator_draft` 条件唯一索引 / 创建第二个前须删掉或发布旧的）
+- pace_level 枚举：`relaxed` / `cruise` / `training` / `race`（DB CHECK `ck_meetups_pace_level`）
+- max_participants：2–20（DB CHECK `ck_meetups_max`）
+- 删号（delete_user）时：OPEN 约骑→CANCELLED / DRAFT 约骑→硬删 + 清媒体文件（user/service.py:53-83）
 
 ---
 
@@ -629,15 +679,35 @@ Strava 导入路径:
 
 ⚠️ 老 `POST /api/segments` 与 `DELETE /api/segments/{id}` v5 起 deprecated（router 顶部 `deprecated=True`）/ Sunset 2026-06-30。
 
-**API 总路由数: 47**（grep `@router.*` 实证 / 2026-05-21 Persona 2 个清）：
-- 主 router：user 10 + activity 7 + segment 6 + strava 7 + admin 12 + notification 2 + honor 1 = **45**
-- alias router：segment/router.py 内 `user_effort_router` 1（`/api/user/efforts`）+ `activity_segment_router` 1（`/api/activities/{id}/segments`）= **2**
-- 总计 45 + 2 = **47**
-- 其中 deprecated 2 个（老 segment POST/DELETE / `deprecated=True` / Sunset 2026-06-30）/ 仍可访问
+### 5.7 约骑(14 / Sprint 13 全新)
 
-**v5 新增 endpoint**：admin 12 全新 + user 6 新（power-curve/heatmap/PATCH me/{id}/profile/{id}/power-curve/{id}/heatmap）+ segment 1 新（efforts/me）= **+19 净增 v5**。
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/meetups` | 公开列表，支持 `?status&city&date_range&pace&page&page_size` 多筛选 |
+| POST | `/api/meetups` | 创建草稿（需登录 / 每用户只能 1 个 DRAFT） |
+| GET | `/api/meetups/my-draft` | 取我当前 DRAFT（需登录） |
+| GET | `/api/meetups/mine` | 我的约骑 `?role=created|joined`（需登录） |
+| GET | `/api/meetups/{meetup_id}` | 约骑详情（可游客访问；带 token 时补 is_creator/has_joined） |
+| PATCH | `/api/meetups/{meetup_id}` | 改草稿详情（creator 专属 / 仅 DRAFT 状态） |
+| POST | `/api/meetups/{meetup_id}/publish` | 发布 DRAFT→OPEN（creator / 自动占一个名额） |
+| POST | `/api/meetups/{meetup_id}/cancel` | 取消 OPEN 约骑（creator / 出发前 30.5min 前截止） |
+| POST | `/api/meetups/{meetup_id}/join` | 加入（需登录 / FOR UPDATE 防并发超员 / 出发前 30.5min 截止） |
+| DELETE | `/api/meetups/{meetup_id}/leave` | 退出（需登录 / creator 不能退 / 出发前截止） |
+| DELETE | `/api/meetups/{meetup_id}` | 删除草稿（creator 专属 / 仅 DRAFT / 级联清媒体文件） |
+| GET | `/api/meetups/{meetup_id}/media` | 约骑照片墙列表（公开访问 / 按 seq 升序） |
+| POST | `/api/meetups/{meetup_id}/media` | 上传媒体（需登录且为 creator / multipart / 图片≤5MB / 视频≤50MB） |
+| DELETE | `/api/meetups/{meetup_id}/media/{media_id}` | 删除媒体（creator 或 uploader 可删） |
 
-~~Persona v0.1 endpoint 2 个~~（2026-05-21 整模块清 / `GET /api/persona/output` + `/recent` 已删 / 详 changelog）。
+另有 `GET /api/segments/{id}/upcoming-meetups`（返回该赛段未来 OPEN 约骑列表）定义在 `app/segment/router.py:205`，属于赛段 API 但读 meetup 数据（2 处 spec 批准反向 hook 之一）。
+
+**API 总路由数: 81**（grep 全 app `@*router.(get|post|put|patch|delete)` 实证 / Sprint 13 约骑 +14、用户注销 +1）：
+- 标准 `@router`：user 17 + activity 10 + segment 8 + strava 8 + admin 12 + training 2 + route_book 5 + **meetup 14** = **76**
+- 专用 router：notification 2 + honor 1 = **3**
+- alias router：`user_effort_router` 1（`/api/user/efforts`）+ `activity_segment_router` 1（`/api/activities/{id}/segments`）= **2**
+- 总计 76 + 3 + 2 = **81**
+- 其中 deprecated 2 个（老 segment POST/DELETE / Sunset 2026-06-30）/ 仍可访问
+
+~~Persona v0.1 endpoint 2 个~~（2026-05-21 整模块清 / 已删 / 详 changelog）。
 
 ⚠️ agent 注意:
 - 完整 OpenAPI schema: `/api/docs`(FastAPI 自动生成)
@@ -669,6 +739,8 @@ Strava 导入路径:
 - `miniprogram/pages/explore/` — 探索 tab(v4 暂空)
 - `miniprogram/pages/profile/` — 我的 tab
 - `miniprogram/pages/home/` — 动态 tab
+- `miniprogram/pages/meetups-mine/` — 我的约骑列表（created/joined 两个 tab）
+- `miniprogram/pages/meetup-detail/` — 约骑详情页（照片墙 + 参与人数 + 加入/退出/取消按钮）
 
 ### 6.3 前端-后端数据流示例
 
@@ -705,14 +777,19 @@ home.onShow()
          (通过 import_scheduler 写入 activities + segment_efforts + notifications)
 ```
 
-- `user`: 不 import 任何业务模块
+- `user`: 不 import 任何业务模块（**例外：delete_user 内延迟 import meetup / spec 批准 / line 57-58**）
 - `parsing`: 纯函数,不 import 任何业务模块
 - `activity`: 只 import `user` 和 `parsing`
-- `segment`: 只 import `user` 和 `activity`(通过 trackpoints)
+- `segment`: 只 import `user` 和 `activity`(通过 trackpoints)（**例外：router.py 顶层 import meetup.models / spec 批准 / line 31**）
 - `notification`: 只 import `user / activity / segment`
 - `strava`: import `user / activity(models+worker) / segment(models+auto_match) / parsing`
+- `meetup`: import `segment.models` + `route_book.models` + `storage.local`（**正向依赖链末端 / 最高层业务模块**）
 
 **strava 不是独立"只出不入"**——它反向消费 activity/segment 的 model 和函数,这是把 Strava 活动落入 velo 数据库的必经路径。只要 activity/segment **不反向** import strava,就不构成循环。
+
+**meetup 的 2 处反向 hook（CLAUDE.md 明确批准 / 已登记技术债 / 不许再新增）**：
+- `user.service.delete_user` 延迟 import meetup（函数体内 `from app.meetup.models import Meetup`）——删号时级联处理约骑不引入模块级循环
+- `segment.router` 顶层 import meetup.models——赛段详情页展示 upcoming-meetups 的读操作
 
 ### 7.2 防火墙式扩展
 
@@ -768,6 +845,12 @@ v7+ 的 agent 模块与主 SaaS 通过**薄接口**连接,不共享 session / �
 | `miniprogram/pages/detail/*` | 活动详情 | 地图、海拔、数据 | 小程序 |
 | `miniprogram/pages/honor/*` | 荣誉页 | KOM + Top10 | 小程序 |
 | `miniprogram/pages/settings/*` | 设置页 | 免打扰开关 | 小程序 |
+| `app/meetup/models.py` | meetups/meetup_participants/meetup_media 表 | **必须 Alembic 迁移** | api |
+| `app/meetup/service.py` | 约骑核心业务逻辑（状态机/人数守卫/时间截止） | 状态机合法性 / FOR UPDATE 并发防护 | api |
+| `app/meetup/media_service.py` | 照片上传/删除/列表 | 存 meetup_media/ 子目录 / 孤儿文件补偿路径 | api |
+| `app/meetup/cron.py` | 自动将 estimated_end_time 到期的 OPEN 约骑→COMPLETED | **scheduler 容器重启** | scheduler |
+| `miniprogram/pages/meetup-detail/*` | 约骑详情页 | 照片墙 / 角色按钮（加入/退出/取消/发布） | 小程序 |
+| `miniprogram/pages/meetups-mine/*` | 我的约骑列表 | created/joined 两 tab | 小程序 |
 
 ---
 

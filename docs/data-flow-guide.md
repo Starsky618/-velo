@@ -28,6 +28,8 @@
 16. [链路 16: 即时反馈 (v5 赛段详情页对比 6 字段)](#链路-16即时反馈v5-task-1a3--5c1)
 17. [全局不变式](#全局不变式)
 18. [未实现链路(易踩坑)](#未实现链路易踩坑)
+20. [链路 20: 约骑核心链路（创建→发布→加入/退出→自动完成）](#链路-20约骑核心链路)
+21. [链路 21: 赛段页 upcoming-meetups 反向读](#链路-21赛段页-upcoming-meetups-反向读)
 
 ---
 
@@ -1668,6 +1670,259 @@ app/strava/import_scheduler.py:
 ```
 
 Worker 后台无界面,日志是唯一观察窗口。
+
+---
+
+---
+
+## 链路 20：约骑核心链路
+
+约骑是"提前约好时间、地点、配速，然后一起出发骑车"。链路覆盖：创建草稿（4 步向导：选路线→填详情→上传照片→发布）→ 开放报名 → 用户加入/退出 → 出发前截止 → 骑完自动完成。
+
+### 20.1 触发
+
+- 用户在小程序发起约骑：`POST /api/meetups`
+- 参与者在约骑详情页点"加入"：`POST /api/meetups/{id}/join`
+- scheduler 定时检查过期约骑（`⟳` 每 15s tick / 20 tick≈5min 跑一次 cron）
+
+### 20.2 序列 A：创建草稿 + 修改 + 上传照片
+
+```
+[小程序 发起人]
+  │
+  │ Step 1：选路线（segment 或 route_book 二选一）
+  │         POST /api/meetups  body={segment_id 或 route_book_id, start_time,
+  │                                  estimated_end_time, meeting_point,
+  │                                  pace_level, max_participants, description}
+  ▼
+[api]  app/meetup/router.py:create_meetup
+  │    → service.create_meetup(db, ...)
+  │
+  │ Step A: 检查用户是否已有 DRAFT
+  │   SELECT FROM meetups WHERE creator_id=? AND status='DRAFT'
+  │   ⚡ 命中 → 409 {code: draft_exists, existing_draft_id: N, message: "你已有 1 个草稿"}
+  │
+  │ Step B: 从路线抄快照
+  │   _snapshot_from_route(db, segment_id, route_book_id)
+  │   segment 路线 → SELECT Segment → snapshot_route_name / snapshot_distance / snapshot_climb / snapshot_city
+  │   route_book 路线 → SELECT RouteBook → 同字段
+  │   ⚡ 两个都传或都不传 → 422 "segment_id 和 route_book_id 必须二选一"
+  │   ⚡ 路线不存在 → 404
+  │
+  │ Step C: 时间顺序校验
+  │   _ensure_time_order(start_aware, end_aware)
+  │   ⚡ end <= start → 422 "estimated_end_time 必须晚于 start_time"
+  │
+  │ Step D: INSERT meetups (status='DRAFT')
+  │   🔒 UNIQUE(creator_id) WHERE status='DRAFT' 条件索引兜底并发
+  │   ⚡ IntegrityError(uq_meetups_creator_draft) → 409 draft_exists
+  │
+  │ 返回 MeetupResponse（participants_count=0 / no media）
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ 修改草稿（可选 / 任意次）                                              │
+  │   PATCH /api/meetups/{id}                                       │
+  │   → service.update_meetup(db, meetup_id, current_user_id, **changes)│
+  │   仅允许 DRAFT 状态修改（require_status=["DRAFT"]）                    │
+  │   路线改了重新算快照（路线名/距离/爬升随之更新）                          │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ 上传照片（发布前就能传 / 草稿期也可上传）                                │
+  │   POST /api/meetups/{id}/media  multipart                       │
+  │   content-type 白名单：image/jpeg / image/png / image/webp（≤5MB）│
+  │                       video/mp4（≤50MB）                          │
+  │   微信 wx.uploadFile 视频常用 application/octet-stream            │
+  │   → media_service.upload_meetup_media 按扩展名兜底识别类型          │
+  │                                                                 │
+  │   存储路径：uploads/meetup_media/meetup-{id}-media-{seq}{ext}    │
+  │   ⚠️ 隐私隔离：meetup_media/ 子目录与根 uploads/ 隔离              │
+  │   caddy 只为 meetup_media/ 子目录提供静态服务                      │
+  │   不会顺带暴露其他人的私密轨迹 GPX（2026-06-01 修复）               │
+  │                                                                 │
+  │   seq 取"现存最大序号+1"（不用 count / 防删中间项后序号碰撞）         │
+  │   DB 先 flush 拿 media.id → storage upload → 回填 file_id → commit│
+  │   commit 失败 → storage delete（补偿路径 / 防孤儿文件）             │
+  └─────────────────────────────────────────────────────────────────┘
+```
+
+### 20.3 序列 B：发布 DRAFT → OPEN
+
+```
+[小程序 发起人] POST /api/meetups/{id}/publish
+  ▼
+[api]  service.publish_meetup(db, meetup_id, current_user_id)
+  │
+  │ 🔒 _load_and_authorize_meetup(..., require_creator=True, require_status=["DRAFT"])
+  │   SELECT meetup FOR UPDATE POPULATE EXISTING（陷阱 #12 / 刷新 identity map）
+  │   ⚡ 非 DRAFT → 409
+  │   ⚡ 非 creator → 403
+  │
+  │ meetup.status = 'OPEN'
+  │
+  │ 发起人自动占名额（publish 即加入，避免"发起人不在参与列表"逻辑黑洞）：
+  │   SELECT MeetupParticipant WHERE meetup_id=? AND user_id=? → 不存在则 INSERT is_creator=True
+  │
+  │ db.commit()
+  │ 返回 MeetupResponse（participants_count=1 / 发起人已在列表）
+```
+
+### 20.4 序列 C：加入 / 退出（防并发超员）
+
+```
+[参与者] POST /api/meetups/{id}/join
+  ▼
+[api]  service.join_meetup(db, meetup_id, current_user_id)
+  │
+  │ 🔒 _load_and_authorize_meetup(..., require_status=["OPEN"],
+  │                                check_time_cutoff=True, cancelled_returns_410=True)
+  │   SELECT meetup FOR UPDATE POPULATE EXISTING
+  │   ⚡ 非 OPEN 且 CANCELLED → 410 "meetup cancelled"
+  │   ⚡ 非 OPEN → 409 "invalid status"
+  │   ⚡ now() > start_time - 30.5min → 410 "meetup cutoff passed"（报名截止）
+  │
+  │ ⚡ 已加入（SELECT MeetupParticipant 命中）→ 409 "already_joined"
+  │
+  │ count = count_participants(db, meetup_id)（当前人数快照）
+  │ ⚡ count >= max_participants → 409 "meetup_full"
+  │   ⚠️ FOR UPDATE 锁住 meetup 行 + 立刻查人数，防两人同时抢最后一个名额
+  │
+  │ INSERT meetup_participants (is_creator=False)
+  │   🔒 UNIQUE(meetup_id, user_id) 约束兜底极低概率并发
+  │   ⚡ IntegrityError → 409 "already_joined"
+  │
+  │ db.commit()
+  │ 返回 {meetup, participants_count: count + 1}
+
+[参与者] DELETE /api/meetups/{id}/leave
+  ▼
+  │ 同上 _load_and_authorize_meetup（同样的 OPEN/时间/cancel 守卫）
+  │ ⚡ creator 尝试退出 → 403 "creator_cannot_leave"（要退走 cancel）
+  │ ⚡ 未加入 → 409 "not_joined"
+  │ DELETE meetup_participants WHERE meetup_id=? AND user_id=?
+  │ db.commit() / 返回更新后人数
+```
+
+### 20.5 序列 D：取消 / 删除草稿
+
+```
+[发起人] POST /api/meetups/{id}/cancel
+  │
+  │ require_creator=True / require_status=["OPEN"] / check_time_cutoff=True
+  │ ⚡ now() > start_time - 30.5min → 410（出发太近不能临时取消）
+  │
+  │ meetup.status = 'CANCELLED' / meetup.cancelled_at = now()
+  │ db.commit()
+
+[发起人] DELETE /api/meetups/{id}（仅限 DRAFT）
+  │
+  │ require_status=["DRAFT"]
+  │ 收集 meetup_media 文件路径清单 → DELETE meetup_media rows → db.delete(meetup) → db.commit()
+  │ commit 后清理 storage 物理文件（DB 是 source of truth / 删失败只记日志不阻塞）
+```
+
+### 20.6 序列 E：scheduler 自动完成
+
+```
+[scheduler.py] ⟳ 每 15s tick / 20 tick≈5min 跑一次 run_meetup_complete_tick()
+  │
+  │ app/meetup/cron.py:complete_due_meetups(db)
+  │
+  │ SELECT FROM meetups
+  │   WHERE status = 'OPEN'
+  │   AND estimated_end_time <= now()
+  │
+  │ for each meetup:
+  │   meetup.status = 'COMPLETED'
+  │   meetup.completed_at = now()
+  │
+  │ db.commit()
+  │ 返回本轮改了几条
+  │
+  │ ⚠️ meetup tick 和 Strava tick 独立 try/except：约骑收尾失败不影响 Strava 导入继续跑
+```
+
+### 20.7 幂等性
+
+| 步骤 | 幂等性保证 |
+|---|---|
+| 创建草稿 | `uq_meetups_creator_draft` 条件唯一索引 / 同一 creator 只允许 1 个 DRAFT |
+| 加入约骑 | `uq_meetup_participant_user` UNIQUE(meetup_id, user_id) / 重复加入返 409 |
+| 发布 / 取消 | `_load_and_authorize_meetup` require_status 守卫 / 重复操作返 409 |
+| 自动完成 cron | 每轮重新 SELECT / 已 COMPLETED 的不在 WHERE status='OPEN' 结果里 |
+
+### 20.8 失败恢复
+
+| 失败点 | 后果 | 自愈 |
+|---|---|---|
+| 媒体 commit 失败 | DB 无记录但 storage 已落盘 | media_service 补偿删除 storage 文件（try/except + logger.warning 孤儿记账）|
+| 删草稿时 storage 删失败 | 孤儿文件留磁盘 | logger.warning 记账 / v2 清理机制 tech-debt |
+| cron 跑时 scheduler 进程崩溃 | 少量 OPEN 约骑未 COMPLETED | 下次 tick 重新扫，estimated_end_time 仍 <= now() 继续处理 |
+| join 时 FOR UPDATE 加锁超时 | API 报错 | 用户重试 |
+
+### 20.9 不变式
+
+1. `create_meetup` 必须通过 `uq_meetups_creator_draft` 条件索引防一人多草稿
+2. `join_meetup` 必须持有 meetup 行锁（FOR UPDATE POPULATE EXISTING）才能安全计人数（陷阱 #12）
+3. 媒体文件必须存 `meetup_media/` 子目录，不能存 uploads 根（防 caddy 顺带公开私密 GPX）
+4. 删号（delete_user）路径：OPEN 约骑→CANCELLED / DRAFT 约骑→硬删 + 清媒体文件，三步同一事务一次 commit（user/service.py:53-83 / 陷阱 #21 / 不用 `with db.begin()`）
+
+### 20.10 ⚠️ agent 修改本链路时的强制自检
+
+- [ ] 改状态机？检查 `_load_and_authorize_meetup` 的 `require_status` 和 `check_time_cutoff` 参数配置
+- [ ] 加新表字段？必须 Alembic 迁移，不能手动 ALTER TABLE
+- [ ] 改媒体存储路径？检查 caddy 静态服务配置是否仍仅服务 `meetup_media/` 子目录
+- [ ] 改 `delete_user` 级联逻辑？检查是否仍用延迟 import + 末尾单次 `db.commit()`（不用 `with db.begin()`，陷阱 #21）
+- [ ] 新增反向 hook（除已批准的 2 处）？必须与 Tim 讨论，CLAUDE.md 正向依赖链硬规则
+
+---
+
+## 链路 21：赛段页 upcoming-meetups 反向读
+
+### 21.1 触发
+
+用户打开赛段详情页 → 前端调 `GET /api/segments/{segment_id}/upcoming-meetups` → 展示这条赛段未来有哪些开放的约骑。
+
+### 21.2 序列
+
+```
+[小程序 赛段详情页]
+  │
+  ▼
+[api]  GET /api/segments/{segment_id}/upcoming-meetups
+  │    app/segment/router.py:get_segment_upcoming_meetups (line 205)
+  │    ⚠️ segment/router.py 顶层 import meetup.models（spec 批准反向 hook / CLAUDE.md 已登记）
+  │
+  │ Step 1: SELECT Meetup
+  │   WHERE meetup.segment_id = segment_id
+  │   AND meetup.status = 'OPEN'
+  │   AND meetup.start_time > now()（未来约骑）
+  │   ORDER BY meetup.start_time ASC
+  │   LIMIT 10
+  │
+  │ Step 2: 批量查人数（GROUP BY 防 N+1）
+  │   SELECT MeetupParticipant.meetup_id, COUNT(*)
+  │   WHERE meetup_id IN (...)
+  │   GROUP BY meetup_id
+  │
+  │ 返回 SegmentUpcomingMeetupsResponse（精简字段：
+  │   id / snapshot_route_name / snapshot_distance / snapshot_climb /
+  │   snapshot_city / start_time / estimated_end_time /
+  │   meeting_point / pace_level / max_participants / participants_count）
+```
+
+### 21.3 依赖说明（spec 批准的反向 hook）
+
+- `segment.router` 依赖 `meetup.models`：这是正向依赖链（`User←Activity←Segment←Notification`）中唯一被批准的"赛段读约骑"反向读操作
+- 为什么允许：segment 路由**只读** meetup 数据用于展示，不写入 meetup 表；而 `segment.service` 不 import meetup（不影响业务逻辑纯洁性）
+- 为什么不在 meetup 模块做：赛段详情页是 segment 的主场，upcoming-meetups 是该页面的一个展示组件，合并在赛段端点树下让前端调用更自然
+- 新增类似反向依赖仍禁止，这 1 处（另一处在 user/service.py）是已登记的例外
+
+### 21.4 不变式
+
+1. 只返回 `status='OPEN' AND start_time > now()` 的约骑（不展示草稿/已取消/已完成）
+2. segment/service.py **不** import meetup（只有 router.py 顶层 import meetup.models）
+3. 该端点无需登录（公开访问）
 
 ---
 
