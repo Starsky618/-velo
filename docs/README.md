@@ -39,9 +39,9 @@
       · 训练负荷（累不累）· 训练分布（练对没）
       模块：training
    ──────────────────────────────────────────────────────
-   🤝 社交房间 · 把路线变成一起骑　🚧 在建
+   🤝 社交房间 · 把路线变成一起骑　✅ 已上线
       · 约骑 meetup · 路书 route_book
-      模块：meetup · route_book（当前分支）
+      模块：meetup · route_book
    ──────────────────────────────────────────────────────
    🔧 后勤 · 看不见但撑着主引擎运转
       · AI 赛段写手 agent · 监控告警 monitor · 管理后台 admin
@@ -50,8 +50,7 @@
 
 **做到哪了**：
 
-- ✅ **已上线**：MVP（上传 → 赛段 → 排行）· Strava 接入 · 训练分析三件套（FTP 估算 / 训练负荷 PMC / 训练分布）
-- 🚧 **在建**：约骑 + 路书（当前分支 / spec + plans 见 `docs/superpowers/`）
+- ✅ **已上线**：MVP（上传 → 赛段 → 排行）· Strava 接入 · 训练分析三件套（FTP 估算 / 训练负荷 PMC / 训练分布）· 约骑 + 路书（创建配图 / 照片墙 / 账号注销 / 2026-06-02 全 ship 合 main + 部署）
 - 📋 **待开**：LLM 骑后教练总结（Sprint 12 / 设计稿见 `docs/superpowers/specs/2026-05-26-coach-architecture.md`）
 
 ---
@@ -294,10 +293,10 @@ velo 工作流由两套大脑支撑：
 | `docs/superpowers/specs/2026-05-24-task-skill-spec.md` | task skill 设计 brief（给 codex-skill-creator / 5-phase SOP / cross-project pattern）| 给 Codex 装 task skill 时 / 或迁移到别项目时 |
 | `docs/prd/sprint-9/10/11-prd.md` | 训练分析三件套战术 PRD（FTP 估算 / 训练负荷 PMC / 训练分布）| 改训练模块前 |
 | `docs/superpowers/specs/2026-05-25-sprint-11-training-distribution-spec.md` | 训练分布技术 spec | 改训练分布前 |
-| `docs/superpowers/specs/2026-05-28-meetup-module-design.md` | 约骑 + 路书模块设计（🚧 在建）| 改约骑 / 路书前 |
+| `docs/superpowers/specs/2026-05-28-meetup-module-design.md` | 约骑 + 路书模块设计（✅ 已 ship 合 main）| 改约骑 / 路书前 |
 | `docs/superpowers/plans/2026-05-28-meetup-module/` | 约骑 + 路书任务卡（02 路书 / 03 约骑 service / 04 约骑 API / 08 赛段约骑入口）| 执行约骑 / 路书时 |
 
-> ⚠️ `architecture-guide.md` 目前覆盖到训练分析；**约骑 / 路书在建、尚未收录**——看这两块去 §0 + `docs/superpowers/`。
+> `architecture-guide.md` + `data-flow-guide.md` 已收录约骑 / 路书模块（2026-06-02 补章：约骑 3 表 + 14 端点 + 2 处反向 hook + 核心链路）。
 
 ### C. 运行规则（硬约束）
 
