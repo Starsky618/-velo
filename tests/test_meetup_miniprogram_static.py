@@ -53,6 +53,7 @@ def test_api_helpers_use_meetup_endpoints():
         "getRouteBooksList",
         "getRouteBookActivityCandidates",
         "createRouteBookFromActivity",
+        "createRouteBookFromTencentDirection",
         "getSegmentsList",
         "requestForm",
     ]:
@@ -108,14 +109,43 @@ def test_create_page_is_three_step_flow_and_uses_backend_state():
     assert "api.getSegmentsList" in js
     assert "api.getRouteBooksList" in js
     assert "api.getRouteBookActivityCandidates" in js
+    assert "api.createRouteBookFromTencentDirection" in js
     assert "selectedSegmentId" in js
     assert "selectedRouteBookId" in js
     assert "selectedActivityId" in js
+    assert "tencentStartText" in js
+    assert "tencentEndText" in js
+    assert "onTapCreateTencentRoute" in js
     assert "currentStep" in wxml
     assert "路线" in wxml and "时间" in wxml and "发布" in wxml
+    assert "腾讯地图生成" in wxml
     # 时间必须用微信日期/时间选择器，不能用文本框让用户手敲 ISO 字符串
     assert 'mode="date"' in wxml
     assert 'mode="time"' in wxml
+
+
+def test_create_page_declares_location_privacy_for_tencent_route():
+    app_json = json.loads(_read(MINI / "app.json"))
+
+    # 腾讯地图选起终点会调用 wx.chooseLocation；小程序不声明这个隐私接口，
+    # 用户点"选择起点/终点"时会直接失败。
+    assert "chooseLocation" in app_json.get("requiredPrivateInfos", [])
+    assert "scope.userLocation" in app_json.get("permission", {})
+
+
+def test_create_page_formats_meter_distance_as_kilometers():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+
+    assert "distanceText(item.distance, type)" in js
+    assert "type === 'segment'" in js
+    assert "/ 1000" in js
+
+
+def test_create_page_hides_tencent_env_config_errors_from_users():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+
+    assert "路线服务暂不可用" in js
+    assert "err && err.code === 503" in js
 
 
 def test_meetup_pages_have_no_dash_placeholder():

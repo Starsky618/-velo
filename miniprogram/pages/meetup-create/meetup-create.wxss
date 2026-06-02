@@ -77,6 +77,42 @@ page {
   color: #6b7280;
 }
 
+.tencent-route-box {
+  padding: 24rpx;
+  border-radius: 16rpx;
+  background: #fff;
+}
+
+.tencent-points {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+
+.point-button,
+.generate-button {
+  height: 76rpx;
+  line-height: 76rpx;
+  border-radius: 14rpx;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.point-button {
+  overflow: hidden;
+  background: #f3f4f6;
+  color: #111827;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.generate-button {
+  width: 100%;
+  background: #111827;
+  color: #fff;
+}
+
 .field text {
   display: block;
   margin-bottom: 12rpx;

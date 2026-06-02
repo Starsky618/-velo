@@ -15,7 +15,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user, get_optional_user
+from app.middleware.rate_limit import check_rate_limit_by_user
 from app.route_book import schemas, service
+from app.route_book.tencent_direction import TencentMapConfigError, TencentMapError
 
 
 router = APIRouter(prefix="/api/route-books", tags=["route_book"])
@@ -38,7 +40,7 @@ def list_route_books(
 @router.post("", response_model=schemas.RouteBookResponse)
 def create_route_book(
     name: str = Form(..., min_length=1, max_length=128),
-    source: schemas.RouteBookSource = Form(...),
+    source: schemas.RouteBookCreateSource = Form(...),
     source_activity_id: int | None = Form(None),
     file: UploadFile | None = File(None),
     current_user_id: int = Depends(get_current_user),
@@ -61,6 +63,32 @@ def create_route_book(
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/tencent-direction", response_model=schemas.RouteBookResponse)
+def create_route_book_from_tencent_direction(
+    payload: schemas.TencentDirectionRouteBookRequest,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    check_rate_limit_by_user(
+        current_user_id,
+        "route-book-tencent-direction",
+        limit=10,
+        window_sec=300,
+    )
+    try:
+        return service.create_route_book_from_tencent_direction(
+            db=db,
+            current_user_id=current_user_id,
+            name=payload.name,
+            start=(payload.from_lat, payload.from_lon),
+            end=(payload.to_lat, payload.to_lon),
+        )
+    except TencentMapConfigError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except (TencentMapError, ValueError) as e:
         raise HTTPException(status_code=422, detail=str(e))
 
 

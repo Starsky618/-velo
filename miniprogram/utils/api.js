@@ -420,6 +420,10 @@ module.exports = {
     })
   },
 
+  createRouteBookFromTencentDirection: function (payload) {
+    return request('/api/route-books/tencent-direction', 'POST', payload)
+  },
+
   /**
    * 上传文件专用（GPX 上传走这个，不走普通 JSON 请求）
    *

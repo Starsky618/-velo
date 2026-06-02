@@ -42,7 +42,24 @@ def test_route_book_orphan_semantics_are_preserved():
     assert "source_activity_id" in models
     assert "ondelete=\"SET NULL\"" in models
     assert "source = 'activity_derived'" in models
+    assert "tencent_direction" in models
     assert "source_activity_id IS NOT NULL" not in models
+
+
+def test_tencent_direction_migration_extends_route_book_source():
+    migrations = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "migrations/versions").glob("*.py"))
+
+    assert "tencent_direction" in migrations
+    assert "ck_route_books_source" in migrations
+    assert "ck_route_books_file_type_source" in migrations
+
+
+def test_tencent_direction_migration_downgrade_aborts_with_existing_rows():
+    migration = _read("migrations/versions/20260602_route_book_tencent_direction.py")
+
+    assert "SELECT 1 FROM route_books WHERE source = 'tencent_direction' LIMIT 1" in migration
+    assert "RuntimeError" in migration
+    assert "不能回滚" in migration
 
 
 def test_alembic_imports_new_models():

@@ -1,9 +1,14 @@
 const api = require('../../utils/api')
 
-// 把后端距离（km 数值）拼成展示文本；缺失返回空串，调用方用空串判断不拼接（不显示 "-"）
-function distanceText(value) {
+// 把不同来源的距离拼成展示文本。
+// 赛段列表接口已经给公里；路书和"我的骑行"候选给米。
+// 这里按来源换算，像看菜单先分清"斤"和"克"，不能只看数字大小猜单位。
+function distanceText(value, type) {
   if (value === undefined || value === null) return ''
-  return Number(value).toFixed(1) + ' km'
+  var n = Number(value)
+  if (!Number.isFinite(n)) return ''
+  var km = type === 'segment' ? n : n / 1000
+  return km.toFixed(1) + ' km'
 }
 
 // 把爬升（m）拼成展示文本；缺失返回空串
@@ -46,6 +51,11 @@ Page({
     segments: [],
     routeBooks: [],
     activities: [],
+    tencentStart: null,
+    tencentEnd: null,
+    tencentStartText: '选择起点',
+    tencentEndText: '选择终点',
+    creatingTencentRoute: false,
     // meetupId：进入"照片"步骤时存出来的草稿 id。
     // 为什么必须先有 id 才能加照片？因为上传接口是 /api/meetups/{id}/media，
     // 照片必须挂在一条已存在的约骑记录上。所以照片这一步的前提就是"草稿已落库拿到 id"。
@@ -127,7 +137,7 @@ Page({
       var name = item.name || item.title || '未命名路线'
       var climb = item.climb !== undefined ? item.climb : item.elevation_gain
       // 距离和爬升缺失时不拼 "-"，只显示有值的部分（守"不显示占位符"规则）
-      var meta = distanceText(item.distance)
+      var meta = distanceText(item.distance, type)
       var ct = climbText(climb)
       if (ct) meta = meta ? meta + ' · ' + ct : ct
       return Object.assign({}, item, {
@@ -149,6 +159,86 @@ Page({
       selectedRouteName: name,
       // 换了路线选择 → 作废上次"从骑行生成"缓存的路书 id，否则改选别的活动还会复用旧路书（指错）
       generatedRouteBookId: null,
+    })
+  },
+
+  onTapChooseTencentStart: function () {
+    this.chooseTencentPoint('start')
+  },
+
+  onTapChooseTencentEnd: function () {
+    this.chooseTencentPoint('end')
+  },
+
+  chooseTencentPoint: function (kind) {
+    var that = this
+    wx.chooseLocation({
+      success: function (res) {
+        var point = {
+          name: res.name || res.address || '地图位置',
+          address: res.address || '',
+          latitude: res.latitude,
+          longitude: res.longitude,
+        }
+        if (kind === 'start') {
+          that.setData({
+            tencentStart: point,
+            tencentStartText: point.name,
+          })
+        } else {
+          that.setData({
+            tencentEnd: point,
+            tencentEndText: point.name,
+          })
+        }
+      },
+      fail: function (err) {
+        if (err && err.errMsg && err.errMsg.indexOf('cancel') >= 0) return
+        wx.showToast({ title: '选点失败', icon: 'none' })
+      },
+    })
+  },
+
+  onTapCreateTencentRoute: function () {
+    var that = this
+    var start = this.data.tencentStart
+    var end = this.data.tencentEnd
+    if (!start || !end) {
+      wx.showToast({ title: '先选起终点', icon: 'none' })
+      return
+    }
+    if (this.data.creatingTencentRoute) return
+    var name = start.name + ' → ' + end.name
+    this.setData({ creatingTencentRoute: true })
+    wx.showLoading({ title: '生成中', mask: true })
+    api.createRouteBookFromTencentDirection({
+      name: name,
+      from_lat: start.latitude,
+      from_lon: start.longitude,
+      to_lat: end.latitude,
+      to_lon: end.longitude,
+    }).then(function (routeBook) {
+      var decorated = that.decorateItems([routeBook], 'route_book')[0]
+      that.setData({
+        routeBooks: [decorated].concat(that.data.routeBooks),
+        selectedSegmentId: null,
+        selectedActivityId: null,
+        selectedRouteBookId: routeBook.id,
+        selectedRouteName: decorated.displayName,
+        generatedRouteBookId: null,
+      })
+      wx.showToast({ title: '已生成路线', icon: 'success' })
+    }).catch(function (err) {
+      var message = '生成失败'
+      if (err && err.code === 503) {
+        message = '路线服务暂不可用'
+      } else if (err && err.message) {
+        message = err.message
+      }
+      wx.showToast({ title: message, icon: 'none' })
+    }).finally(function () {
+      wx.hideLoading()
+      that.setData({ creatingTencentRoute: false })
     })
   },
 

@@ -1,10 +1,12 @@
 """约骑模块 Task 2：路书 API 测试。"""
 
 from datetime import datetime, timezone
+from typing import get_args
 
 from app.activity.models import Activity, Trackpoint
 from app.main import app
 from app.route_book.router import router as route_book_router
+from app.route_book import schemas
 
 
 # task2 阶段 route_book router 还没挂进 app.main（task4 才统一挂载所有 router）。
@@ -12,6 +14,11 @@ from app.route_book.router import router as route_book_router
 # 幂等判断：多个测试文件可能都想挂，避免重复 include 同一 router。
 if not any(getattr(route, "path", "") == "/api/route-books" for route in app.router.routes):
     app.include_router(route_book_router)
+
+
+def test_generic_create_source_excludes_tencent_direction():
+    assert get_args(schemas.RouteBookCreateSource) == ("file_upload", "activity_derived")
+    assert "tencent_direction" in get_args(schemas.RouteBookSource)
 
 
 def _activity(db, user_id: int, **overrides):
@@ -131,6 +138,182 @@ def test_file_upload_supports_fit_and_preserves_file_id(client, auth_header, mon
     body = res.json()
     assert body["file_id"] == "202605/route.fit"
     assert body["file_type"] == "fit"
+
+
+def test_tencent_direction_requires_server_key(client, auth_header, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "TENCENT_MAP_KEY", "")
+    monkeypatch.setattr(settings, "TENCENT_MAP_SK", "")
+
+    res = client.post(
+        "/api/route-books/tencent-direction",
+        json={
+            "name": "腾讯规划路线",
+            "from_lat": 37.8001,
+            "from_lon": 112.5001,
+            "to_lat": 37.8601,
+            "to_lon": 112.5601,
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 503
+    assert "TENCENT_MAP_KEY" in res.text
+
+
+def test_tencent_direction_creates_route_book(client, db, auth_header, monkeypatch):
+    from app.route_book.models import RouteBook
+
+    def fake_plan(start, end):
+        assert start == (37.8001, 112.5001)
+        assert end == (37.8601, 112.5601)
+        return {
+            "distance": 6800.0,
+            "duration": 28,
+            "points": [
+                {"lat": 37.8001, "lon": 112.5001},
+                {"lat": 37.8301, "lon": 112.5301},
+                {"lat": 37.8601, "lon": 112.5601},
+            ],
+        }
+
+    monkeypatch.setattr("app.route_book.service.plan_tencent_bicycling_route", fake_plan)
+
+    res = client.post(
+        "/api/route-books/tencent-direction",
+        json={
+            "name": "腾讯规划路线",
+            "from_lat": 37.8001,
+            "from_lon": 112.5001,
+            "to_lat": 37.8601,
+            "to_lon": 112.5601,
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["name"] == "腾讯规划路线"
+    assert body["source"] == "tencent_direction"
+    assert body["file_id"] is None
+    assert body["file_type"] is None
+    assert body["source_activity_id"] is None
+    route = db.query(RouteBook).filter(RouteBook.id == body["id"]).first()
+    assert route is not None
+    assert route.distance == 6800.0
+    assert route.source == "tencent_direction"
+
+
+def test_tencent_direction_applies_user_rate_limit(client, auth_header, test_user, monkeypatch):
+    calls = []
+
+    def fake_rate_limit(user_id, key_prefix, limit, window_sec):
+        calls.append((user_id, key_prefix, limit, window_sec))
+
+    monkeypatch.setattr("app.route_book.router.check_rate_limit_by_user", fake_rate_limit)
+    monkeypatch.setattr("app.route_book.service.plan_tencent_bicycling_route", lambda start, end: {
+        "distance": 6800.0,
+        "duration": 28,
+        "points": [
+            {"lat": 37.8001, "lon": 112.5001},
+            {"lat": 37.8601, "lon": 112.5601},
+        ],
+    })
+
+    res = client.post(
+        "/api/route-books/tencent-direction",
+        json={
+            "name": "限流路线",
+            "from_lat": 37.8001,
+            "from_lon": 112.5001,
+            "to_lat": 37.8601,
+            "to_lon": 112.5601,
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 200
+    assert calls == [(test_user.id, "route-book-tencent-direction", 10, 300)]
+
+
+def test_tencent_direction_rejects_same_point_before_calling_tencent(client, auth_header, monkeypatch):
+    called = False
+
+    def fake_plan(start, end):
+        nonlocal called
+        called = True
+        return {"distance": 1.0, "duration": 1, "points": []}
+
+    monkeypatch.setattr("app.route_book.service.plan_tencent_bicycling_route", fake_plan)
+
+    res = client.post(
+        "/api/route-books/tencent-direction",
+        json={
+            "name": "原地路线",
+            "from_lat": 37.8001,
+            "from_lon": 112.5001,
+            "to_lat": 37.8001,
+            "to_lon": 112.5001,
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 422
+    assert called is False
+
+
+def test_tencent_direction_rejects_too_short_route(client, db, auth_header, monkeypatch):
+    from app.route_book.models import RouteBook
+
+    monkeypatch.setattr("app.route_book.service.plan_tencent_bicycling_route", lambda start, end: {
+        "distance": 20.0,
+        "duration": 1,
+        "points": [
+            {"lat": 37.8001, "lon": 112.5001},
+            {"lat": 37.8002, "lon": 112.5002},
+        ],
+    })
+
+    res = client.post(
+        "/api/route-books/tencent-direction",
+        json={
+            "name": "太短路线",
+            "from_lat": 37.8001,
+            "from_lon": 112.5001,
+            "to_lat": 37.8002,
+            "to_lon": 112.5002,
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 422
+    assert db.query(RouteBook).filter(RouteBook.name == "太短路线").first() is None
+
+
+def test_tencent_direction_rejects_empty_polyline(client, db, auth_header, monkeypatch):
+    from app.route_book.models import RouteBook
+
+    monkeypatch.setattr("app.route_book.service.plan_tencent_bicycling_route", lambda start, end: {
+        "distance": 0.0,
+        "duration": 0,
+        "points": [],
+    })
+
+    res = client.post(
+        "/api/route-books/tencent-direction",
+        json={
+            "name": "空路线",
+            "from_lat": 37.8001,
+            "from_lon": 112.5001,
+            "to_lat": 37.8601,
+            "to_lon": 112.5601,
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 422
+    assert db.query(RouteBook).filter(RouteBook.name == "空路线").first() is None
 
 
 def test_list_supports_public_mine_and_city_filters(client, db, auth_header, admin_header, test_user, admin_user):

@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     # 配了 → activity 处理卡 4 分钟以上自动推飞书消息
     FEISHU_BOT_WEBHOOK: str = ""
 
+    # 腾讯位置服务（路线规划 / 地点服务）
+    # KEY 可以随请求发给腾讯；SK 只能放服务端，用来算 sig，绝不能进入小程序或前端。
+    TENCENT_MAP_KEY: str = ""
+    TENCENT_MAP_SK: str = ""
+
     class Config:
         # 告诉 pydantic-settings 从项目根目录的 .env 文件读取配置
         env_file = ".env"

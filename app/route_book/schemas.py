@@ -5,10 +5,11 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-RouteBookSource = Literal["file_upload", "activity_derived"]
+RouteBookSource = Literal["file_upload", "activity_derived", "tencent_direction"]
+RouteBookCreateSource = Literal["file_upload", "activity_derived"]
 RouteBookFileType = Literal["gpx", "fit"]
 City = Literal["beijing", "shanghai", "hangzhou", "shenzhen", "chengdu", "taiyuan", "unknown"]
 
@@ -49,3 +50,21 @@ class ActivityCandidateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[ActivityCandidateItem]
+
+
+class TencentDirectionRouteBookRequest(BaseModel):
+    """腾讯地图生成路书的请求体。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, max_length=128)
+    from_lat: float = Field(..., ge=-90, le=90)
+    from_lon: float = Field(..., ge=-180, le=180)
+    to_lat: float = Field(..., ge=-90, le=90)
+    to_lon: float = Field(..., ge=-180, le=180)
+
+    @model_validator(mode="after")
+    def reject_same_point(self):
+        if self.from_lat == self.to_lat and self.from_lon == self.to_lon:
+            raise ValueError("起点和终点不能相同")
+        return self

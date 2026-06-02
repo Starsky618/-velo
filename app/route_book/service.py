@@ -1,7 +1,7 @@
 """
 路书业务逻辑——把 GPX/FIT 文件或一条已有骑行，翻译成可复用的"路线图纸"。
 
-干啥用：用户上传路线文件 / 或选自己骑过的活动 → 生成 route_books 记录（含起点城市、距离、参考线）。
+干啥用：用户上传路线文件 / 选自己骑过的活动 / 用腾讯地图规划 → 生成 route_books 记录（含起点城市、距离、参考线）。
 操作注意事项：
 - activity_derived 必须是【当前用户自己的】【已完成的】【骑行类】活动，否则拒绝（IDOR 防护 + 业务校验）。
 - 源活动以后被删，route_book 仍有效（source_activity_id 变 NULL 是合法孤儿态 / 路书复利原则）。
@@ -20,10 +20,14 @@ from app.common.geo import infer_city_from_coords
 from app.parsing.fit_parser import FITParser, FITParseError
 from app.parsing.gpx_parser import GPXParser, GPXParseError
 from app.route_book.models import RouteBook
+from app.route_book.tencent_direction import plan_tencent_bicycling_route
+from app.segment.coord_convert import convert_points_to_wgs84
 from app.storage.local import LocalStorage
 
 
 logger = logging.getLogger(__name__)
+
+MIN_TENCENT_ROUTE_DISTANCE_METERS = 100.0
 _storage = LocalStorage()
 
 
@@ -142,6 +146,46 @@ def create_route_book(
                 _storage.delete(uploaded_file_id)
             except OSError as e:
                 logger.warning("补偿删除孤儿文件失败 file_id=%s: %s", uploaded_file_id, e)
+        raise
+    db.refresh(route)
+    return route
+
+
+def create_route_book_from_tencent_direction(
+    db: Session,
+    current_user_id: int,
+    name: str,
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> RouteBook:
+    """
+    用腾讯地图骑行路线规划生成路书。
+
+    腾讯返回的是 GCJ-02（适合地图展示），Velo 入库必须是 WGS-84（适合 PostGIS 和赛段匹配）。
+    所以这里先让腾讯画路线，再把点串翻译成 Velo 的内部坐标语言后保存。
+    """
+    planned = plan_tencent_bicycling_route(start, end)
+    if planned["distance"] < MIN_TENCENT_ROUTE_DISTANCE_METERS:
+        raise ValueError("路线太短，换一个终点再试")
+    points_wgs84 = convert_points_to_wgs84(planned["points"], "gcj02")
+    payload = _route_payload_from_points(points_wgs84, planned.get("distance"), None)
+    route = RouteBook(
+        creator_id=current_user_id,
+        name=name,
+        distance=payload["distance"],
+        climb=payload["climb"],
+        reference_line=WKTElement(payload["wkt"], srid=4326),
+        file_id=None,
+        file_type=None,
+        source="tencent_direction",
+        source_activity_id=None,
+        city=payload["city"],
+    )
+    db.add(route)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
         raise
     db.refresh(route)
     return route
