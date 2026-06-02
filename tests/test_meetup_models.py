@@ -54,6 +54,14 @@ def test_tencent_direction_migration_extends_route_book_source():
     assert "ck_route_books_file_type_source" in migrations
 
 
+def test_tencent_direction_migration_revision_fits_alembic_version_column():
+    migration = _read("migrations/versions/20260602_route_book_tencent_direction.py")
+    revision_line = next(line for line in migration.splitlines() if line.startswith("revision = "))
+    revision = revision_line.split('"')[1]
+
+    assert len(revision) <= 32
+
+
 def test_tencent_direction_migration_downgrade_aborts_with_existing_rows():
     migration = _read("migrations/versions/20260602_route_book_tencent_direction.py")
 

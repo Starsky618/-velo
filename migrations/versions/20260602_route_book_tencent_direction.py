@@ -1,6 +1,6 @@
 """Allow Tencent direction route books.
 
-Revision ID: 20260602_route_book_tencent_direction
+Revision ID: 20260602_tencent_route_book
 Revises: 20260528_meetup_route_book
 Create Date: 2026-06-02
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260602_route_book_tencent_direction"
+revision = "20260602_tencent_route_book"
 down_revision = "20260528_meetup_route_book"
 branch_labels = None
 depends_on = None
