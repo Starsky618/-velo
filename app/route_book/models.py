@@ -7,9 +7,9 @@
 """
 
 import re
+import struct
 
 from geoalchemy2 import Geometry
-from geoalchemy2.shape import to_shape
 from sqlalchemy import CheckConstraint, Column, DateTime, Float, ForeignKey, Index, Integer, String, text
 from sqlalchemy.sql import func
 
@@ -74,9 +74,11 @@ class RouteBook(Base):
         try:
             if isinstance(value, str):
                 return _preview_points_from_wkt(value)
-            shape = to_shape(value)
-            return [[float(lon), float(lat)] for lon, lat, *_ in shape.coords]
-        except (AttributeError, TypeError, ValueError):
+            data = getattr(value, "data", value)
+            if isinstance(data, str):
+                return _preview_points_from_wkt(data)
+            return _preview_points_from_wkb(data)
+        except (AttributeError, TypeError, ValueError, struct.error):
             return []
 
 
@@ -91,3 +93,61 @@ def _preview_points_from_wkt(wkt: str) -> list[list[float]]:
             continue
         points.append([float(parts[0]), float(parts[1])])
     return points
+
+
+def _preview_points_from_wkb(data: object) -> list[list[float]]:
+    raw = _wkb_bytes(data)
+    if len(raw) < 9:
+        return []
+
+    byte_order = raw[0]
+    if byte_order == 0:
+        endian = ">"
+    elif byte_order == 1:
+        endian = "<"
+    else:
+        return []
+
+    geom_type = struct.unpack(endian + "I", raw[1:5])[0]
+    has_srid = bool(geom_type & 0x20000000)
+    base_type = geom_type & 0xFF
+    if base_type != 2:
+        return []
+
+    offset = 5
+    if has_srid:
+        offset += 4
+    if len(raw) < offset + 4:
+        return []
+
+    point_count = struct.unpack(endian + "I", raw[offset : offset + 4])[0]
+    offset += 4
+    expected_len = offset + point_count * 16
+    if len(raw) < expected_len:
+        return []
+
+    points: list[list[float]] = []
+    for _ in range(point_count):
+        lon, lat = struct.unpack(endian + "dd", raw[offset : offset + 16])
+        points.append([float(lon), float(lat)])
+        offset += 16
+    return points
+
+
+def _wkb_bytes(data: object) -> bytes:
+    if data is None:
+        return b""
+    if isinstance(data, bytes):
+        return data
+    if isinstance(data, bytearray):
+        return bytes(data)
+    if isinstance(data, memoryview):
+        return data.tobytes()
+    if hasattr(data, "tobytes"):
+        return data.tobytes()
+    if isinstance(data, str):
+        try:
+            return bytes.fromhex(data)
+        except ValueError:
+            return b""
+    return b""

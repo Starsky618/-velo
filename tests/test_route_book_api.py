@@ -222,6 +222,36 @@ def test_tencent_direction_creates_route_book(client, db, auth_header, monkeypat
     assert route.source == "tencent_direction"
 
 
+def test_route_book_preview_points_parse_wkb_without_shapely(monkeypatch):
+    import struct
+
+    from geoalchemy2.elements import WKBElement
+
+    from app.route_book import models
+    from app.route_book.models import RouteBook
+
+    def fail_to_shape(_value):
+        raise ImportError("shapely missing")
+
+    monkeypatch.setattr(models, "to_shape", fail_to_shape, raising=False)
+
+    data = (
+        struct.pack("<BI", 1, 2)
+        + struct.pack("<I", 2)
+        + struct.pack("<dd", 112.5001, 37.8001)
+        + struct.pack("<dd", 112.5601, 37.8601)
+    )
+    route = RouteBook(
+        name="WKB 路线",
+        distance=1000,
+        reference_line=WKBElement(data, srid=4326),
+        source="tencent_direction",
+        city="taiyuan",
+    )
+
+    assert route.preview_points == [[112.5001, 37.8001], [112.5601, 37.8601]]
+
+
 def test_tencent_direction_applies_user_rate_limit(client, auth_header, test_user, monkeypatch):
     calls = []
 
