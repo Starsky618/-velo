@@ -25,8 +25,6 @@
          latitude="{{latitude}}"
          longitude="{{longitude}}"
          scale="14"
-         enable-poi="{{false}}"
-         enable-building="{{false}}"
          enable-traffic="{{false}}"
          enable-3D="{{false}}"
          enable-rotate="{{false}}"

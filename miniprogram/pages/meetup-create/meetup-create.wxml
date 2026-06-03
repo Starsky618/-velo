@@ -47,8 +47,6 @@
              markers="{{routePreviewMarkers}}"
              polyline="{{routePreviewPolylines}}"
              include-points="{{routePreviewIncludePoints}}"
-             enable-poi="{{false}}"
-             enable-building="{{false}}"
              enable-traffic="{{false}}"
              enable-3D="{{false}}"
              enable-rotate="{{false}}"

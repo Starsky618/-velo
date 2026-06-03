@@ -12,6 +12,10 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _else_map_block(wxml: str) -> str:
+    return wxml.split("<map wx:else", 1)[1].split("</map>", 1)[0]
+
+
 def test_meetup_pages_are_registered_at_app_json_tail():
     app_json = json.loads(_read(MINI / "app.json"))
 
@@ -165,7 +169,7 @@ def test_create_page_draws_light_route_preview_map():
     assert "<map" in wxml
     assert 'polyline="{{routePreviewPolylines}}"' in wxml
     assert 'wx:if="{{paperMapHasCustomStyle}}"' in wxml
-    assert "enable-poi=\"{{false}}\"" in wxml
+    assert "enable-poi=\"{{false}}\"" in wxml.split("<map wx:else", 1)[0]
     assert "route-preview-wash" not in wxml
     assert ".route-preview-map" in wxss
 
@@ -228,6 +232,24 @@ def test_map_picker_page_is_registered_and_uses_paper_map():
     assert "{{confirmText}}" in wxml
     assert "rgba(255, 255, 255" in wxss
     assert "pointer-events: none" in wxss
+
+
+def test_map_picker_fallback_keeps_default_cartography_context():
+    wxml = _read(MINI / "pages" / "map-picker" / "map-picker.wxml")
+    fallback = _else_map_block(wxml)
+
+    assert 'enable-poi="{{false}}"' not in fallback
+    assert 'enable-building="{{false}}"' not in fallback
+    assert 'enable-traffic="{{false}}"' in fallback
+
+
+def test_route_preview_fallback_keeps_default_cartography_context():
+    wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
+    fallback = _else_map_block(wxml)
+
+    assert 'enable-poi="{{false}}"' not in fallback
+    assert 'enable-building="{{false}}"' not in fallback
+    assert 'enable-traffic="{{false}}"' in fallback
 
 
 def test_create_page_avoids_object_spread_for_wechat_runtime():
