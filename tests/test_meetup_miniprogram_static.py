@@ -1,6 +1,7 @@
 """约骑模块 Task 9：小程序静态合同测试。"""
 
 import json
+import subprocess
 from pathlib import Path
 
 
@@ -184,6 +185,33 @@ def test_shared_paper_map_theme_exists_and_hides_server_secret():
     assert "buildHeatmapPolyline" in theme
     assert "TENCENT_MAP_SK" not in theme
     assert "服务端 SK" in theme
+
+
+def test_shared_paper_map_theme_normalizes_public_style_config():
+    script = """
+const assert = require('assert')
+const mapTheme = require('./miniprogram/utils/map-theme')
+
+assert.deepStrictEqual(
+  mapTheme.getPaperMapData({ subkey: ' paper-subkey ', layerStyle: '7' }),
+  {
+    paperMapSubkey: 'paper-subkey',
+    paperMapLayerStyle: 7,
+    paperMapHasCustomStyle: true,
+  },
+)
+
+assert.deepStrictEqual(
+  mapTheme.getPaperMapData({ subkey: '   ', layerStyle: 'not-a-number' }),
+  {
+    paperMapSubkey: '',
+    paperMapLayerStyle: 1,
+    paperMapHasCustomStyle: false,
+  },
+)
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
 def test_create_page_uses_shared_paper_map_theme_for_route_preview():

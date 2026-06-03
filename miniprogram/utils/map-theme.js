@@ -13,16 +13,31 @@
 const PAPER_MAP_CONFIG = {
   subkey: '',
   layerStyle: 1,
+  // 高速、主干路、水系、绿地这些底图颜色必须在腾讯个性化地图后台调浅。
+  // 小程序代码只保存公开 subkey 和样式编号，业务页面不能自己调底图颜色。
   routeColor: '#F04452',
   routeBorderColor: '#FFFFFF',
   heatColor: '#FFB020CC',
 }
 
-function getPaperMapData() {
+function normalizePaperMapConfig(config) {
+  var source = config || PAPER_MAP_CONFIG
+  var subkey = String(source.subkey || '').trim()
+  var layerStyle = Number(source.layerStyle)
+  if (!Number.isFinite(layerStyle)) layerStyle = 1
   return {
-    paperMapSubkey: PAPER_MAP_CONFIG.subkey,
-    paperMapLayerStyle: PAPER_MAP_CONFIG.layerStyle,
-    paperMapHasCustomStyle: Boolean(PAPER_MAP_CONFIG.subkey),
+    subkey: subkey,
+    layerStyle: layerStyle,
+    hasCustomStyle: Boolean(subkey),
+  }
+}
+
+function getPaperMapData(config) {
+  var normalized = normalizePaperMapConfig(config)
+  return {
+    paperMapSubkey: normalized.subkey,
+    paperMapLayerStyle: normalized.layerStyle,
+    paperMapHasCustomStyle: normalized.hasCustomStyle,
   }
 }
 
@@ -51,6 +66,7 @@ function buildHeatmapPolyline(points, dottedLine) {
 
 module.exports = {
   PAPER_MAP_CONFIG,
+  normalizePaperMapConfig,
   getPaperMapData,
   buildRoutePreviewPolylines,
   buildHeatmapPolyline,
