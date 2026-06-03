@@ -15,7 +15,6 @@
          enable-rotate="{{false}}"
          show-location="{{false}}"
          bindregionchange="onRegionChange">
-      <cover-view class="map-picker-wash"></cover-view>
       <cover-view class="map-picker-pin">
         <cover-view class="map-picker-pin-core"></cover-view>
       </cover-view>
@@ -33,7 +32,6 @@
          enable-rotate="{{false}}"
          show-location="{{false}}"
          bindregionchange="onRegionChange">
-      <cover-view class="map-picker-wash"></cover-view>
       <cover-view class="map-picker-pin">
         <cover-view class="map-picker-pin-core"></cover-view>
       </cover-view>

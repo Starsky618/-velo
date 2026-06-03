@@ -43,7 +43,6 @@
          enable-rotate="{{false}}"
          enable-3D="{{false}}"
          show-location="{{false}}">
-      <cover-view class="heatmap-map-wash"></cover-view>
     </map>
     <map wx:else
          class="heatmap-map"
@@ -57,7 +56,6 @@
          enable-rotate="{{false}}"
          enable-3D="{{false}}"
          show-location="{{false}}">
-      <cover-view class="heatmap-map-wash"></cover-view>
     </map>
   </view>
 </view>

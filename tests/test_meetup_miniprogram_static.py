@@ -166,7 +166,7 @@ def test_create_page_draws_light_route_preview_map():
     assert 'polyline="{{routePreviewPolylines}}"' in wxml
     assert 'wx:if="{{paperMapHasCustomStyle}}"' in wxml
     assert "enable-poi=\"{{false}}\"" in wxml
-    assert "route-preview-wash" in wxml
+    assert "route-preview-wash" not in wxml
     assert ".route-preview-map" in wxss
 
 
@@ -193,7 +193,7 @@ def test_create_page_uses_shared_paper_map_theme_for_route_preview():
     assert "routePreviewMapSubkey" not in js
     assert "paperMapSubkey" in wxml
     assert "paperMapLayerStyle" in wxml
-    assert "route-preview-wash" in wxml
+    assert "route-preview-wash" not in wxml
     assert "rgba(255, 255, 255" in wxss
 
 
@@ -207,8 +207,8 @@ def test_heatmap_card_uses_shared_paper_map_theme():
     assert "buildHeatmapPolyline" in js
     assert "#FFD700CC" not in js
     assert "paperMapSubkey" in wxml
-    assert "heatmap-map-wash" in wxml
-    assert "rgba(255, 255, 255" in wxss
+    assert "heatmap-map-wash" not in wxml
+    assert "background: #eef3ee" in wxss
 
 
 def test_map_picker_page_is_registered_and_uses_paper_map():
@@ -223,6 +223,7 @@ def test_map_picker_page_is_registered_and_uses_paper_map():
     assert "selectMapPoint" in js
     assert "paperMapSubkey" in wxml
     assert "map-picker-pin" in wxml
+    assert "map-picker-wash" not in wxml
     assert "位置名称" in wxml
     assert "{{confirmText}}" in wxml
     assert "rgba(255, 255, 255" in wxss

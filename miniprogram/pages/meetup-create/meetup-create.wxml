@@ -37,7 +37,6 @@
              enable-3D="{{false}}"
              enable-rotate="{{false}}"
              show-location="{{false}}">
-          <cover-view class="route-preview-wash"></cover-view>
           <cover-view class="route-preview-label">路线预览图（非导航）</cover-view>
         </map>
         <map wx:else
@@ -54,7 +53,6 @@
              enable-3D="{{false}}"
              enable-rotate="{{false}}"
              show-location="{{false}}">
-          <cover-view class="route-preview-wash"></cover-view>
           <cover-view class="route-preview-label">路线预览图（非导航）</cover-view>
         </map>
       </view>
