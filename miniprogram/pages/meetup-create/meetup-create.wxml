@@ -8,7 +8,7 @@
 
   <view wx:if="{{currentStep === 'route'}}" class="panel">
     <view class="section-title">赛段</view>
-    <view class="route-card {{selectedSegmentId === item.id ? 'selected' : ''}}" wx:for="{{segments}}" wx:key="id" data-type="segment" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+    <view class="route-card {{selectedSegmentId === item.id ? 'selected' : ''}}" wx:for="{{segments}}" wx:key="id" data-type="segment" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
       <view>{{item.displayName}}</view>
       <text>{{item.displayMeta}}</text>
     </view>
@@ -20,16 +20,54 @@
         <button class="point-button" bindtap="onTapChooseTencentEnd">{{tencentEndText}}</button>
       </view>
       <button class="generate-button" loading="{{creatingTencentRoute}}" disabled="{{creatingTencentRoute}}" bindtap="onTapCreateTencentRoute">生成路线</button>
+      <view wx:if="{{routePreviewVisible}}" class="route-preview-shell">
+        <map wx:if="{{paperMapHasCustomStyle}}"
+             class="route-preview-map"
+             latitude="{{routePreviewCenter.latitude}}"
+             longitude="{{routePreviewCenter.longitude}}"
+             scale="12"
+             markers="{{routePreviewMarkers}}"
+             polyline="{{routePreviewPolylines}}"
+             include-points="{{routePreviewIncludePoints}}"
+             subkey="{{paperMapSubkey}}"
+             layer-style="{{paperMapLayerStyle}}"
+             enable-poi="{{false}}"
+             enable-building="{{false}}"
+             enable-traffic="{{false}}"
+             enable-3D="{{false}}"
+             enable-rotate="{{false}}"
+             show-location="{{false}}">
+          <cover-view class="route-preview-wash"></cover-view>
+          <cover-view class="route-preview-label">路线预览图（非导航）</cover-view>
+        </map>
+        <map wx:else
+             class="route-preview-map"
+             latitude="{{routePreviewCenter.latitude}}"
+             longitude="{{routePreviewCenter.longitude}}"
+             scale="12"
+             markers="{{routePreviewMarkers}}"
+             polyline="{{routePreviewPolylines}}"
+             include-points="{{routePreviewIncludePoints}}"
+             enable-poi="{{false}}"
+             enable-building="{{false}}"
+             enable-traffic="{{false}}"
+             enable-3D="{{false}}"
+             enable-rotate="{{false}}"
+             show-location="{{false}}">
+          <cover-view class="route-preview-wash"></cover-view>
+          <cover-view class="route-preview-label">路线预览图（非导航）</cover-view>
+        </map>
+      </view>
     </view>
 
     <view class="section-title">我的路书</view>
-    <view class="route-card {{selectedRouteBookId === item.id ? 'selected' : ''}}" wx:for="{{routeBooks}}" wx:key="id" data-type="route_book" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+    <view class="route-card {{selectedRouteBookId === item.id ? 'selected' : ''}}" wx:for="{{routeBooks}}" wx:key="id" data-type="route_book" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
       <view>{{item.displayName}}</view>
       <text>{{item.displayMeta}}</text>
     </view>
 
     <view class="section-title">从骑行生成</view>
-    <view class="route-card {{selectedActivityId === item.id ? 'selected' : ''}}" wx:for="{{activities}}" wx:key="id" data-type="activity" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+    <view class="route-card {{selectedActivityId === item.id ? 'selected' : ''}}" wx:for="{{activities}}" wx:key="id" data-type="activity" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
       <view>{{item.displayName}}</view>
       <text>{{item.displayMeta}}</text>
     </view>

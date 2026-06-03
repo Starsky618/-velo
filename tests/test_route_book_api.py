@@ -3,6 +3,8 @@
 from datetime import datetime, timezone
 from typing import get_args
 
+import pytest
+
 from app.activity.models import Activity, Trackpoint
 from app.main import app
 from app.route_book.router import router as route_book_router
@@ -14,6 +16,13 @@ from app.route_book import schemas
 # 幂等判断：多个测试文件可能都想挂，避免重复 include 同一 router。
 if not any(getattr(route, "path", "") == "/api/route-books" for route in app.router.routes):
     app.include_router(route_book_router)
+
+
+@pytest.fixture(autouse=True)
+def _disable_tencent_direction_rate_limit(monkeypatch):
+    # 路书业务测试像“模拟考场”：每题应只考本题逻辑，不能被真实 Redis 里的旧限流计数串扰。
+    # 专门的限流测试会在测试函数内再次 monkeypatch，单独验证 router 是否按正确参数调用限流门卫。
+    monkeypatch.setattr("app.route_book.router.check_rate_limit_by_user", lambda *args, **kwargs: None)
 
 
 def test_generic_create_source_excludes_tencent_direction():
@@ -199,6 +208,14 @@ def test_tencent_direction_creates_route_book(client, db, auth_header, monkeypat
     assert body["file_id"] is None
     assert body["file_type"] is None
     assert body["source_activity_id"] is None
+    expected_preview_points = [
+        [112.49364834456821, 37.799433332389704],
+        [112.52375120797853, 37.829523730616],
+        [112.55382682870768, 37.85959385355675],
+    ]
+    assert len(body["preview_points"]) == len(expected_preview_points)
+    for actual, expected in zip(body["preview_points"], expected_preview_points):
+        assert actual == pytest.approx(expected)
     route = db.query(RouteBook).filter(RouteBook.id == body["id"]).first()
     assert route is not None
     assert route.distance == 6800.0

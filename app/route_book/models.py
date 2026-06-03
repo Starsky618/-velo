@@ -6,7 +6,10 @@
 输入输出：service 写入 name / distance / reference_line / source，meetup 读取这些字段做快照。
 """
 
+import re
+
 from geoalchemy2 import Geometry
+from geoalchemy2.shape import to_shape
 from sqlalchemy import CheckConstraint, Column, DateTime, Float, ForeignKey, Index, Integer, String, text
 from sqlalchemy.sql import func
 
@@ -51,3 +54,40 @@ class RouteBook(Base):
             name="ck_route_books_file_type_source",
         ),
     )
+
+    @property
+    def preview_points(self) -> list[list[float]]:
+        """
+        把数据库里的路线线条翻译成前端能直接画的点。
+
+        可以把 reference_line 想象成仓库里的"施工图纸"：PostGIS 看得懂，
+        但小程序地图只认一串 [经度, 纬度] 点。这个属性就是把施工图纸摊平，
+        变成前端画红线需要的描图纸。
+        """
+        value = self.reference_line
+        cached = getattr(self, "_preview_points_override", None)
+        if cached is not None:
+            return cached
+        if value is None:
+            return []
+
+        try:
+            if isinstance(value, str):
+                return _preview_points_from_wkt(value)
+            shape = to_shape(value)
+            return [[float(lon), float(lat)] for lon, lat, *_ in shape.coords]
+        except (AttributeError, TypeError, ValueError):
+            return []
+
+
+def _preview_points_from_wkt(wkt: str) -> list[list[float]]:
+    match = re.search(r"LINESTRING\s*\((.+)\)", wkt, re.IGNORECASE)
+    if not match:
+        return []
+    points: list[list[float]] = []
+    for pair in match.group(1).split(","):
+        parts = pair.strip().split()
+        if len(parts) < 2:
+            continue
+        points.append([float(parts[0]), float(parts[1])])
+    return points

@@ -1,4 +1,6 @@
 const api = require('../../utils/api')
+const { wgs84ToGcj02 } = require('../../utils/coords')
+const mapTheme = require('../../utils/map-theme')
 
 // 把不同来源的距离拼成展示文本。
 // 赛段列表接口已经给公里；路书和"我的骑行"候选给米。
@@ -37,8 +39,51 @@ function toIso(dateStr, timeStr) {
   return local.toISOString()
 }
 
+// 把后端给的路书点 [[lon, lat], ...] 转成小程序 map 能画的红色路线。
+// 后端存 WGS-84 是"地图原稿"，小程序显示要 GCJ-02 是"微信地图门牌号"；
+// 这里像翻译门牌一样，只在展示前翻译，不改后端真相源。
+function buildRoutePreview(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return {
+      routePreviewVisible: false,
+      routePreviewPolylines: [],
+      routePreviewMarkers: [],
+      routePreviewIncludePoints: [],
+    }
+  }
+  var mapPoints = []
+  points.forEach(function (point) {
+    if (!Array.isArray(point) || point.length < 2) return
+    var lon = Number(point[0])
+    var lat = Number(point[1])
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return
+    var gcj = wgs84ToGcj02(lat, lon)
+    mapPoints.push({ latitude: gcj[0], longitude: gcj[1] })
+  })
+  if (mapPoints.length < 2) {
+    return {
+      routePreviewVisible: false,
+      routePreviewPolylines: [],
+      routePreviewMarkers: [],
+      routePreviewIncludePoints: [],
+    }
+  }
+  var first = mapPoints[0]
+  var last = mapPoints[mapPoints.length - 1]
+  return {
+    routePreviewVisible: true,
+    routePreviewCenter: first,
+    routePreviewIncludePoints: mapPoints,
+    routePreviewMarkers: [
+      { id: 1, latitude: first.latitude, longitude: first.longitude, title: '起点' },
+      { id: 2, latitude: last.latitude, longitude: last.longitude, title: '终点' },
+    ],
+    routePreviewPolylines: mapTheme.buildRoutePreviewPolylines(mapPoints),
+  }
+}
+
 Page({
-  data: {
+  data: Object.assign({}, mapTheme.getPaperMapData(), {
     // 四步向导：选路线 → 填详情 → 加照片 → 确认发布。
     // 把"照片"插在 details 和 publish 之间，让发起人发布前就能给约骑配图，
     // 而不是等发布后再回详情页补——发布即图文齐全，对围观者更有吸引力。
@@ -56,6 +101,11 @@ Page({
     tencentStartText: '选择起点',
     tencentEndText: '选择终点',
     creatingTencentRoute: false,
+    routePreviewVisible: false,
+    routePreviewCenter: { latitude: 37.8706, longitude: 112.5489 },
+    routePreviewPolylines: [],
+    routePreviewMarkers: [],
+    routePreviewIncludePoints: [],
     // meetupId：进入"照片"步骤时存出来的草稿 id。
     // 为什么必须先有 id 才能加照片？因为上传接口是 /api/meetups/{id}/media，
     // 照片必须挂在一条已存在的约骑记录上。所以照片这一步的前提就是"草稿已落库拿到 id"。
@@ -85,11 +135,15 @@ Page({
     ],
     paceLabel: '巡航',
     submitting: false,
-  },
+  }),
 
   onLoad: function () {
     this.initDefaultTime()
     this.loadRoutes()
+  },
+
+  onShow: function () {
+    this.consumePendingMapPoint()
   },
 
   // 初始化默认时间：出发明天此刻，结束 +3h。拆成 picker 分量并拼好 ISO 存进 form。
@@ -152,14 +206,17 @@ Page({
     var type = event.currentTarget.dataset.type
     var id = Number(event.currentTarget.dataset.id)
     var name = event.currentTarget.dataset.name
-    this.setData({
+    var index = Number(event.currentTarget.dataset.index)
+    var list = type === 'route_book' ? this.data.routeBooks : []
+    var routePreview = type === 'route_book' ? buildRoutePreview((list[index] || {}).preview_points) : buildRoutePreview([])
+    this.setData(Object.assign({
       selectedSegmentId: type === 'segment' ? id : null,
       selectedRouteBookId: type === 'route_book' ? id : null,
       selectedActivityId: type === 'activity' ? id : null,
       selectedRouteName: name,
       // 换了路线选择 → 作废上次"从骑行生成"缓存的路书 id，否则改选别的活动还会复用旧路书（指错）
       generatedRouteBookId: null,
-    })
+    }, routePreview))
   },
 
   onTapChooseTencentStart: function () {
@@ -171,32 +228,46 @@ Page({
   },
 
   chooseTencentPoint: function (kind) {
-    var that = this
-    wx.chooseLocation({
-      success: function (res) {
-        var point = {
-          name: res.name || res.address || '地图位置',
-          address: res.address || '',
-          latitude: res.latitude,
-          longitude: res.longitude,
-        }
-        if (kind === 'start') {
-          that.setData({
-            tencentStart: point,
-            tencentStartText: point.name,
-          })
-        } else {
-          that.setData({
-            tencentEnd: point,
-            tencentEndText: point.name,
-          })
-        }
-      },
-      fail: function (err) {
-        if (err && err.errMsg && err.errMsg.indexOf('cancel') >= 0) return
-        wx.showToast({ title: '选点失败', icon: 'none' })
-      },
-    })
+    var current = kind === 'start' ? this.data.tencentStart : this.data.tencentEnd
+    var url = '/pages/map-picker/map-picker?kind=' + kind
+    if (current) {
+      url += '&latitude=' + encodeURIComponent(current.latitude)
+      url += '&longitude=' + encodeURIComponent(current.longitude)
+      url += '&name=' + encodeURIComponent(current.name || '')
+    }
+    wx.navigateTo({ url: url })
+  },
+
+  consumePendingMapPoint: function () {
+    var app = getApp()
+    var point = app && app.globalData && app.globalData.pendingMapPoint
+    if (!point) return
+    app.globalData.pendingMapPoint = null
+    var lat = Number(point.latitude)
+    var lon = Number(point.longitude)
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      wx.showToast({ title: '选点失败', icon: 'none' })
+      return
+    }
+    var selected = {
+      name: point.name || (point.kind === 'start' ? '路线起点' : '路线终点'),
+      address: '',
+      latitude: lat,
+      longitude: lon,
+    }
+    if (point.kind === 'start') {
+      this.setData({
+        tencentStart: selected,
+        tencentStartText: selected.name,
+      })
+      return
+    }
+    if (point.kind === 'end') {
+      this.setData({
+        tencentEnd: selected,
+        tencentEndText: selected.name,
+      })
+    }
   },
 
   onTapCreateTencentRoute: function () {
@@ -219,14 +290,14 @@ Page({
       to_lon: end.longitude,
     }).then(function (routeBook) {
       var decorated = that.decorateItems([routeBook], 'route_book')[0]
-      that.setData({
+      that.setData(Object.assign({
         routeBooks: [decorated].concat(that.data.routeBooks),
         selectedSegmentId: null,
         selectedActivityId: null,
         selectedRouteBookId: routeBook.id,
         selectedRouteName: decorated.displayName,
         generatedRouteBookId: null,
-      })
+      }, buildRoutePreview(decorated.preview_points)))
       wx.showToast({ title: '已生成路线', icon: 'success' })
     }).catch(function (err) {
       var message = '生成失败'

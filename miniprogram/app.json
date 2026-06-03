@@ -14,6 +14,7 @@
     "pages/strava-auth/strava-auth",
     "pages/training-calendar/training-calendar",
     "pages/training-distribution/training-distribution",
+    "pages/map-picker/map-picker",
     "pages/meetups-mine/meetups-mine",
     "pages/meetups-list/meetups-list",
     "pages/meetup-detail/meetup-detail",
@@ -66,13 +67,5 @@
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",
-  "lazyCodeLoading": "requiredComponents",
-  "requiredPrivateInfos": [
-    "chooseLocation"
-  ],
-  "permission": {
-    "scope.userLocation": {
-      "desc": "用于选择约骑路线的起点和终点"
-    }
-  }
+  "lazyCodeLoading": "requiredComponents"
 }

@@ -23,6 +23,9 @@ App({
     userId: 0,
     // 当前用户完整信息（profile 接口返回的数据 / 仅 profile tab 激活后才有）
     userInfo: null,
+    // 自研地图选点页返回创建页时的临时寄存位。
+    // 它像前台临时寄存柜：map-picker 写一次，meetup-create 读走后立刻清空，避免下次误用旧点。
+    pendingMapPoint: null,
   },
 
   onLaunch() {

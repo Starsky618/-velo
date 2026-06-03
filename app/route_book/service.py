@@ -188,6 +188,7 @@ def create_route_book_from_tencent_direction(
         db.rollback()
         raise
     db.refresh(route)
+    route._preview_points_override = [[p["lon"], p["lat"]] for p in points_wgs84]
     return route
 
 

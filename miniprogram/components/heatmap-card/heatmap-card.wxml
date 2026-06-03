@@ -28,13 +28,36 @@
   <view wx:elif="{{error}}" class="error-mini" bindtap="_retryFetch">加载失败 · 点击重试</view>
   <view wx:elif="{{isEmpty}}" class="empty-mini">还没骑过任何路线</view>
 
-  <map wx:else
-       class="heatmap-map"
-       latitude="{{center.lat}}"
-       longitude="{{center.lng}}"
-       polyline="{{polylines}}"
-       scale="11"
-       enable-rotate="{{false}}"
-       enable-3D="{{false}}">
-  </map>
+  <view wx:else class="heatmap-map-shell">
+    <map wx:if="{{paperMapHasCustomStyle}}"
+         class="heatmap-map"
+         latitude="{{center.lat}}"
+         longitude="{{center.lng}}"
+         polyline="{{polylines}}"
+         scale="11"
+         subkey="{{paperMapSubkey}}"
+         layer-style="{{paperMapLayerStyle}}"
+         enable-poi="{{false}}"
+         enable-building="{{false}}"
+         enable-traffic="{{false}}"
+         enable-rotate="{{false}}"
+         enable-3D="{{false}}"
+         show-location="{{false}}">
+      <cover-view class="heatmap-map-wash"></cover-view>
+    </map>
+    <map wx:else
+         class="heatmap-map"
+         latitude="{{center.lat}}"
+         longitude="{{center.lng}}"
+         polyline="{{polylines}}"
+         scale="11"
+         enable-poi="{{false}}"
+         enable-building="{{false}}"
+         enable-traffic="{{false}}"
+         enable-rotate="{{false}}"
+         enable-3D="{{false}}"
+         show-location="{{false}}">
+      <cover-view class="heatmap-map-wash"></cover-view>
+    </map>
+  </view>
 </view>

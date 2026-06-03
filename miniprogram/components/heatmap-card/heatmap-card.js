@@ -38,6 +38,7 @@
 
 const api = require('../../utils/api')
 const { wgs84ToGcj02 } = require('../../utils/coords')
+const mapTheme = require('../../utils/map-theme')
 
 // 兜底中心点（轨迹空时让 map 别飘到大洋上 / 默认北京天安门）
 const DEFAULT_CENTER = { lat: 39.9042, lng: 116.4074 }
@@ -61,13 +62,13 @@ Component({
    * 组件内部数据（data）
    * 类比：组件自己的"小本本"，只有自己看，外面看不到也改不到
    */
-  data: {
+  data: Object.assign({}, mapTheme.getPaperMapData(), {
     loading: true,         // 初始进入就是 loading 态
     error: false,          // 网络/接口报错
     isEmpty: false,        // 数据空（无活动记录）
     polylines: [],         // 小程序 map 接受的 polylines 数组（D27 v2 polish / 每 activity 一条）
     center: { lat: 39.9042, lng: 116.4074 },  // map 中心（默认北京）
-  },
+  }),
 
   /**
    * 生命周期
@@ -207,13 +208,7 @@ Component({
       // flushPolyline 加 dotted 参数 / 区分实线段 vs 虚线段（v5 分层视觉）
       const flushPolyline = (points, dotted) => {
         if (points.length < 2) return  // 单点不能成 polyline
-        polylines.push({
-          points: points,
-          color: '#FFD700CC',
-          width: 4,
-          arrowLine: false,
-          dottedLine: !!dotted,
-        })
+        polylines.push(mapTheme.buildHeatmapPolyline(points, dotted))
       }
 
       for (let i = 0; i < tracks.length; i++) {

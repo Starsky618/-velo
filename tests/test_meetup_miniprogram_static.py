@@ -124,13 +124,19 @@ def test_create_page_is_three_step_flow_and_uses_backend_state():
     assert 'mode="time"' in wxml
 
 
-def test_create_page_declares_location_privacy_for_tencent_route():
+def test_create_page_uses_map_picker_instead_of_native_location_popup():
+    app_js = _read(MINI / "app.js")
     app_json = json.loads(_read(MINI / "app.json"))
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
 
-    # 腾讯地图选起终点会调用 wx.chooseLocation；小程序不声明这个隐私接口，
-    # 用户点"选择起点/终点"时会直接失败。
-    assert "chooseLocation" in app_json.get("requiredPrivateInfos", [])
-    assert "scope.userLocation" in app_json.get("permission", {})
+    assert "wx.chooseLocation" not in js
+    assert "/pages/map-picker/map-picker?kind=" in js
+    assert "onTapChooseTencentStart" in js
+    assert "onTapChooseTencentEnd" in js
+    assert "consumePendingMapPoint" in js
+    assert "pendingMapPoint" in app_js
+    assert "chooseLocation" not in json.dumps(app_json, ensure_ascii=False)
+    assert "scope.userLocation" not in json.dumps(app_json, ensure_ascii=False)
 
 
 def test_create_page_formats_meter_distance_as_kilometers():
@@ -146,6 +152,95 @@ def test_create_page_hides_tencent_env_config_errors_from_users():
 
     assert "路线服务暂不可用" in js
     assert "err && err.code === 503" in js
+
+
+def test_create_page_draws_light_route_preview_map():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
+    wxss = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxss")
+
+    assert "wgs84ToGcj02" in js
+    assert "preview_points" in js
+    assert "routePreviewPolylines" in js
+    assert "<map" in wxml
+    assert 'polyline="{{routePreviewPolylines}}"' in wxml
+    assert 'wx:if="{{paperMapHasCustomStyle}}"' in wxml
+    assert "enable-poi=\"{{false}}\"" in wxml
+    assert "route-preview-wash" in wxml
+    assert ".route-preview-map" in wxss
+
+
+def test_shared_paper_map_theme_exists_and_hides_server_secret():
+    theme_path = MINI / "utils" / "map-theme.js"
+    theme = _read(theme_path)
+
+    assert "PAPER_MAP_CONFIG" in theme
+    assert "getPaperMapData" in theme
+    assert "buildRoutePreviewPolylines" in theme
+    assert "buildHeatmapPolyline" in theme
+    assert "TENCENT_MAP_SK" not in theme
+    assert "服务端 SK" in theme
+
+
+def test_create_page_uses_shared_paper_map_theme_for_route_preview():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
+    wxss = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxss")
+
+    assert "require('../../utils/map-theme')" in js
+    assert "getPaperMapData" in js
+    assert "buildRoutePreviewPolylines" in js
+    assert "routePreviewMapSubkey" not in js
+    assert "paperMapSubkey" in wxml
+    assert "paperMapLayerStyle" in wxml
+    assert "route-preview-wash" in wxml
+    assert "rgba(255, 255, 255" in wxss
+
+
+def test_heatmap_card_uses_shared_paper_map_theme():
+    js = _read(MINI / "components" / "heatmap-card" / "heatmap-card.js")
+    wxml = _read(MINI / "components" / "heatmap-card" / "heatmap-card.wxml")
+    wxss = _read(MINI / "components" / "heatmap-card" / "heatmap-card.wxss")
+
+    assert "require('../../utils/map-theme')" in js
+    assert "getPaperMapData" in js
+    assert "buildHeatmapPolyline" in js
+    assert "#FFD700CC" not in js
+    assert "paperMapSubkey" in wxml
+    assert "heatmap-map-wash" in wxml
+    assert "rgba(255, 255, 255" in wxss
+
+
+def test_map_picker_page_is_registered_and_uses_paper_map():
+    app_json = json.loads(_read(MINI / "app.json"))
+    js = _read(MINI / "pages" / "map-picker" / "map-picker.js")
+    wxml = _read(MINI / "pages" / "map-picker" / "map-picker.wxml")
+    wxss = _read(MINI / "pages" / "map-picker" / "map-picker.wxss")
+
+    assert "pages/map-picker/map-picker" in app_json["pages"]
+    assert "require('../../utils/map-theme')" in js
+    assert "getPaperMapData" in js
+    assert "selectMapPoint" in js
+    assert "paperMapSubkey" in wxml
+    assert "map-picker-pin" in wxml
+    assert "位置名称" in wxml
+    assert "{{confirmText}}" in wxml
+    assert "rgba(255, 255, 255" in wxss
+    assert "pointer-events: none" in wxss
+
+
+def test_create_page_avoids_object_spread_for_wechat_runtime():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+
+    assert "...routePreview" not in js
+    assert "...buildRoutePreview" not in js
+
+
+def test_route_preview_coordinate_helper_exports_converter():
+    coords = _read(MINI / "utils" / "coords.js")
+
+    assert "function wgs84ToGcj02" in coords
+    assert "module.exports = { wgs84ToGcj02 }" in coords
 
 
 def test_meetup_pages_have_no_dash_placeholder():

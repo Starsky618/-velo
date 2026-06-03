@@ -1,0 +1,57 @@
+/**
+ * 小程序地图外衣 — 给所有页面内地图统一一张很浅的纸面底图。
+ *
+ * 这个文件像一盒彩铅：地图本身只负责把路、点、城市画出来；
+ * 哪些颜色应该淡下去，哪些路线应该跳出来，都从这里拿。
+ *
+ * 操作注意事项：
+ * 1. 这里只能放前端可公开的 Tencent 地图 subkey 和 layer-style。
+ * 2. 不能放服务端 SK；服务端 SK 像后厨钥匙，只能留在后端环境变量里。
+ * 3. 如果腾讯控制台换了浅色样式，只改 PAPER_MAP_CONFIG，不要逐页改。
+ */
+
+const PAPER_MAP_CONFIG = {
+  subkey: '',
+  layerStyle: 1,
+  routeColor: '#F04452',
+  routeBorderColor: '#FFFFFF',
+  heatColor: '#FFB020CC',
+}
+
+function getPaperMapData() {
+  return {
+    paperMapSubkey: PAPER_MAP_CONFIG.subkey,
+    paperMapLayerStyle: PAPER_MAP_CONFIG.layerStyle,
+    paperMapHasCustomStyle: Boolean(PAPER_MAP_CONFIG.subkey),
+  }
+}
+
+function buildRoutePreviewPolylines(points) {
+  if (!Array.isArray(points) || points.length < 2) return []
+  return [{
+    points: points,
+    color: PAPER_MAP_CONFIG.routeColor,
+    width: 8,
+    borderColor: PAPER_MAP_CONFIG.routeBorderColor,
+    borderWidth: 3,
+    arrowLine: false,
+    level: 'abovelabels',
+  }]
+}
+
+function buildHeatmapPolyline(points, dottedLine) {
+  return {
+    points: points,
+    color: PAPER_MAP_CONFIG.heatColor,
+    width: 4,
+    arrowLine: false,
+    dottedLine: Boolean(dottedLine),
+  }
+}
+
+module.exports = {
+  PAPER_MAP_CONFIG,
+  getPaperMapData,
+  buildRoutePreviewPolylines,
+  buildHeatmapPolyline,
+}

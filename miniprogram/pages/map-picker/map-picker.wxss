@@ -1,0 +1,130 @@
+page {
+  background: #f2f1f6;
+}
+
+.map-picker-page {
+  min-height: 100vh;
+  padding: 24rpx;
+  box-sizing: border-box;
+}
+
+.map-picker-map-shell {
+  position: relative;
+  overflow: hidden;
+  height: 62vh;
+  min-height: 720rpx;
+  border-radius: 16rpx;
+  background: #eef3ee;
+}
+
+.map-picker-map {
+  width: 100%;
+  height: 100%;
+}
+
+.map-picker-wash {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.24);
+  pointer-events: none;
+}
+
+.map-picker-pin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52rpx;
+  height: 52rpx;
+  margin-left: -26rpx;
+  margin-top: -52rpx;
+  border: 8rpx solid #32c48d;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.96);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.map-picker-pin-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14rpx;
+  height: 14rpx;
+  margin-left: -7rpx;
+  margin-top: -7rpx;
+  border-radius: 50%;
+  background: #32c48d;
+  pointer-events: none;
+}
+
+.map-picker-panel {
+  margin-top: 20rpx;
+  padding: 24rpx;
+  border-radius: 16rpx;
+  background: #fff;
+}
+
+.picker-title {
+  font-size: 32rpx;
+  line-height: 44rpx;
+  font-weight: 800;
+  color: #111827;
+}
+
+.picker-field {
+  margin-top: 20rpx;
+}
+
+.picker-field text {
+  display: block;
+  margin-bottom: 10rpx;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #6b7280;
+}
+
+.picker-field input {
+  min-height: 76rpx;
+  line-height: 76rpx;
+  padding: 0 20rpx;
+  border-radius: 14rpx;
+  background: #f3f4f6;
+  font-size: 28rpx;
+  color: #111827;
+}
+
+.picker-coords {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  line-height: 32rpx;
+  color: #9ca3af;
+}
+
+.picker-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12rpx;
+  margin-top: 22rpx;
+}
+
+.picker-cancel,
+.picker-confirm {
+  height: 76rpx;
+  line-height: 76rpx;
+  border-radius: 14rpx;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.picker-cancel {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.picker-confirm {
+  background: #111827;
+  color: #fff;
+}

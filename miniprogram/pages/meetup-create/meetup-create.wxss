@@ -113,6 +113,44 @@ page {
   color: #fff;
 }
 
+.route-preview-shell {
+  position: relative;
+  overflow: hidden;
+  height: 360rpx;
+  margin-top: 20rpx;
+  border-radius: 16rpx;
+  background: #eef3ee;
+}
+
+.route-preview-map {
+  width: 100%;
+  height: 100%;
+}
+
+.route-preview-wash {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+
+.route-preview-label {
+  position: absolute;
+  left: 20rpx;
+  bottom: 18rpx;
+  height: 54rpx;
+  line-height: 54rpx;
+  padding: 0 22rpx;
+  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.92);
+  color: #111827;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
 .field text {
   display: block;
   margin-bottom: 12rpx;

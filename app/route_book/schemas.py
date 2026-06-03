@@ -26,6 +26,7 @@ class RouteBookResponse(BaseModel):
     source: RouteBookSource
     source_activity_id: int | None = None
     city: City
+    preview_points: list[list[float]] = Field(default_factory=list)
     created_at: datetime | None = None
 
 
