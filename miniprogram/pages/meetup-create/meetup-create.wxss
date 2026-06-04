@@ -292,3 +292,83 @@ page {
   color: #fff;
   font-size: 28rpx;
 }
+
+/* —— 发布前总览（图二）—— */
+.preview {
+  gap: 16rpx;
+}
+
+.tag-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.tag,
+.template-list view,
+.anti-harass {
+  padding: 14rpx 18rpx;
+  border-radius: 12rpx;
+  background: #f3f4f6;
+  color: #374151;
+  font-size: 24rpx;
+  line-height: 34rpx;
+}
+
+.tag.selected {
+  background: #111827;
+  color: #fff;
+}
+
+.compact {
+  padding: 0;
+  margin-top: 16rpx;
+  background: transparent;
+}
+
+.template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-top: 12rpx;
+}
+
+.invite-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.invite-share {
+  margin: 0;
+  padding: 0 18rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #ff2d55;
+  background: #fff;
+  border: 1rpx solid #ff2d55;
+  border-radius: 28rpx;
+}
+
+.invitee-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #111827;
+}
+
+.invitee-list text {
+  margin-left: 12rpx;
+  color: #ff2d55;
+  font-size: 22rpx;
+}
+
+.anti-harass {
+  text-align: center;
+  color: #6b7280;
+}

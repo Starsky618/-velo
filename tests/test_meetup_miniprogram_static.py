@@ -326,3 +326,40 @@ def test_v1_out_of_scope_features_are_absent():
     assert "算法推荐" not in all_text
     assert "为你推荐" not in all_text
     assert "私聊" not in all_text
+
+
+def test_create_page_has_preview_step_and_social_fields():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
+
+    assert "'preview'" in js
+    assert "onTapGoPreview" in js
+    assert "onConfirmPublish" in js
+    assert "toggleAudienceTag" in js
+    assert "onVisibilityChange" in js
+    assert "applySafetyTemplate" in js
+    for field in ("supply_point", "eligibility_note", "safety_note", "visibility"):
+        assert field in js and field in wxml
+    # 标签：js 存 form.audience_tags，wxml 走 audienceOptions(带 selected 标志)+ toggleAudienceTag
+    assert "audience_tags" in js
+    assert "audienceOptions" in wxml and "toggleAudienceTag" in wxml
+    assert "recommended_power_label" in js
+    assert "average_speed_range" in js
+    assert "VELO 反骚扰机制" in wxml
+    # 继续邀请走微信原生转发（不是站内定向邀请）
+    assert 'open-type="share"' in wxml
+    # WXML 不支持 .indexOf()，选中态必须在 JS 算成 selected 标志
+    assert "form.audience_tags.indexOf" not in wxml
+    # 旧"发布约骑"直发按钮已被 onTapGoPreview/onConfirmPublish 两步取代
+    assert 'bindtap="onPublish"' not in wxml
+
+
+def test_pace_display_table_covers_all_four_pace_levels():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+
+    for pace in ("relaxed", "cruise", "training", "race"):
+        assert pace in js
+    assert "不限功率" in js
+    assert "FTP 160W+ 更舒服" in js
+    assert "FTP 220W+" in js
+    assert "FTP 280W+" in js

@@ -97,6 +97,10 @@
       <input value="{{form.meeting_point}}" data-field="meeting_point" bindinput="updateField" placeholder="例如：汾河公园南门" />
     </view>
     <view class="field">
+      <text>补给点</text>
+      <input value="{{form.supply_point}}" data-field="supply_point" bindinput="updateField" placeholder="例如：天龙山景区口" />
+    </view>
+    <view class="field">
       <text>人数上限</text>
       <input type="number" value="{{form.max_participants}}" data-field="max_participants" bindinput="updateField" />
     </view>
@@ -148,9 +152,60 @@
     </view>
   </view>
 
+  <view wx:elif="{{currentStep === 'preview'}}" class="panel preview">
+    <view class="summary">
+      <view class="summary-title">{{selectedRouteName}}</view>
+      <view class="summary-row"><text>预计时长</text><text>{{estimatedDurationText}}</text></view>
+      <view class="summary-row"><text>推荐功率</text><text>{{recommendedPowerLabel}}</text></view>
+      <view class="summary-row"><text>预计均速</text><text>{{averageSpeedRange}}</text></view>
+      <view wx:if="{{form.supply_point}}" class="summary-row"><text>补给点</text><text>{{form.supply_point}}</text></view>
+    </view>
+
+    <view class="summary">
+      <view class="section-title">适合谁</view>
+      <view class="tag-grid">
+        <view wx:for="{{audienceOptions}}" wx:key="value" class="tag {{item.selected ? 'selected' : ''}}" data-value="{{item.value}}" bindtap="toggleAudienceTag">{{item.label}}</view>
+      </view>
+    </view>
+
+    <view class="summary">
+      <view class="summary-row">
+        <text>可见范围</text>
+        <picker mode="selector" range="{{visibilityOptions}}" range-key="label" bindchange="onVisibilityChange">
+          <view class="picker-value">{{form.visibility === 'invite_only' ? '私圈可见' : '本城可见'}}</view>
+        </picker>
+      </view>
+      <view class="field compact">
+        <text>报名门槛</text>
+        <textarea value="{{form.eligibility_note}}" data-field="eligibility_note" bindinput="updateField" placeholder="例如：能稳定骑完 60km" />
+      </view>
+      <view class="field compact">
+        <text>安全提示</text>
+        <textarea value="{{form.safety_note}}" data-field="safety_note" bindinput="updateField" />
+      </view>
+      <view class="template-list">
+        <view wx:for="{{safetyTemplates}}" wx:key="*this" data-index="{{index}}" bindtap="applySafetyTemplate">{{item}}</view>
+      </view>
+    </view>
+
+    <view class="summary">
+      <view class="invite-head">
+        <view class="section-title">已加入骑友</view>
+        <button class="invite-share" open-type="share">继续邀请</button>
+      </view>
+      <view wx:if="{{invitees.length === 0}}" class="media-empty">发布后发起人会自动加入</view>
+      <view wx:else class="invitee-list">
+        <view wx:for="{{invitees}}" wx:key="user_id">{{item.nickname || 'VELO 骑友'}}<text wx:if="{{item.is_creator}}">组织者</text></view>
+      </view>
+    </view>
+
+    <view class="anti-harass">VELO 反骚扰机制已开启</view>
+  </view>
+
   <view class="bottom-actions">
     <button wx:if="{{currentStep !== 'route'}}" class="ghost" bindtap="prevStep">上一步</button>
-    <button wx:if="{{currentStep !== 'publish'}}" class="primary" bindtap="nextStep">下一步</button>
-    <button wx:else class="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onPublish">发布约骑</button>
+    <button wx:if="{{currentStep !== 'publish' && currentStep !== 'preview'}}" class="primary" bindtap="nextStep">下一步</button>
+    <button wx:elif="{{currentStep === 'publish'}}" class="primary" bindtap="onTapGoPreview">发布约骑</button>
+    <button wx:else class="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onConfirmPublish">确认并发布约骑</button>
   </view>
 </view>

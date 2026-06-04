@@ -82,12 +82,38 @@ function buildRoutePreview(points) {
   }
 }
 
+// pace_level → 推荐功率 / 预计均速 展示对照表（纯前端，不入库 / 占位区间 Tim 可调）
+const PACE_DISPLAY = {
+  relaxed: { pace_label: '轻松慢骑', recommended_power_label: '不限功率', average_speed_range: '15-18 km/h' },
+  cruise: { pace_label: '稳爬不竞速', recommended_power_label: 'FTP 160W+ 更舒服', average_speed_range: '17-22 km/h' },
+  training: { pace_label: '高强度拉练', recommended_power_label: 'FTP 220W+', average_speed_range: '25-30 km/h' },
+  race: { pace_label: '竞速冲刺', recommended_power_label: 'FTP 280W+', average_speed_range: '30+ km/h' },
+}
+
+// 适合谁标签（6 枚举，和后端白名单一致）
+const AUDIENCE_OPTIONS = [
+  { value: 'climb_steady', label: '稳爬不竞速' },
+  { value: 'high_intensity', label: '高强度拉练' },
+  { value: 'leisure', label: '休闲骑游' },
+  { value: 'photography', label: '摄影打卡' },
+  { value: 'female_friendly', label: '女性友好' },
+  { value: 'newbie_caution', label: '新手慎选' },
+]
+
+// velo 安全提示模板（前端常量，发起人一键填入后还能改）
+const SAFETY_TEMPLATES = [
+  '头盔必戴 · 遵守交规 · 量力而行',
+  '新手友好 · 全程收队 · 不拉爆',
+  '强度拉练 · 请自备补给 · 跟不上自行返回',
+  '山路多弯 · 控制下坡车速 · 保持车距',
+]
+
 Page({
   data: Object.assign({}, mapTheme.getPaperMapData(), {
     // 四步向导：选路线 → 填详情 → 加照片 → 确认发布。
     // 把"照片"插在 details 和 publish 之间，让发起人发布前就能给约骑配图，
     // 而不是等发布后再回详情页补——发布即图文齐全，对围观者更有吸引力。
-    steps: ['route', 'details', 'media', 'publish'],
+    steps: ['route', 'details', 'media', 'publish', 'preview'],
     currentStep: 'route',
     selectedSegmentId: null,
     selectedRouteBookId: null,
@@ -126,6 +152,11 @@ Page({
       pace_level: 'cruise',
       max_participants: 6,
       description: '',
+      supply_point: '',
+      audience_tags: [],
+      visibility: 'public',
+      eligibility_note: '',
+      safety_note: SAFETY_TEMPLATES[0],
     },
     paceOptions: [
       { value: 'relaxed', label: '休闲' },
@@ -134,6 +165,19 @@ Page({
       { value: 'race', label: '强度' },
     ],
     paceLabel: '巡航',
+    // —— 发布前总览（图二）用 ——
+    // audienceOptions 带 selected 标志：WXML 不支持 .indexOf()，选中态必须在 JS 侧算
+    audienceOptions: AUDIENCE_OPTIONS.map(function (o) { return { value: o.value, label: o.label, selected: false } }),
+    safetyTemplates: SAFETY_TEMPLATES,
+    visibilityOptions: [
+      { value: 'public', label: '本城可见' },
+      { value: 'invite_only', label: '私圈可见' },
+    ],
+    invitees: [], // 已加入骑友（进 preview 时拉）
+    shareToken: '', // 私圈分享口令（后端只回 creator / onShareAppMessage 用）
+    estimatedDurationText: '',
+    recommendedPowerLabel: PACE_DISPLAY.cruise.recommended_power_label,
+    averageSpeedRange: PACE_DISPLAY.cruise.average_speed_range,
     submitting: false,
   }),
 
@@ -364,7 +408,9 @@ Page({
   },
 
   prevStep: function () {
-    if (this.data.currentStep === 'publish') {
+    if (this.data.currentStep === 'preview') {
+      this.setData({ currentStep: 'publish' })
+    } else if (this.data.currentStep === 'publish') {
       this.setData({ currentStep: 'media' })
     } else if (this.data.currentStep === 'media') {
       this.setData({ currentStep: 'details' })
@@ -437,27 +483,106 @@ Page({
       })
   },
 
-  onPublish: function () {
+  // 算图二的派生展示：预计时长（结束-出发）+ 推荐功率/均速（按节奏档位查表）
+  updatePreviewDerived: function () {
+    var pace = PACE_DISPLAY[this.data.form.pace_level] || PACE_DISPLAY.cruise
+    var start = new Date(this.data.form.start_time)
+    var end = new Date(this.data.form.estimated_end_time)
+    var duration = ''
+    if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && end > start) {
+      var minutes = Math.round((end - start) / 60000)
+      duration = Math.floor(minutes / 60) + ':' + String(minutes % 60).padStart(2, '0')
+    }
+    this.setData({
+      recommendedPowerLabel: pace.recommended_power_label,
+      averageSpeedRange: pace.average_speed_range,
+      estimatedDurationText: duration,
+    })
+  },
+
+  // publish 步点"发布约骑" → 先把草稿（含已填字段）存一次拿到 share_token，再进图二总览
+  onTapGoPreview: function () {
+    var that = this
+    if (!this.data.meetupId) {
+      wx.showToast({ title: '草稿丢失，请退回重试', icon: 'none' })
+      return
+    }
+    this.updatePreviewDerived()
+    api.updateMeetup(this.data.meetupId, Object.assign({}, this.data.form, {
+      max_participants: Number(this.data.form.max_participants),
+    })).then(function (draft) {
+      that.setData({
+        currentStep: 'preview',
+        meetupId: draft.id,
+        shareToken: draft.share_token || that.data.shareToken || '',
+      })
+      // 拉已加入骑友（getMeetupParticipants 在 Task5 才加，没有就跳过不报错）
+      if (api.getMeetupParticipants) {
+        api.getMeetupParticipants(draft.id).then(function (items) {
+          that.setData({ invitees: items || [] })
+        }).catch(function () {
+          that.setData({ invitees: [] })
+        })
+      }
+    }).catch(function (err) {
+      wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' })
+    })
+  },
+
+  // WXML 不支持 .indexOf()，"哪些标签选中"在 JS 算成 selected 标志
+  syncAudienceOptions: function (tags) {
+    var chosen = tags || []
+    return AUDIENCE_OPTIONS.map(function (o) {
+      return { value: o.value, label: o.label, selected: chosen.indexOf(o.value) >= 0 }
+    })
+  },
+
+  toggleAudienceTag: function (event) {
+    var value = event.currentTarget.dataset.value
+    var tags = (this.data.form.audience_tags || []).slice()
+    var index = tags.indexOf(value)
+    if (index >= 0) {
+      tags.splice(index, 1)
+    } else {
+      tags.push(value)
+    }
+    this.setData({ 'form.audience_tags': tags, audienceOptions: this.syncAudienceOptions(tags) })
+  },
+
+  onVisibilityChange: function (event) {
+    var index = Number(event.detail.value)
+    var option = this.data.visibilityOptions[index] || this.data.visibilityOptions[0]
+    this.setData({ 'form.visibility': option.value })
+  },
+
+  applySafetyTemplate: function (event) {
+    var index = Number(event.currentTarget.dataset.index)
+    this.setData({ 'form.safety_note': this.data.safetyTemplates[index] || this.data.safetyTemplates[0] })
+  },
+
+  // 确认并发布：把图二设的 social 字段再存一次 → 发布 → 跳详情
+  onConfirmPublish: function () {
     var that = this
     if (this.data.submitting) return
-    // 草稿已在进入"照片"步骤时建好，这里只需发布。
-    // 兜底：理论上走到 publish 必有 meetupId，缺失说明流程异常，直接报错不静默发空。
     if (!this.data.meetupId) {
       wx.showToast({ title: '草稿丢失，请退回重试', icon: 'none' })
       return
     }
     this.setData({ submitting: true })
-
-    api.publishMeetup(this.data.meetupId)
-      .then(function (meetup) {
-        wx.redirectTo({ url: '/pages/meetup-detail/meetup-detail?id=' + meetup.id })
-      })
-      .catch(function (err) {
-        wx.showToast({ title: (err && err.message) || '发布失败', icon: 'none' })
-      })
-      .finally(function () {
-        that.setData({ submitting: false })
-      })
+    api.updateMeetup(this.data.meetupId, {
+      audience_tags: this.data.form.audience_tags,
+      visibility: this.data.form.visibility,
+      eligibility_note: this.data.form.eligibility_note,
+      safety_note: this.data.form.safety_note,
+    }).then(function () {
+      return api.publishMeetup(that.data.meetupId)
+    }).then(function (meetup) {
+      wx.redirectTo({ url: '/pages/meetup-detail/meetup-detail?id=' + meetup.id })
+    }).catch(function (err) {
+      wx.showToast({ title: (err && err.message) || '发布失败', icon: 'none' })
+    }).finally(function () {
+      that.setData({ submitting: false })
+    })
   },
 
   resolveRouteBookId: function () {
