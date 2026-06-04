@@ -355,13 +355,19 @@ module.exports = {
     return request('/api/meetups/mine' + buildQuery(Object.assign({ role: role }, params || {})), 'GET')
   },
 
-  getMeetupDetail: function (meetupId) {
-    return request('/api/meetups/' + meetupId, 'GET')
+  // 详情：invite_only 私圈约骑需带 token（朋友从分享链接进来才拿得到）
+  getMeetupDetail: function (meetupId, token) {
+    return request('/api/meetups/' + meetupId + buildQuery(token ? { token: token } : {}), 'GET')
   },
 
-  // 约骑照片墙：列表（public）/ 上传（creator，走 wx.uploadFile multipart）/ 删除（creator 或上传者）
-  getMeetupMedia: function (meetupId) {
-    return request('/api/meetups/' + meetupId + '/media', 'GET')
+  // 已加入骑友列表（私圈约骑需带 token / 登录）
+  getMeetupParticipants: function (meetupId, token) {
+    return request('/api/meetups/' + meetupId + '/participants' + buildQuery(token ? { token: token } : {}), 'GET')
+  },
+
+  // 约骑照片墙：列表（public 直接看 / invite_only 需 token）/ 上传（creator multipart）/ 删除（creator 或上传者）
+  getMeetupMedia: function (meetupId, token) {
+    return request('/api/meetups/' + meetupId + '/media' + buildQuery(token ? { token: token } : {}), 'GET')
   },
 
   uploadMeetupMedia: function (meetupId, filePath) {
@@ -396,8 +402,8 @@ module.exports = {
     return request('/api/meetups/' + meetupId, 'DELETE')
   },
 
-  joinMeetup: function (meetupId) {
-    return request('/api/meetups/' + meetupId + '/join', 'POST', {})
+  joinMeetup: function (meetupId, token) {
+    return request('/api/meetups/' + meetupId + '/join' + buildQuery(token ? { token: token } : {}), 'POST', {})
   },
 
   leaveMeetup: function (meetupId) {
@@ -406,6 +412,11 @@ module.exports = {
 
   getRouteBooksList: function (params) {
     return request('/api/route-books' + buildQuery(params || {}), 'GET')
+  },
+
+  // 单条路书详情（草稿恢复时按 route_book_id 重画地图预览）
+  getRouteBookDetail: function (routeBookId) {
+    return request('/api/route-books/' + routeBookId, 'GET')
   },
 
   getRouteBookActivityCandidates: function () {

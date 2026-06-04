@@ -363,3 +363,24 @@ def test_pace_display_table_covers_all_four_pace_levels():
     assert "FTP 160W+ 更舒服" in js
     assert "FTP 220W+" in js
     assert "FTP 280W+" in js
+
+
+def test_create_page_restores_draft_and_share_path_carries_invite_token():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    api = _read(MINI / "utils" / "api.js")
+
+    # 草稿恢复
+    assert "restoreDraft" in js
+    assert "api.getMyMeetupDraft" in js
+    assert "loadMedia()" in js
+    assert "buildRoutePreview" in js
+    # 微信原生转发邀请（invite_only 带 token）
+    assert "onShareAppMessage" in js
+    assert "draft.share_token" in js
+    assert "shareToken" in js
+    assert "token=" in js
+    # api helper：participants 新增 / detail + join 替换为带 token 签名
+    assert "getMeetupParticipants" in api
+    assert "getMeetupDetail: function (meetupId, token)" in api
+    assert "joinMeetup: function (meetupId, token)" in api
+    assert "getRouteBookDetail" in api

@@ -185,10 +185,77 @@ Page({
   onLoad: function () {
     this.initDefaultTime()
     this.loadRoutes()
+    this.restoreDraft()
   },
 
   onShow: function () {
     this.consumePendingMapPoint()
+  },
+
+  // 退出重进恢复草稿：每用户唯一 DRAFT，拉 my-draft 回填表单 + 照片 + 路线预览
+  restoreDraft: function () {
+    var that = this
+    api.getMyMeetupDraft().then(function (draft) {
+      if (!draft) return
+      var start = splitLocal(new Date(draft.start_time))
+      var end = splitLocal(new Date(draft.estimated_end_time))
+      var paceLabel = '巡航'
+      that.data.paceOptions.forEach(function (o) {
+        if (o.value === draft.pace_level) paceLabel = o.label
+      })
+      that.setData({
+        meetupId: draft.id,
+        selectedSegmentId: draft.segment_id || null,
+        selectedRouteBookId: draft.route_book_id || null,
+        selectedRouteName: draft.snapshot_route_name || '',
+        startDate: start.date,
+        startTime: start.time,
+        endDate: end.date,
+        endTime: end.time,
+        paceLabel: paceLabel,
+        shareToken: draft.share_token || '',
+        audienceOptions: that.syncAudienceOptions(draft.audience_tags || []),
+        form: {
+          start_time: draft.start_time,
+          estimated_end_time: draft.estimated_end_time,
+          meeting_point: draft.meeting_point || '',
+          pace_level: draft.pace_level || 'cruise',
+          max_participants: draft.max_participants || 6,
+          description: draft.description || '',
+          supply_point: draft.supply_point || '',
+          audience_tags: draft.audience_tags || [],
+          visibility: draft.visibility || 'public',
+          eligibility_note: draft.eligibility_note || '',
+          safety_note: draft.safety_note || SAFETY_TEMPLATES[0],
+        },
+      })
+      that.updatePreviewDerived()
+      that.loadMedia()
+      that.restoreRoutePreview(draft.route_book_id)
+    }).catch(function () {
+      // 恢复草稿失败不阻塞新建流程，用户照常从头建
+    })
+  },
+
+  // 草稿恢复时按 route_book_id 拉路书重画地图预览（path 预览图，非导航）
+  restoreRoutePreview: function (routeBookId) {
+    var that = this
+    if (!routeBookId || !api.getRouteBookDetail) return
+    api.getRouteBookDetail(routeBookId).then(function (routeBook) {
+      that.setData(buildRoutePreview(routeBook.preview_points))
+    }).catch(function () {})
+  },
+
+  // 微信原生转发邀请：invite_only 带 share_token，朋友点开链接才能进，猜 id 进不来
+  onShareAppMessage: function () {
+    var path = '/pages/meetup-detail/meetup-detail?id=' + this.data.meetupId
+    if (this.data.form.visibility === 'invite_only' && this.data.shareToken) {
+      path += '&token=' + encodeURIComponent(this.data.shareToken)
+    }
+    return {
+      title: this.data.selectedRouteName || 'VELO 约骑',
+      path: path,
+    }
   },
 
   // 初始化默认时间：出发明天此刻，结束 +3h。拆成 picker 分量并拼好 ISO 存进 form。
