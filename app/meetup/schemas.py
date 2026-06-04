@@ -8,15 +8,58 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 MeetupStatus = Literal["DRAFT", "OPEN", "CANCELLED", "COMPLETED"]
 PaceLevel = Literal["relaxed", "cruise", "training", "race"]
 City = Literal["beijing", "shanghai", "hangzhou", "shenzhen", "chengdu", "taiyuan", "unknown"]
+MeetupVisibility = Literal["public", "invite_only"]
+
+_AUDIENCE_TAGS = {
+    "climb_steady",
+    "high_intensity",
+    "leisure",
+    "photography",
+    "female_friendly",
+    "newbie_caution",
+}
 
 
-class MeetupCreateRequest(BaseModel):
+def _validate_audience_tags(value):
+    if value is None:
+        return None
+
+    cleaned = []
+    seen = set()
+    for tag in value:
+        if tag not in _AUDIENCE_TAGS:
+            raise ValueError("audience_tags 包含非法标签")
+        if tag not in seen:
+            cleaned.append(tag)
+            seen.add(tag)
+
+    if len(cleaned) > 6:
+        raise ValueError("audience_tags 最多 6 个")
+    return cleaned
+
+
+class MeetupSocialFields(BaseModel):
+    """约骑发布前总览里的社交字段：谁适合来、谁能看到、有什么安全提示。"""
+
+    supply_point: str | None = Field(None, max_length=128)
+    audience_tags: list[str] = Field(default_factory=list)
+    visibility: MeetupVisibility = "public"
+    eligibility_note: str | None = Field(None, max_length=100)
+    safety_note: str | None = Field(None, max_length=200)
+
+    @field_validator("audience_tags")
+    @classmethod
+    def validate_audience_tags(cls, value):
+        return _validate_audience_tags(value)
+
+
+class MeetupCreateRequest(MeetupSocialFields):
     """创建草稿约骑时，小程序提交的表单。"""
 
     model_config = ConfigDict(extra="forbid")
@@ -44,6 +87,16 @@ class MeetupPatchRequest(BaseModel):
     pace_level: PaceLevel | None = None
     max_participants: int | None = Field(None, ge=2, le=20)
     description: str | None = Field(None, max_length=2000)
+    supply_point: str | None = Field(None, max_length=128)
+    audience_tags: list[str] | None = None
+    visibility: MeetupVisibility | None = None
+    eligibility_note: str | None = Field(None, max_length=100)
+    safety_note: str | None = Field(None, max_length=200)
+
+    @field_validator("audience_tags")
+    @classmethod
+    def validate_patch_audience_tags(cls, value):
+        return _validate_audience_tags(value)
 
 
 class MeetupResponse(BaseModel):
@@ -66,6 +119,12 @@ class MeetupResponse(BaseModel):
     pace_level: PaceLevel
     max_participants: int
     description: str | None = None
+    supply_point: str | None = None
+    audience_tags: list[str] = Field(default_factory=list)
+    visibility: MeetupVisibility = "public"
+    eligibility_note: str | None = None
+    safety_note: str | None = None
+    share_token: str | None = None
     participants_count: int = 0
     first_media_file_id: str | None = None
     # 当前请求者视角的两个标记：前端靠它决定详情页显示"取消/退出/加入"哪个按钮。

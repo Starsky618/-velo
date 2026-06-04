@@ -150,6 +150,146 @@ def test_create_rejects_extra_field(client, db, auth_header):
     assert res.status_code == 422
 
 
+def test_create_returns_social_fields_and_creator_only_share_token(client, db, auth_header):
+    segment = _segment(db)
+    payload = _payload(segment.id)
+    payload.update({
+        "supply_point": "天龙山景区口",
+        "audience_tags": ["climb_steady", "female_friendly", "climb_steady"],
+        "visibility": "public",
+        "eligibility_note": "报名需有 5 次骑行记录",
+        "safety_note": "头盔必戴 · 遵守交规 · 量力而行",
+    })
+
+    create_res = client.post("/api/meetups", json=payload, headers=auth_header)
+
+    assert create_res.status_code == 200
+    body = create_res.json()
+    assert body["supply_point"] == "天龙山景区口"
+    assert body["audience_tags"] == ["climb_steady", "female_friendly"]
+    assert body["visibility"] == "public"
+    assert body["eligibility_note"] == "报名需有 5 次骑行记录"
+    assert body["safety_note"] == "头盔必戴 · 遵守交规 · 量力而行"
+    assert isinstance(body["share_token"], str)
+    assert len(body["share_token"]) >= 32
+
+    other_header = _auth_header_for(db, "social-fields-other")
+    detail_res = client.get(f"/api/meetups/{body['id']}", headers=other_header)
+    assert detail_res.status_code == 200
+    assert detail_res.json()["share_token"] is None
+
+
+def test_create_accepts_all_allowed_audience_tags(client, db, auth_header):
+    segment = _segment(db)
+    payload = _payload(segment.id)
+    payload["audience_tags"] = [
+        "climb_steady",
+        "high_intensity",
+        "leisure",
+        "photography",
+        "female_friendly",
+        "newbie_caution",
+    ]
+
+    create_res = client.post("/api/meetups", json=payload, headers=auth_header)
+
+    assert create_res.status_code == 200
+    assert len(create_res.json()["audience_tags"]) == 6
+
+
+def test_patch_updates_social_fields_instead_of_silently_dropping_them(client, db, auth_header):
+    segment = _segment(db)
+    meetup_id = client.post("/api/meetups", json=_payload(segment.id), headers=auth_header).json()["id"]
+
+    patch_res = client.patch(
+        f"/api/meetups/{meetup_id}",
+        json={
+            "supply_point": "晋祠补水",
+            "audience_tags": ["photography"],
+            "visibility": "invite_only",
+            "eligibility_note": "能稳定骑完 60km",
+            "safety_note": "山路多弯 · 控制下坡车速 · 保持车距",
+        },
+        headers=auth_header,
+    )
+
+    assert patch_res.status_code == 200
+    body = patch_res.json()
+    assert body["supply_point"] == "晋祠补水"
+    assert body["audience_tags"] == ["photography"]
+    assert body["visibility"] == "invite_only"
+    assert body["eligibility_note"] == "能稳定骑完 60km"
+    assert body["safety_note"] == "山路多弯 · 控制下坡车速 · 保持车距"
+
+
+def test_patch_null_audience_tags_clears_to_empty_list(client, db, auth_header):
+    segment = _segment(db)
+    payload = _payload(segment.id)
+    payload["audience_tags"] = ["climb_steady", "photography"]
+    meetup_id = client.post("/api/meetups", json=payload, headers=auth_header).json()["id"]
+
+    patch_res = client.patch(
+        f"/api/meetups/{meetup_id}",
+        json={"audience_tags": None},
+        headers=auth_header,
+    )
+    detail_res = client.get(f"/api/meetups/{meetup_id}", headers=auth_header)
+
+    assert patch_res.status_code == 200
+    assert detail_res.status_code == 200
+    assert detail_res.json()["audience_tags"] == []
+    db.expire_all()
+    assert db.query(Meetup).filter(Meetup.id == meetup_id).first().audience_tags == []
+
+
+def test_public_list_hides_invite_only_but_mine_keeps_owner_items(client, db, auth_header):
+    seg_public = _segment(db)
+    public_id = client.post("/api/meetups", json=_payload(seg_public.id), headers=auth_header).json()["id"]
+    client.post(f"/api/meetups/{public_id}/publish", headers=auth_header)
+
+    seg_private = _segment(db)
+    private_payload = _payload(seg_private.id)
+    private_payload["visibility"] = "invite_only"
+    private_id = client.post("/api/meetups", json=private_payload, headers=auth_header).json()["id"]
+    client.post(f"/api/meetups/{private_id}/publish", headers=auth_header)
+
+    public_list = client.get("/api/meetups?status=OPEN")
+    mine = client.get("/api/meetups/mine?role=created", headers=auth_header)
+
+    public_ids = [item["id"] for item in public_list.json()["items"]]
+    mine_ids = [item["id"] for item in mine.json()["items"]]
+    assert public_id in public_ids
+    assert private_id not in public_ids
+    assert public_id in mine_ids
+    assert private_id in mine_ids
+
+
+def test_social_field_validation_and_share_token_forbid(client, db, auth_header):
+    segment = _segment(db)
+    bad_tag = _payload(segment.id)
+    bad_tag["audience_tags"] = ["not_a_real_tag"]
+    assert client.post("/api/meetups", json=bad_tag, headers=auth_header).status_code == 422
+
+    too_long = _payload(segment.id)
+    too_long["safety_note"] = "x" * 201
+    assert client.post("/api/meetups", json=too_long, headers=auth_header).status_code == 422
+
+    meetup_id = client.post("/api/meetups", json=_payload(segment.id), headers=auth_header).json()["id"]
+    forbidden = client.patch(
+        f"/api/meetups/{meetup_id}",
+        json={"share_token": "frontend-must-not-send-this"},
+        headers=auth_header,
+    )
+    assert forbidden.status_code == 422
+
+    bad_patch_tag = client.patch(
+        f"/api/meetups/{meetup_id}",
+        json={"audience_tags": ["not_a_real_tag"]},
+        headers=auth_header,
+    )
+    assert bad_patch_tag.status_code == 422
+
+
 def test_create_rejects_duplicate_draft(client, db, auth_header):
     segment = _segment(db)
     payload = _payload(segment.id)

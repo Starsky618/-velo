@@ -6,6 +6,7 @@
 """
 
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
@@ -149,6 +150,11 @@ def create_meetup(
     pace_level: str,
     max_participants: int,
     description: str | None,
+    supply_point: str | None = None,
+    audience_tags: list[str] | None = None,
+    visibility: str = "public",
+    eligibility_note: str | None = None,
+    safety_note: str | None = None,
 ) -> Meetup:
     existing = db.query(Meetup).filter(Meetup.creator_id == current_user_id, Meetup.status == "DRAFT").first()
     if existing is not None:
@@ -170,6 +176,12 @@ def create_meetup(
         pace_level=pace_level,
         max_participants=max_participants,
         description=description,
+        supply_point=supply_point,
+        audience_tags=audience_tags or [],
+        visibility=visibility,
+        eligibility_note=eligibility_note,
+        safety_note=safety_note,
+        share_token=secrets.token_urlsafe(32),
         **snapshot,
     )
     db.add(meetup)
@@ -201,11 +213,25 @@ def update_meetup(db: Session, meetup_id: int, current_user_id: int, **changes) 
         meetup.segment_id = changes.get("segment_id")
         meetup.route_book_id = changes.get("route_book_id")
 
-    for key in ("start_time", "estimated_end_time", "meeting_point", "pace_level", "max_participants", "description"):
+    for key in (
+        "start_time",
+        "estimated_end_time",
+        "meeting_point",
+        "pace_level",
+        "max_participants",
+        "description",
+        "supply_point",
+        "audience_tags",
+        "visibility",
+        "eligibility_note",
+        "safety_note",
+    ):
         if key in changes:
             value = changes[key]
             if key in {"start_time", "estimated_end_time"} and value is not None:
                 value = _ensure_aware(value)
+            if key == "audience_tags" and value is None:
+                value = []
             setattr(meetup, key, value)
 
     # 改完时间后用最终值校验顺序（用户可能只改了 start 或只改了 end 导致颠倒）
@@ -316,7 +342,7 @@ def list_meetups(
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
-    base = db.query(Meetup)
+    base = db.query(Meetup).filter(Meetup.visibility == "public")
     if status:
         base = base.filter(Meetup.status == status)
     if city:

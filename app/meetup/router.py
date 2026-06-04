@@ -44,6 +44,12 @@ def _response(meetup, participants_count=0, first_media_file_id=None, current_us
         pace_level=meetup.pace_level,
         max_participants=meetup.max_participants,
         description=meetup.description,
+        supply_point=meetup.supply_point,
+        audience_tags=meetup.audience_tags or [],
+        visibility=meetup.visibility,
+        eligibility_note=meetup.eligibility_note,
+        safety_note=meetup.safety_note,
+        share_token=meetup.share_token if is_creator else None,
         participants_count=participants_count,
         first_media_file_id=first_media_file_id,
         is_creator=is_creator,
@@ -177,6 +183,11 @@ def create_meetup(
         pace_level=req.pace_level,
         max_participants=req.max_participants,
         description=req.description,
+        supply_point=req.supply_point,
+        audience_tags=req.audience_tags,
+        visibility=req.visibility,
+        eligibility_note=req.eligibility_note,
+        safety_note=req.safety_note,
     )
     return _live_response(db, meetup, participants_count=0, current_user_id=current_user_id)
 
