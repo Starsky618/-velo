@@ -155,14 +155,25 @@ def get_my_meetups(
     return schemas.MeetupListResponse(items=items, total=result["total"], page=page, page_size=page_size)
 
 
+@router.get("/{meetup_id}/participants", response_model=list[schemas.InviteeSummary])
+def list_participants(
+    meetup_id: int,
+    token: str | None = Query(None),
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.list_participants(db, meetup_id, current_user_id, token=token)
+
+
 @router.get("/{meetup_id}", response_model=schemas.MeetupResponse)
 def get_meetup(
     meetup_id: int,
+    token: str | None = Query(None),
     current_user_id: int | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     # 详情仍 public（游客能看），但带 token 时算 is_creator/has_joined 给前端显示角色按钮
-    meetup = service.get_meetup_detail(db, meetup_id)
+    meetup = service.get_meetup_detail(db, meetup_id, current_user_id=current_user_id, token=token)
     return _live_response(db, meetup, current_user_id=current_user_id)
 
 
@@ -216,8 +227,13 @@ def cancel_meetup(meetup_id: int, current_user_id: int = Depends(get_current_use
 
 
 @router.post("/{meetup_id}/join", response_model=schemas.MeetupResponse)
-def join_meetup(meetup_id: int, current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
-    result = service.join_meetup(db, meetup_id, current_user_id)
+def join_meetup(
+    meetup_id: int,
+    token: str | None = Query(None),
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    result = service.join_meetup(db, meetup_id, current_user_id, token=token)
     return _live_response(db, result["meetup"], participants_count=result["participants_count"], current_user_id=current_user_id)
 
 

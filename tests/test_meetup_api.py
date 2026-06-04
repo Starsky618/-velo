@@ -290,6 +290,93 @@ def test_social_field_validation_and_share_token_forbid(client, db, auth_header)
     assert bad_patch_tag.status_code == 422
 
 
+def test_invite_only_requires_token_for_detail_join_and_participants(client, db, auth_header):
+    segment = _segment(db)
+    payload = _payload(segment.id)
+    payload["visibility"] = "invite_only"
+    create_res = client.post("/api/meetups", json=payload, headers=auth_header)
+    meetup_id = create_res.json()["id"]
+    token = create_res.json()["share_token"]
+    client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+    outsider = _auth_header_for(db, "invite-only-outsider")
+
+    assert client.get(f"/api/meetups/{meetup_id}", headers=outsider).status_code == 404
+    assert client.post(f"/api/meetups/{meetup_id}/join", headers=outsider).status_code == 404
+    assert client.get(f"/api/meetups/{meetup_id}/participants", headers=outsider).status_code == 404
+
+    assert client.get(f"/api/meetups/{meetup_id}?token={token}", headers=outsider).status_code == 200
+    assert client.post(f"/api/meetups/{meetup_id}/join?token={token}", headers=outsider).status_code == 200
+    assert client.get(f"/api/meetups/{meetup_id}/participants", headers=outsider).status_code == 200
+    assert client.get(f"/api/meetups/{meetup_id}", headers=outsider).status_code == 200
+
+
+def test_invite_only_creator_can_open_without_token(client, db, auth_header):
+    segment = _segment(db)
+    payload = _payload(segment.id)
+    payload["visibility"] = "invite_only"
+    create_res = client.post("/api/meetups", json=payload, headers=auth_header)
+    meetup_id = create_res.json()["id"]
+    client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+
+    detail = client.get(f"/api/meetups/{meetup_id}", headers=auth_header)
+    participants = client.get(f"/api/meetups/{meetup_id}/participants", headers=auth_header)
+
+    assert detail.status_code == 200
+    assert participants.status_code == 200
+
+
+def test_public_meetup_participants_return_user_summary(client, db, auth_header, test_user):
+    test_user.nickname = "组织者"
+    test_user.avatar_url = "https://example.com/creator.png"
+    segment = _segment(db)
+    meetup_id = client.post("/api/meetups", json=_payload(segment.id), headers=auth_header).json()["id"]
+    client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+    other_header = _auth_header_for(db, "participants-other")
+    other = db.query(User).filter(User.openid == "participants-other").first()
+    other.nickname = "阿泽"
+    other.avatar_url = "https://example.com/aze.png"
+    db.commit()
+    client.post(f"/api/meetups/{meetup_id}/join", headers=other_header)
+
+    res = client.get(f"/api/meetups/{meetup_id}/participants", headers=auth_header)
+
+    assert res.status_code == 200
+    assert res.json() == [
+        {
+            "user_id": test_user.id,
+            "nickname": "组织者",
+            "avatar_url": "https://example.com/creator.png",
+            "is_creator": True,
+            "joined_at": res.json()[0]["joined_at"],
+        },
+        {
+            "user_id": other.id,
+            "nickname": "阿泽",
+            "avatar_url": "https://example.com/aze.png",
+            "is_creator": False,
+            "joined_at": res.json()[1]["joined_at"],
+        },
+    ]
+
+
+def test_public_meetup_detail_and_join_do_not_need_token(client, db, auth_header):
+    segment = _segment(db)
+    meetup_id = client.post("/api/meetups", json=_payload(segment.id), headers=auth_header).json()["id"]
+    client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+    other_header = _auth_header_for(db, "public-no-token-other")
+
+    detail = client.get(f"/api/meetups/{meetup_id}", headers=other_header)
+    join = client.post(f"/api/meetups/{meetup_id}/join", headers=other_header)
+
+    assert detail.status_code == 200
+    assert join.status_code == 200
+
+
+def test_participants_requires_login_and_missing_meetup_404(client, auth_header):
+    assert client.get("/api/meetups/1/participants").status_code == 401
+    assert client.get("/api/meetups/999999/participants", headers=auth_header).status_code == 404
+
+
 def test_create_rejects_duplicate_draft(client, db, auth_header):
     segment = _segment(db)
     payload = _payload(segment.id)

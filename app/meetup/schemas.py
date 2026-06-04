@@ -147,6 +147,18 @@ class MeetupListResponse(BaseModel):
     page_size: int
 
 
+class InviteeSummary(BaseModel):
+    """已加入骑友列表里的单个用户摘要。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: int
+    nickname: str
+    avatar_url: str | None = None
+    is_creator: bool
+    joined_at: datetime
+
+
 class MeetupMediaResponse(BaseModel):
     """返回给小程序的一张约骑图片或视频记录。"""
 

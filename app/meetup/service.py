@@ -15,9 +15,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.meetup.models import Meetup, MeetupMedia, MeetupParticipant
+from app.meetup.schemas import InviteeSummary
 from app.route_book.models import RouteBook
 from app.segment.models import Segment
 from app.storage.local import LocalStorage
+from app.user.models import User
 
 
 logger = logging.getLogger(__name__)
@@ -253,7 +255,7 @@ def publish_meetup(db: Session, meetup_id: int, current_user_id: int) -> Meetup:
     meetup.status = "OPEN"
     existing = db.query(MeetupParticipant).filter_by(meetup_id=meetup.id, user_id=current_user_id).first()
     if existing is None:
-        db.add(MeetupParticipant(meetup_id=meetup.id, user_id=current_user_id, is_creator=True))
+        db.add(MeetupParticipant(meetup_id=meetup.id, user_id=current_user_id, is_creator=True, joined_at=_now_utc()))
     db.commit()
     db.refresh(meetup)
     return meetup
@@ -378,10 +380,34 @@ def list_my_meetups(db: Session, current_user_id: int, role: str, page: int = 1,
     return _assemble_list_result(db, base, page, page_size)
 
 
-def get_meetup_detail(db: Session, meetup_id: int) -> Meetup:
+def _assert_invite_only_access(
+    db: Session,
+    meetup: Meetup,
+    current_user_id: int | None,
+    token: str | None,
+) -> None:
+    """私圈约骑的门票检查：发起人、已加入者、或拿到分享口令的人才能进。"""
+    if meetup.visibility != "invite_only":
+        return
+    if current_user_id is not None and meetup.creator_id == current_user_id:
+        return
+    if current_user_id is not None and is_participant(db, meetup.id, current_user_id):
+        return
+    if token is not None and meetup.share_token is not None and secrets.compare_digest(token, meetup.share_token):
+        return
+    raise HTTPException(status_code=404, detail="meetup not found")
+
+
+def get_meetup_detail(
+    db: Session,
+    meetup_id: int,
+    current_user_id: int | None = None,
+    token: str | None = None,
+) -> Meetup:
     meetup = db.query(Meetup).filter(Meetup.id == meetup_id).first()
     if meetup is None:
         raise HTTPException(status_code=404, detail="meetup not found")
+    _assert_invite_only_access(db, meetup, current_user_id, token)
     return meetup
 
 
@@ -424,7 +450,37 @@ def get_first_media_file_id(db: Session, meetup_id: int) -> str | None:
     return row.file_id if row is not None else None
 
 
-def join_meetup(db: Session, meetup_id: int, current_user_id: int) -> dict:
+def list_participants(
+    db: Session,
+    meetup_id: int,
+    current_user_id: int,
+    token: str | None = None,
+) -> list[InviteeSummary]:
+    meetup = db.query(Meetup).filter(Meetup.id == meetup_id).first()
+    if meetup is None:
+        raise HTTPException(status_code=404, detail="meetup not found")
+    _assert_invite_only_access(db, meetup, current_user_id, token)
+
+    rows = (
+        db.query(MeetupParticipant, User)
+        .join(User, User.id == MeetupParticipant.user_id)
+        .filter(MeetupParticipant.meetup_id == meetup.id)
+        .order_by(MeetupParticipant.joined_at.asc(), MeetupParticipant.id.asc())
+        .all()
+    )
+    return [
+        InviteeSummary(
+            user_id=user.id,
+            nickname=user.nickname or "",
+            avatar_url=user.avatar_url,
+            is_creator=participant.is_creator is True,
+            joined_at=participant.joined_at,
+        )
+        for participant, user in rows
+    ]
+
+
+def join_meetup(db: Session, meetup_id: int, current_user_id: int, token: str | None = None) -> dict:
     meetup = _load_and_authorize_meetup(
         db,
         meetup_id,
@@ -433,6 +489,7 @@ def join_meetup(db: Session, meetup_id: int, current_user_id: int) -> dict:
         check_time_cutoff=True,
         cancelled_returns_410=True,
     )
+    _assert_invite_only_access(db, meetup, current_user_id, token)
     existing = db.query(MeetupParticipant).filter_by(meetup_id=meetup.id, user_id=current_user_id).first()
     if existing is not None:
         raise HTTPException(status_code=409, detail="already_joined")
@@ -441,7 +498,7 @@ def join_meetup(db: Session, meetup_id: int, current_user_id: int) -> dict:
     if count >= meetup.max_participants:
         raise HTTPException(status_code=409, detail="meetup_full")
 
-    db.add(MeetupParticipant(meetup_id=meetup.id, user_id=current_user_id, is_creator=False))
+    db.add(MeetupParticipant(meetup_id=meetup.id, user_id=current_user_id, is_creator=False, joined_at=_now_utc()))
     try:
         db.commit()
     except IntegrityError as exc:
