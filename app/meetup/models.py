@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -45,6 +46,12 @@ class Meetup(Base):
     pace_level = Column(String(16), nullable=False)
     max_participants = Column(Integer, nullable=False)
     description = Column(Text, nullable=True)
+    supply_point = Column(String(128), nullable=True)
+    audience_tags = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
+    visibility = Column(String(16), nullable=False, default="public", server_default="public")
+    eligibility_note = Column(String(100), nullable=True)
+    safety_note = Column(String(200), nullable=True)
+    share_token = Column(String(43), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     cancelled_at = Column(DateTime(timezone=True), nullable=True)
@@ -66,6 +73,10 @@ class Meetup(Base):
         CheckConstraint(
             "pace_level IN ('relaxed', 'cruise', 'training', 'race')",
             name="ck_meetups_pace_level",
+        ),
+        CheckConstraint(
+            "visibility IN ('public', 'invite_only')",
+            name="ck_meetups_visibility",
         ),
         CheckConstraint(
             "max_participants >= 2 AND max_participants <= 20",

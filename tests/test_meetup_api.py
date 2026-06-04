@@ -2,6 +2,8 @@
 
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import text
+
 from app.meetup.models import Meetup
 from app.segment.models import Segment
 from app.user.models import User
@@ -45,6 +47,23 @@ def _auth_header_for(db, openid):
     db.commit()
     db.refresh(user)
     return {"Authorization": f"Bearer {create_token(user.id)}"}
+
+
+def test_meetup_create_prototype_columns_are_declared_in_model_and_test_table(db):
+    expected = {
+        "supply_point",
+        "audience_tags",
+        "visibility",
+        "eligibility_note",
+        "safety_note",
+        "share_token",
+    }
+
+    model_columns = set(Meetup.__table__.columns.keys())
+    sqlite_columns = {row[1] for row in db.execute(text("PRAGMA table_info(meetups)")).fetchall()}
+
+    assert expected <= model_columns
+    assert expected <= sqlite_columns
 
 
 def test_create_patch_publish_and_cancel_paths(client, db, auth_header):
