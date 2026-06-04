@@ -169,6 +169,9 @@
     </view>
 
     <view class="summary">
+      <view class="summary-row"><text>人数上限</text><text>{{form.max_participants}} 人</text></view>
+      <view wx:if="{{registrationDeadlineLabel}}" class="summary-row"><text>报名截止</text><text>{{registrationDeadlineLabel}}</text></view>
+      <view class="summary-row"><text>集合</text><text>{{form.meeting_point}}</text></view>
       <view class="summary-row">
         <text>可见范围</text>
         <picker mode="selector" range="{{visibilityOptions}}" range-key="label" bindchange="onVisibilityChange">

@@ -309,6 +309,11 @@ def test_invite_only_requires_token_for_detail_join_and_participants(client, db,
     assert client.get(f"/api/meetups/{meetup_id}/participants", headers=outsider).status_code == 200
     assert client.get(f"/api/meetups/{meetup_id}", headers=outsider).status_code == 200
 
+    # /media 同样受私圈门禁：另一个全新外部用户不带 token → 404，带 token → 200
+    fresh = _auth_header_for(db, "invite-only-media-outsider")
+    assert client.get(f"/api/meetups/{meetup_id}/media", headers=fresh).status_code == 404
+    assert client.get(f"/api/meetups/{meetup_id}/media?token={token}").status_code == 200
+
 
 def test_invite_only_creator_can_open_without_token(client, db, auth_header):
     segment = _segment(db)

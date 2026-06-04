@@ -471,7 +471,7 @@ def list_participants(
     return [
         InviteeSummary(
             user_id=user.id,
-            nickname=user.nickname or "",
+            nickname=user.nickname or None,
             avatar_url=user.avatar_url,
             is_creator=participant.is_creator is True,
             joined_at=participant.joined_at,

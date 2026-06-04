@@ -153,10 +153,10 @@ class InviteeSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_id: int
-    nickname: str
+    nickname: str | None = None
     avatar_url: str | None = None
     is_creator: bool
-    joined_at: datetime
+    joined_at: datetime | None = None
 
 
 class MeetupMediaResponse(BaseModel):

@@ -113,7 +113,7 @@ Page({
     // 四步向导：选路线 → 填详情 → 加照片 → 确认发布。
     // 把"照片"插在 details 和 publish 之间，让发起人发布前就能给约骑配图，
     // 而不是等发布后再回详情页补——发布即图文齐全，对围观者更有吸引力。
-    steps: ['route', 'details', 'media', 'publish', 'preview'],
+    steps: ['route', 'details', 'media', 'publish'],
     currentStep: 'route',
     selectedSegmentId: null,
     selectedRouteBookId: null,
@@ -176,6 +176,7 @@ Page({
     invitees: [], // 已加入骑友（进 preview 时拉）
     shareToken: '', // 私圈分享口令（后端只回 creator / onShareAppMessage 用）
     estimatedDurationText: '',
+    registrationDeadlineLabel: '', // 报名截止 = 出发前 30 分钟（派生）
     recommendedPowerLabel: PACE_DISPLAY.cruise.recommended_power_label,
     averageSpeedRange: PACE_DISPLAY.cruise.average_speed_range,
     submitting: false,
@@ -493,10 +494,18 @@ Page({
       var minutes = Math.round((end - start) / 60000)
       duration = Math.floor(minutes / 60) + ':' + String(minutes % 60).padStart(2, '0')
     }
+    // 报名截止 = 出发前 30 分钟（项目既有截止线），格式化成本地"周X HH:mm 截止"
+    var deadlineText = ''
+    if (Number.isFinite(start.getTime())) {
+      var dl = new Date(start.getTime() - 30 * 60000)
+      var week = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dl.getDay()]
+      deadlineText = week + ' ' + String(dl.getHours()).padStart(2, '0') + ':' + String(dl.getMinutes()).padStart(2, '0') + ' 截止'
+    }
     this.setData({
       recommendedPowerLabel: pace.recommended_power_label,
       averageSpeedRange: pace.average_speed_range,
       estimatedDurationText: duration,
+      registrationDeadlineLabel: deadlineText,
     })
   },
 
