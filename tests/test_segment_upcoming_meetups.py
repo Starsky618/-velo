@@ -52,7 +52,13 @@ def _open_meetup(db, user_id, segment_id, days=2):
         4,
         "一起骑",
     )
-    return service.publish_meetup(db, meetup.id, user_id)
+    # 直接置 OPEN + creator 占位（不走 publish_meetup：它现在有出发前 30min 截止线，
+    # 会挡住造"过去/近期 OPEN 约骑"的赛段页 upcoming 测试 setup）。
+    meetup.status = "OPEN"
+    db.add(MeetupParticipant(meetup_id=meetup.id, user_id=user_id, is_creator=True))
+    db.commit()
+    db.refresh(meetup)
+    return meetup
 
 
 def test_segment_upcoming_meetups_returns_public_open_future_items(client, db, test_user):

@@ -384,3 +384,14 @@ def test_create_page_restores_draft_and_share_path_carries_invite_token():
     assert "getMeetupDetail: function (meetupId, token)" in api
     assert "joinMeetup: function (meetupId, token)" in api
     assert "getRouteBookDetail" in api
+
+
+def test_meetup_detail_consumes_invite_token_from_share_link():
+    # 私圈分享链接 ?id=X&token=Y 落地详情页：必须收下 token 并透传给详情/加入/照片，
+    # 否则受邀者带链接进来后端门禁返回 404（这是 task5+6 双审抓到的 Critical，加静态测试锁死）
+    js = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.js")
+    assert "options.token" in js
+    assert "shareToken" in js
+    assert "getMeetupDetail(this.data.meetupId, this.data.shareToken)" in js
+    assert "joinMeetup(this.data.meetupId, this.data.shareToken)" in js
+    assert "getMeetupMedia(this.data.meetupId, this.data.shareToken)" in js

@@ -35,6 +35,7 @@ function decorateMeetup(meetup) {
 Page({
   data: {
     meetupId: null,
+    shareToken: '', // 私圈约骑分享链接带来的口令（onLoad 从 ?token= 取，透传给后端门禁）
     meetup: null,
     loading: true,
     joining: false,
@@ -43,7 +44,9 @@ Page({
   },
 
   onLoad: function (options) {
-    this.setData({ meetupId: Number(options.id) })
+    // 私圈约骑分享链接是 ?id=X&token=Y——必须收下 token 并透传给详情/加入/照片接口，
+    // 否则受邀者带链接进来后端门禁仍判"无权"返回 404，整个私圈邀请就断了。
+    this.setData({ meetupId: Number(options.id), shareToken: options.token || '' })
     this.loadDetail()
   },
 
@@ -57,7 +60,7 @@ Page({
     var that = this
     if (!this.data.meetupId) return
     this.setData({ loading: true })
-    api.getMeetupDetail(this.data.meetupId)
+    api.getMeetupDetail(this.data.meetupId, this.data.shareToken)
       .then(function (res) {
         that.setData({ meetup: decorateMeetup(res) })
         that.loadMedia()
@@ -76,7 +79,7 @@ Page({
     // guard 用 canJoin（已含未满/未过cutoff/未加入），和按钮显示条件一致，不再用旧的 full 判断
     if (this.data.joining || !(this.data.meetup && this.data.meetup.canJoin)) return
     this.setData({ joining: true })
-    api.joinMeetup(this.data.meetupId)
+    api.joinMeetup(this.data.meetupId, this.data.shareToken)
       .then(function (res) {
         that.setData({ meetup: decorateMeetup(res) })
         wx.showToast({ title: '已加入', icon: 'success' })
@@ -137,7 +140,7 @@ Page({
   // 照片墙：拉所有媒体，拼成可显示 URL（baseUrl + /uploads/ + file_id，caddy 静态服务）
   loadMedia: function () {
     var that = this
-    api.getMeetupMedia(this.data.meetupId)
+    api.getMeetupMedia(this.data.meetupId, this.data.shareToken)
       .then(function (list) {
         var base = (getApp().globalData && getApp().globalData.baseUrl) || ''
         that.setData({

@@ -547,3 +547,18 @@ def test_publish_allows_draft_before_registration_cutoff(client, db, auth_header
     res = client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
     assert res.status_code == 200
     assert res.json()["status"] == "OPEN"
+
+
+def test_publish_allows_draft_well_before_cutoff(client, db, auth_header, monkeypatch):
+    # spec §8 边界三组的第三组：出发还远（now+2h）→ 发布 200
+    fixed_now = datetime(2026, 6, 4, 10, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.meetup.service._now_utc", lambda: fixed_now)
+    segment = _segment(db)
+    start = fixed_now + timedelta(hours=2)
+    payload = _payload(segment.id)
+    payload["start_time"] = start.isoformat()
+    payload["estimated_end_time"] = (start + timedelta(hours=2)).isoformat()
+    meetup_id = client.post("/api/meetups", json=payload, headers=auth_header).json()["id"]
+
+    res = client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+    assert res.status_code == 200

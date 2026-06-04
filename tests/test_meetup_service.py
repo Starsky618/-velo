@@ -121,15 +121,19 @@ def test_publish_freezes_snapshot_and_adds_creator_participant(db, test_user):
     assert participants[0].is_creator is True
 
 
-def test_cancel_rejects_inside_cutoff(db, test_user):
+def test_cancel_rejects_inside_cutoff(db, test_user, monkeypatch):
+    # Task6 起 publish 也走 30min 截止线，不能再"发布一个 20min 后的约骑"。
+    # 改为 base 时发布一个 1h 后的约骑（在截止线外），再把时间推进到截止窗内测 cancel→410。
+    base = datetime(2026, 6, 4, 10, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.meetup.service._now_utc", lambda: base)
     segment = _segment(db)
     meetup = service.create_meetup(
         db,
         test_user.id,
         segment.id,
         None,
-        datetime.now(timezone.utc) + timedelta(minutes=20),
-        datetime.now(timezone.utc) + timedelta(hours=2),
+        base + timedelta(hours=1),
+        base + timedelta(hours=3),
         "A",
         "cruise",
         4,
@@ -137,6 +141,7 @@ def test_cancel_rejects_inside_cutoff(db, test_user):
     )
     service.publish_meetup(db, meetup.id, test_user.id)
 
+    monkeypatch.setattr("app.meetup.service._now_utc", lambda: base + timedelta(minutes=40))
     with pytest.raises(HTTPException) as exc:
         service.cancel_meetup(db, meetup.id, test_user.id)
 

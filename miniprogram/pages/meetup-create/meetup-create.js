@@ -243,7 +243,10 @@ Page({
     if (!routeBookId || !api.getRouteBookDetail) return
     api.getRouteBookDetail(routeBookId).then(function (routeBook) {
       that.setData(buildRoutePreview(routeBook.preview_points))
-    }).catch(function () {})
+    }).catch(function () {
+      // 拉路书失败就清空预览，别残留上一条路线的图（视觉状态不一致）
+      that.setData(buildRoutePreview([]))
+    })
   },
 
   // 微信原生转发邀请：invite_only 带 share_token，朋友点开链接才能进，猜 id 进不来
@@ -594,7 +597,8 @@ Page({
       })
       // 拉已加入骑友（getMeetupParticipants 在 Task5 才加，没有就跳过不报错）
       if (api.getMeetupParticipants) {
-        api.getMeetupParticipants(draft.id).then(function (items) {
+        // 带上 share_token：发起人本人虽豁免，但 invite_only 下显式传 token 更稳（不靠隐式身份侥幸）
+        api.getMeetupParticipants(draft.id, draft.share_token).then(function (items) {
           that.setData({ invitees: items || [] })
         }).catch(function () {
           that.setData({ invitees: [] })

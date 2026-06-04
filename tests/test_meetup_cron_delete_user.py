@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.meetup import service
-from app.meetup.models import Meetup, MeetupMedia
+from app.meetup.models import Meetup, MeetupMedia, MeetupParticipant
 from app.segment.models import Segment
 from app.user.models import User
 
@@ -45,15 +45,17 @@ def _meetup(db, user_id, status="OPEN", start_delta=-3, end_delta=-1):
         4,
         None,
     )
-    if status == "OPEN":
-        return service.publish_meetup(db, meetup.id, user_id)
+    if status == "DRAFT":
+        return meetup
+    # 直接置 OPEN + 补 creator 占位（等价 publish_meetup 的效果），不走 publish_meetup：
+    # 它现在有出发前 30min 截止线，会挡住"造过去/近期 OPEN 约骑"的 cron 测试 setup。
+    meetup.status = "OPEN"
+    db.add(MeetupParticipant(meetup_id=meetup.id, user_id=user_id, is_creator=True))
     if status == "CANCELLED":
-        service.publish_meetup(db, meetup.id, user_id)
         meetup.status = "CANCELLED"
         meetup.cancelled_at = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(meetup)
-        return meetup
+    db.commit()
+    db.refresh(meetup)
     return meetup
 
 
