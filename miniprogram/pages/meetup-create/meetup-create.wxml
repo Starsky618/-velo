@@ -154,6 +154,40 @@
 
   <view wx:elif="{{currentStep === 'preview'}}" class="panel preview">
     <view class="summary">
+      <view wx:if="{{routePreviewVisible}}" class="route-preview-shell">
+        <map wx:if="{{paperMapHasCustomStyle}}"
+             class="route-preview-map"
+             latitude="{{routePreviewCenter.latitude}}"
+             longitude="{{routePreviewCenter.longitude}}"
+             scale="12"
+             markers="{{routePreviewMarkers}}"
+             polyline="{{routePreviewPolylines}}"
+             include-points="{{routePreviewIncludePoints}}"
+             subkey="{{paperMapSubkey}}"
+             layer-style="{{paperMapLayerStyle}}"
+             enable-poi="{{false}}"
+             enable-building="{{false}}"
+             enable-traffic="{{false}}"
+             enable-3D="{{false}}"
+             enable-rotate="{{false}}"
+             show-location="{{false}}">
+          <cover-view class="route-preview-label">路线预览图（非导航）</cover-view>
+        </map>
+        <map wx:else
+             class="route-preview-map"
+             latitude="{{routePreviewCenter.latitude}}"
+             longitude="{{routePreviewCenter.longitude}}"
+             scale="12"
+             markers="{{routePreviewMarkers}}"
+             polyline="{{routePreviewPolylines}}"
+             include-points="{{routePreviewIncludePoints}}"
+             enable-traffic="{{false}}"
+             enable-3D="{{false}}"
+             enable-rotate="{{false}}"
+             show-location="{{false}}">
+          <cover-view class="route-preview-label">路线预览图（非导航）</cover-view>
+        </map>
+      </view>
       <view class="summary-title">{{selectedRouteName}}</view>
       <view class="summary-row"><text>预计时长</text><text>{{estimatedDurationText}}</text></view>
       <view class="summary-row"><text>推荐功率</text><text>{{recommendedPowerLabel}}</text></view>

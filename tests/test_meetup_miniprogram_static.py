@@ -352,6 +352,8 @@ def test_create_page_has_preview_step_and_social_fields():
     assert "form.audience_tags.indexOf" not in wxml
     # 旧"发布约骑"直发按钮已被 onTapGoPreview/onConfirmPublish 两步取代
     assert 'bindtap="onPublish"' not in wxml
+    # 发布前总览页也要有路线轨迹缩略图（复用 route 步的 routePreview 地图）→ route-preview-shell 出现 2 次
+    assert wxml.count("route-preview-shell") >= 2
 
 
 def test_pace_display_table_covers_all_four_pace_levels():
