@@ -425,16 +425,21 @@ def test_open_meetup_cannot_be_patched_or_deleted(client, db, auth_header):
     assert delete_res.status_code == 409
 
 
-def test_cancel_returns_410_after_cutoff(client, db, auth_header):
+def test_cancel_returns_410_after_cutoff(client, db, auth_header, monkeypatch):
+    # 注意：Task6 起 publish 也走 30min 截止线，所以不能再"发布一个 20min 后的约骑"。
+    # 正确做法：先发布一个足够远的约骑（发布时在截止线外），再把时间推进到截止窗内测 cancel→410。
+    base = datetime(2026, 6, 4, 10, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.meetup.service._now_utc", lambda: base)
     segment = _segment(db)
-    start = datetime.now(timezone.utc) + timedelta(minutes=20)
+    start = base + timedelta(hours=1)
     payload = _payload(segment.id)
     payload["start_time"] = start.isoformat()
     payload["estimated_end_time"] = (start + timedelta(hours=2)).isoformat()
-    create_res = client.post("/api/meetups", json=payload, headers=auth_header)
-    meetup_id = create_res.json()["id"]
-    client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+    meetup_id = client.post("/api/meetups", json=payload, headers=auth_header).json()["id"]
+    assert client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header).status_code == 200
 
+    # 时间推进到出发前 20 分钟（已过 30min 截止线）→ 取消应 410
+    monkeypatch.setattr("app.meetup.service._now_utc", lambda: start - timedelta(minutes=20))
     res = client.post(f"/api/meetups/{meetup_id}/cancel", headers=auth_header)
 
     assert res.status_code == 410
@@ -512,3 +517,33 @@ def test_main_mounts_meetup_and_route_book_routers():
     paths = {getattr(route, "path", "") for route in app.router.routes}
     assert "/api/meetups" in paths
     assert "/api/route-books" in paths
+
+
+def test_publish_rejects_draft_after_registration_cutoff(client, db, auth_header, monkeypatch):
+    # 出发前 30 分钟截止线：进入截止窗的草稿不许发布（发了也没人能 join）→ 410
+    fixed_now = datetime(2026, 6, 4, 10, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.meetup.service._now_utc", lambda: fixed_now)
+    segment = _segment(db)
+    start = fixed_now + timedelta(minutes=29)
+    payload = _payload(segment.id)
+    payload["start_time"] = start.isoformat()
+    payload["estimated_end_time"] = (start + timedelta(hours=2)).isoformat()
+    meetup_id = client.post("/api/meetups", json=payload, headers=auth_header).json()["id"]
+
+    res = client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+    assert res.status_code == 410
+
+
+def test_publish_allows_draft_before_registration_cutoff(client, db, auth_header, monkeypatch):
+    fixed_now = datetime(2026, 6, 4, 10, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.meetup.service._now_utc", lambda: fixed_now)
+    segment = _segment(db)
+    start = fixed_now + timedelta(minutes=31)
+    payload = _payload(segment.id)
+    payload["start_time"] = start.isoformat()
+    payload["estimated_end_time"] = (start + timedelta(hours=2)).isoformat()
+    meetup_id = client.post("/api/meetups", json=payload, headers=auth_header).json()["id"]
+
+    res = client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+    assert res.status_code == 200
+    assert res.json()["status"] == "OPEN"

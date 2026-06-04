@@ -251,6 +251,9 @@ def publish_meetup(db: Session, meetup_id: int, current_user_id: int) -> Meetup:
         current_user_id,
         require_creator=True,
         require_status=["DRAFT"],
+        # 发布也走和 join/cancel 同一条截止线（start - 30min30s）：
+        # 不许发布一个已进入报名截止窗的草稿——那种约骑没人能再 join，发了也是死的，过期返回 410。
+        check_time_cutoff=True,
     )
     meetup.status = "OPEN"
     existing = db.query(MeetupParticipant).filter_by(meetup_id=meetup.id, user_id=current_user_id).first()
