@@ -1,9 +1,41 @@
 <view class="create-page" data-current="{{currentStep}}">
-  <view class="steps">
-    <view class="{{currentStep === 'route' ? 'active' : ''}}">路线</view>
-    <view class="{{currentStep === 'details' ? 'active' : ''}}">时间</view>
-    <view class="{{currentStep === 'media' ? 'active' : ''}}">照片</view>
-    <view class="{{currentStep === 'publish' ? 'active' : ''}}">发布</view>
+  <!-- 顶部标题区：原型独立画框里有自绘返回箭头，小程序顶部已有系统原生导航返回，故不再重复画 back，只保留标题+副标题 -->
+  <view class="wiz-head">
+    <view class="wiz-title">发起约骑</view>
+    <view class="wiz-subtitle">30 秒发起一次靠谱约骑</view>
+  </view>
+
+  <!--
+    顶部步骤指示器：原型的"圆圈 + 连接线"样式。
+    设计思路：把"路线→编辑→确认"三步排成一行，每个圆圈三态——
+      done（已完成，显示对勾√，红边白底）/ current（当前步，红底白字数字）/ 灰色待办（todo，红边白字数字）。
+    判定哪一步算 done/current，靠 currentStep 在三步（route→edit→confirm）里的"位置"比较。
+    类比：像地铁线路图，已坐过的站打勾、当前站点亮、后面的站灰着；连接线是两站之间的轨道（3 站 = 2 段轨道）。
+  -->
+  <view class="wiz-steps">
+    <!-- 第1步 路线：只有还停在 route 步才是 current，进入 edit/confirm 后算 done -->
+    <view class="wiz-step {{currentStep === 'route' ? 'current' : 'done'}}">
+      <view class="wiz-mark">
+        <image wx:if="{{currentStep !== 'route'}}" class="wiz-mark-icon" src="/assets/icons/meetup/check.svg" mode="aspectFit" />
+        <text wx:else>1</text>
+      </view>
+      <view class="wiz-step-label">路线</view>
+      <view class="wiz-line"></view>
+    </view>
+    <!-- 第2步 编辑(edit)：route 时待办、edit 时 current、confirm 时 done -->
+    <view class="wiz-step {{currentStep === 'route' ? 'todo' : (currentStep === 'edit' ? 'current' : 'done')}}">
+      <view class="wiz-mark">
+        <image wx:if="{{currentStep === 'confirm'}}" class="wiz-mark-icon" src="/assets/icons/meetup/check.svg" mode="aspectFit" />
+        <text wx:else>2</text>
+      </view>
+      <view class="wiz-step-label">编辑</view>
+      <view class="wiz-line"></view>
+    </view>
+    <!-- 第3步 确认(confirm)：最后一步无连接线，仅 confirm 时 current -->
+    <view class="wiz-step {{currentStep === 'confirm' ? 'current' : 'todo'}}">
+      <view class="wiz-mark"><text>3</text></view>
+      <view class="wiz-step-label">确认</view>
+    </view>
   </view>
 
   <view wx:if="{{currentStep === 'route'}}" class="panel">
@@ -69,93 +101,19 @@
     </view>
   </view>
 
-  <view wx:elif="{{currentStep === 'details'}}" class="panel">
-    <view class="field">
-      <text>出发</text>
-      <view class="datetime">
-        <picker class="dt-date" mode="date" value="{{startDate}}" bindchange="onStartDateChange">
-          <view class="picker-value">{{startDate}}</view>
-        </picker>
-        <picker class="dt-time" mode="time" value="{{startTime}}" bindchange="onStartTimeChange">
-          <view class="picker-value">{{startTime}}</view>
-        </picker>
-      </view>
-    </view>
-    <view class="field">
-      <text>预计结束</text>
-      <view class="datetime">
-        <picker class="dt-date" mode="date" value="{{endDate}}" bindchange="onEndDateChange">
-          <view class="picker-value">{{endDate}}</view>
-        </picker>
-        <picker class="dt-time" mode="time" value="{{endTime}}" bindchange="onEndTimeChange">
-          <view class="picker-value">{{endTime}}</view>
-        </picker>
-      </view>
-    </view>
-    <view class="field">
-      <text>集合点</text>
-      <input value="{{form.meeting_point}}" data-field="meeting_point" bindinput="updateField" placeholder="例如：汾河公园南门" />
-    </view>
-    <view class="field">
-      <text>补给点</text>
-      <input value="{{form.supply_point}}" data-field="supply_point" bindinput="updateField" placeholder="例如：天龙山景区口" />
-    </view>
-    <view class="field">
-      <text>人数上限</text>
-      <input type="number" value="{{form.max_participants}}" data-field="max_participants" bindinput="updateField" />
-    </view>
-    <view class="field">
-      <text>节奏</text>
-      <picker mode="selector" range="{{paceOptions}}" range-key="label" bindchange="onPaceChange">
-        <view class="picker-value">{{paceLabel}}</view>
-      </picker>
-    </view>
-    <view class="field">
-      <text>说明</text>
-      <textarea value="{{form.description}}" data-field="description" bindinput="updateField" placeholder="补充集合、补给或注意事项" />
-    </view>
-  </view>
-
-  <view wx:elif="{{currentStep === 'media'}}" class="panel">
-    <view class="media-head">
-      <text class="section-title">照片</text>
-      <text class="add-media" bindtap="onTapAddMedia">+ 加照片</text>
-    </view>
-    <view wx:if="{{mediaError}}" class="media-empty" bindtap="loadMedia">照片加载失败，点此重试</view>
-    <view wx:elif="{{mediaList.length === 0}}" class="media-empty">还没有照片，可选择性添加</view>
-    <view wx:else class="media-grid">
-      <view class="media-item" wx:for="{{mediaList}}" wx:key="id">
-        <video wx:if="{{item.isVideo}}" src="{{item.url}}" class="media-thumb"></video>
-        <image wx:else src="{{item.url}}" mode="aspectFill" class="media-thumb" data-url="{{item.url}}" bindtap="onTapPreviewMedia"></image>
-        <view class="media-del" data-id="{{item.id}}" catchtap="onTapDeleteMedia">×</view>
-      </view>
-    </view>
-  </view>
-
-  <view wx:elif="{{currentStep === 'publish'}}" class="panel summary">
-    <view class="summary-title">{{selectedRouteName}}</view>
-    <view class="summary-row">
-      <text>出发</text>
-      <text>{{startDate}} {{startTime}}</text>
-    </view>
-    <view class="summary-row">
-      <text>预计结束</text>
-      <text>{{endDate}} {{endTime}}</text>
-    </view>
-    <view class="summary-row">
-      <text>集合点</text>
-      <text>{{form.meeting_point}}</text>
-    </view>
-    <view class="summary-row">
-      <text>人数</text>
-      <text>{{form.max_participants}}</text>
-    </view>
-  </view>
-
-  <view wx:elif="{{currentStep === 'preview'}}" class="panel preview">
-    <view class="summary">
-      <view wx:if="{{routePreviewVisible}}" class="route-preview-shell">
-        <map wx:if="{{paperMapHasCustomStyle}}"
+  <!--
+    编辑步（第2步 / currentStep === 'edit'）：保留原 publish 白卡片视觉，但右侧从"只读+箭头"换成"就地可编辑"。
+    设计思路：用户在图二一次性把所有字段填好/改好，不再像旧流程那样点箭头逐项跳回上一步。
+    每行结构仍是原型 .pub-row 三栏网格（图标列 / 内容列 / 右侧控件列），
+      只把第三列从 chevron 箭头换成对应的编辑控件（picker / input / 加减器）。
+    路线行例外：保持只读（左侧地图缩略图 + 右侧"路线已生成"徽标），路线在第 1 步已选定，这里不可改。
+    照片用真照片网格（复用 mediaList + onTapAddMedia/onTapDeleteMedia/onTapPreviewMedia）。
+  -->
+  <view wx:if="{{currentStep === 'edit'}}" class="panel pub-card">
+    <!-- 路线行：左侧用现成 <map> 真预览缩成小缩略图，右侧绿色"路线已生成"徽标；只读不可编辑 -->
+    <view class="pub-row pub-row-route">
+      <view class="pub-route-thumb route-preview-shell">
+        <map wx:if="{{routePreviewVisible && paperMapHasCustomStyle}}"
              class="route-preview-map"
              latitude="{{routePreviewCenter.latitude}}"
              longitude="{{routePreviewCenter.longitude}}"
@@ -170,10 +128,8 @@
              enable-traffic="{{false}}"
              enable-3D="{{false}}"
              enable-rotate="{{false}}"
-             show-location="{{false}}">
-          <cover-view class="route-preview-label">路线预览图（非导航）</cover-view>
-        </map>
-        <map wx:else
+             show-location="{{false}}"></map>
+        <map wx:elif="{{routePreviewVisible}}"
              class="route-preview-map"
              latitude="{{routePreviewCenter.latitude}}"
              longitude="{{routePreviewCenter.longitude}}"
@@ -184,65 +140,349 @@
              enable-traffic="{{false}}"
              enable-3D="{{false}}"
              enable-rotate="{{false}}"
-             show-location="{{false}}">
-          <cover-view class="route-preview-label">路线预览图（非导航）</cover-view>
-        </map>
+             show-location="{{false}}"></map>
+        <view wx:else class="pub-route-thumb-fallback">
+          <image class="pub-icon pub-icon-route" src="/assets/icons/meetup/map.svg" mode="aspectFit" />
+        </view>
       </view>
-      <view class="summary-title">{{selectedRouteName}}</view>
-      <view class="summary-row"><text>预计时长</text><text>{{estimatedDurationText}}</text></view>
-      <view class="summary-row"><text>推荐功率</text><text>{{recommendedPowerLabel}}</text></view>
-      <view class="summary-row"><text>预计均速</text><text>{{averageSpeedRange}}</text></view>
-      <view wx:if="{{form.supply_point}}" class="summary-row"><text>补给点</text><text>{{form.supply_point}}</text></view>
+      <view class="pub-row-body">
+        <view class="pub-row-title">路线</view>
+        <view class="pub-row-sub">{{selectedRouteName}}</view>
+      </view>
+      <view class="pub-route-status">路线已生成</view>
     </view>
 
-    <view class="summary">
-      <view class="section-title">适合谁</view>
-      <view class="tag-grid">
-        <view wx:for="{{audienceOptions}}" wx:key="value" class="tag {{item.selected ? 'selected' : ''}}" data-value="{{item.value}}" bindtap="toggleAudienceTag">{{item.label}}</view>
+    <!-- 出发时间：右侧放日期 + 时间两个 picker，结束时间 js 自动顺延（图二不露出） -->
+    <view class="pub-row">
+      <view class="pub-iconbox"><image class="pub-icon" src="/assets/icons/meetup/clock.svg" mode="aspectFit" /></view>
+      <view class="pub-row-body">
+        <view class="pub-row-title">出发时间</view>
+        <view class="pub-row-sub">{{startDate}} {{startTime}}</view>
       </view>
-    </view>
-
-    <view class="summary">
-      <view class="summary-row"><text>人数上限</text><text>{{form.max_participants}} 人</text></view>
-      <view wx:if="{{registrationDeadlineLabel}}" class="summary-row"><text>报名截止</text><text>{{registrationDeadlineLabel}}</text></view>
-      <view class="summary-row"><text>集合</text><text>{{form.meeting_point}}</text></view>
-      <view class="summary-row">
-        <text>可见范围</text>
-        <picker mode="selector" range="{{visibilityOptions}}" range-key="label" bindchange="onVisibilityChange">
-          <view class="picker-value">{{form.visibility === 'invite_only' ? '私圈可见' : '本城可见'}}</view>
+      <view class="pub-edit-col pub-edit-col-time">
+        <picker class="pub-picker" mode="date" value="{{startDate}}" bindchange="onStartDateChange">
+          <view class="pub-picker-value">{{startDate}}</view>
+        </picker>
+        <picker class="pub-picker" mode="time" value="{{startTime}}" bindchange="onStartTimeChange">
+          <view class="pub-picker-value">{{startTime}}</view>
         </picker>
       </view>
-      <view class="field compact">
-        <text>报名门槛</text>
-        <textarea value="{{form.eligibility_note}}" data-field="eligibility_note" bindinput="updateField" placeholder="例如：能稳定骑完 60km" />
+    </view>
+
+    <!-- 集合地点：右侧就地输入 -->
+    <view class="pub-row">
+      <view class="pub-iconbox"><image class="pub-icon" src="/assets/icons/meetup/map-pin.svg" mode="aspectFit" /></view>
+      <view class="pub-row-body">
+        <view class="pub-row-title">集合地点</view>
       </view>
-      <view class="field compact">
-        <text>安全提示</text>
-        <textarea value="{{form.safety_note}}" data-field="safety_note" bindinput="updateField" />
-      </view>
-      <view class="template-list">
-        <view wx:for="{{safetyTemplates}}" wx:key="*this" data-index="{{index}}" bindtap="applySafetyTemplate">{{item}}</view>
+      <view class="pub-edit-col">
+        <input class="pub-input" value="{{form.meeting_point}}" data-field="meeting_point" bindinput="updateField" placeholder="例如：晋祠公园北门" />
       </view>
     </view>
 
-    <view class="summary">
-      <view class="invite-head">
-        <view class="section-title">已加入骑友</view>
-        <button class="invite-share" open-type="share">继续邀请</button>
+    <!-- 人数上限：右侧加减器（catchtap onStepMax，已可用，不改） -->
+    <view class="pub-row">
+      <view class="pub-iconbox"><image class="pub-icon" src="/assets/icons/meetup/users-round.svg" mode="aspectFit" /></view>
+      <view class="pub-row-body">
+        <view class="pub-row-title">人数上限</view>
+        <view class="pub-row-sub">{{form.max_participants}} 人</view>
       </view>
-      <view wx:if="{{invitees.length === 0}}" class="media-empty">发布后发起人会自动加入</view>
-      <view wx:else class="invitee-list">
-        <view wx:for="{{invitees}}" wx:key="user_id">{{item.nickname || 'VELO 骑友'}}<text wx:if="{{item.is_creator}}">组织者</text></view>
+      <view class="pub-stepper">
+        <view class="pub-stepper-btn" catchtap="onStepMax" data-delta="-1"><image class="pub-stepper-icon" src="/assets/icons/meetup/minus.svg" mode="aspectFit" /></view>
+        <text class="pub-stepper-value">{{form.max_participants}}</text>
+        <view class="pub-stepper-btn" catchtap="onStepMax" data-delta="1"><image class="pub-stepper-icon" src="/assets/icons/meetup/plus.svg" mode="aspectFit" /></view>
       </view>
     </view>
 
-    <view class="anti-harass">VELO 反骚扰机制已开启</view>
+    <!-- 骑行节奏：右侧 picker 选择节奏 -->
+    <view class="pub-row">
+      <view class="pub-iconbox"><image class="pub-icon" src="/assets/icons/meetup/gauge.svg" mode="aspectFit" /></view>
+      <view class="pub-row-body">
+        <view class="pub-row-title">骑行节奏</view>
+      </view>
+      <view class="pub-edit-col">
+        <picker class="pub-picker" mode="selector" range="{{paceOptions}}" range-key="label" bindchange="onPaceChange">
+          <view class="pub-picker-value">{{paceLabel}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <!-- 补给点：右侧就地输入 -->
+    <view class="pub-row">
+      <view class="pub-iconbox"><image class="pub-icon" src="/assets/icons/meetup/cup-soda.svg" mode="aspectFit" /></view>
+      <view class="pub-row-body">
+        <view class="pub-row-title">补给点</view>
+      </view>
+      <view class="pub-edit-col">
+        <input class="pub-input" value="{{form.supply_point}}" data-field="supply_point" bindinput="updateField" placeholder="例如：天龙山景区口" />
+      </view>
+    </view>
+
+    <!-- 活动说明：右侧单行就地输入 -->
+    <view class="pub-row">
+      <view class="pub-iconbox"><image class="pub-icon" src="/assets/icons/meetup/file-text.svg" mode="aspectFit" /></view>
+      <view class="pub-row-body">
+        <view class="pub-row-title">活动说明</view>
+      </view>
+      <view class="pub-edit-col">
+        <input class="pub-input" value="{{form.description}}" data-field="description" bindinput="updateField" placeholder="预计时长、装备要求等" />
+      </view>
+    </view>
+
+    <!-- 活动照片：标题行 + 4 列真照片网格（复用 mediaList 增删/预览）-->
+    <view class="pub-row pub-row-photos">
+      <view class="pub-photo-head">
+        <view class="pub-iconbox"><image class="pub-icon" src="/assets/icons/meetup/image.svg" mode="aspectFit" /></view>
+        <view class="pub-row-body">
+          <view class="pub-row-title">活动照片<text class="pub-optional">（选填）</text></view>
+          <view class="pub-row-sub pub-row-sub-muted">已添加 {{mediaList.length}} 张</view>
+        </view>
+      </view>
+      <view class="pub-photo-grid">
+        <view class="pub-photo-item" wx:for="{{mediaList}}" wx:key="id">
+          <video wx:if="{{item.isVideo}}" src="{{item.url}}" class="pub-photo-img"></video>
+          <image wx:else src="{{item.url}}" mode="aspectFill" class="pub-photo-img" data-url="{{item.url}}" bindtap="onTapPreviewMedia"></image>
+          <view class="pub-photo-remove" data-id="{{item.id}}" catchtap="onTapDeleteMedia">
+            <image class="pub-photo-remove-icon" src="/assets/icons/meetup/x.svg" mode="aspectFit" />
+          </view>
+        </view>
+        <view class="pub-photo-add" bindtap="onTapAddMedia">
+          <view class="pub-photo-add-inner">
+            <image class="pub-photo-add-icon" src="/assets/icons/meetup/plus-add.svg" mode="aspectFit" />
+            <text>添加照片</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 发布前检查：内嵌一个浅边框小卡片 -->
+    <view class="pub-check">
+      <view class="pub-check-icon"><image class="pub-check-icon-img" src="/assets/icons/meetup/shield-check.svg" mode="aspectFit" /></view>
+      <view class="pub-check-body">
+        <view class="pub-check-title">发布前检查</view>
+        <view class="pub-check-sub">请确认以上信息准确，发布后可随时编辑。</view>
+      </view>
+      <image class="pub-chev pub-chev-static" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" />
+    </view>
   </view>
 
-  <view class="bottom-actions">
-    <button wx:if="{{currentStep !== 'route'}}" class="ghost" bindtap="prevStep">上一步</button>
-    <button wx:if="{{currentStep !== 'publish' && currentStep !== 'preview'}}" class="primary" bindtap="nextStep">下一步</button>
-    <button wx:elif="{{currentStep === 'publish'}}" class="primary" bindtap="onTapGoPreview">发布约骑</button>
-    <button wx:else class="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onConfirmPublish">确认并发布约骑</button>
+  <!--
+    发布前总览确认页（第3步 / currentStep === 'confirm'）：逐像素还原原型 meetup-create-visual-clone.html。
+    缩放系数 750/853 ≈ 0.879，原型所有 px ×0.879 → rpx；颜色/圆角/阴影/字重 1:1。
+    结构：路线卡(地图缩略图+名称+已生成+三项数据) → 适合谁(6 pill) → 节奏与门槛(3列+门槛行)
+         → 报名规则(人数/可见范围两盒子/截止/安全提示/集合) → 已邀请骑友 → 反骚扰条。
+    交互：适合谁 toggleAudienceTag / 可见范围 onSelectVisibility 两盒子 / 安全提示+门槛点行展开 textarea 可编辑。
+    确认并发布按钮统一放底部栏（confirm 步），此 panel 内不再内嵌发布按钮，避免重复。
+  -->
+  <view wx:elif="{{currentStep === 'confirm'}}" class="panel pv-page">
+    <!-- 路线卡：左侧真 <map> 缩略图，右侧名称 + 已生成徽标 + 距离/爬升/时长三项数据 -->
+    <view class="pv-card pv-route-card">
+      <view class="pv-map-thumb route-preview-shell">
+        <map wx:if="{{routePreviewVisible && paperMapHasCustomStyle}}"
+             class="route-preview-map"
+             latitude="{{routePreviewCenter.latitude}}"
+             longitude="{{routePreviewCenter.longitude}}"
+             scale="12"
+             markers="{{routePreviewMarkers}}"
+             polyline="{{routePreviewPolylines}}"
+             include-points="{{routePreviewIncludePoints}}"
+             subkey="{{paperMapSubkey}}"
+             layer-style="{{paperMapLayerStyle}}"
+             enable-poi="{{false}}"
+             enable-building="{{false}}"
+             enable-traffic="{{false}}"
+             enable-3D="{{false}}"
+             enable-rotate="{{false}}"
+             show-location="{{false}}"></map>
+        <map wx:elif="{{routePreviewVisible}}"
+             class="route-preview-map"
+             latitude="{{routePreviewCenter.latitude}}"
+             longitude="{{routePreviewCenter.longitude}}"
+             scale="12"
+             markers="{{routePreviewMarkers}}"
+             polyline="{{routePreviewPolylines}}"
+             include-points="{{routePreviewIncludePoints}}"
+             enable-traffic="{{false}}"
+             enable-3D="{{false}}"
+             enable-rotate="{{false}}"
+             show-location="{{false}}"></map>
+        <view wx:else class="pv-map-fallback">
+          <image class="pv-map-fallback-icon" src="/assets/icons/meetup/map.svg" mode="aspectFit" />
+        </view>
+      </view>
+      <view class="pv-route-main">
+        <view class="pv-route-title-row">
+          <view class="pv-route-title">{{selectedRouteName}}</view>
+          <view class="pv-status-chip">已生成</view>
+        </view>
+        <view class="pv-route-line"></view>
+        <view class="pv-route-stats">
+          <view wx:if="{{routeDistanceText !== ''}}" class="pv-stat">
+            <image class="pv-stat-icon" src="/assets/icons/meetup/gauge.svg" mode="aspectFit" />
+            <view class="pv-stat-num">{{routeDistanceText}} <text class="pv-stat-unit">km</text></view>
+            <view class="pv-stat-label">距离</view>
+          </view>
+          <view wx:if="{{routeClimbText !== ''}}" class="pv-stat">
+            <image class="pv-stat-icon" src="/assets/icons/meetup/mountain.svg" mode="aspectFit" />
+            <view class="pv-stat-num">{{routeClimbText}} <text class="pv-stat-unit">m</text></view>
+            <view class="pv-stat-label">爬升</view>
+          </view>
+          <view wx:if="{{estimatedDurationText}}" class="pv-stat">
+            <image class="pv-stat-icon" src="/assets/icons/meetup/clock.svg" mode="aspectFit" />
+            <view class="pv-stat-num">{{estimatedDurationText}}</view>
+            <view class="pv-stat-label">预计时长</view>
+          </view>
+          <view class="pv-route-detail">
+            <text>查看详情</text>
+            <image class="pv-route-detail-chev" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" />
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 适合谁：6 个 pill，选中态红边+右下角红勾；女性友好=红胶囊 soft、新手慎选=灰胶囊 muted -->
+    <view class="pv-card pv-section">
+      <view class="pv-section-title">适合谁</view>
+      <view class="pv-pills">
+        <view wx:for="{{audienceOptions}}" wx:key="value"
+              class="pv-pill {{item.selected ? 'active' : ''}} {{item.value === 'female_friendly' ? 'soft' : ''}} {{item.value === 'newbie_caution' ? 'muted' : ''}}"
+              data-value="{{item.value}}" bindtap="toggleAudienceTag">
+          <image class="pv-pill-icon" src="{{item.icon}}" mode="aspectFit" />
+          <text>{{item.label}}</text>
+          <view wx:if="{{item.selected}}" class="pv-check-dot">
+            <image class="pv-check-dot-icon" src="/assets/icons/meetup/check.svg" mode="aspectFit" />
+          </view>
+        </view>
+      </view>
+      <view class="pv-audience-note">我们鼓励友善、互助的骑行氛围。</view>
+    </view>
+
+    <!-- 节奏与门槛：3 列(强度/功率/均速 各带下拉箭头) + 分隔线 + 报名门槛行 -->
+    <view class="pv-card pv-section">
+      <view class="pv-section-title">节奏与门槛</view>
+      <view class="pv-pace-grid">
+        <view class="pv-pace-col">
+          <view class="pv-pace-label">强度预期</view>
+          <view class="pv-pace-value">{{paceLabel}}<image class="pv-pace-chev" src="/assets/icons/meetup/chevron-down.svg" mode="aspectFit" /></view>
+        </view>
+        <view class="pv-pace-col">
+          <view class="pv-pace-label">推荐功率</view>
+          <view class="pv-pace-value">{{recommendedPowerLabel}}<image class="pv-pace-chev" src="/assets/icons/meetup/chevron-down.svg" mode="aspectFit" /></view>
+        </view>
+        <view class="pv-pace-col">
+          <view class="pv-pace-label">预计均速</view>
+          <view class="pv-pace-value">{{averageSpeedRange}}<image class="pv-pace-chev" src="/assets/icons/meetup/chevron-down.svg" mode="aspectFit" /></view>
+        </view>
+      </view>
+      <view class="pv-divider"></view>
+      <!-- 报名门槛行：视觉照原型(圆图标 + 标题 + 副文案 + "修改门槛")，点行展开 textarea 可编辑 -->
+      <view class="pv-gate-row" bindtap="togglePvEditGate">
+        <view class="pv-round-icon"><image class="pv-round-icon-img" src="/assets/icons/meetup/calendar-plus.svg" mode="aspectFit" /></view>
+        <view class="pv-gate-body">
+          <view wx:if="{{form.eligibility_note}}" class="pv-gate-title">{{form.eligibility_note}}</view>
+          <view wx:else class="pv-gate-title pv-gate-title-empty">未设置门槛</view>
+          <view class="pv-gate-sub">为保障安全与体验，满足条件方可报名</view>
+        </view>
+        <view class="pv-edit-link"><text>修改门槛</text><image class="pv-edit-chev" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" /></view>
+      </view>
+      <textarea wx:if="{{pvEditGate}}" class="pv-edit-textarea" value="{{form.eligibility_note}}" data-field="eligibility_note" bindinput="updateField" placeholder="例如：能稳定骑完 60km / 报名需有 5 次骑行记录" />
+    </view>
+
+    <!-- 报名规则：人数 / 可见范围两盒子 / 报名截止 / 安全提示(可编辑) / 集合信息 -->
+    <view class="pv-card pv-section">
+      <view class="pv-section-title">报名规则</view>
+
+      <view class="pv-rule-row">
+        <view class="pv-rule-label">人数上限</view>
+        <view class="pv-rule-value">{{form.max_participants}} 人</view>
+      </view>
+
+      <view class="pv-rule-block">
+        <view class="pv-rule-label">可见范围</view>
+        <view class="pv-visibility-options">
+          <view class="pv-visibility-box {{form.visibility === 'invite_only' ? 'active' : ''}}" data-value="invite_only" bindtap="onSelectVisibility">
+            <image class="pv-visibility-icon" src="{{form.visibility === 'invite_only' ? '/assets/icons/meetup/lock-keyhole-active.svg' : '/assets/icons/meetup/lock-keyhole.svg'}}" mode="aspectFit" />
+            <view class="pv-visibility-text">
+              <view class="pv-visibility-main">私圈可见</view>
+              <view class="pv-visibility-sub">仅被邀请的人可见</view>
+            </view>
+          </view>
+          <view class="pv-visibility-box {{form.visibility === 'public' ? 'active' : ''}}" data-value="public" bindtap="onSelectVisibility">
+            <image class="pv-visibility-icon" src="{{form.visibility === 'public' ? '/assets/icons/meetup/globe-active.svg' : '/assets/icons/meetup/globe.svg'}}" mode="aspectFit" />
+            <view class="pv-visibility-text">
+              <view class="pv-visibility-main">本城可见</view>
+              <view class="pv-visibility-sub">太原市骑友可见</view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{registrationDeadlineLabel}}" class="pv-rule-row">
+        <view class="pv-rule-label">报名截止</view>
+        <view class="pv-rule-value">{{registrationDeadlineLabel}}</view>
+      </view>
+
+      <!-- 安全提示：点行展开 textarea + 模板 chips（视觉是展示行，但能改）-->
+      <view class="pv-rule-row" bindtap="togglePvEditSafety">
+        <view class="pv-rule-label">安全提示</view>
+        <view class="pv-rule-value pv-rule-value-r">{{form.safety_note}}</view>
+        <image class="pv-rule-chev" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" />
+      </view>
+      <block wx:if="{{pvEditSafety}}">
+        <textarea class="pv-edit-textarea" value="{{form.safety_note}}" data-field="safety_note" bindinput="updateField" />
+        <view class="pv-template-chips">
+          <view wx:for="{{safetyTemplates}}" wx:key="*this" class="pv-template-chip" data-index="{{index}}" bindtap="applySafetyTemplate">{{item}}</view>
+        </view>
+      </block>
+
+      <view wx:if="{{form.meeting_point}}" class="pv-rule-row pv-rule-row-top">
+        <view class="pv-rule-label">集合信息</view>
+        <view class="pv-rule-value pv-rule-value-r">集合：{{form.meeting_point}}</view>
+      </view>
+    </view>
+
+    <!-- 已邀请骑友：头像 + 昵称 + 组织者/标签 + 继续邀请（微信原生转发）-->
+    <view class="pv-card pv-invite-card">
+      <view class="pv-invite-top">
+        <view class="pv-section-title">已邀请骑友（{{invitees.length}}）</view>
+        <button class="pv-invite-link" open-type="share">继续邀请<image class="pv-invite-chev" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" /></button>
+      </view>
+      <view wx:if="{{invitees.length === 0}}" class="pv-invite-empty">发布后发起人会自动加入</view>
+      <view wx:else class="pv-riders">
+        <view class="pv-rider" wx:for="{{invitees}}" wx:key="user_id">
+          <image wx:if="{{item.avatar_url}}" class="pv-avatar" src="{{item.avatar_url}}" mode="aspectFill" />
+          <view wx:else class="pv-avatar pv-avatar-placeholder">{{item.nickname ? item.nickname[0] : 'V'}}</view>
+          <view class="pv-rider-name">{{item.nickname || 'VELO 骑友'}}</view>
+          <view wx:if="{{item.is_creator}}" class="pv-rider-tag organizer">组织者</view>
+          <view wx:else class="pv-rider-tag">最近同行</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 反骚扰提示条 -->
+    <view class="pv-safety-strip">
+      <image class="pv-safety-icon" src="/assets/icons/meetup/shield-check.svg" mode="aspectFit" />
+      <text class="pv-safety-text">VELO 反骚扰机制已开启，违规行为将被严肃处理</text>
+      <view class="pv-learn-more"><text>了解更多</text><image class="pv-learn-chev" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" /></view>
+    </view>
+
+  </view>
+
+  <!--
+    底部按钮栏：按 currentStep 三态切换（统一所有发布/确认入口在底部栏，panel 内不再内嵌按钮）。
+    - route 步：单个「下一步」（nextStep：route→edit）
+    - edit 步：「保存草稿」(saveDraft 落库退出) + 「下一步」(nextStep：edit→落库进 confirm)，两按钮并排
+    - confirm 步：「上一步」(prevStep：confirm→edit) + 「确认并发布」(onConfirmPublish)
+  -->
+  <view wx:if="{{currentStep === 'route'}}" class="bottom-actions">
+    <button class="primary" bindtap="nextStep">下一步</button>
+  </view>
+  <view wx:elif="{{currentStep === 'edit'}}" class="pub-bottom-bar">
+    <button class="pub-draft-btn" bindtap="saveDraft">保存草稿</button>
+    <button class="pub-publish-btn" bindtap="nextStep">下一步</button>
+  </view>
+  <view wx:elif="{{currentStep === 'confirm'}}" class="pub-bottom-bar">
+    <button class="pub-draft-btn" bindtap="prevStep">上一步</button>
+    <button class="pub-publish-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onConfirmPublish">确认并发布</button>
   </view>
 </view>

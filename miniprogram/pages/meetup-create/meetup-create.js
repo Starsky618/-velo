@@ -92,12 +92,12 @@ const PACE_DISPLAY = {
 
 // 适合谁标签（6 枚举，和后端白名单一致）
 const AUDIENCE_OPTIONS = [
-  { value: 'climb_steady', label: '稳爬不竞速' },
-  { value: 'high_intensity', label: '高强度拉练' },
-  { value: 'leisure', label: '休闲骑游' },
-  { value: 'photography', label: '摄影打卡' },
-  { value: 'female_friendly', label: '女性友好' },
-  { value: 'newbie_caution', label: '新手慎选' },
+  { value: 'climb_steady', label: '稳爬不竞速', icon: '/assets/icons/meetup/mountain.svg' },
+  { value: 'high_intensity', label: '高强度拉练', icon: '/assets/icons/meetup/zap.svg' },
+  { value: 'leisure', label: '休闲骑游', icon: '/assets/icons/meetup/coffee.svg' },
+  { value: 'photography', label: '摄影打卡', icon: '/assets/icons/meetup/camera.svg' },
+  { value: 'female_friendly', label: '女性友好', icon: '/assets/icons/meetup/venus.svg' },
+  { value: 'newbie_caution', label: '新手慎选', icon: '/assets/icons/meetup/shield-alert.svg' },
 ]
 
 // velo 安全提示模板（前端常量，发起人一键填入后还能改）
@@ -113,7 +113,7 @@ Page({
     // 四步向导：选路线 → 填详情 → 加照片 → 确认发布。
     // 把"照片"插在 details 和 publish 之间，让发起人发布前就能给约骑配图，
     // 而不是等发布后再回详情页补——发布即图文齐全，对围观者更有吸引力。
-    steps: ['route', 'details', 'media', 'publish'],
+    steps: ['route', 'edit', 'confirm'], // 选路线 → 图二就地编辑 → 图一总览确认（2026-06 Tim 拍的新流程）
     currentStep: 'route',
     selectedSegmentId: null,
     selectedRouteBookId: null,
@@ -167,7 +167,7 @@ Page({
     paceLabel: '巡航',
     // —— 发布前总览（图二）用 ——
     // audienceOptions 带 selected 标志：WXML 不支持 .indexOf()，选中态必须在 JS 侧算
-    audienceOptions: AUDIENCE_OPTIONS.map(function (o) { return { value: o.value, label: o.label, selected: false } }),
+    audienceOptions: AUDIENCE_OPTIONS.map(function (o) { return { value: o.value, label: o.label, icon: o.icon, selected: false } }),
     safetyTemplates: SAFETY_TEMPLATES,
     visibilityOptions: [
       { value: 'public', label: '本城可见' },
@@ -176,10 +176,17 @@ Page({
     invitees: [], // 已加入骑友（进 preview 时拉）
     shareToken: '', // 私圈分享口令（后端只回 creator / onShareAppMessage 用）
     estimatedDurationText: '',
+    routeDistanceText: '', // 总览页路线卡距离(km，进 preview 时从草稿快照填)
+    routeClimbText: '',    // 总览页路线卡爬升(m)
     registrationDeadlineLabel: '', // 报名截止 = 出发前 30 分钟（派生）
     recommendedPowerLabel: PACE_DISPLAY.cruise.recommended_power_label,
     averageSpeedRange: PACE_DISPLAY.cruise.average_speed_range,
     submitting: false,
+    // 总览页两个展示行（报名门槛 / 安全提示）的"是否展开编辑"开关。
+    // 视觉照原型是只读展示行，但发起人得能改 → 点行翻成 true 露出 textarea，再点收起。
+    // 类比：像手机设置里某一行点一下才滑出输入框，平时只显示当前值，界面更干净。
+    pvEditGate: false,
+    pvEditSafety: false,
   }),
 
   onLoad: function () {
@@ -428,14 +435,26 @@ Page({
     })
   },
 
+  // 图二只有"出发时间"一行（无"预计结束"），但后端需要 estimated_end_time，
+  // 所以出发时间一变就把预计结束自动顺成出发 +3h（和 initDefaultTime 默认一致）。
+  bumpEndAfterStart: function (startIso) {
+    var end = new Date(new Date(startIso).getTime() + 3 * 60 * 60 * 1000)
+    var e = splitLocal(end)
+    this.setData({ endDate: e.date, endTime: e.time, 'form.estimated_end_time': toIso(e.date, e.time) })
+  },
+
   onStartDateChange: function (event) {
     var value = event.detail.value
-    this.setData({ startDate: value, 'form.start_time': toIso(value, this.data.startTime) })
+    var startIso = toIso(value, this.data.startTime)
+    this.setData({ startDate: value, 'form.start_time': startIso })
+    this.bumpEndAfterStart(startIso)
   },
 
   onStartTimeChange: function (event) {
     var value = event.detail.value
-    this.setData({ startTime: value, 'form.start_time': toIso(this.data.startDate, value) })
+    var startIso = toIso(this.data.startDate, value)
+    this.setData({ startTime: value, 'form.start_time': startIso })
+    this.bumpEndAfterStart(startIso)
   },
 
   onEndDateChange: function (event) {
@@ -454,10 +473,12 @@ Page({
         wx.showToast({ title: '先选路线', icon: 'none' })
         return
       }
-      this.setData({ currentStep: 'details' })
+      // 选完路线直接进图二编辑页。草稿懒建（加照片 / 下一步时才落库），
+      // 因为后端建草稿必须有集合点，而集合点要在这一步图二里才填。
+      this.setData({ currentStep: 'edit' })
       return
     }
-    if (this.data.currentStep === 'details') {
+    if (this.data.currentStep === 'edit') {
       if (!this.data.form.meeting_point) {
         wx.showToast({ title: '填写集合点', icon: 'none' })
         return
@@ -467,25 +488,15 @@ Page({
         wx.showToast({ title: '结束时间要晚于出发', icon: 'none' })
         return
       }
-      // details → media 这一跳是关键：照片必须挂在已落库的约骑上，所以这里先把草稿存出来拿到 id。
-      // 存成功才放行进入"照片"步骤；存失败留在 details 让用户重试（saveDraft 内部已 toast）。
-      this.saveDraft()
-      return
-    }
-    if (this.data.currentStep === 'media') {
-      // 照片可选，不强制必须传，直接进发布确认页
-      this.setData({ currentStep: 'publish' })
+      // 编辑完 → 落库 + 进图一总览确认页
+      this.onTapGoPreview()
     }
   },
 
   prevStep: function () {
-    if (this.data.currentStep === 'preview') {
-      this.setData({ currentStep: 'publish' })
-    } else if (this.data.currentStep === 'publish') {
-      this.setData({ currentStep: 'media' })
-    } else if (this.data.currentStep === 'media') {
-      this.setData({ currentStep: 'details' })
-    } else if (this.data.currentStep === 'details') {
+    if (this.data.currentStep === 'confirm') {
+      this.setData({ currentStep: 'edit' })
+    } else if (this.data.currentStep === 'edit') {
       this.setData({ currentStep: 'route' })
     }
   },
@@ -496,33 +507,55 @@ Page({
   // 2）已有 meetupId（用户从 media 退回 details 改了内容又前进）：直接 updateMeetup 复用同一条，
   //    不再重复建，避免每来回一次就产生一条新草稿。
   // 3）resolveRouteBookId：选的是"从骑行生成"时，要先把那条活动转成路书拿到 route_book_id。
-  saveDraft: function () {
+  // 懒建草稿：图二编辑页"加照片 / 下一步 / 保存草稿"前调用。
+  // 后端建草稿必须有集合点（meeting_point 必填），所以这里先校验。
+  // 已有草稿直接复用 id；没有则 resolveRouteBookId（"从骑行生成"先转路书）→ 建草稿 → 记下 id + 回显照片。
+  ensureDraft: function () {
     var that = this
-    if (this.data.savingDraft) return // 防连点重复建
-    this.setData({ savingDraft: true })
-    wx.showLoading({ title: '保存中', mask: true })
-
-    this.resolveRouteBookId()
+    if (this.data.meetupId) {
+      return Promise.resolve(this.data.meetupId)
+    }
+    if (!this.data.form.meeting_point) {
+      wx.showToast({ title: '请先填写集合点', icon: 'none' })
+      return Promise.reject(new Error('no_meeting_point'))
+    }
+    return this.resolveRouteBookId()
       .then(function (routeBookId) {
         var payload = Object.assign({}, that.data.form, {
           segment_id: that.data.selectedSegmentId || null,
           route_book_id: routeBookId || that.data.selectedRouteBookId || null,
           max_participants: Number(that.data.form.max_participants),
         })
-        // 已有草稿 id → 复用更新；否则建新草稿
-        if (that.data.meetupId) {
-          return api.updateMeetup(that.data.meetupId, payload)
-        }
         return that.createOrUpdateDraft(payload)
       })
       .then(function (draft) {
-        // 进入照片步骤前先记下 id，再拉该草稿已有的照片（支持退回再进/复用旧草稿时回显）
-        that.setData({ meetupId: draft.id, currentStep: 'media' })
+        that.setData({ meetupId: draft.id })
         that.loadMedia()
+        return draft.id
+      })
+  },
+
+  // "保存草稿"按钮：把当前编辑落库后退出（草稿留在"我发起的"，下次进来 restoreDraft 恢复）。
+  saveDraft: function () {
+    var that = this
+    if (this.data.savingDraft) return
+    this.setData({ savingDraft: true })
+    wx.showLoading({ title: '保存中', mask: true })
+    this.ensureDraft()
+      .then(function (meetupId) {
+        // 已有草稿时 ensureDraft 不重存，这里补一次更新保证最新；只发 form 字段不发 route id（路线已定，避免触发二选一重算）
+        return api.updateMeetup(meetupId, Object.assign({}, that.data.form, {
+          max_participants: Number(that.data.form.max_participants),
+        }))
+      })
+      .then(function () {
+        wx.showToast({ title: '草稿已保存', icon: 'success' })
+        setTimeout(function () { wx.navigateBack() }, 600)
       })
       .catch(function (err) {
-        // 存失败：不进入下一步，留在 details 让用户改了重试
-        wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' })
+        if (err && err.message !== 'no_meeting_point') {
+          wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' })
+        }
       })
       .finally(function () {
         wx.hideLoading()
@@ -535,6 +568,20 @@ Page({
     var value = event.detail.value
     var key = 'form.' + field
     this.setData({ [key]: value })
+  },
+
+  // 发布页人数加减器：就地 +/- 人数，夹在 [2,20]（和后端 CHECK 一致），不跳步编辑
+  onStepMax: function (event) {
+    var delta = Number(event.currentTarget.dataset.delta)
+    var n = Number(this.data.form.max_participants) + delta
+    if (n < 2) n = 2
+    if (n > 20) n = 20
+    this.setData({ 'form.max_participants': n })
+  },
+
+  // 发布前总览页：可见范围两个盒子点选（图一是并排盒子不是 picker），按 data-value 直接设
+  onSelectVisibility: function (event) {
+    this.setData({ 'form.visibility': event.currentTarget.dataset.value })
   },
 
   onPaceChange: function (event) {
@@ -579,21 +626,22 @@ Page({
     })
   },
 
-  // publish 步点"发布约骑" → 先把草稿（含已填字段）存一次拿到 share_token，再进图二总览
+  // 编辑页"下一步" → 懒建/更新草稿拿到 share_token，再进图一总览确认
   onTapGoPreview: function () {
     var that = this
-    if (!this.data.meetupId) {
-      wx.showToast({ title: '草稿丢失，请退回重试', icon: 'none' })
-      return
-    }
     this.updatePreviewDerived()
-    api.updateMeetup(this.data.meetupId, Object.assign({}, this.data.form, {
-      max_participants: Number(this.data.form.max_participants),
-    })).then(function (draft) {
+    this.ensureDraft().then(function (meetupId) {
+      return api.updateMeetup(meetupId, Object.assign({}, that.data.form, {
+        max_participants: Number(that.data.form.max_participants),
+      }))
+    }).then(function (draft) {
       that.setData({
-        currentStep: 'preview',
+        currentStep: 'confirm',
         meetupId: draft.id,
         shareToken: draft.share_token || that.data.shareToken || '',
+        // 总览页路线卡的距离/爬升，从草稿快照拿（API 返回 km / 米）
+        routeDistanceText: (draft.snapshot_distance || draft.snapshot_distance === 0) ? draft.snapshot_distance : '',
+        routeClimbText: (draft.snapshot_climb || draft.snapshot_climb === 0) ? draft.snapshot_climb : '',
       })
       // 拉已加入骑友（getMeetupParticipants 在 Task5 才加，没有就跳过不报错）
       if (api.getMeetupParticipants) {
@@ -605,7 +653,10 @@ Page({
         })
       }
     }).catch(function (err) {
-      wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' })
+      // no_meeting_point 已由 ensureDraft toast 过，别重复报"保存失败"
+      if (err && err.message !== 'no_meeting_point') {
+        wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' })
+      }
     })
   },
 
@@ -613,7 +664,7 @@ Page({
   syncAudienceOptions: function (tags) {
     var chosen = tags || []
     return AUDIENCE_OPTIONS.map(function (o) {
-      return { value: o.value, label: o.label, selected: chosen.indexOf(o.value) >= 0 }
+      return { value: o.value, label: o.label, icon: o.icon, selected: chosen.indexOf(o.value) >= 0 }
     })
   },
 
@@ -638,6 +689,16 @@ Page({
   applySafetyTemplate: function (event) {
     var index = Number(event.currentTarget.dataset.index)
     this.setData({ 'form.safety_note': this.data.safetyTemplates[index] || this.data.safetyTemplates[0] })
+  },
+
+  // 总览页"报名门槛"展示行：点一下翻开/收起底下的可编辑 textarea（视觉默认是只读行）
+  togglePvEditGate: function () {
+    this.setData({ pvEditGate: !this.data.pvEditGate })
+  },
+
+  // 总览页"安全提示"展示行：点一下翻开/收起 textarea + 模板 chips（视觉默认是只读行）
+  togglePvEditSafety: function () {
+    this.setData({ pvEditSafety: !this.data.pvEditSafety })
   },
 
   // 确认并发布：把图二设的 social 字段再存一次 → 发布 → 跳详情
@@ -710,27 +771,29 @@ Page({
   // 兜底，保证每个 Promise 一定 settle，不会卡死 loading）；只要有一个失败就提示"部分上传失败"。
   onTapAddMedia: function () {
     var that = this
-    if (!this.data.meetupId) return
-    wx.chooseMedia({
-      count: 9,
-      mediaType: ['image', 'video'],
-      success: function (res) {
-        wx.showLoading({ title: '上传中', mask: true })
-        var tasks = res.tempFiles.map(function (f) {
-          return api.uploadMeetupMedia(that.data.meetupId, f.tempFilePath).catch(function () { return null })
-        })
-        Promise.all(tasks)
-          .then(function (results) {
-            if (results.some(function (r) { return r === null })) {
-              wx.showToast({ title: '部分上传失败', icon: 'none' })
-            }
-            that.loadMedia()
+    // 草稿懒建：照片要挂在已落库的约骑上，所以先 ensureDraft（会校验集合点）再选图上传
+    this.ensureDraft().then(function () {
+      wx.chooseMedia({
+        count: 9,
+        mediaType: ['image', 'video'],
+        success: function (res) {
+          wx.showLoading({ title: '上传中', mask: true })
+          var tasks = res.tempFiles.map(function (f) {
+            return api.uploadMeetupMedia(that.data.meetupId, f.tempFilePath).catch(function () { return null })
           })
-          .finally(function () {
-            wx.hideLoading()
-          })
-      },
-    })
+          Promise.all(tasks)
+            .then(function (results) {
+              if (results.some(function (r) { return r === null })) {
+                wx.showToast({ title: '部分上传失败', icon: 'none' })
+              }
+              that.loadMedia()
+            })
+            .finally(function () {
+              wx.hideLoading()
+            })
+        },
+      })
+    }).catch(function () {})
   },
 
   onTapDeleteMedia: function (event) {

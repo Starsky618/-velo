@@ -332,11 +332,11 @@ def test_create_page_has_preview_step_and_social_fields():
     js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
     wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
 
-    assert "'preview'" in js
+    assert "'confirm'" in js  # 2026-06 流程重排：preview 步改名 confirm（route→edit→confirm）
     assert "onTapGoPreview" in js
     assert "onConfirmPublish" in js
     assert "toggleAudienceTag" in js
-    assert "onVisibilityChange" in js
+    assert "onSelectVisibility" in js  # 可见范围改两盒子点选（不再用 picker 的 onVisibilityChange）
     assert "applySafetyTemplate" in js
     for field in ("supply_point", "eligibility_note", "safety_note", "visibility"):
         assert field in js and field in wxml
