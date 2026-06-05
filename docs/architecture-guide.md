@@ -78,7 +78,7 @@
 | **common** | `app/common/` | **80 行** | **v5** | **跨模块工具：地理函数 / haversine / city 推断 / 单向依赖最下方（任意业务模块可向下用）** |
 | **admin** | `app/admin/` | **885 行** | **v5** | **管理后台 12 endpoint（whoami / curation-pool / ai/segment-drafts / segments admin CRUD / from-activity / from-gpx / activities/{id}/trackpoints）/ 编排其他模块 service / require_admin 依赖把关** |
 | **training** | `app/training/` | **~700 行** | **Sprint 10-11** | **PMC 训练负荷（training_load.py CTL τ=42/ATL τ=7/TSB/4 档 + daily_training_load 表 + GET /load + 3 写入通道 hook）+ Sprint 11 训练分布（distribution.py 纯函数五类型 Polarized/Pyramidal/SweetSpot/Threshold/Mixed + GET /distribution + 默认不计滑行 0W / `exclude_zero=false` 仅兼容旧口径 + conic-gradient 圆饼图 + 全类型动态百分比文案）/ 防火墙独立模块 / Sprint 12 coach 复用公式与分布** |
-| **meetup** | `app/meetup/` | **~650 行** | **Sprint 13（约骑模块）** | **约骑主表 + 报名表 + 媒体表（meetups / meetup_participants / meetup_media 三张表）/ 状态机 DRAFT→OPEN→COMPLETED/CANCELLED / 14 个 endpoint（创建草稿/发布/加入/退出/取消/删除 + 照片墙上传/列表/删除）/ scheduler 自动 completed / 照片存 meetup_media/ 子目录隔离私密 GPX** |
+| **meetup** | `app/meetup/` | **~750 行** | **Sprint 13 + 发起约骑新原型（2026-06）** | **约骑主表 + 报名表 + 媒体表 / 状态机 DRAFT→OPEN→COMPLETED/CANCELLED / 15 个 endpoint（创建/发布/加入/退出/取消/删除 + 照片墙 + GET /{id}/participants 骑友列表）/ meetups 加 6 列（supply_point / audience_tags(sa.JSON) / visibility / eligibility_note / safety_note / share_token）/ **invite_only 私圈靠 share_token 口令门禁**（详情/join/participants/media 凭口令，否则 404，防猜连号 id）/ publish 出发前 30min 截止校验 / 小程序发起 3 步流：选路线 → 图二就地编辑 → 图一总览确认（逐像素还原原型 + lucide SVG 图标 assets/icons/meetup/）** |
 
 ### 2.2 模块内部结构(统一约定)
 
@@ -107,7 +107,7 @@ app/<模块名>/
 - **`app/monitor/`** (v5): __init__ / processing_health（worker 软目标 4min）/ admin_h5_health（端到端探针 / 静态站 + 反代 / Redis SETNX 5min 去抖）
 - **`app/common/`** (v5): __init__ / geo（haversine / infer_city_from_coords）
 - **`app/admin/`** (v5): __init__ / dependencies（require_admin）/ schemas / router（12 endpoint）/ service（编排候选池 + AI 草稿 + segment / 含 _check_hausdorff_overlap 共享 helper）
-- **`app/meetup/`** (Sprint 13): models（Meetup / MeetupParticipant / MeetupMedia）/ schemas / router（14 endpoint）/ service（create/publish/join/leave/cancel/delete + list + 人数/首图聚合）/ media_service（upload/delete/list + meetup_media/ 子目录隔离）/ cron（complete_due_meetups / run_meetup_complete_tick，挂在 scheduler.py 每 20 tick≈5min 一次）
+- **`app/meetup/`** (Sprint 13 + 发起约骑新原型 2026-06): models（Meetup【含 supply_point/audience_tags/visibility/eligibility_note/safety_note/share_token 6 新列】/ MeetupParticipant / MeetupMedia）/ schemas（+ InviteeSummary）/ router（15 endpoint，含 GET /{id}/participants）/ service（create【生成 share_token】/publish【30min 截止校验】/join/leave/cancel/delete + list【visibility=public 过滤】 + list_participants + `_assert_invite_only_access` 私圈口令门禁 + 人数/首图聚合）/ media_service（upload/delete/list + meetup_media/ 子目录隔离）/ cron（complete_due_meetups，scheduler.py 每 20 tick≈5min）
 
 ⚠️ agent 注意:
 - 新增模块必须遵守此结构,不得自创
@@ -286,7 +286,7 @@ app/<模块名>/
 | `notifications` | v3（**v5 加 payload JSONB + 部分唯一索引 uniq_progress_notification_per_activity**） | 5k-50k | notification |
 | **`segment_ai_drafts`** | **v5** | **同 segments** | **agent**（pending→human_edited→approved/rejected 状态机 / segment_id UNIQUE FK）|
 | **`segment_curation_pool`** | **v5** | **30-500** | **segment**（admin 候选池 + 周期性脚本算分 / segment_id UNIQUE FK）|
-| **`meetups`** | **Sprint 13** | **量级同 users** | **meetup（约骑主表 / 状态机 DRAFT/OPEN/CANCELLED/COMPLETED / UNIQUE: 每用户只能有 1 个 DRAFT / pace_level 4 档枚举 / max_participants 2-20）** |
+| **`meetups`** | **Sprint 13 + 2026-06** | **量级同 users** | **meetup（约骑主表 / 状态机 DRAFT/OPEN/CANCELLED/COMPLETED / UNIQUE: 每用户 1 个 DRAFT / pace_level 4 档 / max_participants 2-20 / **发起新原型加 6 列**：supply_point·audience_tags(JSON)·visibility(public\|invite_only+CHECK)·eligibility_note·safety_note·share_token(私圈口令)）** |
 | **`meetup_participants`** | **Sprint 13** | **量级同 meetups × N** | **meetup（报名表 / UNIQUE(meetup_id, user_id) 防重复占位 / is_creator 标记发起人）** |
 | **`meetup_media`** | **Sprint 13** | **量级同 meetups × N** | **meetup（照片/视频表 / type image/video / file_id 存 meetup_media/ 子目录路径 / seq 排序 / 物理文件存 uploads/meetup_media/）** |
 | ~~`persona_outputs`~~ | ~~Persona v0.1~~ | **193 行 / stage 3 待 drop** | **2026-05-21 模块清** / 数据已 pg_dump 归档 `docs/archive/persona-db-backup/` |

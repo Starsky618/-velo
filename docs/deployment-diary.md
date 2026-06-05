@@ -485,3 +485,10 @@ Ubuntu 22.04 默认 sshd jail 已 enabled / maxretry=5 / bantime=10min。Tim 用
 1. **建任何"基础设施类"东西前必跑 5 项 grep**（memory `feedback_pre_build_must_grep_server_state`）—— 否则 90% 概率"提议的东西已存在"，重复造轮子。本 session DB 备份事故是反面教材：陪 Tim 跑 90 分钟创 COS bucket / CAM / 演练 → 后期才发现 velo 早有 db-backup 容器。
 2. **deploy SOP 加 DEPLOY-7 本地 git pull**（deploy-sop.md / commit `8a14df6`）—— 服务器 deploy 完后**必跑** `cd ~/Desktop/velo && git pull`，否则微信开发者工具读旧 miniprogram = 用户报"完全看不到"。
 3. **OAuth App token 改 `.github/workflows/` 会被拒**——错误信息 `refusing to allow an OAuth App ... without 'workflow' scope`。用 `gh auth refresh -s workflow --hostname github.com` 触发设备码授权 / Tim 浏览器 1 步授权后即可 push CI 文件。
+
+## 2026-06-05：发起约骑新原型 — 后端部署（meetups 加 6 列 + 私圈口令门禁）
+
+- **改动**：纯后端 schema + 逻辑（meetups 加 6 列 / 私圈 share_token 门禁 / GET /{id}/participants / publish 截止）。前端 UI 还原本轮只 commit+push **未走服务器**（小程序前端在微信开发者工具本地编译上传，不经服务器）。
+- **6 步 SOP 实跑**：DEPLOY-0 `git push origin main`（69f7f4e..7884b72）→ DEPLOY-1 服务器 `git pull`（→7884b72）→ DEPLOY-2 跳过（本次不涉及 heatmap/power_curve 缓存）→ DEPLOY-3 `sudo docker compose up -d --build`（全容器重建，api 启动无报错）→ DEPLOY-4 `alembic upgrade head`（`20260602_tencent_route_book → 20260603_meetup_create_fields`，加 6 列 + visibility CHECK，存量行 server_default 兜底）→ DEPLOY-5 curl 验证（api 容器内 `GET /api/meetups` 200 + 6 新字段序列化正常，存量 6 条约骑无 500）。DEPLOY-6/7 本轮前端在本地 main 已就绪、不需。
+- **踩坑**：`curl localhost:8000` 从宿主机返回 000——api 端口只在 docker 网络（caddy 反代），不映射宿主机。验证要么进 api 容器 `docker compose exec -T api`、要么走 caddy 公网域名。本次用容器内 python urllib 验。
+- **⚠ 待真用激活回归**（owner 24h 内真机跑）：① 私圈分享：建 invite_only 约骑 → 转发带 token 链接 → 好友能进能报名 / 陌生人猜 id → 404 ② 草稿恢复 ③ 图二就地编辑 + 图一确认 + 发布 ④ publish 30min 截止拦。**Tim 需先在微信开发者工具重新上传小程序**（前端 head aefd411）用户才看到新 UI。

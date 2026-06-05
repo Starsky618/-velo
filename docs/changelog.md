@@ -1,5 +1,26 @@
 # VELO 开发变更日志
 
+## 2026-06-03 → 06-05: 发起约骑新原型（接口/字段 + 私圈口令 + UI 逐像素还原 + 流程重排）✅ 已部署 + push main
+
+> **缘起**：Codex 出了两张高保真 HTML 原型（四步向导发布页 + 发布前总览页），把"发起约骑"做成真正好看好用的入口。
+> **特点**：完整走了 设计文档(三审 + Codex 异源审) → 6 task(Codex 写 / Claude 异源双审) → 部署 → UI 还原 → 流程重排 全流程。head `aefd411`。
+
+**后端（已部署生产 / 迁移 `20260603_meetup_create_fields`）**：
+- `meetups` 加 6 列：`supply_point` / `audience_tags`(sa.JSON) / `visibility`(public/invite_only + CHECK) / `eligibility_note` / `safety_note` / `share_token`（双默认值防 ORM 插入写 NULL）。
+- **私圈口令门禁**（核心安全）：`invite_only` 约骑的 详情/join/participants/media 必须带 `?token==share_token`（creator/已加入者豁免），否则 **404**（防猜连号 int id 闯私圈）。token 比对用 `secrets.compare_digest` 恒定时间。
+- 新增 `GET /api/meetups/{id}/participants`（JOIN users 返回骑友昵称/头像，正向依赖）。
+- `publish` 加出发前 30min 截止校验（进截止窗的草稿不许发布）。
+- `update_meetup` 字段白名单扩展（防 PATCH 静默丢新字段）；`list_meetups` 加 `visibility='public'` 过滤（owner 的 mine/my-draft 不过滤）。
+
+**前端（commit + push main，待 Tim 重新上传小程序）**：
+- 逐像素还原两张原型：步骤圈三态指示器 + **16 个 lucide SVG 图标**（按原型描边色烘色存 `miniprogram/assets/icons/meetup/`，小程序 `<image>` 渲 SVG）。
+- **流程重排（Tim 拍）**：选路线 → **图二就地编辑**（时间 picker / 集合·补给·说明 input / 人数加减器 / 节奏 picker / 照片网格全可编辑）→ **图一总览确认**（适合谁 pill / 可见范围盒子 / 门槛 / 安全模板 / 骑友）→ 发布。旧 details/media/publish/preview 步合并删除，改 route/edit/confirm 三步。
+- 草稿懒建（加照片/下一步时落库，先校验集合点）；出发时间变自动顺延结束 +3h；微信原生转发邀请（invite_only 链接带 share_token）。
+
+**翻车教训（2 次返工）**：① 我把"接口/逻辑设计完"当成"做完"，**没一开始讲清"原型→小程序保真是独立一大块工作"并纳入 scope** → Tim 真机看到朴素表单才发现。② 静态测试只验"字段在不在"、不验"像不像/顺不顺" → 绿灯给了虚假安全感，**视觉+流程必须真机对照**。详 [[feedback_design_done_not_equal_ui_shipped]]。
+
+**设计文档/计划**（已 commit）：`docs/superpowers/specs/2026-06-03-meetup-create-prototype-design.md` + `docs/superpowers/plans/2026-06-03-meetup-create-prototype.md`。
+
 ## 2026-06-02: 约骑创建照片步骤 + 注销账号 + tech-debt 清理 ✅（全程 Codex 异源审）
 
 > **特点**：补足约骑创建体验 + 上线账号注销（合规）+ 清约骑遗留 tech-debt。这几项都是 Claude 自写，
