@@ -138,7 +138,8 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 - **每期战术 PRD**：`docs/prd/phase-N-prd.md`（每期开工前写，含用户故事 + 验收标准）
 
 **战略与产品（人类线）**
-- **战略 PRD**：`docs/prd/velo-vision.md` / `velo-strategy.md` / `velo-product-spec.md`（3 份 / 见 `docs/prd/README.md` 索引）
+- **战略 PRD**：`docs/prd/velo-vision.md` / `velo-strategy.md` / `velo-product-spec.md`（3 份核心 / 见 `docs/prd/README.md` 索引）
+- **专题战略**：`docs/prd/velo-route-flywheel-strategy.md`（路线百科与数据飞轮战略 / 2026-06-09 立 / ⚠ 部分判断待重审：数据获取是物理约束非架构锅、变现/市场规模未深算）
 - **竞品深度分析**：`docs/competitive-analysis/`（5 份 / 见 `docs/competitive-analysis/README.md` 索引）
 
 **运行规则（agent 常驻）**
