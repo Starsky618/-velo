@@ -10,7 +10,7 @@ fail=0
 # 一、承载性新文件检查(原 CLAUDE.md L26 附加门禁):
 # app/ alembic/ tests/ miniprogram/ 下的 untracked 文件,若被本次 staged 代码 import/引用,
 # 干净 clone 会 ImportError——这里先宽口径列出所有承载性目录的 untracked,逼一次显式决定。
-untracked=$(git status --porcelain | grep '^??' | awk '{print $2}' | grep -E '^(app|alembic|tests|miniprogram)/' )
+untracked=$(git status --porcelain | grep '^??' | awk '{print $2}' | grep -E '^(app|alembic|migrations|tests|miniprogram)/' )
 if [ -n "$untracked" ]; then
   echo "🔴 门禁拦截:承载性目录存在 untracked 文件,先决定 stage 还是 .gitignore:"
   echo "$untracked" | sed 's/^/    /'
@@ -26,15 +26,15 @@ fi
 
 # 三、迁移与模型同步检查:动了 models.py 却没有新迁移文件 → 响铃
 if git diff --cached --name-only | grep -q 'models\.py' ; then
-  if ! git diff --cached --name-only | grep -q 'alembic/versions/'; then
-    echo "⚠️ 改了 models.py 但本次没有 alembic/versions/ 新文件——确认是否需要迁移(Alembic 迁移纪律)。"
+  if ! git diff --cached --name-only | grep -qE '(alembic|migrations)/versions/'; then
+    echo "⚠️ 改了 models.py 但本次没有 migrations/versions/ 新文件——确认是否需要迁移(Alembic 迁移纪律)。"
   fi
 fi
 
 # 四、惯犯静态扫描(2026-06-10 v2 / 蒸自 80 判例中的重复违规惯犯,只扫本次新增行)
 # v2.1 自指修复:只扫代码路径(app/miniprogram/tests/alembic)。文档和本脚本自身含陷阱描述文本,
 # 扫它们会自爆——首次提交本脚本时被自己拦住,实证 2026-06-10。
-added_lines=$(git diff --cached --unified=0 -- app miniprogram tests alembic | grep '^+' | grep -v '^+++')
+added_lines=$(git diff --cached --unified=0 -- app miniprogram tests alembic migrations | grep '^+' | grep -v '^+++')
 
 # 硬拦组(历史上被 Tim 抓过且零误报空间)
 if echo "$added_lines" | grep -qE 'isoformat\(\) ?\+ ?"Z"'; then

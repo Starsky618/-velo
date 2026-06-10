@@ -23,7 +23,7 @@
 3. 这个改动**是 spec 说要的**吗？（防 scope creep）
 4. 改动 >300 行 / 跨模块：**跑了代码层双审**吗？（详见 architect skill 信条 5）
 
-**附加门禁已升级为结构约束（2026-06-10 拍）**：`scripts/pre_commit_gate.sh` 已装入 `.git/hooks/pre-commit`——承载性目录（app/alembic/tests/miniprogram）的 untracked 文件物理拦截提交，>300 行新增响铃提醒双审留痕，动 models.py 没迁移文件响铃。干净 clone 后需重装：`cp scripts/pre_commit_gate.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`。
+**附加门禁已升级为结构约束（2026-06-10 拍）**：`scripts/pre_commit_gate.sh` 已装入 `.git/hooks/pre-commit`——承载性目录（app/migrations/tests/miniprogram，2026-06-11 修正：迁移真实目录是 migrations/ 非 alembic/，旧写法令迁移铃永不响）的 untracked 文件物理拦截提交，>300 行新增响铃提醒双审留痕，动 models.py 没迁移文件响铃。干净 clone 后需重装：`cp scripts/pre_commit_gate.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`。
 
 **ship 后 1 问（与 commit 前 4 问对称 / 2026-06-10 拍 / 治「产品反馈环在规则层为零」）**：user-facing 功能 ship 时必答——这个功能的使用数据从哪条 SQL / 哪个日志可见？何时回看（写具体日期，进 PRD「数据回看」字段）？答不出 = 这个功能 ship 后永远不知道有没有人用，等于没装传感器。
 
