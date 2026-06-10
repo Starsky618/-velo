@@ -31,8 +31,39 @@ if git diff --cached --name-only | grep -q 'models\.py' ; then
   fi
 fi
 
+# 四、惯犯静态扫描(2026-06-10 v2 / 蒸自 80 判例中的重复违规惯犯,只扫本次新增行)
+# v2.1 自指修复:只扫代码路径(app/miniprogram/tests/alembic)。文档和本脚本自身含陷阱描述文本,
+# 扫它们会自爆——首次提交本脚本时被自己拦住,实证 2026-06-10。
+added_lines=$(git diff --cached --unified=0 -- app miniprogram tests alembic | grep '^+' | grep -v '^+++')
+
+# 硬拦组(历史上被 Tim 抓过且零误报空间)
+if echo "$added_lines" | grep -qE 'isoformat\(\) ?\+ ?"Z"'; then
+  echo "🔴 陷阱 #11:isoformat()+\"Z\" 会产出 +00:00Z 畸形串(2026-04-29 三审实证)。让 Pydantic 自动序列化。"
+  fail=1
+fi
+if echo "$added_lines" | grep -qE 'with db\.begin\(\)'; then
+  echo "🔴 陷阱 #21:with db.begin() 在 autobegin session 上必炸 InvalidRequestError(2026-06-01 实证)。统一末尾单次 db.commit()。"
+  fail=1
+fi
+
+# 响铃组(高概率违规,人工确认后可提交)
+if git diff --cached --name-only | grep -q '^miniprogram/' ; then
+  if echo "$added_lines" | grep -q 'created_at'; then
+    echo "⚠️ 前端新增行出现 created_at:展示时间永远用业务时间(started_at),不用 DB 写入时间(2026-05-15 Tim:为什么会犯同样的错误)。确认这处不是展示用途。"
+  fi
+fi
+if echo "$added_lines" | grep -qE 'logger\.warning' && echo "$added_lines" | grep -qE 'except'; then
+  echo "⚠️ 新增代码同时含 except 和 logger.warning:except 块里必须 logger.exception 打完整 traceback(2026-05-16 实证:410 条 NULL 一天后才发现)。"
+fi
+if echo "$added_lines" | grep -qE '\.one\(\)'; then
+  echo "⚠️ 新增 .one():零记录抛 NoResultFound→500(陷阱 #4)。确认是否该用 .first()+显式判空。"
+fi
+if echo "$added_lines" | grep -qE 'with_for_update\(\)' && ! echo "$added_lines" | grep -qE 'populate_existing'; then
+  echo "⚠️ 新增 with_for_update() 未见 populate_existing():行锁拿到但字段值 stale(陷阱 #12)。"
+fi
+
 if [ "$fail" -eq 1 ]; then
-  echo "(确认无误后用 git add 补齐或加入 .gitignore,再重新 commit)"
+  echo "(硬拦项修完再 commit;响铃项确认误报可继续)"
   exit 1
 fi
 exit 0

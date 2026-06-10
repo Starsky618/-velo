@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>velo · 第一个交卷的人(激励反馈 demo)</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { background:#1a1d24; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif; padding:20px 0; }
+  .phone { width:375px; min-height:760px; background:#0b0e13; border-radius:36px; overflow:hidden; position:relative; box-shadow:0 20px 60px rgba(0,0,0,.6); border:1px solid #232833; }
+  .screen { padding:54px 20px 30px; }
+
+  /* ── 约骑上下文头 ── */
+  .meetup-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .meetup-title { color:#fff; font-size:17px; font-weight:600; }
+  .meetup-sub { color:#5d6675; font-size:12px; margin-bottom:26px; }
+  .meetup-sub b { color:#8b94a6; font-weight:500; }
+
+  /* ── 交卷入口 ── */
+  #dropzone { border:1.5px dashed #2e3644; border-radius:20px; padding:44px 24px; text-align:center; cursor:pointer; transition:.25s; }
+  #dropzone:active { border-color:#c8ff3d; background:#11151c; }
+  .dz-icon { font-size:40px; margin-bottom:14px; }
+  .dz-main { color:#e8ecf3; font-size:16px; font-weight:600; margin-bottom:8px; }
+  .dz-hint { color:#5d6675; font-size:12px; line-height:1.7; }
+  .dz-hint em { color:#c8ff3d; font-style:normal; }
+
+  /* ── 解析剧场 ── */
+  #theater { display:none; }
+  .file-chip { display:inline-flex; align-items:center; gap:8px; background:#151a23; border:1px solid #2a3140; color:#aeb6c5; font-size:12px; padding:8px 14px; border-radius:100px; margin-bottom:28px; }
+  .file-chip .dot { width:7px; height:7px; border-radius:50%; background:#c8ff3d; animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+  .parse-line { color:#5d6675; font-size:13px; height:20px; margin-bottom:24px; font-variant-numeric:tabular-nums; }
+  .parse-line b { color:#c8ff3d; font-weight:600; }
+
+  .stat-row { display:flex; justify-content:space-between; align-items:baseline; padding:15px 4px; border-bottom:1px solid #161b24; opacity:0; transform:translateY(14px); transition:.5s cubic-bezier(.2,.9,.3,1); }
+  .stat-row.show { opacity:1; transform:none; }
+  .stat-label { color:#8b94a6; font-size:14px; }
+  .stat-value { color:#fff; font-size:26px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.5px; }
+  .stat-value small { font-size:13px; color:#5d6675; font-weight:400; margin-left:4px; }
+  #elevWrap { padding:18px 4px 6px; opacity:0; transition:.6s; }
+  #elevWrap.show { opacity:1; }
+  #elevPath { stroke-dasharray:600; stroke-dashoffset:600; transition:stroke-dashoffset 1.6s ease; }
+  #elevPath.draw { stroke-dashoffset:0; }
+
+  /* ── 成绩卡 ── */
+  #cardStage { display:none; }
+  .card { background:linear-gradient(160deg,#161c27 0%,#0e1219 100%); border:1px solid #2a3140; border-radius:22px; padding:22px 20px 18px; transform:scale(.92); opacity:0; transition:.6s cubic-bezier(.2,.9,.3,1); position:relative; overflow:hidden; }
+  .card.show { transform:none; opacity:1; }
+  .card::before { content:""; position:absolute; top:-60px; right:-60px; width:160px; height:160px; background:radial-gradient(circle,#c8ff3d22,transparent 70%); }
+  .card-brand { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .card-logo { color:#c8ff3d; font-weight:800; font-size:15px; letter-spacing:2px; }
+  .card-date { color:#5d6675; font-size:11px; }
+  .card-route { color:#fff; font-size:21px; font-weight:700; margin-bottom:2px; }
+  .card-rider { color:#8b94a6; font-size:12px; margin-bottom:18px; }
+  .card-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px 8px; margin-bottom:16px; }
+  .cg-item .v { color:#fff; font-size:20px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .cg-item .v small { font-size:11px; color:#5d6675; font-weight:400; }
+  .cg-item .k { color:#5d6675; font-size:10px; margin-top:3px; letter-spacing:.5px; }
+  .card-first { margin-top:4px; background:#c8ff3d14; border:1px solid #c8ff3d33; border-radius:12px; padding:12px 14px; }
+  .card-first .t1 { color:#c8ff3d; font-size:13px; font-weight:700; margin-bottom:3px; }
+  .card-first .t2 { color:#8b94a6; font-size:11.5px; line-height:1.6; }
+
+  .btn { display:block; width:100%; border:none; border-radius:14px; padding:15px; font-size:15px; font-weight:600; cursor:pointer; margin-top:14px; transition:.2s; }
+  .btn-primary { background:#c8ff3d; color:#0b0e13; }
+  .btn-primary:active { transform:scale(.97); }
+  .btn-ghost { background:transparent; color:#5d6675; border:1px solid #232833; }
+
+  /* ── 微信群视角浮层 ── */
+  #wxOverlay { display:none; position:absolute; inset:0; background:#ededed; z-index:10; flex-direction:column; }
+  .wx-head { background:#ededed; padding:54px 16px 12px; text-align:center; color:#000; font-size:16px; font-weight:500; border-bottom:.5px solid #d5d5d5; }
+  .wx-head small { display:block; color:#999; font-size:11px; font-weight:400; }
+  .wx-body { flex:1; padding:18px 14px; }
+  .wx-msg { display:flex; gap:10px; margin-bottom:16px; }
+  .wx-avatar { width:38px; height:38px; border-radius:6px; background:#7a8b99; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; }
+  .wx-bubble-text { background:#fff; border-radius:8px; padding:10px 12px; color:#000; font-size:14px; max-width:240px; }
+  .wx-sharecard { background:#fff; border-radius:10px; width:248px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.08); cursor:pointer; }
+  .wx-sc-title { color:#000; font-size:13.5px; font-weight:500; padding:10px 12px 8px; line-height:1.45; }
+  .wx-sc-img { background:linear-gradient(160deg,#161c27,#0e1219); padding:14px 12px; }
+  .wx-sc-img .r { color:#fff; font-size:15px; font-weight:700; }
+  .wx-sc-img .n { color:#c8ff3d; font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; margin:4px 0 2px; }
+  .wx-sc-img .h { color:#8b94a6; font-size:10.5px; }
+  .wx-sc-foot { display:flex; align-items:center; gap:5px; padding:7px 12px; border-top:.5px solid #eee; color:#b2b2b2; font-size:10.5px; }
+  .wx-sc-foot .mini { width:13px; height:13px; border-radius:3px; background:#c8ff3d; display:inline-block; }
+  .wx-tip { text-align:center; color:#999; font-size:11px; margin-top:10px; }
+  .wx-back { margin:0 14px 34px; }
+
+  .replay { position:absolute; top:16px; right:16px; z-index:20; background:#ffffff14; border:none; color:#5d6675; font-size:11px; padding:6px 12px; border-radius:100px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <button class="replay" onclick="location.reload()">↺ 重播</button>
+
+  <!-- 主屏 -->
+  <div class="screen" id="mainScreen">
+    <div class="meetup-head"><div class="meetup-title">周六 · 天龙山西线约骑</div></div>
+    <div class="meetup-sub"><b>6 人报名</b> · 0 人交卷 · 6月14日 07:30 出发</div>
+
+    <!-- 阶段一:交卷入口 -->
+    <div id="dropzone" onclick="startReveal()">
+      <div class="dz-icon">🚴</div>
+      <div class="dz-main">交卷 — 选择你的码表文件</div>
+      <div class="dz-hint">从微信聊天记录里选 <em>.fit / .gpx</em> 原文件<br>码表 app 导出 → 发到微信 → 在这里选入,30 秒</div>
+    </div>
+
+    <!-- 阶段二:解析剧场 -->
+    <div id="theater">
+      <div class="file-chip"><span class="dot"></span>天龙山西线_0614.fit · 2.1 MB</div>
+      <div class="parse-line" id="parseLine">正在读取轨迹点 <b id="ptCount">0</b></div>
+      <div class="stat-row" id="r1"><span class="stat-label">距离</span><span class="stat-value" id="v1">0.0<small>km</small></span></div>
+      <div class="stat-row" id="r2"><span class="stat-label">骑行时间</span><span class="stat-value">1:47:32</span></div>
+      <div class="stat-row" id="r3"><span class="stat-label">均速</span><span class="stat-value" id="v3">0.0<small>km/h</small></span></div>
+      <div class="stat-row" id="r4"><span class="stat-label">累计爬升</span><span class="stat-value" id="v4">0<small>m</small></span></div>
+      <div class="stat-row" id="r5"><span class="stat-label">最高时速</span><span class="stat-value" id="v5">0.0<small>km/h</small></span></div>
+      <div id="elevWrap">
+        <svg width="100%" height="64" viewBox="0 0 335 64">
+          <path id="elevPath" d="M0,58 L30,52 L55,54 L80,42 L110,38 L140,24 L170,10 L195,14 L225,8 L250,26 L280,40 L310,50 L335,56" fill="none" stroke="#c8ff3d" stroke-width="2"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 阶段三:个人成绩卡 -->
+    <div id="cardStage">
+      <div class="card" id="theCard">
+        <div class="card-brand"><span class="card-logo">VELO</span><span class="card-date">2026.06.14 周六</span></div>
+        <div class="card-route">天龙山西线</div>
+        <div class="card-rider">老张 · 太原</div>
+        <div class="card-grid">
+          <div class="cg-item"><div class="v">42.3<small> km</small></div><div class="k">距离</div></div>
+          <div class="cg-item"><div class="v">862<small> m</small></div><div class="k">爬升</div></div>
+          <div class="cg-item"><div class="v">23.6<small> km/h</small></div><div class="k">均速</div></div>
+          <div class="cg-item"><div class="v">1:47:32</div><div class="k">时间</div></div>
+          <div class="cg-item"><div class="v">61.4<small> km/h</small></div><div class="k">最高时速</div></div>
+          <div class="cg-item"><div class="v">1,842<small> kcal</small></div><div class="k">消耗</div></div>
+        </div>
+        <div class="card-first">
+          <div class="t1">🏁 本场战报由你开张 · 已交卷 1 / 6</div>
+          <div class="t2">其他 5 个人的卷子还空着。把这张卡发到群里,催他们交。</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="shareBtn" onclick="showWx()" style="display:none">发到群里,催他们交卷</button>
+      <button class="btn btn-ghost" id="ghostBtn" style="display:none" onclick="alert('战报页:你的卡 + 5 个灰格子 + 照片墙(本 demo 未含,下一张原型)')">看本场战报</button>
+    </div>
+  </div>
+
+  <!-- 微信群视角 -->
+  <div id="wxOverlay">
+    <div class="wx-head">周六天龙山约骑群(9)<small>——群里的人看到的样子——</small></div>
+    <div class="wx-body">
+      <div class="wx-msg">
+        <div class="wx-avatar">张</div>
+        <div>
+          <div class="wx-sharecard" onclick="alert('点开 → 直接落在战报页:老张的卡已经亮着,你的格子是灰的,下面就是交卷按钮。\n\n战报页永远不会被人看到空的——因为你永远是从某张已存在的卡点进来的。')">
+            <div class="wx-sc-title">老张交卷了:天龙山西线 42.3km · 爬升 862m</div>
+            <div class="wx-sc-img">
+              <div class="r">天龙山西线 · 6月14日</div>
+              <div class="n">23.6 km/h</div>
+              <div class="h">🏁 已交卷 1/6 —— 5 个人的卷子还空着</div>
+            </div>
+            <div class="wx-sc-foot"><span class="mini"></span>velo · 点开看战报,交你的卷</div>
+          </div>
+          <div class="wx-tip" style="text-align:left">↑ 点这张卡,看接收端发生什么</div>
+        </div>
+      </div>
+      <div class="wx-msg"><div class="wx-avatar" style="background:#8c9b6e">王</div><div class="wx-bubble-text">好家伙,均速 23.6,周六不当人了😂 晚上传我的</div></div>
+    </div>
+    <button class="btn btn-ghost wx-back" onclick="hideWx()">← 回到老张的视角</button>
+  </div>
+</div>
+
+<script>
+// 设计思路:第一个交卷的人,在零观众的情况下拿到四层回报——
+// ① 开奖(自己的数据逐项揭晓,比码表 app 的死列表好看)
+// ② 一张比截图体面的卡(他本来就要往群里晒,velo 只是换了他的子弹)
+// ③ 首发地位(「战报由你开张」——第一名不是吃亏,是开球权)
+// ④ 卡片即催缴令(发出去的那一刻,他从孤独变成了庄家)
+function countUp(el, target, dur, dec, suffix) {
+  const t0 = performance.now();
+  function tick(t) {
+    const p = Math.min((t - t0) / dur, 1);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.innerHTML = (target * eased).toFixed(dec) + (suffix || '');
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+function startReveal() {
+  document.getElementById('dropzone').style.display = 'none';
+  document.getElementById('theater').style.display = 'block';
+  countUp(document.getElementById('ptCount'), 3214, 1400, 0);
+  const steps = [
+    [1600, () => { show('r1'); countUp(document.getElementById('v1'), 42.3, 900, 1, '<small>km</small>'); }],
+    [2300, () => show('r2')],
+    [3000, () => { show('r3'); countUp(document.getElementById('v3'), 23.6, 900, 1, '<small>km/h</small>'); }],
+    [3700, () => { show('r4'); countUp(document.getElementById('v4'), 862, 900, 0, '<small>m</small>');
+                   document.getElementById('elevWrap').classList.add('show');
+                   document.getElementById('elevPath').classList.add('draw'); }],
+    [4500, () => { show('r5'); countUp(document.getElementById('v5'), 61.4, 900, 1, '<small>km/h</small>'); }],
+    [5800, () => { document.getElementById('parseLine').innerHTML = '解析完成 · <b>生成你的成绩卡</b>'; }],
+    [6600, () => {
+      document.getElementById('theater').style.display = 'none';
+      document.getElementById('cardStage').style.display = 'block';
+      requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById('theCard').classList.add('show')));
+      setTimeout(() => { document.getElementById('shareBtn').style.display = 'block';
+                         document.getElementById('ghostBtn').style.display = 'block'; }, 700);
+    }]
+  ];
+  steps.forEach(([t, fn]) => setTimeout(fn, t));
+}
+function show(id) { document.getElementById(id).classList.add('show'); }
+function showWx() { const o = document.getElementById('wxOverlay'); o.style.display = 'flex'; }
+function hideWx() { document.getElementById('wxOverlay').style.display = 'none'; }
+</script>
+</body>
+</html>
