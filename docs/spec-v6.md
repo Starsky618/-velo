@@ -166,7 +166,7 @@ meetup-detail.js:data 初始化块(现 L36-43)新增 reportStats: null;onLoad �
 
 ### 3.4 战报页(S13-T4)
 
-新页 pages/meetup-report,不注册 tab/不进首页导航。正向入口两个(A-I1 补):① 分享卡路径直达 ② meetup-detail 在 status∈{OPEN(已有≥1 条关联),COMPLETED} 时显示「看战报」按钮。数据源 GET /api/meetups/{id}/report。布局:集体合计 → 照片墙(meetup_media)→ 每人一格(participants 全列,已交卷显示 distance/avg_speed/climb,未交卷灰格+「交卷」按钮跳 upload;格子无催语,文案只有「交卷」)。排序按 D9。
+新页 pages/meetup-report,不注册 tab/不进首页导航。正向入口两个(A-I1 补):① 分享卡路径直达 ② meetup-detail 在 status∈{OPEN(已有≥1 条关联),COMPLETED} 时显示「看战报」按钮。战报页自身可分享:onShareAppMessage(同步钩子,读 onLoad 已加载的本页数据),标题「{约骑名} 战报 · 已交卷 m/n」,路径 /pages/meetup-report/meetup-report?id=X&token=Y&source=report_card(落地回战报页自身)。数据源 GET /api/meetups/{id}/report。布局:集体合计 → 照片墙(meetup_media)→ 每人一格(participants 全列,已交卷显示 distance/avg_speed/climb,未交卷灰格+「交卷」按钮跳 upload;格子无催语,文案只有「交卷」)。排序按 D9。
 
 ### 3.5 五环节埋点(S13-T5)
 
@@ -212,7 +212,7 @@ segment/router.py ↔ meetup/service.py 存在历史双向 import(三轮 B 实�
 | GET | /api/route-guides | 新增(官方路线列表,含 track_pending) | T8 |
 | GET | /api/route-guides/{id} | 新增(详情) | T8 |
 
-响应模型字段:MeetupReportOut{ meetup_id, totals{distance_km, climb_m, rider_count, submitted_count}, cells[{user_id, nickname, avatar, submitted, distance_km, avg_speed, climb_m, submitted_at}], media[现有 MeetupMediaOut] }——submitted_at 是 MeetupActivity.created_at 的序列化别名,不加新列(二轮 A-I1 定案);cells 构造必须保证 participants 全列(灰格是战报的命):两步查询——① query meetup_participants 全集(每人一格的骨架)② query MeetupActivity JOIN Activity(distance/avg_speed/elevation_gain 在 Activity 上,实证 models.py:74-78)取已交卷数据,Python 按 user_id 合并进骨架。禁止用单条 INNER JOIN 实现(会把未交卷者过滤掉,灰格永不出现——终轮 C2)。未交卷格:submitted=false,distance_km/avg_speed/climb_m/submitted_at 均为 null(前端按 no-dash 判例整块条件渲染)。climb_m = Activity.elevation_gain 的序列化别名,Field(serialization_alias) 同 submitted_at 模式。RouteGuideOut{ id, name, city, ready, content_md, cover_url, highlights, elevation_profile, route_book_id, distance, climb, preview_points }。ready = (route_book_id IS NOT NULL);distance/climb/preview_points 仅 ready=true 时有值,经 JOIN route_books 取(distance/climb 是 route_books 现有列,models.py:27-28 实证),不在 route_guides 加列。submitted_at 用 Pydantic Field(serialization_alias="submitted_at") 映射 created_at,禁止加数据库列。均 extra="forbid"。
+响应模型字段:MeetupReportOut{ meetup_id, totals{distance_km, climb_m, rider_count, submitted_count}, cells[{user_id, nickname, avatar, submitted, distance_km, avg_speed, climb_m, submitted_at}], media[现有 MeetupMediaOut] }——submitted_at 是 MeetupActivity.created_at 的序列化别名,不加新列(二轮 A-I1 定案);cells 构造必须保证 participants 全列(灰格是战报的命):两步查询——① query meetup_participants JOIN users 取全集骨架(nickname/avatar 来自 users 表,JOIN 写法复用 list_participants 现有惯例 service.py:456-483,字段名以 users 模型预读为准)② query MeetupActivity JOIN Activity(distance/avg_speed/elevation_gain 在 Activity 上,实证 models.py:74-78)取已交卷数据,Python 按 user_id 合并进骨架。禁止用单条 INNER JOIN 实现(会把未交卷者过滤掉,灰格永不出现——终轮 C2)。未交卷格:submitted=false,distance_km/avg_speed/climb_m/submitted_at 均为 null(前端按 no-dash 判例整块条件渲染)。climb_m = Activity.elevation_gain 的序列化别名,Field(serialization_alias) 同 submitted_at 模式。RouteGuideOut{ id, name, city, ready, content_md, cover_url, highlights, elevation_profile, route_book_id, distance, climb, preview_points }。ready = (route_book_id IS NOT NULL);distance/climb/preview_points 仅 ready=true 时有值,经 JOIN route_books 取(distance/climb 是 route_books 现有列,models.py:27-28 实证),不在 route_guides 加列。submitted_at 用 Pydantic Field(serialization_alias="submitted_at") 映射 created_at,禁止加数据库列。均 extra="forbid"。
 
 ## §5 风险表
 
@@ -240,7 +240,7 @@ segment/router.py ↔ meetup/service.py 存在历史双向 import(三轮 B 实�
 | T3 分享 | detail 预拉+onShare 同步读 data+source 参数 | 分享标题 m/n 非 0/0;非参与者可转发 |
 | T4 战报 | report API+页面+detail 入口按钮 | 合计求和;灰格;导航不可达+两个正向入口可达 |
 | T5 埋点 | SENSOR 行+source 参数 | 三种 viewer 态断言 |
-| T6 部署 | SOP(--build)+三喇叭位+延迟实测+TENCENT_MAP_KEY 亲查 | 线上 curl;FIT 端到端;p90 落 PRD |
+| T6 部署 | SOP 本体=docs/agent-rules/deploy-sop.md(单一真相源,本期增量三项:--build 要求/三喇叭位/延迟实测)+TENCENT_MAP_KEY 亲查 | 线上 curl;FIT 端到端;半生人剧本真演;p90 落 PRD |
 | T7 灌库 | 独立迁移(route_guides+is_official)+脚本+13 条内容(汾河定本待 Tim) | 幂等重跑;track_pending 升级路径;elevation_profile 降采样正确性 |
 | T8 路线页 | route-guides 双端点+列表+详情页 | track_pending 态渲染(无曲线/无发起按钮);无封面空态 |
 | T9 双入口 | 预填+向导官方组+详情路书预览 | route_book_id 透传链 |
