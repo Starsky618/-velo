@@ -1,7 +1,7 @@
-# Spec v6.3 · Sprint 13+14 上线冲刺(熟人约骑闭环 + 路线百科上架)
+# Spec v6.4 · Sprint 13+14 上线冲刺(熟人约骑闭环 + 路线百科上架)
 
 > 上游:docs/prd/sprint-13-launch-prd.md(Tim 全 y,2026-06-11)+ 战略决策 D-004/D-005/D-006。
-> 审判轨迹:v6.0 一轮 5C/12I → v6.1 二轮 5C/13I → v6.2 三轮 2C/15I(集成侧已归零)→ v6.3(本版)全修,待终轮一致性复核归零进 Step 8。
+> 审判轨迹:v6.0 5C/12I → v6.1 5C/13I → v6.2 2C/15I(集成侧归零)→ v6.3 终轮 2C/6I → v6.4(本版)全修,复核归零后进 Step 8。
 
 ## §0.1 代码侧事实表(双审复核后修订版)
 
@@ -22,7 +22,7 @@
 | Boolean server_default 项目主流写法 false()(meetup/models.py:108 等) | 双审 B-I1 | ✓ |
 | 北京时区已在两处各自定义(_BJ_TZ):training/service.py:39 / notification/progress_detector.py:46,无共享函数(pre-T1 现状,T1 建共享模块) | 双审 B | ✓ |
 | migration 链末节点 = 20260603_meetup_create_fields | alembic/versions/ | ✓ |
-| route_books 字段(无 description/is_official);route_book/models.py 未导入 func | route_book/models.py:24-35,12-13 | ✓ |
+| route_books 字段(无 description/is_official);route_book/models.py 已导入 func(L14),未导入 Boolean/false | route_book/models.py:24-35,13-14 | ✓ |
 | meetup↔activity 现无任何关联 | 全库 grep 为空 | ✓ |
 | 反向 hook 现有 2 处已登记;本 spec 新增 MeetupActivity 为 Meetup→Activity 正向,不新增反向 | 双审 B 架构层核验 | ✓ |
 | TENCENT_MAP_KEY 生产配置状态 | 未知 | ⚠️ 运行时,T6 部署 SOP 第一步亲查 .env 并记录,缺失则按配置步骤补 |
@@ -39,7 +39,7 @@
 | D6 | route_books 加 is_official(Boolean, server_default=false(),与 meetup 模块写法一致);查询一律 .is_(True) 防 truthiness | 官方/用户路线筛选;陷阱 #1 |
 | D7 | 5 秒预算两段式:先实测(T6 脚本),p90>5s 才开小文件同步快路径 | 不为未测量的问题预建复杂度 |
 | D8 | 五环节埋点 = logger.info 行,固定前缀字符串 "SENSOR "(沿用项目日志惯例,不建事件表) | 百用户级 grep 足够 |
-| D9 | 战报格子按 meetup_activities.created_at ASC 排序(交卷先后)。与 D-006 的关系:D-006 押后的是骑行表现排名,交卷顺序是行为顺序不是表现排名,不违反 | v6.0 误引 D-006 作排序依据,本版立独立决策(双审 A-C1) |
+| D9 | 战报格子按交卷先后排序(meetup_activities.created_at ASC),未交卷灰格(无 created_at)排末尾(NULLS LAST 语义,两步查询时 Python 合并同义)。与 D-006 的关系:D-006 押后的是骑行表现排名,交卷顺序是行为顺序不是表现排名,不违反 | v6.0 误引 D-006 修正;终轮 I4 补灰格位次 |
 | D10 | 同一活动允许挂到多场约骑(用户真报名了两场窗口重叠的约骑时):uq_meetup_activity 只防同场重复,不做跨场互斥 | 极罕见场景,数据保真实;边界表新增行 |
 | D11 | route_guides 为官方路线的主实体:guide 可先于轨迹存在(route_book_id 可空 = track_pending 态),海拔曲线在灌库时预计算存列。官方路书无 source_activity_id,Trackpoint 链路不存在(二轮实证),海拔必须由灌库脚本从 track.gpx 算好落库 | 治 track_pending 无落点 + elevation_profile 无来源两个二轮 finding;列表页数据源=route_guides 全集,「发起约骑」按钮仅 route_book_id 非空时显示 |
 
@@ -179,16 +179,28 @@ get_meetup router 函数签名加 `source: str = Query("direct")`(现 router.py:
 
 ### 3.6 灌库管线(S14-T7)
 
-scripts/import_route_guides.py 读 content/routes/<路线名>/:guide.md + track.gpx[可选] + meta.json{name, city, highlights, cover_url 可选}。按 D11:有 track.gpx → 建 route_book(is_official=true, source='file_upload', file_type='gpx', file_id=GPX 存储路径——三者联动满足 ck_route_books_file_type_source 联合 CHECK[实证 models.py:40-55],缺 file_id 则 INSERT 被 DB 拒)+ 算 elevation_profile + 建 guide(挂 book);幂等重跑已有轨迹的路线 → 更新旧 book 的 reference_line/distance/climb,不新建(防孤儿 book,三轮 B-I3 选项二);无轨迹 → 只建 guide(route_book_id=NULL=track_pending);脚本前置校验:guide.md 缺失立即报错退出,不进 DB 层撞 IntegrityError;meta.json 字段约定:必填=name,可选=city(默认太原)/highlights/cover_url,补 GPX 后按 name(unique 键)幂等重跑升级。cover_url 缺省 null,前端空态占位图。内容转换(13 张 HTML 卡 → guide.md)走 route skill 全部铁律,主 agent 亲自逐条做。定本:天龙山 v11(Tim 已拍);汾河 3 版定本为 Step 8 待拍项(推荐最新的「环太原汾河自行车道」版),拍板前 T7 不得灌汾河这条——未决决策不进实施。
+scripts/import_route_guides.py 读 content/routes/<路线名>/:guide.md + track.gpx[可选] + meta.json{name, city, highlights, cover_url 可选}。按 D11:有 track.gpx → 建 route_book(is_official=true, source='file_upload', file_type='gpx', file_id=GPX 存储路径——三者联动满足 ck_route_books_file_type_source 联合 CHECK[实证 models.py:40-55],缺 file_id 则 INSERT 被 DB 拒)+ 算 elevation_profile + 建 guide(挂 book);幂等重跑已有轨迹的路线 → 更新旧 book 的 reference_line/distance/climb,不新建(防孤儿 book,三轮 B-I3 选项二);无轨迹 → 只建 guide(route_book_id=NULL=track_pending);脚本前置校验:guide.md 缺失立即报错退出,不进 DB 层撞 IntegrityError;meta.json 字段约定:必填=name,可选=city(默认太原)/highlights/cover_url,补 GPX 后按 name(unique 键)幂等重跑升级。cover_url 缺省 null,前端空态占位图。内容转换(13 条路线,原始 HTML 17 个,多版路线选定本后一线一份 guide.md)走 route skill 全部铁律,主 agent 亲自逐条做。定本:天龙山 v11(Tim 已拍);汾河 3 版定本为 Step 8 待拍项(推荐最新的「环太原汾河自行车道」版),拍板前 T7 不得灌汾河这条——未决决策不进实施。
 
 ### 3.7 路线页与双入口(S14-T8/T9)
 
 - 路线推荐列表页数据源 = GET /api/route-guides(新,T8):返回 route_guides 全集(含 track_pending,标 ready 布尔),官方列表与 route_books 解耦(D11)
 - 约骑向导官方组数据源 = GET /api/route-books?official=1(T9):service 层 `RouteBook.is_official.is_(True)`;前端两次调用分组渲染(官方组+我的组),无需后端合并
-- GET /api/route-guides/{id}(T8):content_md + cover + highlights + elevation_profile(本表列,D11)+ preview_points(route_book_id 非空时经现有 route_book 预览机制取,reference_line 出)
+- GET /api/route-guides/{id}(T8):content_md + cover_url + highlights + elevation_profile(本表列,D11)+ preview_points(route_book_id 非空时经现有 route_book 预览机制取,reference_line 出)
 - 路由注册顺序:route_guides 用独立子前缀 /api/route-guides,完全避开 route_book/router.py:104 的 /{route_book_id} 通配冲突(实证该文件 L6-7 已注明顺序敏感)
 - pages/route-list / route-detail(T8);详情底部「发起约骑」→ meetup-create?route_book_id=X 预填(T9)
 - meetup-create 路线步加官方路线组(T9);meetup-detail 嵌路书预览,移植 restoreRoutePreview(T9)
+
+### 3.8 PRD 必答清单的论证留档(7/7 全覆盖索引)
+
+- 必答 #1(关联方向)→ D1。 必答 #2(故障五维+UNIQUE+截止)→ D3/D4 + §3.1 边界表 12 行。 必答 #4(estimated_end 余量)→ D2(整体弃用该字段,余量问题消解)。 必答 #6(TENCENT_MAP_KEY)→ §0.1 末行 ⚠️ + §5 风险 6 + T6 SOP 亲查步骤。
+
+- 必答 #3 竞态明文论证:complete_tick 把约骑置 COMPLETED 与用户上传是两个独立事件,attach tick 的扫描条件含 COMPLETED 态且与状态变更解耦——先 COMPLETED 后上传的活动最多等一个 5 分钟节拍即被关联,不存在丢失窗口。
+- 必答 #5 三件套对比:方案 A(route_books 加 description 列)= 1 migration + 模型 1 行 + schema 1 行,最便宜但把慢变内容焊进轨迹表,违反防火墙与半衰期分离,且 track_pending 无落点;方案 B(新表 route_guides 主实体)= 1 migration + 新模型 + 新 schema + JOIN,贵一档但内容资产独立、可先于轨迹存在、未来实况层同侧扩展;方案 C(内容存对象存储/文件)= 零 migration 但失去 SQL 可查与事务一致性。取 B(D5/D11)。
+- 必答 #7 备选否决:worker 并发调优——队列等待是否是瓶颈未实测,先调优是盲调;解析分级先出核心数据——改动解析器内部结构,复杂度最高,留作快路径也不够时的末手。故取「实测 → 必要时小文件同步快路径」最小路径(D7)。
+
+### 3.9 顺带登记的历史债(本期不修,防加深)
+
+segment/router.py ↔ meetup/service.py 存在历史双向 import(三轮 B 实证,反向侧已登记)。T1 实现禁令:meetup/cron.py 不得 import segment,防循环加深。登记进 docs/tech-debt.md。
 
 ## §4 API 变更清单
 
@@ -200,13 +212,7 @@ scripts/import_route_guides.py 读 content/routes/<路线名>/:guide.md + track.
 | GET | /api/route-guides | 新增(官方路线列表,含 track_pending) | T8 |
 | GET | /api/route-guides/{id} | 新增(详情) | T8 |
 
-响应模型字段:MeetupReportOut{ meetup_id, totals{distance_km, climb_m, rider_count, submitted_count}, cells[{user_id, nickname, avatar, submitted, distance_km, avg_speed, climb_m, submitted_at}], media[现有 MeetupMediaOut] }——submitted_at 是 MeetupActivity.created_at 的序列化别名,不加新列(二轮 A-I1 定案);cells 数据经 MeetupActivity JOIN Activity 取数(distance/avg_speed/elevation_gain 在 Activity 上,实证 models.py:74-78),JOIN 写法显式不走 relationship(模型无 relationship)。RouteGuideOut{ id, name, city, ready, content_md, cover_url, highlights, elevation_profile, route_book_id, distance, climb, preview_points }。ready = (route_book_id IS NOT NULL);distance/climb/preview_points 仅 ready=true 时有值,经 JOIN route_books 取(distance/climb 是 route_books 现有列,models.py:27-28 实证),不在 route_guides 加列。submitted_at 用 Pydantic Field(serialization_alias="submitted_at") 映射 created_at,禁止加数据库列。均 extra="forbid"。
-
-### 3.8 PRD 必答清单的论证留档(三轮审查点名的合规义务)
-
-- 必答 #3 竞态明文论证:complete_tick 把约骑置 COMPLETED 与用户上传是两个独立事件,attach tick 的扫描条件含 COMPLETED 态且与状态变更解耦——先 COMPLETED 后上传的活动最多等一个 5 分钟节拍即被关联,不存在丢失窗口。
-- 必答 #5 三件套对比:方案 A(route_books 加 description 列)= 1 migration + 模型 1 行 + schema 1 行,最便宜但把慢变内容焊进轨迹表,违反防火墙与半衰期分离,且 track_pending 无落点;方案 B(新表 route_guides 主实体)= 1 migration + 新模型 + 新 schema + JOIN,贵一档但内容资产独立、可先于轨迹存在、未来实况层同侧扩展;方案 C(内容存对象存储/文件)= 零 migration 但失去 SQL 可查与事务一致性。取 B(D5/D11)。
-- 必答 #7 备选否决:worker 并发调优——队列等待是否是瓶颈未实测,先调优是盲调;解析分级先出核心数据——改动解析器内部结构,复杂度最高,留作快路径也不够时的末手。故取「实测 → 必要时小文件同步快路径」最小路径(D7)。
+响应模型字段:MeetupReportOut{ meetup_id, totals{distance_km, climb_m, rider_count, submitted_count}, cells[{user_id, nickname, avatar, submitted, distance_km, avg_speed, climb_m, submitted_at}], media[现有 MeetupMediaOut] }——submitted_at 是 MeetupActivity.created_at 的序列化别名,不加新列(二轮 A-I1 定案);cells 构造必须保证 participants 全列(灰格是战报的命):两步查询——① query meetup_participants 全集(每人一格的骨架)② query MeetupActivity JOIN Activity(distance/avg_speed/elevation_gain 在 Activity 上,实证 models.py:74-78)取已交卷数据,Python 按 user_id 合并进骨架。禁止用单条 INNER JOIN 实现(会把未交卷者过滤掉,灰格永不出现——终轮 C2)。未交卷格:submitted=false,distance_km/avg_speed/climb_m/submitted_at 均为 null(前端按 no-dash 判例整块条件渲染)。climb_m = Activity.elevation_gain 的序列化别名,Field(serialization_alias) 同 submitted_at 模式。RouteGuideOut{ id, name, city, ready, content_md, cover_url, highlights, elevation_profile, route_book_id, distance, climb, preview_points }。ready = (route_book_id IS NOT NULL);distance/climb/preview_points 仅 ready=true 时有值,经 JOIN route_books 取(distance/climb 是 route_books 现有列,models.py:27-28 实证),不在 route_guides 加列。submitted_at 用 Pydantic Field(serialization_alias="submitted_at") 映射 created_at,禁止加数据库列。均 extra="forbid"。
 
 ## §5 风险表
 
@@ -220,10 +226,6 @@ scripts/import_route_guides.py 读 content/routes/<路线名>/:guide.md + track.
 | 6 | TENCENT_MAP_KEY 生产状态未知 | 低 | T6 SOP 第一步亲查 .env;缺失按步骤配;前端降级不白屏 |
 | 7 | 战报催缴感 | 低 | 格子无催语 |
 | 8 | onShareAppMessage 异步陷阱 | 中 | §3.3 onLoad 预拉定案;T3 测试含「分享标题 m/n 非 0/0」断言 |
-
-### 3.9 顺带登记的历史债(本期不修,防加深)
-
-segment/router.py ↔ meetup/service.py 存在历史双向 import(三轮 B 实证,反向侧已登记)。T1 实现禁令:meetup/cron.py 不得 import segment,防循环加深。登记进 docs/tech-debt.md。
 
 ## §6 已知限制
 
