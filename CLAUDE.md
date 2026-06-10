@@ -23,7 +23,9 @@
 3. 这个改动**是 spec 说要的**吗？（防 scope creep）
 4. 改动 >300 行 / 跨模块：**跑了代码层双审**吗？（详见 architect skill 信条 5）
 
-**附加门禁（每次 commit 前必跑）**：`git status --short && git diff --cached --stat`。有新增 import / router / schema / migration / test helper 文件时，必须确认对应 untracked 新文件已 stage；否则干净 clone 会 ImportError 或迁移缺文件。详见 `docs/agent-rules/agent-collaboration.md §5.0`。
+**附加门禁已升级为结构约束（2026-06-10 拍）**：`scripts/pre_commit_gate.sh` 已装入 `.git/hooks/pre-commit`——承载性目录（app/alembic/tests/miniprogram）的 untracked 文件物理拦截提交，>300 行新增响铃提醒双审留痕，动 models.py 没迁移文件响铃。干净 clone 后需重装：`cp scripts/pre_commit_gate.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`。
+
+**ship 后 1 问（与 commit 前 4 问对称 / 2026-06-10 拍 / 治「产品反馈环在规则层为零」）**：user-facing 功能 ship 时必答——这个功能的使用数据从哪条 SQL / 哪个日志可见？何时回看（写具体日期，进 PRD「数据回看」字段）？答不出 = 这个功能 ship 后永远不知道有没有人用，等于没装传感器。
 
 ## 🔍 调试 / 排查硬规则（2026-05-11 重大事故拍 / 每次 debug 必跑 / 压过"行动优先"）
 
@@ -45,6 +47,12 @@
 - 一期任务数 **≤ 6**——写到第 7 个停下自问"该拆下期吗？"
 - spec **≤ 800 行**——超了说明塞了脂肪，先审视哪些能砍
 - 违反 = 复杂度失控信号，立即与 Starsky 讨论
+
+## ♻️ 规则代谢条款（2026-06-10 拍 / 治「沉淀只加不退」）
+
+- 新规则必须带生效日期（无日期的存量规则视为 2026-06-10 前）
+- 每期 /neat 收尾跑**退役一问**：本期 0 次被引用的规则 / 已被脚本（hook/CI/schema 约束）吸收的规则 → 移出 CLAUDE.md 硬加载，归档到 docs/agent-rules/retired-rules.md。**散文升级成结构约束后必须删散文**——本文件曾 600 行砍回 343 又涨回 363，靠手术不如靠代谢
+- 已知风险表每行的「应对」列须含最后核实信息；`scripts/recheck_scanner.sh` 每期开工前跑一次，点名所有逾期复检项（persona 晾着 / 待 vN 修 / 真用观察类），每条要么拍板关闭要么写新日期续期，不许静默滚动
 
 ## 🛡 防火墙式扩展（防核心表被未来需求污染）
 
@@ -148,7 +156,7 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 - **Persona 宪法**：`docs/agent-rules/persona-constitution.md`（**2026-05-20 模块已砍 / 文档保留作教训**）
 
 **Persona Engine（2026-05-20 砍掉 / 装饰展示层不应上 sprint 主线）**
-- 整目录 `app/agent/persona/` + 3 张 persona_* 表 + 6 task plans + 宪法 v0.1 **暂停不删 / 晾着**——等 3-5 天看真实反应再回头判断（永久砍 / 复用为骑后教练复盘 / 或部分组件 DeepSeek client + persona_outputs 台账复用）
+- 整目录 `app/agent/persona/` + 3 张 persona_* 表 + 6 task plans + 宪法 v0.1 **暂停不删 / 晾着**——等 3-5 天看真实反应再回头判断（永久砍 / 复用为骑后教练复盘 / 或部分组件 DeepSeek client + persona_outputs 台账复用）。**⚠ 复检已逾期（2026-06-10 审计：5-20 落款的 3-5 天窗口过期 16 天无复判,三张僵尸表仍在 schema。待 Tim 拍板:永久砍 / 复用 / 续期到具体日期）**
 - **战略失误复盘**：memory `feedback_decoration_vs_guidance_velo_persona_lesson.md` + 全局 `~/.claude/CLAUDE.md` §2.1 "装饰展示 vs 主动指导"原则
 - **训练分析线**：`docs/superpowers/specs/2026-05-20-training-analytics-roadmap.md`（5 模块 6-8 周）
   - **Sprint 9 模块 A（FTP 智能化）✅ 2026-05-21 ship**：8 task + 9 hotfix / 详 `docs/prd/sprint-9-prd.md` + `docs/changelog.md` 2026-05-20→21 段
@@ -218,6 +226,7 @@ MVP 目标：GPX 上传解析 → 骑行卡片生成分享 → 赛段匹配排�
 ## 防黑盒化（每期开工前 + 收尾必做）
 
 - **开工前**：扫本期改动模块的历史代码，列 tech-debt 进 `docs/tech-debt.md`。**新期 spec 不允许依赖 tech-debt 中的项**——先修清理再做
+- **开工前**：跑 `bash scripts/recheck_scanner.sh`（复检点火器，2026-06-10 立）——所有逾期复检项当场拍板关闭或写新日期续期
 - **收尾**：刷新 `docs/architecture-guide.md` + 答黑盒度三问（10 分钟讲全貌 / 数据流复述 / 30 秒读懂任意文件）
 - 任何一项不满意当期清完，不留下期。**清理动作 5 种**：加注释解释设计意图 / 拆分职责混杂文件 / 补接口文档 / 更新模块 `__init__.py` 一句话说明 / 重命名歧义变量
 
@@ -342,7 +351,7 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 | Worker 重入 | 🟢 | RQ 超时重试 → 双重处理 | UPDATE WHERE 原子抢锁 ✅ `414fce9` |
 | OAuth state CSRF/重放 | 🟢 | JWT state 可重放 | Redis nonce GETDEL 一次性消费 ✅ v4 task-7.2 |
 | Webhook 裸奔 | 🟢 | 任意人可伪造回调 | subscription_id 校验 ✅ v4 task-7.4 |
-| scheduler 不跑 | ⚠️ | 无独立容器 → 导入永远不推进 | 待 v4 task-7.9 修 |
+| scheduler 不跑 | ⚠️ | 无独立容器 → 导入永远不推进 | 状态过期待复检（2026-06-10 审计：本行写「待 v4 修」而 v4 早已归档——要么已修未销账，要么搁置 2 月。下期开工前核实真实状态再改本行）|
 | N+1 查询 | 🟡 | 排名计算循环 SQL | 代码 TODO ⚠️ tech-debt |
 | 孤儿文件 | 🟡 | 上传成功 DB 失败 → 磁盘泄漏 | 无清理机制 ❌ tech-debt |
 | 匹配断裂 | 🟡 | 解析完成但匹配前崩溃 | 失败静默跳过 ❌ tech-debt |
