@@ -1,7 +1,7 @@
-# Spec v6.1 · Sprint 13+14 上线冲刺(熟人约骑闭环 + 路线百科上架)
+# Spec v6.2 · Sprint 13+14 上线冲刺(熟人约骑闭环 + 路线百科上架)
 
 > 上游:docs/prd/sprint-13-launch-prd.md(Tim 全 y,2026-06-11)+ 战略决策 D-004/D-005/D-006。
-> 审判轨迹:v6.0 双审第一轮 Critical=5 / Important=12 → 本版全修 → 待第二轮复核,Critical=0 后进 Step 8 Tim y/n。
+> 审判轨迹:v6.0 一轮 5C/12I 全修 → v6.1 二轮 5C/13I 全修(本版)→ 待三轮复核,Critical=0 后进 Step 8。
 
 ## §0.1 代码侧事实表(双审复核后修订版)
 
@@ -12,15 +12,15 @@
 | meetups.route_book_id FK→route_books,SET NULL | models.py:38 | ✓ |
 | GPX/FIT 上传路径状态机 4 态:pending→processing→completed/failed;importing 是 Strava 导入专用中间态(import_scheduler.py:354),不在本 spec 范围 | activity/models.py:13,36-39 + 双审 B-C3 修订 | ✓ |
 | activities.user_id FK→users;started_at 为骑行业务时间 | models.py:49 + CLAUDE.md 约定 | ✓ |
-| meetup 行锁在 publish 流程(_load_and_authorize_meetup) | app/meetup/service.py:125(B-I3 修订,原误标 460-475) | ✓ |
-| 后端上传白名单 {.gpx,.fit};worker FIT 分支(garmin_fit_sdk) | service.py:46 / worker.py:208,28 | ✓ |
+| _load_and_authorize_meetup 定义于 service.py:107,行锁语句在 :125;invite_only 门禁函数 _assert_invite_only_access 在 service.py:386-401 | app/meetup/service.py | ✓ |
+| 后端上传白名单 {.gpx,.fit};FIT 分支在 app/activity/worker.py:209(根目录 worker.py 仅 55 行,与此无关);garmin-fit-sdk 在 requirements.txt:19 | activity/service.py:46 / activity/worker.py:209 | ✓ |
 | 前端 upload.js extension 仅 ['gpx'] | upload.js:45-48 | ✓ |
 | meetup-create 有 onShareAppMessage;meetup-detail 无 | meetup-create.js:260-268 / meetup-detail.js | ✓ |
 | meetup tick 节拍 = scheduler 15 秒 × 计数器 20 = 5 分钟;complete_tick 自建 SessionLocal、无参签名 | scheduler.py:37,55 / cron.py:35-44 | ✓ |
 | 活动状态轻量端点 GET /api/activities/{id}/status(仅 status/error/duplicate_of)与详情端点分离 | activity/router.py:247,82 | ✓ |
 | IntegrityError try/except 是项目冲突处理惯例;ON CONFLICT DO NOTHING 全库零先例 | meetup/service.py:191-196,505-511 / activity/service.py:247 | ✓ |
 | Boolean server_default 项目主流写法 false()(meetup/models.py:108 等) | 双审 B-I1 | ✓ |
-| 北京时区已在两处各自定义(_BJ_TZ):training/service.py:39 / notification/progress_detector.py:46,无共享函数 | 双审 B hot-1 | ✓ |
+| 北京时区已在两处各自定义(_BJ_TZ):training/service.py:39 / notification/progress_detector.py:46,无共享函数(pre-T1 现状,T1 建共享模块) | 双审 B | ✓ |
 | migration 链末节点 = 20260603_meetup_create_fields | alembic/versions/ | ✓ |
 | route_books 字段(无 description/is_official);route_book/models.py 未导入 func | route_book/models.py:24-35,12-13 | ✓ |
 | meetup↔activity 现无任何关联 | 全库 grep 为空 | ✓ |
@@ -34,13 +34,14 @@
 | D1 | 关联走 meetup 侧 cron 轮询(attach tick),不在 activity worker 触发 | 方案 B 零反向依赖;竞态消解;崩溃自愈;格子点亮延迟 ≤5 分钟可接受 |
 | D2 | 关联窗口 = 约骑当天北京时区自然日 + started_at ≥ start_time−30min;不用 estimated_end_time | +3h 估算脆弱性不进匹配;骑 6 小时不掉窗 |
 | D3 | 每人每场只挂 1 条(UNIQUE meetup_id+user_id),取窗口内 started_at 最早一条 | 战报一人一格;约骑出发后最先开始的误挂概率最低 |
-| D4 | 补传截止 = 约骑日(start_time 北京自然日)+7 天 [🟡 初始值]。显式偏离 PRD 必答 #2 的「completed_at+N 天」并论证:completed_at 由 cron 节拍对 estimated_end 的判定产生,继承了 +3h 估算的脆弱性(与 D2 弃用它同一理由);约骑日是业务锚,稳定且用户可理解 | 边界 C;防陈年文件 |
-| D5 | 介绍富文本入新表 route_guides(1:1),不给 route_books 加列 | 防火墙;半衰期分离;未来实况层挂同侧 |
+| D4 | 补传截止 = start_time 时刻 + 168 小时(命名常量 ATTACH_WINDOW_DAYS=7,代码中可调,复检时一并审)。显式偏离 PRD 必答 #2 的「completed_at+N 天」并论证:completed_at 由 cron 节拍对 estimated_end 的判定产生,继承 +3h 估算脆弱性(与 D2 弃用它同一理由);start_time 时刻锚与 tick 查询 interval 同粒度,无日切歧义 | 边界 C;防陈年文件;二轮 A-C1 定案 |
+| D5 | 介绍富文本入新表 route_guides,不给 route_books 加列(D11 细化:guide 为主实体,route_book_id 可空) | 防火墙;半衰期分离;未来实况层挂同侧 |
 | D6 | route_books 加 is_official(Boolean, server_default=false(),与 meetup 模块写法一致);查询一律 .is_(True) 防 truthiness | 官方/用户路线筛选;陷阱 #1 |
 | D7 | 5 秒预算两段式:先实测(T6 脚本),p90>5s 才开小文件同步快路径 | 不为未测量的问题预建复杂度 |
 | D8 | 五环节埋点 = logger.info 行,固定前缀字符串 "SENSOR "(沿用项目日志惯例,不建事件表) | 百用户级 grep 足够 |
 | D9 | 战报格子按 meetup_activities.created_at ASC 排序(交卷先后)。与 D-006 的关系:D-006 押后的是骑行表现排名,交卷顺序是行为顺序不是表现排名,不违反 | v6.0 误引 D-006 作排序依据,本版立独立决策(双审 A-C1) |
 | D10 | 同一活动允许挂到多场约骑(用户真报名了两场窗口重叠的约骑时):uq_meetup_activity 只防同场重复,不做跨场互斥 | 极罕见场景,数据保真实;边界表新增行 |
+| D11 | route_guides 为官方路线的主实体:guide 可先于轨迹存在(route_book_id 可空 = track_pending 态),海拔曲线在灌库时预计算存列。官方路书无 source_activity_id,Trackpoint 链路不存在(二轮实证),海拔必须由灌库脚本从 track.gpx 算好落库 | 治 track_pending 无落点 + elevation_profile 无来源两个二轮 finding;列表页数据源=route_guides 全集,「发起约骑」按钮仅 route_book_id 非空时显示 |
 
 ## §2 数据模型
 
@@ -61,20 +62,26 @@ class MeetupActivity(Base):
     )
 ```
 
-迁移:alembic/versions/20260611_meetup_activities.py,`down_revision = "20260603_meetup_create_fields"`(链末实证)。本迁移同时含 §2.2 两项变更,一个文件三件事。
+迁移拆两个文件(任务并行回滚隔离,二轮 B-N2 定案):T1 → 20260611_meetup_activities.py(`down_revision = "20260603_meetup_create_fields"`,链末实证,只建本表);T7 → 20260612_route_guides.py(`down_revision = "20260611_meetup_activities"`,建 route_guides + route_books.is_official 列)。
 
 ### 2.2 新表 route_guides + route_books 加列(S14-T7,归属 app/route_book/models.py)
 
 ```python
 # models.py 顶部补:from sqlalchemy.sql import func, false   # 现文件未导入 func(实证)
 
-class RouteGuide(Base):
+class RouteGuide(Base):                        # 官方路线主实体(D11)
     __tablename__ = "route_guides"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    route_book_id = Column(Integer, ForeignKey("route_books.id", ondelete="CASCADE"), nullable=False, unique=True)
+    name = Column(String(128), nullable=False, unique=True)     # 路线名,灌库幂等键
+    city = Column(String(32), nullable=False, server_default="太原")
+    route_book_id = Column(Integer, ForeignKey("route_books.id", ondelete="SET NULL"),
+                           nullable=True, unique=True)          # 可空 = track_pending 态(D11)
     content_md = Column(Text, nullable=False)
     cover_url = Column(String(512), nullable=True)
-    highlights = Column(Text, nullable=True)
+    highlights = Column(Text, nullable=True)                    # JSON 数组文本
+    elevation_profile = Column(Text, nullable=True)             # JSON [[累计km, 海拔m],...] ~100 点,
+                                                                # 灌库时从 track.gpx 降采样预计算(D11);
+                                                                # 无轨迹时 NULL,前端 wx:if 整块隐藏(no-dash 判例)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 # RouteBook 加列:
@@ -91,12 +98,18 @@ is_official = Column(Boolean, nullable=False, server_default=false())
 
 函数签名与 session 管理(双审 B-C2 定案):`run_meetup_attach_tick()` 无参,自建 `SessionLocal()`,finally 关闭——与 run_meetup_complete_tick 完全同模式(cron.py:35-44 实证)。scheduler.py 集成:在现有 meetup 5 分钟计数器块内、complete_tick 之后追加调用;部署须 `docker compose up -d --build`(scheduler 容器加载新模块,restart 不够)。
 
+cron.py 新增 import 块(三轮 B-C1 定案,漏一个 = scheduler 启动即崩):
+`from sqlalchemy.exc import IntegrityError` / `from app.activity.models import Activity` / `from app.meetup.models import MeetupActivity, MeetupParticipant` / `from app.common.bj_time import to_bj_date`(bj_time.py 必须先于本文件创建——T1 卡内排序 blocking)。scheduler.py 顶部同步加 `run_meetup_attach_tick` 到现有 import 行(scheduler.py:22)。常量:`ATTACH_WINDOW_DAYS = 7` 定义在 cron.py 顶部。
+
 ```
 run_meetup_attach_tick():
   db = SessionLocal()
   try:
-    meetups = status IN ('OPEN','COMPLETED') AND start_time >= now() - interval '7 days'   # 精确定义
-    for meetup in meetups, for participant in meetup.participants:
+    meetups = status IN ('OPEN','COMPLETED') AND start_time >= now() - ATTACH_WINDOW_DAYS 天   # 时刻粒度,与 D4 同锚
+    for meetup in meetups:
+      participants = db.query(MeetupParticipant).filter_by(meetup_id=meetup.id).all()
+      # Meetup 模型零 relationship(实证),禁止写 meetup.participants —— 显式 query(service.py:427 惯例)
+      for participant in participants:
       若已存在 (meetup_id, user_id) 关联 → continue                       # D3 幂等快路径
       candidate = participant 的 activities:
           status == 'completed'
@@ -129,14 +142,16 @@ run_meetup_attach_tick():
 | 崩在循环中途 | 已 commit 的保留,下个 tick 续扫 |
 | 参与者退出后才上传 | JOIN 当前 participants,不挂;已挂后退出 → 行保留,战报随 participants 渲染自然消失 |
 | 北京时区日切 | 比较一律经 to_bj_date(aware),禁止比较 UTC 日期;T1 必含测试:约骑北京 20:00 开始、活动 started_at=UTC 12:00 同日命中 |
+| 未来约骑(还没到约骑日) | 扫描窗含未来约骑,但 D2 日期相等条件天然不匹配今天的活动(明文保证+测试) |
+| 同人同场二次上传 | 第一条已挂,第二条被 uq_meetup_user_one_cell 拒,except 跳过(与 E 同机制,单列防漏测) |
 
 ### 3.2 开奖与 5 秒预算(S13-T2)
 
-前端按 demo 重做(docs/prototypes/upload-reveal-first-rider.html 为交互蓝本)。轮询协议(B-I4 定案):上传成功 → 800ms 间隔轮询轻量端点 GET /api/activities/{id}/status;status=completed → 再 fetch 一次 GET /api/activities/{id} 拿完整开奖数据(避免轮询拖全量轨迹 JSONB)。>5s 显示阶段文案,>30s 转后台提示。upload.js:48 extension 改 ['gpx','fit'],wxml 文案同步。延迟实测脚本与快路径触发条件同 D7。
+前端按 demo 重做(docs/prototypes/upload-reveal-first-rider.html 为交互蓝本)。轮询协议(B-I4 定案):上传成功 → 800ms 间隔轮询轻量端点 GET /api/activities/{id}/status;status=completed → 再 fetch 一次 GET /api/activities/{id} 拿完整开奖数据(避免轮询拖全量轨迹 JSONB)。>5s 显示阶段文案,>30s 转后台提示。改造点三处明写:upload.js:48 extension 改 ['gpx','fit'];upload.js:177 轮询间隔 2000 改 800;wxml 文案同步(B-I2 二轮)。延迟实测脚本与快路径触发条件同 D7。
 
 ### 3.3 分享卡双发起点(S13-T3)
 
-meetup-detail.js:onLoad 阶段预拉战报统计(已交卷 m/报名 n)存入 data;onShareAppMessage 为同步钩子只读 data,禁止在钩子内异步 fetch(B hot-3,微信平台约束,异步结果不会等到分享弹窗)。路径 =/pages/meetup-detail/meetup-detail?id=X&token=Y&source=share_card。meetup-create 现有分享路径追加 &source=share_card;成绩卡页分享 source=report_card。
+meetup-detail.js:data 初始化块(现 L36-43)新增 reportStats: null;onLoad 阶段预拉战报统计(已交卷 m/报名 n)写入;onShareAppMessage 为同步钩子只读 data,禁止钩子内异步 fetch(微信平台约束,异步结果不会等到分享弹窗)。reportStats 仍为 null 时分享标题退化为纯约骑名,不显示 m/n(防 undefined/undefined)。路径 =/pages/meetup-detail/meetup-detail?id=X&token=Y&source=share_card。meetup-create 现有分享路径追加 &source=share_card;成绩卡页分享 source=report_card。
 
 ### 3.4 战报页(S13-T4)
 
@@ -144,16 +159,23 @@ meetup-detail.js:onLoad 阶段预拉战报统计(已交卷 m/报名 n)存入 dat
 
 ### 3.5 五环节埋点(S13-T5)
 
-get_meetup router 加 source query 参数(缺省 direct)+ 一行 `logger.info("SENSOR view meetup_id=%s viewer=%s token=%s source=%s", ...)`,viewer ∈ participant/guest/anon(由 get_optional_user + participants 判定)。数据回看查询照 v6.0 §3.5(grep SENSOR 行 + 两条 SQL),作为交付物写进 T5 task 卡。
+get_meetup router 函数签名加 `source: str = Query("direct")`(现 router.py:168-177 无此参数,实证)+ 一行 `logger.info("SENSOR view meetup_id=%s viewer=%s token=%s source=%s", ...)`,viewer ∈ participant/guest/anon(由 get_optional_user + participants 判定)。数据回看查询(T5 交付物,inline 定义,治二轮 A-C2 悬空引用):
+- ①触达:`docker compose logs api | grep "SENSOR view" | grep "source=share_card" | wc -l`
+- ②自主进入:同上加 `grep -E "viewer=(guest|anon)"`
+- ③报名:`SELECT count(*) FROM meetup_participants WHERE meetup_id=X;`
+- ④⑤交卷率:`SELECT count(*) FROM meetup_activities WHERE meetup_id=X;` ÷ ③
+- 复检哨兵:`SELECT count(DISTINCT user_id) FROM meetup_participants WHERE meetup_id=X AND user_id NOT IN (:创始三人);`
 
 ### 3.6 灌库管线(S14-T7)
 
-scripts/import_route_guides.py 读 content/routes/<路线名>/:guide.md + track.gpx[可选] + meta.json{name, city, is_official: true, highlights, cover_url 可选}。cover_url 缺省 null,前端列表空态显示占位图(A-I2 定案:首批允许无封面,不阻塞)。无轨迹路线标 track_pending 只建 guide;补 GPX 后按 name 幂等重跑。内容转换(13 张 HTML 卡 → guide.md)走 route skill 全部铁律,主 agent 亲自逐条做,天龙山以 v11 为定本(Tim 拍)。
+scripts/import_route_guides.py 读 content/routes/<路线名>/:guide.md + track.gpx[可选] + meta.json{name, city, highlights, cover_url 可选}。按 D11:有 track.gpx → 建 route_book(is_official=true)+ 算 elevation_profile + 建 guide(挂 book);无轨迹 → 只建 guide(route_book_id=NULL=track_pending),补 GPX 后按 name(unique 键)幂等重跑升级。cover_url 缺省 null,前端空态占位图。内容转换(13 张 HTML 卡 → guide.md)走 route skill 全部铁律,主 agent 亲自逐条做。定本:天龙山 v11(Tim 已拍);汾河 3 版推荐取最新的「环太原汾河自行车道」版 [🟡 按文件 mtime 推断],进 Step 8 清单待 Tim 拍。
 
 ### 3.7 路线页与双入口(S14-T8/T9)
 
-- GET /api/route-books 加 official 过滤参数(T8 交付,与列表页同任务——A-I3 修正归属);service 层 `RouteBook.is_official.is_(True)`;前端分两次调用分组渲染:?official=1 官方组 + ?mine=true 我的组,无需后端合并(B-I7 定案)
-- GET /api/route-books/{id}/guide(T8):guide 内容 + preview_points + 海拔曲线数据
+- 路线推荐列表页数据源 = GET /api/route-guides(新,T8):返回 route_guides 全集(含 track_pending,标 ready 布尔),官方列表与 route_books 解耦(D11)
+- 约骑向导官方组数据源 = GET /api/route-books?official=1(T9):service 层 `RouteBook.is_official.is_(True)`;前端两次调用分组渲染(官方组+我的组),无需后端合并
+- GET /api/route-guides/{id}(T8):content_md + cover + highlights + elevation_profile(本表列,D11)+ preview_points(route_book_id 非空时经现有 route_book 预览机制取,reference_line 出)
+- 路由注册顺序:route_guides 用独立子前缀 /api/route-guides,完全避开 route_book/router.py:104 的 /{route_book_id} 通配冲突(实证该文件 L6-7 已注明顺序敏感)
 - pages/route-list / route-detail(T8);详情底部「发起约骑」→ meetup-create?route_book_id=X 预填(T9)
 - meetup-create 路线步加官方路线组(T9);meetup-detail 嵌路书预览,移植 restoreRoutePreview(T9)
 
@@ -162,11 +184,12 @@ scripts/import_route_guides.py 读 content/routes/<路线名>/:guide.md + track.
 | 方法 | 路径 | 变更 | 任务 |
 |---|---|---|---|
 | GET | /api/meetups/{id} | 加 source 参数(仅日志)+ SENSOR 行 | T5 |
-| GET | /api/meetups/{id}/report | 新增。token 门禁同 get_meetup_detail 语义:invite_only + 无 token + 非参与者 → 404(B-I5 明示) | T4 |
-| GET | /api/route-books | 加 official 过滤 | T8 |
-| GET | /api/route-books/{id}/guide | 新增 | T8 |
+| GET | /api/meetups/{id}/report | 新增。token 门禁直接复用 _assert_invite_only_access(service.py:386-401,禁止重新实现防漂移):invite_only + 无 token + 非参与者 → 404 | T4 |
+| GET | /api/route-books | 加 official 过滤 | T9 |
+| GET | /api/route-guides | 新增(官方路线列表,含 track_pending) | T8 |
+| GET | /api/route-guides/{id} | 新增(详情) | T8 |
 
-响应模型字段(A 审 Nice-1 补):MeetupReportOut{ meetup_id, totals{distance_km, climb_m, rider_count, submitted_count}, cells[{user_id, nickname, avatar, submitted, distance_km, avg_speed, climb_m, submitted_at}], media[…现有 MeetupMediaOut] };RouteGuideOut{ route_book_id, name, distance, climb, city, content_md, cover_url, highlights, preview_points, elevation_profile }。均 extra="forbid"。
+响应模型字段:MeetupReportOut{ meetup_id, totals{distance_km, climb_m, rider_count, submitted_count}, cells[{user_id, nickname, avatar, submitted, distance_km, avg_speed, climb_m, submitted_at}], media[现有 MeetupMediaOut] }——submitted_at 是 MeetupActivity.created_at 的序列化别名,不加新列(二轮 A-I1 定案);cells 数据经 MeetupActivity JOIN Activity 取数(distance/avg_speed/elevation_gain 在 Activity 上,实证 models.py:74-78),JOIN 写法显式不走 relationship(模型无 relationship)。RouteGuideOut{ id, name, city, ready, content_md, cover_url, highlights, elevation_profile, route_book_id, distance, climb, preview_points }(后三项 ready=true 时有值)。均 extra="forbid"。
 
 ## §5 风险表
 
@@ -189,14 +212,22 @@ scripts/import_route_guides.py 读 content/routes/<路线名>/:guide.md + track.
 
 | 任务 | 核心交付 | 测试要点 |
 |---|---|---|
-| T1 关联 | 表+迁移(down_revision 明写)+attach tick+bj_time 共享模块 | 边界表 11 行各一测;幂等双跑;北京时区 20:00 案例;查询计划 |
+| T1 关联 | 表+独立迁移+attach tick+bj_time 共享模块(建模块先于 cron 改动,blocking 顺序) | 边界表 12 行各一测;幂等双跑;北京时区 20:00 案例;查询计划 |
 | T2 开奖 | upload 重做+fit 后缀+双端点轮询 | 前端协议三层自校验(wxml↔js 函数名/js↔api 参数/setData↔wxml 字段,判例 frontend_protocol);真机 5 文件计时 |
 | T3 分享 | detail 预拉+onShare 同步读 data+source 参数 | 分享标题 m/n 非 0/0;非参与者可转发 |
 | T4 战报 | report API+页面+detail 入口按钮 | 合计求和;灰格;导航不可达+两个正向入口可达 |
 | T5 埋点 | SENSOR 行+source 参数 | 三种 viewer 态断言 |
 | T6 部署 | SOP(--build)+三喇叭位+延迟实测+TENCENT_MAP_KEY 亲查 | 线上 curl;FIT 端到端;p90 落 PRD |
-| T7 灌库 | 双表迁移+脚本+13 条内容 | 幂等重跑;track_pending;is_official 查询 .is_(True) |
-| T8 路线页 | 列表+详情+官方过滤+guide API | preview_points 渲染;无封面空态 |
+| T7 灌库 | 独立迁移(route_guides+is_official)+脚本+13 条内容(汾河定本待 Tim) | 幂等重跑;track_pending 升级路径;elevation_profile 降采样正确性 |
+| T8 路线页 | route-guides 双端点+列表+详情页 | track_pending 态渲染(无曲线/无发起按钮);无封面空态 |
 | T9 双入口 | 预填+向导官方组+详情路书预览 | route_book_id 透传链 |
 
 执行顺序:T1→(T2,T3,T5 并行)→T4→T6 ‖ T7→(T8,T9)→上线。代码层每批产出后信条 5 双审+Codex 异源,commit 过门禁。
+
+## 附:二轮双审增补的事实
+- Meetup 模型零 relationship 定义,查参与者一律显式 query(service.py:427-428 惯例)[✓]
+- app/common/ 现仅 geo.py + __init__.py,bj_time.py 待建 [✓ ls]
+- upload.js:177 现有轮询间隔 2000ms [✓]
+- route_book/router.py:104 有 /{route_book_id} 通配路由,新增 /{id}/guide 需注意注册顺序(router.py:6-7 已有顺序敏感注释)[✓]
+- meetup-detail.js data 初始化块(L36-43)无 report 相关字段 [✓]
+- scheduler.py:22 顶层 import cron 函数,新增函数需同步加 import 行 [✓]
