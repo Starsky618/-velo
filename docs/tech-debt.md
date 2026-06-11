@@ -6,6 +6,18 @@
 
 ---
 
+## 🟡 P3：meetup 包内 service↔media_service 循环 import（延迟 import 规避 / Sprint 13 T4 / 2026-06-11）
+
+`media_service.py` 顶层 import `service._load_and_authorize_meetup`；`service.get_meetup_report` 函数内延迟 import `media_service`（顶层回 import 会真循环炸）。运行正确但属架构债。**触发清理条件**：下次重构 meetup 包时把 `_load_and_authorize_meetup` 抽到无 media 依赖的 `_auth.py` 辅助模块，消除环。
+
+---
+
+## 🟡 P2：T7 灌库脚本 GPX 写库路径仅真 PG 可测（SQLite 两层盾牌 / Sprint 14 T7 双审实证 / 2026-06-11）
+
+GPX→route_book 的集成测试在 SQLite 下 `pytest.skip`（PostGIS + Geometry NOT NULL 都模拟不了）——本批 `db.flush()` 顺序 bug（生产 PG 必炸）就是被这层盾牌掩盖、靠高危双审才抓到。**应对**：① 灌库前生产 dry-run + 先灌 1 条验证是既定 SOP ② **触发清理条件**：CI 配 PG 容器跑 `requires PostGIS` 标注的测试（test_route_guides_import 4 个跳过项），让这层盲区获得自动覆盖。
+
+---
+
 ## 🟡 P2：SQLite 测试库不强制外键 → 所有 ON DELETE CASCADE 断言是测试盲区（Sprint 13 T1 双审实证 / 2026-06-11）
 
 测试库（tests/conftest.py SQLite :memory:）没开 `PRAGMA foreign_keys=ON`，所有依赖 DB 级联的删除行为在测试里**静默不发生**——级联类断言只能靠"业务层显式删"才可测（delete_user 第 3 步显式删模式即此因）。

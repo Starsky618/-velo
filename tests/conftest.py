@@ -256,6 +256,11 @@ _route_books_table = Table(
     Column("source", String(32), nullable=False),
     Column("source_activity_id", Integer),
     Column("city", String(32), nullable=False, default="unknown"),
+    # S14-T7：官方路线标记。简化表必须和 ORM 模型同步加列，否则 db.query(RouteBook) 立刻
+    # "no such column"（本列缺失曾让 11 个既有测试集体失败，2026-06-11 实证）。
+    # 必须是 server_default（进 CREATE TABLE 的 DEFAULT）：ORM 模型声明的是 server_default，
+    # 插入时会省略本列，Python 端 default 帮不上忙，省略即撞 NOT NULL。
+    Column("is_official", Boolean, nullable=False, server_default="0"),
     Column("created_at", DateTime(timezone=True)),
 )
 

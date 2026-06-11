@@ -1,0 +1,272 @@
+"""路线百科灌库脚本——把 content/routes 里的路线手册搬进数据库。
+
+操作注意事项：先完整校验文件，再打开数据库；这样 guide.md 或 meta.json 有错时不会写半截数据。
+输入是每条路线一个文件夹，输出是 route_guides 记录；有 track.gpx 时额外生成官方 route_book。
+"""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+import json
+from pathlib import Path
+import sys
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from geoalchemy2 import WKTElement
+
+from app.activity.models import Activity  # noqa: F401
+from app.database import SessionLocal
+from app.parsing.geo_math import haversine
+from app.parsing.gpx_parser import GPXParser
+from app.parsing.types import Trackpoint
+from app.route_book.models import RouteBook, RouteGuide  # noqa: F401
+from app.user.models import User  # noqa: F401
+
+
+@dataclass(frozen=True)
+class RouteInput:
+    """单条待灌路线——像一张已经验过内容的入库单。"""
+
+    route_dir: Path
+    name: str
+    city: str
+    content_md: str
+    highlights: str | None
+    cover_url: str | None
+    track_path: Path | None
+
+
+@dataclass(frozen=True)
+class ParsedTrack:
+    """GPX 解析结果——route_book 和 guide 海拔曲线共用这一袋数据。"""
+
+    distance: float
+    climb: float
+    reference_line: str
+    elevation_profile: str
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Import official route guides into VELO database.")
+    parser.add_argument("--content-dir", default="content/routes", help="route guide directory")
+    parser.add_argument("--dry-run", action="store_true", help="print actions without DB writes")
+    args = parser.parse_args(argv)
+
+    routes = load_routes(Path(args.content_dir))
+    if args.dry_run:
+        print_dry_run(routes)
+        return
+
+    db = SessionLocal()
+    try:
+        for route in routes:
+            upsert_route(db, route)
+            db.commit()
+    finally:
+        db.close()
+
+
+def load_routes(content_dir: Path) -> list[RouteInput]:
+    """把路线文件夹读成入库单；任何一条坏了，都在进 DB 前拦住。"""
+    if not content_dir.exists():
+        _die(f"content directory not found: {content_dir}")
+
+    routes: list[RouteInput] = []
+    for route_dir in sorted(path for path in content_dir.iterdir() if path.is_dir()):
+        guide_path = route_dir / "guide.md"
+        meta_path = route_dir / "meta.json"
+        if not guide_path.exists():
+            _die(f"{route_dir}: guide.md missing")
+        if not meta_path.exists():
+            _die(f"{route_dir}: meta.json missing")
+
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            _die(f"{route_dir}: meta.json invalid JSON: {exc}")
+
+        name = meta.get("name")
+        if not isinstance(name, str) or not name.strip():
+            _die(f"{route_dir}: meta.json field 'name' is required")
+
+        highlights = _load_highlights(route_dir, meta)
+        cover_url = meta.get("cover_url")
+        if cover_url is not None and not isinstance(cover_url, str):
+            _die(f"{route_dir}: meta.json field 'cover_url' must be a string")
+
+        track_path = route_dir / "track.gpx"
+        routes.append(
+            RouteInput(
+                route_dir=route_dir,
+                name=name.strip(),
+                city="太原",
+                content_md=guide_path.read_text(encoding="utf-8"),
+                highlights=highlights,
+                cover_url=cover_url,
+                track_path=track_path if track_path.exists() else None,
+            )
+        )
+    return routes
+
+
+def _load_highlights(route_dir: Path, meta: dict) -> str | None:
+    # highlights 是可选字段（spec §3.6：必填只有 name）——缺省返回 None 存 NULL，
+    # 前端整块隐藏；只对"存在但不是合法 JSON 数组"报错退出（高危双审 C1 修正）。
+    if "highlights" not in meta:
+        return None
+
+    raw = meta["highlights"]
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            _die(f"{route_dir}: highlights must be a JSON array string: {exc}")
+        highlights_text = raw
+    elif isinstance(raw, list):
+        parsed = raw
+        highlights_text = json.dumps(raw, ensure_ascii=False)
+    else:
+        _die(f"{route_dir}: highlights must be a JSON array string")
+
+    if not isinstance(parsed, list):
+        _die(f"{route_dir}: highlights must json.loads() to a list")
+    return highlights_text
+
+
+def print_dry_run(routes: list[RouteInput]) -> None:
+    print(f"DRY RUN: {len(routes)} route guide(s)")
+    for route in routes:
+        if route.track_path is None:
+            print(f"- {route.name}: status=track_pending, would create/update guide only")
+        else:
+            print(f"- {route.name}: would create/update route_book from {route.track_path}")
+
+
+def upsert_route(db, route: RouteInput) -> None:
+    guide = db.query(RouteGuide).filter(RouteGuide.name == route.name).first()
+    route_book_id = None
+    elevation_profile = None
+
+    if route.track_path is not None:
+        parsed = parse_track(route.track_path)
+        route_book = None
+        if guide is not None and guide.route_book_id is not None:
+            route_book = db.query(RouteBook).filter(RouteBook.id == guide.route_book_id).first()
+        if route_book is None:
+            route_book = RouteBook()
+            db.add(route_book)
+        # 先把全部字段赋完再 flush：name/distance/reference_line/source 都是 NOT NULL 无默认，
+        # 先 flush 会让 INSERT 带着一排 NULL 直接撞约束——SQLite 简化表测不出，生产 PG 必炸
+        # （高危双审 C1：本地两层盾牌掩盖的生产事故位）。
+        apply_route_book(route_book, route, parsed)
+        db.flush()
+        route_book_id = route_book.id
+        elevation_profile = parsed.elevation_profile
+
+    if guide is None:
+        guide = RouteGuide(name=route.name)
+        db.add(guide)
+
+    guide.city = route.city
+    guide.content_md = route.content_md
+    guide.cover_url = route.cover_url
+    guide.highlights = route.highlights
+    guide.route_book_id = route_book_id
+    guide.elevation_profile = elevation_profile
+
+
+def parse_track(track_path: Path) -> ParsedTrack:
+    result = GPXParser().parse(track_path.read_bytes())
+    points = result.trackpoints
+    cumulative = cumulative_distances(points)
+    return ParsedTrack(
+        distance=cumulative[-1] if cumulative else 0.0,
+        climb=calculate_climb(points),
+        reference_line=build_linestring(points),
+        elevation_profile=json.dumps(downsample_elevation(points, cumulative), ensure_ascii=False),
+    )
+
+
+def apply_route_book(route_book: RouteBook, route: RouteInput, parsed: ParsedTrack) -> None:
+    route_book.creator_id = None
+    route_book.name = route.name
+    route_book.distance = parsed.distance
+    route_book.climb = parsed.climb
+    # WKTElement 是项目既有惯例（route_book/service.py 三处同写法）——
+    # 裸 EWKT 字符串靠 geoalchemy2 的隐式识别，非推荐路径且与惯例漂移（高危双审 I2）
+    route_book.reference_line = WKTElement(parsed.reference_line, srid=4326)
+    route_book.file_id = str(route.track_path)
+    route_book.file_type = "gpx"
+    route_book.source = "file_upload"
+    route_book.source_activity_id = None
+    route_book.city = "taiyuan"
+    route_book.is_official = True
+
+
+def cumulative_distances(points: list[Trackpoint]) -> list[float]:
+    if not points:
+        return []
+    distances = [0.0]
+    total = 0.0
+    for prev, curr in zip(points, points[1:]):
+        total += haversine(prev.lat, prev.lon, curr.lat, curr.lon)
+        distances.append(total)
+    return distances
+
+
+def calculate_climb(points: list[Trackpoint]) -> float:
+    climb = 0.0
+    for prev, curr in zip(points, points[1:]):
+        if prev.ele is None or curr.ele is None:
+            continue
+        delta = curr.ele - prev.ele
+        if delta > 0:
+            climb += delta
+    return climb
+
+
+def build_linestring(points: list[Trackpoint]) -> str:
+    pairs = ", ".join(f"{point.lon} {point.lat}" for point in points)
+    return f"SRID=4326;LINESTRING({pairs})"
+
+
+def downsample_elevation(points: list[Trackpoint], cumulative: list[float], limit: int = 100) -> list[list[float | None]]:
+    if not points:
+        return []
+    if len(points) <= limit:
+        return [_profile_point(distance, point) for distance, point in zip(cumulative, points)]
+
+    total = cumulative[-1]
+    selected: list[int] = [0]
+    cursor = 1
+    for step in range(1, limit - 1):
+        target = total * step / (limit - 1)
+        while cursor < len(cumulative) - 1 and cumulative[cursor] < target:
+            cursor += 1
+        before = max(cursor - 1, 0)
+        after = cursor
+        chosen = before if abs(cumulative[before] - target) <= abs(cumulative[after] - target) else after
+        if chosen != selected[-1]:
+            selected.append(chosen)
+    if selected[-1] != len(points) - 1:
+        selected.append(len(points) - 1)
+
+    return [_profile_point(cumulative[index], points[index]) for index in selected]
+
+
+def _profile_point(distance_m: float, point: Trackpoint) -> list[float | None]:
+    elevation = round(point.ele, 1) if point.ele is not None else None
+    return [round(distance_m / 1000, 3), elevation]
+
+
+def _die(message: str) -> None:
+    print(f"ERROR: {message}")
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

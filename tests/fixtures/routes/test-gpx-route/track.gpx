@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="velo-test" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>测试 GPX 路线</name>
+    <trkseg>
+      <trkpt lat="37.800000" lon="112.500000">
+        <ele>800</ele>
+        <time>2026-06-11T00:00:00Z</time>
+      </trkpt>
+      <trkpt lat="37.810000" lon="112.510000">
+        <ele>830</ele>
+        <time>2026-06-11T00:05:00Z</time>
+      </trkpt>
+      <trkpt lat="37.820000" lon="112.520000">
+        <ele>820</ele>
+        <time>2026-06-11T00:10:00Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>
