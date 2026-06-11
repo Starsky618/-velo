@@ -1,21 +1,7 @@
 const api = require('../../utils/api')
-const { renderMarkdown } = require('../../utils/md-render')
+const { renderMarkdown, splitSections } = require('../../utils/md-render')
 const { wgs84ToGcj02 } = require('../../utils/coords')
 const mapTheme = require('../../utils/map-theme')
-
-function formatDistance(value) {
-  if (value === undefined || value === null) return ''
-  var n = Number(value)
-  if (!Number.isFinite(n)) return ''
-  return n.toFixed(1) + ' km'
-}
-
-function formatClimb(value) {
-  if (value === undefined || value === null) return ''
-  var n = Number(value)
-  if (!Number.isFinite(n)) return ''
-  return '爬升 ' + Math.round(n) + ' m'
-}
 
 function buildRoutePreview(points) {
   if (!Array.isArray(points) || points.length < 2) {
@@ -57,17 +43,33 @@ function buildRoutePreview(points) {
   }
 }
 
+function buildSections(markdown) {
+  return splitSections(markdown)
+    .filter(function (section) {
+      return section.title !== '真实画面' && String(section.body || '').trim()
+    })
+    .map(function (section) {
+      return {
+        title: section.title,
+        body: section.body,
+        expanded: false,
+        nodes: renderMarkdown(section.body),
+        hasElevationSlot: section.title === '核心数据',
+        hasMapSlot: section.title === '怎么骑',
+      }
+    })
+}
+
 Page({
   data: Object.assign({}, mapTheme.getPaperMapData(), {
     guideId: null,
     loading: true,
     error: '',
     guide: null,
-    markdownNodes: [],
+    sections: [],
     highlights: [],
+    introText: '',
     coverSrc: '/assets/route-placeholder.svg',
-    distanceText: '',
-    climbText: '',
     hasElevation: false,
     routePreviewVisible: false,
     routePreviewCenter: { latitude: 37.8706, longitude: 112.5489 },
@@ -95,20 +97,32 @@ Page({
         var hasElevation = Array.isArray(guide.elevation_profile) && guide.elevation_profile.length > 1
         that.setData(Object.assign({
           guide: guide,
-          markdownNodes: renderMarkdown(guide.content_md),
+          sections: buildSections(guide.content_md),
           highlights: Array.isArray(guide.highlights) ? guide.highlights : [],
+          introText: Array.isArray(guide.highlights) && guide.highlights.length ? guide.highlights[0] : '',
           coverSrc: guide.cover_url || '/assets/route-placeholder.svg',
-          distanceText: formatDistance(guide.distance),
-          climbText: formatClimb(guide.climb),
           hasElevation: hasElevation,
           loading: false,
-        }, preview), function () {
-          if (hasElevation) that.drawElevation(guide.elevation_profile)
-        })
+          // 曲线不在 onLoad 画：全折叠态下 canvas 在 hidden 祖先里，画了也是空白——
+          // 唯一生效的绘制时机是 toggleSection 展开「核心数据」那一刻（集成审 I1）
+        }, preview))
       })
       .catch(function () {
         that.setData({ loading: false, error: '路线暂时加载失败' })
       })
+  },
+
+  toggleSection: function (event) {
+    var index = Number(event.currentTarget.dataset.index)
+    var sections = this.data.sections || []
+    if (!Number.isInteger(index) || index < 0 || index >= sections.length) return
+    var nextExpanded = !sections[index].expanded
+    this.setData({
+      ['sections[' + index + '].expanded']: nextExpanded,
+    })
+    if (nextExpanded && sections[index].hasElevationSlot && this.data.hasElevation && this.data.guide) {
+      this.drawElevation(this.data.guide.elevation_profile)
+    }
   },
 
   drawElevation: function (profile) {

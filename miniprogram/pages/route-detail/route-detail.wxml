@@ -4,65 +4,53 @@
 
   <view wx:else class="detail-body">
     <image class="hero-cover" src="{{coverSrc}}" mode="aspectFill" />
-    <view class="title-row">
-      <view>
-        <view class="route-name">{{guide.name}}</view>
-        <view class="city">{{guide.city}}</view>
+    <view wx:if="{{introText}}" class="intro-line">{{introText}}</view>
+
+    <view class="accordion-list">
+      <view class="accordion-section {{item.expanded ? 'expanded' : 'collapsed'}}" wx:for="{{sections}}" wx:key="title">
+        <view class="accordion-title-row" data-index="{{index}}" bindtap="toggleSection">
+          <view class="accordion-title">{{item.title}}</view>
+          <view class="expand-indicator">{{item.expanded ? '▼' : '▶'}}</view>
+        </view>
+        <view class="accordion-body" hidden="{{!item.expanded}}">
+          <rich-text nodes="{{item.nodes}}" />
+          <view wx:if="{{guide.ready && item.hasElevationSlot}}" class="elevation-section" hidden="{{!item.expanded || !hasElevation}}">
+            <canvas canvas-id="elevation-canvas" class="elevation-canvas" hidden="{{!item.expanded || !hasElevation}}"></canvas>
+          </view>
+          <view wx:if="{{guide.ready && item.expanded && item.hasMapSlot && routePreviewVisible}}" class="route-map-wrap">
+            <map wx:if="{{paperMapHasCustomStyle}}"
+                 class="route-map"
+                 latitude="{{routePreviewCenter.latitude}}"
+                 longitude="{{routePreviewCenter.longitude}}"
+                 scale="12"
+                 markers="{{routePreviewMarkers}}"
+                 polyline="{{routePreviewPolylines}}"
+                 include-points="{{routePreviewIncludePoints}}"
+                 subkey="{{paperMapSubkey}}"
+                 layer-style="{{paperMapLayerStyle}}"
+                 enable-poi="{{false}}"
+                 enable-building="{{false}}"
+                 enable-traffic="{{false}}"
+                 enable-3D="{{false}}"
+                 enable-rotate="{{false}}"
+                 show-location="{{false}}"></map>
+            <map wx:else
+                 class="route-map"
+                 latitude="{{routePreviewCenter.latitude}}"
+                 longitude="{{routePreviewCenter.longitude}}"
+                 scale="12"
+                 markers="{{routePreviewMarkers}}"
+                 polyline="{{routePreviewPolylines}}"
+                 include-points="{{routePreviewIncludePoints}}"
+                 enable-traffic="{{false}}"
+                 enable-3D="{{false}}"
+                 enable-rotate="{{false}}"
+                 show-location="{{false}}"></map>
+          </view>
+        </view>
       </view>
-      <view class="status {{guide.ready ? 'ready' : 'pending'}}">{{guide.ready ? '有轨迹' : '文字版'}}</view>
     </view>
 
-    <view wx:if="{{distanceText || climbText}}" class="metric-row">
-      <view wx:if="{{distanceText}}" class="metric">{{distanceText}}</view>
-      <view wx:if="{{climbText}}" class="metric">{{climbText}}</view>
-    </view>
-
-    <view wx:if="{{highlights.length}}" class="section">
-      <view class="section-title">亮点</view>
-      <view class="highlight" wx:for="{{highlights}}" wx:key="*this">{{item}}</view>
-    </view>
-
-    <view class="section">
-      <rich-text nodes="{{markdownNodes}}" />
-    </view>
-
-    <view class="section elevation-section" hidden="{{!hasElevation}}">
-      <view class="section-title">海拔曲线</view>
-      <canvas canvas-id="elevation-canvas" class="elevation-canvas" hidden="{{!hasElevation}}"></canvas>
-    </view>
-
-    <view wx:if="{{routePreviewVisible}}" class="section">
-      <view class="section-title">轨迹预览</view>
-      <map wx:if="{{paperMapHasCustomStyle}}"
-           class="route-map"
-           latitude="{{routePreviewCenter.latitude}}"
-           longitude="{{routePreviewCenter.longitude}}"
-           scale="12"
-           markers="{{routePreviewMarkers}}"
-           polyline="{{routePreviewPolylines}}"
-           include-points="{{routePreviewIncludePoints}}"
-           subkey="{{paperMapSubkey}}"
-           layer-style="{{paperMapLayerStyle}}"
-           enable-poi="{{false}}"
-           enable-building="{{false}}"
-           enable-traffic="{{false}}"
-           enable-3D="{{false}}"
-           enable-rotate="{{false}}"
-           show-location="{{false}}"></map>
-      <map wx:else
-           class="route-map"
-           latitude="{{routePreviewCenter.latitude}}"
-           longitude="{{routePreviewCenter.longitude}}"
-           scale="12"
-           markers="{{routePreviewMarkers}}"
-           polyline="{{routePreviewPolylines}}"
-           include-points="{{routePreviewIncludePoints}}"
-           enable-traffic="{{false}}"
-           enable-3D="{{false}}"
-           enable-rotate="{{false}}"
-           show-location="{{false}}"></map>
-    </view>
-
-    <button wx:if="{{guide.ready}}" class="start-button" bindtap="onStartMeetup">发起约骑</button>
+    <button class="start-button" bindtap="onStartMeetup">发起约骑</button>
   </view>
 </view>

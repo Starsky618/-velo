@@ -107,6 +107,30 @@ function renderMarkdown(markdown) {
   return nodes
 }
 
+function splitSections(markdown) {
+  var sections = []
+  var current = null
+  var lines = String(markdown || '').split(/\r?\n/)
+
+  lines.forEach(function (line) {
+    if (line.indexOf('## ') === 0) {
+      if (current) sections.push(current)
+      current = { title: line.slice(3).trim(), body: [] }
+      return
+    }
+    if (current) current.body.push(line)
+  })
+
+  if (current) sections.push(current)
+  return sections.map(function (section) {
+    return {
+      title: section.title,
+      body: section.body.join('\n'),
+    }
+  })
+}
+
 module.exports = {
   renderMarkdown: renderMarkdown,
+  splitSections: splitSections,
 }

@@ -23,6 +23,70 @@
   background: #f7f3ea;
 }
 
+.intro-line {
+  margin-top: 22rpx;
+  color: #111827;
+  font-size: 30rpx;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.accordion-list {
+  margin-top: 24rpx;
+}
+
+.accordion-section {
+  margin-top: 18rpx;
+  background: #ffffff;
+  border: 1rpx solid #ececf0;
+  border-radius: 8rpx;
+  overflow: hidden;
+}
+
+.accordion-section.expanded {
+  border-color: #e5e7eb;
+}
+
+.accordion-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  min-height: 88rpx;
+  padding: 0 24rpx;
+  cursor: pointer;
+}
+
+.accordion-title {
+  color: #111827;
+  font-size: 30rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.expand-indicator {
+  flex: 0 0 auto;
+  color: #6b7280;
+  font-size: 24rpx;
+  line-height: 1;
+}
+
+.accordion-body {
+  padding: 0 24rpx 24rpx;
+}
+
+.accordion-body .md-h2:first-child,
+.accordion-body .md-h1:first-child,
+.accordion-body .md-p:first-child,
+.accordion-body .md-ul:first-child {
+  margin-top: 0;
+}
+
+.route-map-wrap,
+.elevation-section {
+  margin-top: 22rpx;
+}
+
 .title-row {
   display: flex;
   justify-content: space-between;
