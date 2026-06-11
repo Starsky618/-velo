@@ -85,7 +85,7 @@ router：`official: bool | None = Query(None)`；现有调用方（不传参）�
 
 - **预填**：meetup-create onLoad 读 `options.route_book_id` → 有值时拉该路书详情 → setData 选中态 + `restoreRoutePreview(routeBookId)` → 用户落在"路线已选好"的向导第一步（现有草稿恢复路径已验证此模式可行，照抄）
 - **官方组**：选路线步并行两次调用——`GET /api/route-books?official=1`（官方组）+ 现有"我的路书"调用；两组分别渲染，组标题「官方路线」「我的路书」；官方组为空时整组隐藏（上线初期就有 T7 灌的数据，但代码要容忍空）
-- **详情预览**：meetup-detail onLoad 后若 `meetup.route_book_id` 非空 → 拉路书 preview_points → map 组件 polyline 渲染（样式抄 meetup-create 预览）；route_book 已被删（SET NULL 孤儿态）→ 整块消失，不报错
+- **详情预览**：meetup-detail onLoad 后若 `meetup.route_book_id` 非空 → 拉路书 preview_points → map 组件 polyline 渲染——**整链照抄 meetup-create 预览**（README 地图绘制契约：coords.js 转换 + mapTheme 出线 + subkey/layer-style 绑定，meetup-create 是完整范例已实证）；route_book 已被删（SET NULL 孤儿态）→ 整块消失，不报错
 
 ## 4. 测试用例
 

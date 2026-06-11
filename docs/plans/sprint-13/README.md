@@ -73,7 +73,13 @@ T7 灌库 ──┬→ T8 路线页 ──┐
 - **avatar 字段定案**：users 表字段是 `avatar_url`（[✓ grep] `app/user/models.py:45`），cells 用 `avatar_url` 沿用 `InviteeSummary` 惯例（spec §4 已预留"以 users 模型预读为准"）
 - **降级契约**：T2 / T3 对 `GET /api/meetups/{id}/report` 的预拉请求若 404 / 失败 → `reportStats = null` 降级（标题退化为纯约骑名，不显示 m/n，防 undefined/undefined）——spec §3.3 已授权，T4 上线后自动恢复
 
-**汾河闸门（T7 硬约束）**：汾河 3 版定本待 Tim 拍板（推荐最新「环太原汾河自行车道」版）；拍板前 T7 只灌其余 12 条，**未决决策不进实施**。
+**汾河闸门（T7 硬约束）**：~~汾河 3 版定本待 Tim 拍板~~ **已拍（2026-06-11）：用最新「环太原汾河自行车道」版，13 条全灌。**
+
+**地图绘制契约（2026-06-11 复核修订——既有基建勿重复造轮子）**：前端画地图三件套**全部已存在**，新页面照用不新建：
+- 坐标转换：`miniprogram/utils/coords.js` 的 `wgs84ToGcj02(lat,lng)→[lat,lng]`（热图期建，heatmap-card + meetup-create 在用，与后端 coord_convert.py 镜像）——任何 WGS-84 点画上 `<map>` 前必须过它
+- 底图样式：`miniprogram/utils/map-theme.js`（纸面底图统一出口）——map 组件必须绑 `subkey="{{paperMapSubkey}}" layer-style="{{paperMapLayerStyle}}"`（meetup-create/map-picker 已有绑定范例），页面 data 经 `mapTheme.getPaperMapData()` 注入；**subkey 值待 Tim 填**（腾讯控制台样式已调好：高速等调浅突出轨迹，企业 key 在后端 .env）
+- 路线画线：`mapTheme.buildRoutePreviewPolylines(points)` 统一颜色/宽度，禁止页面自配色
+适用：T8 路线详情轨迹、T9 约骑详情路书预览。教训留档：主 agent 曾误判"前端无转换"重复造 coord.js（grep 被 head 截断的取证失误），已删。
 
 ## 风险分层审查 + 门禁 SOP（每 task 收尾必跑 / 2026-06-11 Tim 拍）
 

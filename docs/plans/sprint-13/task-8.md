@@ -114,7 +114,7 @@ service 要点：
 - **route-detail**：
   - content_md 渲染：`miniprogram/utils/md-render.js` 最小子集（标题/段落/粗体/无序列表/图片）→ `<rich-text>` 节点数组；**不引第三方 md 库**（towxml 等过重）；不认识的语法原样当段落，宁可平淡不可吃字
   - 海拔曲线：canvas + `hidden` 控制（**禁 wx:if**，陷阱 #17）；数据 = elevation_profile 直接画，无值整块隐藏
-  - 轨迹预览：map 组件 + polyline（preview_points），照 meetup-create 选路线的地图渲染模式抄；ready=false 整块消失
+  - 轨迹预览：map 组件 + polyline（preview_points），照 meetup-create 选路线的地图渲染模式**整链照抄**（README 地图绘制契约）：`utils/coords.js` 的 wgs84ToGcj02 转坐标 + `mapTheme.buildRoutePreviewPolylines` 出线 + wxml 绑 subkey/layer-style；ready=false 整块消失
   - 底部「发起约骑」按钮：ready=true 才渲染；本 task 只渲染按钮 + 占位 navigateTo（真预填接线归 T9，按钮 wx:if 条件先按 ready 写好）
 - no-dash 判例全页生效：任何 null 字段整块 wx:if 隐藏
 
