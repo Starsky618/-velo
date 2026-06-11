@@ -34,12 +34,12 @@
 
 | 环节 | 传感器 | 从哪查 |
 |---|---|---|
-| ① 看到分享卡进来 | 分享卡落地访问(路径带 source 参数,本期新增)| 约骑详情接口访问日志(本期新增 logger 行:meetup_id+访客态+token) |
-| ② 自主进入 | 非参与者访问约骑详情 | 同上,排除已报名 user_id |
-| ③ 报名 | meetup_participants 新增 | SQL count(表已存 [✓ grep]) |
-| ④ 到场骑完 | 时间窗内关联 activity | meetup↔activity 关联表(本期新建) |
-| ⑤ 回流留痕 | 交卷率 = 已交卷/报名 | ④÷③ |
-| 复检哨兵 | 非创始团队参与者数(去重) | participants JOIN users 排除创始三人,供 D-004 复检直读 |
+| ① 看到分享卡进来 | 分享卡落地访问(路径带 source 参数,本期新增)| `docker compose logs api \| grep "SENSOR view" \| grep "source=share_card" \| wc -l` |
+| ② 自主进入 | 非参与者访问约骑详情 | `docker compose logs api \| grep "SENSOR view" \| grep "source=share_card" \| grep -E "viewer=(guest\|anon)" \| wc -l` |
+| ③ 报名 | meetup_participants 新增 | `SELECT count(*) FROM meetup_participants WHERE meetup_id=X;` |
+| ④ 到场骑完 | 时间窗内关联 activity | `SELECT count(*) FROM meetup_activities WHERE meetup_id=X;` |
+| ⑤ 回流留痕 | 交卷率 = 已交卷/报名 | 先跑 ③ 和 ④,再算 `④ ÷ ③` |
+| 复检哨兵 | 非创始团队参与者数(去重) | `SELECT count(DISTINCT user_id) FROM meetup_participants WHERE meetup_id=X AND user_id NOT IN (:创始三人);` |
 
 - 注:①②④⑤的传感器当前均不存在 [✓ 集成审实证],它们本身就是 task 5 的工作内容,不是现状描述
 - 回看节奏:上线后每周一;第 4 周触发 D-004/D-005 复检(recheck_scanner 已挂)

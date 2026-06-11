@@ -5,6 +5,7 @@
 输入/输出数据流：输入是 JWT 用户和 JSON 请求；输出是 `MeetupResponse` 或 `MeetupListResponse`。
 """
 
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
@@ -16,6 +17,7 @@ from app.meetup import media_service, schemas, service
 
 
 router = APIRouter(prefix="/api/meetups", tags=["meetup"])
+logger = logging.getLogger(__name__)
 
 
 def _response(meetup, participants_count=0, first_media_file_id=None, current_user_id=None, db=None) -> schemas.MeetupResponse:
@@ -169,11 +171,25 @@ def list_participants(
 def get_meetup(
     meetup_id: int,
     token: str | None = Query(None),
+    source: str = Query("direct"),
     current_user_id: int | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     # 详情仍 public（游客能看），但带 token 时算 is_creator/has_joined 给前端显示角色按钮
     meetup = service.get_meetup_detail(db, meetup_id, current_user_id=current_user_id, token=token)
+    # 五环节传感器（D8）：像门口计数器，只记录真正过了详情门禁的人。
+    # viewer 三态：anon=未登录，participant=已报名，guest=登录了但没报名。
+    if current_user_id is None:
+        viewer = "anon"
+    else:
+        viewer = "participant" if service.is_participant(db, meetup_id, current_user_id) else "guest"
+    logger.info(
+        "SENSOR view meetup_id=%s viewer=%s token=%s source=%s",
+        meetup_id,
+        viewer,
+        token,
+        source,
+    )
     return _live_response(db, meetup, current_user_id=current_user_id)
 
 
