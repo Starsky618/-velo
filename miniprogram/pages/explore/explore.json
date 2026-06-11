@@ -1,3 +1,4 @@
 {
-  "navigationBarTitleText": "探索"
+  "navigationBarTitleText": "探索路线",
+  "enablePullDownRefresh": true
 }

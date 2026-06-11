@@ -162,11 +162,14 @@ Page({
   },
 
   onStartMeetup: function () {
+    // 按钮常显（Tim 2026-06-11 拍）：有精确轨迹 → 向导自动选好这条路线；
+    // 还没轨迹（track_pending）→ 照样进向导，路线由用户在向导里自己选——
+    // 不弹"不可发起"把人挡在门外，约骑的热情比预填的便利更金贵。
     var routeBookId = this.data.guide && this.data.guide.route_book_id
-    if (!routeBookId) {
-      wx.showToast({ title: '路线暂不可发起约骑', icon: 'none' })
-      return
+    var url = '/pages/meetup-create/meetup-create'
+    if (routeBookId) {
+      url += '?route_book_id=' + encodeURIComponent(routeBookId)
     }
-    wx.navigateTo({ url: '/pages/meetup-create/meetup-create?route_book_id=' + encodeURIComponent(routeBookId) })
+    wx.navigateTo({ url: url })
   },
 })

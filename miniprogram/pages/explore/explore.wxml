@@ -1,179 +1,24 @@
-<!--
-  探索页 — 赛段瀑布流（task-4.4 改造）
-
-  这个页面干什么：
-    给骑手一个"全国赛段大全目录"——浏览所有已上架赛段、按城市筛选、看到新上架的标签。
-    点击一张卡片跳进赛段详情页（task-4.5 / 已 ship 空架子）。
-
-  类比：像 App Store 的 App 列表——
-    顶部一排 tag 切换分类，下面是瀑布流卡片，滑到底部自动加载更多。
-
-  操作注意事项：
-    - segment-card 用 wx:for 列表渲染（CLAUDE.md 陷阱 #17：列表渲染不算 canvas，不需 hidden 兜底）
-    - NEW 标签判断：isNew 字段由 explore.js 计算（30 天内 created_at → true / 后端 SegmentListItem
-      已含 created_at 字段 / commit 9250106 hotfix 激活 / wxml NEW badge 由 isNew 真值控制显示）
-
-  数据流：
-    onLoad → fetchSegments(page=1, city='') → setData segments
-    切换城市 → switchCity → 重置 segments + page → refetch
-    onReachBottom → fetchSegments(page+1) → segments concat 追加
--->
-
-<wxs src="../../utils/format.wxs" module="f" />
-
-<view class="page-header">
-  <text class="subtitle">VELO</text>
-  <text class="title">探索</text>
-</view>
-
-<!-- Sprint 5 task-3 真用回归：统一搜索框（赛段 + 骑友） -->
-<view class="search-bar">
-  <view class="search-input-wrap">
-    <text class="search-icon">🔍</text>
-    <input class="search-input"
-           placeholder="搜索赛段 / 骑友"
-           value="{{searchKeyword}}"
-           bindinput="onSearchInput"
-           confirm-type="search" />
-    <text wx:if="{{searchKeyword}}" class="search-clear" bindtap="onClearSearch">✕</text>
+<view class="route-list-page">
+  <view class="page-head">
+    <view class="page-title">路线百科</view>
+    <view class="page-subtitle">太原骑友常用路线手册</view>
   </view>
-</view>
 
-<!-- 默认状态（无搜索）：城市筛 + 骑友 section + 赛段瀑布流 -->
-<block wx:if="{{!isSearching}}">
-<!-- 顶部城市筛选条（横向滚动 / 6 城 + "全部"） -->
-<scroll-view scroll-x class="city-filter-scroll" enhanced show-scrollbar="{{false}}">
-  <view class="city-filter-list">
-    <view class="city-chip {{activeCity === '' ? 'active' : ''}}"
-          bindtap="switchCity" data-city="">
-      <text>全部</text>
-    </view>
-    <view class="city-chip {{activeCity === item.code ? 'active' : ''}}"
-          wx:for="{{cities}}" wx:key="code"
-          bindtap="switchCity" data-city="{{item.code}}">
-      <text>{{item.label}}</text>
-    </view>
-  </view>
-</scroll-view>
+  <view wx:if="{{loading}}" class="state-text">加载中</view>
+  <view wx:elif="{{error}}" class="state-text">{{error}}</view>
 
-<!-- Sprint 5 task-3：骑友 section（最近活跃用户横向 scroll）-->
-<!-- 0 用户场景隐藏整个 section（你们三人都没活动 / 或 API 失败）-->
-<view class="riders-section" wx:if="{{activeUsers.length > 0}}">
-  <view class="riders-section-title">骑友</view>
-  <scroll-view scroll-x class="riders-scroll" enhanced show-scrollbar="{{false}}">
-    <view class="riders-list">
-      <view class="rider-card" wx:for="{{activeUsers}}" wx:key="id"
-            data-id="{{item.id}}" bindtap="onTapRiderAvatar">
-        <image class="rider-avatar" src="{{item.avatar_url || '/assets/default-avatar.png'}}" mode="aspectFill"></image>
-        <view class="rider-name">{{item.nickname || '匿名骑友'}}</view>
-        <view class="rider-meta">
-          <text wx:if="{{item.city}}" class="rider-city">{{item.city}}</text>
-          <text class="rider-distance">{{f.km(item.total_distance_km)}} km</text>
-          <text wx:if="{{item.lastActivityLabel}}" class="rider-last-active">{{item.lastActivityLabel}}</text>
+  <view wx:else class="guide-list">
+    <view class="guide-card" wx:for="{{guides}}" wx:key="id" data-id="{{item.id}}" bindtap="openGuide">
+      <image wx:if="{{item.cover_url}}" class="cover" src="{{item.cover_url}}" mode="aspectFill" />
+      <image wx:else class="cover" src="{{item.coverSrc}}" mode="aspectFill" />
+      <view class="card-main">
+        <view class="name-row">
+          <view class="guide-name">{{item.name}}</view>
+          <view class="status {{item.ready ? 'ready' : 'pending'}}">{{item.ready ? '有轨迹' : '文字版'}}</view>
         </view>
+        <view wx:if="{{item.firstHighlight}}" class="highlight">{{item.firstHighlight}}</view>
+        <view wx:if="{{item.metaText}}" class="meta">{{item.metaText}}</view>
       </view>
-    </view>
-  </scroll-view>
-</view>
-
-<!-- 首屏 loading -->
-<view class="loading" wx:if="{{loading && segments.length === 0}}">
-  <text>加载中...</text>
-</view>
-
-<!-- 空态：当前城市无赛段 -->
-<view class="empty-state" wx:elif="{{!loading && segments.length === 0}}">
-  <text class="empty-emoji">🗺️</text>
-  <text class="empty-title">该区域暂无赛段</text>
-  <text class="empty-desc">试试切换其他城市</text>
-</view>
-
-<!-- 主体瀑布流 -->
-<view class="segment-list" wx:else>
-  <view class="segment-card" wx:for="{{segments}}" wx:key="id"
-        bindtap="goSegment" data-id="{{item.id}}">
-    <!-- 卡片头部：赛段名 + NEW 标签 -->
-    <view class="card-header">
-      <text class="seg-name">{{item.name}}</text>
-      <view class="new-badge" wx:if="{{item.isNew}}">
-        <text>NEW</text>
-      </view>
-    </view>
-
-    <!-- 主元数据：距离 / 爬升 / 城市 / 难度 -->
-    <view class="card-meta">
-      <text class="meta-item">{{f.km(item.distance)}} km</text>
-      <text class="meta-item" wx:if="{{item.elevation_gain}}">↑{{item.elevation_gain}} m</text>
-      <text class="meta-item" wx:if="{{item.cityLabel}}">{{item.cityLabel}}</text>
-      <text class="meta-item difficulty difficulty-{{item.difficulty}}">{{item.difficultyLabel}}</text>
-    </view>
-
-    <!-- 副元数据：已挑战人数 -->
-    <view class="card-sub">
-      <text class="entries-text">{{item.entries}} 人挑战</text>
     </view>
   </view>
 </view>
-
-<!-- 分页加载状态 -->
-<view class="loading-more" wx:if="{{loadingMore}}">
-  <text>加载下一页...</text>
-</view>
-<view class="no-more" wx:elif="{{!hasMore && segments.length > 0}}">
-  <text>—— 没有更多赛段了 ——</text>
-</view>
-</block>
-
-<!-- 搜索状态：显示搜索结果（赛段 + 骑友 两 section） -->
-<block wx:if="{{isSearching}}">
-  <view class="loading" wx:if="{{searchLoading}}">
-    <text>搜索中...</text>
-  </view>
-
-  <view class="search-empty" wx:elif="{{!searchLoading && searchSegments.length === 0 && searchUsers.length === 0}}">
-    <text>未找到 "{{searchKeyword}}" 相关</text>
-    <text class="search-empty-hint">试试其他关键词</text>
-  </view>
-
-  <block wx:else>
-    <!-- 搜索骑友结果 -->
-    <view class="search-section" wx:if="{{searchUsers.length > 0}}">
-      <view class="search-section-title">骑友 ({{searchUsers.length}})</view>
-      <view class="search-users-list">
-        <view class="search-user-row" wx:for="{{searchUsers}}" wx:key="id"
-              data-id="{{item.id}}" bindtap="onTapRiderAvatar">
-          <image class="search-user-avatar" src="{{item.avatar_url || '/assets/default-avatar.png'}}" mode="aspectFill"></image>
-          <view class="search-user-info">
-            <view class="search-user-name">{{item.nickname || '匿名骑友'}}</view>
-            <view class="search-user-meta">
-              <text wx:if="{{item.city}}">{{item.city}}</text>
-              <text>{{f.km(item.total_distance_km)}} km</text>
-              <text wx:if="{{item.lastActivityLabel}}">{{item.lastActivityLabel}}</text>
-            </view>
-          </view>
-        </view>
-      </view>
-    </view>
-
-    <!-- 搜索赛段结果 -->
-    <view class="search-section" wx:if="{{searchSegments.length > 0}}">
-      <view class="search-section-title">赛段 ({{searchSegments.length}})</view>
-      <view class="segment-list">
-        <view class="segment-card" wx:for="{{searchSegments}}" wx:key="id"
-              data-id="{{item.id}}" bindtap="goSegment">
-          <view class="card-header">
-            <text class="segment-name">{{item.name}}</text>
-            <view class="new-badge" wx:if="{{item.isNew}}">
-              <text>NEW</text>
-            </view>
-          </view>
-          <view class="card-meta">
-            <text class="meta-item">{{f.km(item.distance)}} km</text>
-            <text class="meta-item" wx:if="{{item.elevation_gain}}">↑{{item.elevation_gain}} m</text>
-            <text class="meta-item" wx:if="{{item.cityLabel}}">{{item.cityLabel}}</text>
-          </view>
-        </view>
-      </view>
-    </view>
-  </block>
-</block>
