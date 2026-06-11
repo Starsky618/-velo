@@ -8,8 +8,16 @@ VELO 后端 API 入口
 新增模块时只需 import 其 router 并 include_router 即可，无需改动其他代码。
 """
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# api 容器的应用层日志开关——uvicorn 只配它自己的 access/error 日志，
+# 不给应用 logger 配 handler，所有业务 logger.info（如五环节 SENSOR 埋点）会被静默吞掉。
+# worker / scheduler 各自入口有 basicConfig，唯独 api 没有——2026-06-11 T6 真用回归实证：
+# 请求 200 但 SENSOR view 行永不出现（喇叭没插电第 4 例）。root 已有 handler 时本行是 no-op。
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [api] %(levelname)s %(message)s")
 
 from app.activity.router import router as activity_router
 from app.admin.router import router as admin_router
