@@ -21,7 +21,7 @@
 1. 我**亲自读了 diff** 吗？（不是只看 subagent 报告 / pytest 数字）
 2. pytest 跑过吗？
 3. 这个改动**是 spec 说要的**吗？（防 scope creep）
-4. 改动 >300 行 / 跨模块：**跑了代码层双审**吗？（详见 architect skill 信条 5）
+4. 改动 >300 行 / 跨模块：**按原则 8 风险分层跑了对应审查**吗？（常规=1 道集成审；schema/隐私/不可逆=双审+异源）
 
 **附加门禁已升级为结构约束（2026-06-10 拍）**：`scripts/pre_commit_gate.sh` 已装入 `.git/hooks/pre-commit`——承载性目录（app/migrations/tests/miniprogram，2026-06-11 修正：迁移真实目录是 migrations/ 非 alembic/，旧写法令迁移铃永不响）的 untracked 文件物理拦截提交，>300 行新增响铃提醒双审留痕，动 models.py 没迁移文件响铃。干净 clone 后需重装：`cp scripts/pre_commit_gate.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`。
 
@@ -190,22 +190,23 @@ MVP 目标（2026-06-11 按 D-006 同步）：码表文件上传解析 → 开�
 5. **不做 spec 没要求的功能 / 顺手优化**
 6. **稳扎稳打有疑必停**：架构不清晰 / 自查发现隐患 / 信心不足 → 立即停，与 Starsky 讨论再动手。宁可多花一天讨论，不带隐患赶进度
 7. **独立判断**：方案过度设计 / 时机不对 / 性价比低 → 直接反驳给替代方案（详见 architect 信条 3）
-8. **三重审判（硬性，违反 = 双重违规）**：
-    - spec 层（写完 spec）+ 代码层（每批 subagent 产出后）跑 Claude 内部双审（Agent A 忠 spec / Agent B 集成审）
-    - **代码层 commit 前追加 Codex 异源第三审**（独立训练分布，抓 Claude 系统性盲区）
-    - Codex 审查协议：调用 `codex:codex-rescue` subagent，prompt 按 `docs/agent-rules/agent-collaboration.md §4 场景 B` 模板填
-    - 迭代纪律：Codex 抓到 Critical/Important → Claude 修 → **同 threadId `--resume` 复查** → 最多 3 轮收敛
-    - 跳过场景：纯文档 / 单文件 <50 行 / 紧急 hotfix（理由写在 commit message）——完整跳过清单见分工宪章 §5
-    - 2026-04-23 v4 task-7.10 实验 1 验证：Codex 一轮抓到 1 条核心反馈环级 Important + 1 条 UX Important，Claude 双审均漏
-    - 详见 architect 信条 5 + `docs/agent-rules/agent-collaboration.md`（Claude ↔ Codex 完整分工规则 + 4 个场景 prompt 模板）
-    - ⭐ **2026-04-28 新增硬规则**：派 codex 写大文档（spec / plans / > 800 字 / > 1500 行）= **默认禁止**——codex CLI 单 task 输入+输出 > 50K token 几乎必卡（已知 bug 链 #13738/#14048/#18723，2026-04-28 v5 spec 实证卡死 30+ 分钟）。**默认路径**：主 agent 自己写 → 写完派 codex review-only。详见分工宪章 §5 + memory `feedback_main_agent_as_middle_manager.md` §2.1
+8. **风险分层审查（2026-06-11 Tim 拍 / 替代旧"三重审判"默认全跑 / Sprint 13+14 实弹试运行）**：
+    - **分层判据 = 错误有没有运行时后盾**：写错类名/字段/逻辑 → pytest+门禁会抓，审查是重复保险；门禁路径漂移/测试盲区/跨模块契约漂移 → 没有运行时信号，只有 grep 实证型审查能抓
+    - **常规批次（默认）**：1 审 = `reviewer-integration`（grep 实证集成审）+ pytest 全套 + pre-commit 门禁。砍 spec 忠诚审（task 卡已是 spec 忠诚转写 + TDD 测试 = 可执行的 spec 断言）、砍 Codex 第三审（Codex 写 + Claude 审本身已异源）
+    - **高危批次（保留双审 + 异源三审）**：动 schema/迁移 / 隐私·门禁·鉴权路径 / 不可逆数据操作 / 并发竞态位——历史上异源审真抓过大鱼的位置（FK+CHECK 死锁 / 私圈 uploads 泄露）。Codex 审查协议照旧走 `agent-collaboration.md §4 场景 B`
+    - spec 层双审保留（写完 spec 时）；plans/docs 层 1 道集成审封顶
+    - 审查发现修完若为机械修复且 pytest 绿 → 不跑"修完复查"轮
+    - **度量退出条件（规则代谢：写→测→调）**：真用回归 / 上线 4 周数据是终审；真用开始抓到"原来双审会抓的事故" → 收紧回旧制
+    - 实证账本（2026-06-11 立此规则的依据）：S13 plans+T1 审实比 11:1（约 55 万:5 万 token），全部"无运行时后盾"的发现（pre-commit 门禁路径 bug / SQLite FK 测试盲区）均来自集成审；spec 忠诚审在"卡片已细化"的代码上只产出 cosmetic + 1 个误报
+    - 本条在本项目内覆盖 architect 信条 5 的双审默认；旧三重审判全文 + 历史实证锚（2026-04-23 v4 task-7.10 等）归档 `docs/agent-rules/retired-rules.md`，sprint 收尾 /neat 时评估是否回流 architect skill
+    - ⭐ **派 codex 写大文档禁令保留**（2026-04-28：spec / plans / >800 字走 Codex Desktop 原生或主 agent 自写；codex CLI 通道 >50K token 必卡，详分工宪章 §5 + memory `feedback_main_agent_as_middle_manager.md` §2.1）
 9. **链路收尾三问复盘**（spec 链路完成时跑，不是每个 task）：新 bug 模式 / 设计判断 / 流程问题 → 识别完直接调 `/neat` 分发到 memory / CLAUDE.md / docs（详见 architect 信条 11 + neat-freak skill）
 10. **spec 自审 2 项**（architect Step 7 双审之外的项目特定补充）：
     - **状态机完整性**：所有合法状态转换画完整图，含异常恢复路径——遗漏一个状态转换 = 未来踩 bug
     - **共享逻辑识别**：两处做同样事的代码必须抽共享函数，禁止复制粘贴（如 GPX/Strava 都要把 ParseResult 写入 DB → 抽 `save_parse_result` 共享）
 11. **审核工具分层使用（2026-04-28 沉淀，三者不可互替）**：
     - **写代码过程中**（在编辑器随手扫一段）→ `/simplify` 做局部漂亮度检查（单 LLM 调用，10 秒级）
-    - **commit 前**（硬性，详见原则 8）→ architect 三重审判（spec 一致性 + 跨模块集成 + Codex 异源盲区，3-5 次 LLM 调用）
+    - **commit 前**（硬性，详见原则 8）→ 风险分层审查（常规批次 1 道集成审；高危批次双审 + Codex 异源，2026-06-11 起）
     - **任务完工 / claim 完成前** → `superpowers:verification-before-completion`（强制跑验证命令读完整输出，防"嘴上说测过了实际没跑"）
     - 关键：simplify ≠ 三审的轻量替代——砍三审 = 失 spec 字段对照（v4 已踩 `fk_xxx` vs `_fkey` 命名坑）+ 异源盲区扫（v4 task-7.10 实证 Codex 一轮抓到 Claude 双审漏的反馈环级 Important）。三者各管一段时间窗，不互斥
 

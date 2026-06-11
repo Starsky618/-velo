@@ -40,7 +40,7 @@ T7 灌库 ──┬→ T8 路线页 ──┐
 3. **TDD 红→绿 A 档**：新业务逻辑测试先行；最后补跑 pytest ≠ TDD。
 4. **起手 re-grep**：卡内"已验证事实"标注的 file:line 以执行时 re-grep 为准（判例：phase5 task 卡 grep 数据普遍 stale）；发现偏差先列给主 agent 再动手。
 5. **边界纪律**：只做卡上写的，不顺手优化；新功能放新表/新模块，禁碰核心表（users/activities/segments/segment_efforts）。
-6. **三审+门禁**（每 task commit 前）：Claude A spec 忠诚审 + Claude B 集成审 + Codex 异源审，全部读真 diff；Critical/Important 当下修不留 follow-up；过 pre-commit 门禁（承载性目录 untracked 物理拦截，>300 行响铃留痕）。
+6. **风险分层审查+门禁**（每 task commit 前 / 2026-06-11 Tim 拍，替代原三审默认全跑）：常规批次（T2/T3/T5/T8/T9）= 1 道 reviewer-integration 集成审 + pytest 全套 + pre-commit 门禁；高危批次（T7 迁移+灌库 / T4 隐私门禁路径）= 双审 + Codex 异源照旧。Critical/Important 当下修不留 follow-up；机械修复且 pytest 绿则不跑复查轮。
 7. **每任务单独 commit**：`feat(模块): S13-TN 描述` / `feat(模块): S14-TN 描述`；commit ≠ ship（部署统一 T6 收口，S14 随上线部署）。
 8. **陷阱必扫**：#1 truthiness（Boolean 查询 `.is_(True)`）/ #2 naive-aware datetime（SQLite fixture 返 naive）/ #17 canvas 禁 wx:if 用 hidden / no-dash 判例（缺字段 wx:if 整块隐藏，禁止 "-" 占位）/ IntegrityError try-except 是项目冲突惯例（禁 ON CONFLICT）。
 9. **依赖方向**：`app/meetup/cron.py` 禁止 import segment（历史双向债不加深，spec §3.9）；任何新增反向依赖一律禁止。
@@ -75,10 +75,12 @@ T7 灌库 ──┬→ T8 路线页 ──┐
 
 **汾河闸门（T7 硬约束）**：汾河 3 版定本待 Tim 拍板（推荐最新「环太原汾河自行车道」版）；拍板前 T7 只灌其余 12 条，**未决决策不进实施**。
 
-## 三审 + 门禁 SOP（每 task 收尾必跑）
+## 风险分层审查 + 门禁 SOP（每 task 收尾必跑 / 2026-06-11 Tim 拍）
 
 1. 实现完 → pytest 全套绿 → 主 agent **亲读 diff**（不只看 subagent 报告）。
-2. 并行派 `reviewer-spec-faithful`（对照 spec 对应章节 + task 卡，字段级核对）+ `reviewer-integration`（grep 实证跨模块影响 / 反向依赖 / 配套迁移）。
-3. Codex 异源审（`codex:codex-rescue`，prompt 按 `agent-collaboration.md §4 场景 B` 模板，给真 git diff，不给"已修复"声明）。
-4. Critical / Important = 0 → commit；>300 行新增按门禁响铃要求留痕双审记录。
-5. 跳过场景仅限：纯文档 / 单文件 <50 行（理由写进 commit message）。
+2. **常规批次**（T2/T3/T5/T8/T9）：派 1 道 `reviewer-integration`（grep 实证跨模块影响 / 反向依赖 / 配套联动 / 测试盲区），读真 diff 不读"已修复"声明。
+3. **高危批次**（T7 迁移+灌库 / T4 隐私门禁路径）：双审（reviewer-spec-faithful + reviewer-integration）+ Codex 异源（`agent-collaboration.md §4 场景 B` 模板）。
+4. Critical / Important 当下修；机械修复且 pytest 绿 → 不跑复查轮 → commit（>300 行响铃，审查留痕写 commit message footer）。
+5. 终审 = T6 真用回归 + 上线 4 周数据；真用抓到"原双审会抓的事故" → 收紧回旧制（`docs/agent-rules/retired-rules.md` 有全文）。
+6. 跳过场景仅限：纯文档 / 单文件 <50 行（理由写进 commit message）。
+- T1 已按旧制完成（双审 5I 全修 / 实证账本来源），不回溯。
