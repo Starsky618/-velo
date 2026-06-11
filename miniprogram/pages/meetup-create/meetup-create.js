@@ -278,6 +278,9 @@ Page({
       selectedActivityId: null,
       selectedRouteName: '已选路线',
       generatedRouteBookId: null,
+      // 从路线详情"约骑这条路线"带参进来 = 路线已经定了（Tim 2026-06-11 拍），
+      // 直奔编辑页填时间/集合点，不让用户再看一遍选路线步；想换路线点"上一步"回去
+      currentStep: 'edit',
     })
     return this.restoreRoutePreview(routeBookId).then(function (routeBook) {
       if (!routeBook) return

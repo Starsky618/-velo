@@ -2,5 +2,7 @@
   "name": "奥申",
   "city": "太原",
   "highlights": "[\"西山最陡最难的那 1 公里就在这——从万亩后山上、尽头接狼坡的硬爬坡\"]",
-  "source_ref": "route-workspace/aoshen/route.json @ 2026-06-11"
+  "source_ref": "route-workspace/aoshen/route.json @ 2026-06-11",
+  "distance_km": 5.3,
+  "climb_m": 363
 }

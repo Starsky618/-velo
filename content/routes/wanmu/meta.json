@@ -2,5 +2,8 @@
   "name": "启春阁",
   "city": "太原",
   "highlights": "[\"长风西街上山的大陡坡,太原骑友的家门口爬坡课\"]",
-  "source_ref": "route-workspace/wanmu/route.json @ 2026-06-11"
+  "source_ref": "route-workspace/wanmu/route.json @ 2026-06-11",
+  "cover_url": "/uploads/route_covers/wanmu.webp",
+  "distance_km": 4.17,
+  "climb_m": 263
 }

@@ -131,7 +131,7 @@ def render_guide_md(d: dict) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def convert(route_dir: Path) -> None:
+def convert(route_dir: Path, force: bool = False) -> None:
     data = json.loads((route_dir / "route.json").read_text(encoding="utf-8"))
     identity = data.get("identity", {})
     name = identity.get("name")
@@ -140,7 +140,20 @@ def convert(route_dir: Path) -> None:
         return
     target = OUTPUT / route_dir.name
     target.mkdir(parents=True, exist_ok=True)
-    (target / "guide.md").write_text(render_guide_md(data), encoding="utf-8")
+    # 文案真相源移交（Tim 2026-06-11 拍）：guide.md 一旦存在就归 Tim 手动编辑
+    # （VS Code 直接改字，LLM 不经手），本投影器不再覆盖——除非显式 --force。
+    # route.json 继续当结构化数据的真相源（轨迹/坐标/数据/证据链），文案主权在 md。
+    guide_path = target / "guide.md"
+    if guide_path.exists() and not force:
+        print(f"· {route_dir.name} guide.md 已存在（文案归 Tim 手动维护），跳过正文投影")
+    else:
+        guide_path.write_text(render_guide_md(data), encoding="utf-8")
+
+    # meta.json 同理让位：cover_url/distance_km/climb_m/简介都可能被手工维护过，
+    # 已存在就不再覆盖（--force 才重建）。首次生成走下面的全量写入。
+    if (target / "meta.json").exists() and not force:
+        print(f"· {route_dir.name} meta.json 已存在，跳过")
+        return
     meta = {
         "name": name,
         "city": identity.get("city") or "太原",
@@ -157,12 +170,14 @@ def convert(route_dir: Path) -> None:
 
 
 def main() -> None:
-    only = sys.argv[1] if len(sys.argv) > 1 else None
+    args = [a for a in sys.argv[1:] if a != "--force"]
+    force = "--force" in sys.argv[1:]
+    only = args[0] if args else None
     dirs = sorted(p for p in WORKSPACE.iterdir() if (p / "route.json").exists())
     for route_dir in dirs:
         if only and route_dir.name != only:
             continue
-        convert(route_dir)
+        convert(route_dir, force=force)
 
 
 if __name__ == "__main__":

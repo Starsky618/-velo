@@ -100,7 +100,10 @@ Page({
           sections: buildSections(guide.content_md),
           highlights: Array.isArray(guide.highlights) ? guide.highlights : [],
           introText: Array.isArray(guide.highlights) && guide.highlights.length ? guide.highlights[0] : '',
-          coverSrc: guide.cover_url || '/assets/route-placeholder.svg',
+          // 封面相对路径（/uploads/...）拼 baseUrl，与列表页同规则
+          coverSrc: (guide.cover_url && guide.cover_url.indexOf('/uploads/') === 0
+            ? ((getApp().globalData && getApp().globalData.baseUrl) || '') + guide.cover_url
+            : guide.cover_url) || '/assets/route-placeholder.svg',
           hasElevation: hasElevation,
           loading: false,
           // 曲线不在 onLoad 画：全折叠态下 canvas 在 hidden 祖先里，画了也是空白——

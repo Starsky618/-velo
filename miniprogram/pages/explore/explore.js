@@ -21,10 +21,15 @@ function decorateGuide(item) {
   var climb = formatClimb(item.climb)
   if (distance) meta.push(distance)
   if (climb) meta.push(climb)
+  // 封面相对路径（/uploads/...）拼 baseUrl：域名/IP 切换都不用重灌内容
+  var cover = item.cover_url
+  if (cover && cover.indexOf('/uploads/') === 0) {
+    cover = ((getApp().globalData && getApp().globalData.baseUrl) || '') + cover
+  }
   return Object.assign({}, item, {
     firstHighlight: highlights[0] || '',
     metaText: meta.join(' · '),
-    coverSrc: item.cover_url || '/assets/route-placeholder.svg',
+    coverSrc: cover || '/assets/route-placeholder.svg',
   })
 }
 
