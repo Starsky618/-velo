@@ -1,23 +1,29 @@
 <!--
-  上传页 — 状态机驱动的 UI
-  每个 step 对应一种界面，用 wx:if 切换展示
+  上传页 — 从"选文件"到"开奖成绩卡"的完整交卷流程。
+  这里不判断文件内部内容，只把后端已经解析出的字段按是否存在来展示。
 -->
-
-<wxs src="../../utils/format.wxs" module="f" />
 
 <view class="page-header">
   <text class="subtitle">VELO</text>
   <text class="title">上传骑行</text>
 </view>
 
-<!-- ====== 1. 初始状态：选择文件 ====== -->
+<view class="meetup-banner" wx:if="{{meetupBannerVisible}}">
+  <view>
+    <text class="meetup-title">{{meetupTitle}}</text>
+    <text class="meetup-sub">{{meetupRiderCount}} 人报名 · {{meetupSubmittedCount}} 人交卷</text>
+  </view>
+  <view class="meetup-pill">约骑交卷</view>
+</view>
+
 <view wx:if="{{step === 'idle'}}">
   <view class="upload-zone" bindtap="chooseFile">
     <view class="upload-icon-wrap">
-      <text class="upload-icon">⬆️</text>
+      <text class="upload-icon">🚴</text>
     </view>
-    <text class="upload-title">选择 GPX 文件</text>
-    <text class="upload-hint">从码表 App 分享到微信，或直接选择文件</text>
+    <text class="upload-title">选择你的码表文件</text>
+    <text class="upload-hint">从微信聊天记录里选择原文件</text>
+    <text class="upload-ext">支持 .fit / .gpx</text>
   </view>
 
   <view class="brand-list">
@@ -25,11 +31,10 @@
   </view>
 
   <view class="upload-note">
-    <text>支持所有标准 GPX 格式，自动解析功率、心率、踏频数据</text>
+    <text>上传后会自动生成距离、速度、爬升和成绩卡</text>
   </view>
 </view>
 
-<!-- ====== 2. 确认状态：确认上传 ====== -->
 <view wx:if="{{step === 'confirming'}}" class="center-content">
   <view class="confirm-card card">
     <view class="file-info">
@@ -38,7 +43,7 @@
       </view>
       <view class="file-detail">
         <text class="file-name">{{fileName}}</text>
-        <text class="file-meta">GPX 文件 · {{fileSizeKB}} KB</text>
+        <text class="file-meta">码表文件 · {{fileSizeKB}} KB</text>
       </view>
     </view>
 
@@ -53,13 +58,12 @@
   </view>
 </view>
 
-<!-- ====== 3. 上传中 / 解析中 ====== -->
 <view wx:if="{{step === 'uploading' || step === 'polling'}}" class="center-content">
   <view class="progress-section">
-    <!-- 旋转动画圆圈 -->
     <view class="spinner"></view>
     <text class="progress-title">{{statusText}}</text>
-    <text class="progress-hint" wx:if="{{step === 'polling'}}">解析通常需要 5-15 秒</text>
+    <text class="progress-hint" wx:if="{{step === 'polling' && pollSeconds <= 5}}">通常几秒内生成成绩</text>
+    <text class="progress-hint" wx:if="{{step === 'polling' && pollSeconds > 5 && pollSeconds <= 30}}">轨迹较长时会多等一会儿</text>
   </view>
 
   <view class="steps-list">
@@ -69,85 +73,74 @@
     </view>
     <view class="step-item {{step === 'polling' ? 'active' : ''}}">
       <view class="step-dot"></view>
-      <text>轨迹解析</text>
+      <text>读取轨迹</text>
     </view>
     <view class="step-item">
       <view class="step-dot"></view>
-      <text>数据统计</text>
+      <text>计算成绩</text>
     </view>
     <view class="step-item">
       <view class="step-dot"></view>
-      <text>赛段匹配</text>
+      <text>生成卡片</text>
     </view>
   </view>
 </view>
 
-<!-- ====== 4. 完成状态：显示摘要 ====== -->
-<view wx:if="{{step === 'done' && result}}" class="result-section">
-  <view class="success-banner">
-    <text class="success-icon">✅</text>
-    <view class="success-text">
-      <text class="success-title">解析完成</text>
-      <text class="success-sub">骑行数据已生成</text>
+<view class="reveal-section" hidden="{{step !== 'reveal'}}">
+  <view class="file-chip">
+    <view class="chip-dot"></view>
+    <text>{{fileName}}</text>
+  </view>
+  <view class="parse-line">
+    <text>{{statusText}}</text>
+    <text class="parse-count" wx:if="{{parsePointCount > 0}}">{{parsePointCount}}</text>
+  </view>
+
+  <view class="stat-row {{item.visible ? 'show' : ''}}" wx:for="{{revealStats}}" wx:key="key">
+    <text class="stat-label">{{item.label}}</text>
+    <view class="stat-value-wrap">
+      <text class="stat-value">{{item.value}}</text>
+      <text class="stat-unit" wx:if="{{item.unit}}">{{item.unit}}</text>
     </view>
   </view>
 
-  <!-- 深色摘要卡片（和详情页头部风格一致） -->
-  <view class="result-hero">
-    <text class="result-ride-title">{{result.title || fileName}}</text>
-    <view class="result-hero-stats">
-      <view class="result-hero-item">
-        <text class="result-hero-value">{{f.km(result.distance || 0)}}</text>
-        <text class="result-hero-unit">km</text>
-        <text class="result-hero-label">距离</text>
-      </view>
-      <view class="result-hero-sep"></view>
-      <view class="result-hero-item">
-        <text class="result-hero-value">{{durationMin}}</text>
-        <text class="result-hero-unit">min</text>
-        <text class="result-hero-label">时长</text>
-      </view>
-      <view class="result-hero-sep"></view>
-      <view class="result-hero-item">
-        <text class="result-hero-value">{{result.elevation_gain || 0}}</text>
-        <text class="result-hero-unit">m</text>
-        <text class="result-hero-label">爬升</text>
-      </view>
-    </view>
+  <view class="elevation-wrap" hidden="{{!hasElevationProfile || !elevationRevealed}}">
+    <canvas type="2d" id="uploadElevationCanvas" class="elevation-canvas" hidden="{{!hasElevationProfile || !elevationRevealed}}"></canvas>
   </view>
+</view>
 
-  <!-- 次要数据行 -->
-  <view class="result-secondary card" wx:if="{{result.avg_speed || result.avg_power || result.avg_hr}}">
-    <view class="result-metric" wx:if="{{result.avg_speed}}">
-      <view class="result-metric-dot speed"></view>
-      <text class="result-metric-label">均速</text>
-      <text class="result-metric-value">{{result.avg_speed}} km/h</text>
+<view wx:if="{{step === 'done' && scoreCard}}" class="score-section">
+  <view class="score-card {{revealDone ? 'show' : ''}}">
+    <view class="card-brand">
+      <text class="card-logo">VELO</text>
+      <text class="card-date" wx:if="{{scoreCard.dateText}}">{{scoreCard.dateText}}</text>
     </view>
-    <view class="result-metric" wx:if="{{result.avg_power}}">
-      <view class="result-metric-dot power"></view>
-      <text class="result-metric-label">均功率</text>
-      <text class="result-metric-value">{{result.avg_power}} W</text>
+    <text class="card-route">{{scoreCard.title}}</text>
+    <text class="card-rider">{{scoreCard.rider}}</text>
+
+    <view class="card-grid">
+      <view class="card-grid-item" wx:for="{{scoreCard.items}}" wx:key="key">
+        <view>
+          <text class="card-grid-value">{{item.value}}</text>
+          <text class="card-grid-unit" wx:if="{{item.unit}}">{{item.unit}}</text>
+        </view>
+        <text class="card-grid-label">{{item.label}}</text>
+      </view>
     </view>
-    <view class="result-metric" wx:if="{{result.avg_hr}}">
-      <view class="result-metric-dot hr"></view>
-      <text class="result-metric-label">均心率</text>
-      <text class="result-metric-value">{{result.avg_hr}} bpm</text>
-    </view>
-    <view class="result-metric" wx:if="{{result.avg_cadence}}">
-      <view class="result-metric-dot cad"></view>
-      <text class="result-metric-label">均踏频</text>
-      <text class="result-metric-value">{{result.avg_cadence}} rpm</text>
-    </view>
-    <view class="result-metric" wx:if="{{result.calories}}">
-      <view class="result-metric-dot cal"></view>
-      <text class="result-metric-label">热量</text>
-      <text class="result-metric-value">{{result.calories}} kcal</text>
+
+    <view class="first-banner" wx:if="{{scoreCard.firstText}}">
+      <text class="first-title">{{scoreCard.firstText}}</text>
+      <text class="first-hint" wx:if="{{scoreCard.firstHint}}">{{scoreCard.firstHint}}</text>
     </view>
   </view>
 
   <view class="result-actions">
+    <button wx:if="{{meetupBannerVisible}}" class="btn-share" open-type="share">发到群里，催他们交卷</button>
+    <view wx:if="{{meetupBannerVisible}}" class="btn-report" bindtap="viewReport">
+      <text>看本场战报</text>
+    </view>
     <view class="btn-detail" bindtap="viewDetail">
-      <text>查看详情</text>
+      <text>查看骑行详情</text>
     </view>
     <view class="btn-again" bindtap="reset">
       <text>再传一个</text>
@@ -155,7 +148,6 @@
   </view>
 </view>
 
-<!-- ====== 5. 错误状态 ====== -->
 <view wx:if="{{step === 'error'}}" class="center-content">
   <view class="error-section">
     <text class="error-icon">❌</text>
