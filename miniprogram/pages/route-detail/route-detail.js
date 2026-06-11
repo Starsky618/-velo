@@ -148,6 +148,11 @@ Page({
   },
 
   onStartMeetup: function () {
-    wx.navigateTo({ url: '/pages/meetup-create/meetup-create' })
+    var routeBookId = this.data.guide && this.data.guide.route_book_id
+    if (!routeBookId) {
+      wx.showToast({ title: '路线暂不可发起约骑', icon: 'none' })
+      return
+    }
+    wx.navigateTo({ url: '/pages/meetup-create/meetup-create?route_book_id=' + encodeURIComponent(routeBookId) })
   },
 })

@@ -198,12 +198,17 @@ def list_route_books(
     *,
     mine: bool = False,
     city: str | None = None,
+    official: bool | None = None,
 ) -> list[RouteBook]:
     query = db.query(RouteBook)
     if mine:
         if current_user_id is None:
             raise PermissionError("login required")
         query = query.filter(RouteBook.creator_id == current_user_id)
+    if official is True:
+        query = query.filter(RouteBook.is_official.is_(True))
+    elif official is False:
+        query = query.filter(RouteBook.is_official.is_(False))
     if city:
         query = query.filter(RouteBook.city == city)
     return query.order_by(RouteBook.created_at.desc()).all()

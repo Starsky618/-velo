@@ -26,12 +26,13 @@ router = APIRouter(prefix="/api/route-books", tags=["route_book"])
 @router.get("", response_model=schemas.RouteBookListResponse)
 def list_route_books(
     mine: bool = Query(False),
+    official: bool | None = Query(None),
     city: schemas.City | None = None,
     current_user_id: int | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     try:
-        items = service.list_route_books(db, current_user_id, mine=mine, city=city)
+        items = service.list_route_books(db, current_user_id, mine=mine, city=city, official=official)
         return schemas.RouteBookListResponse(items=items)
     except PermissionError as e:
         raise HTTPException(status_code=401, detail=str(e))

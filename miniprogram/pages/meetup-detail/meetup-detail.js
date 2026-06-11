@@ -1,6 +1,50 @@
 const api = require('../../utils/api')
 // 格式化函数抽到 utils/meetup-format.js（约骑三页单一真相源），不再各页各抄一份
 const { formatDistance, formatClimb, formatTime, paceText } = require('../../utils/meetup-format')
+const { wgs84ToGcj02 } = require('../../utils/coords')
+const mapTheme = require('../../utils/map-theme')
+
+// 把路书里的 WGS-84 轨迹点翻译成微信地图能显示的 GCJ-02 红线。
+// 类比：后端保存的是路线原稿，微信地图要的是本地门牌号；展示前翻译，数据源不改。
+function buildRoutePreview(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return {
+      routePreviewVisible: false,
+      routePreviewPolylines: [],
+      routePreviewMarkers: [],
+      routePreviewIncludePoints: [],
+    }
+  }
+  var mapPoints = []
+  points.forEach(function (point) {
+    if (!Array.isArray(point) || point.length < 2) return
+    var lon = Number(point[0])
+    var lat = Number(point[1])
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return
+    var gcj = wgs84ToGcj02(lat, lon)
+    mapPoints.push({ latitude: gcj[0], longitude: gcj[1] })
+  })
+  if (mapPoints.length < 2) {
+    return {
+      routePreviewVisible: false,
+      routePreviewPolylines: [],
+      routePreviewMarkers: [],
+      routePreviewIncludePoints: [],
+    }
+  }
+  var first = mapPoints[0]
+  var last = mapPoints[mapPoints.length - 1]
+  return {
+    routePreviewVisible: true,
+    routePreviewCenter: first,
+    routePreviewIncludePoints: mapPoints,
+    routePreviewMarkers: [
+      { id: 1, latitude: first.latitude, longitude: first.longitude, title: '起点' },
+      { id: 2, latitude: last.latitude, longitude: last.longitude, title: '终点' },
+    ],
+    routePreviewPolylines: mapTheme.buildRoutePreviewPolylines(mapPoints),
+  }
+}
 
 function decorateMeetup(meetup) {
   if (!meetup) return null
@@ -33,7 +77,7 @@ function decorateMeetup(meetup) {
 }
 
 Page({
-  data: {
+  data: Object.assign({}, mapTheme.getPaperMapData(), {
     meetupId: null,
     shareToken: '', // 私圈约骑分享链接带来的口令（onLoad 从 ?token= 取，透传给后端门禁）
     meetup: null,
@@ -43,7 +87,12 @@ Page({
     joining: false,
     mediaList: [], // 照片墙：每项含 url（拼好的可显示地址）+ isVideo
     mediaError: false, // 照片墙加载失败标记：true 时显示"加载失败"而非"还没有照片"，避免误导
-  },
+    routePreviewVisible: false,
+    routePreviewCenter: { latitude: 37.8706, longitude: 112.5489 },
+    routePreviewPolylines: [],
+    routePreviewMarkers: [],
+    routePreviewIncludePoints: [],
+  }),
 
   onLoad: function (options) {
     // 私圈约骑分享链接是 ?id=X&token=Y——必须收下 token 并透传给详情/加入/照片接口，
@@ -73,6 +122,7 @@ Page({
         that.setData({ meetup: decorateMeetup(res) })
         that.updateReportEntrance()
         that.loadMedia()
+        that.loadRoutePreview(res.route_book_id)
       })
       .catch(function (err) {
         wx.showToast({ title: err.message || '加载失败', icon: 'none' })
@@ -80,6 +130,22 @@ Page({
       .finally(function () {
         that.setData({ loading: false })
         if (done) done()
+      })
+  },
+
+  loadRoutePreview: function (routeBookId) {
+    var that = this
+    if (!routeBookId || !api.getRouteBookDetail) {
+      this.setData(buildRoutePreview([]))
+      return
+    }
+    api.getRouteBookDetail(routeBookId)
+      .then(function (routeBook) {
+        that.setData(buildRoutePreview(routeBook.preview_points))
+      })
+      .catch(function () {
+        // 路书被删或不可读时，只隐藏路线图；约骑详情其它信息仍照常可看。
+        that.setData(buildRoutePreview([]))
       })
   },
 

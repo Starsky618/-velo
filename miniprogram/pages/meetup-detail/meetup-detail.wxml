@@ -27,6 +27,38 @@
       </view>
     </view>
 
+    <view class="section" wx:if="{{routePreviewVisible}}">
+      <view class="section-title">路线预览</view>
+      <map wx:if="{{paperMapHasCustomStyle}}"
+           class="route-preview-map"
+           latitude="{{routePreviewCenter.latitude}}"
+           longitude="{{routePreviewCenter.longitude}}"
+           scale="12"
+           markers="{{routePreviewMarkers}}"
+           polyline="{{routePreviewPolylines}}"
+           include-points="{{routePreviewIncludePoints}}"
+           subkey="{{paperMapSubkey}}"
+           layer-style="{{paperMapLayerStyle}}"
+           enable-poi="{{false}}"
+           enable-building="{{false}}"
+           enable-traffic="{{false}}"
+           enable-3D="{{false}}"
+           enable-rotate="{{false}}"
+           show-location="{{false}}"></map>
+      <map wx:else
+           class="route-preview-map"
+           latitude="{{routePreviewCenter.latitude}}"
+           longitude="{{routePreviewCenter.longitude}}"
+           scale="12"
+           markers="{{routePreviewMarkers}}"
+           polyline="{{routePreviewPolylines}}"
+           include-points="{{routePreviewIncludePoints}}"
+           enable-traffic="{{false}}"
+           enable-3D="{{false}}"
+           enable-rotate="{{false}}"
+           show-location="{{false}}"></map>
+    </view>
+
     <view class="section">
       <view class="section-title">时间</view>
       <view class="row">

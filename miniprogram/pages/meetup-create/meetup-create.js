@@ -120,6 +120,7 @@ Page({
     selectedActivityId: null,
     selectedRouteName: '',
     segments: [],
+    officialRouteBooks: [],
     routeBooks: [],
     activities: [],
     tencentStart: null,
@@ -189,10 +190,12 @@ Page({
     pvEditSafety: false,
   }),
 
-  onLoad: function () {
+  onLoad: function (options) {
+    var routeBookId = Number(options && options.route_book_id)
+    if (!Number.isFinite(routeBookId) || routeBookId <= 0) routeBookId = null
     this.initDefaultTime()
     this.loadRoutes()
-    this.restoreDraft()
+    this.restoreDraft(routeBookId)
   },
 
   onShow: function () {
@@ -200,10 +203,13 @@ Page({
   },
 
   // 退出重进恢复草稿：每用户唯一 DRAFT，拉 my-draft 回填表单 + 照片 + 路线预览
-  restoreDraft: function () {
+  restoreDraft: function (routeBookId) {
     var that = this
     api.getMyMeetupDraft().then(function (draft) {
-      if (!draft) return
+      if (!draft) {
+        if (routeBookId) that.applyRouteBookParam(routeBookId)
+        return
+      }
       var start = splitLocal(new Date(draft.start_time))
       var end = splitLocal(new Date(draft.estimated_end_time))
       var paceLabel = '巡航'
@@ -238,21 +244,44 @@ Page({
       })
       that.updatePreviewDerived()
       that.loadMedia()
-      that.restoreRoutePreview(draft.route_book_id)
+      if (routeBookId) {
+        // 参数优先覆盖草稿路线：用户刚从路线详情点进来，显式意图比上次没填完的草稿更可信。
+        that.applyRouteBookParam(routeBookId)
+      } else {
+        that.restoreRoutePreview(draft.route_book_id)
+      }
     }).catch(function () {
       // 恢复草稿失败不阻塞新建流程，用户照常从头建
+      if (routeBookId) that.applyRouteBookParam(routeBookId)
     })
   },
 
   // 草稿恢复时按 route_book_id 拉路书重画地图预览（path 预览图，非导航）
   restoreRoutePreview: function (routeBookId) {
     var that = this
-    if (!routeBookId || !api.getRouteBookDetail) return
-    api.getRouteBookDetail(routeBookId).then(function (routeBook) {
+    if (!routeBookId || !api.getRouteBookDetail) return Promise.resolve(null)
+    return api.getRouteBookDetail(routeBookId).then(function (routeBook) {
       that.setData(buildRoutePreview(routeBook.preview_points))
+      return routeBook
     }).catch(function () {
       // 拉路书失败就清空预览，别残留上一条路线的图（视觉状态不一致）
       that.setData(buildRoutePreview([]))
+      return null
+    })
+  },
+
+  applyRouteBookParam: function (routeBookId) {
+    var that = this
+    this.setData({
+      selectedSegmentId: null,
+      selectedRouteBookId: routeBookId,
+      selectedActivityId: null,
+      selectedRouteName: '已选路线',
+      generatedRouteBookId: null,
+    })
+    return this.restoreRoutePreview(routeBookId).then(function (routeBook) {
+      if (!routeBook) return
+      that.setData({ selectedRouteName: routeBook.name || '已选路线' })
     })
   },
 
@@ -295,16 +324,18 @@ Page({
     }
     Promise.all([
       safe(api.getSegmentsList({ page: 1, page_size: 20 })),
+      safe(api.getRouteBooksList({ official: 1 })),
       safe(api.getRouteBooksList({ mine: 1 })),
       safe(api.getRouteBookActivityCandidates()),
     ]).then(function (results) {
-      if (results[0] === null && results[1] === null && results[2] === null) {
+      if (results[0] === null && results[1] === null && results[2] === null && results[3] === null) {
         wx.showToast({ title: '路线加载失败', icon: 'none' })
       }
       that.setData({
         segments: that.decorateItems(results[0] || [], 'segment'),
-        routeBooks: that.decorateItems(results[1] || [], 'route_book'),
-        activities: that.decorateItems(results[2] || [], 'activity'),
+        officialRouteBooks: that.decorateItems(results[1] || [], 'route_book'),
+        routeBooks: that.decorateItems(results[2] || [], 'route_book'),
+        activities: that.decorateItems(results[3] || [], 'activity'),
       })
     })
   },
@@ -330,7 +361,10 @@ Page({
     var id = Number(event.currentTarget.dataset.id)
     var name = event.currentTarget.dataset.name
     var index = Number(event.currentTarget.dataset.index)
-    var list = type === 'route_book' ? this.data.routeBooks : []
+    var source = event.currentTarget.dataset.source
+    var list = type === 'route_book'
+      ? (source === 'official' ? this.data.officialRouteBooks : this.data.routeBooks)
+      : []
     var routePreview = type === 'route_book' ? buildRoutePreview((list[index] || {}).preview_points) : buildRoutePreview([])
     this.setData(Object.assign({
       selectedSegmentId: type === 'segment' ? id : null,
@@ -513,9 +547,6 @@ Page({
   // 已有草稿直接复用 id；没有则 resolveRouteBookId（"从骑行生成"先转路书）→ 建草稿 → 记下 id + 回显照片。
   ensureDraft: function () {
     var that = this
-    if (this.data.meetupId) {
-      return Promise.resolve(this.data.meetupId)
-    }
     if (!this.data.form.meeting_point) {
       wx.showToast({ title: '请先填写集合点', icon: 'none' })
       return Promise.reject(new Error('no_meeting_point'))
@@ -527,6 +558,17 @@ Page({
           route_book_id: routeBookId || that.data.selectedRouteBookId || null,
           max_participants: Number(that.data.form.max_participants),
         })
+        if (that.data.meetupId) {
+          // 已有草稿也要把路线写回后端；否则从路线详情带参数进来只会改 UI，不会改后端草稿路线。
+          // 只 PATCH 路线两字段，不带整张 form——form 里时间等字段此刻可能是空串，
+          // 全量 PATCH 会 422 把照片上传/下一步全部卡死（T9 集成审 I1）。完整 form 由 saveDraft/publish 负责。
+          return api.updateMeetup(that.data.meetupId, {
+            segment_id: that.data.selectedSegmentId || null,
+            route_book_id: routeBookId || that.data.selectedRouteBookId || null,
+          }).then(function () {
+            return { id: that.data.meetupId }
+          })
+        }
         return that.createOrUpdateDraft(payload)
       })
       .then(function (draft) {

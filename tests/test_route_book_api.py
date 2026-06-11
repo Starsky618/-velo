@@ -413,6 +413,99 @@ def test_list_supports_public_mine_and_city_filters(client, db, auth_header, adm
     assert detail_res.json()["id"] == other.id
 
 
+def test_list_filters_official_route_books(client, db, test_user):
+    from app.route_book.models import RouteBook
+
+    official = RouteBook(
+        creator_id=test_user.id,
+        name="官方天龙山",
+        distance=36000.0,
+        reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        source="tencent_direction",
+        city="taiyuan",
+        is_official=True,
+    )
+    personal = RouteBook(
+        creator_id=test_user.id,
+        name="我的夜骑线",
+        distance=18000.0,
+        reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.7 37.9)",
+        source="activity_derived",
+        source_activity_id=None,
+        city="taiyuan",
+        is_official=False,
+    )
+    db.add_all([official, personal])
+    db.commit()
+
+    res = client.get("/api/route-books?official=true")
+
+    assert res.status_code == 200
+    assert [item["name"] for item in res.json()["items"]] == ["官方天龙山"]
+
+
+def test_list_filters_non_official_route_books(client, db, test_user):
+    from app.route_book.models import RouteBook
+
+    official = RouteBook(
+        creator_id=test_user.id,
+        name="官方汾河线",
+        distance=42000.0,
+        reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        source="tencent_direction",
+        city="taiyuan",
+        is_official=True,
+    )
+    personal = RouteBook(
+        creator_id=test_user.id,
+        name="我的训练线",
+        distance=21000.0,
+        reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.7 37.9)",
+        source="activity_derived",
+        source_activity_id=None,
+        city="taiyuan",
+        is_official=False,
+    )
+    db.add_all([official, personal])
+    db.commit()
+
+    res = client.get("/api/route-books?official=false")
+
+    assert res.status_code == 200
+    assert [item["name"] for item in res.json()["items"]] == ["我的训练线"]
+
+
+def test_list_without_official_keeps_existing_unfiltered_behavior(client, db, test_user):
+    from app.route_book.models import RouteBook
+
+    official = RouteBook(
+        creator_id=test_user.id,
+        name="官方横岭",
+        distance=30000.0,
+        reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        source="tencent_direction",
+        city="taiyuan",
+        is_official=True,
+    )
+    personal = RouteBook(
+        creator_id=test_user.id,
+        name="我的小西沟",
+        distance=16000.0,
+        reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.7 37.9)",
+        source="activity_derived",
+        source_activity_id=None,
+        city="taiyuan",
+        is_official=False,
+    )
+    db.add_all([official, personal])
+    db.commit()
+
+    res = client.get("/api/route-books")
+
+    assert res.status_code == 200
+    assert {item["name"] for item in res.json()["items"]} == {"我的小西沟", "官方横岭"}
+
+
 def test_delete_route_book_is_owner_only(client, db, auth_header, admin_header, test_user):
     from app.route_book.models import RouteBook
 
@@ -546,3 +639,11 @@ def test_create_rejects_overlong_name(client, db, auth_header, test_user):
         headers=auth_header,
     )
     assert res.status_code == 422
+
+
+def test_get_deleted_route_book_returns_404_for_orphan_meetup_preview(client):
+    """孤儿路书契约（S14-T9 集成审 I2）：约骑引用的路书被删（FK SET NULL 孤儿态）后，
+    详情接口必须 404——前端约骑详情页靠这个 404 走 catch 分支把预览整块隐藏，不炸页面。"""
+    res = client.get("/api/route-books/999999")
+    assert res.status_code == 404
+    assert "not found" in res.json()["detail"]

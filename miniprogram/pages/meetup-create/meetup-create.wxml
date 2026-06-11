@@ -88,8 +88,14 @@
       </view>
     </view>
 
+    <view wx:if="{{officialRouteBooks.length}}" class="section-title">官方路线</view>
+    <view class="route-card {{selectedRouteBookId === item.id ? 'selected' : ''}}" wx:for="{{officialRouteBooks}}" wx:key="id" data-type="route_book" data-source="official" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+      <view>{{item.displayName}}</view>
+      <text>{{item.displayMeta}}</text>
+    </view>
+
     <view class="section-title">我的路书</view>
-    <view class="route-card {{selectedRouteBookId === item.id ? 'selected' : ''}}" wx:for="{{routeBooks}}" wx:key="id" data-type="route_book" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+    <view class="route-card {{selectedRouteBookId === item.id ? 'selected' : ''}}" wx:for="{{routeBooks}}" wx:key="id" data-type="route_book" data-source="mine" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
       <view>{{item.displayName}}</view>
       <text>{{item.displayMeta}}</text>
     </view>
