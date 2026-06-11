@@ -1,0 +1,74 @@
+<view class="report-page">
+  <view wx:if="{{loading && !totals}}" class="state">加载中</view>
+
+  <view wx:elif="{{errorMsg}}" class="state">{{errorMsg}}</view>
+
+  <view wx:else class="content">
+    <view class="hero">
+      <view wx:if="{{routeName}}" class="route-name">{{routeName}}</view>
+      <view class="hero-title">约骑战报</view>
+      <view wx:if="{{totals}}" class="hero-sub">已交卷 {{totals.submitted_count}}/{{totals.rider_count}}</view>
+    </view>
+
+    <view wx:if="{{totals}}" class="totals">
+      <view class="total-item" wx:if="{{totals.distance_km !== undefined && totals.distance_km !== null}}">
+        <text class="total-value">{{totals.distance_km}}</text>
+        <text class="total-unit">km</text>
+        <text class="total-label">总里程</text>
+      </view>
+      <view class="total-item" wx:if="{{totals.climb_m !== undefined && totals.climb_m !== null}}">
+        <text class="total-value">{{totals.climb_m}}</text>
+        <text class="total-unit">m</text>
+        <text class="total-label">总爬升</text>
+      </view>
+      <view class="total-item" wx:if="{{totals.rider_count !== undefined && totals.rider_count !== null}}">
+        <text class="total-value">{{totals.rider_count}}</text>
+        <text class="total-unit">人</text>
+        <text class="total-label">报名</text>
+      </view>
+    </view>
+
+    <view wx:if="{{mediaList.length > 0}}" class="section">
+      <view class="section-title">照片墙</view>
+      <view class="media-grid">
+        <view class="media-item" wx:for="{{mediaList}}" wx:key="id">
+          <video wx:if="{{item.isVideo}}" src="{{item.url}}" class="media-thumb"></video>
+          <image wx:else src="{{item.url}}" mode="aspectFill" class="media-thumb" data-url="{{item.url}}" bindtap="onTapPreviewMedia"></image>
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">交卷格子</view>
+      <view class="cell-list">
+        <view wx:for="{{cells}}" wx:key="user_id" class="report-cell {{item.submitted ? 'is-submitted' : 'is-gray'}}">
+          <view class="cell-main">
+            <image wx:if="{{item.avatar_url}}" class="avatar" src="{{item.avatar_url}}" mode="aspectFill"></image>
+            <view wx:else class="avatar-fallback"></view>
+            <view class="cell-user">
+              <view wx:if="{{item.nickname}}" class="nickname">{{item.nickname}}</view>
+              <view wx:if="{{item.submitted_at}}" class="submitted-at">已交卷</view>
+            </view>
+          </view>
+
+          <view wx:if="{{item.submitted}}" class="cell-stats">
+            <view wx:if="{{item.hasDistance}}" class="stat">
+              <text class="stat-value">{{item.distanceText}}</text>
+              <text class="stat-unit">km</text>
+            </view>
+            <view wx:if="{{item.hasAvgSpeed}}" class="stat">
+              <text class="stat-value">{{item.avgSpeedText}}</text>
+              <text class="stat-unit">km/h</text>
+            </view>
+            <view wx:if="{{item.hasClimb}}" class="stat">
+              <text class="stat-value">{{item.climbText}}</text>
+              <text class="stat-unit">m</text>
+            </view>
+          </view>
+
+          <button wx:else class="submit-btn" data-path="{{item.uploadPath}}" bindtap="onTapSubmit">交卷</button>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -62,20 +62,6 @@ def _response(meetup, participants_count=0, first_media_file_id=None, current_us
     )
 
 
-def _media_response(media) -> schemas.MeetupMediaResponse:
-    """把媒体 ORM 行翻译成小程序能直接展示的图片/视频记录。"""
-    return schemas.MeetupMediaResponse(
-        id=media.id,
-        meetup_id=media.meetup_id,
-        uploader_id=media.uploader_id,
-        type=media.type,
-        file_id=media.file_id,
-        caption=media.caption,
-        seq=media.seq,
-        created_at=media.created_at,
-    )
-
-
 def _live_response(db: Session, meetup, participants_count=None, current_user_id=None) -> schemas.MeetupResponse:
     """单条约骑响应统一查人数和首图，避免列表页、详情页、操作返回口径分裂。
     current_user_id 透传给 _response 算角色标记（is_creator / has_joined）。"""
@@ -165,6 +151,17 @@ def list_participants(
     db: Session = Depends(get_db),
 ):
     return service.list_participants(db, meetup_id, current_user_id, token=token)
+
+
+@router.get("/{meetup_id}/report", response_model=schemas.MeetupReportOut)
+def get_meetup_report(
+    meetup_id: int,
+    token: str | None = Query(None),
+    current_user_id: int | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    service.get_meetup_detail(db, meetup_id, current_user_id=current_user_id, token=token)
+    return service.get_meetup_report(db, meetup_id, current_user_id=current_user_id, token=token, prechecked=True)
 
 
 @router.get("/{meetup_id}", response_model=schemas.MeetupResponse)
@@ -270,7 +267,7 @@ def list_media(
     # 否则猜连号 id 能绕过 /media 看到私圈约骑的照片。复用 get_meetup_detail 的门卫
     # （不符合返回 404），通过才返回媒体列表（按 seq 升序）。
     service.get_meetup_detail(db, meetup_id, current_user_id=current_user_id, token=token)
-    return [_media_response(m) for m in media_service.list_meetup_media(db, meetup_id)]
+    return [media_service.media_response(m) for m in media_service.list_meetup_media(db, meetup_id)]
 
 
 @router.post("/{meetup_id}/media", response_model=schemas.MeetupMediaResponse)
@@ -290,7 +287,7 @@ def upload_media(
         file_bytes=file.file.read(),
         caption=caption,
     )
-    return _media_response(media)
+    return media_service.media_response(media)
 
 
 @router.delete("/{meetup_id}/media/{media_id}", status_code=204)

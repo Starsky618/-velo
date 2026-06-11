@@ -14,8 +14,9 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.meetup.models import Meetup, MeetupMedia, MeetupParticipant
-from app.meetup.schemas import InviteeSummary
+from app.activity.models import Activity
+from app.meetup.models import Meetup, MeetupActivity, MeetupMedia, MeetupParticipant
+from app.meetup.schemas import InviteeSummary, MeetupReportCell, MeetupReportOut, MeetupReportTotals
 from app.route_book.models import RouteBook
 from app.segment.models import Segment
 from app.storage.local import LocalStorage
@@ -481,6 +482,103 @@ def list_participants(
         )
         for participant, user in rows
     ]
+
+
+def get_meetup_report(
+    db: Session,
+    meetup_id: int,
+    current_user_id: int | None,
+    token: str | None = None,
+    prechecked: bool = False,
+) -> MeetupReportOut:
+    """聚合一场约骑的战报：先过详情门禁，再组装合计、照片墙和每人一格。
+
+    这里必须先调用 get_meetup_detail。它像同一个门卫：详情页能不能进、战报页能不能进，
+    都由这条链判断，避免两套门禁以后越改越不一样。
+    """
+    if not prechecked:
+        get_meetup_detail(db, meetup_id, current_user_id=current_user_id, token=token)
+
+    # 第一步先拿全员骨架。灰格是产品体验的一部分，不能让 SQL JOIN 把未交卷的人过滤掉。
+    skeleton_rows = (
+        db.query(MeetupParticipant, User)
+        .join(User, User.id == MeetupParticipant.user_id)
+        .filter(MeetupParticipant.meetup_id == meetup_id)
+        .all()
+    )
+
+    # 第二步只查已交卷成绩，再按 user_id 贴回骨架。
+    submitted_rows = (
+        db.query(MeetupActivity, Activity)
+        .join(Activity, Activity.id == MeetupActivity.activity_id)
+        .filter(MeetupActivity.meetup_id == meetup_id)
+        .all()
+    )
+    by_user = {row.user_id: (row, activity) for row, activity in submitted_rows}
+
+    cells: list[MeetupReportCell] = []
+    total_distance_m = 0.0
+    total_climb_m = 0.0
+    submitted_count = 0
+    for participant, user in skeleton_rows:
+        hit = by_user.get(participant.user_id)
+        if hit is None:
+            cells.append(
+                MeetupReportCell(
+                    user_id=user.id,
+                    nickname=user.nickname or None,
+                    avatar_url=user.avatar_url,
+                    submitted=False,
+                )
+            )
+            continue
+
+        meetup_activity, activity = hit
+        distance_m = activity.distance or 0.0
+        climb_m = activity.elevation_gain or 0.0
+        total_distance_m += distance_m
+        total_climb_m += climb_m
+        submitted_count += 1
+        cells.append(
+            MeetupReportCell(
+                user_id=user.id,
+                nickname=user.nickname or None,
+                avatar_url=user.avatar_url,
+                submitted=True,
+                distance_km=round(distance_m / 1000, 1),
+                avg_speed=activity.avg_speed,
+                elevation_gain=activity.elevation_gain,
+                created_at=meetup_activity.created_at,
+            )
+        )
+
+    # D9：交卷先后排前面，未交卷没有 submitted_at，统一排到最后。
+    # _ensure_aware：SQLite 测试库取出的是 naive datetime（陷阱 #2），naive 的 .timestamp()
+    # 会按本机时区解释——naive/aware 混在一个列表里比较就会排错（高危双审 I1）。
+    cells.sort(
+        key=lambda cell: (
+            cell.created_at is None,
+            _ensure_aware(cell.created_at).timestamp() if cell.created_at is not None else float("inf"),
+            cell.user_id,
+        )
+    )
+
+    # 函数内延迟 import：media_service 顶层 import 了本模块的 _load_and_authorize_meetup，
+    # 这里若顶层回 import 会形成真循环（Python 部分初始化炸）。延迟 import 是项目防火墙惯例
+    # （user/service.py 同模式）；同包循环的彻底拆法记 docs/tech-debt.md，本期不动。
+    from app.meetup import media_service
+
+    return MeetupReportOut(
+        meetup_id=meetup_id,
+        totals=MeetupReportTotals(
+            distance_km=round(total_distance_m / 1000, 1),
+            climb_m=round(total_climb_m),
+            rider_count=len(skeleton_rows),
+            submitted_count=submitted_count,
+        ),
+        media=[media_service.media_response(media) for media in media_service.list_meetup_media(db, meetup_id)],
+        cells=cells,
+    )
 
 
 def join_meetup(db: Session, meetup_id: int, current_user_id: int, token: str | None = None) -> dict:

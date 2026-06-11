@@ -38,6 +38,7 @@ Page({
     shareToken: '', // 私圈约骑分享链接带来的口令（onLoad 从 ?token= 取，透传给后端门禁）
     meetup: null,
     reportStats: null, // 战报统计只给分享标题用；拉不到就保持 null，像没有路况牌时仍能正常骑到终点
+    canViewReport: false,
     loading: true,
     joining: false,
     mediaList: [], // 照片墙：每项含 url（拼好的可显示地址）+ isVideo
@@ -70,6 +71,7 @@ Page({
     api.getMeetupDetail(this.data.meetupId, this.data.shareToken, source)
       .then(function (res) {
         that.setData({ meetup: decorateMeetup(res) })
+        that.updateReportEntrance()
         that.loadMedia()
       })
       .catch(function (err) {
@@ -181,11 +183,33 @@ Page({
             rider_count: totals.rider_count,
           },
         })
+        that.updateReportEntrance()
       })
       .catch(function () {
         // T4 没上线、404、网络失败都不打扰用户：分享标题退回纯约骑名，页面照常可用。
         that.setData({ reportStats: null })
+        that.updateReportEntrance()
       })
+  },
+
+  updateReportEntrance: function () {
+    var meetup = this.data.meetup
+    var stats = this.data.reportStats
+    var submitted = stats ? Number(stats.submitted_count) : 0
+    var canViewReport = !!meetup && (
+      meetup.status === 'COMPLETED' ||
+      (meetup.status === 'OPEN' && isFinite(submitted) && submitted >= 1)
+    )
+    this.setData({ canViewReport: canViewReport })
+  },
+
+  onTapReport: function () {
+    if (!this.data.canViewReport || !this.data.meetupId) return
+    var path = '/pages/meetup-report/meetup-report?id=' + this.data.meetupId
+    if (this.data.shareToken) {
+      path += '&token=' + encodeURIComponent(this.data.shareToken)
+    }
+    wx.navigateTo({ url: path })
   },
 
   onShareAppMessage: function () {

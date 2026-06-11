@@ -191,6 +191,13 @@ page {
   color: #fff;
 }
 
+/* 看战报：信息入口不是主操作，用深底区分于红色主按钮；与下方主按钮留出间距 */
+.report-entry {
+  background: #111827;
+  color: #c8ff3d;
+  margin-bottom: 16rpx;
+}
+
 .leave {
   background: #fff;
   color: #111827;

@@ -172,3 +172,40 @@ class MeetupMediaResponse(BaseModel):
     caption: str | None = None
     seq: int
     created_at: datetime | None = None
+
+
+class MeetupReportTotals(BaseModel):
+    """战报顶部的合计数字：只统计已交卷的骑行，未交卷的人只占人数。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    distance_km: float
+    climb_m: float
+    rider_count: int
+    submitted_count: int
+
+
+class MeetupReportCell(BaseModel):
+    """战报里的一格：已交卷显示成绩，未交卷保留灰格。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: int
+    nickname: str | None = None
+    avatar_url: str | None = None
+    submitted: bool
+    distance_km: float | None = None
+    avg_speed: float | None = None
+    elevation_gain: float | None = Field(default=None, serialization_alias="climb_m")
+    created_at: datetime | None = Field(default=None, serialization_alias="submitted_at")
+
+
+class MeetupReportOut(BaseModel):
+    """一场约骑的成绩册：合计、照片墙和每人一格。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    meetup_id: int
+    totals: MeetupReportTotals
+    media: list[MeetupMediaResponse]
+    cells: list[MeetupReportCell]

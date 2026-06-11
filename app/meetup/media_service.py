@@ -13,6 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.meetup.models import MeetupMedia
+from app.meetup import schemas
 from app.meetup.service import _load_and_authorize_meetup
 from app.storage.local import LocalStorage
 
@@ -26,6 +27,20 @@ _MEDIA_RULES = {
     "image/webp": ("image", 5 * 1024 * 1024, ".webp"),
     "video/mp4": ("video", 50 * 1024 * 1024, ".mp4"),
 }
+
+
+def media_response(media) -> schemas.MeetupMediaResponse:
+    """把媒体 ORM 行翻译成小程序能直接展示的图片/视频记录。"""
+    return schemas.MeetupMediaResponse(
+        id=media.id,
+        meetup_id=media.meetup_id,
+        uploader_id=media.uploader_id,
+        type=media.type,
+        file_id=media.file_id,
+        caption=media.caption,
+        seq=media.seq,
+        created_at=media.created_at,
+    )
 
 
 def upload_meetup_media(

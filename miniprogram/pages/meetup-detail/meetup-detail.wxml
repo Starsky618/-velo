@@ -61,6 +61,9 @@
     </view>
 
     <view class="actions">
+      <!-- 看战报：与加入/退出/取消不互斥，永远排在主操作上方。
+           显示条件由 js 的 updateReportEntrance 统一算（已结束 / 进行中且 ≥1 人交卷） -->
+      <button wx:if="{{canViewReport}}" class="report-entry" bindtap="onTapReport">看战报</button>
       <button wx:if="{{meetup.canCancel}}" class="cancel" disabled="{{joining}}" bindtap="onTapCancel">取消约骑</button>
       <button wx:elif="{{meetup.canLeave}}" class="leave" disabled="{{joining}}" bindtap="onTapLeave">退出</button>
       <button wx:elif="{{meetup.canJoin}}" class="join" disabled="{{joining}}" bindtap="onTapJoin">加入</button>
