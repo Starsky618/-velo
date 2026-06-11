@@ -262,6 +262,7 @@ Page({
     if (this.data.form.visibility === 'invite_only' && this.data.shareToken) {
       path += '&token=' + encodeURIComponent(this.data.shareToken)
     }
+    path += '&source=share_card'
     return {
       title: this.data.selectedRouteName || 'VELO 约骑',
       path: path,

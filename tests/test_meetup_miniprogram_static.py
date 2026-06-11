@@ -383,7 +383,8 @@ def test_create_page_restores_draft_and_share_path_carries_invite_token():
     assert "token=" in js
     # api helper：participants 新增 / detail + join 替换为带 token 签名
     assert "getMeetupParticipants" in api
-    assert "getMeetupDetail: function (meetupId, token)" in api
+    # S13-T3/T5：detail 签名加了 source（埋点来路标记），token 合同不变
+    assert "getMeetupDetail: function (meetupId, token, source)" in api
     assert "joinMeetup: function (meetupId, token)" in api
     assert "getRouteBookDetail" in api
 
@@ -394,6 +395,8 @@ def test_meetup_detail_consumes_invite_token_from_share_link():
     js = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.js")
     assert "options.token" in js
     assert "shareToken" in js
-    assert "getMeetupDetail(this.data.meetupId, this.data.shareToken)" in js
+    # S13-T3/T5：调用点第三参是 source（埋点来路），token 透传合同不变
+    assert "getMeetupDetail(this.data.meetupId, this.data.shareToken, source)" in js
+    assert "options.source" in js  # 分享卡 ?source=share_card 必须被读取，否则①触达埋点恒为 0（集成审 Critical 锁死）
     assert "joinMeetup(this.data.meetupId, this.data.shareToken)" in js
     assert "getMeetupMedia(this.data.meetupId, this.data.shareToken)" in js

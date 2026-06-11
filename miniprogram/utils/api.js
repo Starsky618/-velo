@@ -355,9 +355,14 @@ module.exports = {
     return request('/api/meetups/mine' + buildQuery(Object.assign({ role: role }, params || {})), 'GET')
   },
 
-  // 详情：invite_only 私圈约骑需带 token（朋友从分享链接进来才拿得到）
-  getMeetupDetail: function (meetupId, token) {
-    return request('/api/meetups/' + meetupId + buildQuery(token ? { token: token } : {}), 'GET')
+  // 详情：invite_only 私圈约骑需带 token（朋友从分享链接进来才拿得到）。
+  // source 是五环节埋点的来路标记（share_card/report_card）：不透传它，
+  // 后端 SENSOR 行永远记 direct，上线回看"多少人从卡进来"会恒为 0（S13 集成审 Critical）。
+  getMeetupDetail: function (meetupId, token, source) {
+    var params = {}
+    if (token) params.token = token
+    if (source) params.source = source
+    return request('/api/meetups/' + meetupId + buildQuery(params), 'GET')
   },
 
   // 已加入骑友列表（私圈约骑需带 token / 登录）

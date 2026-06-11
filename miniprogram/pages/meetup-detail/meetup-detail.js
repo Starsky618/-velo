@@ -37,6 +37,7 @@ Page({
     meetupId: null,
     shareToken: '', // 私圈约骑分享链接带来的口令（onLoad 从 ?token= 取，透传给后端门禁）
     meetup: null,
+    reportStats: null, // 战报统计只给分享标题用；拉不到就保持 null，像没有路况牌时仍能正常骑到终点
     loading: true,
     joining: false,
     mediaList: [], // 照片墙：每项含 url（拼好的可显示地址）+ isVideo
@@ -46,8 +47,12 @@ Page({
   onLoad: function (options) {
     // 私圈约骑分享链接是 ?id=X&token=Y——必须收下 token 并透传给详情/加入/照片接口，
     // 否则受邀者带链接进来后端门禁仍判"无权"返回 404，整个私圈邀请就断了。
+    // source（share_card/report_card）是埋点来路标记，只在首次详情请求透传一次：
+    // 下拉刷新不重报，否则同一个人刷三下，①触达就虚增三次。
+    this._sourceParam = options.source || ''
     this.setData({ meetupId: Number(options.id), shareToken: options.token || '' })
     this.loadDetail()
+    this.fetchReportStats()
   },
 
   onPullDownRefresh: function () {
@@ -60,7 +65,9 @@ Page({
     var that = this
     if (!this.data.meetupId) return
     this.setData({ loading: true })
-    api.getMeetupDetail(this.data.meetupId, this.data.shareToken)
+    var source = this._sourceParam
+    this._sourceParam = '' // 用完即清：埋点只记首次进入的来路
+    api.getMeetupDetail(this.data.meetupId, this.data.shareToken, source)
       .then(function (res) {
         that.setData({ meetup: decorateMeetup(res) })
         that.loadMedia()
@@ -156,6 +163,45 @@ Page({
         console.error('照片墙加载失败', err)
         that.setData({ mediaError: true })
       })
+  },
+
+  fetchReportStats: function () {
+    var that = this
+    if (!this.data.meetupId) return
+    var url = '/api/meetups/' + this.data.meetupId + '/report'
+    if (this.data.shareToken) {
+      url += '?token=' + encodeURIComponent(this.data.shareToken)
+    }
+    api.get(url)
+      .then(function (data) {
+        var totals = (data && data.totals) || {}
+        that.setData({
+          reportStats: {
+            submitted_count: totals.submitted_count,
+            rider_count: totals.rider_count,
+          },
+        })
+      })
+      .catch(function () {
+        // T4 没上线、404、网络失败都不打扰用户：分享标题退回纯约骑名，页面照常可用。
+        that.setData({ reportStats: null })
+      })
+  },
+
+  onShareAppMessage: function () {
+    var meetup = this.data.meetup || {}
+    var title = meetup.snapshot_route_name || 'VELO 约骑'
+    var stats = this.data.reportStats
+    var submitted = stats ? Number(stats.submitted_count) : NaN
+    var riders = stats ? Number(stats.rider_count) : NaN
+    if (isFinite(submitted) && isFinite(riders) && riders > 0) {
+      title += ' · 已交卷 ' + submitted + '/' + riders
+    }
+    var path = '/pages/meetup-detail/meetup-detail?id=' + this.data.meetupId + '&source=share_card'
+    if (this.data.shareToken) {
+      path += '&token=' + encodeURIComponent(this.data.shareToken)
+    }
+    return { title: title, path: path }
   },
 
   // 仅 creator：微信选图/视频 → 逐个上传 → 刷新照片墙
