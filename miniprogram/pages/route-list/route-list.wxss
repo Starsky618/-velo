@@ -1,0 +1,104 @@
+.route-list-page {
+  min-height: 100vh;
+  background: #f5f5f7;
+  padding: 28rpx;
+  box-sizing: border-box;
+}
+
+.page-head {
+  margin: 18rpx 0 28rpx;
+}
+
+.page-title {
+  color: #111827;
+  font-size: 44rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  margin-top: 8rpx;
+  color: #6b7280;
+  font-size: 26rpx;
+}
+
+.state-text {
+  padding: 80rpx 0;
+  color: #6b7280;
+  font-size: 28rpx;
+  text-align: center;
+}
+
+.guide-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.guide-card {
+  display: flex;
+  gap: 20rpx;
+  padding: 18rpx;
+  background: #ffffff;
+  border: 1rpx solid #ececf0;
+  border-radius: 8rpx;
+}
+
+.cover {
+  width: 188rpx;
+  height: 126rpx;
+  flex: 0 0 188rpx;
+  border-radius: 8rpx;
+  background: #f7f3ea;
+}
+
+.card-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.name-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+}
+
+.guide-name {
+  flex: 1;
+  color: #111827;
+  font-size: 31rpx;
+  font-weight: 650;
+  line-height: 1.28;
+}
+
+.status {
+  flex: 0 0 auto;
+  padding: 5rpx 10rpx;
+  border-radius: 6rpx;
+  font-size: 21rpx;
+  line-height: 1.2;
+}
+
+.status.ready {
+  color: #0f766e;
+  background: #e7f7f3;
+}
+
+.status.pending {
+  color: #8a5a00;
+  background: #fff4d6;
+}
+
+.highlight {
+  margin-top: 12rpx;
+  color: #4b5563;
+  font-size: 25rpx;
+  line-height: 1.45;
+}
+
+.meta {
+  margin-top: 12rpx;
+  color: #f04452;
+  font-size: 24rpx;
+  font-weight: 600;
+}

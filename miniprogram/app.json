@@ -17,6 +17,8 @@
     "pages/map-picker/map-picker",
     "pages/meetup-report/meetup-report",
     "pages/meetups-mine/meetups-mine",
+    "pages/route-list/route-list",
+    "pages/route-detail/route-detail",
     "pages/meetups-list/meetups-list",
     "pages/meetup-detail/meetup-detail",
     "pages/meetup-create/meetup-create"

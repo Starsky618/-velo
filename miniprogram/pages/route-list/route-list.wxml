@@ -1,0 +1,24 @@
+<view class="route-list-page">
+  <view class="page-head">
+    <view class="page-title">路线百科</view>
+    <view class="page-subtitle">太原骑友常用路线手册</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="state-text">加载中</view>
+  <view wx:elif="{{error}}" class="state-text">{{error}}</view>
+
+  <view wx:else class="guide-list">
+    <view class="guide-card" wx:for="{{guides}}" wx:key="id" data-id="{{item.id}}" bindtap="openGuide">
+      <image wx:if="{{item.cover_url}}" class="cover" src="{{item.cover_url}}" mode="aspectFill" />
+      <image wx:else class="cover" src="{{item.coverSrc}}" mode="aspectFill" />
+      <view class="card-main">
+        <view class="name-row">
+          <view class="guide-name">{{item.name}}</view>
+          <view class="status {{item.ready ? 'ready' : 'pending'}}">{{item.ready ? '有轨迹' : '文字版'}}</view>
+        </view>
+        <view wx:if="{{item.firstHighlight}}" class="highlight">{{item.firstHighlight}}</view>
+        <view wx:if="{{item.metaText}}" class="meta">{{item.metaText}}</view>
+      </view>
+    </view>
+  </view>
+</view>

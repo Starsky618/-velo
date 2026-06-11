@@ -36,6 +36,46 @@ class RouteBookListResponse(BaseModel):
     items: list[RouteBookResponse]
 
 
+class RouteGuideListItem(BaseModel):
+    """官方路线列表卡片——只给书架页展示最必要的信息。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    name: str
+    city: str
+    ready: bool
+    cover_url: str | None = None
+    highlights: list[str] | None = None
+    distance: float | None = None
+    climb: float | None = None
+
+
+class RouteGuideListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[RouteGuideListItem]
+
+
+class RouteGuideOut(BaseModel):
+    """官方路线详情——像一本摊开的导览手册，轨迹还没挂好时也能先读文字。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    name: str
+    city: str
+    ready: bool
+    content_md: str
+    cover_url: str | None = None
+    highlights: list[str] | None = None
+    elevation_profile: list[list[float]] | None = None
+    route_book_id: int | None = None
+    distance: float | None = None
+    climb: float | None = None
+    preview_points: list[list[float]] | None = None
+
+
 class ActivityCandidateItem(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
