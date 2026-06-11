@@ -19,7 +19,7 @@ Strava 导入调度器——常驻进程，每 30s tick 一次。
 import logging
 import time
 
-from app.meetup.cron import run_meetup_complete_tick
+from app.meetup.cron import run_meetup_complete_tick, run_meetup_attach_tick
 from app.strava.import_scheduler import run_import_tick
 
 
@@ -53,7 +53,15 @@ def main():
         try:
             _meetup_tick_counter += 1
             if _meetup_tick_counter >= 20:
-                run_meetup_complete_tick()
+                # 收尾和收卷互不拖累：收尾炸了不该让本轮收卷也跳过（与外层"双 tick 互不拖累"同一哲学）
+                try:
+                    run_meetup_complete_tick()
+                except Exception:
+                    logger.exception("meetup complete tick 失败")
+                try:
+                    run_meetup_attach_tick()
+                except Exception:
+                    logger.exception("meetup attach tick 失败")
                 _meetup_tick_counter = 0
         except Exception:
             # meetup tick 和 Strava tick 互不拖累：约骑收尾失败不能让导入停摆。

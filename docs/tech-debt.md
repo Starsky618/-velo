@@ -6,6 +6,42 @@
 
 ---
 
+## 🟡 P2：SQLite 测试库不强制外键 → 所有 ON DELETE CASCADE 断言是测试盲区（Sprint 13 T1 双审实证 / 2026-06-11）
+
+测试库（tests/conftest.py SQLite :memory:）没开 `PRAGMA foreign_keys=ON`，所有依赖 DB 级联的删除行为在测试里**静默不发生**——级联类断言只能靠"业务层显式删"才可测（delete_user 第 3 步显式删模式即此因）。
+
+**实验证据（2026-06-11）**：临时打开 PRAGMA 后全量 pytest，9 个 `tests/test_breakthrough.py` 既有测试因历史构造数据违反 FK 立即失败——说明打开它需要先清理存量测试数据构造，爆炸半径超出单 task。
+
+**触发清理条件**：下次专门动测试基建时，开 PRAGMA + 修 9 个 breakthrough 测试的构造数据；从此 CASCADE 行为获得真实测试覆盖。在那之前，任何"靠级联删"的新路径要么显式删、要么接受 SQLite 盲区并在 task 卡标注。
+
+---
+
+## 🟡 P2：存量北京时间工具双定义待迁移到 `app/common/bj_time.py`（Sprint 13 T1 / 2026-06-11）
+
+Sprint 13 T1 已新增 `app/common/bj_time.py`，新代码统一用 `BJ_TZ` / `to_bj_date()`。
+
+**存量豁免**：
+- `app/training/service.py` 仍有 `_BJ_TZ`
+- `app/notification/progress_detector.py` 仍有 `_BJ_TZ`
+
+**为什么不本轮顺手改**：这两处是已上线训练分析 / 通知逻辑，本 task 只做约骑↔活动关联；顺手迁移会扩大回归面。
+
+**触发清理条件**：下一次改训练日历、通知进度检测或全局时间工具时，把两处 `_BJ_TZ` 改为 import `app.common.bj_time.BJ_TZ` / `to_bj_date()`，并补对应回归测试。
+
+---
+
+## 🟡 P2：segment↔meetup 历史双向 import 待拆解（Sprint 13 T1 / 2026-06-11）
+
+Sprint 13 T1 明确禁止在 `app/meetup/cron.py` import `app.segment`，避免把约骑自动关联继续绑到赛段模块上。
+
+**当前债务**：项目历史上已有 segment 与 meetup 相邻功能互相知道对方的调用痕迹；这不是本 task 新增的问题，但会让后续路线、约骑、赛段三条线更难独立替换。
+
+**为什么不本轮修**：拆双向 import 属于架构清理，会牵动 route_book / segment / meetup 多模块调用链；本 task 只新增 meetup 侧轮询，不扩大模块边界。
+
+**触发清理条件**：下一次改 upcoming meetups、segment 详情约骑入口或 route_book/meetup 组合查询时，先画真实 import 图，再把共享查询下沉到更小的 common/query helper 或单向 service。
+
+---
+
 ## 🔴 P1：FTP 自动估算真实数据仍不足（HR-gated 已替代旧 CP3 盲扫 / 2026-05-25 本 session 排查）
 
 **历史根因**：Sprint 9 的旧 `ftp_estimator` 曾盲扫功率 best efforts，Tim 账号算出 ftp=117W / confidence=high / r2=0.981，但 Tim 自报 1200s 历史最佳约 250W。这个问题不该靠“把所有活动都塞进 CP3”继续修，因为日常骑行不等于全力测试。

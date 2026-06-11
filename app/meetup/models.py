@@ -1,9 +1,9 @@
 """
-约骑数据模型——一张路线图纸上的"集合通知单 + 报名名单 + 相册"。
+约骑数据模型——一张路线图纸上的"集合通知单 + 报名名单 + 相册 + 成绩格子"。
 
-这个文件定义 meetups、meetup_participants、meetup_media 三张表。
+这个文件定义 meetups、meetup_participants、meetup_media、meetup_activities 四张表。
 操作注意事项：DRAFT 只允许每个 creator 保留一份；OPEN 之后快照字段不再跟 route_book 或 segment 改名漂移。
-输入输出：service 写状态机，router 读这些字段返回前端卡片。
+输入输出：service 写状态机，cron 把骑行活动挂进 meetup_activities，router 读这些字段返回前端卡片。
 """
 
 from sqlalchemy import (
@@ -131,4 +131,22 @@ class MeetupMedia(Base):
     __table_args__ = (
         Index("idx_meetup_media_meetup_seq", "meetup_id", "seq"),
         CheckConstraint("type IN ('image', 'video')", name="ck_meetup_media_type"),
+    )
+
+
+class MeetupActivity(Base):
+    """约骑↔活动关联——战报上"每人一格"的那颗钉子。"""
+
+    __tablename__ = "meetup_activities"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    meetup_id = Column(Integer, ForeignKey("meetups.id", ondelete="CASCADE"), nullable=False)
+    activity_id = Column(Integer, ForeignKey("activities.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("meetup_id", "activity_id", name="uq_meetup_activity"),
+        UniqueConstraint("meetup_id", "user_id", name="uq_meetup_user_one_cell"),
+        Index("idx_meetup_activities_meetup", "meetup_id"),
     )

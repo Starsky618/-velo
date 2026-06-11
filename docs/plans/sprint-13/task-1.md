@@ -76,7 +76,8 @@ ls tests/ | rg "meetup"                                  # 既有 meetup 测试�
 - Create `tests/test_meetup_attach_tick.py`
 - Modify `tests/conftest.py`：按 StravaImport 先例补 `MeetupActivity.__table__.create`（若 `_test_metadata` 未自动覆盖）
 - Modify `docs/tech-debt.md`：登记两条——① 存量 `_BJ_TZ` 双定义待迁移 bj_time ② segment↔meetup 历史双向 import（spec §3.9）
-- Modify `app/user/service.py` :114 附近注释：delete_user 级联清单补提 `meetup_activities`（user_id CASCADE 自动删，纯注释 5 字改动，防新维护者漏算——双审建议，已授权）
+- Modify `app/user/service.py`：① delete_user 第 3 步显式删 `meetup_activities`（按 user_id，PG 有 CASCADE 仍显式删——注销是隐私关键路径，SQLite 测试库不强制外键，显式删让两方言一致且可断言；代码层双审 B-I2 定案）② 第 5 步注释同步
+- Modify `tests/test_meetup_cron_delete_user.py`：① 合同测试补 `assert "run_meetup_attach_tick()" in source`（B-I3）② purge 测试补 MeetupActivity 行构造 + 注销后 count==0 断言（B-I2）
 - **Do not** import segment（任何形式）/ **Do not** 写 `meetup.participants` relationship / **Do not** 动 activity worker
 
 ## 3. 完整代码
@@ -283,17 +284,26 @@ def run_meetup_attach_tick() -> int:
 ### 3.5 `scheduler.py`（仓库根目录）两处
 
 ```python
-# :22 改为
-from app.meetup.cron import run_meetup_attach_tick, run_meetup_complete_tick
+# :22 改为（complete 在前——既有合同测试 test_scheduler_has_independent_meetup_tick 以
+# "from app.meetup.cron import run_meetup_complete_tick" 子串硬匹配，attach 放前面会假性破坏合同）
+from app.meetup.cron import run_meetup_complete_tick, run_meetup_attach_tick
 ```
 
 ```python
-# :53-61 现状是带 try/except 的块（双审 I4 实证，spec 伪码省略了它——改完必须保持异常隔离原样）：
+# :53-61 现状是带 try/except 的块（spec 伪码省略了它）。代码层双审 B-I1 定案：
+# 收尾与收卷各自独立 try/except（一个失败不拖累另一个本轮），外层 except 保留兜底：
         try:
             _meetup_tick_counter += 1
             if _meetup_tick_counter >= 20:
-                run_meetup_complete_tick()
-                run_meetup_attach_tick()        # ← 新增仅这一行，5 分钟节拍复用同一个计数器
+                # 收尾和收卷互不拖累：收尾炸了不该让本轮收卷也跳过
+                try:
+                    run_meetup_complete_tick()
+                except Exception:
+                    logger.exception("meetup complete tick 失败")
+                try:
+                    run_meetup_attach_tick()
+                except Exception:
+                    logger.exception("meetup attach tick 失败")
                 _meetup_tick_counter = 0
         except Exception:
             # meetup tick 和 Strava tick 互不拖累（现有注释保留）
@@ -301,7 +311,7 @@ from app.meetup.cron import run_meetup_attach_tick, run_meetup_complete_tick
             _meetup_tick_counter = 0
 ```
 
-attach tick 抛异常会被这层 except 接住、不会让 scheduler 主循环崩——**不许把新行加在 try 块外**。
+attach tick 抛异常不会让 scheduler 主循环崩——**不许把新行加在 try 结构外**。
 
 ## 4. 测试用例（spec §3.1 边界表 12 行各一测，TDD 先写）
 

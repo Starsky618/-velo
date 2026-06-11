@@ -69,7 +69,7 @@ def delete_user(db, user_id: int) -> None:
     from sqlalchemy import or_
 
     from app.activity.models import Activity, BreakthroughEvent
-    from app.meetup.models import Meetup
+    from app.meetup.models import Meetup, MeetupActivity
     from app.meetup.service import _cleanup_meetup_storage, _delete_meetup_row_and_collect_files
     from app.segment.models import SegmentEffort
     from app.strava.models import StravaImport
@@ -106,13 +106,17 @@ def delete_user(db, user_id: int) -> None:
         bt_filter = or_(bt_filter, BreakthroughEvent.activity_id.in_(activity_ids))
     db.query(BreakthroughEvent).filter(bt_filter).delete(synchronize_session=False)
     db.query(StravaImport).filter(StravaImport.user_id == user_id).delete(synchronize_session=False)
+    # meetup_activities（约骑交卷格子）在 PG 由 user_id/activity_id 双 CASCADE 自动清，这里仍显式删：
+    # 注销是隐私关键路径，显式删让 PG/SQLite 两方言行为一致、测试可断言（Sprint 13 T1 双审 I2）。
+    db.query(MeetupActivity).filter(MeetupActivity.user_id == user_id).delete(synchronize_session=False)
 
     # 4) 删骑行活动行（trackpoints / activity_privacy / segment_efforts 由 activity_id 的
     #    ON DELETE CASCADE 在 PG 自动级联清理）。
     db.query(Activity).filter(Activity.user_id == user_id).delete(synchronize_session=False)
 
     # 5) 删 user 本体：daily_training_load / meetup_participants / notifications(recipient) 由
-    #    user_id 的 ON DELETE CASCADE 自动级联；meetups / route_books 的 creator_id 等 SET NULL。
+    #    user_id 的 ON DELETE CASCADE 自动级联（meetup_activities 已在第 3 步显式删）；
+    #    meetups / route_books 的 creator_id 等 SET NULL。
     user = db.query(User).filter(User.id == user_id).first()
     if user is not None:
         db.delete(user)

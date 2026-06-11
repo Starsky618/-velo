@@ -359,11 +359,16 @@ def db():
     # StravaImport ORM 字段全 SQLite 兼容（Integer/BigInteger/String/DateTime），直接建表。
     # delete_user 注销时要删 strava_imports（user_id RESTRICT 阻塞），测试库必须有这张表。
     from app.strava.models import StravaImport
+    # MeetupActivity ORM 字段都是 SQLite 兼容。
+    # 可以把它想成给测试考场临时摆一张"成绩格子表"：cron 测试要往这里钉活动，
+    # 但 _test_metadata 只建了简化表，ORM 新表要照 StravaImport 先例单独摆出来。
+    from app.meetup.models import MeetupActivity
     User.__table__.create(bind=_test_engine, checkfirst=True)
     _test_metadata.create_all(bind=_test_engine)
     BreakthroughEvent.__table__.create(bind=_test_engine, checkfirst=True)
     DailyTrainingLoad.__table__.create(bind=_test_engine, checkfirst=True)
     StravaImport.__table__.create(bind=_test_engine, checkfirst=True)
+    MeetupActivity.__table__.create(bind=_test_engine, checkfirst=True)
 
     session = _TestSession()
     try:
@@ -371,6 +376,7 @@ def db():
     finally:
         session.close()
         # 删表：测试结束后把所有表清掉，下次重建
+        MeetupActivity.__table__.drop(bind=_test_engine, checkfirst=True)
         StravaImport.__table__.drop(bind=_test_engine, checkfirst=True)
         DailyTrainingLoad.__table__.drop(bind=_test_engine, checkfirst=True)
         BreakthroughEvent.__table__.drop(bind=_test_engine, checkfirst=True)

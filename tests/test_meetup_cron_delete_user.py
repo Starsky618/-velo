@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.meetup import service
-from app.meetup.models import Meetup, MeetupMedia, MeetupParticipant
+from app.meetup.models import Meetup, MeetupActivity, MeetupMedia, MeetupParticipant
 from app.segment.models import Segment
 from app.user.models import User
 
@@ -85,6 +85,7 @@ def test_scheduler_has_independent_meetup_tick():
     assert "_meetup_tick_counter" in source
     assert "run_import_tick()" in source
     assert "run_meetup_complete_tick()" in source
+    assert "run_meetup_attach_tick()" in source  # Sprint 13 T1：收卷 tick 必须挂在 scheduler 上
     assert source.count("logger.exception") >= 2
 
 
@@ -143,6 +144,11 @@ def test_delete_user_purges_all_personal_data(db, test_user, monkeypatch):
                              expires_at=datetime.now(timezone.utc) + timedelta(days=7)))
     db.add(StravaImport(user_id=user_id, strava_athlete_id=123456))
 
+    # 约骑交卷格子（Sprint 13 T1）：注销后格子必须消失。PG 靠 CASCADE，SQLite 测试库不强制外键，
+    # 所以 delete_user 里是显式删——这条断言锁死"显式删不许退化回只靠级联"。
+    cell_meetup = _meetup(db, user_id)
+    db.add(MeetupActivity(meetup_id=cell_meetup.id, activity_id=act_id, user_id=user_id))
+
     # 脏数据兜底（Codex 异源审 I1）：另一个用户的突破事件却挂在被注销用户的活动上。
     # breakthrough_events.activity_id 是 RESTRICT，若只按 user_id 删会漏掉它，删活动时被外键挡住抛 500。
     other = User(openid="del-user-dirty-bt", is_admin=False)
@@ -164,6 +170,7 @@ def test_delete_user_purges_all_personal_data(db, test_user, monkeypatch):
     assert db.query(SegmentEffort).filter(SegmentEffort.user_id == user_id).count() == 0
     assert db.query(BreakthroughEvent).filter(BreakthroughEvent.user_id == user_id).count() == 0
     assert db.query(StravaImport).filter(StravaImport.user_id == user_id).count() == 0
+    assert db.query(MeetupActivity).filter(MeetupActivity.user_id == user_id).count() == 0
     assert "202606/ride.gpx" in deleted_files  # 活动 GPX 文件被收集并清理
     # 挂在被删活动上的"脏"突破事件也必须被清掉（否则 activity_id RESTRICT 外键会挡住删活动）
     assert db.query(BreakthroughEvent).filter(BreakthroughEvent.id == dirty_bt_id).first() is None
