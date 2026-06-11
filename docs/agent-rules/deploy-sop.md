@@ -84,6 +84,10 @@ grep -rn "<按钮文案 或 endpoint key>" miniprogram/pages/ miniprogram/compon
 cd ~/Desktop/velo && git pull --no-rebase --no-edit
 # 之后微信开发者工具点编译刷新按钮，新组件出现
 # 纯后端改动（无 miniprogram/ diff）可跳
+
+# DEPLOY-8  清部署垃圾（每次 --build 部署后顺手跑 / 2026-06-11 实证：283 个镜像只有 11 个在用，
+# 38GB 旧镜像把 59G 盘吃到 82%——业务数据本身才 180MB。prune 只删无容器引用的镜像，在跑的不动）
+ssh ubuntu@114.132.190.245 "sudo docker image prune -a -f && sudo docker builder prune -f"
 ```
 
 ### 路径 B：scp + tar（备用 / 大陆服务器连 GitHub 不稳时）
