@@ -91,6 +91,71 @@ def test_imports_gpx_route_and_creates_official_route_book(db, route_guide_table
     assert all(curr[0] >= prev[0] for prev, curr in zip(profile, profile[1:]))
 
 
+def _write_gpx(path: Path, elevations: list[float | None]) -> None:
+    points = []
+    for index, elevation in enumerate(elevations):
+        ele_tag = "" if elevation is None else f"<ele>{elevation}</ele>"
+        points.append(f'<trkpt lat="{37.0 + index * 0.001}" lon="112.0">{ele_tag}</trkpt>')
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="pytest">
+  <trk>
+    <trkseg>
+      {"".join(points)}
+    </trkseg>
+  </trk>
+</gpx>
+""",
+        encoding="utf-8",
+    )
+
+
+def test_parse_track_uses_numeric_meta_distance_and_climb_overrides(tmp_path):
+    script = _load_script()
+    route_dir = tmp_path / "routes" / "with-meta"
+    route_dir.mkdir(parents=True)
+    (route_dir / "guide.md").write_text("# 有 meta 的路线\n", encoding="utf-8")
+    (route_dir / "meta.json").write_text(
+        json.dumps({"name": "有 meta 的路线", "distance_km": 12.3, "climb_m": 456}),
+        encoding="utf-8",
+    )
+    track_path = route_dir / "track.gpx"
+    _write_gpx(track_path, [10.0, 30.0, 20.0])
+
+    route = script.load_routes(tmp_path / "routes")[0]
+    parsed = script.parse_track(
+        route.track_path,
+        distance_override_m=route.distance_override_m,
+        climb_override_m=route.climb_override_m,
+    )
+
+    assert parsed.distance == 12300.0
+    assert parsed.climb == 456
+    assert parsed.elevation_profile is not None
+
+
+def test_parse_track_without_elevation_and_without_override_stores_nulls(tmp_path):
+    script = _load_script()
+    track_path = tmp_path / "track.gpx"
+    _write_gpx(track_path, [None, None, None])
+
+    parsed = script.parse_track(track_path)
+
+    assert parsed.climb is None
+    assert parsed.elevation_profile is None
+
+
+def test_parse_track_without_elevation_uses_climb_override_but_keeps_profile_null(tmp_path):
+    script = _load_script()
+    track_path = tmp_path / "track.gpx"
+    _write_gpx(track_path, [None, None, None])
+
+    parsed = script.parse_track(track_path, climb_override_m=314)
+
+    assert parsed.climb == 314
+    assert parsed.elevation_profile is None
+
+
 def test_imports_route_without_gpx_as_track_pending(db, route_guide_tables, tmp_path, monkeypatch):
     RouteBook, RouteGuide = route_guide_tables
     script = _load_script()

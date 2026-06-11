@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import json
+import math
 from pathlib import Path
 import sys
 
@@ -38,6 +39,8 @@ class RouteInput:
     highlights: str | None
     cover_url: str | None
     track_path: Path | None
+    distance_override_m: float | None
+    climb_override_m: float | None
 
 
 @dataclass(frozen=True)
@@ -45,9 +48,9 @@ class ParsedTrack:
     """GPX 解析结果——route_book 和 guide 海拔曲线共用这一袋数据。"""
 
     distance: float
-    climb: float
+    climb: float | None
     reference_line: str
-    elevation_profile: str
+    elevation_profile: str | None
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -98,19 +101,31 @@ def load_routes(content_dir: Path) -> list[RouteInput]:
         if cover_url is not None and not isinstance(cover_url, str):
             _die(f"{route_dir}: meta.json field 'cover_url' must be a string")
 
+        distance_km = _numeric_meta_value(meta, "distance_km")
+        climb_m = _numeric_meta_value(meta, "climb_m")
         track_path = route_dir / "track.gpx"
         routes.append(
             RouteInput(
                 route_dir=route_dir,
                 name=name.strip(),
-                city="太原",
+                city=meta.get("city") or "太原",  # spec §3.6：city 可选，默认太原
                 content_md=guide_path.read_text(encoding="utf-8"),
                 highlights=highlights,
                 cover_url=cover_url,
                 track_path=track_path if track_path.exists() else None,
+                distance_override_m=distance_km * 1000 if distance_km is not None else None,
+                climb_override_m=climb_m,
             )
         )
     return routes
+
+
+def _numeric_meta_value(meta: dict, field: str) -> float | None:
+    raw = meta.get(field)
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    value = float(raw)
+    return value if math.isfinite(value) else None
 
 
 def _load_highlights(route_dir: Path, meta: dict) -> str | None:
@@ -152,7 +167,11 @@ def upsert_route(db, route: RouteInput) -> None:
     elevation_profile = None
 
     if route.track_path is not None:
-        parsed = parse_track(route.track_path)
+        parsed = parse_track(
+            route.track_path,
+            distance_override_m=route.distance_override_m,
+            climb_override_m=route.climb_override_m,
+        )
         route_book = None
         if guide is not None and guide.route_book_id is not None:
             route_book = db.query(RouteBook).filter(RouteBook.id == guide.route_book_id).first()
@@ -179,15 +198,22 @@ def upsert_route(db, route: RouteInput) -> None:
     guide.elevation_profile = elevation_profile
 
 
-def parse_track(track_path: Path) -> ParsedTrack:
+def parse_track(
+    track_path: Path,
+    distance_override_m: float | None = None,
+    climb_override_m: float | None = None,
+) -> ParsedTrack:
     result = GPXParser().parse(track_path.read_bytes())
     points = result.trackpoints
     cumulative = cumulative_distances(points)
+    has_elevation = any(point.ele is not None for point in points)
     return ParsedTrack(
-        distance=cumulative[-1] if cumulative else 0.0,
-        climb=calculate_climb(points),
+        distance=distance_override_m if distance_override_m is not None else (cumulative[-1] if cumulative else 0.0),
+        climb=climb_override_m if climb_override_m is not None else calculate_climb(points),
         reference_line=build_linestring(points),
-        elevation_profile=json.dumps(downsample_elevation(points, cumulative), ensure_ascii=False),
+        elevation_profile=(
+            json.dumps(downsample_elevation(points, cumulative), ensure_ascii=False) if has_elevation else None
+        ),
     )
 
 
@@ -218,7 +244,10 @@ def cumulative_distances(points: list[Trackpoint]) -> list[float]:
     return distances
 
 
-def calculate_climb(points: list[Trackpoint]) -> float:
+def calculate_climb(points: list[Trackpoint]) -> float | None:
+    if not any(point.ele is not None for point in points):
+        return None
+
     climb = 0.0
     for prev, curr in zip(points, points[1:]):
         if prev.ele is None or curr.ele is None:
