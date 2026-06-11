@@ -63,6 +63,9 @@ services:
     volumes:
       - uploads:/app/uploads
       - srtm_cache:/root/.cache/srtm   # DEM 海拔数据本地缓存（CGIAR-CSI SRTM 90m / 懒下载持久化）
+      # 路线百科内容目录（2026-06-11）：内容是数据不是代码，只读挂载让"改介绍"走数据通道——
+      # git pull 后直接 exec 灌库脚本即生效，不 rebuild 镜像、不碰迁移、不动其他容器。
+      - ./content:/app/content:ro
 
   # ===== Worker：异步任务处理 =====
   # 和 API 用同一个镜像，只是启动命令不同

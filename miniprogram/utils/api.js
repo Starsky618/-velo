@@ -18,8 +18,8 @@
  */
 
 // 后端 API 地址（硬编码在这里作为兜底，正常走 app.globalData.baseUrl）
-// 2026-06-11 切换备案域名 + HTTPS（合法域名要求），与 app.js globalData.baseUrl 同步改
-var BASE_URL = 'https://api.weiluai.top'
+// 临时回退 IP：等腾讯云备案白名单同步（详 app.js 同位置注释），同步后两处一起切回域名
+var BASE_URL = 'http://114.132.190.245'
 
 /**
  * 获取全局 App 实例（延迟获取，避免初始化时序问题）

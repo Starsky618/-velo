@@ -13,9 +13,10 @@
 
 App({
   globalData: {
-    // 后端 API 地址（2026-06-11 起走备案域名 + HTTPS——微信合法域名硬性要求；
-    // IP 直连入口服务器侧仍保留作逃生通道，但小程序里别再用）
-    baseUrl: 'https://api.weiluai.top',
+    // 后端 API 地址。临时回退 IP（2026-06-11）：域名链路全部就绪（DNS/证书/Caddy 自测通过），
+    // 但腾讯云"未备案域名拦截"白名单还没同步今天刚过的备案（最长 24h），同步完成切回
+    // https://api.weiluai.top（api.js 的 BASE_URL 同步改，两处一起）
+    baseUrl: 'http://114.132.190.245',
     // JWT token，登录后存这里，所有请求带上它证明身份
     token: null,
     // 当前用户 ID（轻量 / 登录立刻可用 / 给 isOwner 判断用）

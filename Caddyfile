@@ -29,6 +29,14 @@
         file_server
     }
 
+    # 路线百科封面/配图静态服务（2026-06-11）：图放服务器 uploads/route_covers/，
+    # meta.json 的 cover_url 填 https://api.weiluai.top/uploads/route_covers/<文件名> 即生效。
+    # 与 meetup_media 同纪律：只 serve 子目录，绝不 serve /uploads/* 根（隐私 Critical 判例）。
+    handle /uploads/route_covers/* {
+        root * /srv
+        file_server
+    }
+
     # API 反向代理
     handle {
         reverse_proxy api:8000
