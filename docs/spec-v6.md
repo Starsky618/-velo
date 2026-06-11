@@ -25,7 +25,7 @@
 | route_books 字段(无 description/is_official);route_book/models.py 已导入 func(L14),未导入 Boolean/false | route_book/models.py:24-35,13-14 | ✓ |
 | meetup↔activity 现无任何关联 | 全库 grep 为空 | ✓ |
 | 反向 hook 现有 2 处已登记;本 spec 新增 MeetupActivity 为 Meetup→Activity 正向,不新增反向 | 双审 B 架构层核验 | ✓ |
-| TENCENT_MAP_KEY 生产配置状态 | 未知 | ⚠️ 运行时,T6 部署 SOP 第一步亲查 .env 并记录,缺失则按配置步骤补 |
+| TENCENT_MAP_KEY 生产配置状态 | ✅ 存在（2026-06-11 T6 部署亲查 .env 销账；同 key 已填前端 map-theme subkey 启用个性化底图） | ✓ |
 
 ## §1 决策记录
 

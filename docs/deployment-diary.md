@@ -492,3 +492,12 @@ Ubuntu 22.04 默认 sshd jail 已 enabled / maxretry=5 / bantime=10min。Tim 用
 - **6 步 SOP 实跑**：DEPLOY-0 `git push origin main`（69f7f4e..7884b72）→ DEPLOY-1 服务器 `git pull`（→7884b72）→ DEPLOY-2 跳过（本次不涉及 heatmap/power_curve 缓存）→ DEPLOY-3 `sudo docker compose up -d --build`（全容器重建，api 启动无报错）→ DEPLOY-4 `alembic upgrade head`（`20260602_tencent_route_book → 20260603_meetup_create_fields`，加 6 列 + visibility CHECK，存量行 server_default 兜底）→ DEPLOY-5 curl 验证（api 容器内 `GET /api/meetups` 200 + 6 新字段序列化正常，存量 6 条约骑无 500）。DEPLOY-6/7 本轮前端在本地 main 已就绪、不需。
 - **踩坑**：`curl localhost:8000` 从宿主机返回 000——api 端口只在 docker 网络（caddy 反代），不映射宿主机。验证要么进 api 容器 `docker compose exec -T api`、要么走 caddy 公网域名。本次用容器内 python urllib 验。
 - **⚠ 待真用激活回归**（owner 24h 内真机跑）：① 私圈分享：建 invite_only 约骑 → 转发带 token 链接 → 好友能进能报名 / 陌生人猜 id → 404 ② 草稿恢复 ③ 图二就地编辑 + 图一确认 + 发布 ④ publish 30min 截止拦。**Tim 需先在微信开发者工具重新上传小程序**（前端 head aefd411）用户才看到新 UI。
+
+## 2026-06-11：Sprint 13+14 上线冲刺部署（熟人约骑闭环 + 路线百科上架）
+
+- **代码**：`60f660c` → `a813956`（18 commits / S13 T1-T5+T4 + S14 T7-T9 + 折叠 UX + subkey + 日志 hotfix）
+- **迁移**：`20260611_meetup_activities` + `20260612_route_guides` 一次 upgrade 到 head，全量 `--build`（scheduler 挂 attach tick / worker 验 garmin_fit_sdk import ok）
+- **灌库**：route_guides 11 条全进（dry-run → apply → SQL count=11）；**全部 track_pending**（content 目录暂无 track.gpx）——路线页有完整介绍但无曲线/无地图/「发起约骑」按钮不显示，等 GPX 补充后重跑灌库脚本幂等升级（升级路径已有测试锚）
+- **真用回归抓到喇叭没插电第 4 例**：api 容器（uvicorn）从未配应用层日志 handler，业务 logger.info 全被吞——五环节 SENSOR 埋点请求 200 但日志零输出；caplog 测试测不出。修法 = main.py 一行 basicConfig（`a813956`），复测 SENSOR view 行真实出现
+- **TENCENT_MAP_KEY**：生产 .env 存在（spec §0.1 ⚠️ 销账）；同 key 已填前端 map-theme subkey 启用个性化底图
+- **待 Tim 真机**：小程序上传 / FIT 真传一次（喇叭位 2）/ 5 文件计时 p90 落 PRD / share_token 半生人剧本（喇叭位 3）/ 折叠页观感 + 底图浅色样式确认（layerStyle 编号不对就改 map-theme 一个数字）
