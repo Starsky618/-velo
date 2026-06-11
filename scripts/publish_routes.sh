@@ -51,30 +51,37 @@ else
   echo "── 2/5 内容已提交推送 ✓"
 fi
 
-# ── 3/5 上传封面图到服务器（几张图几秒钟）
+# ── 3/5 打包上传封面图（单次连接，防服务器 SSH 限流——首跑 12 连被掐实证）
 echo "── 3/5 上传封面图..."
-covers=$(ls "$ROUTES_DIR"/*/cover.* 2>/dev/null || true)
-if [ -n "$covers" ]; then
-  tmpdir="/tmp/velo_covers_$$"
-  ssh "$SERVER" "mkdir -p $tmpdir"
-  for cover in $covers; do
-    name=$(basename "$(dirname "$cover")")
-    ext="${cover##*.}"
-    scp -q "$cover" "$SERVER:$tmpdir/${name}.${ext}"
-  done
-  ssh "$SERVER" "cd ~/velo && sudo docker compose exec -T api mkdir -p /app/uploads/route_covers && for f in $tmpdir/*; do sudo docker compose cp \$f api:/app/uploads/route_covers/; done && rm -rf $tmpdir" > /dev/null
-  echo "       封面已同步 ✓"
+staging="/tmp/velo_covers_local_$$"
+mkdir -p "$staging"
+for cover in "$ROUTES_DIR"/*/cover.*; do
+  [ -e "$cover" ] || continue
+  name=$(basename "$(dirname "$cover")")
+  ext="${cover##*.}"
+  cp "$cover" "$staging/${name}.${ext}"
+done
+if [ -n "$(ls -A "$staging" 2>/dev/null)" ]; then
+  scp -q -r "$staging" "$SERVER:/tmp/velo_covers_in"
+  echo "       封面已上传 ✓"
 else
   echo "       无封面文件，跳过"
 fi
+rm -rf "$staging"
 
-# ── 4/5 服务器拉取内容（content 是只读挂载，拉完容器立即可见，不重建）
-ssh "$SERVER" "cd ~/velo && git pull --no-rebase --no-edit 2>&1 | tail -1"
-echo "── 4/5 服务器已同步 ✓"
-
-# ── 5/5 灌库（有则更新无则建，改了的生效，没改的原样）
-ssh "$SERVER" "cd ~/velo && sudo docker compose exec -T api python3 scripts/import_route_guides.py 2>&1 | tail -2"
-echo "── 5/5 数据库已更新 ✓"
+# ── 4-5/5 服务器侧一口气完成：拉内容 → 图进容器 → 灌库（单次 SSH 连接）
+ssh "$SERVER" '
+  set -e
+  cd ~/velo
+  git pull --no-rebase --no-edit 2>&1 | tail -1
+  if [ -d /tmp/velo_covers_in ]; then
+    sudo docker compose exec -T api mkdir -p /app/uploads/route_covers
+    for f in /tmp/velo_covers_in/*; do sudo docker compose cp "$f" api:/app/uploads/route_covers/ > /dev/null; done
+    rm -rf /tmp/velo_covers_in
+  fi
+  sudo docker compose exec -T api python3 scripts/import_route_guides.py 2>&1 | tail -2
+'
+echo "── 4-5/5 服务器同步 + 数据库更新 ✓"
 
 echo ""
 echo "✅ 发布完成！小程序里下拉刷新路线页即可看到新内容。"
