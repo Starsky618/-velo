@@ -13,8 +13,9 @@
 
 App({
   globalData: {
-    // 后端 API 地址（当前用 IP 直连，备案后换域名）
-    baseUrl: 'http://114.132.190.245',
+    // 后端 API 地址（2026-06-11 起走备案域名 + HTTPS——微信合法域名硬性要求；
+    // IP 直连入口服务器侧仍保留作逃生通道，但小程序里别再用）
+    baseUrl: 'https://api.weiluai.top',
     // JWT token，登录后存这里，所有请求带上它证明身份
     token: null,
     // 当前用户 ID（轻量 / 登录立刻可用 / 给 isOwner 判断用）

@@ -1,10 +1,13 @@
 # VELO 反向代理配置
 #
-# 当前无域名，监听 :80 接受所有请求。
-# 域名备案通过后改回 api.synexis.top（或其他域名），Caddy 会自动申请 HTTPS。
-# 前置条件：域名 A 记录指向服务器 IP，服务器开放 80/443 端口。
+# 双站点结构（2026-06-11 域名 weiluai.top 备案通过后启用）：
+# - api.weiluai.top：正式入口，Caddy 自动向 Let's Encrypt 申请并续期 HTTPS 证书
+#  （微信小程序合法域名硬性要求 https + 备案域名）。证书存 caddy_data 卷，重建容器不丢。
+# - :80 兜底：保留 IP 直连（开发者工具调试 / 证书异常时的逃生通道）。
+# 两个站点的路由规则完全相同，都从 (velo_site) 代码片段导入——改规则只改一处，防两份漂移。
+# 前置条件（已满足）：A 记录 api → 114.132.190.245，安全组放行 80/443。
 
-:80 {
+(velo_site) {
     # 上传体积上限：约骑媒体图 ≤5MB / 视频 ≤50MB，留余量 55MB。
     # 在反代之前就拦超大请求，0 应用层内存消耗（防大文件先读进内存才被后端 413）。
     request_body {
@@ -30,4 +33,12 @@
     handle {
         reverse_proxy api:8000
     }
+}
+
+api.weiluai.top {
+    import velo_site
+}
+
+:80 {
+    import velo_site
 }
