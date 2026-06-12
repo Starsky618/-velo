@@ -100,10 +100,44 @@ function bulletNode(text) {
   }
 }
 
+// 字段块："**到起点**：迎宾桥两岸…（长文）" → 橙色小标签独立一行 + 值另起一行。
+// 与键值行的分工：短值（"10.05 km"）走左右对齐表格行；长文塞进表格右列会排版崩坏。
+function fieldNode(key, value) {
+  return {
+    name: 'div',
+    attrs: { class: 'md-field' },
+    children: [
+      { name: 'div', attrs: { class: 'md-field-k' }, children: [textNode(key)] },
+      { name: 'div', attrs: { class: 'md-field-v' }, children: inlineNodes(value) },
+    ],
+  }
+}
+
+// 语录块："“语录”——解释" → 语录气泡 + 解释另起一行小字（骑友怎么说节）
+function quoteNode(quote, note) {
+  var children = [
+    { name: 'div', attrs: { class: 'md-quote-text' }, children: [textNode('“' + quote + '”')] },
+  ]
+  if (note) {
+    children.push({ name: 'div', attrs: { class: 'md-quote-note' }, children: [textNode(note)] })
+  }
+  return { name: 'div', attrs: { class: 'md-quote' }, children: children }
+}
+
+// 中文里一个汉字顶两个拉丁字符宽——超过这个视觉长度的值不再适合表格右列
+var KV_VALUE_MAX = 18
+
 function listItemNode(item) {
-  // "- **键**：值"（全行就是一组键值）→ 键值行；其余 → 圆点行
+  // "- “语录”——解释" → 语录气泡（第一个 —— 分割，解释里再有 —— 归解释）
+  var quote = item.match(/^[“"](.+?)[”"]\s*——\s*(.+)$/)
+  if (quote) return quoteNode(quote[1].trim(), quote[2].trim())
+  // "- **键**：值" → 短值进键值表格行，长值进字段块
   var kv = item.match(/^\*\*([^*]+)\*\*\s*[：:]\s*(.+)$/)
-  if (kv) return keyValueNode(kv[1].trim(), kv[2].trim())
+  if (kv) {
+    var key = kv[1].trim()
+    var value = kv[2].trim()
+    return value.length > KV_VALUE_MAX ? fieldNode(key, value) : keyValueNode(key, value)
+  }
   return bulletNode(item)
 }
 

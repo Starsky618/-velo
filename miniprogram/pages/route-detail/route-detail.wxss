@@ -171,6 +171,51 @@
   font-feature-settings: 'tnum';
 }
 
+/* 字段块（给真要去的骑友）：橙色小标签独立一行 + 长文值另起一行 */
+.md-field {
+  margin-top: 32rpx;
+}
+
+.md-field-k {
+  display: inline-block;
+  padding: 6rpx 18rpx;
+  background: rgba(255, 149, 0, 0.12);
+  color: #d97a00;
+  font-size: 24rpx;
+  font-weight: 600;
+  border-radius: 8rpx;
+  line-height: 1.6;
+}
+
+.md-field-v {
+  margin-top: 12rpx;
+  color: #3a3a3c;
+  font-size: 29rpx;
+  line-height: 1.75;
+}
+
+/* 语录块（骑友怎么说）：语录气泡 + 解释另起一行小字 */
+.md-quote {
+  margin-top: 28rpx;
+}
+
+.md-quote-text {
+  padding: 20rpx 26rpx;
+  background: #f2f2f7;
+  border-radius: 6rpx 22rpx 22rpx 22rpx;
+  color: #1c1c1e;
+  font-size: 29rpx;
+  line-height: 1.7;
+}
+
+.md-quote-note {
+  margin-top: 10rpx;
+  padding-left: 10rpx;
+  color: #8a8a8e;
+  font-size: 26rpx;
+  line-height: 1.6;
+}
+
 /* 步骤行（怎么骑）：橙色序号导航感 */
 .md-step {
   display: flex;
