@@ -40,6 +40,58 @@
   line-height: 1.55;
 }
 
+/* 常显数据卡：三格数据 + 海拔缩略线（一张"路线档案卡"） */
+.stat-card {
+  margin-top: 26rpx;
+  background: #ffffff;
+  border-radius: 28rpx;
+  padding: 26rpx 30rpx 22rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
+}
+
+.stat-row {
+  display: flex;
+}
+
+.stat {
+  flex: 1;
+  text-align: center;
+}
+
+.stat + .stat {
+  border-left: 1rpx solid #e5e5ea;
+}
+
+.stat-v {
+  color: #1c1c1e;
+  font-size: 40rpx;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+.stat-u {
+  color: #8a8a8e;
+  font-size: 22rpx;
+  font-weight: 500;
+  margin-left: 4rpx;
+}
+
+.stat-k {
+  margin-top: 6rpx;
+  color: #8a8a8e;
+  font-size: 22rpx;
+  letter-spacing: 2rpx;
+}
+
+/* 旧 canvas API：尺寸必须与 js 绘制坐标 2:1 对应（622×140rpx = 311×70px），改一处必须同步另一处 */
+.elevation-thumb {
+  width: 622rpx;
+  height: 140rpx;
+  margin-top: 20rpx;
+}
+
 /* 手风琴：iOS inset-grouped——整组一张大圆角白卡，行间 hairline */
 .accordion-list {
   margin-top: 30rpx;

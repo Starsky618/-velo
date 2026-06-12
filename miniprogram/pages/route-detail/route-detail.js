@@ -60,6 +60,20 @@ function buildSections(markdown) {
     })
 }
 
+// 常显数据卡：距离/爬升/均坡——有哪项放哪项，缺的不进数组（no-dash 原则：不显示占位）
+function buildStats(guide) {
+  var stats = []
+  var d = Number(guide.distance)
+  var c = Number(guide.climb)
+  if (Number.isFinite(d) && d > 0) stats.push({ v: d.toFixed(1), u: 'km', k: '距离' })
+  if (Number.isFinite(c) && c > 0) stats.push({ v: String(Math.round(c)), u: 'm', k: '爬升' })
+  if (Number.isFinite(d) && d > 0 && Number.isFinite(c) && c > 0) {
+    // 均坡 = 爬升(米) / 距离(公里×1000) ×100；API 距离返 km、爬升返米（项目约定）
+    stats.push({ v: (c / (d * 1000) * 100).toFixed(1), u: '%', k: '均坡' })
+  }
+  return stats
+}
+
 Page({
   data: Object.assign({}, mapTheme.getPaperMapData(), {
     guideId: null,
@@ -71,6 +85,7 @@ Page({
     introText: '',
     coverSrc: '/assets/route-placeholder.svg',
     hasElevation: false,
+    routeStats: [],
     routePreviewVisible: false,
     routePreviewCenter: { latitude: 37.8706, longitude: 112.5489 },
     routePreviewMarkers: [],
@@ -105,10 +120,18 @@ Page({
             ? ((getApp().globalData && getApp().globalData.baseUrl) || '') + guide.cover_url
             : guide.cover_url) || '/assets/route-placeholder.svg',
           hasElevation: hasElevation,
+          routeStats: buildStats(guide),
           loading: false,
-          // 曲线不在 onLoad 画：全折叠态下 canvas 在 hidden 祖先里，画了也是空白——
-          // 唯一生效的绘制时机是 toggleSection 展开「核心数据」那一刻（集成审 I1）
-        }, preview))
+          // 折叠区大图不在 onLoad 画：全折叠态下 canvas 在 hidden 祖先里画了也是空白——
+          // 唯一生效的绘制时机是 toggleSection 展开「核心数据」那一刻（集成审 I1）。
+          // 常显缩略图不受此限：它在页面骨架上，setData 回调 + setTimeout 兜底即画（陷阱 #17）
+        }, preview), function () {
+          if (hasElevation) {
+            setTimeout(function () {
+              that.drawElevationThumb(guide.elevation_profile)
+            }, 100)
+          }
+        })
       })
       .catch(function () {
         that.setData({ loading: false, error: '路线暂时加载失败' })
@@ -126,6 +149,47 @@ Page({
     if (nextExpanded && sections[index].hasElevationSlot && this.data.hasElevation && this.data.guide) {
       this.drawElevation(this.data.guide.elevation_profile)
     }
+  },
+
+  // 常显海拔缩略线：橙线 + 浅橙面积填充，无轴无标注（坡的形状一眼可读）。
+  // 旧 canvas API 坐标单位 px，必须与 wxss 尺寸严格 2:1 对应（622rpx×140rpx = 311×70px），否则拉伸变形
+  drawElevationThumb: function (profile) {
+    if (!Array.isArray(profile) || profile.length < 2) return
+    var ctx = wx.createCanvasContext('elevation-thumb', this)
+    var width = 311
+    var height = 70
+    var padY = 6
+    var distances = profile.map(function (p) { return Number(p[0]) || 0 })
+    var elevations = profile.map(function (p) { return Number(p[1]) || 0 })
+    var minD = Math.min.apply(null, distances)
+    var maxD = Math.max.apply(null, distances)
+    var minE = Math.min.apply(null, elevations)
+    var maxE = Math.max.apply(null, elevations)
+    var spanD = maxD - minD || 1
+    var spanE = maxE - minE || 1
+    var points = profile.map(function (p) {
+      return {
+        x: ((Number(p[0]) || 0) - minD) / spanD * width,
+        y: height - padY - ((Number(p[1]) || 0) - minE) / spanE * (height - padY * 2),
+      }
+    })
+    ctx.beginPath()
+    ctx.moveTo(points[0].x, height)
+    points.forEach(function (pt) { ctx.lineTo(pt.x, pt.y) })
+    ctx.lineTo(points[points.length - 1].x, height)
+    ctx.closePath()
+    ctx.setFillStyle('rgba(255, 149, 0, 0.10)')
+    ctx.fill()
+    ctx.beginPath()
+    points.forEach(function (pt, i) {
+      if (i === 0) ctx.moveTo(pt.x, pt.y)
+      else ctx.lineTo(pt.x, pt.y)
+    })
+    ctx.setStrokeStyle('#FF9500')
+    ctx.setLineWidth(2)
+    ctx.setLineJoin('round')
+    ctx.stroke()
+    ctx.draw()
   },
 
   drawElevation: function (profile) {

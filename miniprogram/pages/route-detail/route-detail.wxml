@@ -7,6 +7,17 @@
     <view wx:if="{{guide.name}}" class="route-name">{{guide.name}}</view>
     <view wx:if="{{introText}}" class="intro-line">{{introText}}</view>
 
+    <!-- 常显数据卡：距离/爬升/均坡 + 海拔缩略线（Tim 2026-06-12 拍：不该藏在折叠里） -->
+    <view wx:if="{{routeStats.length}}" class="stat-card">
+      <view class="stat-row">
+        <view class="stat" wx:for="{{routeStats}}" wx:key="k">
+          <view class="stat-v">{{item.v}}<text class="stat-u">{{item.u}}</text></view>
+          <view class="stat-k">{{item.k}}</view>
+        </view>
+      </view>
+      <canvas canvas-id="elevation-thumb" class="elevation-thumb" hidden="{{!hasElevation}}"></canvas>
+    </view>
+
     <view class="accordion-list">
       <view class="accordion-section" wx:for="{{sections}}" wx:key="title">
         <view class="accordion-title-row" data-index="{{index}}" bindtap="toggleSection">
