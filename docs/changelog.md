@@ -1,5 +1,21 @@
 # VELO 开发变更日志
 
+## 2026-06-12: 路线百科实景图链路（38 张图上线 + Tim 访达自助增删 + hero 图文融合）✅ 后端部署生产 + 图已灌库
+
+> **缘起**：Tim "明明大多数路线 html 介绍中都有一堆实景图，可现在这些图都不在真机里"。HTML 卡时代策划的实景图一直锁在 route-workspace / base64 里，没接进小程序管道。
+
+**做了什么**（后端 `4327400c` + 保活修复 `99344dce` + 内容 `27ae955a`）：
+- **内容约定升级**：`content/routes/<路线>/` 里 cover 开头的图片是封面（不变），**其余图片按文件名排序全是实景图**——Tim 访达扔图/删图 + 双击发布即生效，meta.json 指针由脚本自动维护（README 已更新）。
+- **新基建 `scripts/sync_route_images.py`**（带 6 测试）：扫图 → 写 meta 指针 → 备 staging。服务器名 `gNN_内容哈希8位.ext`（**换图必换 URL**，小程序图片缓存天然失效）；过滤 `._` AppleDouble/隐藏文件/符号链接（Codex 异源审抓的访达伴生破图防线）。
+- **DB/API**：`route_guides.gallery_urls` 可空 Text 列（迁移 `20260612_route_guide_gallery`）；详情端点返回数组、列表端点不返；`_json_list` 坏数据降级不 500。
+- **初始搬运 38 张**：10 条路线的 route.json 策划图（超 1MB 的 sips 压 1600px JPEG）+ 天龙山 3 张从 v11 HTML base64 解码。狼坡/奥申 0 张维持缺图挂账。
+- **前端**（route-detail，**未 commit**——与并行会话"路书作品化"线程共享文件，等那边落地后一起收）：hero 图文融合（520rpx 出血 + 底部 140rpx 小面积渐变淡入 + 标题上提坐进淡出区，Tim 拍"渐变面积要小"）+ 实景图横滑长廊（scroll-view + wx.previewImage 全屏翻页保存）。
+- **发布脚本健壮性**：staging trap 清理 / docker cp 子目录注释 / 空 glob 守卫 / 迁移前置条件注释 / ssh-scp 保活 60 秒（首跑实证：远端全部完成后本地 ssh 僵挂 13 分钟）。
+
+**验证**：三审归零（双审 6I + Codex 3C/2I 全修）；1055 passed；生产 curl 逐条核对 11 条路线 gallery 数全对；静态图 HTTP 200 image/webp 实测；docker cp 目录合并行为实测正确。
+
+**数据回看**（ship 后 1 问）：实景图被看 = 详情页打开即加载，看 Caddy 日志 `grep route_covers` 量级即可；2026-06-19 回看一次（无埋点端点，路线详情 SENSOR 行待 S15 统一补）。
+
 ## 2026-06-12: 全 app UI 苹果方案重构收官（五批 / Tim 逐批真机过审 / "很不错"）✅ 已 push main + 后端部署生产
 
 > **缘起**：Tim "前端真的很丑，忍了很久"。历经五轮原创设计语言探索全部被否后定案**苹果方案**（趴 Apple HIG + 系统橙 #FF9500，零原创——真相源 `miniprogram/design-system/MASTER.md` v0.4，逐批进度账在 §8）。本段只记收官全貌与教训，单批细节见 MASTER §8 + 各 commit。
