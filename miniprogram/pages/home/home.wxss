@@ -37,7 +37,7 @@
   min-width: 32rpx;
   height: 32rpx;
   padding: 0 8rpx;
-  background: #FF2D55;
+  background: #FF3B30;
   border-radius: 16rpx;
   color: #fff;
   font-size: 20rpx;
@@ -201,7 +201,7 @@
 /* ── importing 状态卡片整体淡化（视觉对比 / 让"完成"和"解析中"一眼区分）── */
 .activity-card.is-pending {
   opacity: 0.65;
-  background: linear-gradient(135deg, #f5f5f7 0%, #ffffff 100%);
+  background: linear-gradient(135deg, #f2f2f7 0%, #ffffff 100%);
 }
 
 /* ── 解析中文字 + 脉冲动画（视觉"在涨" / 不是死的）── */
@@ -273,7 +273,7 @@
 }
 
 .sec-item.hr {
-  color: #FF2D55;
+  color: #FF3B30;
 }
 
 .sec-dot {

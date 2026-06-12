@@ -24,7 +24,7 @@ page {
 }
 
 .tab.active {
-  border-bottom-color: #FF2D55;
+  border-bottom-color: #FF9500;
 }
 
 .tab-emoji {
@@ -104,7 +104,7 @@ page {
 .empty-btn {
   display: inline-block;
   padding: 20rpx 60rpx;
-  background: #FF2D55;
+  background: #FF9500;
   color: #fff;
   border-radius: 50rpx;
   font-size: 28rpx;

@@ -1,6 +1,6 @@
 .route-list-page {
   min-height: 100vh;
-  background: #f5f5f7;
+  background: #f2f2f7;
   padding: 28rpx;
   box-sizing: border-box;
 }
@@ -10,7 +10,7 @@
 }
 
 .page-title {
-  color: #111827;
+  color: #1c1c1e;
   font-size: 44rpx;
   font-weight: 700;
   line-height: 1.2;
@@ -18,13 +18,13 @@
 
 .page-subtitle {
   margin-top: 8rpx;
-  color: #6b7280;
+  color: #8a8a8e;
   font-size: 26rpx;
 }
 
 .state-text {
   padding: 80rpx 0;
-  color: #6b7280;
+  color: #8a8a8e;
   font-size: 28rpx;
   text-align: center;
 }
@@ -40,7 +40,7 @@
   gap: 20rpx;
   padding: 18rpx;
   background: #ffffff;
-  border: 1rpx solid #ececf0;
+  border: 1rpx solid #e5e5ea;
   border-radius: 8rpx;
 }
 
@@ -49,7 +49,7 @@
   height: 126rpx;
   flex: 0 0 188rpx;
   border-radius: 8rpx;
-  background: #f7f3ea;
+  background: #e9e9ee;
 }
 
 .card-main {
@@ -65,7 +65,7 @@
 
 .guide-name {
   flex: 1;
-  color: #111827;
+  color: #1c1c1e;
   font-size: 31rpx;
   font-weight: 650;
   line-height: 1.28;
@@ -91,14 +91,14 @@
 
 .highlight {
   margin-top: 12rpx;
-  color: #4b5563;
+  color: #3a3a3c;
   font-size: 25rpx;
   line-height: 1.45;
 }
 
 .meta {
   margin-top: 12rpx;
-  color: #f04452;
+  color: #1c1c1e;
   font-size: 24rpx;
   font-weight: 600;
 }

@@ -20,14 +20,14 @@ page {
   font-size: 44rpx;
   line-height: 56rpx;
   font-weight: 800;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .subtitle {
   margin-top: 6rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #6b7280;
+  color: #8a8a8e;
 }
 
 .create-btn {
@@ -76,7 +76,7 @@ page {
   font-size: 32rpx;
   line-height: 42rpx;
   font-weight: 800;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .time {
@@ -91,7 +91,7 @@ page {
   margin-top: 16rpx;
   font-size: 26rpx;
   line-height: 36rpx;
-  color: #374151;
+  color: #3a3a3c;
 }
 
 /* flex 而非固定 4 列：爬升缺失隐藏后剩 3 格仍均分铺满、不留空列 */
@@ -100,7 +100,7 @@ page {
   gap: 12rpx;
   margin-top: 22rpx;
   font-size: 24rpx;
-  color: #6b7280;
+  color: #8a8a8e;
 }
 
 .metrics text {

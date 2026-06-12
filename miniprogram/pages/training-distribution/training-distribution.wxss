@@ -32,13 +32,13 @@ page {
 .state-title {
   font-size: 34rpx;
   font-weight: 700;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .state-subtitle,
 .state-body {
   font-size: 24rpx;
-  color: #6B7280;
+  color: #8a8a8e;
   line-height: 1.6;
 }
 
@@ -108,12 +108,12 @@ page {
 .section-title {
   font-size: 30rpx;
   font-weight: 700;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .section-subtitle {
   font-size: 23rpx;
-  color: #6B7280;
+  color: #8a8a8e;
 }
 
 .group-list {
@@ -138,7 +138,7 @@ page {
 .group-label {
   font-size: 26rpx;
   font-weight: 700;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .group-role {
@@ -174,7 +174,7 @@ page {
   text-align: right;
   font-size: 24rpx;
   font-weight: 700;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .compare-grid {
@@ -204,7 +204,7 @@ page {
 .compare-title {
   font-size: 28rpx;
   font-weight: 700;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .compare-copy {
@@ -230,7 +230,7 @@ page {
   line-height: 44rpx;
   border-radius: 22rpx;
   text-align: center;
-  background: #111827;
+  background: #1c1c1e;
   color: #ffffff;
   font-size: 22rpx;
   font-weight: 700;
@@ -245,7 +245,7 @@ page {
 .action-title {
   font-size: 26rpx;
   font-weight: 700;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .action-body {
@@ -279,7 +279,7 @@ page {
 .week-title {
   font-size: 23rpx;
   font-weight: 700;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .week-focus {
@@ -399,7 +399,7 @@ page {
 .raw-zone-fill-5 { background: #6A56B8; }
 
 .raw-zone-percent {
-  color: #111827;
+  color: #1c1c1e;
   font-size: 22rpx;
   font-weight: 800;
   line-height: 1.1;

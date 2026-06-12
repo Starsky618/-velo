@@ -22,7 +22,7 @@ page {
 .hero {
   padding: 32rpx;
   border-radius: 18rpx;
-  background: #111827;
+  background: #1c1c1e;
   color: #fff;
 }
 
@@ -43,7 +43,7 @@ page {
   margin-top: 12rpx;
   font-size: 26rpx;
   line-height: 36rpx;
-  color: #e5e7eb;
+  color: #e5e5ea;
 }
 
 /* 用 flex 而非固定 4 列 grid：爬升缺失隐藏后，剩下 3 格仍能均分铺满、不留空列 */
@@ -71,7 +71,7 @@ page {
   font-size: 25rpx;
   line-height: 34rpx;
   font-weight: 800;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .label {
@@ -93,7 +93,7 @@ page {
   font-size: 30rpx;
   line-height: 40rpx;
   font-weight: 800;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .row {
@@ -103,13 +103,13 @@ page {
   padding: 12rpx 0;
   font-size: 26rpx;
   line-height: 36rpx;
-  color: #374151;
+  color: #3a3a3c;
 }
 
 .description {
   font-size: 27rpx;
   line-height: 42rpx;
-  color: #374151;
+  color: #3a3a3c;
 }
 
 .route-preview-map {
@@ -200,14 +200,14 @@ page {
 
 /* 看战报：信息入口不是主操作，用深底区分于红色主按钮；与下方主按钮留出间距 */
 .report-entry {
-  background: #111827;
+  background: #1c1c1e;
   color: #c8ff3d;
   margin-bottom: 16rpx;
 }
 
 .leave {
   background: #fff;
-  color: #111827;
+  color: #1c1c1e;
   border: 1rpx solid #d1d5db;
 }
 

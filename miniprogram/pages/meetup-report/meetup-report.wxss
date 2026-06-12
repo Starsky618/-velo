@@ -22,7 +22,7 @@ page {
 .hero {
   padding: 34rpx;
   border-radius: 18rpx;
-  background: #111827;
+  background: #1c1c1e;
   color: #fff;
 }
 
@@ -43,7 +43,7 @@ page {
   margin-top: 14rpx;
   font-size: 27rpx;
   line-height: 38rpx;
-  color: #e5e7eb;
+  color: #e5e5ea;
 }
 
 .totals {
@@ -65,13 +65,13 @@ page {
   font-size: 34rpx;
   line-height: 42rpx;
   font-weight: 800;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .total-unit {
   margin-left: 4rpx;
   font-size: 21rpx;
-  color: #6b7280;
+  color: #8a8a8e;
 }
 
 .total-label {
@@ -93,7 +93,7 @@ page {
   font-size: 30rpx;
   line-height: 40rpx;
   font-weight: 800;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .media-grid {
@@ -133,12 +133,12 @@ page {
 
 .is-submitted {
   background: #f9fafb;
-  border: 1rpx solid #e5e7eb;
+  border: 1rpx solid #e5e5ea;
 }
 
 .is-gray {
   background: #f3f4f6;
-  border: 1rpx solid #e5e7eb;
+  border: 1rpx solid #e5e5ea;
 }
 
 .cell-main {
@@ -165,7 +165,7 @@ page {
 .nickname {
   font-size: 28rpx;
   line-height: 38rpx;
-  color: #111827;
+  color: #1c1c1e;
   font-weight: 800;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -175,7 +175,7 @@ page {
 .submitted-at {
   margin-top: 4rpx;
   font-size: 22rpx;
-  color: #6b7280;
+  color: #8a8a8e;
 }
 
 .cell-stats {
@@ -193,7 +193,7 @@ page {
 .stat-value {
   font-size: 27rpx;
   line-height: 36rpx;
-  color: #111827;
+  color: #1c1c1e;
   font-weight: 800;
 }
 
@@ -211,7 +211,7 @@ page {
   line-height: 66rpx;
   padding: 0;
   border-radius: 14rpx;
-  background: #111827;
+  background: #1c1c1e;
   color: #fff;
   font-size: 26rpx;
   font-weight: 800;

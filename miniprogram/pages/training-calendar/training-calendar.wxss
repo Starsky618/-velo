@@ -83,12 +83,12 @@ page {
   text-align: center;
   padding: 18rpx 0;
   border-radius: 14rpx;
-  color: #6B7280;
+  color: #8a8a8e;
   font-size: 26rpx;
 }
 
 .range-tab.active {
-  background: #111827;
+  background: #1c1c1e;
   color: #ffffff;
   font-weight: 600;
 }
@@ -109,7 +109,7 @@ page {
 .chart-title {
   font-size: 30rpx;
   font-weight: 700;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .legend {
@@ -139,7 +139,7 @@ page {
   flex-direction: column;
   gap: 8rpx;
   margin-bottom: 18rpx;
-  color: #6B7280;
+  color: #8a8a8e;
   font-size: 22rpx;
   line-height: 1.45;
 }
@@ -163,7 +163,7 @@ page {
   align-items: center;
   justify-content: center;
   text-align: center;
-  color: #6B7280;
+  color: #8a8a8e;
 }
 
 .empty-emoji {
@@ -174,7 +174,7 @@ page {
 .empty-title {
   font-size: 30rpx;
   font-weight: 700;
-  color: #111827;
+  color: #1c1c1e;
   margin-bottom: 12rpx;
 }
 

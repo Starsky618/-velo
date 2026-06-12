@@ -44,7 +44,7 @@ page {
 .error-mini {
   text-align: center;
   padding: 32rpx 0;
-  color: #FF2D55;
+  color: #FF3B30;
   font-size: 26rpx;
 }
 
@@ -187,7 +187,7 @@ page {
 
 .expand-btn text {
   font-size: 26rpx;
-  color: #FF2D55;
+  color: #FF9500;
 }
 
 /* ========== 区块 3：我的记录 ========== */
@@ -279,7 +279,7 @@ page {
 }
 
 .record-pr-flag text {
-  color: #FF2D55;
+  color: #FF9500;
   font-size: 26rpx;
   font-weight: 600;
 }
@@ -358,16 +358,16 @@ page {
 }
 
 .leaderboard-row.me .rank {
-  color: #FF2D55;
+  color: #FF9500;
 }
 
 .leaderboard-row.me .nickname {
-  color: #FF2D55;
+  color: #FF9500;
   font-weight: 600;
 }
 
 .leaderboard-row.me .time {
-  color: #FF2D55;
+  color: #FF9500;
 }
 
 /* top 10 与"我的排名"独立行之间的虚线分隔 */
@@ -400,6 +400,6 @@ page {
 }
 
 .btn-primary {
-  background: #FF2D55;
+  background: #FF9500;
   color: #FFFFFF;
 }

@@ -61,7 +61,7 @@ page {
   font-size: 32rpx;
   line-height: 44rpx;
   font-weight: 800;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .picker-field {
@@ -73,7 +73,7 @@ page {
   margin-bottom: 10rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #6b7280;
+  color: #8a8a8e;
 }
 
 .picker-field input {
@@ -83,7 +83,7 @@ page {
   border-radius: 14rpx;
   background: #f3f4f6;
   font-size: 28rpx;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .picker-coords {
@@ -111,10 +111,10 @@ page {
 
 .picker-cancel {
   background: #f3f4f6;
-  color: #111827;
+  color: #1c1c1e;
 }
 
 .picker-confirm {
-  background: #111827;
+  background: #1c1c1e;
   color: #fff;
 }
