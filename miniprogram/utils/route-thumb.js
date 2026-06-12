@@ -148,13 +148,14 @@ function projectTracks(trackList, width, height, pad) {
  */
 function drawRouteThumb(canvasId, points, opts) {
   opts = opts || {}
-  var pts = normalizePoints(points)
-  if (pts.length < 2) return false
-
+  // ⚠ 把"原始点"直接交给 projectTracks，它内部自己做归一化。
+  // 不许在这里先 normalizePoints 再传——projectTracks 只认 [lon,lat] / {latitude,longitude}，
+  // 预转成 {x,y} 会被它当非法点全部丢弃 → 所有缩略图静默画空白
+  // （2026-06-13 全地图白屏事故根因，有 node 桩回归测试锁着）。
   var width = opts.width || 320
   var height = opts.height || 180
   var pad = opts.lineWidth ? opts.lineWidth * 2 : 4
-  var projected = projectTracks([pts], width, height, pad)
+  var projected = projectTracks([points], width, height, pad)
   if (!projected) return false
 
   var ctx = wx.createCanvasContext(canvasId, opts.component)

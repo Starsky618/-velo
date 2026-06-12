@@ -388,6 +388,52 @@ assert.strictEqual(lines[0].points.length, 2)
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
+def test_route_thumb_drawing_really_executes_and_draws_lines():
+    # 回归锚（2026-06-13 全地图白屏事故）：drawRouteThumb 曾先把点归一化成 {x,y}
+    # 再传给 projectTracks，后者二次归一化只认 [lon,lat] / {latitude,longitude}，
+    # {x,y} 全被当非法点丢弃 → 所有路线缩略图静默画空白。字符串断言测不出执行层
+    # 断裂——本测试用 wx 桩真跑绘制链路，断言"真画了线"。
+    script = """
+const assert = require('assert')
+const calls = {}
+function rec(name) { return function () { calls[name] = (calls[name] || 0) + 1 } }
+global.wx = {
+  createCanvasContext: function () {
+    return {
+      setFillStyle: rec('setFillStyle'), fillRect: rec('fillRect'),
+      setStrokeStyle: rec('setStrokeStyle'), setLineWidth: rec('setLineWidth'),
+      beginPath: rec('beginPath'), moveTo: rec('moveTo'), lineTo: rec('lineTo'),
+      quadraticCurveTo: rec('quad'), stroke: rec('stroke'), arc: rec('arc'),
+      fill: rec('fill'), setLineCap: rec('cap'), setLineJoin: rec('join'),
+      clearRect: rec('clearRect'), draw: rec('draw'),
+    }
+  },
+}
+const rt = require('./miniprogram/utils/route-thumb')
+
+// 后端原始格式 [[lon, lat], ...]（preview_points / track-thumbs 都是这个）
+const pts = []
+for (let i = 0; i < 40; i++) pts.push([112.5 + i * 0.001, 37.8 + Math.sin(i / 5) * 0.01])
+assert.strictEqual(rt.drawRouteThumb('a', pts, { width: 320, height: 180, lineWidth: 4, paper: true }), true)
+
+// buildRoutePreview 转换后格式 [{latitude, longitude}, ...]
+const objPts = pts.map(p => ({ latitude: p[1], longitude: p[0] }))
+assert.strictEqual(rt.drawRouteThumb('b', objPts, { width: 70, height: 70, lineWidth: 2 }), true)
+
+// 热力图多轨迹
+assert.strictEqual(rt.drawHeatmapThumb('c', [pts, pts], { width: 327, height: 240, lineWidth: 2 }), true)
+
+// 真画了线 + 真提交了绘制
+assert.ok(calls.lineTo > 40, 'lineTo 调用次数过少: ' + calls.lineTo)
+assert.strictEqual(calls.draw, 3)
+
+// 点不够时如实返回 false（调用方据此隐藏画布）
+assert.strictEqual(rt.drawRouteThumb('d', [[112.5, 37.8]], { width: 70, height: 70 }), false)
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
 def test_no_wxml_in_whole_project_uses_paid_personalized_map_style():
     # 红线守卫：微信小程序个性化底图（subkey + layer-style）自 2023-06-29 起是
     # "先购买再使用"的付费能力，velo 未购买——任何 <map> 挂上这两个属性，
