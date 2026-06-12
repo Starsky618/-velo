@@ -38,6 +38,7 @@ class RouteInput:
     content_md: str
     highlights: str | None
     cover_url: str | None
+    gallery_urls: str | None
     track_path: Path | None
     distance_override_m: float | None
     climb_override_m: float | None
@@ -100,6 +101,7 @@ def load_routes(content_dir: Path) -> list[RouteInput]:
         cover_url = meta.get("cover_url")
         if cover_url is not None and not isinstance(cover_url, str):
             _die(f"{route_dir}: meta.json field 'cover_url' must be a string")
+        gallery_urls = _load_gallery_urls(route_dir, meta)
 
         distance_km = _numeric_meta_value(meta, "distance_km")
         climb_m = _numeric_meta_value(meta, "climb_m")
@@ -112,6 +114,7 @@ def load_routes(content_dir: Path) -> list[RouteInput]:
                 content_md=guide_path.read_text(encoding="utf-8"),
                 highlights=highlights,
                 cover_url=cover_url,
+                gallery_urls=gallery_urls,
                 track_path=track_path if track_path.exists() else None,
                 distance_override_m=distance_km * 1000 if distance_km is not None else None,
                 climb_override_m=climb_m,
@@ -150,6 +153,19 @@ def _load_highlights(route_dir: Path, meta: dict) -> str | None:
     if not isinstance(parsed, list):
         _die(f"{route_dir}: highlights must json.loads() to a list")
     return highlights_text
+
+
+def _load_gallery_urls(route_dir: Path, meta: dict) -> str | None:
+    # 实景图也是可选字段——缺省返回 None 存 NULL（老路线没图不报错）。
+    # 发布脚本写进 meta.json 的是真 JSON 数组，所以这里只认"字符串元素的 list"，
+    # 与 highlights 同纪律：发现坏数据在打开数据库之前拦住。
+    if "gallery_urls" not in meta:
+        return None
+
+    raw = meta["gallery_urls"]
+    if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+        _die(f"{route_dir}: gallery_urls must be a list of strings")
+    return json.dumps(raw, ensure_ascii=False) if raw else None
 
 
 def print_dry_run(routes: list[RouteInput]) -> None:
@@ -193,6 +209,7 @@ def upsert_route(db, route: RouteInput) -> None:
     guide.city = route.city
     guide.content_md = route.content_md
     guide.cover_url = route.cover_url
+    guide.gallery_urls = route.gallery_urls
     guide.highlights = route.highlights
     guide.route_book_id = route_book_id
     guide.elevation_profile = elevation_profile

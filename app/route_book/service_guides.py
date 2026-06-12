@@ -18,7 +18,12 @@ from app.route_book import schemas
 def _json_list(value: str | None) -> list[Any] | None:
     if value is None:
         return None
-    parsed = json.loads(value)
+    # 防御坏数据：这三列（highlights/elevation_profile/gallery_urls）正常只由灌库脚本写入，
+    # 但万一 DB 里混进空串/坏 JSON，详情页应该是"少一块内容"而不是整页 500
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return None
     return parsed if isinstance(parsed, list) else None
 
 
@@ -51,6 +56,7 @@ def _detail(guide: RouteGuide, route: RouteBook | None) -> schemas.RouteGuideOut
         ready=ready,
         content_md=guide.content_md,
         cover_url=guide.cover_url,
+        gallery_urls=_json_list(guide.gallery_urls),
         highlights=_json_list(guide.highlights),
         elevation_profile=_json_list(guide.elevation_profile) if ready else None,
         route_book_id=guide.route_book_id,

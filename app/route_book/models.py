@@ -165,6 +165,10 @@ class RouteGuide(Base):
     route_book_id = Column(Integer, ForeignKey("route_books.id", ondelete="SET NULL"), nullable=True, unique=True)
     content_md = Column(Text, nullable=False)
     cover_url = Column(String(512), nullable=True)
+    # 实景图 URL 数组的 JSON 文本（如 ["/uploads/route_covers/jueweishan/g01.jpg", ...]）。
+    # 真相源是 content/routes/<路线>/ 里除 cover.* 外的图片文件，发布脚本扫描生成——
+    # 这列只是投影，NULL = 这条路线还没放实景图（前端整块隐藏长廊）。
+    gallery_urls = Column(Text, nullable=True)
     highlights = Column(Text, nullable=True)
     elevation_profile = Column(Text, nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

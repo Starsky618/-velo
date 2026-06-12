@@ -121,6 +121,49 @@ def test_detail_ready_false_keeps_content_but_hides_track_fields(client, db):
         _drop_route_guides_table(db)
 
 
+def test_detail_gallery_urls_json_text_is_loaded_as_list(client, db):
+    # 实景图链路：DB 里存 JSON 文本，详情接口要还原成数组；没图的路线返回 None
+    # （前端按 no-dash 判例整块隐藏长廊）。列表接口不带 gallery_urls——书架页用不上，省流量。
+    _create_route_guides_table(db)
+    try:
+        with_photos = _guide(
+            db,
+            name="崛围山",
+            gallery_urls="[\"/uploads/route_covers/jueweishan/g01.jpg\", \"/uploads/route_covers/jueweishan/g02.jpg\"]",
+        )
+        without_photos = _guide(db, name="清徐夜骑", gallery_urls=None)
+
+        res_with = client.get(f"/api/route-guides/{with_photos.id}")
+        res_without = client.get(f"/api/route-guides/{without_photos.id}")
+        res_list = client.get("/api/route-guides")
+
+        assert res_with.status_code == 200
+        assert res_with.json()["gallery_urls"] == [
+            "/uploads/route_covers/jueweishan/g01.jpg",
+            "/uploads/route_covers/jueweishan/g02.jpg",
+        ]
+        assert res_without.json()["gallery_urls"] is None
+        assert all("gallery_urls" not in item for item in res_list.json()["items"])
+    finally:
+        _drop_route_guides_table(db)
+
+
+def test_detail_gallery_urls_bad_data_degrades_not_500(client, db):
+    # DB 里混进坏数据（空串/坏 JSON）时，详情页应该"少一块内容"而不是整页 500；
+    # 合法空数组 [] 原样返回（前端按 length 隐藏长廊）
+    _create_route_guides_table(db)
+    try:
+        empty_str = _guide(db, name="空串路线", gallery_urls="")
+        bad_json = _guide(db, name="坏JSON路线", gallery_urls="{not json")
+        empty_list = _guide(db, name="空数组路线", gallery_urls="[]")
+
+        assert client.get(f"/api/route-guides/{empty_str.id}").json()["gallery_urls"] is None
+        assert client.get(f"/api/route-guides/{bad_json.id}").json()["gallery_urls"] is None
+        assert client.get(f"/api/route-guides/{empty_list.id}").json()["gallery_urls"] == []
+    finally:
+        _drop_route_guides_table(db)
+
+
 def test_highlights_json_text_is_loaded_as_list(client, db):
     _create_route_guides_table(db)
     try:

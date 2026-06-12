@@ -68,6 +68,8 @@ class RouteGuideOut(BaseModel):
     ready: bool
     content_md: str
     cover_url: str | None = None
+    # 实景图 URL 数组——只进详情不进列表（书架页用不上，省流量）；None = 没图，前端整块隐藏
+    gallery_urls: list[str] | None = None
     highlights: list[str] | None = None
     elevation_profile: list[list[float]] | None = None
     route_book_id: int | None = None

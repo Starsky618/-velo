@@ -168,6 +168,7 @@ def test_imports_route_without_gpx_as_track_pending(db, route_guide_tables, tmp_
     assert guide.city == "太原"
     assert guide.route_book_id is None
     assert guide.elevation_profile is None
+    assert guide.gallery_urls is None  # meta 没有 gallery_urls 键 → 存 NULL（老路线无图不报错）
     assert db.query(RouteBook).count() == 0
 
 
@@ -207,6 +208,74 @@ def test_bad_highlights_exits_before_writing(db, route_guide_tables, tmp_path, m
 
     assert exc.value.code == 1
     assert "highlights" in capsys.readouterr().out
+    assert db.query(RouteGuide).count() == 0
+
+
+def test_gallery_urls_list_is_stored_as_json_text(db, route_guide_tables, tmp_path, monkeypatch):
+    # 实景图入库：meta.json 里发布脚本写的是真 JSON 数组，落库存 JSON 文本；
+    # 缺省（老路线还没图）存 NULL，前端整块隐藏。
+    _, RouteGuide = route_guide_tables
+    script = _load_script()
+    route_dir = tmp_path / "routes" / "with-gallery"
+    route_dir.mkdir(parents=True)
+    (route_dir / "guide.md").write_text("# 带实景图的路线\n", encoding="utf-8")
+    (route_dir / "meta.json").write_text(
+        json.dumps({
+            "name": "带实景图的路线",
+            "gallery_urls": ["/uploads/route_covers/with-gallery/g01.jpg", "/uploads/route_covers/with-gallery/g02.jpg"],
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(script, "SessionLocal", lambda: db)
+
+    script.main(["--content-dir", str(tmp_path / "routes")])
+
+    guide = db.query(RouteGuide).filter_by(name="带实景图的路线").one()
+    assert json.loads(guide.gallery_urls) == [
+        "/uploads/route_covers/with-gallery/g01.jpg",
+        "/uploads/route_covers/with-gallery/g02.jpg",
+    ]
+
+
+def test_gallery_urls_survive_idempotent_rerun(db, route_guide_tables, tmp_path, monkeypatch):
+    # 重灌幂等：meta.json 没变时再跑一遍，gallery_urls 原样保留（不洗掉、不重复建 guide）
+    _, RouteGuide = route_guide_tables
+    script = _load_script()
+    route_dir = tmp_path / "routes" / "rerun-gallery"
+    route_dir.mkdir(parents=True)
+    (route_dir / "guide.md").write_text("# 重灌路线\n", encoding="utf-8")
+    (route_dir / "meta.json").write_text(
+        json.dumps({"name": "重灌路线", "gallery_urls": ["/uploads/route_covers/rerun-gallery/g01_abcd1234.jpg"]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(script, "SessionLocal", lambda: db)
+
+    script.main(["--content-dir", str(tmp_path / "routes")])
+    script.main(["--content-dir", str(tmp_path / "routes")])
+
+    assert db.query(RouteGuide).count() == 1
+    guide = db.query(RouteGuide).filter_by(name="重灌路线").one()
+    assert json.loads(guide.gallery_urls) == ["/uploads/route_covers/rerun-gallery/g01_abcd1234.jpg"]
+
+
+def test_bad_gallery_urls_exits_before_writing(db, route_guide_tables, tmp_path, monkeypatch, capsys):
+    # gallery_urls 必须是字符串数组——混进非字符串元素要在打开数据库之前拦住（与 highlights 同纪律）。
+    _, RouteGuide = route_guide_tables
+    script = _load_script()
+    route_dir = tmp_path / "routes" / "bad-gallery"
+    route_dir.mkdir(parents=True)
+    (route_dir / "guide.md").write_text("# 坏 gallery\n", encoding="utf-8")
+    (route_dir / "meta.json").write_text(
+        json.dumps({"name": "坏 gallery 路线", "gallery_urls": "不是数组"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(script, "SessionLocal", lambda: db)
+
+    with pytest.raises(SystemExit) as exc:
+        script.main(["--content-dir", str(tmp_path / "routes")])
+
+    assert exc.value.code == 1
+    assert "gallery_urls" in capsys.readouterr().out
     assert db.query(RouteGuide).count() == 0
 
 
