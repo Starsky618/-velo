@@ -1,5 +1,5 @@
 page {
-  background: #f2f1f6;
+  background: #f2f2f7;
 }
 
 .meetups-page {
@@ -19,7 +19,7 @@ page {
 .title {
   font-size: 44rpx;
   line-height: 56rpx;
-  font-weight: 800;
+  font-weight: 600;
   color: #1c1c1e;
 }
 
@@ -36,17 +36,17 @@ page {
   height: 72rpx;
   line-height: 72rpx;
   padding: 0 24rpx;
-  border-radius: 16rpx;
+  border-radius: 24rpx;
   background: #ff9500;
   color: #fff;
   font-size: 26rpx;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .state {
   margin-top: 180rpx;
   text-align: center;
-  color: #86868b;
+  color: #8a8a8e;
   font-size: 28rpx;
 }
 
@@ -58,9 +58,9 @@ page {
 
 .meetup-card {
   padding: 24rpx;
-  border-radius: 16rpx;
+  border-radius: 28rpx;
   background: #fff;
-  box-shadow: 0 8rpx 24rpx rgba(17, 24, 39, 0.06);
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 
 .card-main {
@@ -75,7 +75,7 @@ page {
   min-width: 0;
   font-size: 32rpx;
   line-height: 42rpx;
-  font-weight: 800;
+  font-weight: 600;
   color: #1c1c1e;
 }
 
@@ -84,7 +84,7 @@ page {
   font-size: 24rpx;
   line-height: 34rpx;
   color: #ff9500;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .meeting {
@@ -108,11 +108,11 @@ page {
   min-width: 0;
   padding: 12rpx 10rpx;
   border-radius: 12rpx;
-  background: #f8fafc;
+  background: #f2f2f7;
   text-align: center;
 }
 
 .metrics .full {
-  color: #b91c1c;
-  background: #fee2e2;
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.10);
 }

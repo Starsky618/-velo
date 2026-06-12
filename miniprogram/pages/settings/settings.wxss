@@ -2,14 +2,14 @@
  * 设置页样式（Sprint 6 task-5 大幅扩写）
  *
  * 视觉规则：
- *   - 浅灰背景（#F2F1F6）+ 白色卡片：iOS 设置页同款 / 用户直觉熟悉
+ *   - 浅灰背景（#f2f2f7）+ 白色卡片：iOS 设置页同款 / 用户直觉熟悉
  *   - section 之间有 24rpx 间距：分组清晰 / 防误点跨区
  *   - 危险按钮（解绑 / 退出）红底白字：系统级危险提示
  *   - 行高 100rpx：触控友好 / 老年用户也能稳点
  */
 
 page {
-  background: #F2F1F6;
+  background: #f2f2f7;
   min-height: 100vh;
 }
 
@@ -297,7 +297,7 @@ page {
 }
 
 .cancel-btn {
-  background: #f2f1f6 !important;
+  background: #f2f2f7 !important;
   color: #333 !important;
   border: none !important;
 }

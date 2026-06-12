@@ -1,7 +1,7 @@
 /* 通知中心页样式 */
 
 page {
-  background: #F2F1F6;
+  background: #f2f2f7;
 }
 
 .notif-page {

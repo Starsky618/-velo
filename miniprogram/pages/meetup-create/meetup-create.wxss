@@ -1,5 +1,5 @@
 page {
-  background: #f2f1f6;
+  background: #f2f2f7;
 }
 
 .create-page {
@@ -116,7 +116,7 @@ page {
   margin: 18rpx 0 0;
   font-size: 28rpx;
   line-height: 38rpx;
-  font-weight: 800;
+  font-weight: 600;
   color: #1c1c1e;
 }
 
@@ -140,7 +140,7 @@ page {
 .route-card view {
   font-size: 30rpx;
   line-height: 40rpx;
-  font-weight: 800;
+  font-weight: 600;
   color: #1c1c1e;
 }
 
@@ -171,7 +171,7 @@ page {
   line-height: 76rpx;
   border-radius: 14rpx;
   font-size: 26rpx;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .point-button {
@@ -213,7 +213,7 @@ page {
   background: rgba(255, 255, 255, 0.92);
   color: #1c1c1e;
   font-size: 24rpx;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .field text {
@@ -265,7 +265,7 @@ page {
   margin-bottom: 18rpx;
   font-size: 34rpx;
   line-height: 44rpx;
-  font-weight: 800;
+  font-weight: 600;
   color: #1c1c1e;
 }
 
@@ -302,7 +302,7 @@ page {
   line-height: 82rpx;
   border-radius: 16rpx;
   font-size: 28rpx;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .primary {
@@ -327,7 +327,7 @@ page {
 .add-media {
   font-size: 26rpx;
   color: #ff9500;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .media-empty {
@@ -670,7 +670,7 @@ page {
   gap: 6rpx;
   margin-top: 14rpx;
   color: #181b23;
-  font-size: 20rpx;          /* 24px（区间值偏长，略压一档防换行）*/
+  font-size: 22rpx;          /* 24px（区间值偏长，略压一档防换行）*/
   line-height: 26rpx;
   font-weight: 500;
 }
@@ -1152,7 +1152,7 @@ page {
   border-radius: 10rpx;
   color: #31b45f;
   background: #f5fff8;
-  font-size: 20rpx;                            /* 23px ×0.879 */
+  font-size: 22rpx;                            /* 23px ×0.879 */
   line-height: 26rpx;
   font-weight: 400;
 }
