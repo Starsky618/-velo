@@ -133,7 +133,7 @@ page {
 }
 
 .route-card.selected {
-  border-color: #ff2d55;
+  border-color: #ff9500;
   background: #fff5f7;
 }
 
@@ -306,7 +306,7 @@ page {
 }
 
 .primary {
-  background: #ff2d55;
+  background: #ff9500;
   color: #fff;
 }
 
@@ -326,7 +326,7 @@ page {
 
 .add-media {
   font-size: 26rpx;
-  color: #ff2d55;
+  color: #ff9500;
   font-weight: 700;
 }
 

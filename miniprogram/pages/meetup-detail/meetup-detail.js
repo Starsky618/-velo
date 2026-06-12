@@ -192,7 +192,7 @@ Page({
       title: '取消约骑',
       content: '取消后参与者就看不到这场约骑了，确定取消？',
       confirmText: '取消约骑',
-      confirmColor: '#ff2d55',
+      confirmColor: '#ff9500',
       cancelText: '再想想',
       success: function (modal) {
         if (!modal.confirm) return

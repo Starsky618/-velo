@@ -129,7 +129,7 @@ page {
 
 .add-media {
   font-size: 26rpx;
-  color: #ff2d55;
+  color: #ff9500;
   font-weight: 700;
 }
 
@@ -194,7 +194,7 @@ page {
 /* 加入和取消都用主色填充（取消是发起人的主操作）；退出是次操作用描边 */
 .join,
 .cancel {
-  background: #ff2d55;
+  background: #ff9500;
   color: #fff;
 }
 

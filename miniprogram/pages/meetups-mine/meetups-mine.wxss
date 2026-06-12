@@ -80,7 +80,7 @@ page {
 
 .status-OPEN {
   background: #fee2e2;
-  color: #ff2d55;
+  color: #ff9500;
 }
 
 .status-DRAFT {
@@ -102,7 +102,7 @@ page {
   margin-top: 12rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #ff2d55;
+  color: #ff9500;
   font-weight: 700;
 }
 
