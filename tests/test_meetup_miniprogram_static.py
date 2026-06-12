@@ -144,6 +144,75 @@ def test_create_page_uses_map_picker_instead_of_native_location_popup():
     assert "scope.userLocation" not in json.dumps(app_json, ensure_ascii=False)
 
 
+def test_create_page_lets_user_name_tencent_route_before_generating():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
+
+    assert "tencentRouteName" in js
+    assert "tencentRouteName" in wxml
+    assert "onTencentRouteNameInput" in js
+    assert 'bindinput="onTencentRouteNameInput"' in wxml
+    assert "buildTencentRouteName" in js
+    assert "name: routeName" in js
+
+
+def test_create_page_blocks_past_start_time_before_saving_or_publishing():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
+
+    assert "minStartDate" in js
+    assert 'start="{{minStartDate}}"' in wxml
+    assert "ensureFutureMeetupTime" in js
+    assert js.count("ensureFutureMeetupTime") >= 4
+
+
+def test_confirm_page_route_detail_and_pace_controls_are_real_actions():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
+
+    assert 'bindtap="onTapPreviewRouteDetail"' in wxml
+    assert "routeMapOverlayVisible" in js
+    assert "route-map-overlay" in wxml
+    assert "preview-route-map" in wxml
+    assert "onCloseRouteMapOverlay" in js
+    assert "paceIndex" in js
+    assert 'class="pv-pace-picker"' in wxml
+    assert 'bindchange="onPaceChange"' in wxml
+    assert "this.updatePreviewDerived()" in js
+
+
+def test_confirm_publish_persists_confirm_page_pace_change():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    publish_block = js.split("onConfirmPublish: function ()", 1)[1].split("resolveRouteBookId", 1)[0]
+
+    assert "pace_level: this.data.form.pace_level" in publish_block
+
+
+def test_confirm_publish_blocks_cutoff_window_before_backend_raw_error():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    publish_block = js.split("onConfirmPublish: function ()", 1)[1].split("resolveRouteBookId", 1)[0]
+
+    assert "MEETUP_PUBLISH_CUTOFF_BUFFER_MS" in js
+    assert "ensurePublishableMeetupTime" in js
+    assert "30 * 60 * 1000 + 30 * 1000" in js
+    assert "离出发太近，不能发布" in js
+    assert "formatMeetupPublishError" in js
+    assert "meetup cutoff passed" in js
+    assert "ensurePublishableMeetupTime()" in publish_block
+
+
+def test_tencent_route_names_are_bounded_and_errors_are_human():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    picker_wxml = _read(MINI / "pages" / "map-picker" / "map-picker.wxml")
+
+    assert "TENCENT_POINT_NAME_MAX_LENGTH" in js
+    assert "TENCENT_ROUTE_NAME_MAX_LENGTH" in js
+    assert "limitTencentRouteName" in js
+    assert "formatTencentRouteError" in js
+    assert "生成失败，请检查路线名称和起终点" in js
+    assert 'maxlength="40"' in picker_wxml
+
+
 def test_create_page_formats_meter_distance_as_kilometers():
     js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
 
@@ -352,8 +421,9 @@ def test_create_page_has_preview_step_and_social_fields():
     assert "form.audience_tags.indexOf" not in wxml
     # 旧"发布约骑"直发按钮已被 onTapGoPreview/onConfirmPublish 两步取代
     assert 'bindtap="onPublish"' not in wxml
-    # 发布前总览页也要有路线轨迹缩略图（复用 route 步的 routePreview 地图）→ route-preview-shell 出现 2 次
-    assert wxml.count("route-preview-shell") >= 2
+    # 发布前总览页用 canvas 轨迹缩略线，点"查看详情"再打开完整地图，避免小 map 抢按钮手势
+    assert 'canvas-id="route-thumb-confirm"' in wxml
+    assert "route-map-overlay" in wxml
 
 
 def test_pace_display_table_covers_all_four_pace_levels():

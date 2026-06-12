@@ -40,7 +40,7 @@
     <view class="picker-title">{{title}}</view>
     <view class="picker-field">
       <text>位置名称</text>
-      <input value="{{name}}" bindinput="onNameInput" placeholder="例如：晋祠公园东门" />
+      <input value="{{name}}" maxlength="40" bindinput="onNameInput" placeholder="例如：晋祠公园东门" />
     </view>
     <view class="picker-coords">{{latitude}}，{{longitude}}</view>
     <view class="picker-actions">

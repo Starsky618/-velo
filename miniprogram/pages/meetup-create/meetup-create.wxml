@@ -51,6 +51,7 @@
         <button class="point-button" bindtap="onTapChooseTencentStart">{{tencentStartText}}</button>
         <button class="point-button" bindtap="onTapChooseTencentEnd">{{tencentEndText}}</button>
       </view>
+      <input class="tencent-route-name" value="{{tencentRouteName}}" maxlength="40" bindinput="onTencentRouteNameInput" placeholder="给这条路线起个名字" />
       <button class="generate-button" loading="{{creatingTencentRoute}}" disabled="{{creatingTencentRoute}}" bindtap="onTapCreateTencentRoute">生成路线</button>
       <view wx:if="{{routePreviewVisible}}" class="route-preview-shell">
         <map wx:if="{{paperMapHasCustomStyle}}"
@@ -140,7 +141,7 @@
         <view class="pub-row-sub">{{startDate}} {{startTime}}</view>
       </view>
       <view class="pub-edit-col pub-edit-col-time">
-        <picker class="pub-picker" mode="date" value="{{startDate}}" bindchange="onStartDateChange">
+        <picker class="pub-picker" mode="date" value="{{startDate}}" start="{{minStartDate}}" bindchange="onStartDateChange">
           <view class="pub-picker-value">{{startDate}}</view>
         </picker>
         <picker class="pub-picker" mode="time" value="{{startTime}}" bindchange="onStartTimeChange">
@@ -285,7 +286,7 @@
             <view class="pv-stat-num">{{estimatedDurationText}}</view>
             <view class="pv-stat-label">预计时长</view>
           </view>
-          <view class="pv-route-detail">
+          <view class="pv-route-detail" bindtap="onTapPreviewRouteDetail">
             <text>查看详情</text>
             <image class="pv-route-detail-chev" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" />
           </view>
@@ -316,15 +317,17 @@
       <view class="pv-pace-grid">
         <view class="pv-pace-col">
           <view class="pv-pace-label">强度预期</view>
-          <view class="pv-pace-value">{{paceLabel}}<image class="pv-pace-chev" src="/assets/icons/meetup/chevron-down.svg" mode="aspectFit" /></view>
+          <picker class="pv-pace-picker" mode="selector" range="{{paceOptions}}" range-key="label" value="{{paceIndex}}" bindchange="onPaceChange">
+            <view class="pv-pace-value">{{paceLabel}}<image class="pv-pace-chev" src="/assets/icons/meetup/chevron-down.svg" mode="aspectFit" /></view>
+          </picker>
         </view>
         <view class="pv-pace-col">
           <view class="pv-pace-label">推荐功率</view>
-          <view class="pv-pace-value">{{recommendedPowerLabel}}<image class="pv-pace-chev" src="/assets/icons/meetup/chevron-down.svg" mode="aspectFit" /></view>
+          <view class="pv-pace-value">{{recommendedPowerLabel}}</view>
         </view>
         <view class="pv-pace-col">
           <view class="pv-pace-label">预计均速</view>
-          <view class="pv-pace-value">{{averageSpeedRange}}<image class="pv-pace-chev" src="/assets/icons/meetup/chevron-down.svg" mode="aspectFit" /></view>
+          <view class="pv-pace-value">{{averageSpeedRange}}</view>
         </view>
       </view>
       <view class="pv-divider"></view>
@@ -419,6 +422,43 @@
       <view class="pv-learn-more"><text>了解更多</text><image class="pv-learn-chev" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" /></view>
     </view>
 
+  </view>
+
+  <view wx:if="{{routeMapOverlayVisible}}" class="route-map-overlay">
+    <map wx:if="{{paperMapHasCustomStyle}}"
+         class="preview-route-map"
+         latitude="{{routePreviewCenter.latitude}}"
+         longitude="{{routePreviewCenter.longitude}}"
+         scale="13"
+         markers="{{routePreviewMarkers}}"
+         polyline="{{routePreviewPolylines}}"
+         include-points="{{routePreviewIncludePoints}}"
+         subkey="{{paperMapSubkey}}"
+         layer-style="{{paperMapLayerStyle}}"
+         enable-poi="{{false}}"
+         enable-building="{{false}}"
+         enable-traffic="{{false}}"
+         enable-3D="{{false}}"
+         enable-rotate="{{true}}"
+         show-location="{{false}}">
+      <cover-view class="route-map-title">{{selectedRouteName}}</cover-view>
+      <cover-view class="route-map-close" bindtap="onCloseRouteMapOverlay">关闭</cover-view>
+    </map>
+    <map wx:else
+         class="preview-route-map"
+         latitude="{{routePreviewCenter.latitude}}"
+         longitude="{{routePreviewCenter.longitude}}"
+         scale="13"
+         markers="{{routePreviewMarkers}}"
+         polyline="{{routePreviewPolylines}}"
+         include-points="{{routePreviewIncludePoints}}"
+         enable-traffic="{{false}}"
+         enable-3D="{{false}}"
+         enable-rotate="{{true}}"
+         show-location="{{false}}">
+      <cover-view class="route-map-title">{{selectedRouteName}}</cover-view>
+      <cover-view class="route-map-close" bindtap="onCloseRouteMapOverlay">关闭</cover-view>
+    </map>
   </view>
 
   <!--

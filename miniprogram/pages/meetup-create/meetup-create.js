@@ -3,6 +3,39 @@ const { wgs84ToGcj02 } = require('../../utils/coords')
 const mapTheme = require('../../utils/map-theme')
 const routeThumb = require('../../utils/route-thumb')
 
+const TENCENT_POINT_NAME_MAX_LENGTH = 40
+const TENCENT_ROUTE_NAME_MAX_LENGTH = 80
+const MEETUP_PUBLISH_CUTOFF_BUFFER_MS = 30 * 60 * 1000 + 30 * 1000
+
+function normalizeShortText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function limitText(value, maxLength) {
+  var text = normalizeShortText(value)
+  if (text.length <= maxLength) return text
+  return text.slice(0, maxLength)
+}
+
+function limitTencentRouteName(value) {
+  return limitText(value, TENCENT_ROUTE_NAME_MAX_LENGTH)
+}
+
+function formatTencentRouteError(err) {
+  if (err && err.code === 503) return '路线服务暂不可用'
+  if (err && err.code === 422) return '生成失败，请检查路线名称和起终点'
+  if (err && typeof err.message === 'string' && err.message) return err.message
+  return '生成失败'
+}
+
+function formatMeetupPublishError(err) {
+  if (err && err.code === 410 && err.message === 'meetup cutoff passed') {
+    return '离出发太近，不能发布'
+  }
+  if (err && typeof err.message === 'string' && err.message) return err.message
+  return '发布失败'
+}
+
 // 把不同来源的距离拼成展示文本。
 // 赛段列表接口已经给公里；路书和"我的骑行"候选给米。
 // 这里按来源换算，像看菜单先分清"斤"和"克"，不能只看数字大小猜单位。
@@ -91,6 +124,14 @@ const PACE_DISPLAY = {
   race: { pace_label: '竞速冲刺', recommended_power_label: 'FTP 280W+', average_speed_range: '30+ km/h' },
 }
 
+function findPaceIndex(options, value) {
+  var index = 0
+  options.forEach(function (option, i) {
+    if (option.value === value) index = i
+  })
+  return index
+}
+
 // 适合谁标签（6 枚举，和后端白名单一致）
 const AUDIENCE_OPTIONS = [
   { value: 'climb_steady', label: '稳爬不竞速', icon: '/assets/icons/meetup/mountain.svg' },
@@ -128,8 +169,11 @@ Page({
     tencentEnd: null,
     tencentStartText: '选择起点',
     tencentEndText: '选择终点',
+    tencentRouteName: '',
+    tencentRouteNameEdited: false,
     creatingTencentRoute: false,
     routePreviewVisible: false,
+    routeMapOverlayVisible: false,
     routePreviewCenter: { latitude: 37.8706, longitude: 112.5489 },
     routePreviewPolylines: [],
     routePreviewMarkers: [],
@@ -143,6 +187,7 @@ Page({
     mediaList: [], // 照片墙：每项含 url（拼好的可显示地址）+ isVideo
     mediaError: false, // 照片墙加载失败标记：true 时显示"加载失败"而非"还没有照片"，避免误导
     // picker 显示用的本地时间分量（出发默认明天此刻、结束默认 +3h，onLoad 初始化）
+    minStartDate: '',
     startDate: '',
     startTime: '',
     endDate: '',
@@ -166,6 +211,7 @@ Page({
       { value: 'training', label: '训练' },
       { value: 'race', label: '强度' },
     ],
+    paceIndex: 1,
     paceLabel: '巡航',
     // —— 发布前总览（图二）用 ——
     // audienceOptions 带 selected 标志：WXML 不支持 .indexOf()，选中态必须在 JS 侧算
@@ -200,6 +246,7 @@ Page({
   },
 
   onShow: function () {
+    this.refreshMinStartDate()
     this.consumePendingMapPoint()
   },
 
@@ -213,10 +260,8 @@ Page({
       }
       var start = splitLocal(new Date(draft.start_time))
       var end = splitLocal(new Date(draft.estimated_end_time))
-      var paceLabel = '巡航'
-      that.data.paceOptions.forEach(function (o) {
-        if (o.value === draft.pace_level) paceLabel = o.label
-      })
+      var paceIndex = findPaceIndex(that.data.paceOptions, draft.pace_level || 'cruise')
+      var paceLabel = that.data.paceOptions[paceIndex].label
       that.setData({
         meetupId: draft.id,
         selectedSegmentId: draft.segment_id || null,
@@ -226,6 +271,7 @@ Page({
         startTime: start.time,
         endDate: end.date,
         endTime: end.time,
+        paceIndex: paceIndex,
         paceLabel: paceLabel,
         shareToken: draft.share_token || '',
         audienceOptions: that.syncAudienceOptions(draft.audience_tags || []),
@@ -326,11 +372,13 @@ Page({
 
   // 初始化默认时间：出发明天此刻，结束 +3h。拆成 picker 分量并拼好 ISO 存进 form。
   initDefaultTime: function () {
+    var today = splitLocal(new Date())
     var start = new Date(Date.now() + 24 * 60 * 60 * 1000)
     var end = new Date(Date.now() + 27 * 60 * 60 * 1000)
     var s = splitLocal(start)
     var e = splitLocal(end)
     this.setData({
+      minStartDate: today.date,
       startDate: s.date,
       startTime: s.time,
       endDate: e.date,
@@ -338,6 +386,10 @@ Page({
       'form.start_time': toIso(s.date, s.time),
       'form.estimated_end_time': toIso(e.date, e.time),
     })
+  },
+
+  refreshMinStartDate: function () {
+    this.setData({ minStartDate: splitLocal(new Date()).date })
   },
 
   loadRoutes: function () {
@@ -433,7 +485,7 @@ Page({
       return
     }
     var selected = {
-      name: point.name || (point.kind === 'start' ? '路线起点' : '路线终点'),
+      name: limitText(point.name || (point.kind === 'start' ? '路线起点' : '路线终点'), TENCENT_POINT_NAME_MAX_LENGTH),
       address: '',
       latitude: lat,
       longitude: lon,
@@ -442,15 +494,42 @@ Page({
       this.setData({
         tencentStart: selected,
         tencentStartText: selected.name,
-      })
+      }, this.syncTencentRouteNameFromPoints.bind(this))
       return
     }
     if (point.kind === 'end') {
       this.setData({
         tencentEnd: selected,
         tencentEndText: selected.name,
-      })
+      }, this.syncTencentRouteNameFromPoints.bind(this))
     }
+  },
+
+  buildTencentRouteFallbackName: function () {
+    var start = this.data.tencentStart
+    var end = this.data.tencentEnd
+    if (start && end) return limitTencentRouteName(start.name + ' → ' + end.name)
+    return ''
+  },
+
+  syncTencentRouteNameFromPoints: function () {
+    if (this.data.tencentRouteNameEdited) return
+    var fallbackName = this.buildTencentRouteFallbackName()
+    if (fallbackName) this.setData({ tencentRouteName: fallbackName })
+  },
+
+  onTencentRouteNameInput: function (event) {
+    var value = limitTencentRouteName(event.detail.value || '')
+    this.setData({
+      tencentRouteName: value,
+      tencentRouteNameEdited: Boolean(String(value).trim()),
+    })
+  },
+
+  buildTencentRouteName: function () {
+    var typed = limitTencentRouteName(this.data.tencentRouteName || '')
+    if (typed) return typed
+    return this.buildTencentRouteFallbackName() || '腾讯地图路线'
   },
 
   onTapCreateTencentRoute: function () {
@@ -462,11 +541,11 @@ Page({
       return
     }
     if (this.data.creatingTencentRoute) return
-    var name = start.name + ' → ' + end.name
+    var routeName = this.buildTencentRouteName()
     this.setData({ creatingTencentRoute: true })
     wx.showLoading({ title: '生成中', mask: true })
     api.createRouteBookFromTencentDirection({
-      name: name,
+      name: routeName,
       from_lat: start.latitude,
       from_lon: start.longitude,
       to_lat: end.latitude,
@@ -478,18 +557,12 @@ Page({
         selectedSegmentId: null,
         selectedActivityId: null,
         selectedRouteBookId: routeBook.id,
-        selectedRouteName: decorated.displayName,
+        selectedRouteName: decorated.displayName || routeName,
         generatedRouteBookId: null,
       }, buildRoutePreview(decorated.preview_points)))
       wx.showToast({ title: '已生成路线', icon: 'success' })
     }).catch(function (err) {
-      var message = '生成失败'
-      if (err && err.code === 503) {
-        message = '路线服务暂不可用'
-      } else if (err && err.message) {
-        message = err.message
-      }
-      wx.showToast({ title: message, icon: 'none' })
+      wx.showToast({ title: formatTencentRouteError(err), icon: 'none' })
     }).finally(function () {
       wx.hideLoading()
       that.setData({ creatingTencentRoute: false })
@@ -544,6 +617,7 @@ Page({
         wx.showToast({ title: '填写集合点', icon: 'none' })
         return
       }
+      if (!this.ensureFutureMeetupTime()) return
       // 时间顺序前端先拦一次：结束必须晚于开始，免得到发布才被后端 422 退回
       if (new Date(this.data.form.estimated_end_time) <= new Date(this.data.form.start_time)) {
         wx.showToast({ title: '结束时间要晚于出发', icon: 'none' })
@@ -576,6 +650,9 @@ Page({
     if (!this.data.form.meeting_point) {
       wx.showToast({ title: '请先填写集合点', icon: 'none' })
       return Promise.reject(new Error('no_meeting_point'))
+    }
+    if (!this.ensureFutureMeetupTime()) {
+      return Promise.reject(new Error('past_start_time'))
     }
     return this.resolveRouteBookId()
       .then(function (routeBookId) {
@@ -622,7 +699,7 @@ Page({
         setTimeout(function () { wx.navigateBack() }, 600)
       })
       .catch(function (err) {
-        if (err && err.message !== 'no_meeting_point') {
+        if (err && err.message !== 'no_meeting_point' && err.message !== 'past_start_time') {
           wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' })
         }
       })
@@ -656,7 +733,11 @@ Page({
   onPaceChange: function (event) {
     var index = Number(event.detail.value)
     var option = this.data.paceOptions[index]
-    this.setData({ 'form.pace_level': option.value, paceLabel: option.label })
+    if (!option) return
+    var that = this
+    this.setData({ 'form.pace_level': option.value, paceIndex: index, paceLabel: option.label }, function () {
+      that.updatePreviewDerived()
+    })
   },
 
   createOrUpdateDraft: function (payload) {
@@ -725,7 +806,7 @@ Page({
       }
     }).catch(function (err) {
       // no_meeting_point 已由 ensureDraft toast 过，别重复报"保存失败"
-      if (err && err.message !== 'no_meeting_point') {
+      if (err && err.message !== 'no_meeting_point' && err.message !== 'past_start_time') {
         wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' })
       }
     })
@@ -772,6 +853,41 @@ Page({
     this.setData({ pvEditSafety: !this.data.pvEditSafety })
   },
 
+  ensureFutureMeetupTime: function () {
+    var start = new Date(this.data.form.start_time)
+    if (!Number.isFinite(start.getTime())) {
+      wx.showToast({ title: '请选择出发时间', icon: 'none' })
+      return false
+    }
+    if (start <= new Date()) {
+      wx.showToast({ title: '出发时间要晚于现在', icon: 'none' })
+      return false
+    }
+    return true
+  },
+
+  ensurePublishableMeetupTime: function () {
+    if (!this.ensureFutureMeetupTime()) return false
+    var start = new Date(this.data.form.start_time)
+    if (start.getTime() - Date.now() <= MEETUP_PUBLISH_CUTOFF_BUFFER_MS) {
+      wx.showToast({ title: '离出发太近，不能发布', icon: 'none' })
+      return false
+    }
+    return true
+  },
+
+  onTapPreviewRouteDetail: function () {
+    if (!this.data.routePreviewVisible) {
+      wx.showToast({ title: '暂无路线预览', icon: 'none' })
+      return
+    }
+    this.setData({ routeMapOverlayVisible: true })
+  },
+
+  onCloseRouteMapOverlay: function () {
+    this.setData({ routeMapOverlayVisible: false })
+  },
+
   // 确认并发布：把图二设的 social 字段再存一次 → 发布 → 跳详情
   onConfirmPublish: function () {
     var that = this
@@ -780,8 +896,10 @@ Page({
       wx.showToast({ title: '草稿丢失，请退回重试', icon: 'none' })
       return
     }
+    if (!this.ensurePublishableMeetupTime()) return
     this.setData({ submitting: true })
     api.updateMeetup(this.data.meetupId, {
+      pace_level: this.data.form.pace_level,
       audience_tags: this.data.form.audience_tags,
       visibility: this.data.form.visibility,
       eligibility_note: this.data.form.eligibility_note,
@@ -791,7 +909,7 @@ Page({
     }).then(function (meetup) {
       wx.redirectTo({ url: '/pages/meetup-detail/meetup-detail?id=' + meetup.id })
     }).catch(function (err) {
-      wx.showToast({ title: (err && err.message) || '发布失败', icon: 'none' })
+      wx.showToast({ title: formatMeetupPublishError(err), icon: 'none' })
     }).finally(function () {
       that.setData({ submitting: false })
     })
