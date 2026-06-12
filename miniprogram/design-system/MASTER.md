@@ -66,6 +66,14 @@ velo 读作：iPhone 用户为主的骑行成就与社交工具。观感目标 =
 - [x] 探索页（2026-06-12，本方案第一页：HIG 卡片 + 系统橙 + 等宽数据行 + 封面图 bug 修复）
 - [x] tabBar selectedColor `#FF2D55` → `#FF9500`
 - [x] 路线详情页（2026-06-12：hero 出血 + 补路线名标题 + inset-grouped 手风琴 + 橙主按钮；正文排版立体化：键值表/字段块/步骤条/语录气泡四结构 + 呼吸间距。Tim 验收"先过，以后再迭代"——细节保留项待下轮）
+- [x] 约骑模块六页全量重构（2026-06-12，任务卡 `docs/plans/meetup-ui-rebuild.md`）：
+  - meetup-create：废弃旧"红色原型 ×0.879 逐像素还原"整套（`#ff1744` ×20+ 处、13-19rpx 蚂蚁字 = "真机字特别小"根源）；字号按 iOS 节奏重建（辅助 ≥21rpx / 正文 ≥25rpx）；编辑步 absolute 贴右控件全部改回文档流（grid auto 1fr auto）；编辑/确认步小尺寸 `<map>` 缩略图换 canvas 自绘轨迹线（位置冲突 bug 根除——原生组件层级盖按钮 + 抢手势）
+  - meetup-detail：地图轨迹卡前置到 hero 之后（出血式图卡无标题）；四格数据合并单卡竖 hairline
+  - meetups-list：大图卡语言——卡顶轨迹缩略 canvas（按 route_book_id 异步拉 preview_points + 模块级缓存，后端零改动）+ hairline 数据行
+  - meetups-mine / meetup-report / map-picker：白卡化 + 字重 800→600 全清 + 状态药丸语义色 + 黑底按钮换橙
+- [x] profile（我的）结构重排（2026-06-12）：4 张分散功能卡合并 iOS inset-grouped 单卡；📍⚙🚴 emoji 换 lucide SVG（新建 assets/icons/settings.svg）；清掉 224 行 v4 deprecated 样式；数字 tabular
+- [x] 全局地图轨迹线换橙：`utils/map-theme.js` routeColor `#F04452` → `#FF9500`（一处改全部地图生效）
+- [x] 共享轨迹缩略工具 `utils/route-thumb.js`（canvas 画"路线形状"非地图；列表卡 + create 缩略共用；⚠ wxss rpx 与 js 绘制 px 必须 2:1）
 - [ ] 首页（涉及 feed 形态 = 功能层，与"冷启动内容密度"一起另议）
 - [ ] 开奖/分享水印（形态已定，等详情页之后实现）
-- [ ] 全局清除旧四色系（grep `#FF2D55|#f04452|#0f766e|#f7f3ea` 逐页勾销）
+- [ ] 全局清除旧四色系（grep `#FF2D55|#f04452|#0f766e|#f7f3ea` 逐页勾销；2026-06-12 约骑七页 + map-theme 已清，upload 页深底霓虹 `#c8ff3d` 仍挂账）

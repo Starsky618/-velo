@@ -8,27 +8,9 @@
       <view class="meeting">{{meetup.meeting_point}}</view>
     </view>
 
-    <view class="metrics">
-      <view>
-        <text class="value">{{meetup.distanceText}}</text>
-        <text class="label">距离</text>
-      </view>
-      <view wx:if="{{meetup.climbText}}">
-        <text class="value">{{meetup.climbText}}</text>
-        <text class="label">爬升</text>
-      </view>
-      <view>
-        <text class="value">{{meetup.paceText}}</text>
-        <text class="label">节奏</text>
-      </view>
-      <view>
-        <text class="value">{{meetup.seatsText}}</text>
-        <text class="label">人数</text>
-      </view>
-    </view>
-
-    <view class="section" wx:if="{{routePreviewVisible}}">
-      <view class="section-title">路线预览</view>
+    <!-- 地图轨迹卡前置：路线长什么样是约骑第一眼要回答的问题（标杆图的地图卡语言）。
+         详情页单实例真 <map>，无列表多实例性能问题；无标题，图本身就是信息 -->
+    <view class="map-card" wx:if="{{routePreviewVisible}}">
       <map wx:if="{{paperMapHasCustomStyle}}"
            class="route-preview-map"
            latitude="{{routePreviewCenter.latitude}}"
@@ -57,6 +39,25 @@
            enable-3D="{{false}}"
            enable-rotate="{{false}}"
            show-location="{{false}}"></map>
+    </view>
+
+    <view class="metrics">
+      <view>
+        <text class="value">{{meetup.distanceText}}</text>
+        <text class="label">距离</text>
+      </view>
+      <view wx:if="{{meetup.climbText}}">
+        <text class="value">{{meetup.climbText}}</text>
+        <text class="label">爬升</text>
+      </view>
+      <view>
+        <text class="value">{{meetup.paceText}}</text>
+        <text class="label">节奏</text>
+      </view>
+      <view>
+        <text class="value">{{meetup.seatsText}}</text>
+        <text class="label">人数</text>
+      </view>
     </view>
 
     <view class="section">

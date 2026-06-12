@@ -45,3 +45,13 @@
 - Tim 真机逐页过（编译 → 走完整发起约骑流程 + 看详情 + 看战报）
 - 他报的 3 个具体问题（字体小/位置冲突/无轨迹）逐条销账
 - pytest 全绿（不动后端时应零影响）+ 前端三层对照自校验记录
+
+## 执行记录（2026-06-12 全范围完成，待 Tim 真机验收）
+
+- **真相比立卡时严重**：meetup-create 整页根本不是苹果方案，是"逐像素还原红色原型 ×0.879"的产物——`#ff1744` ×20+ 处（此前 sed 只清了 `#FF2D55`，这是漏网主力）、确认步 13-19rpx 蚂蚁字遍地（"字体特别小"根源 = 原型 px×0.879 把桌面预览稿小字压成不可读）、编辑步控件全 absolute 贴右（重叠隐患结构性）
+- **位置冲突修法**：编辑/确认步小尺寸 `<map>` 全换 canvas 自绘轨迹线（新建 `utils/route-thumb.js`）；原生 map 组件层级盖普通元素 + 不受 overflow:hidden 裁剪 + 抢手势，是冲突根源。route 步的 360rpx 大预览图保留真 map（用户需要看真地图）
+- **轨迹嵌入走了不动后端的路**：列表接口已返 `route_book_id`，前端异步拉 `getRouteBookDetail().preview_points`（模块级缓存 + 按 id 回写防数组刷新错位），detail 页本来就是这条链路。方案 b（静态 canvas）落地，没有多实例 map
+- **全局收获**：`utils/map-theme.js` routeColor `#F04452`（废弃四色系漏网）→ `#FF9500`，所有页面地图轨迹一处换橙
+- 七页全做：create（wxss 全量重写 1472→约 950 行）/ detail（地图卡前置 + 数据单卡）/ list（大图卡 + 轨迹）/ mine / report（黑 hero 退场）/ map-picker / profile（inset-grouped 合并 + emoji 换 SVG + 清 224 行 deprecated）
+- 三层对照自校验通过（class/函数/旧色 grep 全清；profile "缺函数"为 ES6 简写误报已人工确认）
+- **下一环：Tim 开发者工具"预览"扫码真机验收 → 过审后"上传"新体验版**（真机验收链路见顶部教训节）

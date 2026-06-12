@@ -13,7 +13,7 @@ page {
   overflow: hidden;
   height: 62vh;
   min-height: 720rpx;
-  border-radius: 16rpx;
+  border-radius: 28rpx;
   background: #eef3ee;
 }
 
@@ -30,7 +30,7 @@ page {
   height: 52rpx;
   margin-left: -26rpx;
   margin-top: -52rpx;
-  border: 8rpx solid #32c48d;
+  border: 8rpx solid #ff9500;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.96);
   box-sizing: border-box;
@@ -46,21 +46,22 @@ page {
   margin-left: -7rpx;
   margin-top: -7rpx;
   border-radius: 50%;
-  background: #32c48d;
+  background: #ff9500;
   pointer-events: none;
 }
 
 .map-picker-panel {
   margin-top: 20rpx;
-  padding: 24rpx;
-  border-radius: 16rpx;
+  padding: 28rpx;
+  border-radius: 28rpx;
   background: #fff;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 
 .picker-title {
   font-size: 32rpx;
   line-height: 44rpx;
-  font-weight: 800;
+  font-weight: 600;
   color: #1c1c1e;
 }
 
@@ -106,7 +107,7 @@ page {
   line-height: 76rpx;
   border-radius: 14rpx;
   font-size: 26rpx;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .picker-cancel {
@@ -115,6 +116,10 @@ page {
 }
 
 .picker-confirm {
-  background: #1c1c1e;
+  background: #ff9500;
   color: #fff;
+}
+
+.picker-confirm:active {
+  background: #e07f00;
 }

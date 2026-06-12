@@ -1,238 +1,25 @@
-/* 个人中心页样式 */
+/* 我的（骑手身份名片）——苹果方案（MASTER v0.4）。
+   本次重写：① 清掉文件上半 224 行 v4 deprecated 样式（wxml 早已不引用，
+   页面级 wxss 不会被其他页面共享，留着只添噪音）② 功能入口从 4 张分散
+   小卡合并成 iOS inset-grouped 单卡 ③ emoji 图标换 lucide SVG
+   ④ 卡语言统一：圆角 28rpx + 轻阴影 + 字重 ≤600 + 数据数字 tabular。 */
 
-/* ── 登录卡片 ── */
-.login-card {
-  margin: 32rpx 24rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 64rpx 48rpx;
+page {
+  background: #f2f2f7;
 }
 
-.login-icon {
-  font-size: 80rpx;
-  margin-bottom: 24rpx;
+.page {
+  min-height: 100vh;
+  padding-bottom: 40rpx;
 }
 
-.login-title {
-  font-size: 28rpx;
-  color: var(--color-text-2);
-  margin-bottom: 32rpx;
-}
-
-.login-btn {
-  background: var(--color-primary);
-  border-radius: 48rpx;
-  padding: 24rpx 64rpx;
-}
-
-.login-btn-text {
-  color: #ffffff;
-  font-size: 30rpx;
-  font-weight: 600;
-}
-
-/* ── 用户信息卡片 ── */
-.user-card {
-  margin: 32rpx 24rpx 24rpx;
-}
-
-.user-header {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
-}
-
-/* city 徽章（D9 fallback / 名片右上角小标签 / Sprint 4 task-4.1） */
-.city-badge {
-  margin-left: auto;
-  background: var(--color-primary);
-  border-radius: 24rpx;
-  padding: 6rpx 18rpx;
-  flex-shrink: 0;
-}
-
-.city-badge-text {
-  color: #ffffff;
-  font-size: 22rpx;
-  font-weight: 500;
-  line-height: 1;
-}
-
-.avatar {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 48rpx;
-  background: var(--color-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.avatar-text {
-  color: #ffffff;
-  font-size: 40rpx;
-  font-weight: 600;
-}
-
-.user-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-}
-
-.user-name {
-  font-size: 36rpx;
-  font-weight: 600;
-  color: var(--color-text-1);
-}
-
-.user-id {
-  font-size: 24rpx;
-  color: var(--color-text-3);
-}
-
-/* 体能参数行 */
-.params-row {
-  display: flex;
-  justify-content: space-around;
-  margin-top: 32rpx;
-  padding-top: 24rpx;
-  border-top: 2rpx solid var(--color-divider);
-}
-
-.param {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.param-value {
-  font-size: 36rpx;
-  font-weight: 600;
-  color: var(--color-primary);
-  line-height: 1;
-}
-
-.param-label {
-  font-size: 22rpx;
-  color: var(--color-text-3);
-  margin-top: 8rpx;
-}
-
-/* ── 累计统计卡片 ── */
-.stats-card {
-  margin: 0 24rpx 24rpx;
-}
-
-.stats-title {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: var(--color-text-2);
-  display: block;
-  margin-bottom: 24rpx;
-}
-
-.stats-grid {
-  display: flex;
-  justify-content: space-around;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.stat-value {
-  font-size: 48rpx;
-  font-weight: 600;
-  color: var(--color-text-1);
-  line-height: 1;
-}
-
-.stat-unit {
-  font-size: 24rpx;
-  color: var(--color-text-3);
-  margin-left: 4rpx;
-}
-
-.stat-label {
-  font-size: 22rpx;
-  color: var(--color-text-3);
-  margin-top: 8rpx;
-}
-
-/* ── v4 新增：菜单卡片（我的荣誉 / 设置） ── */
-.menu-card {
-  margin: 0 24rpx 24rpx;
-  padding: 0 24rpx;
-}
-
-.menu-item {
-  display: flex;
-  align-items: center;
-  padding: 28rpx 0;
-  gap: 20rpx;
-}
-
-.menu-item-hover {
-  background: rgba(0, 0, 0, 0.02);
-}
-
-.menu-emoji {
-  font-size: 40rpx;
-  width: 56rpx;
-  text-align: center;
-}
-
-.menu-label {
-  flex: 1;
-  font-size: 30rpx;
-  color: var(--color-text-1);
-  font-weight: 500;
-}
-
-.menu-arrow {
-  font-size: 40rpx;
-  color: var(--color-text-3);
-  line-height: 1;
-}
-
-.menu-divider {
-  height: 2rpx;
-  background: var(--color-divider);
-  margin-left: 76rpx;
-}
-
-/* ── 退出登录 ── */
-.logout-btn {
-  margin: 48rpx 24rpx;
-  padding: 24rpx;
-  text-align: center;
-  border-radius: var(--radius-md);
-  background: var(--color-card);
-}
-
-.logout-text {
-  font-size: 30rpx;
-  color: var(--color-primary);
-  font-weight: 500;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════ */
-/* Sprint 6 task-4：profile 页改造样式（hero / stats / map / medals / rides）  */
-/* 旧的 .user-card / .params-* / .logout-* 等 class 已被 wxml 重写废弃         */
-/* 暂留作 deprecated（不主动删 / 防其他历史页面引用）/ 未来集中清理            */
-/* ═══════════════════════════════════════════════════════════════════════ */
-
-/* ── 块 1：头像区（hero-card / 数字 + 身份名片视觉冲击）── */
+/* ── 块 1：头像区 ── */
 .hero-card {
-  margin: 32rpx 24rpx 24rpx;
-  padding: 40rpx 32rpx;
-  background: var(--color-card);
-  border-radius: 24rpx;
+  margin: 24rpx 24rpx 20rpx;
+  padding: 36rpx 30rpx;
+  background: #fff;
+  border-radius: 28rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
   position: relative;
 }
 
@@ -250,11 +37,8 @@
   width: 128rpx;
   height: 128rpx;
   border-radius: 50%;
-  background: var(--color-bg);
+  background: #f2f2f7;
 }
-
-/* 头像 button reset 已废弃（Tim 2026-05-16 二次真用拍：button open-type chooseAvatar
-   在 hero-top flex 行拦截 hero-info 点击事件 / 退回 image bindtap 模式 / 微信一键导入留 tech-debt） */
 
 .hero-info {
   flex: 1;
@@ -268,107 +52,75 @@
 }
 
 .hero-name {
-  font-size: 36rpx;
+  font-size: 38rpx;
   font-weight: 600;
-  color: var(--color-text-1);
+  color: #1c1c1e;
+  line-height: 1.3;
 }
 
 .hero-edit-hint {
-  font-size: 22rpx;
-  color: var(--color-text-3);
+  font-size: 30rpx;
+  color: #c5c5c7;
+  font-weight: 600;
 }
 
 .hero-city {
-  margin-top: 8rpx;
+  margin-top: 10rpx;
   display: inline-flex;
   align-items: center;
-  gap: 6rpx;
-  font-size: 24rpx;
-  color: var(--color-text-2);
+  gap: 8rpx;
 }
 
 .hero-city-icon {
-  font-size: 22rpx;
+  width: 26rpx;
+  height: 26rpx;
 }
 
 .hero-city-text {
-  font-size: 24rpx;
+  font-size: 26rpx;
+  color: #8a8a8e;
+  line-height: 1.4;
 }
 
 .hero-settings {
   position: absolute;
-  top: 32rpx;
-  right: 32rpx;
+  top: 30rpx;
+  right: 30rpx;
   padding: 12rpx;
 }
 
 .hero-settings-icon {
-  font-size: 40rpx;
+  width: 40rpx;
+  height: 40rpx;
 }
 
-/* bio 签名（task-1） */
+/* bio 签名 */
 .hero-bio {
-  margin-top: 24rpx;
-  padding: 16rpx 20rpx;
-  background: var(--color-bg);
+  margin-top: 26rpx;
+  padding: 18rpx 22rpx;
+  background: #f2f2f7;
   border-radius: 16rpx;
 }
 
 .hero-bio-text {
-  font-size: 26rpx;
-  color: var(--color-text-1);
-  line-height: 1.5;
+  font-size: 27rpx;
+  color: #1c1c1e;
+  line-height: 1.6;
 }
 
 .hero-bio-placeholder {
-  margin-top: 24rpx;
-  padding: 16rpx 20rpx;
-  font-size: 26rpx;
-  color: var(--color-text-3);
-  background: var(--color-bg);
-  border-radius: 16rpx;
+  font-size: 27rpx;
+  color: #8a8a8e;
+  line-height: 1.6;
 }
 
-.goal-progress-track {
-  width: 100%;
-  height: 10rpx;
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.06);
-  border-radius: 999rpx;
-}
-
-.goal-progress-fill {
-  height: 100%;
-  background: var(--color-primary);
-  border-radius: 999rpx;
-}
-
-/* 徽章行（task-2 / chip 样式） */
-.badge-row {
-  margin-top: 24rpx;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-}
-
-.badge-item {
-  padding: 8rpx 20rpx;
-  background: var(--color-primary);
-  border-radius: 32rpx;
-}
-
-.badge-label {
-  font-size: 22rpx;
-  color: #ffffff;
-  font-weight: 500;
-}
-
-/* ── 块 2：训练统计（数字 hero 化 / 2 列 grid）── */
+/* ── 块 2：本周训练 ── */
 .stats-card {
-  margin: 0 24rpx 24rpx;
-  padding: 32rpx;
-  background: var(--color-card);
-  border-radius: 24rpx;
+  margin: 0 24rpx 20rpx;
+  padding: 30rpx;
+  background: #fff;
+  border-radius: 28rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 
 .stats-title-row {
@@ -379,174 +131,119 @@
 }
 
 .stats-title {
-  font-size: 28rpx;
+  font-size: 30rpx;
   font-weight: 600;
-  color: var(--color-text-1);
+  color: #1c1c1e;
 }
 
 .stats-period {
-  font-size: 22rpx;
-  color: var(--color-text-3);
+  font-size: 24rpx;
+  color: #8a8a8e;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .weekly-goal-progress {
-  margin-bottom: 24rpx;
+  margin-bottom: 26rpx;
+}
+
+.goal-progress-track {
+  width: 100%;
+  height: 10rpx;
+  overflow: hidden;
+  background: #f2f2f7;
+  border-radius: 999rpx;
+}
+
+.goal-progress-fill {
+  height: 100%;
+  background: #ff9500;
+  border-radius: 999rpx;
 }
 
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 32rpx 24rpx;
+  gap: 30rpx 24rpx;
 }
 
 .stats-cell {
   display: flex;
   flex-direction: column;
-  gap: 4rpx;
+  gap: 6rpx;
 }
 
-/* 数字 hero 化关键：大字号 + 加粗 */
 .stats-value {
-  font-size: 56rpx;
+  font-size: 52rpx;
   font-weight: 600;
-  color: var(--color-text-1);
-  line-height: 1.1;
+  color: #1c1c1e;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .stats-unit {
-  font-size: 22rpx;
-  color: var(--color-text-3);
+  font-size: 23rpx;
+  color: #8a8a8e;
 }
 
-/* ── 块 3：热图卡片 ── */
-.map-card {
-  margin: 0 24rpx 24rpx;
-  padding: 32rpx;
-  background: var(--color-card);
-  border-radius: 24rpx;
+/* ── 功能入口：iOS inset-grouped 单卡（行间 hairline + chevron）── */
+.action-group {
+  margin: 0 24rpx 20rpx;
+  background: #fff;
+  border-radius: 28rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 
-.map-title-row {
-  margin-bottom: 24rpx;
-}
-
-.map-title {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: var(--color-text-1);
-}
-
-.heatmap-area {
-  min-height: 200rpx;
-}
-
-.heatmap-preview {
-  font-size: 24rpx;
-  color: var(--color-text-2);
-}
-
-.heatmap-empty {
-  font-size: 24rpx;
-  color: var(--color-text-3);
-  text-align: center;
-  padding: 40rpx 0;
-}
-
-/* ── 块 3.5：城市勋章墙（6 城 grid / unlocked 高亮 / locked 灰）── */
-.medals-section {
-  margin: 0 24rpx 24rpx;
-  padding: 32rpx;
-  background: var(--color-card);
-  border-radius: 24rpx;
-}
-
-.medals-title-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 24rpx;
-}
-
-.medals-title {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: var(--color-text-1);
-}
-
-.medals-progress {
-  font-size: 24rpx;
-  color: var(--color-text-2);
-}
-
-.medals-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16rpx;
-}
-
-.medal-cell {
-  padding: 24rpx 16rpx;
-  border-radius: 16rpx;
-  text-align: center;
-  background: var(--color-bg);
-}
-
-.medal-city {
-  font-size: 26rpx;
-  font-weight: 500;
-}
-
-.medal-unlocked {
-  background: var(--color-primary);
-}
-
-.medal-unlocked .medal-city {
-  color: #ffffff;
-}
-
-.medal-locked .medal-city {
-  color: var(--color-text-3);
-}
-
-/* ── 块 4：活动列表 ── */
-.rides-section {
-  margin: 0 24rpx 32rpx;
-  padding: 32rpx 32rpx 16rpx;
-  background: var(--color-card);
-  border-radius: 24rpx;
-}
-
-.profile-action-card {
-  margin: 0 24rpx 24rpx;
-  padding: 28rpx 32rpx;
-  background: var(--color-card);
-  border-radius: 24rpx;
+.action-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 110rpx;
+  padding: 20rpx 30rpx;
+  box-sizing: border-box;
+}
+
+.action-row + .action-row {
+  border-top: 1rpx solid #e5e5ea;
 }
 
 .action-main {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
+  gap: 6rpx;
+  min-width: 0;
 }
 
 .action-title {
-  font-size: 28rpx;
+  font-size: 29rpx;
   font-weight: 600;
-  color: var(--color-text-1);
+  color: #1c1c1e;
+  line-height: 1.35;
 }
 
 .action-subtitle {
-  font-size: 22rpx;
-  color: var(--color-text-3);
+  font-size: 23rpx;
+  color: #8a8a8e;
+  line-height: 1.4;
 }
 
 .action-arrow {
+  flex: 0 0 auto;
   font-size: 40rpx;
-  color: var(--color-text-3);
+  color: #c5c5c7;
+  font-weight: 600;
   line-height: 1;
+}
+
+/* ── 块 4：最近活动 ── */
+.rides-section {
+  margin: 0 24rpx 32rpx;
+  padding: 30rpx 30rpx 16rpx;
+  background: #fff;
+  border-radius: 28rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 
 .section-title-row {
@@ -557,20 +254,59 @@
 }
 
 .section-title {
-  font-size: 28rpx;
+  font-size: 30rpx;
   font-weight: 600;
-  color: var(--color-text-1);
+  color: #1c1c1e;
 }
 
 .section-count {
-  font-size: 22rpx;
-  color: var(--color-text-3);
+  font-size: 23rpx;
+  color: #8a8a8e;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .rides-loading,
 .rides-loadmore {
-  font-size: 24rpx;
-  color: var(--color-text-3);
+  font-size: 25rpx;
+  color: #8a8a8e;
   text-align: center;
   padding: 24rpx 0;
+}
+
+/* ── 未登录态 ── */
+.login-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 240rpx;
+}
+
+.login-brand {
+  font-size: 56rpx;
+  font-weight: 600;
+  letter-spacing: 8rpx;
+  color: #ff9500;
+}
+
+.login-title {
+  margin-top: 20rpx;
+  font-size: 28rpx;
+  color: #8a8a8e;
+}
+
+.login-btn {
+  margin-top: 48rpx;
+  padding: 0 64rpx;
+  height: 88rpx;
+  line-height: 88rpx;
+  background: #ff9500;
+  border-radius: 999rpx;
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.login-btn:active {
+  background: #e07f00;
 }

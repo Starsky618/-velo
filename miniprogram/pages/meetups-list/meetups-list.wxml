@@ -12,16 +12,24 @@
 
   <view wx:else class="list">
     <view class="meetup-card" wx:for="{{meetups}}" wx:key="id" data-id="{{item.id}}" bindtap="onTapMeetup">
-      <view class="card-main">
-        <view class="route-name">{{item.snapshot_route_name}}</view>
-        <view class="time">{{item.timeText}}</view>
+      <!-- 轨迹缩略区：canvas 自绘路线形状（图上信息下的大图卡语言）。
+           用 hidden 而非 wx:if——canvas DOM 常在才能稳定绘制（陷阱 #17）；
+           没有路书轨迹的约骑整块隐藏，不留空区 -->
+      <view class="card-track" hidden="{{!item.hasTrack}}">
+        <canvas canvas-id="track-{{item.id}}" class="track-canvas"></canvas>
       </view>
-      <view class="meeting">{{item.meeting_point}}</view>
-      <view class="metrics">
-        <text>{{item.distanceText}}</text>
-        <text wx:if="{{item.climbText}}">{{item.climbText}}</text>
-        <text>{{item.paceText}}</text>
-        <text class="{{item.full ? 'full' : ''}}">{{item.seatsText}}</text>
+      <view class="card-body">
+        <view class="card-main">
+          <view class="route-name">{{item.snapshot_route_name}}</view>
+          <view class="time">{{item.timeText}}</view>
+        </view>
+        <view class="meeting">{{item.meeting_point}}</view>
+        <view class="metrics">
+          <text class="metric">{{item.distanceText}}</text>
+          <text class="metric" wx:if="{{item.climbText}}">{{item.climbText}}</text>
+          <text class="metric">{{item.paceText}}</text>
+          <text class="metric seats {{item.full ? 'full' : ''}}">{{item.seatsText}}</text>
+        </view>
       </view>
     </view>
   </view>

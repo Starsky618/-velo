@@ -1,6 +1,7 @@
 const api = require('../../utils/api')
 const { wgs84ToGcj02 } = require('../../utils/coords')
 const mapTheme = require('../../utils/map-theme')
+const routeThumb = require('../../utils/route-thumb')
 
 // 把不同来源的距离拼成展示文本。
 // 赛段列表接口已经给公里；路书和"我的骑行"候选给米。
@@ -261,13 +262,35 @@ Page({
     var that = this
     if (!routeBookId || !api.getRouteBookDetail) return Promise.resolve(null)
     return api.getRouteBookDetail(routeBookId).then(function (routeBook) {
-      that.setData(buildRoutePreview(routeBook.preview_points))
+      that.setData(buildRoutePreview(routeBook.preview_points), function () {
+        that.drawStepThumb()
+      })
       return routeBook
     }).catch(function () {
       // 拉路书失败就清空预览，别残留上一条路线的图（视觉状态不一致）
       that.setData(buildRoutePreview([]))
       return null
     })
+  },
+
+  // 编辑步 / 确认步左上角的轨迹缩略线：按当前步挑对应 canvas 画。
+  // 幂等：状态不满足就静默返回，所以所有"可能改了步骤或路线"的地方都能放心调。
+  // setTimeout 兜底 canvas 初始化（同路线详情页海拔缩略图 pattern，陷阱 #17）。
+  // ⚠ 这里的 px 尺寸 = wxss 里 .route-thumb-canvas 的 rpx ÷ 2，改一处必须同步另一处
+  drawStepThumb: function () {
+    var that = this
+    if (!this.data.routePreviewVisible) return
+    var step = this.data.currentStep
+    if (step !== 'edit' && step !== 'confirm') return
+    var canvasId = step === 'edit' ? 'route-thumb-edit' : 'route-thumb-confirm'
+    var size = step === 'edit' ? { width: 60, height: 52 } : { width: 80, height: 66 }
+    setTimeout(function () {
+      routeThumb.drawRouteThumb(canvasId, that.data.routePreviewIncludePoints, {
+        width: size.width,
+        height: size.height,
+        lineWidth: 2,
+      })
+    }, 120)
   },
 
   applyRouteBookParam: function (routeBookId) {
@@ -513,7 +536,7 @@ Page({
       }
       // 选完路线直接进图二编辑页。草稿懒建（加照片 / 下一步时才落库），
       // 因为后端建草稿必须有集合点，而集合点要在这一步图二里才填。
-      this.setData({ currentStep: 'edit' })
+      this.setData({ currentStep: 'edit' }, this.drawStepThumb.bind(this))
       return
     }
     if (this.data.currentStep === 'edit') {
@@ -533,7 +556,7 @@ Page({
 
   prevStep: function () {
     if (this.data.currentStep === 'confirm') {
-      this.setData({ currentStep: 'edit' })
+      this.setData({ currentStep: 'edit' }, this.drawStepThumb.bind(this))
     } else if (this.data.currentStep === 'edit') {
       this.setData({ currentStep: 'route' })
     }
@@ -688,6 +711,8 @@ Page({
         // 总览页路线卡的距离/爬升，从草稿快照拿（API 返回 km / 米）
         routeDistanceText: (draft.snapshot_distance || draft.snapshot_distance === 0) ? draft.snapshot_distance : '',
         routeClimbText: (draft.snapshot_climb || draft.snapshot_climb === 0) ? draft.snapshot_climb : '',
+      }, function () {
+        that.drawStepThumb()
       })
       // 拉已加入骑友（getMeetupParticipants 在 Task5 才加，没有就跳过不报错）
       if (api.getMeetupParticipants) {

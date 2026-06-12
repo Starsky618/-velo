@@ -116,37 +116,11 @@
     照片用真照片网格（复用 mediaList + onTapAddMedia/onTapDeleteMedia/onTapPreviewMedia）。
   -->
   <view wx:if="{{currentStep === 'edit'}}" class="panel pub-card">
-    <!-- 路线行：左侧用现成 <map> 真预览缩成小缩略图，右侧绿色"路线已生成"徽标；只读不可编辑 -->
-    <view class="pub-row pub-row-route">
-      <view class="pub-route-thumb route-preview-shell">
-        <map wx:if="{{routePreviewVisible && paperMapHasCustomStyle}}"
-             class="route-preview-map"
-             latitude="{{routePreviewCenter.latitude}}"
-             longitude="{{routePreviewCenter.longitude}}"
-             scale="12"
-             markers="{{routePreviewMarkers}}"
-             polyline="{{routePreviewPolylines}}"
-             include-points="{{routePreviewIncludePoints}}"
-             subkey="{{paperMapSubkey}}"
-             layer-style="{{paperMapLayerStyle}}"
-             enable-poi="{{false}}"
-             enable-building="{{false}}"
-             enable-traffic="{{false}}"
-             enable-3D="{{false}}"
-             enable-rotate="{{false}}"
-             show-location="{{false}}"></map>
-        <map wx:elif="{{routePreviewVisible}}"
-             class="route-preview-map"
-             latitude="{{routePreviewCenter.latitude}}"
-             longitude="{{routePreviewCenter.longitude}}"
-             scale="12"
-             markers="{{routePreviewMarkers}}"
-             polyline="{{routePreviewPolylines}}"
-             include-points="{{routePreviewIncludePoints}}"
-             enable-traffic="{{false}}"
-             enable-3D="{{false}}"
-             enable-rotate="{{false}}"
-             show-location="{{false}}"></map>
+    <!-- 路线行：左侧轨迹缩略线（canvas 自绘形状，替代真 <map> ——原生组件层级
+         盖按钮 + 抢手势是"地图与按键位置冲突"bug 的根源），右侧"路线已生成"徽标；只读不可编辑 -->
+    <view class="pub-row">
+      <view class="pub-route-thumb">
+        <canvas wx:if="{{routePreviewVisible}}" canvas-id="route-thumb-edit" class="route-thumb-canvas"></canvas>
         <view wx:else class="pub-route-thumb-fallback">
           <image class="pub-icon pub-icon-route" src="/assets/icons/meetup/map.svg" mode="aspectFit" />
         </view>
@@ -281,37 +255,10 @@
     确认并发布按钮统一放底部栏（confirm 步），此 panel 内不再内嵌发布按钮，避免重复。
   -->
   <view wx:elif="{{currentStep === 'confirm'}}" class="panel pv-page">
-    <!-- 路线卡：左侧真 <map> 缩略图，右侧名称 + 已生成徽标 + 距离/爬升/时长三项数据 -->
+    <!-- 路线卡：左侧轨迹缩略线（canvas 自绘，同编辑步），右侧名称 + 已生成徽标 + 距离/爬升/时长三项数据 -->
     <view class="pv-card pv-route-card">
-      <view class="pv-map-thumb route-preview-shell">
-        <map wx:if="{{routePreviewVisible && paperMapHasCustomStyle}}"
-             class="route-preview-map"
-             latitude="{{routePreviewCenter.latitude}}"
-             longitude="{{routePreviewCenter.longitude}}"
-             scale="12"
-             markers="{{routePreviewMarkers}}"
-             polyline="{{routePreviewPolylines}}"
-             include-points="{{routePreviewIncludePoints}}"
-             subkey="{{paperMapSubkey}}"
-             layer-style="{{paperMapLayerStyle}}"
-             enable-poi="{{false}}"
-             enable-building="{{false}}"
-             enable-traffic="{{false}}"
-             enable-3D="{{false}}"
-             enable-rotate="{{false}}"
-             show-location="{{false}}"></map>
-        <map wx:elif="{{routePreviewVisible}}"
-             class="route-preview-map"
-             latitude="{{routePreviewCenter.latitude}}"
-             longitude="{{routePreviewCenter.longitude}}"
-             scale="12"
-             markers="{{routePreviewMarkers}}"
-             polyline="{{routePreviewPolylines}}"
-             include-points="{{routePreviewIncludePoints}}"
-             enable-traffic="{{false}}"
-             enable-3D="{{false}}"
-             enable-rotate="{{false}}"
-             show-location="{{false}}"></map>
+      <view class="pv-map-thumb">
+        <canvas wx:if="{{routePreviewVisible}}" canvas-id="route-thumb-confirm" class="route-thumb-canvas"></canvas>
         <view wx:else class="pv-map-fallback">
           <image class="pv-map-fallback-icon" src="/assets/icons/meetup/map.svg" mode="aspectFit" />
         </view>

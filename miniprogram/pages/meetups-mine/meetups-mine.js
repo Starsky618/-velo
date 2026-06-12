@@ -11,6 +11,7 @@ function decorate(meetup) {
     climbText: formatClimb(meetup.snapshot_climb),
     paceText: paceText(meetup.pace_level),
     seatsText: count + '/' + max,
+    full: max > 0 && count >= max,
     statusText: statusText(meetup.status),
   })
 }

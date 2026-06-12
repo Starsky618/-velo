@@ -16,10 +16,10 @@
       <view class="time">{{item.timeText}}</view>
       <view class="meeting">{{item.meeting_point}}</view>
       <view class="metrics">
-        <text>{{item.distanceText}}</text>
-        <text wx:if="{{item.climbText}}">{{item.climbText}}</text>
-        <text>{{item.paceText}}</text>
-        <text>{{item.seatsText}}</text>
+        <text class="metric">{{item.distanceText}}</text>
+        <text class="metric" wx:if="{{item.climbText}}">{{item.climbText}}</text>
+        <text class="metric">{{item.paceText}}</text>
+        <text class="metric seats {{item.full ? 'full' : ''}}">{{item.seatsText}}</text>
       </view>
     </view>
   </view>

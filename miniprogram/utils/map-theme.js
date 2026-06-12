@@ -21,7 +21,8 @@ const PAPER_MAP_CONFIG = {
   layerStyle: 1,
   // 高速、主干路、水系、绿地这些底图颜色必须在腾讯个性化地图后台调浅。
   // 小程序代码只保存公开 subkey 和样式编号，业务页面不能自己调底图颜色。
-  routeColor: '#F04452',
+  // 路线主色 = 系统橙（MASTER v0.4 唯一强调色）；旧 #F04452 属已废弃四色系
+  routeColor: '#FF9500',
   routeBorderColor: '#FFFFFF',
   heatColor: '#FFB020CC',
 }

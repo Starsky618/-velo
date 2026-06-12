@@ -54,20 +54,35 @@ page {
   color: #8a8a8e;
 }
 
-/* 用 flex 而非固定 4 列 grid：爬升缺失隐藏后，剩下 3 格仍能均分铺满、不留空列 */
+/* 地图轨迹卡（前置常显）：出血式图卡，无标题，图本身就是信息 */
+.map-card {
+  height: 380rpx;
+  margin-top: 22rpx;
+  border-radius: 28rpx;
+  overflow: hidden;
+  background: #eef3ee;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
+}
+
+/* 数据卡：一张白卡内竖 hairline 分隔（对齐路线详情页 stat-card 语言）。
+   flex 而非固定 4 列：爬升缺失隐藏后剩 3 格仍均分铺满、不留空列 */
 .metrics {
   display: flex;
-  gap: 14rpx;
   margin: 22rpx 0;
+  padding: 28rpx 10rpx 24rpx;
+  border-radius: 28rpx;
+  background: #fff;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 
 .metrics view {
   flex: 1;
   min-width: 0;
-  padding: 24rpx 10rpx;
-  border-radius: 24rpx;
-  background: #fff;
   text-align: center;
+}
+
+.metrics view + view {
+  border-left: 1rpx solid #e5e5ea;
 }
 
 .value,
@@ -129,9 +144,7 @@ page {
 
 .route-preview-map {
   width: 100%;
-  height: 360rpx;
-  border-radius: 20rpx;
-  overflow: hidden;
+  height: 100%;
 }
 
 /* 照片墙：标题行（左标题 + 右"加照片"）+ 3 列 grid */
