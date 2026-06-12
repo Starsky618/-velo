@@ -78,7 +78,9 @@ velo 读作：iPhone 用户为主的骑行成就与社交工具。观感目标 =
 - [x] 动态活动详情页（2026-06-12）：深色渐变 hero 卡 + 旧红光晕装饰退场 → 白卡；⚙ emoji 换 settings.svg；隐私开关 `#FF6B00` → 系统橙；分隔线统一 1rpx hairline；数据数字全 tabular；赛段行速度色对齐图表蓝
 - [x] tabBar 五个选中态 png 图标重着色：旧红 → 系统橙（PIL 保 alpha 染色，形状不动）
 - [x] 长尾色值统一（2026-06-12 顺手清）：segment / segment-efforts 的非标橙 `#FF6B00` → `#FF9500`；home 通知红点阴影修正为语义红 rgba
-- [x] 地图纸面底图激活（2026-06-12 Tim 填 subkey + 样式编号 20568）：全部地图换浅色纸面风
+- [x] 地图纸面底图激活（2026-06-12 Tim 填 subkey + 小程序 layer-style 顺序号 1；后台内部 style_id=20568）：全部地图换浅色纸面风
+- [x] "我的"页四件套（2026-06-12，第五批 / `eafceff2` 已部署生产）：训练统计卡"本周|生涯"segmented（period=all 零后端改动 + 进页预拉防瞬态错位）；bio 灰框退场纯展示（编辑移设置页）；settings 全量 iOS inset-grouped 五组重构（宣言/周目标/车型行 + 意见反馈 open-type=contact + 关于版本；退出/注销改居中红字行防误触，二次确认保留；**调研定稿不做假功能**——单位/多语言/深色/缓存清理/通知开关均无底层支持或微信统管，Strava/Komoot 官方实证）；活动列表 iGPSport 式轨迹缩略（后端新只读端点 track-thumbs 抽稀 ≤60 点 owner-only / ride-card 左图右信息 observer 自画 / 新 `utils/ride-thumbs.js` 批量缓存）
 - [ ] 首页（涉及 feed 形态 = 功能层，与"冷启动内容密度"一起另议）
 - [ ] 开奖/分享水印（形态已定，等详情页之后实现）
-- [ ] 长尾残留：honor 空态 🚴 emoji；segment/segment-efforts/honor/route-list 布局级重排未做（仅色值统一）
+- [ ] 设置页挂账（需后端字段，待 Tim 拍）：活动默认可见性 + 隐私区域（隐藏住址周边轨迹——调研六家四家有，晒卡场景安全刚需）
+- [ ] 长尾残留：honor 空态 🚴 emoji；segment/segment-efforts/honor/route-list 布局级重排未做（仅色值统一）；weekly_goal server_default=200 在设置页显示像"已设置"（观察项）

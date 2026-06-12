@@ -1,4 +1,8 @@
-# 约骑模块 UI 全面重构 + profile 结构重排 · 任务卡
+# 约骑模块 UI 全面重构 + profile 结构重排 · 任务卡 ✅ 已收官（2026-06-12 Tim"过"+"很不错"）
+
+> **收官状态**：本卡全部范围 + 后续追加（upload/detail/tab 图标/"我的"页四件套）均已 ship 并过 Tim 验收。
+> 全程五批 commit：`1c58547a`（约骑六页+profile）→ `b86185a5`（upload/detail/图标/subkey）→ `eafceff2`（"我的"四件套+track-thumbs 端点，已部署生产）。
+> 总账与剩余挂账见 `miniprogram/design-system/MASTER.md` §8 / `docs/changelog.md` 2026-06-12 段。
 
 > 立卡：2026-06-12（Tim 拍："整个约骑模块都要进行重构，目前字体大小、排版都不合格，还要嵌入地图轨迹模块"）
 > 设计真相源：`miniprogram/design-system/MASTER.md` v0.4（苹果方案：HIG + 系统橙，中文字重 ≤600，数字 tabular-nums）

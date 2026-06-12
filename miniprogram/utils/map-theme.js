@@ -14,9 +14,9 @@ const PAPER_MAP_CONFIG = {
   // 腾讯控制台里的 weilu-mini（小程序浅色底图）key：客户端公开类 subkey，安全靠 APPID 白名单，
   // 不靠保密；不要填 weilu-dev（路线规划）key。个性化样式已在腾讯控制台调好：高速等道路调浅。
   subkey: 'GIHBZ-V6YWL-5TYPD-EXDCJ-6WCUT-TFBLI',
-  // 样式编号：取腾讯控制台"个性化地图-样式应用"里已绑定样式的编号。
-  // 这里绑定的是“我的自定义样式1”（控制台值 20568），不是腾讯内置模板 1。
-  layerStyle: 20568,
+  // 小程序 layer-style 填的是绑定列表里的顺序号 style_order，不是后台内部 style_id。
+  // 当前 weilu-mini 绑定“我的自定义样式1”：style_order=1，style_id=20568。
+  layerStyle: 1,
   // 高速、主干路、水系、绿地这些底图颜色必须在腾讯个性化地图后台调浅。
   // 小程序代码只保存公开 subkey 和样式编号，业务页面不能自己调底图颜色。
   // 路线主色 = 系统橙（MASTER v0.4 唯一强调色）；旧 #F04452 属已废弃四色系
