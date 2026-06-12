@@ -16,11 +16,12 @@
     </map>
   </view>
 
+  <!-- 唯一操作路径（Tim 拍）：输入关键字实时联想 → 点候选地图跳过去 → 微调针尖 → 确认。
+       不提供手填名称——名字跟着选中的地点走，骑友挑现成的不打字。 -->
   <view class="map-picker-panel">
     <view class="picker-title">{{title}}</view>
-    <view class="picker-search" wx:if="{{kind === 'meeting'}}">
-      <input class="picker-search-input" value="{{searchKeyword}}" maxlength="40" bindinput="onSearchKeywordInput" placeholder="搜索地点，例如：晋祠公园" />
-      <button class="picker-search-btn" loading="{{searchingPlace}}" bindtap="onTapSearchPlace">搜索</button>
+    <view class="picker-search">
+      <input class="picker-search-input" value="{{searchKeyword}}" maxlength="40" bindinput="onSearchKeywordInput" confirm-type="search" placeholder="输入地名实时搜索，例如：晋祠公园" />
     </view>
     <view class="picker-search-results" wx:if="{{placeSearchResults.length}}">
       <view class="picker-search-result" wx:for="{{placeSearchResults}}" wx:key="title" data-index="{{index}}" bindtap="onTapSearchResult">
@@ -28,11 +29,7 @@
         <view class="picker-result-address">{{item.address}}</view>
       </view>
     </view>
-    <view class="picker-field">
-      <text>位置名称</text>
-      <input value="{{name}}" maxlength="40" bindinput="onNameInput" placeholder="例如：晋祠公园东门" />
-    </view>
-    <view class="picker-coords">{{latitude}}，{{longitude}}</view>
+    <view wx:if="{{name}}" class="picker-picked">已选：{{name}}</view>
     <view class="picker-actions">
       <button class="picker-cancel" bindtap="onTapCancel">取消</button>
       <button class="picker-confirm" bindtap="selectMapPoint">{{confirmText}}</button>

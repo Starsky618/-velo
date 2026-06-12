@@ -421,8 +421,9 @@ module.exports = {
     return request('/api/meetups/favorite-places/' + placeId, 'DELETE')
   },
 
-  searchMeetupPlace: function (keyword, region) {
-    return request('/api/meetups/place-search' + buildQuery({
+  // 集合点实时联想：边输边搜返回最多 8 条候选（替代旧单结果 place-search）
+  getMeetupPlaceSuggestions: function (keyword, region) {
+    return request('/api/meetups/place-suggestions' + buildQuery({
       keyword: keyword,
       region: region || '太原',
     }), 'GET')

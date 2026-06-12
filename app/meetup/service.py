@@ -415,19 +415,24 @@ def delete_favorite_place(db: Session, current_user_id: int, place_id: int) -> N
     db.commit()
 
 
-def search_meetup_place(keyword: str, region: str = "太原") -> dict | None:
-    """约骑集合点搜索：复用服务端腾讯地点检索，并把字段名翻成小程序更直观的 latitude/longitude。"""
-    result = tencent_place.search_place(keyword.strip(), region.strip())
-    if result is None:
-        return None
-    return {
-        "keyword": result["keyword"],
-        "title": result["title"],
-        "address": result.get("address"),
-        "latitude": result["lat"],
-        "longitude": result["lon"],
-        "source": result["source"],
-    }
+def suggest_meetup_places(keyword: str, region: str = "太原") -> list[dict]:
+    """约骑集合点实时联想：服务端腾讯 suggestion 转发，字段名翻成小程序直观的 latitude/longitude。
+
+    替代旧的单结果 search_meetup_place（2026-06-13 Tim 拍：搜索要像高德那样
+    边输边出一列候选，不是一锤子一个结果）。
+    """
+    results = tencent_place.suggest_places(keyword.strip(), region.strip())
+    return [
+        {
+            "keyword": item["keyword"],
+            "title": item["title"],
+            "address": item.get("address"),
+            "latitude": item["lat"],
+            "longitude": item["lon"],
+            "source": item["source"],
+        }
+        for item in results
+    ]
 
 
 def _assemble_list_result(db: Session, base, page: int, page_size: int) -> dict:

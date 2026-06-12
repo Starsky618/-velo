@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VELO 设计语言提案 v2 · 白昼证书 × 号码牌数字</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FBFBF9; --surface:#FFFFFF; --carbon:#17181C; --slate:#71727A; --hairline:#E8E8E5;
+    --volt:#D6FF42; --volt-deep:#B8E62B; --volt-ink:#15170D;
+    --ghost:#EFEFEA;
+    --disp:'Barlow Condensed','DIN Alternate',-apple-system,sans-serif;
+    --sans:'Noto Sans SC',-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{background:#2A2C31;font-family:var(--sans);color:var(--carbon);padding:28px 0 80px}
+  .disp{font-family:var(--disp);font-variant-numeric:tabular-nums}
+
+  .stage{width:393px;margin:0 auto 14px}
+  .stage-label{color:#9aa0ab;font-size:12px;letter-spacing:.18em;margin:36px auto 10px;width:393px;text-transform:uppercase}
+  .stage-label b{color:#fff;font-weight:700;letter-spacing:0;font-size:13px;display:block;margin-top:2px;font-family:var(--sans)}
+  .screen{width:393px;border-radius:28px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.45);background:var(--paper)}
+  .gallery-head{width:393px;margin:0 auto 6px;color:#fff}
+  .gallery-head h1{font-size:21px;font-weight:900}
+  .gallery-head p{font-size:13px;color:#9aa0ab;margin-top:8px;line-height:1.7}
+
+  /* 海拔剖面背景图形（velo 独家图形语言：数据即装饰） */
+  .terrain{position:absolute;left:0;right:0;bottom:0;pointer-events:none}
+
+  /* ========== 屏1 · 开奖（白昼颁奖） ========== */
+  .award{position:relative;min-height:780px;padding:0 26px;overflow:hidden;background:var(--paper)}
+  .statusbar{display:flex;justify-content:space-between;padding:18px 4px 0;font-size:13px;font-weight:600;color:var(--carbon)}
+  .statusbar .disp{font-size:14px}
+  .a-eyebrow{margin-top:66px;font-size:12px;letter-spacing:.4em;color:var(--slate);font-weight:500}
+  .a-title{font-size:27px;font-weight:900;margin-top:8px;letter-spacing:.04em}
+  .a-date{font-size:13px;color:var(--slate);margin-top:6px}
+  .a-hero{margin-top:46px;display:flex;align-items:flex-end;gap:10px}
+  .a-hero .n{font-family:var(--disp);font-weight:700;font-size:150px;line-height:.82;letter-spacing:-.01em}
+  .a-hero .u{font-family:var(--disp);font-weight:600;font-size:30px;color:var(--slate);padding-bottom:8px}
+  .a-hero-k{font-size:12px;letter-spacing:.32em;color:var(--slate);margin-top:14px;font-weight:500}
+  /* Volt 斜向 PR 条带 */
+  .pr-band{margin:40px -34px 0;transform:rotate(-3deg);background:var(--volt);padding:13px 40px;
+    display:flex;gap:26px;align-items:center;white-space:nowrap;box-shadow:0 10px 30px rgba(182,230,40,.35)}
+  .pr-band .x{font-family:var(--disp);font-weight:700;font-size:24px;color:var(--volt-ink)}
+  .pr-band .t{font-size:13.5px;font-weight:900;color:var(--volt-ink)}
+  .pr-band .t small{display:block;font-size:10px;font-weight:500;opacity:.65;letter-spacing:.08em;margin-top:1px}
+  /* 数据条（细行，大留白后的密） */
+  .a-stats{margin-top:52px;border-top:1.5px solid var(--carbon)}
+  .a-stat{display:flex;align-items:baseline;justify-content:space-between;padding:13px 2px;border-bottom:1px solid var(--hairline)}
+  .a-stat .k{font-size:12.5px;color:var(--slate);letter-spacing:.18em;font-weight:500}
+  .a-stat .v{font-family:var(--disp);font-weight:600;font-size:27px}
+  .a-stat .v small{font-size:14px;color:var(--slate);margin-left:3px;font-weight:500}
+  .a-cta{margin-top:34px;position:relative;display:block;width:100%;border:none;cursor:pointer;
+    background:var(--carbon);color:var(--volt);font-size:16px;font-weight:900;letter-spacing:.1em;
+    padding:17px 0;border-radius:2px;font-family:var(--sans)}
+  .a-foot{margin:12px 0 30px;text-align:center;font-size:12px;color:var(--slate)}
+  /* confetti */
+  .cf{position:absolute;width:9px;height:9px;animation:drift 5s ease-in-out infinite}
+  @keyframes drift{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-14px) rotate(40deg)}}
+  .reveal{opacity:0;transform:translateY(18px);animation:pop .6s cubic-bezier(.2,.85,.25,1) forwards}
+  @keyframes pop{to{opacity:1;transform:none}}
+  .reveal-band{opacity:0;transform:rotate(-3deg) translateX(40px);animation:bandin .55s cubic-bezier(.2,.85,.25,1) forwards}
+  @keyframes bandin{to{opacity:1;transform:rotate(-3deg) translateX(0)}}
+
+  /* ========== 屏2 · 成绩卡（完赛证书） ========== */
+  .cert-wrap{padding:46px 30px 42px;position:relative;background:var(--paper);overflow:hidden}
+  .bigghost{position:absolute;top:18px;right:-12px;font-family:var(--disp);font-weight:700;font-size:120px;color:var(--ghost);line-height:1;letter-spacing:-.02em;user-select:none}
+  .cert{background:var(--surface);border:1.5px solid var(--carbon);border-radius:4px;position:relative;padding:30px 28px 0;box-shadow:0 16px 44px rgba(23,24,28,.12)}
+  .cert-no{display:flex;justify-content:space-between;align-items:baseline}
+  .cert-no .l{font-size:11px;letter-spacing:.3em;color:var(--slate);font-weight:500}
+  .cert-no .r{font-family:var(--disp);font-weight:600;font-size:15px;color:var(--slate)}
+  .cert-route{font-size:23px;font-weight:900;margin-top:16px;letter-spacing:.02em}
+  .cert-route small{display:block;font-family:var(--disp);font-weight:500;font-size:13px;color:var(--slate);letter-spacing:.22em;margin-top:5px}
+  .cert-main{margin-top:30px;display:flex;align-items:flex-end;gap:10px}
+  .cert-main .n{font-family:var(--disp);font-weight:700;font-size:88px;line-height:.85}
+  .cert-main .tag{margin-bottom:6px}
+  .cert-main .tag span{background:var(--volt);font-size:11px;font-weight:900;padding:4px 8px;letter-spacing:.06em}
+  .cert-main-k{font-size:11.5px;letter-spacing:.26em;color:var(--slate);margin-top:12px;font-weight:500}
+  .cert-grid{display:flex;margin-top:26px;border-top:1px solid var(--hairline)}
+  .cert-cell{flex:1;padding:14px 0 16px}
+  .cert-cell+.cert-cell{border-left:1px solid var(--hairline);padding-left:16px}
+  .cert-cell .v{font-family:var(--disp);font-weight:600;font-size:23px}
+  .cert-cell .v small{font-size:12px;color:var(--slate);margin-left:2px;font-weight:500}
+  .cert-cell .k{font-size:10.5px;color:var(--slate);margin-top:3px;letter-spacing:.08em}
+  .cert-terrain{margin:0 -28px;position:relative;height:74px}
+  .cert-foot{display:flex;justify-content:space-between;align-items:center;border-top:1.5px solid var(--carbon);margin:0 -28px;padding:14px 28px 16px;background:var(--carbon)}
+  .cert-foot .rider{font-size:12px;color:rgba(255,255,255,.75);font-weight:500}
+  .cert-foot .logo{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.34em;color:var(--volt)}
+  .stamp{position:absolute;top:120px;right:20px;width:74px;height:74px;border:2.5px solid var(--volt-deep);border-radius:50%;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(12deg);
+    color:var(--volt-deep);background:rgba(214,255,66,.12)}
+  .stamp b{font-family:var(--disp);font-size:26px;font-weight:700;line-height:1}
+  .stamp span{font-size:8.5px;letter-spacing:.2em;margin-top:2px;font-weight:700}
+  .cert-hint{text-align:center;color:var(--slate);font-size:12.5px;margin-top:20px;position:relative}
+
+  /* ========== 屏3 · 探索页 ========== */
+  .explore{background:var(--paper);position:relative;overflow:hidden}
+  .ex-head{padding:58px 24px 0;position:relative}
+  .ex-ghost{position:absolute;top:40px;right:-6px;font-family:var(--disp);font-weight:700;font-size:92px;color:var(--ghost);letter-spacing:.02em;user-select:none}
+  .ex-title{font-size:30px;font-weight:900;position:relative;letter-spacing:.05em}
+  .ex-sub{font-size:13px;color:var(--slate);margin-top:8px;position:relative}
+  .ex-tabs{display:flex;gap:24px;padding:24px 24px 0;position:relative}
+  .ex-tab{font-size:14.5px;color:var(--slate);padding-bottom:10px;font-weight:500}
+  .ex-tab.on{color:var(--carbon);font-weight:900;border-bottom:3px solid var(--carbon)}
+  .ex-list{padding:22px 24px 10px;display:flex;flex-direction:column;gap:26px;position:relative}
+  .ex-card{position:relative}
+  .ex-card .pic{height:190px;border-radius:4px;overflow:hidden;position:relative;background:linear-gradient(135deg,#2B2E36,#4A4F5C)}
+  .ex-card .pic img{width:100%;height:100%;object-fit:cover;display:block}
+  .ex-card .badge{position:absolute;top:0;left:14px;background:var(--volt);color:var(--volt-ink);
+    font-size:11px;font-weight:900;padding:7px 9px 6px;letter-spacing:.1em}
+  .ex-card .row{display:flex;justify-content:space-between;align-items:flex-end;margin-top:13px}
+  .ex-card .name{font-size:19.5px;font-weight:900;letter-spacing:.02em}
+  .ex-card .name small{display:block;font-family:var(--disp);font-size:11.5px;font-weight:500;color:var(--slate);letter-spacing:.24em;margin-top:4px}
+  .ex-card .nums{display:flex;gap:14px;align-items:baseline}
+  .ex-card .nums .g .v{font-family:var(--disp);font-weight:600;font-size:21px;text-align:right}
+  .ex-card .nums .g .v small{font-size:11px;color:var(--slate);font-weight:500;margin-left:1px}
+  .ex-card .nums .g .k{font-size:9.5px;color:var(--slate);letter-spacing:.1em;text-align:right;margin-top:1px}
+  .ex-hr{border:none;border-top:1px solid var(--hairline);margin-top:22px}
+  .tabbar{display:flex;background:var(--surface);border-top:1px solid var(--hairline);padding:10px 0 24px;margin-top:14px;position:relative}
+  .tab{flex:1;text-align:center;font-size:10.5px;color:var(--slate);display:flex;flex-direction:column;align-items:center;gap:4px;font-weight:500}
+  .tab svg{width:22px;height:22px}
+  .tab.on{color:var(--carbon);font-weight:900}
+  .tab.on .dot{width:18px;height:3px;background:var(--volt);margin-top:1px}
+
+  /* ========== 屏4 · 路线详情 ========== */
+  .detail{background:var(--paper);position:relative;overflow:hidden}
+  .d-hero{position:relative;height:230px}
+  .d-hero img{width:100%;height:100%;object-fit:cover;display:block}
+  .d-hero .veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(23,24,28,.18),transparent 45%)}
+  .back{position:absolute;top:52px;left:18px;width:32px;height:32px;border-radius:50%;background:rgba(23,24,28,.4);display:flex;align-items:center;justify-content:center}
+  .back svg{width:16px;height:16px}
+  .d-body{padding:30px 26px 34px;position:relative}
+  .d-name{font-size:29px;font-weight:900;letter-spacing:.03em}
+  .d-name small{display:block;font-family:var(--disp);font-weight:500;font-size:12.5px;color:var(--slate);letter-spacing:.3em;margin-top:7px}
+  .d-tagline{margin-top:18px;font-size:15px;line-height:1.9;color:var(--carbon)}
+  .mark{background:linear-gradient(transparent 60%,rgba(214,255,66,.75) 60%);font-weight:700;padding:0 1px}
+  .d-stats{display:flex;margin-top:34px;align-items:flex-end;gap:0}
+  .d-stat{flex:1}
+  .d-stat+.d-stat{border-left:1px solid var(--hairline);padding-left:20px}
+  .d-stat .v{font-family:var(--disp);font-weight:700;font-size:46px;line-height:.9}
+  .d-stat .v small{font-size:16px;color:var(--slate);font-weight:500;margin-left:2px}
+  .d-stat .k{font-size:11px;color:var(--slate);margin-top:8px;letter-spacing:.18em;font-weight:500}
+  .d-terrain{margin:30px -26px 0;position:relative;height:80px}
+  .d-cta{margin-top:26px;display:block;width:100%;border:none;background:var(--carbon);color:var(--volt);
+    font-size:16px;font-weight:900;letter-spacing:.12em;padding:17px 0;border-radius:2px;font-family:var(--sans);cursor:pointer}
+  .d-folds{margin-top:34px}
+  .d-fold{display:flex;justify-content:space-between;align-items:center;padding:17px 2px;font-size:15.5px;font-weight:700;border-bottom:1px solid var(--hairline)}
+  .d-fold:first-child{border-top:1.5px solid var(--carbon)}
+  .d-fold svg{width:15px;height:15px;color:var(--slate)}
+
+  /* ========== 屏5 · 语言总览 ========== */
+  .lang{background:var(--surface);padding:40px 26px 36px}
+  .lang h2{font-size:18px;font-weight:900;margin-bottom:6px}
+  .lang .sub{font-size:13px;color:var(--slate);line-height:1.8;margin-bottom:20px}
+  .delta{border-top:1px solid var(--hairline);padding:13px 2px;display:flex;gap:14px;font-size:13.5px;line-height:1.7}
+  .delta b{flex:none;color:var(--slate);font-weight:500;font-size:12px;letter-spacing:.1em;width:64px;padding-top:2px}
+  .ft-demo{display:flex;align-items:baseline;gap:16px;margin:6px 0 18px}
+  .ft-demo .a{font-family:var(--disp);font-weight:700;font-size:58px}
+  .ft-demo .note{font-size:12px;color:var(--slate);line-height:1.6}
+</style>
+</head>
+<body>
+
+<div class="gallery-head">
+  <h1>VELO 设计语言提案 v2</h1>
+  <p>「白昼证书 × 号码牌数字」——亮色大留白世界；背景图案用 velo 自己的数据形状（海拔剖面线）浅浅呈现；字体换成赛事计时牌谱系的窄体大数字；成绩卡 = 完赛证书 + 荧光 PR 印章。</p>
+</div>
+
+<!-- ════════ 屏1 · 开奖 ════════ -->
+<div class="stage-label">SCREEN 01<b>开奖时刻 · 白昼颁奖（动效自动播放）</b></div>
+<div class="stage"><div class="screen">
+  <div class="award">
+    <!-- 海拔剖面背景：天龙山式的连续爬升线，数据即装饰 -->
+    <svg class="terrain" viewBox="0 0 393 180" fill="none" preserveAspectRatio="none" style="height:180px;opacity:.5">
+      <path d="M0 168 L40 160 L78 148 L120 138 L150 120 L185 108 L215 86 L252 70 L285 44 L320 30 L360 14 L393 6 L393 180 L0 180 Z" fill="#F1F1EB"/>
+      <path d="M0 168 L40 160 L78 148 L120 138 L150 120 L185 108 L215 86 L252 70 L285 44 L320 30 L360 14 L393 6" stroke="#E2E2DA" stroke-width="1.5"/>
+    </svg>
+    <div class="cf" style="top:170px;left:300px;background:var(--volt)"></div>
+    <div class="cf" style="top:230px;left:40px;background:var(--carbon);width:6px;height:6px;animation-delay:1.2s"></div>
+    <div class="cf" style="top:120px;left:220px;background:var(--volt);width:7px;height:7px;animation-delay:2.1s"></div>
+    <div class="cf" style="top:300px;left:340px;background:#C9C9C0;animation-delay:.6s"></div>
+
+    <div class="statusbar"><span class="disp">21:47</span><span class="disp">●●●●</span></div>
+    <div class="a-eyebrow reveal" style="animation-delay:.1s">RESULT · 6月12日 晚骑</div>
+    <div class="a-title reveal" style="animation-delay:.22s">成绩已开奖</div>
+
+    <div class="a-hero reveal" style="animation-delay:.45s">
+      <div class="n">42.6</div>
+      <div class="u">KM</div>
+    </div>
+    <div class="a-hero-k reveal" style="animation-delay:.58s">总距离 · 天龙山方向</div>
+
+    <div class="pr-band reveal-band" style="animation-delay:.95s">
+      <span class="x">2×</span>
+      <span class="t">20分钟功率 新纪录<small>212W · 此前 204W</small></span>
+      <span class="t">单次爬升 新纪录<small>561m</small></span>
+    </div>
+
+    <div class="a-stats">
+      <div class="a-stat reveal" style="animation-delay:1.25s"><span class="k">总时长</span><span class="v disp">1:47:32</span></div>
+      <div class="a-stat reveal" style="animation-delay:1.37s"><span class="k">NP 功率</span><span class="v disp">187<small>W</small></span></div>
+      <div class="a-stat reveal" style="animation-delay:1.49s"><span class="k">总爬升</span><span class="v disp">561<small>m</small></span></div>
+    </div>
+
+    <button class="a-cta reveal" style="animation-delay:1.75s">生成完赛证书</button>
+    <div class="a-foot reveal" style="animation-delay:1.85s">骑了就有 · 晒给队友看</div>
+  </div>
+</div></div>
+
+<!-- ════════ 屏2 · 完赛证书 ════════ -->
+<div class="stage-label">SCREEN 02<b>成绩卡 · 完赛证书（晒到群里的脸面）</b></div>
+<div class="stage"><div class="screen">
+  <div class="cert-wrap">
+    <div class="bigghost">PR</div>
+    <div class="cert">
+      <div class="cert-no">
+        <span class="l">FINISHER · 完赛证书</span>
+        <span class="r disp">RIDE NO. 042</span>
+      </div>
+      <div class="cert-route">天龙山盘山公路<small>TIANLONGSHAN CLIMB · 2026.06.12</small></div>
+      <div class="cert-main">
+        <div class="n disp">28:41</div>
+        <div class="tag"><span>全程 PR</span></div>
+      </div>
+      <div class="cert-main-k">爬坡用时</div>
+      <div class="cert-grid">
+        <div class="cert-cell"><div class="v disp">10.0<small>km</small></div><div class="k">距离</div></div>
+        <div class="cert-cell"><div class="v disp">561<small>m</small></div><div class="k">爬升</div></div>
+        <div class="cert-cell"><div class="v disp">203<small>W</small></div><div class="k">均功率</div></div>
+        <div class="cert-cell"><div class="v disp">162</div><div class="k">均心率</div></div>
+      </div>
+      <div class="cert-terrain">
+        <svg viewBox="0 0 340 74" fill="none" preserveAspectRatio="none" style="width:100%;height:100%">
+          <path d="M0 70 L34 64 L66 56 L100 50 L128 38 L160 30 L190 20 L226 14 L262 10 L300 6 L340 4 L340 74 L0 74 Z" fill="rgba(214,255,66,.16)"/>
+          <path d="M0 70 L34 64 L66 56 L100 50 L128 38 L160 30 L190 20 L226 14 L262 10 L300 6 L340 4" stroke="#B8E62B" stroke-width="2"/>
+        </svg>
+      </div>
+      <div class="cert-foot">
+        <span class="rider">Starsky · FTP 200W</span>
+        <span class="logo disp">VELO</span>
+      </div>
+      <div class="stamp"><b>PR</b><span>NEW BEST</span></div>
+    </div>
+    <div class="cert-hint">细线框证书 + 荧光印章 + 真实海拔剖面 · 长按保存分享</div>
+  </div>
+</div></div>
+
+<!-- ════════ 屏3 · 探索页 ════════ -->
+<div class="stage-label">SCREEN 03<b>探索页 · 杂志式列表（图与数据分离）</b></div>
+<div class="stage"><div class="screen">
+  <div class="explore">
+    <div class="ex-head">
+      <div class="ex-ghost">EXPLORE</div>
+      <div class="ex-title">探索</div>
+      <div class="ex-sub">太原 · 11 条官方路线</div>
+    </div>
+    <div class="ex-tabs">
+      <div class="ex-tab on">官方路线</div>
+      <div class="ex-tab">附近约骑</div>
+      <div class="ex-tab">排行</div>
+    </div>
+    <div class="ex-list">
+      <div class="ex-card">
+        <div class="pic">
+          <img src="http://114.132.190.245/uploads/route_covers/tianlongshan.jpg" onerror="this.style.display='none'">
+          <div class="badge">官方</div>
+        </div>
+        <div class="row">
+          <div class="name">天龙山盘山公路<small>TIANLONGSHAN CLIMB</small></div>
+          <div class="nums">
+            <div class="g"><div class="v disp">10.0<small>km</small></div><div class="k">距离</div></div>
+            <div class="g"><div class="v disp">561<small>m</small></div><div class="k">爬升</div></div>
+          </div>
+        </div>
+        <hr class="ex-hr">
+      </div>
+      <div class="ex-card">
+        <div class="pic">
+          <img src="http://114.132.190.245/uploads/route_covers/hengling.jpg" onerror="this.style.display='none'">
+          <div class="badge">官方</div>
+        </div>
+        <div class="row">
+          <div class="name">横岭<small>HENGLING · 西山主干道</small></div>
+          <div class="nums">
+            <div class="g"><div class="v disp">11.0<small>km</small></div><div class="k">距离</div></div>
+            <div class="g"><div class="v disp">633<small>m</small></div><div class="k">爬升</div></div>
+          </div>
+        </div>
+        <hr class="ex-hr">
+      </div>
+      <div class="ex-card">
+        <div class="pic">
+          <div class="badge">官方</div>
+          <svg viewBox="0 0 340 190" fill="none" preserveAspectRatio="none" style="width:100%;height:100%">
+            <rect width="340" height="190" fill="#23252B"/>
+            <path d="M0 150 L60 148 L120 152 L180 149 L240 151 L300 148 L340 150" stroke="#D6FF42" stroke-width="2"/>
+            <text x="24" y="60" fill="rgba(255,255,255,.14)" font-size="44" font-weight="700" font-family="'Barlow Condensed',sans-serif">QINGXU</text>
+          </svg>
+        </div>
+        <div class="row">
+          <div class="name">清徐夜骑<small>QINGXU NIGHT · 平路冲刺</small></div>
+          <div class="nums">
+            <div class="g"><div class="v disp">11.0<small>km</small></div><div class="k">距离</div></div>
+            <div class="g"><div class="v disp">12<small>m</small></div><div class="k">爬升</div></div>
+          </div>
+        </div>
+        <hr class="ex-hr">
+      </div>
+    </div>
+    <div class="tabbar">
+      <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-8 9 8v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>首页</div>
+      <div class="tab on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 5-4 1 2-5z"/></svg>探索<div class="dot"></div></div>
+      <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/><circle cx="10" cy="7" r="4"/></svg>约骑</div>
+      <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>我的</div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ════════ 屏4 · 路线详情 ════════ -->
+<div class="stage-label">SCREEN 04<b>路线详情 · 大数字 + 海拔剖面 + 荧光笔</b></div>
+<div class="stage"><div class="screen">
+  <div class="detail">
+    <div class="d-hero">
+      <img src="http://114.132.190.245/uploads/route_covers/tianlongshan.jpg" onerror="this.style.display='none'">
+      <div class="veil"></div>
+      <div class="back"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg></div>
+    </div>
+    <div class="d-body">
+      <div class="d-name">天龙山盘山公路<small>TIANLONGSHAN CLIMB</small></div>
+      <div class="d-tagline">太原公路车圈<span class="mark">最经典的爬坡试金石</span>，10 公里连续盘升，弯弯都是风景。</div>
+      <div class="d-stats">
+        <div class="d-stat"><div class="v disp">10.0<small>km</small></div><div class="k">距离</div></div>
+        <div class="d-stat"><div class="v disp">561<small>m</small></div><div class="k">爬升</div></div>
+        <div class="d-stat"><div class="v disp">5.6<small>%</small></div><div class="k">均坡</div></div>
+      </div>
+      <div class="d-terrain">
+        <svg viewBox="0 0 393 80" fill="none" preserveAspectRatio="none" style="width:100%;height:100%">
+          <path d="M0 74 L40 68 L76 60 L112 54 L142 42 L176 34 L208 24 L246 17 L284 12 L324 8 L393 4 L393 80 L0 80 Z" fill="#F1F1EB"/>
+          <path d="M0 74 L40 68 L76 60 L112 54 L142 42 L176 34 L208 24 L246 17 L284 12 L324 8 L393 4" stroke="#17181C" stroke-width="1.5"/>
+          <circle cx="324" cy="8" r="4" fill="#D6FF42" stroke="#17181C" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <button class="d-cta">约骑这条路线</button>
+      <div class="d-folds">
+        <div class="d-fold">这是一条什么路<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+        <div class="d-fold">给真要去的骑友<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+        <div class="d-fold">怎么骑<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+        <div class="d-fold">骑友怎么说<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+        <div class="d-fold">安全<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ════════ 屏5 · v1→v2 变化说明 ════════ -->
+<div class="stage-label">SCREEN 05<b>这版改了什么（给 Tim 的设计说明）</b></div>
+<div class="stage"><div class="screen">
+  <div class="lang">
+    <h2>v1 → v2</h2>
+    <div class="sub">v1 的病不在颜色在排版：均匀堆叠=没有留白。v2 用「极端对比」重写韵律——超大与超小、大空与大密。</div>
+
+    <div class="ft-demo"><span class="a">28:41</span><span class="note">Barlow Condensed<br>赛事计时牌/号码牌谱系字体<br>小程序可加载（数字子集 ~20KB）</span></div>
+
+    <div class="delta"><b>字体</b><div>系统字 → 窄体计时牌大数字（Barlow Condensed），中文重黑体标题，中英混排做杂志感</div></div>
+    <div class="delta"><b>背景</b><div>深底世界观撤掉 → 暖白大留白；背景图案 = velo 自己的海拔剖面线浅浅呈现（数据即装饰，竞品抄不走）</div></div>
+    <div class="delta"><b>排版</b><div>150px 超大主数字 + 细行数据条的极端对比；去卡片化（细线分隔代替卡片堆叠）；超大浅色英文 ghost 字做空间层次</div></div>
+    <div class="delta"><b>成绩卡</b><div>码表面板 → 完赛证书：细线框 + 编号 + 荧光 PR 印章 + 真实海拔剖面收尾</div></div>
+    <div class="delta"><b>Volt 用法</b><div>从"主角"退为"点睛"：PR 斜条带、印章、高亮笔、tab 指示——黑字荧光底只在关键奖赏处出现</div></div>
+    <div class="delta"><b>按钮</b><div>荧光大按钮 → 碳黑底 + 荧光字（更收敛更贵），直角化（r=2px，证书/号码牌的利落）</div></div>
+  </div>
+</div></div>
+
+</body>
+</html>

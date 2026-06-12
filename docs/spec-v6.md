@@ -32,7 +32,7 @@
 | # | 决策 | 理由 |
 |---|---|---|
 | D1 | 关联走 meetup 侧 cron 轮询(attach tick),不在 activity worker 触发 | 方案 B 零反向依赖;竞态消解;崩溃自愈;格子点亮延迟 ≤5 分钟可接受 |
-| D2 | 关联窗口 = 约骑当天北京时区自然日 + started_at ≥ start_time−30min;不用 estimated_end_time | +3h 估算脆弱性不进匹配;骑 6 小时不掉窗 |
+| D2 | ~~关联窗口 = 约骑当天北京时区自然日 + started_at ≥ start_time−30min~~ **2026-06-13 修订(Tim 拍/真用走查浮出)**:窗口 = started_at ∈ [start_time−30min, start_time+6h](常量 ATTACH_LATE_START_HOURS=6);不用 estimated_end_time | 自然日规则两头都错:23:30 夜骑骑友 00:05 动身格子永远灰(清徐夜骑真实场景)、凌晨 00:30 约骑会误挂当晚 20:00 的无关骑行;锚定"动身时间离出发多近"后原"骑 6 小时不掉窗"理由天然保留(窗口看 started_at 不看时长) |
 | D3 | 每人每场只挂 1 条(UNIQUE meetup_id+user_id),取窗口内 started_at 最早一条 | 战报一人一格;约骑出发后最先开始的误挂概率最低 |
 | D4 | 补传截止 = start_time 时刻 + 168 小时(命名常量 ATTACH_WINDOW_DAYS=7,代码中可调,复检时一并审)。显式偏离 PRD 必答 #2 的「completed_at+N 天」并论证:completed_at 由 cron 节拍对 estimated_end 的判定产生,继承 +3h 估算脆弱性(与 D2 弃用它同一理由);start_time 时刻锚与 tick 查询 interval 同粒度,无日切歧义 | 边界 C;防陈年文件;二轮 A-C1 定案 |
 | D5 | 介绍富文本入新表 route_guides,不给 route_books 加列(D11 细化:guide 为主实体,route_book_id 可空) | 防火墙;半衰期分离;未来实况层挂同侧 |
@@ -92,7 +92,7 @@ is_official = Column(Boolean, nullable=False, server_default=false())
 
 ### 2.3 共享时区工具(S13-T1 顺带,治三处重复定义)
 
-新建 app/common/bj_time.py:`BJ_TZ = timezone(timedelta(hours=8))` + `def to_bj_date(dt_aware) -> date`。attach tick 用它;training/service.py:39 与 notification/progress_detector.py:46 两处存量定义的迁移记入 docs/tech-debt.md(不在本期强改已 ship 模块,共享逻辑规则的存量豁免登记)。
+新建 app/common/bj_time.py:`BJ_TZ = timezone(timedelta(hours=8))` + `def to_bj_date(dt_aware) -> date`。~~attach tick 用它~~(D2 修订 2026-06-13 后 attach 不再做日历日比较,本函数保留作共享时区工具);training/service.py:39 与 notification/progress_detector.py:46 两处存量定义的迁移记入 docs/tech-debt.md(不在本期强改已 ship 模块,共享逻辑规则的存量豁免登记)。
 
 ## §3 核心逻辑
 
@@ -110,7 +110,7 @@ if _meetup_tick_counter >= 20:          # scheduler.py:55 现有块
 部署须 `docker compose up -d --build`(scheduler 容器加载新模块,restart 不够)。
 
 cron.py 新增 import 块(三轮 B-C1 定案,漏一个 = scheduler 启动即崩):
-`from sqlalchemy.exc import IntegrityError` / `from app.activity.models import Activity` / `from app.meetup.models import MeetupActivity, MeetupParticipant` / `from app.common.bj_time import to_bj_date`(bj_time.py 必须先于本文件创建——T1 卡内排序 blocking)。scheduler.py 顶部同步加 `run_meetup_attach_tick` 到现有 import 行(scheduler.py:22)。常量:`ATTACH_WINDOW_DAYS = 7` 定义在 cron.py 顶部。
+`from sqlalchemy.exc import IntegrityError` / `from app.activity.models import Activity` / `from app.meetup.models import MeetupActivity, MeetupParticipant`(D2 修订 2026-06-13:不再 import to_bj_date,窗口比较直接用 timedelta)。scheduler.py 顶部同步加 `run_meetup_attach_tick` 到现有 import 行(scheduler.py:22)。常量:`ATTACH_WINDOW_DAYS = 7` 与 `ATTACH_LATE_START_HOURS = 6` 定义在 cron.py 顶部。
 
 ```
 run_meetup_attach_tick():
@@ -124,8 +124,8 @@ run_meetup_attach_tick():
       若已存在关联(WHERE meetup_id=本场.id AND user_id=本人.id,两条件缺一不可,防跨场误跳 D10)→ continue   # D3 幂等快路径
       candidate = participant 的 activities:
           status == 'completed'
-          AND to_bj_date(started_at) == to_bj_date(meetup.start_time)      # D2,用 §2.3 共享函数
-          AND started_at >= meetup.start_time - 30min
+          AND started_at >= meetup.start_time - 30min                       # D2 修订 2026-06-13
+          AND started_at <= meetup.start_time + ATTACH_LATE_START_HOURS(6h) # 跨午夜夜骑不掉格
           ORDER BY started_at ASC LIMIT 1                                  # D3
       若有:
         db.add(MeetupActivity(...)); 
@@ -152,8 +152,8 @@ run_meetup_attach_tick():
 | E worker 重试/并发 tick | 双 UNIQUE + except IntegrityError 跳过,幂等 |
 | 崩在循环中途 | 已 commit 的保留,下个 tick 续扫 |
 | 参与者退出后才上传 | JOIN 当前 participants,不挂;已挂后退出 → 行保留,战报随 participants 渲染自然消失 |
-| 北京时区日切 | 比较一律经 to_bj_date(aware),禁止比较 UTC 日期;T1 必含测试:约骑北京 20:00 开始、活动 started_at=UTC 12:00 同日命中 |
-| 未来约骑(还没到约骑日) | 扫描窗含未来约骑,但 D2 日期相等条件天然不匹配今天的活动(明文保证+测试) |
+| 北京时区日切 | D2 修订(2026-06-13)后 attach 不再做日历日比较,日切歧义随之消失;测试含"北京 23:30 出发 + 次日 00:05 动身命中"与"同日 19.5h 后不命中"两面 |
+| 未来约骑(还没到约骑日) | 扫描窗含未来约骑,但窗口下界 started_at ≥ start−30min 天然不匹配今天的活动(明文保证+测试) |
 | 同人同场二次上传 | 第一条已挂,第二条被 uq_meetup_user_one_cell 拒,except 跳过(与 E 同机制,单列防漏测) |
 
 ### 3.2 开奖与 5 秒预算(S13-T2)

@@ -691,7 +691,7 @@ Strava 导入路径:
 | GET | `/api/meetups/favorite-places` | 我的常用集合点（需登录 / 最近使用在前） |
 | POST | `/api/meetups/favorite-places` | 保存常用集合点（需登录 / 同名更新使用次数） |
 | DELETE | `/api/meetups/favorite-places/{place_id}` | 删除自己的常用集合点（需登录） |
-| GET | `/api/meetups/place-search` | 腾讯地点搜索包装（需登录 / 服务端签名 / 不暴露 SK） |
+| GET | `/api/meetups/place-suggestions` | 腾讯地点实时联想（需登录 / ≤8 条候选 / 服务端签名不暴露 SK / 2026-06-13 替换旧单结果 place-search） |
 | GET | `/api/meetups/{meetup_id}/participants` | 参与者列表（公开访问 / 头像昵称精简展示） |
 | GET | `/api/meetups/{meetup_id}/report` | 约骑完成报告（公开访问 / 汇总报名和媒体状态） |
 | GET | `/api/meetups/{meetup_id}` | 约骑详情（可游客访问；带 token 时补 is_creator/has_joined） |

@@ -267,21 +267,27 @@ def test_create_page_persists_custom_power_speed_hints():
     assert "Object.assign({}, that.data.form" in save_block
     assert "recommended_power_label: this.data.form.recommended_power_label" in publish_block
     assert "average_speed_range: this.data.form.average_speed_range" in publish_block
-    assert 'data-field="recommended_power_label"' in wxml
-    assert 'data-field="average_speed_range"' in wxml
-    assert 'bindinput="updateField"' in wxml
+    # 功率/均速是区间选择器不是输入框（Tim 2026-06-13 拍：给现成档位挑，不让骑友手打）
+    assert "POWER_OPTIONS" in js
+    assert "SPEED_OPTIONS" in js
+    assert "onPaceHintChange" in js
+    assert 'range="{{powerOptions}}"' in wxml
+    assert 'range="{{speedOptions}}"' in wxml
+    assert 'data-field="recommended_power_label"' not in wxml
+    assert 'data-field="average_speed_range"' not in wxml
 
 
-def test_map_picker_supports_meeting_search():
+def test_map_picker_supports_realtime_place_suggestions():
     api = _read(MINI / "utils" / "api.js")
     js = _read(MINI / "pages" / "map-picker" / "map-picker.js")
     wxml = _read(MINI / "pages" / "map-picker" / "map-picker.wxml")
 
-    assert "searchMeetupPlace" in api
-    assert "/api/meetups/place-search" in api
-    assert "kind === 'meeting'" in js
+    # 实时联想（Tim 2026-06-13 拍：像高德那样边输边出候选列）
+    assert "getMeetupPlaceSuggestions" in api
+    assert "/api/meetups/place-suggestions" in api
+    assert "searchMeetupPlace" not in api
     assert "选择集合点" in js
-    assert "api.searchMeetupPlace" in js
+    assert "api.getMeetupPlaceSuggestions" in js
     assert "wgs84ToGcj02" in js
     assert "searchKeyword" in js
     assert "placeSearchResults" in js
@@ -293,11 +299,18 @@ def test_map_picker_supports_meeting_search():
     assert "event.causedBy !== 'update'" in js
     assert "selectedSearchPlace: null" in js
     assert "onSearchKeywordInput" in js
-    assert "onTapSearchPlace" in js
-    assert 'wx:if="{{kind === \'meeting\'}}"' in wxml
+    # 防抖 + 过期响应丢弃 + 起搜门槛，三件套缺一就退化成卡顿/错位
+    assert "_suggestTimer" in js
+    assert "_suggestSeq" in js
+    assert "trimmed.length < 2" in js
+    # 旧"搜索"按钮已删；卡顿根因（onRegionChange 写回地图中心）不许回潮
+    assert "onTapSearchPlace" not in js
+    assert "this.refreshCenter()" not in js
     assert 'bindinput="onSearchKeywordInput"' in wxml
-    assert 'bindtap="onTapSearchPlace"' in wxml
     assert 'wx:for="{{placeSearchResults}}"' in wxml
+    assert "picker-search-btn" not in wxml
+    # 搜索框对起点/终点/集合点全开放（不再 wx:if kind 限定）
+    assert 'wx:if="{{kind === \'meeting\'}}"' not in wxml
 
 
 def test_confirm_publish_blocks_cutoff_window_before_backend_raw_error():
@@ -518,7 +531,9 @@ def test_map_picker_page_is_registered_and_uses_native_map_without_custom_subkey
     assert "layer-style" not in wxml
     assert "map-picker-pin" in wxml
     assert "map-picker-wash" not in wxml
-    assert "位置名称" in wxml
+    # 名字跟着选中的候选走，不提供手填（位置名称输入框已删）
+    assert "位置名称" not in wxml
+    assert "picker-picked" in wxml
     assert "{{confirmText}}" in wxml
     assert "rgba(255, 255, 255" in wxss
     assert "pointer-events: none" in wxss
@@ -642,10 +657,11 @@ def test_pace_display_table_covers_all_four_pace_levels():
 
     for pace in ("relaxed", "cruise", "training", "race"):
         assert pace in js
+    # 默认档必须是 POWER_OPTIONS / SPEED_OPTIONS 的成员，否则 picker 定位不到当前档
     assert "不限功率" in js
-    assert "FTP 160W+ 更舒服" in js
-    assert "FTP 220W+" in js
-    assert "FTP 280W+" in js
+    assert "'160-180W'" in js
+    assert "'200-220W'" in js
+    assert "'250W+'" in js
 
 
 def test_create_page_restores_draft_and_share_path_carries_invite_token():

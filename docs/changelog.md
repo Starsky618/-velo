@@ -1,5 +1,19 @@
 # VELO 开发变更日志
 
+## 2026-06-13(二): 集合点搜索重做+UX 组件化一轮（Tim 原则：给现成组件挑，不让骑友打字）✅ 后端已部署
+
+> **缘起**：Tim 四点拍板——①战报挂格窗口放宽 ②搜索要像高德实时联想多结果且真机不卡 ③集合地点并入编辑行、唯一路径=搜索/选点→地图确认 ④功率/均速改区间选择器；并要求按"组件挑选 > 手打文字"原则审全链路、Codex 审核开发。
+
+**四件落地**：
+1. **D2 窗口修订**（spec-v6 D2/伪码/边界表三处同步）：同北京日 → `started_at ∈ [出发−30min, 出发+6h]`（ATTACH_LATE_START_HOURS=6）。跨午夜夜骑不掉格；同日 19.5h 后的无关骑行不再误挂（旧规则两头都错）。测试三面锁：跨午夜挂/同日远程不挂/+6h 整点闭区间挂。
+2. **实时联想搜索**：后端新增 `tencent_place.suggest_places`（腾讯 suggestion API，region_fix 锁城、page_index+page_size 成对、单条坏坐标只丢不炸）+ `GET /api/meetups/place-suggestions`（≤8 条，替换删除旧单结果 place-search，限流 60/5min）；前端 350ms 防抖+起搜门槛 2 字+序号作废在途响应（含清空输入/离页）。**真机卡顿根因**：onRegionChange 每次拖图都 getCenterLocation+setData 坐标回写 `<map>` 形成"拖动→回写→再动"反馈循环——已拆除，中心只在确认那一刻读一次。
+3. **集合地点组件化**：编辑页整行点击进地图选点（chevron 行，删行内手填 input）；map-picker 删"位置名称"手填框（名字跟选中候选走）+ 搜索框对起点/终点/集合点全开放；常用集合点 chips 保留一点即用。
+4. **功率/均速区间选择器**：POWER_OPTIONS（不限功率/120-140W…250W+）+ SPEED_OPTIONS（15-18…30+ km/h）picker 替换自由文本输入，强度档位联动默认档（PACE_DISPLAY 改为档位成员）。
+
+**Codex 异源审（Tim 点名）**：抓 1 Critical——搜索开放给起点/终点后，WGS-84 源坐标被直接喂给只吃 GCJ-02 的腾讯路线规划（生成路线整体偏移一两百米）→ 按 kind 分流坐标系已修；另 4 Important（page_index 成对/在途响应作废盲区/spec 内部矛盾/架构与数据流文档旧端点残留）+ 2 Nit（搜索框回显/闭区间边界测试）全修。1072 passed。
+
+**原则审计遗留（手打文字残余，待 Tim 拍下一轮）**：①报名门槛 eligibility_note 仍是 textarea → 建议 preset chips（无门槛/能跟住均速/会修补胎/带夜骑灯具…）②补给点 supply_point 仍手填 → 可同走地图选点 ③safety_note 的 SAFETY_TEMPLATES 数组在 js 里备着但 wxml 从未渲染成模板挑选、UI 还是裸 textarea（半成品）。
+
 ## 2026-06-13: "能看不能用"全模块走查——3 个已报 bug 根因全修 + 走查再挖 3 窝隐藏 bug ✅ 后端已部署
 
 > **缘起**：Tim 报三症状（约骑编辑"下一步"PATCH 422 / 地图无搜索 / 全部轨迹图白屏）+ 拍板"彻底检查所有模块，把核心功能走一遍修遇到的 bug，velo 完全属于能看不能用的状态"。

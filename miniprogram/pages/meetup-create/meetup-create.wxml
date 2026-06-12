@@ -120,20 +120,18 @@
       </view>
     </view>
 
-    <!-- 集合地点：右侧就地输入 -->
-    <view class="pub-row">
+    <!-- 集合地点：整行点击进地图选点（唯一路径=搜索/选点→地图确认，不手填——Tim 2026-06-13 拍） -->
+    <view class="pub-row pub-row-tappable" bindtap="onTapChooseMeetingPoint">
       <view class="pub-iconbox"><image class="pub-icon" src="/assets/icons/meetup/map-pin.svg" mode="aspectFit" /></view>
       <view class="pub-row-body">
         <view class="pub-row-title">集合地点</view>
-        <view class="pub-row-sub pub-row-sub-muted">可手填，也可从地图选择</view>
+        <view wx:if="{{form.meeting_point}}" class="pub-row-sub">{{form.meeting_point}}</view>
+        <view wx:else class="pub-row-sub pub-row-sub-muted">去地图选点，支持搜地名</view>
       </view>
-      <view class="pub-edit-col">
-        <input class="pub-input" value="{{form.meeting_point}}" data-field="meeting_point" bindinput="updateField" placeholder="例如：晋祠公园北门" />
-      </view>
+      <view class="pub-row-chevron">›</view>
     </view>
-    <view class="pub-place-actions">
-      <button class="pub-place-btn" bindtap="onTapChooseMeetingPoint">地图选点</button>
-      <button class="pub-place-btn pub-place-btn-save" bindtap="saveMeetingPointAsFavorite">保存常用</button>
+    <view wx:if="{{form.meeting_point}}" class="pub-place-actions">
+      <button class="pub-place-btn pub-place-btn-save" bindtap="saveMeetingPointAsFavorite">存为常用集合点</button>
     </view>
     <scroll-view wx:if="{{favoritePlaces.length}}" class="pub-favorite-places" scroll-x="true" show-scrollbar="{{false}}">
       <view wx:for="{{favoritePlaces}}" wx:key="id" class="pub-favorite-place" data-index="{{index}}" bindtap="applyFavoritePlace">
@@ -302,13 +300,19 @@
             <view class="pv-pace-value">{{paceLabel}}<image class="pv-pace-chev" src="/assets/icons/meetup/chevron-down.svg" mode="aspectFit" /></view>
           </picker>
         </view>
+        <!-- 推荐功率/预计均速：区间选择器不手打（Tim 2026-06-13 拍：给骑友现成组件挑，不让他写）。
+             跟着强度预期联动默认值，想改就从区间里挑一档 -->
         <view class="pv-pace-col">
           <view class="pv-pace-label">推荐功率</view>
-          <input class="pv-pace-input" value="{{recommendedPowerLabel}}" data-field="recommended_power_label" bindinput="updateField" placeholder="例如 FTP 180W+" />
+          <picker class="pv-pace-picker" mode="selector" range="{{powerOptions}}" value="{{powerIndex}}" data-kind="power" bindchange="onPaceHintChange">
+            <view class="pv-pace-value">{{recommendedPowerLabel}}<image class="pv-pace-chev" src="/assets/icons/meetup/chevron-down.svg" mode="aspectFit" /></view>
+          </picker>
         </view>
         <view class="pv-pace-col">
           <view class="pv-pace-label">预计均速</view>
-          <input class="pv-pace-input" value="{{averageSpeedRange}}" data-field="average_speed_range" bindinput="updateField" placeholder="例如 24-27 km/h" />
+          <picker class="pv-pace-picker" mode="selector" range="{{speedOptions}}" value="{{speedIndex}}" data-kind="speed" bindchange="onPaceHintChange">
+            <view class="pv-pace-value">{{averageSpeedRange}}<image class="pv-pace-chev" src="/assets/icons/meetup/chevron-down.svg" mode="aspectFit" /></view>
+          </picker>
         </view>
       </view>
       <view class="pv-divider"></view>

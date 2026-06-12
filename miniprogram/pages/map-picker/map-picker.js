@@ -43,7 +43,6 @@ Page({
     confirmText: '确认起点',
     name: '',
     searchKeyword: '',
-    searchingPlace: false,
     selectedSearchPlace: null,
     placeSearchResults: [],
     latitude: DEFAULT_CENTER.latitude,
@@ -63,6 +62,8 @@ Page({
       title: title,
       confirmText: confirmText,
       name: safeDecode(options && options.name),
+      // 回显已选地点时搜索框同步显示名字（输入框是页面上唯一的文字位）
+      searchKeyword: safeDecode(options && options.name),
       selectedSearchPlace: kind === 'meeting' && coordinateSystem === 'wgs84' ? {
         title: safeDecode(options && options.name),
         address: safeDecode(options && options.address),
@@ -84,42 +85,52 @@ Page({
 
   onRegionChange: function (event) {
     if (!event || event.type !== 'end') return
-    if (event.causedBy !== 'update') {
+    // 用户拖动地图 = 放弃刚才点选的搜索结果（确认时以地图中心针尖为准）。
+    // ⚠ 不许在这里读中心 / setData 坐标——把中心写回 <map> 会形成
+    // "拖动 → 回写 → 地图再动"的反馈循环，正是真机拖图卡顿的根源；
+    // 地图中心只在用户点"确认"那一刻读一次（selectMapPoint → refreshCenter）。
+    if (event.causedBy !== 'update' && this.data.selectedSearchPlace) {
       this.setData({ selectedSearchPlace: null })
     }
-    this.refreshCenter()
   },
 
-  onNameInput: function (event) {
-    this.setData({ name: event.detail.value })
-  },
-
+  // 实时联想：边输边搜（350ms 防抖 + 至少 2 个字 + 过期响应丢弃），像高德那样出一列候选
   onSearchKeywordInput: function (event) {
-    this.setData({ searchKeyword: event.detail.value, selectedSearchPlace: null })
-  },
-
-  onTapSearchPlace: function () {
-    if (this.data.kind !== 'meeting') return
     var that = this
-    var keyword = String(this.data.searchKeyword || this.data.name || '').trim()
-    if (!keyword) {
-      wx.showToast({ title: '输入地点关键词', icon: 'none' })
+    var keyword = event.detail.value
+    // 每次输入先作废所有在途请求（含"清空输入"场景——否则旧响应回来会把候选塞回去）
+    this._suggestSeq = (this._suggestSeq || 0) + 1
+    this.setData({ searchKeyword: keyword, selectedSearchPlace: null })
+    if (this._suggestTimer) clearTimeout(this._suggestTimer)
+    var trimmed = String(keyword || '').trim()
+    if (trimmed.length < 2) {
+      if (this.data.placeSearchResults.length) this.setData({ placeSearchResults: [] })
       return
     }
-    if (this.data.searchingPlace) return
-    this.setData({ searchingPlace: true, selectedSearchPlace: null })
-    api.searchMeetupPlace(keyword, '太原').then(function (place) {
-      if (!place) {
-        that.setData({ placeSearchResults: [] })
-        wx.showToast({ title: '没有找到地点', icon: 'none' })
-        return
-      }
-      that.setData({ placeSearchResults: [place] })
-    }).catch(function (err) {
-      wx.showToast({ title: (err && err.message) || '搜索失败', icon: 'none' })
-    }).finally(function () {
-      that.setData({ searchingPlace: false })
+    this._suggestTimer = setTimeout(function () { that.fetchSuggestions(trimmed) }, 350)
+  },
+
+  fetchSuggestions: function (keyword) {
+    var that = this
+    // 序号守卫：发出时记下当前序号，响应回来只认"还是最新一发"的结果
+    var seq = this._suggestSeq || 0
+    api.getMeetupPlaceSuggestions(keyword, '太原').then(function (places) {
+      if (seq !== that._suggestSeq) return
+      that.setData({ placeSearchResults: places || [] })
+    }).catch(function () {
+      if (seq !== that._suggestSeq) return
+      that.setData({ placeSearchResults: [] })
     })
+  },
+
+  onHide: function () {
+    // 离页（含前进到别的页）作废在途联想，回来不会闪旧候选
+    this._suggestSeq = (this._suggestSeq || 0) + 1
+  },
+
+  onUnload: function () {
+    if (this._suggestTimer) clearTimeout(this._suggestTimer)
+    this._suggestSeq = (this._suggestSeq || 0) + 1
   },
 
   onTapSearchResult: function (event) {
@@ -129,9 +140,11 @@ Page({
     var mapPlace = mapPointFromSearchPlace(place, this.data.latitude, this.data.longitude)
     this.setData({
       name: mapPlace.title || mapPlace.keyword || this.data.name,
+      searchKeyword: mapPlace.title || this.data.searchKeyword,
       selectedSearchPlace: mapPlace,
       latitude: mapPlace.latitude,
       longitude: mapPlace.longitude,
+      placeSearchResults: [],
     })
   },
 
@@ -161,16 +174,31 @@ Page({
     var that = this
     this.refreshCenter(function (center) {
       var searchPlace = that.data.selectedSearchPlace
-      var picked = searchPlace ? {
-        latitude: finiteNumber(searchPlace.sourceLatitude, center.latitude),
-        longitude: finiteNumber(searchPlace.sourceLongitude, center.longitude),
-        address: searchPlace.address || '',
-        coordinate_system: 'wgs84',
-      } : {
-        latitude: center.latitude,
-        longitude: center.longitude,
-        address: '',
-        coordinate_system: 'gcj02',
+      var picked
+      if (searchPlace && that.data.kind === 'meeting') {
+        // 集合点入库链路吃 WGS-84 源坐标（后端按 coordinate_system 字段识别）
+        picked = {
+          latitude: finiteNumber(searchPlace.sourceLatitude, center.latitude),
+          longitude: finiteNumber(searchPlace.sourceLongitude, center.longitude),
+          address: searchPlace.address || '',
+          coordinate_system: 'wgs84',
+        }
+      } else if (searchPlace) {
+        // ⚠ 起点/终点喂给腾讯路线规划，它只吃 GCJ-02——必须用展示坐标，
+        // 传 WGS 源坐标会让整条生成路线整体偏移一两百米（Codex 异源审抓的 Critical）
+        picked = {
+          latitude: finiteNumber(searchPlace.latitude, center.latitude),
+          longitude: finiteNumber(searchPlace.longitude, center.longitude),
+          address: searchPlace.address || '',
+          coordinate_system: 'gcj02',
+        }
+      } else {
+        picked = {
+          latitude: center.latitude,
+          longitude: center.longitude,
+          address: '',
+          coordinate_system: 'gcj02',
+        }
       }
       var app = getApp()
       if (app && app.globalData) {

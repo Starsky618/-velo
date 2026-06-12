@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VELO 发起约骑向导发布页复刻</title>
+  <script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      --bg: #f7f7fa;
+      --panel: #fff;
+      --ink: #171923;
+      --muted: #777b86;
+      --soft: #9a9ea8;
+      --line: #e7e8ed;
+      --line-strong: #dfe2e8;
+      --red: #ff1744;
+      --red-soft: #fff3f6;
+      --green: #31b45f;
+      --green-soft: #f5fff8;
+      --icon-bg: #f7f7f9;
+      --shadow: 0 12px 30px rgba(31, 34, 42, 0.035);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      color: var(--ink);
+      background: #e9eaee;
+      font-family: "PingFang SC", "PingFang SC UI", "Helvetica Neue", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+      font-weight: 400;
+      letter-spacing: 0;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button {
+      border: 0;
+      font: inherit;
+      background: transparent;
+    }
+
+    .phone {
+      position: relative;
+      width: 853px;
+      min-height: 1844px;
+      margin: 0 auto;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 25% 3%, rgba(255, 255, 255, 0.96) 0, transparent 250px),
+        linear-gradient(180deg, #fbfbfd 0, var(--bg) 100%);
+    }
+
+    .top {
+      position: relative;
+      height: 326px;
+    }
+
+    .back {
+      position: absolute;
+      left: 44px;
+      top: 128px;
+      width: 43px;
+      height: 43px;
+      color: #181b22;
+    }
+
+    .back svg {
+      width: 43px;
+      height: 43px;
+      stroke-width: 2.5;
+    }
+
+    .page-title {
+      position: absolute;
+      top: 110px;
+      left: 0;
+      right: 0;
+      margin: 0;
+      text-align: center;
+      color: #151820;
+      font-size: 30px;
+      line-height: 39px;
+      font-weight: 500;
+    }
+
+    .subtitle {
+      position: absolute;
+      top: 160px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      color: #868a94;
+      font-size: 22px;
+      line-height: 30px;
+      font-weight: 400;
+    }
+
+    .steps {
+      position: absolute;
+      left: 63px;
+      right: 53px;
+      top: 239px;
+      display: grid;
+      grid-template-columns: 130px 120px 122px 126px;
+      column-gap: 75px;
+      align-items: center;
+    }
+
+    .step {
+      position: relative;
+      display: grid;
+      grid-template-columns: 50px auto;
+      align-items: center;
+      column-gap: 14px;
+      min-width: 0;
+      color: #171923;
+      font-size: 23px;
+      line-height: 31px;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+
+    .step:not(:last-child)::after {
+      position: absolute;
+      left: 119px;
+      top: 25px;
+      width: 88px;
+      height: 1px;
+      content: "";
+      background: #d5d6db;
+    }
+
+    .step:nth-child(2)::after {
+      width: 82px;
+      left: 111px;
+    }
+
+    .step:nth-child(3)::after {
+      width: 85px;
+      left: 112px;
+    }
+
+    .step-mark {
+      display: grid;
+      place-items: center;
+      width: 48px;
+      height: 48px;
+      border: 2px solid var(--red);
+      border-radius: 50%;
+      color: var(--red);
+      background: #fff;
+    }
+
+    .step-mark svg {
+      width: 30px;
+      height: 30px;
+      stroke-width: 2;
+    }
+
+    .step.current {
+      color: var(--red);
+    }
+
+    .step.current .step-mark {
+      border: 0;
+      color: #fff;
+      background: var(--red);
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 500;
+      box-shadow: 0 4px 14px rgba(255, 23, 68, 0.2);
+    }
+
+    .form-card {
+      width: 796px;
+      min-height: 1378px;
+      margin: 3px 29px 0;
+      overflow: hidden;
+      border: 1px solid #f0f1f4;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.985);
+      box-shadow: var(--shadow);
+    }
+
+    .row {
+      position: relative;
+      display: grid;
+      grid-template-columns: 120px 1fr 82px;
+      min-height: 139px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .row.route {
+      min-height: 144px;
+    }
+
+    .row.photos {
+      display: block;
+      min-height: 286px;
+      padding-left: 0;
+    }
+
+    .row.check {
+      min-height: 82px;
+      margin: 15px 24px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      background: #fff;
+    }
+
+    .icon-box {
+      display: grid;
+      place-items: center;
+      width: 80px;
+      height: 80px;
+      margin: 32px 0 0 27px;
+      border-radius: 16px;
+      color: #0f1118;
+      background: var(--icon-bg);
+    }
+
+    .icon-box.pink {
+      background: var(--red-soft);
+    }
+
+    .icon-box svg {
+      width: 43px;
+      height: 43px;
+      stroke-width: 1.9;
+    }
+
+    .row-content {
+      padding-top: 34px;
+      min-width: 0;
+    }
+
+    .row-title {
+      margin: 0;
+      color: #181b23;
+      font-size: 28px;
+      line-height: 36px;
+      font-weight: 500;
+    }
+
+    .row-title .optional {
+      margin-left: 5px;
+      color: #888c96;
+      font-size: 22px;
+      font-weight: 400;
+    }
+
+    .row-sub {
+      margin-top: 13px;
+      color: #20242d;
+      font-size: 25px;
+      line-height: 34px;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+
+    .row-sub.muted {
+      color: #7f838d;
+    }
+
+    .route-status {
+      position: absolute;
+      top: 48px;
+      right: 71px;
+      display: grid;
+      place-items: center;
+      width: 142px;
+      height: 48px;
+      border: 1px solid #9bdcab;
+      border-radius: 10px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 23px;
+      line-height: 30px;
+      font-weight: 400;
+    }
+
+    .chev {
+      position: absolute;
+      right: 25px;
+      top: 58px;
+      width: 34px;
+      height: 34px;
+      color: #8d919b;
+      stroke-width: 1.8;
+    }
+
+    .stepper {
+      position: absolute;
+      right: 30px;
+      top: 43px;
+      display: grid;
+      grid-template-columns: 48px 82px 48px;
+      align-items: center;
+      width: 202px;
+      height: 64px;
+      border: 1px solid var(--line-strong);
+      border-radius: 34px;
+      background: #fff;
+      color: #151820;
+      text-align: center;
+    }
+
+    .stepper button {
+      display: grid;
+      place-items: center;
+      width: 48px;
+      height: 48px;
+      margin: 0 auto;
+      border-radius: 50%;
+      color: #11141a;
+      background: #f7f8fa;
+    }
+
+    .stepper svg {
+      width: 29px;
+      height: 29px;
+      stroke-width: 2;
+    }
+
+    .stepper-value {
+      font-size: 25px;
+      line-height: 34px;
+      font-weight: 400;
+    }
+
+    .pace-chip {
+      position: absolute;
+      top: 52px;
+      right: 76px;
+      display: grid;
+      place-items: center;
+      min-width: 72px;
+      height: 45px;
+      padding: 0 16px;
+      border: 1px solid rgba(255, 23, 68, 0.45);
+      border-radius: 10px;
+      color: var(--red);
+      background: #fff;
+      font-size: 22px;
+      line-height: 30px;
+      font-weight: 400;
+    }
+
+    .photo-head {
+      display: grid;
+      grid-template-columns: 120px 1fr 82px;
+      min-height: 107px;
+    }
+
+    .photo-head .icon-box {
+      margin-top: 30px;
+    }
+
+    .photo-head .row-content {
+      padding-top: 31px;
+    }
+
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 142px);
+      column-gap: 21px;
+      margin-left: 148px;
+      margin-top: 7px;
+    }
+
+    .photo-item,
+    .photo-add {
+      position: relative;
+      width: 142px;
+      height: 104px;
+      overflow: hidden;
+      border-radius: 7px;
+      background: #eef0f3;
+    }
+
+    .photo-item img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .photo-remove {
+      position: absolute;
+      top: -9px;
+      right: -8px;
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border: 1px solid #cfd2d8;
+      border-radius: 50%;
+      color: #545965;
+      background: rgba(255, 255, 255, 0.94);
+    }
+
+    .photo-remove svg {
+      width: 19px;
+      height: 19px;
+      stroke-width: 2;
+    }
+
+    .photo-add {
+      display: grid;
+      place-items: center;
+      height: 137px;
+      border: 1px dashed #bfc4ce;
+      color: #9aa0aa;
+      background: #fff;
+    }
+
+    .photo-add-inner {
+      display: grid;
+      justify-items: center;
+      row-gap: 10px;
+      margin-top: 2px;
+    }
+
+    .photo-add svg {
+      width: 45px;
+      height: 45px;
+      stroke-width: 1.5;
+    }
+
+    .photo-add span {
+      font-size: 18px;
+      line-height: 24px;
+      font-weight: 400;
+    }
+
+    .check-row {
+      display: grid;
+      grid-template-columns: 83px 1fr 45px;
+      align-items: center;
+      min-height: 80px;
+    }
+
+    .check-icon {
+      display: grid;
+      place-items: center;
+      width: 48px;
+      height: 48px;
+      margin-left: 27px;
+      color: #8c929d;
+    }
+
+    .check-icon svg {
+      width: 45px;
+      height: 45px;
+      stroke-width: 1.8;
+    }
+
+    .check-title {
+      color: #20242d;
+      font-size: 22px;
+      line-height: 29px;
+      font-weight: 400;
+    }
+
+    .check-sub {
+      margin-top: 3px;
+      color: #8b8f99;
+      font-size: 18px;
+      line-height: 24px;
+      font-weight: 400;
+    }
+
+    .check-row .chev {
+      position: static;
+      justify-self: center;
+      width: 28px;
+      height: 28px;
+    }
+
+    .bottom-bar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: grid;
+      grid-template-columns: 316px 1fr;
+      column-gap: 28px;
+      height: 139px;
+      padding: 18px 29px 25px;
+      border-top: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.97);
+      box-shadow: 0 -10px 24px rgba(24, 27, 34, 0.025);
+    }
+
+    .draft-btn,
+    .publish-btn {
+      display: grid;
+      place-items: center;
+      height: 96px;
+      border-radius: 9px;
+      font-size: 30px;
+      line-height: 38px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .draft-btn {
+      border: 1px solid var(--line-strong);
+      color: #151820;
+      background: #fff;
+    }
+
+    .publish-btn {
+      color: #fff;
+      background: var(--red);
+    }
+
+    .publish-btn:active,
+    .draft-btn:active {
+      transform: translateY(1px);
+    }
+
+    [data-lucide] {
+      display: inline-block;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div class="phone">
+    <header class="top">
+      <div class="back" aria-label="返回"><i data-lucide="chevron-left"></i></div>
+      <h1 class="page-title">发起约骑</h1>
+      <div class="subtitle">30 秒发起一次靠谱约骑</div>
+
+      <nav class="steps" aria-label="发起约骑进度">
+        <div class="step done">
+          <span class="step-mark"><i data-lucide="check"></i></span>
+          <span>路线</span>
+        </div>
+        <div class="step done">
+          <span class="step-mark"><i data-lucide="check"></i></span>
+          <span>时间</span>
+        </div>
+        <div class="step done">
+          <span class="step-mark"><i data-lucide="check"></i></span>
+          <span>照片</span>
+        </div>
+        <div class="step current">
+          <span class="step-mark">4</span>
+          <span>发布</span>
+        </div>
+      </nav>
+    </header>
+
+    <main class="form-card">
+      <section class="row route">
+        <div class="icon-box pink"><i data-lucide="map"></i></div>
+        <div class="row-content">
+          <h2 class="row-title">路线</h2>
+          <div class="row-sub">天龙山西线路书 · 腾讯地图生成</div>
+        </div>
+        <div class="route-status">路线已生成</div>
+        <i class="chev" data-lucide="chevron-right"></i>
+      </section>
+
+      <section class="row">
+        <div class="icon-box"><i data-lucide="clock"></i></div>
+        <div class="row-content">
+          <h2 class="row-title">出发时间</h2>
+          <div class="row-sub">周六 07:30</div>
+        </div>
+        <i class="chev" data-lucide="chevron-right"></i>
+      </section>
+
+      <section class="row">
+        <div class="icon-box"><i data-lucide="map-pin"></i></div>
+        <div class="row-content">
+          <h2 class="row-title">集合地点</h2>
+          <div class="row-sub">晋祠公园北门</div>
+        </div>
+        <i class="chev" data-lucide="chevron-right"></i>
+      </section>
+
+      <section class="row">
+        <div class="icon-box"><i data-lucide="users-round"></i></div>
+        <div class="row-content">
+          <h2 class="row-title">人数上限</h2>
+          <div class="row-sub">8 人</div>
+        </div>
+        <div class="stepper" aria-label="人数上限">
+          <button type="button"><i data-lucide="minus"></i></button>
+          <span class="stepper-value">8</span>
+          <button type="button"><i data-lucide="plus"></i></button>
+        </div>
+      </section>
+
+      <section class="row">
+        <div class="icon-box"><i data-lucide="gauge"></i></div>
+        <div class="row-content">
+          <h2 class="row-title">骑行节奏</h2>
+          <div class="row-sub">稳爬不竞速</div>
+        </div>
+        <div class="pace-chip">稳爬</div>
+        <i class="chev" data-lucide="chevron-right"></i>
+      </section>
+
+      <section class="row">
+        <div class="icon-box"><i data-lucide="cup-soda"></i></div>
+        <div class="row-content">
+          <h2 class="row-title">补给点</h2>
+          <div class="row-sub">天龙山景区口</div>
+        </div>
+        <i class="chev" data-lucide="chevron-right"></i>
+      </section>
+
+      <section class="row">
+        <div class="icon-box"><i data-lucide="file-text"></i></div>
+        <div class="row-content">
+          <h2 class="row-title">活动说明</h2>
+          <div class="row-sub">预计 4.5 小时，头盔必戴，公路车优先</div>
+        </div>
+        <i class="chev" data-lucide="chevron-right"></i>
+      </section>
+
+      <section class="row photos">
+        <div class="photo-head">
+          <div class="icon-box"><i data-lucide="image"></i></div>
+          <div class="row-content">
+            <h2 class="row-title">活动照片 <span class="optional">（选填）</span></h2>
+            <div class="row-sub muted">已添加 3 张</div>
+          </div>
+          <i class="chev" data-lucide="chevron-right"></i>
+        </div>
+        <div class="photo-grid">
+          <div class="photo-item">
+            <img src="assets/meetup-wizard-photo-1.png" alt="活动照片 1" />
+            <button class="photo-remove" type="button" aria-label="删除照片 1"><i data-lucide="x"></i></button>
+          </div>
+          <div class="photo-item">
+            <img src="assets/meetup-wizard-photo-2.png" alt="活动照片 2" />
+            <button class="photo-remove" type="button" aria-label="删除照片 2"><i data-lucide="x"></i></button>
+          </div>
+          <div class="photo-item">
+            <img src="assets/meetup-wizard-photo-3.png" alt="活动照片 3" />
+            <button class="photo-remove" type="button" aria-label="删除照片 3"><i data-lucide="x"></i></button>
+          </div>
+          <button class="photo-add" type="button">
+            <span class="photo-add-inner">
+              <i data-lucide="plus"></i>
+              <span>添加照片</span>
+            </span>
+          </button>
+        </div>
+      </section>
+
+      <section class="check-row row check">
+        <div class="check-icon"><i data-lucide="shield-check"></i></div>
+        <div>
+          <div class="check-title">发布前检查</div>
+          <div class="check-sub">请确认以上信息准确，发布后可随时编辑。</div>
+        </div>
+        <i class="chev" data-lucide="chevron-right"></i>
+      </section>
+    </main>
+
+    <footer class="bottom-bar">
+      <button class="draft-btn" type="button">保存草稿</button>
+      <button class="publish-btn" type="button">发布约骑</button>
+    </footer>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    });
+  </script>
+</body>
+</html>

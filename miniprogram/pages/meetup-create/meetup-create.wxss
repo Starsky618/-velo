@@ -336,6 +336,18 @@ page {
   border-bottom: 1rpx solid #e5e5ea;
 }
 
+/* 整行可点的行（集合地点）：iOS 式右侧 chevron 提示"点我进下一页" */
+.pub-row-tappable:active {
+  background: #f7f7f9;
+}
+
+.pub-row-chevron {
+  color: #c5c5c7;
+  font-size: 40rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
 /* 图标盒：浅灰圆角方块 */
 .pub-iconbox {
   display: flex;

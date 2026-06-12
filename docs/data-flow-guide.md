@@ -1722,9 +1722,10 @@ Worker 后台无界面,日志是唯一观察窗口。
 
   ┌─────────────────────────────────────────────────────────────────┐
   │ 集合点选择 / 搜索 / 常用点（2026-06-12 补强）                         │
-  │   GET /api/meetups/place-search?keyword=晋祠&region=太原          │
-  │   → service.search_meetup_place → route_book.tencent_place        │
-  │   腾讯地点检索在服务端签名 + 用户限流，返回 WGS-84，不暴露 SK           │
+  │   GET /api/meetups/place-suggestions?keyword=晋祠&region=太原     │
+  │   → service.suggest_meetup_places → tencent_place.suggest_places  │
+  │   腾讯地点联想（实时输入候选 ≤8 条）服务端签名 + 用户限流，            │
+  │   返回 WGS-84，不暴露 SK（2026-06-13 替换旧单结果 place-search）     │
   │   小程序喂给微信 <map> 前临时转 GCJ-02；保存常用点仍回到 WGS-84        │
   │                                                                 │
   │   POST /api/meetups/favorite-places                              │

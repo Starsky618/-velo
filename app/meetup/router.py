@@ -182,20 +182,21 @@ def delete_favorite_place(
     service.delete_favorite_place(db, current_user_id, place_id)
 
 
-@router.get("/place-search", response_model=schemas.MeetupPlaceSearchOut | None)
-def search_meetup_place(
+@router.get("/place-suggestions", response_model=list[schemas.MeetupPlaceSearchOut])
+def suggest_meetup_places(
     keyword: str = Query(..., min_length=1, max_length=80),
     region: str = Query("太原", min_length=1, max_length=32),
     current_user_id: int = Depends(get_current_user),
 ):
+    # 实时联想：前端防抖 350ms 后一次输入会出多次请求，额度比旧单次搜索宽
     check_rate_limit_by_user(
         current_user_id,
-        "meetup-place-search",
-        limit=30,
+        "meetup-place-suggest",
+        limit=60,
         window_sec=300,
     )
     try:
-        return service.search_meetup_place(keyword, region)
+        return service.suggest_meetup_places(keyword, region)
     except TencentMapConfigError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except TencentMapError as e:

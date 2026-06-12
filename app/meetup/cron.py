@@ -14,7 +14,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.activity.models import Activity
-from app.common.bj_time import to_bj_date
 from app.database import SessionLocal
 from app.meetup.models import Meetup, MeetupActivity, MeetupParticipant
 
@@ -25,6 +24,12 @@ logger = logging.getLogger(__name__)
 # 可以把它想成"交卷箱开放 7 天"：骑完第 3 天才上传也能被收卷，
 # 但太久以前的约骑不再反复扫描，避免后台一直翻旧账。
 ATTACH_WINDOW_DAYS = 7
+
+# 晚动身宽限：出发后多少小时内开始骑都算本场（D2 修订 / 2026-06-13 Tim 拍）。
+# 旧规则"同北京日历日"会让 23:30 出发的夜骑、骑友 00:05 才动身时格子永远灰；
+# 改成锚定"骑行开始时间离约骑出发多近"后，跨午夜不掉格，
+# 而第二天早上的无关骑行（同日规则反而会误挂的）也被天然挡住。
+ATTACH_LATE_START_HOURS = 6
 
 
 def complete_due_meetups(db: Session) -> int:
@@ -59,7 +64,8 @@ def attach_meetup_activities(db: Session) -> int:
 
     设计思路：
     - 方向：由 meetup 侧定时扫描 activity，activity 上传链路不用反过来认识 meetup。
-    - 窗口：只认约骑当天北京日历日，且骑行开始时间不能早于出发前 30 分钟。
+    - 窗口（D2 修订 2026-06-13）：骑行开始时间 ∈ [出发前 30 分钟, 出发后 6 小时]。
+      锚的是"动身时间离约骑出发多近"，所以跨午夜夜骑不掉格、骑多久都不掉窗。
     - 一人一格：每人每场只挂最早一条候选骑行，数据库 UNIQUE 再兜最后一道门。
     - 截止：出发后 7 天内还会补扫，照顾晚上传文件的人。
     """
@@ -90,6 +96,8 @@ def attach_meetup_activities(db: Session) -> int:
             if exists is not None:
                 continue
 
+            # 窗口直接在 SQL 上界收口（出发后 6 小时内动身才算本场），
+            # 不再有"同北京日"的 Python 二次判定——见 ATTACH_LATE_START_HOURS 注释。
             candidates = (
                 db.query(Activity)
                 .filter(
@@ -97,18 +105,12 @@ def attach_meetup_activities(db: Session) -> int:
                     Activity.status == "completed",
                     Activity.started_at.isnot(None),
                     Activity.started_at >= meetup.start_time - timedelta(minutes=30),
-                    Activity.started_at < meetup.start_time + timedelta(days=1),
+                    Activity.started_at <= meetup.start_time + timedelta(hours=ATTACH_LATE_START_HOURS),
                 )
                 .order_by(Activity.started_at.asc())
                 .all()
             )
-            match = None
-            for activity in candidates:
-                # SQL 只负责先把候选缩小，真正的"是不是同一个北京日"放到 Python。
-                # 这样 SQLite 测试库和 PostgreSQL 生产库都走同一只"北京挂钟"。
-                if to_bj_date(activity.started_at) == to_bj_date(meetup.start_time):
-                    match = activity
-                    break
+            match = candidates[0] if candidates else None
             if match is None:
                 continue
 

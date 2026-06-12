@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VELO v3 · 成绩卡样本（内容主导）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --volt:#D6FF42;
+    --disp:'Barlow Condensed','DIN Alternate',-apple-system,sans-serif;
+    --sans:'Noto Sans SC',-apple-system,'PingFang SC',sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{background:#202227;font-family:var(--sans);padding:40px 0 80px;display:flex;flex-direction:column;align-items:center;gap:36px}
+  .disp{font-family:var(--disp);font-variant-numeric:tabular-nums}
+  .head{width:360px;color:#fff}
+  .head h1{font-size:18px;font-weight:900}
+  .head p{font-size:12.5px;color:#9aa0ab;margin-top:6px;line-height:1.7}
+  .lab{width:360px;color:#9aa0ab;font-size:11px;letter-spacing:.16em;margin-bottom:-22px}
+
+  /* ============ 成绩卡：照片承载情绪，数据浮层只做秩序 ============ */
+  .card{width:360px;height:480px;border-radius:18px;overflow:hidden;position:relative;
+    box-shadow:0 30px 70px rgba(0,0,0,.5);background:#101216}
+  .card .ph{position:absolute;inset:0}
+  .card .ph img{width:100%;height:100%;object-fit:cover;display:block}
+  /* 压暗曲线：上端轻、下端重，中段过渡长——照片可读与数据可读两头都保 */
+  .card .veil{position:absolute;inset:0;background:
+    linear-gradient(180deg,rgba(10,11,14,.34) 0%,rgba(10,11,14,.02) 22%,rgba(10,11,14,0) 40%,rgba(10,11,14,.46) 64%,rgba(10,11,14,.92) 100%)}
+  /* 顶部行 */
+  .card .top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:18px 20px}
+  .card .logo{font-family:var(--disp);font-weight:700;font-size:16px;letter-spacing:.32em;color:#fff}
+  .card .logo i{display:inline-block;width:7px;height:7px;background:var(--volt);border-radius:1px;margin-right:7px;vertical-align:14%}
+  .card .date{font-family:var(--disp);font-weight:500;font-size:13px;letter-spacing:.14em;color:rgba(255,255,255,.8)}
+  /* 底部信息区 */
+  .card .info{position:absolute;left:0;right:0;bottom:0;padding:0 22px 18px}
+  .card .route{font-size:20px;font-weight:900;color:#fff;letter-spacing:.02em;text-shadow:0 1px 14px rgba(0,0,0,.35)}
+  .card .route small{display:block;font-family:var(--disp);font-weight:500;font-size:11px;letter-spacing:.26em;color:rgba(255,255,255,.62);margin-top:4px}
+  .card .mainrow{display:flex;align-items:flex-end;gap:12px;margin-top:14px}
+  .card .main{font-family:var(--disp);font-weight:700;font-size:66px;line-height:.85;color:#fff;letter-spacing:0;text-shadow:0 2px 18px rgba(0,0,0,.4)}
+  .card .pr{margin-bottom:7px;background:var(--volt);color:#15170D;font-size:11px;font-weight:900;
+    padding:4px 8px;border-radius:3px;letter-spacing:.06em}
+  .card .maink{font-size:10.5px;letter-spacing:.3em;color:rgba(255,255,255,.6);margin-top:9px;font-weight:500}
+  .card .grid{display:flex;margin-top:16px;border-top:1px solid rgba(255,255,255,.22);padding-top:12px}
+  .card .cell{flex:1}
+  .card .cell+.cell{border-left:1px solid rgba(255,255,255,.16);padding-left:14px}
+  .card .cell .v{font-family:var(--disp);font-weight:600;font-size:21px;color:#fff}
+  .card .cell .v small{font-size:11px;color:rgba(255,255,255,.55);margin-left:2px;font-weight:500}
+  .card .cell .k{font-size:9.5px;color:rgba(255,255,255,.5);margin-top:2px;letter-spacing:.12em}
+  /* 底缘：海拔剖面真数据形状，极淡，像水印 */
+  .card .terrain{position:absolute;left:0;right:0;bottom:0;height:56px;opacity:.5;pointer-events:none}
+  .card .rider{display:flex;justify-content:space-between;margin-top:13px;font-size:11px;color:rgba(255,255,255,.55);font-weight:500}
+  .card .rider .disp{letter-spacing:.1em;font-size:12px}
+
+  .note{width:360px;color:#9aa0ab;font-size:12.5px;line-height:1.75}
+  .note b{color:#fff}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>VELO 成绩卡 v3 · 单样本</h1>
+  <p>转向：照片承载情绪（在场证明+地点资本），数据浮层只做秩序（成就证据）——晒图三件套合到一张卡上。先打磨这一张，方向对了再铺全套。</p>
+</div>
+
+<div class="lab">样本 A · 天龙山 · 横版照片</div>
+<div class="card">
+  <div class="ph"><img src="http://114.132.190.245/uploads/route_covers/tianlongshan.jpg" onerror="this.parentElement.style.background='linear-gradient(160deg,#3A4150,#181B22)'"></div>
+  <div class="veil"></div>
+  <div class="top">
+    <span class="logo"><i></i>VELO</span>
+    <span class="date disp">2026.06.12</span>
+  </div>
+  <svg class="terrain" viewBox="0 0 360 56" fill="none" preserveAspectRatio="none">
+    <path d="M0 52 L36 47 L70 41 L104 36 L132 27 L164 21 L194 14 L230 10 L266 7 L304 4 L360 2" stroke="#D6FF42" stroke-width="1.5" opacity=".8"/>
+  </svg>
+  <div class="info">
+    <div class="route">天龙山盘山公路<small>TIANLONGSHAN CLIMB · 10.0KM</small></div>
+    <div class="mainrow">
+      <div class="main disp">28:41</div>
+      <div class="pr">全程 PR</div>
+    </div>
+    <div class="maink">爬坡用时</div>
+    <div class="grid">
+      <div class="cell"><div class="v disp">561<small>m</small></div><div class="k">爬升</div></div>
+      <div class="cell"><div class="v disp">203<small>W</small></div><div class="k">均功率</div></div>
+      <div class="cell"><div class="v disp">162</div><div class="k">均心率</div></div>
+      <div class="cell"><div class="v disp">20.9<small>km/h</small></div><div class="k">均速</div></div>
+    </div>
+    <div class="rider"><span>Starsky</span><span class="disp">FTP 200W</span></div>
+  </div>
+</div>
+
+<div class="lab">样本 B · 同一套系统换横岭照片（验证体系成立）</div>
+<div class="card">
+  <div class="ph"><img src="http://114.132.190.245/uploads/route_covers/hengling.jpg" onerror="this.parentElement.style.background='linear-gradient(160deg,#3A4150,#181B22)'"></div>
+  <div class="veil"></div>
+  <div class="top">
+    <span class="logo"><i></i>VELO</span>
+    <span class="date disp">2026.06.08</span>
+  </div>
+  <svg class="terrain" viewBox="0 0 360 56" fill="none" preserveAspectRatio="none">
+    <path d="M0 53 L30 50 L62 44 L96 40 L126 32 L158 27 L190 18 L224 13 L260 11 L300 6 L360 3" stroke="#D6FF42" stroke-width="1.5" opacity=".8"/>
+  </svg>
+  <div class="info">
+    <div class="route">横岭<small>HENGLING · 西山主干道 · 11.0KM</small></div>
+    <div class="mainrow">
+      <div class="main disp">41:07</div>
+    </div>
+    <div class="maink">爬坡用时</div>
+    <div class="grid">
+      <div class="cell"><div class="v disp">633<small>m</small></div><div class="k">爬升</div></div>
+      <div class="cell"><div class="v disp">189<small>W</small></div><div class="k">均功率</div></div>
+      <div class="cell"><div class="v disp">158</div><div class="k">均心率</div></div>
+      <div class="cell"><div class="v disp">16.1<small>km/h</small></div><div class="k">均速</div></div>
+    </div>
+    <div class="rider"><span>Starsky</span><span class="disp">FTP 200W</span></div>
+  </div>
+</div>
+
+<div class="note">
+  <b>这版和前两版的本质区别</b>：前两版是"装饰造的卡"（色块/印章/排版游戏=玩具感），这版是"内容造的卡"——照片给在场证明和地点资本，数据浮层给成就证据，左下角那条荧光细线是这条路线的真实海拔剖面。设计参照对标 Rapha（摄影主导、UI 收敛）与 Strava 分享卡（照片底+数据浮层）。<br><br>
+  <b>真实落地时照片从哪来</b>：用户骑行时自己拍的照片（上传时选一张）> 路线官方封面兜底。没照片时回落到深色轨迹地图版（待轨迹数据接入后做）。
+</div>
+
+</body>
+</html>

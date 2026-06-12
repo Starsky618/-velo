@@ -188,78 +188,85 @@ def test_meetup_favorite_place_converts_gcj02_to_wgs84(client, auth_header):
     assert res.json()["longitude"] != gcj_lon
 
 
-def test_meetup_place_search_applies_user_rate_limit(client, auth_header, test_user, monkeypatch):
+def test_meetup_place_suggestions_applies_user_rate_limit(client, auth_header, test_user, monkeypatch):
     calls = []
 
     def fake_rate_limit(user_id, key_prefix, limit, window_sec):
         calls.append((user_id, key_prefix, limit, window_sec))
 
     monkeypatch.setattr("app.meetup.router.check_rate_limit_by_user", fake_rate_limit)
-    monkeypatch.setattr("app.route_book.tencent_place.search_place", lambda keyword, region="太原": None)
+    monkeypatch.setattr("app.route_book.tencent_place.suggest_places", lambda keyword, region="太原": [])
 
-    res = client.get("/api/meetups/place-search", params={"keyword": "晋祠"}, headers=auth_header)
+    res = client.get("/api/meetups/place-suggestions", params={"keyword": "晋祠"}, headers=auth_header)
 
     assert res.status_code == 200
-    assert calls == [(test_user.id, "meetup-place-search", 30, 300)]
+    # 实时联想一次输入会防抖出多次请求，额度比旧单次搜索宽（60 次/5 分钟）
+    assert calls == [(test_user.id, "meetup-place-suggest", 60, 300)]
 
 
-def test_meetup_place_search_wraps_tencent_place_without_secret(client, auth_header, monkeypatch):
+def test_meetup_place_suggestions_wraps_tencent_list_without_secret(client, auth_header, monkeypatch):
     captured = {}
 
-    def fake_search_place(keyword, region="太原"):
+    def fake_suggest_places(keyword, region="太原"):
         captured["keyword"] = keyword
         captured["region"] = region
-        return {
-            "keyword": keyword,
-            "title": "晋祠公园东门",
-            "address": "太原市晋源区",
-            "lat": 37.708,
-            "lon": 112.438,
-            "source": "tencent_place",
-        }
+        return [
+            {
+                "keyword": keyword,
+                "title": "晋祠公园东门",
+                "address": "太原市晋源区",
+                "lat": 37.708,
+                "lon": 112.438,
+                "source": "tencent_suggestion",
+            },
+            {
+                "keyword": keyword,
+                "title": "晋祠博物馆",
+                "address": "太原市晋源区晋祠镇",
+                "lat": 37.703,
+                "lon": 112.435,
+                "source": "tencent_suggestion",
+            },
+        ]
 
     monkeypatch.setattr(settings, "TENCENT_MAP_SK", "secret-sk")
-    monkeypatch.setattr("app.route_book.tencent_place.search_place", fake_search_place)
+    monkeypatch.setattr("app.route_book.tencent_place.suggest_places", fake_suggest_places)
 
     res = client.get(
-        "/api/meetups/place-search",
-        params={"keyword": " 晋祠公园 ", "region": " 太原 "},
+        "/api/meetups/place-suggestions",
+        params={"keyword": " 晋祠 ", "region": " 太原 "},
         headers=auth_header,
     )
 
     assert res.status_code == 200
-    assert captured == {"keyword": "晋祠公园", "region": "太原"}
-    assert res.json() == {
-        "keyword": "晋祠公园",
-        "title": "晋祠公园东门",
-        "address": "太原市晋源区",
-        "latitude": 37.708,
-        "longitude": 112.438,
-        "source": "tencent_place",
-    }
+    assert captured == {"keyword": "晋祠", "region": "太原"}
+    body = res.json()
+    assert [item["title"] for item in body] == ["晋祠公园东门", "晋祠博物馆"]
+    assert body[0]["latitude"] == 37.708
+    assert body[0]["longitude"] == 112.438
     assert "secret-sk" not in res.text
 
 
-def test_meetup_place_search_returns_null_for_no_result(client, auth_header, monkeypatch):
-    monkeypatch.setattr("app.route_book.tencent_place.search_place", lambda keyword, region="太原": None)
+def test_meetup_place_suggestions_returns_empty_list_for_no_result(client, auth_header, monkeypatch):
+    monkeypatch.setattr("app.route_book.tencent_place.suggest_places", lambda keyword, region="太原": [])
 
-    res = client.get("/api/meetups/place-search", params={"keyword": "不存在地点"}, headers=auth_header)
+    res = client.get("/api/meetups/place-suggestions", params={"keyword": "不存在地点"}, headers=auth_header)
 
     assert res.status_code == 200
-    assert res.json() is None
+    assert res.json() == []
 
 
-def test_meetup_place_search_maps_tencent_failure_without_secret(client, auth_header, monkeypatch):
+def test_meetup_place_suggestions_maps_tencent_failure_without_secret(client, auth_header, monkeypatch):
     def boom(keyword, region="太原"):
-        raise TencentMapError("腾讯地点检索请求失败：HTTP 403")
+        raise TencentMapError("腾讯地点联想请求失败：HTTP 403")
 
     monkeypatch.setattr(settings, "TENCENT_MAP_SK", "secret-sk")
-    monkeypatch.setattr("app.route_book.tencent_place.search_place", boom)
+    monkeypatch.setattr("app.route_book.tencent_place.suggest_places", boom)
 
-    res = client.get("/api/meetups/place-search", params={"keyword": "晋祠"}, headers=auth_header)
+    res = client.get("/api/meetups/place-suggestions", params={"keyword": "晋祠"}, headers=auth_header)
 
     assert res.status_code == 422
-    assert "腾讯地点检索请求失败" in res.text
+    assert "腾讯地点联想请求失败" in res.text
     assert "secret-sk" not in res.text
 
 

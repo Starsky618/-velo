@@ -292,13 +292,59 @@ def test_processing_activity_does_not_attach(db, test_user):
     assert _activity_ids(db, meetup.id) == []
 
 
-def test_early_morning_bj_meetup_does_not_truncate_late_same_bj_day_activity(db, test_user):
+def test_cross_midnight_night_ride_attaches(db, test_user):
+    # D2 修订（2026-06-13 Tim 拍）：23:30 出发的夜骑、骑友 00:05（北京次日）才动身，
+    # 格子必须能点亮——旧"同北京日"规则会让它永远灰（清徐夜骑真实场景）。
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime(2026, 6, 10, 16, 30, tzinfo=timezone.utc)
+    start = datetime(2026, 6, 11, 15, 30, tzinfo=timezone.utc)  # 北京 6-11 23:30
     meetup = _meetup(db, test_user.id, start)
     _participant(db, meetup.id, test_user.id)
-    activity = _activity(db, test_user.id, datetime(2026, 6, 11, 12, 0, tzinfo=timezone.utc))
+    activity = _activity(db, test_user.id, datetime(2026, 6, 11, 16, 5, tzinfo=timezone.utc))  # 北京 6-12 00:05
+
+    assert attach_meetup_activities(db) == 1
+
+    assert _activity_ids(db, meetup.id) == [activity.id]
+
+
+def test_same_bj_day_but_many_hours_later_activity_does_not_attach(db, test_user):
+    # D2 修订的另一面：凌晨 00:30 的约骑，当晚 20:00 才动身的骑行（同北京日历日、
+    # 相隔 19.5 小时）显然不是同一场——旧"同日"规则会误挂，新窗口必须拒绝。
+    from app.meetup.cron import attach_meetup_activities
+
+    start = datetime(2026, 6, 10, 16, 30, tzinfo=timezone.utc)  # 北京 6-11 00:30
+    meetup = _meetup(db, test_user.id, start)
+    _participant(db, meetup.id, test_user.id)
+    _activity(db, test_user.id, datetime(2026, 6, 11, 12, 0, tzinfo=timezone.utc))  # 北京 6-11 20:00
+
+    assert attach_meetup_activities(db) == 0
+
+    assert _activity_ids(db, meetup.id) == []
+
+
+def test_activity_started_just_past_late_window_does_not_attach(db, test_user):
+    from app.meetup.cron import attach_meetup_activities
+    from app.meetup.cron import ATTACH_LATE_START_HOURS
+
+    start = _midday_bj_anchor()
+    meetup = _meetup(db, test_user.id, start)
+    _participant(db, meetup.id, test_user.id)
+    _activity(db, test_user.id, start + timedelta(hours=ATTACH_LATE_START_HOURS, minutes=1))
+
+    assert attach_meetup_activities(db) == 0
+
+    assert _activity_ids(db, meetup.id) == []
+
+
+def test_activity_started_exactly_at_late_window_edge_attaches(db, test_user):
+    # 锁住闭区间语义：正好出发后 6 小时整动身要能挂（防 <= 被手滑改成 <）
+    from app.meetup.cron import attach_meetup_activities
+    from app.meetup.cron import ATTACH_LATE_START_HOURS
+
+    start = _midday_bj_anchor()
+    meetup = _meetup(db, test_user.id, start)
+    _participant(db, meetup.id, test_user.id)
+    activity = _activity(db, test_user.id, start + timedelta(hours=ATTACH_LATE_START_HOURS))
 
     assert attach_meetup_activities(db) == 1
 

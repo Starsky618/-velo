@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VELO 设计语言提案 · 高可见度荧光 × 颁奖时刻</title>
+<style>
+  /* ========== 设计合同 token（与 miniprogram/design-system/MASTER.md v0.2 一致） ========== */
+  :root{
+    --paper:#F6F6F4; --surface:#FFFFFF; --carbon:#1B1C20; --slate:#66676F; --hairline:#E9E9EC;
+    --night:#0F1116; --night-surface:#181B22;
+    --volt:#D6FF42; --volt-press:#BFEF2C; --volt-ink:#15170D;
+    --amber:#E08A00;
+    --mono:'SF Mono','DIN Alternate',ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'SF Pro Display','PingFang SC','Helvetica Neue',sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{background:#26282E;font-family:var(--sans);color:var(--carbon);padding:28px 0 80px}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+
+  /* 画廊骨架：一列手机屏 */
+  .stage{width:393px;margin:0 auto 14px}
+  .stage-label{color:#9aa0ab;font-size:12px;letter-spacing:.18em;margin:34px auto 10px;width:393px;text-transform:uppercase}
+  .stage-label b{color:#fff;font-weight:700;letter-spacing:0;font-size:13px;display:block;margin-top:2px}
+  .screen{width:393px;border-radius:28px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.45)}
+
+  /* ========== 屏1 · 开奖时刻（夜场） ========== */
+  .award{background:var(--night);min-height:760px;position:relative;padding:0 28px 36px;color:#fff;overflow:hidden}
+  .award::before{content:'';position:absolute;inset:0;
+    background:radial-gradient(ellipse 90% 45% at 50% 30%,rgba(214,255,66,.10),transparent 65%);}
+  .award::after{content:'';position:absolute;top:-40%;left:-30%;width:60%;height:180%;
+    background:linear-gradient(78deg,transparent 46%,rgba(214,255,66,.05) 50%,transparent 54%);
+    transform:rotate(8deg);animation:sweep 4.5s ease-in-out 1.2s infinite}
+  @keyframes sweep{0%{transform:translateX(-60px) rotate(8deg)}55%{transform:translateX(520px) rotate(8deg)}100%{transform:translateX(520px) rotate(8deg)}}
+  .statusbar{display:flex;justify-content:space-between;padding:16px 2px 0;font-size:13px;font-weight:600;color:rgba(255,255,255,.85);position:relative}
+  .award-eyebrow{margin-top:74px;font-size:12px;letter-spacing:.42em;color:rgba(255,255,255,.45);position:relative}
+  .award-title{font-size:30px;font-weight:800;margin-top:10px;position:relative;letter-spacing:.02em}
+  .award-route{font-size:13px;color:rgba(255,255,255,.5);margin-top:8px;position:relative}
+  .award-grid{margin-top:44px;position:relative}
+  .award-main{padding-bottom:26px}
+  .award-main .v{font-size:64px;font-weight:700;color:var(--volt);line-height:1;
+    text-shadow:0 0 32px rgba(214,255,66,.38)}
+  .award-main .v small{font-size:18px;font-weight:600;color:rgba(214,255,66,.62);margin-left:6px;text-shadow:none}
+  .award-main .k{font-size:12px;color:rgba(255,255,255,.45);margin-top:10px;letter-spacing:.14em}
+  .award-row{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid rgba(255,255,255,.09)}
+  .award-cell{padding:18px 0 0}
+  .award-cell+.award-cell{border-left:1px solid rgba(255,255,255,.09);padding-left:18px}
+  .award-cell .v{font-size:24px;font-weight:700;color:#fff}
+  .award-cell .v small{font-size:12px;color:rgba(255,255,255,.42);font-weight:500;margin-left:3px}
+  .award-cell .k{font-size:11px;color:rgba(255,255,255,.4);margin-top:6px;letter-spacing:.1em}
+  .pr-strip{margin-top:34px;display:flex;gap:10px;position:relative}
+  .pr-badge{display:flex;align-items:center;gap:7px;border:1px solid rgba(214,255,66,.5);border-radius:999px;
+    padding:8px 14px;font-size:12.5px;font-weight:700;color:var(--volt);
+    box-shadow:0 0 18px rgba(214,255,66,.14) inset,0 0 14px rgba(214,255,66,.10)}
+  .pr-badge svg{width:13px;height:13px}
+  .award-cta{margin-top:48px;position:relative;display:block;width:100%;border:none;cursor:pointer;
+    background:var(--volt);color:var(--volt-ink);font-size:17px;font-weight:800;letter-spacing:.06em;
+    padding:17px 0;border-radius:14px;box-shadow:0 0 36px rgba(214,255,66,.30);font-family:var(--sans)}
+  .award-sub{margin-top:14px;text-align:center;font-size:12.5px;color:rgba(255,255,255,.35);position:relative}
+  /* 开奖 stagger 入场 */
+  .reveal{opacity:0;transform:translateY(16px);animation:pop .55s cubic-bezier(.2,.85,.25,1) forwards}
+  @keyframes pop{to{opacity:1;transform:none}}
+
+  /* ========== 屏2 · 成绩卡 ========== */
+  .sharecard-wrap{background:var(--paper);padding:44px 30px 40px}
+  .sharecard{background:var(--night);border-radius:16px;color:#fff;position:relative;overflow:hidden;
+    padding:30px 26px 24px 32px;box-shadow:0 18px 48px rgba(15,17,22,.35)}
+  .sharecard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--volt)}
+  .sharecard::after{content:'';position:absolute;inset:0;
+    background:radial-gradient(ellipse 80% 50% at 85% 0%,rgba(214,255,66,.09),transparent 60%)}
+  .sc-date{font-size:11px;letter-spacing:.22em;color:rgba(255,255,255,.42);position:relative}
+  .sc-route{font-size:21px;font-weight:800;margin-top:7px;position:relative}
+  .sc-main{margin-top:26px;position:relative}
+  .sc-main .v{font-size:54px;font-weight:700;color:var(--volt);line-height:1;text-shadow:0 0 26px rgba(214,255,66,.32)}
+  .sc-main .k{font-size:11px;color:rgba(255,255,255,.45);letter-spacing:.16em;margin-top:8px}
+  .sc-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:24px;border-top:1px solid rgba(255,255,255,.10);position:relative}
+  .sc-cell{padding:14px 0 2px}
+  .sc-cell:nth-child(2n){border-left:1px solid rgba(255,255,255,.10);padding-left:18px}
+  .sc-cell .v{font-size:20px;font-weight:700}
+  .sc-cell .v small{font-size:11px;color:rgba(255,255,255,.4);font-weight:500;margin-left:3px}
+  .sc-cell .k{font-size:10.5px;color:rgba(255,255,255,.38);margin-top:4px;letter-spacing:.08em}
+  .sc-foot{display:flex;justify-content:space-between;align-items:center;margin-top:26px;position:relative}
+  .sc-rider{font-size:12.5px;color:rgba(255,255,255,.55);font-weight:600}
+  .sc-logo{font-size:14px;font-weight:900;letter-spacing:.30em;color:var(--volt)}
+  .sc-hint{text-align:center;color:var(--slate);font-size:12.5px;margin-top:18px}
+
+  /* ========== 屏3 · 探索页（白昼） ========== */
+  .explore{background:var(--paper);padding:0 0 0}
+  .explore-head{padding:54px 22px 14px;background:var(--surface)}
+  .explore-title{font-size:28px;font-weight:800;letter-spacing:.01em}
+  .search{margin-top:14px;background:var(--paper);border-radius:12px;padding:11px 14px;display:flex;align-items:center;gap:8px;color:var(--slate);font-size:14px}
+  .search svg{width:15px;height:15px;flex:none}
+  .seg-tabs{display:flex;gap:22px;padding:16px 22px 0;background:var(--surface);border-bottom:1px solid var(--hairline)}
+  .seg-tab{font-size:15px;color:var(--slate);padding-bottom:11px;font-weight:500}
+  .seg-tab.on{color:var(--carbon);font-weight:800;position:relative}
+  .seg-tab.on::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--volt);border-radius:2px}
+  .route-list{padding:16px 16px 8px;display:flex;flex-direction:column;gap:14px}
+  .route-card{border-radius:12px;overflow:hidden;position:relative;height:172px;background:var(--surface);box-shadow:0 2px 12px rgba(20,21,25,.06)}
+  .route-card img{width:100%;height:100%;object-fit:cover;display:block}
+  .route-card .veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,17,22,0) 30%,rgba(15,17,22,.78) 100%)}
+  .route-card .official{position:absolute;top:12px;left:12px;background:var(--volt);color:var(--volt-ink);
+    font-size:11px;font-weight:800;padding:4px 9px;border-radius:6px;letter-spacing:.04em}
+  .route-card .name{position:absolute;left:16px;bottom:42px;color:#fff;font-size:19px;font-weight:800;text-shadow:0 1px 8px rgba(0,0,0,.4)}
+  .route-card .chips{position:absolute;left:16px;bottom:14px;display:flex;gap:14px;color:rgba(255,255,255,.85);font-size:12.5px;font-weight:600}
+  .route-card .chips b{font-weight:700}
+  .route-card.nopic{background:linear-gradient(135deg,#23262E 0%,#3A3F4B 100%)}
+  .route-card.nopic .initial{position:absolute;right:18px;top:14px;font-size:64px;font-weight:900;color:rgba(255,255,255,.08);font-family:var(--mono)}
+  .tabbar{display:flex;background:var(--surface);border-top:1px solid var(--hairline);padding:10px 0 22px;margin-top:8px}
+  .tab{flex:1;text-align:center;font-size:10.5px;color:var(--slate);display:flex;flex-direction:column;align-items:center;gap:4px}
+  .tab svg{width:22px;height:22px}
+  .tab.on{color:var(--carbon);font-weight:700}
+  .tab.on .dot{width:18px;height:3px;border-radius:2px;background:var(--volt);margin-top:1px}
+
+  /* ========== 屏4 · 路线详情（白昼） ========== */
+  .detail{background:var(--paper)}
+  .detail-hero{position:relative;height:240px}
+  .detail-hero img{width:100%;height:100%;object-fit:cover;display:block}
+  .detail-hero .veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,17,22,.25) 0%,rgba(15,17,22,0) 40%,rgba(246,246,244,1) 99%)}
+  .back{position:absolute;top:52px;left:16px;width:32px;height:32px;border-radius:50%;background:rgba(15,17,22,.45);display:flex;align-items:center;justify-content:center}
+  .back svg{width:16px;height:16px}
+  .detail-body{padding:0 24px 30px;margin-top:-26px;position:relative}
+  .detail-name{font-size:26px;font-weight:800}
+  .detail-tagline{margin-top:10px;font-size:15px;line-height:1.65;color:var(--carbon)}
+  .mark{background:linear-gradient(transparent 58%,rgba(214,255,66,.65) 58%);font-weight:700;padding:0 1px}
+  .stat-row{display:grid;grid-template-columns:1fr 1fr 1fr;margin-top:22px;background:var(--surface);border-radius:12px;padding:18px 0;box-shadow:0 2px 12px rgba(20,21,25,.06)}
+  .stat{text-align:center}
+  .stat+.stat{border-left:1px solid var(--hairline)}
+  .stat .v{font-size:23px;font-weight:700}
+  .stat .v small{font-size:12px;color:var(--slate);font-weight:500;margin-left:2px}
+  .stat .k{font-size:11px;color:var(--slate);margin-top:5px;letter-spacing:.08em}
+  .cta{margin-top:18px;display:block;width:100%;border:none;background:var(--volt);color:var(--volt-ink);
+    font-size:16.5px;font-weight:800;letter-spacing:.05em;padding:16px 0;border-radius:12px;font-family:var(--sans);cursor:pointer}
+  .cta:active{background:var(--volt-press)}
+  .fold-list{margin-top:22px;background:var(--surface);border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(20,21,25,.06)}
+  .fold{display:flex;justify-content:space-between;align-items:center;padding:17px 18px;font-size:15.5px;font-weight:700}
+  .fold+.fold{border-top:1px solid var(--hairline)}
+  .fold svg{width:15px;height:15px;color:var(--slate)}
+  .fold .pre{font-size:12px;color:var(--slate);font-weight:500;margin-right:auto;margin-left:10px}
+
+  /* ========== 屏5 · 设计语言总览 ========== */
+  .lang{background:var(--surface);padding:36px 26px 34px}
+  .lang h2{font-size:19px;font-weight:800;margin-bottom:4px}
+  .lang .sub{font-size:13px;color:var(--slate);line-height:1.7;margin-bottom:22px}
+  .sw-row{display:flex;gap:8px;margin-bottom:6px}
+  .sw{flex:1;height:54px;border-radius:8px;position:relative;border:1px solid var(--hairline)}
+  .sw span{position:absolute;left:8px;bottom:6px;font-size:9.5px;font-weight:700}
+  .sw-cap{font-size:11px;color:var(--slate);margin-bottom:18px;margin-top:6px}
+  .demo-block{border:1px solid var(--hairline);border-radius:12px;padding:18px;margin-bottom:14px}
+  .demo-block .t{font-size:11px;letter-spacing:.14em;color:var(--slate);margin-bottom:12px}
+  .numdemo{display:flex;align-items:baseline;gap:18px}
+  .numdemo .a{font-size:34px;font-weight:700}
+  .numdemo .note{font-size:12px;color:var(--slate)}
+  .btnrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .b1{background:var(--volt);color:var(--volt-ink);font-weight:800;font-size:14px;padding:11px 20px;border-radius:10px;border:none;font-family:var(--sans)}
+  .b2{background:var(--carbon);color:var(--volt);font-weight:800;font-size:14px;padding:11px 20px;border-radius:10px;border:none;font-family:var(--sans)}
+  .b3{background:transparent;color:var(--carbon);font-weight:700;font-size:14px;padding:10px 18px;border-radius:10px;border:1.5px solid var(--carbon);font-family:var(--sans)}
+  .why{background:var(--paper);border-radius:12px;padding:18px;font-size:13.5px;line-height:1.85;color:var(--carbon)}
+
+  /* ========== 屏6 · 备选对照 ========== */
+  .alt-wrap{background:var(--paper);padding:40px 30px}
+  .alt-note{font-size:13px;color:var(--slate);line-height:1.7;margin-top:16px}
+  .sharecard.alt{background:#FFFFFF;color:var(--carbon);box-shadow:0 14px 40px rgba(20,21,25,.14)}
+  .sharecard.alt::before{background:#FF5A1F}
+  .sharecard.alt::after{background:radial-gradient(ellipse 80% 50% at 85% 0%,rgba(255,90,31,.07),transparent 60%)}
+  .sharecard.alt .sc-date{color:var(--slate)}
+  .sharecard.alt .sc-main .v{color:#FF5A1F;text-shadow:none}
+  .sharecard.alt .sc-main .k{color:var(--slate)}
+  .sharecard.alt .sc-grid{border-top:1px solid var(--hairline)}
+  .sharecard.alt .sc-cell:nth-child(2n){border-left:1px solid var(--hairline)}
+  .sharecard.alt .sc-cell .v{color:var(--carbon)}
+  .sharecard.alt .sc-cell .v small,.sharecard.alt .sc-cell .k{color:var(--slate)}
+  .sharecard.alt .sc-rider{color:var(--slate)}
+  .sharecard.alt .sc-logo{color:#FF5A1F}
+
+  .gallery-head{width:393px;margin:0 auto 6px;color:#fff}
+  .gallery-head h1{font-size:21px;font-weight:800;letter-spacing:.02em}
+  .gallery-head p{font-size:13px;color:#9aa0ab;margin-top:8px;line-height:1.7}
+</style>
+</head>
+<body>
+
+<div class="gallery-head">
+  <h1>VELO 设计语言提案 v1</h1>
+  <p>「高可见度荧光 × 颁奖时刻」——白昼是利落的工具，开奖/晒卡时刻切成夜场颁奖台。荧光车衣是骑行世界自己的多巴胺；"高可见度"="被看见"，和 velo 的产品主轴是同一句话。</p>
+</div>
+
+<!-- ════════ 屏1 · 开奖时刻 ════════ -->
+<div class="stage-label">SCREEN 01<b>开奖时刻 · 夜场（动效自动播放）</b></div>
+<div class="stage"><div class="screen">
+  <div class="award">
+    <div class="statusbar"><span class="num">21:47</span><span class="num">●●●●  ☼</span></div>
+    <div class="award-eyebrow reveal" style="animation-delay:.1s">RESULT</div>
+    <div class="award-title reveal" style="animation-delay:.22s">成绩已开奖</div>
+    <div class="award-route reveal" style="animation-delay:.34s">6月12日 晚骑 · 天龙山方向</div>
+    <div class="award-grid">
+      <div class="award-main reveal" style="animation-delay:.5s">
+        <div class="v num">42.6<small>km</small></div>
+        <div class="k">总距离</div>
+      </div>
+      <div class="award-row">
+        <div class="award-cell reveal" style="animation-delay:.66s"><div class="v num">1:47:32</div><div class="k">总时长</div></div>
+        <div class="award-cell reveal" style="animation-delay:.78s"><div class="v num">187<small>W</small></div><div class="k">NP 功率</div></div>
+        <div class="award-cell reveal" style="animation-delay:.9s"><div class="v num">561<small>m</small></div><div class="k">总爬升</div></div>
+      </div>
+    </div>
+    <div class="pr-strip">
+      <div class="pr-badge reveal" style="animation-delay:1.12s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        20分钟功率 新纪录
+      </div>
+      <div class="pr-badge reveal" style="animation-delay:1.26s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        单次爬升 新纪录
+      </div>
+    </div>
+    <button class="award-cta reveal" style="animation-delay:1.5s">生成成绩卡</button>
+    <div class="award-sub reveal" style="animation-delay:1.62s">骑了就有 · 晒给队友看</div>
+  </div>
+</div></div>
+
+<!-- ════════ 屏2 · 成绩卡 ════════ -->
+<div class="stage-label">SCREEN 02<b>成绩卡 · 晒到群里的那张脸面（签名元素）</b></div>
+<div class="stage"><div class="screen">
+  <div class="sharecard-wrap">
+    <div class="sharecard">
+      <div class="sc-date num">2026.06.12 · THU</div>
+      <div class="sc-route">天龙山盘山公路</div>
+      <div class="sc-main">
+        <div class="v num">28:41</div>
+        <div class="k">爬坡用时 · 全程 PR</div>
+      </div>
+      <div class="sc-grid">
+        <div class="sc-cell"><div class="v num">10.0<small>km</small></div><div class="k">距离</div></div>
+        <div class="sc-cell"><div class="v num">561<small>m</small></div><div class="k">爬升</div></div>
+        <div class="sc-cell"><div class="v num">203<small>W</small></div><div class="k">平均功率</div></div>
+        <div class="sc-cell"><div class="v num">162<small>bpm</small></div><div class="k">平均心率</div></div>
+      </div>
+      <div class="sc-foot">
+        <span class="sc-rider">Starsky · FTP 200W</span>
+        <span class="sc-logo">VELO</span>
+      </div>
+    </div>
+    <div class="sc-hint">左侧荧光条 = 车队色带 · 长按保存 / 分享给队友</div>
+  </div>
+</div></div>
+
+<!-- ════════ 屏3 · 探索页 ════════ -->
+<div class="stage-label">SCREEN 03<b>探索页 · 白昼模式（路线百科门面）</b></div>
+<div class="stage"><div class="screen">
+  <div class="explore">
+    <div class="explore-head">
+      <div class="explore-title">探索</div>
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        搜路线 · 天龙山 / 横岭 / 汾河…
+      </div>
+    </div>
+    <div class="seg-tabs">
+      <div class="seg-tab on">官方路线</div>
+      <div class="seg-tab">附近约骑</div>
+      <div class="seg-tab">排行</div>
+    </div>
+    <div class="route-list">
+      <div class="route-card">
+        <img src="http://114.132.190.245/uploads/route_covers/tianlongshan.jpg" onerror="this.style.display='none'">
+        <div class="veil"></div>
+        <div class="official">官方</div>
+        <div class="name">天龙山盘山公路</div>
+        <div class="chips num"><span><b>10.0</b> km</span><span>爬升 <b>561</b> m</span><span>均坡 <b>5.6</b>%</span></div>
+      </div>
+      <div class="route-card">
+        <img src="http://114.132.190.245/uploads/route_covers/hengling.jpg" onerror="this.style.display='none'">
+        <div class="veil"></div>
+        <div class="official">官方</div>
+        <div class="name">横岭</div>
+        <div class="chips num"><span><b>11.0</b> km</span><span>爬升 <b>633</b> m</span><span>西山主干道</span></div>
+      </div>
+      <div class="route-card nopic">
+        <div class="initial">QX</div>
+        <div class="veil"></div>
+        <div class="official">官方</div>
+        <div class="name">清徐夜骑</div>
+        <div class="chips num"><span><b>11.0</b> km</span><span>爬升 <b>12</b> m</span><span>平路冲刺</span></div>
+      </div>
+    </div>
+    <div class="tabbar">
+      <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-8 9 8v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>首页</div>
+      <div class="tab on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 5-4 1 2-5z"/></svg>探索<div class="dot"></div></div>
+      <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/><circle cx="10" cy="7" r="4"/></svg>约骑</div>
+      <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>我的</div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ════════ 屏4 · 路线详情 ════════ -->
+<div class="stage-label">SCREEN 04<b>路线详情 · 白昼模式（荧光笔高亮 + 折叠模块）</b></div>
+<div class="stage"><div class="screen">
+  <div class="detail">
+    <div class="detail-hero">
+      <img src="http://114.132.190.245/uploads/route_covers/tianlongshan.jpg" onerror="this.style.display='none'">
+      <div class="veil"></div>
+      <div class="back"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg></div>
+    </div>
+    <div class="detail-body">
+      <div class="detail-name">天龙山盘山公路</div>
+      <div class="detail-tagline">太原公路车圈<span class="mark">最经典的爬坡试金石</span>，10 公里连续盘升，弯弯都是风景。</div>
+      <div class="stat-row">
+        <div class="stat"><div class="v num">10.0<small>km</small></div><div class="k">距离</div></div>
+        <div class="stat"><div class="v num">561<small>m</small></div><div class="k">爬升</div></div>
+        <div class="stat"><div class="v num">5.6<small>%</small></div><div class="k">平均坡度</div></div>
+      </div>
+      <button class="cta">约骑这条路线</button>
+      <div class="fold-list">
+        <div class="fold">这是一条什么路<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+        <div class="fold">给真要去的骑友<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+        <div class="fold">核心数据<span class="pre">海拔曲线</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+        <div class="fold">怎么骑<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+        <div class="fold">骑友怎么说<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+        <div class="fold">安全<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ════════ 屏5 · 设计语言总览 ════════ -->
+<div class="stage-label">SCREEN 05<b>设计语言 · 一页看懂</b></div>
+<div class="stage"><div class="screen">
+  <div class="lang">
+    <h2>色板</h2>
+    <div class="sub">一页一主色：Volt 电光黄绿是全 App 唯一强调色。白底上永远以"贴纸块/荧光笔"出现（直接放白底会看不清），深底上才放开发光。</div>
+    <div class="sw-row">
+      <div class="sw" style="background:#D6FF42"><span style="color:#15170D">Volt</span></div>
+      <div class="sw" style="background:#0F1116"><span style="color:#fff">Night</span></div>
+      <div class="sw" style="background:#1B1C20"><span style="color:#fff">Carbon</span></div>
+      <div class="sw" style="background:#66676F"><span style="color:#fff">Slate</span></div>
+      <div class="sw" style="background:#F6F6F4"><span style="color:#66676F">Paper</span></div>
+      <div class="sw" style="background:#E08A00"><span style="color:#fff">Amber</span></div>
+    </div>
+    <div class="sw-cap num">#D6FF42 · #0F1116 · #1B1C20 · #66676F · #F6F6F4 · #E08A00（Amber 只做疲劳/风险提示）</div>
+
+    <div class="demo-block">
+      <div class="t">数据数字 = VELO 的字体签名（等宽，列表对齐不跳动）</div>
+      <div class="numdemo"><span class="a num">287<small style="font-size:14px;color:#66676F">W</small></span><span class="a num">1:47:32</span><span class="note">等宽数字<br>码表感来源</span></div>
+    </div>
+
+    <div class="demo-block">
+      <div class="t">按钮三形态（全部从 Volt + Carbon 派生）</div>
+      <div class="btnrow">
+        <button class="b1">主操作 · 贴纸</button>
+        <button class="b2">夜场反转</button>
+        <button class="b3">次级描边</button>
+      </div>
+    </div>
+
+    <div class="demo-block">
+      <div class="t">荧光笔高亮（白昼界面的强调语言）</div>
+      <div style="font-size:15px;line-height:1.8">本周你爬升了 <span class="mark num">1,847 m</span>，超过了车队 <span class="mark num">87%</span> 的人。</div>
+    </div>
+
+    <div class="why">
+      <b>为什么是荧光黄绿？</b><br>
+      ① 它是骑行世界自己的颜色——荧光车衣、头盔、反光条，每个骑手都熟；② "高可见度"就是"被看见"，和 velo 的核心环（被看见所以继续骑）是同一个意思；③ 深底+荧光的对比度是所有配色里冲击力最大的一档，多巴胺全靠它，且白昼界面保持克制不会腻。
+    </div>
+  </div>
+</div></div>
+
+<!-- ════════ 屏6 · 备选方向对照 ════════ -->
+<div class="stage-label">SCREEN 06<b>备选方向对照 · 电光橙白卡（同一张成绩卡）</b></div>
+<div class="stage"><div class="screen">
+  <div class="alt-wrap">
+    <div class="sharecard alt">
+      <div class="sc-date num">2026.06.12 · THU</div>
+      <div class="sc-route">天龙山盘山公路</div>
+      <div class="sc-main">
+        <div class="v num">28:41</div>
+        <div class="k">爬坡用时 · 全程 PR</div>
+      </div>
+      <div class="sc-grid">
+        <div class="sc-cell"><div class="v num">10.0<small>km</small></div><div class="k">距离</div></div>
+        <div class="sc-cell"><div class="v num">561<small>m</small></div><div class="k">爬升</div></div>
+        <div class="sc-cell"><div class="v num">203<small>W</small></div><div class="k">平均功率</div></div>
+        <div class="sc-cell"><div class="v num">162<small>bpm</small></div><div class="k">平均心率</div></div>
+      </div>
+      <div class="sc-foot">
+        <span class="sc-rider">Starsky · FTP 200W</span>
+        <span class="sc-logo">VELO</span>
+      </div>
+    </div>
+    <div class="alt-note"><b>电光橙 + 白卡方向</b>：日间感、阳光感更强，但夜场颁奖台的戏剧性和发光感做不出来（白底无法 glow），开奖时刻的多巴胺上限低一档。放在这里供对比——主推仍是荧光夜场方向。</div>
+  </div>
+</div></div>
+
+</body>
+</html>

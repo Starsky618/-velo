@@ -117,12 +117,23 @@ function buildRoutePreview(points) {
   }
 }
 
-// pace_level → 推荐功率 / 预计均速 展示对照表（纯前端，不入库 / 占位区间 Tim 可调）
+// 推荐功率 / 预计均速的可选区间（Tim 2026-06-13 拍：仪表盘式挑区间，不让骑友手打）。
+// ⚠ PACE_DISPLAY 的默认值必须是下面两个数组里的成员，否则 picker 定位不到当前档
+const POWER_OPTIONS = ['不限功率', '120-140W', '140-160W', '160-180W', '180-200W', '200-220W', '220-250W', '250W+']
+const SPEED_OPTIONS = ['15-18 km/h', '18-21 km/h', '21-24 km/h', '24-27 km/h', '27-30 km/h', '30+ km/h']
+
+// pace_level → 推荐功率 / 预计均速 默认档对照表（纯前端，不入库 / 区间值 Tim 可调）
 const PACE_DISPLAY = {
   relaxed: { pace_label: '轻松慢骑', recommended_power_label: '不限功率', average_speed_range: '15-18 km/h' },
-  cruise: { pace_label: '稳爬不竞速', recommended_power_label: 'FTP 160W+ 更舒服', average_speed_range: '17-22 km/h' },
-  training: { pace_label: '高强度拉练', recommended_power_label: 'FTP 220W+', average_speed_range: '25-30 km/h' },
-  race: { pace_label: '竞速冲刺', recommended_power_label: 'FTP 280W+', average_speed_range: '30+ km/h' },
+  cruise: { pace_label: '稳爬不竞速', recommended_power_label: '160-180W', average_speed_range: '21-24 km/h' },
+  training: { pace_label: '高强度拉练', recommended_power_label: '200-220W', average_speed_range: '24-27 km/h' },
+  race: { pace_label: '竞速冲刺', recommended_power_label: '250W+', average_speed_range: '30+ km/h' },
+}
+
+// 给 picker 定位当前档：找不到（老草稿存过自由文本）就退到 0，不炸
+function findOptionIndex(options, value) {
+  var index = options.indexOf(value)
+  return index >= 0 ? index : 0
 }
 
 function findPaceIndex(options, value) {
@@ -217,6 +228,11 @@ Page({
     ],
     paceIndex: 1,
     paceLabel: '巡航',
+    // 功率/均速区间选择器（不手打）：选项固定、索引由 updatePreviewDerived 对齐当前值
+    powerOptions: POWER_OPTIONS,
+    speedOptions: SPEED_OPTIONS,
+    powerIndex: findOptionIndex(POWER_OPTIONS, PACE_DISPLAY.cruise.recommended_power_label),
+    speedIndex: findOptionIndex(SPEED_OPTIONS, PACE_DISPLAY.cruise.average_speed_range),
     // —— 发布前总览（图二）用 ——
     // audienceOptions 带 selected 标志：WXML 不支持 .indexOf()，选中态必须在 JS 侧算
     audienceOptions: AUDIENCE_OPTIONS.map(function (o) { return { value: o.value, label: o.label, icon: o.icon, selected: false } }),
@@ -872,12 +888,29 @@ Page({
       var week = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dl.getDay()]
       deadlineText = week + ' ' + String(dl.getHours()).padStart(2, '0') + ':' + String(dl.getMinutes()).padStart(2, '0') + ' 截止'
     }
+    var powerLabel = this.data.form.recommended_power_label || pace.recommended_power_label
+    var speedLabel = this.data.form.average_speed_range || pace.average_speed_range
     this.setData({
-      recommendedPowerLabel: this.data.form.recommended_power_label || pace.recommended_power_label,
-      averageSpeedRange: this.data.form.average_speed_range || pace.average_speed_range,
+      recommendedPowerLabel: powerLabel,
+      averageSpeedRange: speedLabel,
+      // picker 的当前档跟着展示值走；老草稿存过自由文本时退到 0 档（展示不受影响）
+      powerIndex: findOptionIndex(POWER_OPTIONS, powerLabel),
+      speedIndex: findOptionIndex(SPEED_OPTIONS, speedLabel),
       estimatedDurationText: duration,
       registrationDeadlineLabel: deadlineText,
     })
+  },
+
+  // 功率/均速区间选择：从固定档位里挑一档写进 form（绝不出现自由文本）
+  onPaceHintChange: function (event) {
+    var kind = event.currentTarget.dataset.kind
+    var index = Number(event.detail.value)
+    if (kind === 'power') {
+      this.setData({ 'form.recommended_power_label': POWER_OPTIONS[index] || POWER_OPTIONS[0] })
+    } else {
+      this.setData({ 'form.average_speed_range': SPEED_OPTIONS[index] || SPEED_OPTIONS[0] })
+    }
+    this.updatePreviewDerived()
   },
 
   // 编辑页"下一步" → 懒建/更新草稿拿到 share_token，再进图一总览确认
