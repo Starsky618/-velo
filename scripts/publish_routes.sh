@@ -26,6 +26,9 @@ cd "$(dirname "$0")/.."
 
 SERVER="ubuntu@114.132.190.245"
 ROUTES_DIR="content/routes"
+# ssh/scp 保活参数：60 秒无响应自动断开退出，防 NAT 静默断链让窗口永久挂死
+# （2026-06-12 首次大批量传图实证：远端工作全部完成后本地 ssh 僵挂 13 分钟）
+SSH_OPTS=(-o ServerAliveInterval=15 -o ServerAliveCountMax=4)
 
 echo "════════ velo 路线发布 ════════"
 
@@ -51,8 +54,8 @@ fi
 #     打包间在 1/5 已由 sync_route_images.py 备好：封面平铺 + 实景图按路线子目录
 echo "── 3/5 上传图片..."
 if [ -n "$(ls -A "$staging" 2>/dev/null)" ]; then
-  ssh "$SERVER" 'rm -rf /tmp/velo_covers_in'
-  scp -q -r "$staging" "$SERVER:/tmp/velo_covers_in"
+  ssh "${SSH_OPTS[@]}" "$SERVER" 'rm -rf /tmp/velo_covers_in'
+  scp "${SSH_OPTS[@]}" -q -r "$staging" "$SERVER:/tmp/velo_covers_in"
   echo "       图片已上传 ✓"
 else
   echo "       无图片文件，跳过"
@@ -60,7 +63,7 @@ fi
 rm -rf "$staging"
 
 # ── 4-5/5 服务器侧一口气完成：拉内容 → 图进容器 → 灌库（单次 SSH 连接）
-ssh "$SERVER" '
+ssh "${SSH_OPTS[@]}" "$SERVER" '
   set -e
   cd ~/velo
   git pull --no-rebase --no-edit 2>&1 | tail -1
