@@ -73,7 +73,7 @@
 .avatar-text {
   color: #ffffff;
   font-size: 40rpx;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .user-info {
@@ -84,7 +84,7 @@
 
 .user-name {
   font-size: 36rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-1);
 }
 
@@ -110,7 +110,7 @@
 
 .param-value {
   font-size: 36rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-primary);
   line-height: 1;
 }
@@ -147,7 +147,7 @@
 
 .stat-value {
   font-size: 48rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-1);
   line-height: 1;
 }
@@ -408,7 +408,7 @@
 /* 数字 hero 化关键：大字号 + 加粗 */
 .stats-value {
   font-size: 56rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-1);
   line-height: 1.1;
 }

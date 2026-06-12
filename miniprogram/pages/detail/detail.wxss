@@ -32,7 +32,7 @@
   margin: 24rpx;
   padding: 32rpx;
   border-radius: var(--radius-lg);
-  background: linear-gradient(145deg, #1D1D1F, #2C2C2E);
+  background: linear-gradient(145deg, #1c1c1e, #2C2C2E);
   box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.15);
   overflow: hidden;
   position: relative;
@@ -64,7 +64,7 @@
 
 .hero-title {
   font-size: 36rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: #ffffff;
   display: block;
   letter-spacing: -0.5rpx;
@@ -131,12 +131,12 @@
 .privacy-drawer-title {
   font-size: 32rpx;
   font-weight: 600;
-  color: #1D1D1F;
+  color: #1c1c1e;
 }
 
 .privacy-drawer-close {
   font-size: 28rpx;
-  color: #FF6B00;
+  color: #FF9500;
 }
 
 .privacy-row {
@@ -160,13 +160,13 @@
 
 .privacy-row-label {
   font-size: 30rpx;
-  color: #1D1D1F;
+  color: #1c1c1e;
   font-weight: 500;
 }
 
 .privacy-row-desc {
   font-size: 24rpx;
-  color: #86868B;
+  color: #8a8a8e;
   margin-top: 6rpx;
 }
 
@@ -184,7 +184,7 @@
 
 .hero-value {
   font-size: 52rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: #ffffff;
   line-height: 1;
   letter-spacing: -1rpx;
@@ -224,7 +224,7 @@
 
 .segment-title {
   font-size: 34rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-1);
   letter-spacing: -0.5rpx;
 }
@@ -322,14 +322,14 @@
 
 .segment-rank-num {
   font-size: 24rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-2);
 }
 
 /* PR 金色标签 */
 .segment-pr-tag {
   font-size: 20rpx;
-  font-weight: 800;
+  font-weight: 600;
   color: #FFD700;
   background: rgba(255, 215, 0, 0.12);
   padding: 2rpx 10rpx;
@@ -350,7 +350,7 @@
 
 .elevation-title {
   font-size: 34rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-1);
   letter-spacing: -0.5rpx;
 }
@@ -388,7 +388,7 @@
 
 .elevation-stat-value {
   font-size: 28rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-1);
 }
 
@@ -428,11 +428,11 @@
   border-radius: 8rpx;
 }
 
-.section-dot.speed { background: #487CD0; }
-.section-dot.power { background: #B268E6; }
-.section-dot.hr { background: #D9504F; }
-.section-dot.cadence { background: #D14FBA; }
-.section-dot.split { background: #AF52DE; }
+.section-dot.speed { background: #007AFF; }
+.section-dot.power { background: #AF52DE; }
+.section-dot.hr { background: #FF3B30; }
+.section-dot.cadence { background: #30B0C7; }
+.section-dot.split { background: #5856D6; }
 
 .section-title {
   font-size: 28rpx;
@@ -468,7 +468,7 @@
 
 .metric-value {
   font-size: 36rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-1);
   letter-spacing: -0.5rpx;
   line-height: 1.1;
@@ -495,7 +495,7 @@
 
 .zones-meta {
   font-size: 22rpx;
-  color: #999;
+  color: #8a8a8e;
   margin-bottom: 8rpx;
 }
 
@@ -514,7 +514,7 @@
 
 .zone-tag {
   font-size: 20rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: #ffffff;
   width: 48rpx;
   height: 32rpx;
