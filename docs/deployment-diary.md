@@ -501,3 +501,10 @@ Ubuntu 22.04 默认 sshd jail 已 enabled / maxretry=5 / bantime=10min。Tim 用
 - **真用回归抓到喇叭没插电第 4 例**：api 容器（uvicorn）从未配应用层日志 handler，业务 logger.info 全被吞——五环节 SENSOR 埋点请求 200 但日志零输出；caplog 测试测不出。修法 = main.py 一行 basicConfig（`a813956`），复测 SENSOR view 行真实出现
 - **TENCENT_MAP_KEY**：生产 .env 存在（spec §0.1 ⚠️ 销账）；同 key 已填前端 map-theme subkey 启用个性化底图
 - **待 Tim 真机**：小程序上传 / FIT 真传一次（喇叭位 2）/ 5 文件计时 p90 落 PRD / share_token 半生人剧本（喇叭位 3）/ 折叠页观感 + 底图浅色样式确认（layerStyle 编号不对就改 map-theme 一个数字）
+
+## 2026-06-12：weiluai.top HTTPS 全链路打通（防火墙 443 + 前端切域名 + Strava 回调切换）
+
+- **昨天卡点的真相分层**（诊断教训）：昨天判"备案白名单未同步"临时回退 IP；今天复查发现备案其实已同步（80 端口 308 跳转实证），真正卡点是**轻量服务器防火墙没放行 443**。两个症状的判别指纹：备案 SNI 阻断 = TCP 握手后 reset；安全组/防火墙拦 = SYN 直接丢（连接超时）。本次服务器自访 443 超时 → 防火墙实锤。
+- **关键认知：证书签发成功 ≠ HTTPS 可用**——Let's Encrypt ACME HTTP-01 challenge 走 80 端口，80 通就能签证书；443 被防火墙挡着证书照样续期、HTTPS 照样全不通。看到"证书在管"别推断"https 没问题"。
+- **操作记录**：① CDP 浏览器复用 Tim 登录态进腾讯云轻量控制台（实例 lhins-66ggox65 / 广州），防火墙规则表实证只有 9000/22/80/ICMP，添加 TCP 443 允许 ✅ ② 服务器自测 https://api.weiluai.top 从超时变 401（业务正常）✅ ③ 微信小程序服务器域名昨天已配好（request/uploadFile/downloadFile 三栏 = api.weiluai.top，无需动）④ 前端 baseUrl 两处切 https 域名（`80cceab9`）⑤ Strava 后台 Authorization Callback Domain：114.132.190.245 → api.weiluai.top（先改后台再改 .env，顺序反了授权流程会断）⑥ 服务器 .env STRAVA_REDIRECT_URI 切 https 域名 + `up -d --force-recreate api`（**restart 不重读 env_file，必须 recreate**）。
+- **⚠ 待真用激活回归**：① Tim 真机重新编译走 https 域名跑全功能 ② Strava 解绑重绑一次验证新回调（回调域改了，老 authorize 链接缓存可能失效）③ **业务域名缺口挂账**：web-view 打开 Strava 授权页需要"业务域名"配置（与"服务器域名"是两个配置项），IP 时代本来就没配过（IP 配不进业务域名），正式版 Strava 绑定流程依赖它——需在 mp 后台业务域名加 strava.com + api.weiluai.top（要下载校验文件放服务器，下轮做）。
