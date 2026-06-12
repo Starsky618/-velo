@@ -11,7 +11,8 @@ function formatClimb(value) {
   if (value === undefined || value === null) return ''
   var n = Number(value)
   if (!Number.isFinite(n)) return ''
-  return '爬升 ' + Math.round(n) + ' m'
+  // 数据行走等宽数字节奏（"10.0 km · 561 m"），中文前缀会破坏 mono 对齐
+  return Math.round(n) + ' m'
 }
 
 function decorateGuide(item) {

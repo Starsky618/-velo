@@ -9,15 +9,16 @@
 
   <view wx:else class="guide-list">
     <view class="guide-card" wx:for="{{guides}}" wx:key="id" data-id="{{item.id}}" bindtap="openGuide">
-      <image wx:if="{{item.cover_url}}" class="cover" src="{{item.cover_url}}" mode="aspectFill" />
-      <image wx:else class="cover" src="{{item.coverSrc}}" mode="aspectFill" />
-      <view class="card-main">
-        <view class="name-row">
-          <view class="guide-name">{{item.name}}</view>
-          <view class="status {{item.ready ? 'ready' : 'pending'}}">{{item.ready ? '有轨迹' : '文字版'}}</view>
-        </view>
-        <view wx:if="{{item.firstHighlight}}" class="highlight">{{item.firstHighlight}}</view>
+      <view class="cover-wrap">
+        <!-- 统一用 coverSrc：js 里已拼好 baseUrl 或回落占位图；
+             直接用 cover_url（相对路径）在小程序里会指向本地包内必然加载失败 -->
+        <image class="cover" src="{{item.coverSrc}}" mode="aspectFill" lazy-load />
+        <view wx:if="{{item.ready}}" class="chip">有轨迹</view>
+      </view>
+      <view class="card-body">
+        <view class="guide-name">{{item.name}}</view>
         <view wx:if="{{item.metaText}}" class="meta">{{item.metaText}}</view>
+        <view wx:if="{{item.firstHighlight}}" class="highlight">{{item.firstHighlight}}</view>
       </view>
     </view>
   </view>
