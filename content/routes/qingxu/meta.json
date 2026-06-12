@@ -4,5 +4,8 @@
   "highlights": "[\"全太原最火、竞争最激烈的平路夜骑赛段——沿汾河往清徐,30-50 迈拉爆\"]",
   "source_ref": "route-workspace/qingxu/route.json @ 2026-06-11",
   "distance_km": 11,
-  "climb_m": 12
+  "climb_m": 12,
+  "gallery_urls": [
+    "/uploads/route_covers/qingxu/g01_df40cd6e.webp"
+  ]
 }

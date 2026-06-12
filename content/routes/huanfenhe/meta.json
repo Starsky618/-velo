@@ -4,5 +4,14 @@
   "highlights": "[\"贯穿全城 5 个区,太原人气最高的骑行绿道\"]",
   "source_ref": "route-workspace/huanfenhe/route.json @ 2026-06-11",
   "cover_url": "/uploads/route_covers/huanfenhe.webp",
-  "distance_km": 75
+  "distance_km": 75,
+  "gallery_urls": [
+    "/uploads/route_covers/huanfenhe/g01_1a395d43.jpg",
+    "/uploads/route_covers/huanfenhe/g02_77fd56ff.jpg",
+    "/uploads/route_covers/huanfenhe/g03_66b49407.webp",
+    "/uploads/route_covers/huanfenhe/g04_8aa0c675.webp",
+    "/uploads/route_covers/huanfenhe/g05_a0974df7.webp",
+    "/uploads/route_covers/huanfenhe/g06_8144618f.webp",
+    "/uploads/route_covers/huanfenhe/g07_a79aea66.jpeg"
+  ]
 }

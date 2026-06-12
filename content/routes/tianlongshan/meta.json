@@ -5,5 +5,10 @@
   "source_ref": "Desktop/天龙山-velo路线百科MVP-v11.html（Tim 拍定本）手工转写 @ 2026-06-11",
   "cover_url": "/uploads/route_covers/tianlongshan.jpg",
   "distance_km": 10.05,
-  "climb_m": 561
+  "climb_m": 561,
+  "gallery_urls": [
+    "/uploads/route_covers/tianlongshan/g01_1e8ce92e.webp",
+    "/uploads/route_covers/tianlongshan/g02_088dc563.jpg",
+    "/uploads/route_covers/tianlongshan/g03_9661cf8f.jpg"
+  ]
 }

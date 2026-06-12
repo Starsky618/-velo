@@ -5,5 +5,11 @@
   "source_ref": "route-workspace/wanmu/route.json @ 2026-06-11",
   "cover_url": "/uploads/route_covers/wanmu.webp",
   "distance_km": 4.17,
-  "climb_m": 263
+  "climb_m": 263,
+  "gallery_urls": [
+    "/uploads/route_covers/wanmu/g01_067d2ea4.webp",
+    "/uploads/route_covers/wanmu/g02_ca7a4ac2.webp",
+    "/uploads/route_covers/wanmu/g03_a7397d90.webp",
+    "/uploads/route_covers/wanmu/g04_d264ab6a.webp"
+  ]
 }

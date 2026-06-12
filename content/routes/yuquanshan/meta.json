@@ -3,5 +3,15 @@
   "city": "太原",
   "highlights": "[\"看着亲民、进去全是墙——环太原赛西山赛段的终点,彩虹路上的一站\"]",
   "source_ref": "route-workspace/yuquanshan/route.json @ 2026-06-11",
-  "cover_url": "/uploads/route_covers/yuquanshan.jpg"
+  "cover_url": "/uploads/route_covers/yuquanshan.jpg",
+  "gallery_urls": [
+    "/uploads/route_covers/yuquanshan/g01_ed521feb.webp",
+    "/uploads/route_covers/yuquanshan/g02_d7612d38.webp",
+    "/uploads/route_covers/yuquanshan/g03_8cadb119.jpg",
+    "/uploads/route_covers/yuquanshan/g04_a5e2b4b0.jpg",
+    "/uploads/route_covers/yuquanshan/g05_6c1f636a.webp",
+    "/uploads/route_covers/yuquanshan/g06_8dc2b2f9.jpg",
+    "/uploads/route_covers/yuquanshan/g07_349654c1.jpg",
+    "/uploads/route_covers/yuquanshan/g08_389a1c73.webp"
+  ]
 }

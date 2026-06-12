@@ -5,5 +5,9 @@
   "source_ref": "route-workspace/hengling/route.json @ 2026-06-11",
   "cover_url": "/uploads/route_covers/hengling.jpg",
   "distance_km": 11.0,
-  "climb_m": 633
+  "climb_m": 633,
+  "gallery_urls": [
+    "/uploads/route_covers/hengling/g01_8a2680ff.jpeg",
+    "/uploads/route_covers/hengling/g02_8a22a03b.jpeg"
+  ]
 }

@@ -5,5 +5,12 @@
   "source_ref": "route-workspace/jueweishan/route.json @ 2026-06-11",
   "cover_url": "/uploads/route_covers/jueweishan.jpg",
   "distance_km": 3.23,
-  "climb_m": 314
+  "climb_m": 314,
+  "gallery_urls": [
+    "/uploads/route_covers/jueweishan/g01_4053c5d0.jpg",
+    "/uploads/route_covers/jueweishan/g02_0fe34ac1.jpg",
+    "/uploads/route_covers/jueweishan/g03_e47ad26d.jpg",
+    "/uploads/route_covers/jueweishan/g04_05628c84.jpg",
+    "/uploads/route_covers/jueweishan/g05_f935d7d1.jpg"
+  ]
 }
