@@ -409,6 +409,25 @@ module.exports = {
     return request('/api/meetups/' + meetupId, 'DELETE')
   },
 
+  getMeetupFavoritePlaces: function () {
+    return request('/api/meetups/favorite-places', 'GET')
+  },
+
+  saveMeetupFavoritePlace: function (data) {
+    return request('/api/meetups/favorite-places', 'POST', data)
+  },
+
+  deleteMeetupFavoritePlace: function (placeId) {
+    return request('/api/meetups/favorite-places/' + placeId, 'DELETE')
+  },
+
+  searchMeetupPlace: function (keyword, region) {
+    return request('/api/meetups/place-search' + buildQuery({
+      keyword: keyword,
+      region: region || '太原',
+    }), 'GET')
+  },
+
   joinMeetup: function (meetupId, token) {
     return request('/api/meetups/' + meetupId + '/join' + buildQuery(token ? { token: token } : {}), 'POST', {})
   },

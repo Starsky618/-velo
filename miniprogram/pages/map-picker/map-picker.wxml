@@ -38,6 +38,16 @@
 
   <view class="map-picker-panel">
     <view class="picker-title">{{title}}</view>
+    <view class="picker-search" wx:if="{{kind === 'meeting'}}">
+      <input class="picker-search-input" value="{{searchKeyword}}" maxlength="40" bindinput="onSearchKeywordInput" placeholder="搜索地点，例如：晋祠公园" />
+      <button class="picker-search-btn" loading="{{searchingPlace}}" bindtap="onTapSearchPlace">搜索</button>
+    </view>
+    <view class="picker-search-results" wx:if="{{placeSearchResults.length}}">
+      <view class="picker-search-result" wx:for="{{placeSearchResults}}" wx:key="title" data-index="{{index}}" bindtap="onTapSearchResult">
+        <view class="picker-result-title">{{item.title}}</view>
+        <view class="picker-result-address">{{item.address}}</view>
+      </view>
+    </view>
     <view class="picker-field">
       <text>位置名称</text>
       <input value="{{name}}" maxlength="40" bindinput="onNameInput" placeholder="例如：晋祠公园东门" />

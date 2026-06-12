@@ -188,6 +188,75 @@ def test_confirm_publish_persists_confirm_page_pace_change():
     assert "pace_level: this.data.form.pace_level" in publish_block
 
 
+def test_create_page_supports_meeting_point_map_and_favorites():
+    api = _read(MINI / "utils" / "api.js")
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
+
+    assert "getMeetupFavoritePlaces" in api
+    assert "saveMeetupFavoritePlace" in api
+    assert "deleteMeetupFavoritePlace" in api
+    assert "/api/meetups/favorite-places" in api
+    assert "favoritePlaces" in js
+    assert "loadFavoritePlaces" in js
+    assert "onTapChooseMeetingPoint" in js
+    assert "saveMeetingPointAsFavorite" in js
+    assert "applyFavoritePlace" in js
+    assert "kind=meeting" in js
+    assert "point.kind === 'meeting'" in js
+    assert "bindtap=\"onTapChooseMeetingPoint\"" in wxml
+    assert "bindtap=\"saveMeetingPointAsFavorite\"" in wxml
+    assert "bindtap=\"applyFavoritePlace\"" in wxml
+
+
+def test_create_page_persists_custom_power_speed_hints():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
+    ensure_block = js.split("ensureDraft: function ()", 1)[1].split("saveDraft: function ()", 1)[0]
+    save_block = js.split("saveDraft: function ()", 1)[1].split("updateField: function", 1)[0]
+    publish_block = js.split("onConfirmPublish: function ()", 1)[1].split("resolveRouteBookId", 1)[0]
+
+    assert "recommended_power_label" in js
+    assert "average_speed_range" in js
+    assert "recommended_power_label: draft.recommended_power_label" in js
+    assert "average_speed_range: draft.average_speed_range" in js
+    assert "Object.assign({}, that.data.form" in ensure_block
+    assert "Object.assign({}, that.data.form" in save_block
+    assert "recommended_power_label: this.data.form.recommended_power_label" in publish_block
+    assert "average_speed_range: this.data.form.average_speed_range" in publish_block
+    assert 'data-field="recommended_power_label"' in wxml
+    assert 'data-field="average_speed_range"' in wxml
+    assert 'bindinput="updateField"' in wxml
+
+
+def test_map_picker_supports_meeting_search():
+    api = _read(MINI / "utils" / "api.js")
+    js = _read(MINI / "pages" / "map-picker" / "map-picker.js")
+    wxml = _read(MINI / "pages" / "map-picker" / "map-picker.wxml")
+
+    assert "searchMeetupPlace" in api
+    assert "/api/meetups/place-search" in api
+    assert "kind === 'meeting'" in js
+    assert "选择集合点" in js
+    assert "api.searchMeetupPlace" in js
+    assert "wgs84ToGcj02" in js
+    assert "searchKeyword" in js
+    assert "placeSearchResults" in js
+    assert "selectedSearchPlace" in js
+    assert "sourceLatitude" in js
+    assert "coordinate_system: 'wgs84'" in js
+    assert "coordinate_system: 'gcj02'" in js
+    assert "address: picked.address" in js
+    assert "event.causedBy !== 'update'" in js
+    assert "selectedSearchPlace: null" in js
+    assert "onSearchKeywordInput" in js
+    assert "onTapSearchPlace" in js
+    assert 'wx:if="{{kind === \'meeting\'}}"' in wxml
+    assert 'bindinput="onSearchKeywordInput"' in wxml
+    assert 'bindtap="onTapSearchPlace"' in wxml
+    assert 'wx:for="{{placeSearchResults}}"' in wxml
+
+
 def test_confirm_publish_blocks_cutoff_window_before_backend_raw_error():
     js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
     publish_block = js.split("onConfirmPublish: function ()", 1)[1].split("resolveRouteBookId", 1)[0]

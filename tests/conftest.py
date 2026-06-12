@@ -280,6 +280,8 @@ _meetups_table = Table(
     Column("estimated_end_time", DateTime(timezone=True), nullable=False),
     Column("meeting_point", String(128), nullable=False),
     Column("pace_level", String(16), nullable=False),
+    Column("recommended_power_label", String(64)),
+    Column("average_speed_range", String(64)),
     Column("max_participants", Integer, nullable=False),
     Column("description", Text),
     Column("supply_point", String(128)),
@@ -292,6 +294,22 @@ _meetups_table = Table(
     Column("updated_at", DateTime(timezone=True)),
     Column("cancelled_at", DateTime(timezone=True)),
     Column("completed_at", DateTime(timezone=True)),
+)
+
+_meetup_favorite_places_table = Table(
+    "meetup_favorite_places",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_id", Integer, nullable=False),
+    Column("name", String(80), nullable=False),
+    Column("address", String(160)),
+    Column("latitude", Float, nullable=False),
+    Column("longitude", Float, nullable=False),
+    Column("usage_count", Integer, nullable=False, default=1),
+    Column("last_used_at", DateTime(timezone=True), nullable=False),
+    Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
+    UniqueConstraint("user_id", "name", name="uq_meetup_favorite_place_user_name"),
 )
 
 _meetup_participants_table = Table(

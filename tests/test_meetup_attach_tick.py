@@ -130,7 +130,9 @@ def test_same_user_can_attach_one_activity_to_two_overlapping_meetups(db, test_u
 def test_completed_meetup_with_late_upload_inside_seven_days_still_attaches(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime.now(timezone.utc) - timedelta(days=3)
+    # 固定到 UTC 04:00（北京时间中午）附近，避免测试在北京时间深夜运行时，
+    # “出发后 30 分钟”跨到北京次日，误把同一场约骑判断成不同日。
+    start = datetime.now(timezone.utc).replace(hour=4, minute=0, second=0, microsecond=0) - timedelta(days=3)
     meetup = _meetup(db, test_user.id, start, status="COMPLETED")
     _participant(db, meetup.id, test_user.id)
     activity = _activity(db, test_user.id, start + timedelta(minutes=30))

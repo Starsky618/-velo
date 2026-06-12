@@ -2,6 +2,8 @@
 
 from datetime import datetime, timedelta, timezone
 
+from app.config import settings
+from app.route_book.tencent_direction import TencentMapError
 from sqlalchemy import text
 
 from app.meetup.models import Meetup
@@ -64,6 +66,201 @@ def test_meetup_create_prototype_columns_are_declared_in_model_and_test_table(db
 
     assert expected <= model_columns
     assert expected <= sqlite_columns
+
+
+def test_create_patch_and_list_return_custom_power_speed_hints(client, db, auth_header):
+    segment = _segment(db)
+    payload = _payload(segment.id)
+    payload["recommended_power_label"] = "FTP 180-220W"
+    payload["average_speed_range"] = "24-27 km/h"
+
+    create_res = client.post("/api/meetups", json=payload, headers=auth_header)
+
+    assert create_res.status_code == 200
+    meetup_id = create_res.json()["id"]
+    assert create_res.json()["recommended_power_label"] == "FTP 180-220W"
+    assert create_res.json()["average_speed_range"] == "24-27 km/h"
+
+    patch_res = client.patch(
+        f"/api/meetups/{meetup_id}",
+        json={
+            "recommended_power_label": "FTP 200W 左右",
+            "average_speed_range": "26 km/h 左右",
+        },
+        headers=auth_header,
+    )
+
+    assert patch_res.status_code == 200
+    assert patch_res.json()["recommended_power_label"] == "FTP 200W 左右"
+    assert patch_res.json()["average_speed_range"] == "26 km/h 左右"
+
+    client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+    detail_res = client.get(f"/api/meetups/{meetup_id}")
+    list_res = client.get("/api/meetups?status=OPEN")
+
+    assert detail_res.json()["recommended_power_label"] == "FTP 200W 左右"
+    assert detail_res.json()["average_speed_range"] == "26 km/h 左右"
+    item = next(item for item in list_res.json()["items"] if item["id"] == meetup_id)
+    assert item["recommended_power_label"] == "FTP 200W 左右"
+    assert item["average_speed_range"] == "26 km/h 左右"
+
+
+def test_meetup_favorite_places_are_user_scoped_and_sort_by_recent_use(client, db, auth_header, monkeypatch):
+    now = datetime(2026, 6, 12, 10, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.meetup.service._now_utc", lambda: now)
+    first = client.post(
+        "/api/meetups/favorite-places",
+        json={
+            "name": "晋阳湖东门",
+            "address": "太原市晋源区",
+            "latitude": 37.715,
+            "longitude": 112.476,
+        },
+        headers=auth_header,
+    )
+    assert first.status_code == 200
+
+    monkeypatch.setattr("app.meetup.service._now_utc", lambda: now + timedelta(minutes=10))
+    second = client.post(
+        "/api/meetups/favorite-places",
+        json={
+            "name": "太原植物园北门",
+            "address": "晋源区太古路",
+            "latitude": 37.728,
+            "longitude": 112.437,
+        },
+        headers=auth_header,
+    )
+    assert second.status_code == 200
+
+    monkeypatch.setattr("app.meetup.service._now_utc", lambda: now + timedelta(minutes=20))
+    repeat = client.post(
+        "/api/meetups/favorite-places",
+        json={
+            "name": "晋阳湖东门",
+            "address": "太原市晋源区东门",
+            "latitude": 37.716,
+            "longitude": 112.477,
+        },
+        headers=auth_header,
+    )
+    assert repeat.status_code == 200
+    assert repeat.json()["usage_count"] == 2
+    assert repeat.json()["address"] == "太原市晋源区东门"
+
+    mine = client.get("/api/meetups/favorite-places", headers=auth_header)
+    assert mine.status_code == 200
+    assert [item["name"] for item in mine.json()] == ["晋阳湖东门", "太原植物园北门"]
+
+    other_header = _auth_header_for(db, "favorite-place-other")
+    assert client.get("/api/meetups/favorite-places", headers=other_header).json() == []
+    assert client.delete(f"/api/meetups/favorite-places/{first.json()['id']}", headers=other_header).status_code == 404
+
+    delete_res = client.delete(f"/api/meetups/favorite-places/{first.json()['id']}", headers=auth_header)
+    assert delete_res.status_code == 204
+    remaining = client.get("/api/meetups/favorite-places", headers=auth_header).json()
+    assert [item["name"] for item in remaining] == ["太原植物园北门"]
+
+
+def test_meetup_favorite_place_converts_gcj02_to_wgs84(client, auth_header):
+    from app.segment.coord_convert import gcj02_to_wgs84
+
+    gcj_lat = 37.87
+    gcj_lon = 112.55
+    expected_lat, expected_lon = gcj02_to_wgs84(gcj_lat, gcj_lon)
+
+    res = client.post(
+        "/api/meetups/favorite-places",
+        json={
+            "name": "微信地图手动点",
+            "address": "太原市",
+            "latitude": gcj_lat,
+            "longitude": gcj_lon,
+            "coordinate_system": "gcj02",
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 200
+    assert res.json()["latitude"] == expected_lat
+    assert res.json()["longitude"] == expected_lon
+    assert res.json()["latitude"] != gcj_lat
+    assert res.json()["longitude"] != gcj_lon
+
+
+def test_meetup_place_search_applies_user_rate_limit(client, auth_header, test_user, monkeypatch):
+    calls = []
+
+    def fake_rate_limit(user_id, key_prefix, limit, window_sec):
+        calls.append((user_id, key_prefix, limit, window_sec))
+
+    monkeypatch.setattr("app.meetup.router.check_rate_limit_by_user", fake_rate_limit)
+    monkeypatch.setattr("app.route_book.tencent_place.search_place", lambda keyword, region="太原": None)
+
+    res = client.get("/api/meetups/place-search", params={"keyword": "晋祠"}, headers=auth_header)
+
+    assert res.status_code == 200
+    assert calls == [(test_user.id, "meetup-place-search", 30, 300)]
+
+
+def test_meetup_place_search_wraps_tencent_place_without_secret(client, auth_header, monkeypatch):
+    captured = {}
+
+    def fake_search_place(keyword, region="太原"):
+        captured["keyword"] = keyword
+        captured["region"] = region
+        return {
+            "keyword": keyword,
+            "title": "晋祠公园东门",
+            "address": "太原市晋源区",
+            "lat": 37.708,
+            "lon": 112.438,
+            "source": "tencent_place",
+        }
+
+    monkeypatch.setattr(settings, "TENCENT_MAP_SK", "secret-sk")
+    monkeypatch.setattr("app.route_book.tencent_place.search_place", fake_search_place)
+
+    res = client.get(
+        "/api/meetups/place-search",
+        params={"keyword": " 晋祠公园 ", "region": " 太原 "},
+        headers=auth_header,
+    )
+
+    assert res.status_code == 200
+    assert captured == {"keyword": "晋祠公园", "region": "太原"}
+    assert res.json() == {
+        "keyword": "晋祠公园",
+        "title": "晋祠公园东门",
+        "address": "太原市晋源区",
+        "latitude": 37.708,
+        "longitude": 112.438,
+        "source": "tencent_place",
+    }
+    assert "secret-sk" not in res.text
+
+
+def test_meetup_place_search_returns_null_for_no_result(client, auth_header, monkeypatch):
+    monkeypatch.setattr("app.route_book.tencent_place.search_place", lambda keyword, region="太原": None)
+
+    res = client.get("/api/meetups/place-search", params={"keyword": "不存在地点"}, headers=auth_header)
+
+    assert res.status_code == 200
+    assert res.json() is None
+
+
+def test_meetup_place_search_maps_tencent_failure_without_secret(client, auth_header, monkeypatch):
+    def boom(keyword, region="太原"):
+        raise TencentMapError("腾讯地点检索请求失败：HTTP 403")
+
+    monkeypatch.setattr(settings, "TENCENT_MAP_SK", "secret-sk")
+    monkeypatch.setattr("app.route_book.tencent_place.search_place", boom)
+
+    res = client.get("/api/meetups/place-search", params={"keyword": "晋祠"}, headers=auth_header)
+
+    assert res.status_code == 422
+    assert "腾讯地点检索请求失败" in res.text
+    assert "secret-sk" not in res.text
 
 
 def test_create_patch_publish_and_cancel_paths(client, db, auth_header):

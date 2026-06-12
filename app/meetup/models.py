@@ -1,7 +1,7 @@
 """
 约骑数据模型——一张路线图纸上的"集合通知单 + 报名名单 + 相册 + 成绩格子"。
 
-这个文件定义 meetups、meetup_participants、meetup_media、meetup_activities 四张表。
+这个文件定义 meetups、meetup_participants、meetup_media、meetup_activities、meetup_favorite_places 五张表。
 操作注意事项：DRAFT 只允许每个 creator 保留一份；OPEN 之后快照字段不再跟 route_book 或 segment 改名漂移。
 输入输出：service 写状态机，cron 把骑行活动挂进 meetup_activities，router 读这些字段返回前端卡片。
 """
@@ -44,6 +44,8 @@ class Meetup(Base):
     estimated_end_time = Column(DateTime(timezone=True), nullable=False)
     meeting_point = Column(String(128), nullable=False)
     pace_level = Column(String(16), nullable=False)
+    recommended_power_label = Column(String(64), nullable=True)
+    average_speed_range = Column(String(64), nullable=True)
     max_participants = Column(Integer, nullable=False)
     description = Column(Text, nullable=True)
     supply_point = Column(String(128), nullable=True)
@@ -149,4 +151,29 @@ class MeetupActivity(Base):
         UniqueConstraint("meetup_id", "activity_id", name="uq_meetup_activity"),
         UniqueConstraint("meetup_id", "user_id", name="uq_meetup_user_one_cell"),
         Index("idx_meetup_activities_meetup", "meetup_id"),
+    )
+
+
+class MeetupFavoritePlace(Base):
+    """常用集合点——发起人自己保存的集合地点抽屉。"""
+
+    __tablename__ = "meetup_favorite_places"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(80), nullable=False)
+    address = Column(String(160), nullable=True)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    usage_count = Column(Integer, nullable=False, server_default="1")
+    last_used_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_meetup_favorite_place_user_name"),
+        Index("idx_meetup_favorite_places_user_recent", "user_id", "last_used_at"),
+        CheckConstraint("latitude >= -90 AND latitude <= 90", name="ck_meetup_favorite_place_latitude"),
+        CheckConstraint("longitude >= -180 AND longitude <= 180", name="ck_meetup_favorite_place_longitude"),
+        CheckConstraint("usage_count >= 1", name="ck_meetup_favorite_place_usage_count"),
     )

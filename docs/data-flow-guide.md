@@ -1693,7 +1693,8 @@ Worker 后台无界面,日志是唯一观察窗口。
   │ Step 1：选路线（segment 或 route_book 二选一）
   │         POST /api/meetups  body={segment_id 或 route_book_id, start_time,
   │                                  estimated_end_time, meeting_point,
-  │                                  pace_level, max_participants, description}
+  │                                  pace_level, recommended_power_label,
+  │                                  average_speed_range, max_participants, description}
   ▼
 [api]  app/meetup/router.py:create_meetup
   │    → service.create_meetup(db, ...)
@@ -1718,6 +1719,19 @@ Worker 后台无界面,日志是唯一观察窗口。
   │   ⚡ IntegrityError(uq_meetups_creator_draft) → 409 draft_exists
   │
   │ 返回 MeetupResponse（participants_count=0 / no media）
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ 集合点选择 / 搜索 / 常用点（2026-06-12 补强）                         │
+  │   GET /api/meetups/place-search?keyword=晋祠&region=太原          │
+  │   → service.search_meetup_place → route_book.tencent_place        │
+  │   腾讯地点检索在服务端签名 + 用户限流，返回 WGS-84，不暴露 SK           │
+  │   小程序喂给微信 <map> 前临时转 GCJ-02；保存常用点仍回到 WGS-84        │
+  │                                                                 │
+  │   POST /api/meetups/favorite-places                              │
+  │   → coordinate_system=gcj02 时后端先转 WGS-84；同名则更新使用次数       │
+  │   GET /api/meetups/favorite-places                               │
+  │   → 只返回当前用户自己的点，按 last_used_at desc 排序                 │
+  └─────────────────────────────────────────────────────────────────┘
 
   ┌─────────────────────────────────────────────────────────────────┐
   │ 修改草稿（可选 / 任意次）                                              │
