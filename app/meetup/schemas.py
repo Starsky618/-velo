@@ -15,6 +15,7 @@ MeetupStatus = Literal["DRAFT", "OPEN", "CANCELLED", "COMPLETED"]
 PaceLevel = Literal["relaxed", "cruise", "training", "race"]
 City = Literal["beijing", "shanghai", "hangzhou", "shenzhen", "chengdu", "taiyuan", "unknown"]
 MeetupVisibility = Literal["public", "invite_only"]
+CoordinateSystem = Literal["wgs84", "gcj02"]
 
 _AUDIENCE_TAGS = {
     "climb_steady",
@@ -70,6 +71,8 @@ class MeetupCreateRequest(MeetupSocialFields):
     estimated_end_time: datetime
     meeting_point: str = Field(..., min_length=1, max_length=128)
     pace_level: PaceLevel
+    recommended_power_label: str | None = Field(None, max_length=64)
+    average_speed_range: str | None = Field(None, max_length=64)
     max_participants: int = Field(..., ge=2, le=20)
     description: str | None = Field(None, max_length=2000)
 
@@ -85,6 +88,8 @@ class MeetupPatchRequest(BaseModel):
     estimated_end_time: datetime | None = None
     meeting_point: str | None = Field(None, min_length=1, max_length=128)
     pace_level: PaceLevel | None = None
+    recommended_power_label: str | None = Field(None, max_length=64)
+    average_speed_range: str | None = Field(None, max_length=64)
     max_participants: int | None = Field(None, ge=2, le=20)
     description: str | None = Field(None, max_length=2000)
     supply_point: str | None = Field(None, max_length=128)
@@ -117,6 +122,8 @@ class MeetupResponse(BaseModel):
     estimated_end_time: datetime
     meeting_point: str
     pace_level: PaceLevel
+    recommended_power_label: str | None = None
+    average_speed_range: str | None = None
     max_participants: int
     description: str | None = None
     supply_point: str | None = None
@@ -145,6 +152,47 @@ class MeetupListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class MeetupFavoritePlaceIn(BaseModel):
+    """保存常用集合点时，小程序提交的地点卡片。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, max_length=80)
+    address: str | None = Field(None, max_length=160)
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+    coordinate_system: CoordinateSystem = "wgs84"
+
+
+class MeetupFavoritePlaceOut(BaseModel):
+    """返回给小程序的常用集合点。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    name: str
+    address: str | None = None
+    latitude: float
+    longitude: float
+    usage_count: int
+    last_used_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class MeetupPlaceSearchOut(BaseModel):
+    """腾讯地点搜索结果，坐标已经转成 WGS-84。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    keyword: str
+    title: str
+    address: str | None = None
+    latitude: float
+    longitude: float
+    source: str
 
 
 class InviteeSummary(BaseModel):

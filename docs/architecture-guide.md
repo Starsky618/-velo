@@ -78,7 +78,7 @@
 | **common** | `app/common/` | **80 行** | **v5** | **跨模块工具：地理函数 / haversine / city 推断 / 单向依赖最下方（任意业务模块可向下用）** |
 | **admin** | `app/admin/` | **885 行** | **v5** | **管理后台 12 endpoint（whoami / curation-pool / ai/segment-drafts / segments admin CRUD / from-activity / from-gpx / activities/{id}/trackpoints）/ 编排其他模块 service / require_admin 依赖把关** |
 | **training** | `app/training/` | **~700 行** | **Sprint 10-11** | **PMC 训练负荷（training_load.py CTL τ=42/ATL τ=7/TSB/4 档 + daily_training_load 表 + GET /load + 3 写入通道 hook）+ Sprint 11 训练分布（distribution.py 纯函数五类型 Polarized/Pyramidal/SweetSpot/Threshold/Mixed + GET /distribution + 默认不计滑行 0W / `exclude_zero=false` 仅兼容旧口径 + conic-gradient 圆饼图 + 全类型动态百分比文案）/ 防火墙独立模块 / Sprint 12 coach 复用公式与分布** |
-| **meetup** | `app/meetup/` | **~750 行** | **Sprint 13 + 发起约骑新原型（2026-06）** | **约骑主表 + 报名表 + 媒体表 / 状态机 DRAFT→OPEN→COMPLETED/CANCELLED / 15 个 endpoint（创建/发布/加入/退出/取消/删除 + 照片墙 + GET /{id}/participants 骑友列表）/ meetups 加 6 列（supply_point / audience_tags(sa.JSON) / visibility / eligibility_note / safety_note / share_token）/ **invite_only 私圈靠 share_token 口令门禁**（详情/join/participants/media 凭口令，否则 404，防猜连号 id）/ publish 出发前 30min 截止校验 / 小程序发起 3 步流：选路线 → 图二就地编辑 → 图一总览确认（逐像素还原原型 + lucide SVG 图标 assets/icons/meetup/）** |
+| **meetup** | `app/meetup/` | **~900 行** | **Sprint 13 + 发起约骑新原型（2026-06）** | **约骑主表 + 报名表 + 媒体表 + 常用集合点表 / 状态机 DRAFT→OPEN→COMPLETED/CANCELLED / 20 个 endpoint（创建/发布/加入/退出/取消/删除 + 照片墙 + GET /{id}/participants 骑友列表 + GET /{id}/report 完成报告 + 常用集合点 + 地点搜索）/ meetups 加 8 列（supply_point / audience_tags(sa.JSON) / visibility / eligibility_note / safety_note / share_token / recommended_power_label / average_speed_range）/ **invite_only 私圈靠 share_token 口令门禁**（详情/join/participants/media 凭口令，否则 404，防猜连号 id）/ publish 出发前 30min 截止校验 / 小程序发起 3 步流：选路线 → 图二就地编辑 → 图一总览确认（逐像素还原原型 + lucide SVG 图标 assets/icons/meetup/）** |
 
 ### 2.2 模块内部结构(统一约定)
 
@@ -107,7 +107,7 @@ app/<模块名>/
 - **`app/monitor/`** (v5): __init__ / processing_health（worker 软目标 4min）/ admin_h5_health（端到端探针 / 静态站 + 反代 / Redis SETNX 5min 去抖）
 - **`app/common/`** (v5): __init__ / geo（haversine / infer_city_from_coords）
 - **`app/admin/`** (v5): __init__ / dependencies（require_admin）/ schemas / router（12 endpoint）/ service（编排候选池 + AI 草稿 + segment / 含 _check_hausdorff_overlap 共享 helper）
-- **`app/meetup/`** (Sprint 13 + 发起约骑新原型 2026-06): models（Meetup【含 supply_point/audience_tags/visibility/eligibility_note/safety_note/share_token 6 新列】/ MeetupParticipant / MeetupMedia）/ schemas（+ InviteeSummary）/ router（15 endpoint，含 GET /{id}/participants）/ service（create【生成 share_token】/publish【30min 截止校验】/join/leave/cancel/delete + list【visibility=public 过滤】 + list_participants + `_assert_invite_only_access` 私圈口令门禁 + 人数/首图聚合）/ media_service（upload/delete/list + meetup_media/ 子目录隔离）/ cron（complete_due_meetups，scheduler.py 每 20 tick≈5min）
+- **`app/meetup/`** (Sprint 13 + 发起约骑新原型 2026-06): models（Meetup【含 supply_point/audience_tags/visibility/eligibility_note/safety_note/share_token/recommended_power_label/average_speed_range】/ MeetupParticipant / MeetupMedia / MeetupFavoritePlace）/ schemas（+ InviteeSummary + 常用集合点 + 地点搜索响应）/ router（20 endpoint，含 GET /{id}/participants、GET /{id}/report、常用集合点、地点搜索）/ service（create【生成 share_token】/publish【30min 截止校验】/join/leave/cancel/delete + list【visibility=public 过滤】 + list_participants + favorite_places + place_search + `_assert_invite_only_access` 私圈口令门禁 + 人数/首图聚合）/ media_service（upload/delete/list + meetup_media/ 子目录隔离）/ cron（complete_due_meetups，scheduler.py 每 20 tick≈5min）
 
 ⚠️ agent 注意:
 - 新增模块必须遵守此结构,不得自创
@@ -286,9 +286,10 @@ app/<模块名>/
 | `notifications` | v3（**v5 加 payload JSONB + 部分唯一索引 uniq_progress_notification_per_activity**） | 5k-50k | notification |
 | **`segment_ai_drafts`** | **v5** | **同 segments** | **agent**（pending→human_edited→approved/rejected 状态机 / segment_id UNIQUE FK）|
 | **`segment_curation_pool`** | **v5** | **30-500** | **segment**（admin 候选池 + 周期性脚本算分 / segment_id UNIQUE FK）|
-| **`meetups`** | **Sprint 13 + 2026-06** | **量级同 users** | **meetup（约骑主表 / 状态机 DRAFT/OPEN/CANCELLED/COMPLETED / UNIQUE: 每用户 1 个 DRAFT / pace_level 4 档 / max_participants 2-20 / **发起新原型加 6 列**：supply_point·audience_tags(JSON)·visibility(public\|invite_only+CHECK)·eligibility_note·safety_note·share_token(私圈口令)）** |
+| **`meetups`** | **Sprint 13 + 2026-06** | **量级同 users** | **meetup（约骑主表 / 状态机 DRAFT/OPEN/CANCELLED/COMPLETED / UNIQUE: 每用户 1 个 DRAFT / pace_level 4 档 / max_participants 2-20 / **发起新原型加 8 列**：supply_point·audience_tags(JSON)·visibility(public\|invite_only+CHECK)·eligibility_note·safety_note·share_token(私圈口令)·recommended_power_label·average_speed_range）** |
 | **`meetup_participants`** | **Sprint 13** | **量级同 meetups × N** | **meetup（报名表 / UNIQUE(meetup_id, user_id) 防重复占位 / is_creator 标记发起人）** |
 | **`meetup_media`** | **Sprint 13** | **量级同 meetups × N** | **meetup（照片/视频表 / type image/video / file_id 存 meetup_media/ 子目录路径 / seq 排序 / 物理文件存 uploads/meetup_media/）** |
+| **`meetup_favorite_places`** | **2026-06-12** | **量级同 users × 常用点** | **meetup（用户自己的常用集合点 / UNIQUE(user_id, name) 同名更新 / last_used_at 排最近使用）** |
 | ~~`persona_outputs`~~ | ~~Persona v0.1~~ | **193 行 / stage 3 待 drop** | **2026-05-21 模块清** / 数据已 pg_dump 归档 `docs/archive/persona-db-backup/` |
 | ~~`persona_templates`~~ | ~~Persona v0.1~~ | **168 行 / stage 3 待 drop** | 同上 |
 | ~~`persona_feedback`~~ | ~~Persona v0.1~~ | **0 行 / stage 3 待 drop** | 同上 / 0 行实证"装饰展示无人理"决策正确 |
@@ -679,7 +680,7 @@ Strava 导入路径:
 
 ⚠️ 老 `POST /api/segments` 与 `DELETE /api/segments/{id}` v5 起 deprecated（router 顶部 `deprecated=True`）/ Sunset 2026-06-30。
 
-### 5.7 约骑(14 / Sprint 13 全新)
+### 5.7 约骑(20 / Sprint 13 + 2026-06-12 集合点补强)
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -687,6 +688,12 @@ Strava 导入路径:
 | POST | `/api/meetups` | 创建草稿（需登录 / 每用户只能 1 个 DRAFT） |
 | GET | `/api/meetups/my-draft` | 取我当前 DRAFT（需登录） |
 | GET | `/api/meetups/mine` | 我的约骑 `?role=created|joined`（需登录） |
+| GET | `/api/meetups/favorite-places` | 我的常用集合点（需登录 / 最近使用在前） |
+| POST | `/api/meetups/favorite-places` | 保存常用集合点（需登录 / 同名更新使用次数） |
+| DELETE | `/api/meetups/favorite-places/{place_id}` | 删除自己的常用集合点（需登录） |
+| GET | `/api/meetups/place-search` | 腾讯地点搜索包装（需登录 / 服务端签名 / 不暴露 SK） |
+| GET | `/api/meetups/{meetup_id}/participants` | 参与者列表（公开访问 / 头像昵称精简展示） |
+| GET | `/api/meetups/{meetup_id}/report` | 约骑完成报告（公开访问 / 汇总报名和媒体状态） |
 | GET | `/api/meetups/{meetup_id}` | 约骑详情（可游客访问；带 token 时补 is_creator/has_joined） |
 | PATCH | `/api/meetups/{meetup_id}` | 改草稿详情（creator 专属 / 仅 DRAFT 状态） |
 | POST | `/api/meetups/{meetup_id}/publish` | 发布 DRAFT→OPEN（creator / 自动占一个名额） |
@@ -700,11 +707,7 @@ Strava 导入路径:
 
 另有 `GET /api/segments/{id}/upcoming-meetups`（返回该赛段未来 OPEN 约骑列表）定义在 `app/segment/router.py:205`，属于赛段 API 但读 meetup 数据（2 处 spec 批准反向 hook 之一）。
 
-**API 总路由数: 81**（grep 全 app `@*router.(get|post|put|patch|delete)` 实证 / Sprint 13 约骑 +14、用户注销 +1）：
-- 标准 `@router`：user 17 + activity 10 + segment 8 + strava 8 + admin 12 + training 2 + route_book 5 + **meetup 14** = **76**
-- 专用 router：notification 2 + honor 1 = **3**
-- alias router：`user_effort_router` 1（`/api/user/efforts`）+ `activity_segment_router` 1（`/api/activities/{id}/segments`）= **2**
-- 总计 76 + 3 + 2 = **81**
+**API 总路由数: 91**（命令口径：`rg -n "@[a-zA-Z_]*router\.(get|post|put|patch|delete)" app | wc -l`；其中 `app/meetup/router.py` 为 20 个）：
 - 其中 deprecated 2 个（老 segment POST/DELETE / Sunset 2026-06-30）/ 仍可访问
 
 ~~Persona v0.1 endpoint 2 个~~（2026-05-21 整模块清 / 已删 / 详 changelog）。

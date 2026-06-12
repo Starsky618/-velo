@@ -6,6 +6,7 @@
 """
 
 import logging
+import math
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -15,10 +16,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.activity.models import Activity
-from app.meetup.models import Meetup, MeetupActivity, MeetupMedia, MeetupParticipant
+from app.meetup.models import Meetup, MeetupActivity, MeetupFavoritePlace, MeetupMedia, MeetupParticipant
 from app.meetup.schemas import InviteeSummary, MeetupReportCell, MeetupReportOut, MeetupReportTotals
 from app.route_book.models import RouteBook
+from app.route_book import tencent_place
 from app.segment.models import Segment
+from app.segment.coord_convert import gcj02_to_wgs84
 from app.storage.local import LocalStorage
 from app.user.models import User
 
@@ -43,6 +46,22 @@ def _ensure_time_order(start: datetime, end: datetime) -> None:
     能在真 PG CHECK 报错前就返回友好的 422，而不是让 IntegrityError 穿透成 500。"""
     if end <= start:
         raise HTTPException(status_code=422, detail="estimated_end_time 必须晚于 start_time")
+
+
+def _clean_optional_text(value: str | None) -> str | None:
+    """把用户手填短文本收干净；空白就当没填，避免数据库里存一串空格。"""
+    if value is None:
+        return None
+    cleaned = " ".join(str(value).split())
+    return cleaned or None
+
+
+def _ensure_lat_lon(latitude: float, longitude: float) -> None:
+    """校验集合点经纬度；像验门牌号，超出地球范围就不能进账。"""
+    if not math.isfinite(latitude) or not math.isfinite(longitude):
+        raise HTTPException(status_code=422, detail="集合点坐标无效")
+    if not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
+        raise HTTPException(status_code=422, detail="集合点坐标越界")
 
 
 def _delete_meetup_row_and_collect_files(db: Session, meetup_id: int) -> list[str]:
@@ -153,6 +172,8 @@ def create_meetup(
     pace_level: str,
     max_participants: int,
     description: str | None,
+    recommended_power_label: str | None = None,
+    average_speed_range: str | None = None,
     supply_point: str | None = None,
     audience_tags: list[str] | None = None,
     visibility: str = "public",
@@ -177,6 +198,8 @@ def create_meetup(
         estimated_end_time=end_aware,
         meeting_point=meeting_point,
         pace_level=pace_level,
+        recommended_power_label=_clean_optional_text(recommended_power_label),
+        average_speed_range=_clean_optional_text(average_speed_range),
         max_participants=max_participants,
         description=description,
         supply_point=supply_point,
@@ -221,6 +244,8 @@ def update_meetup(db: Session, meetup_id: int, current_user_id: int, **changes) 
         "estimated_end_time",
         "meeting_point",
         "pace_level",
+        "recommended_power_label",
+        "average_speed_range",
         "max_participants",
         "description",
         "supply_point",
@@ -235,6 +260,8 @@ def update_meetup(db: Session, meetup_id: int, current_user_id: int, **changes) 
                 value = _ensure_aware(value)
             if key == "audience_tags" and value is None:
                 value = []
+            if key in {"recommended_power_label", "average_speed_range"}:
+                value = _clean_optional_text(value)
             setattr(meetup, key, value)
 
     # 改完时间后用最终值校验顺序（用户可能只改了 start 或只改了 end 导致颠倒）
@@ -299,6 +326,108 @@ def delete_draft_meetup(db: Session, meetup_id: int, current_user_id: int) -> No
 
 def get_my_draft(db: Session, current_user_id: int) -> Meetup | None:
     return db.query(Meetup).filter(Meetup.creator_id == current_user_id, Meetup.status == "DRAFT").first()
+
+
+def favorite_place_response(place: MeetupFavoritePlace) -> dict:
+    """把常用集合点 ORM 行翻译成 API 字典。"""
+    return {
+        "id": place.id,
+        "name": place.name,
+        "address": place.address,
+        "latitude": place.latitude,
+        "longitude": place.longitude,
+        "usage_count": place.usage_count,
+        "last_used_at": place.last_used_at,
+        "created_at": place.created_at,
+        "updated_at": place.updated_at,
+    }
+
+
+def list_favorite_places(db: Session, current_user_id: int) -> list[MeetupFavoritePlace]:
+    """列出当前用户常用集合点，最近用过的排前面。"""
+    return (
+        db.query(MeetupFavoritePlace)
+        .filter(MeetupFavoritePlace.user_id == current_user_id)
+        .order_by(MeetupFavoritePlace.last_used_at.desc(), MeetupFavoritePlace.id.desc())
+        .all()
+    )
+
+
+def save_favorite_place(
+    db: Session,
+    current_user_id: int,
+    *,
+    name: str,
+    address: str | None,
+    latitude: float,
+    longitude: float,
+    coordinate_system: str = "wgs84",
+) -> MeetupFavoritePlace:
+    """保存常用集合点；同名点更新并加使用次数，不把列表刷成重复卡片。"""
+    cleaned_name = _clean_optional_text(name)
+    if cleaned_name is None:
+        raise HTTPException(status_code=422, detail="集合点名称不能为空")
+    cleaned_address = _clean_optional_text(address)
+    _ensure_lat_lon(latitude, longitude)
+    if coordinate_system == "gcj02":
+        latitude, longitude = gcj02_to_wgs84(latitude, longitude)
+        _ensure_lat_lon(latitude, longitude)
+
+    place = (
+        db.query(MeetupFavoritePlace)
+        .filter(MeetupFavoritePlace.user_id == current_user_id, MeetupFavoritePlace.name == cleaned_name)
+        .first()
+    )
+    now = _now_utc()
+    if place is None:
+        place = MeetupFavoritePlace(
+            user_id=current_user_id,
+            name=cleaned_name,
+            address=cleaned_address,
+            latitude=latitude,
+            longitude=longitude,
+            usage_count=1,
+            last_used_at=now,
+        )
+        db.add(place)
+    else:
+        place.address = cleaned_address
+        place.latitude = latitude
+        place.longitude = longitude
+        place.usage_count = (place.usage_count or 0) + 1
+        place.last_used_at = now
+
+    db.commit()
+    db.refresh(place)
+    return place
+
+
+def delete_favorite_place(db: Session, current_user_id: int, place_id: int) -> None:
+    """删除自己的常用集合点；别人的点当不存在。"""
+    place = (
+        db.query(MeetupFavoritePlace)
+        .filter(MeetupFavoritePlace.id == place_id, MeetupFavoritePlace.user_id == current_user_id)
+        .first()
+    )
+    if place is None:
+        raise HTTPException(status_code=404, detail="favorite place not found")
+    db.delete(place)
+    db.commit()
+
+
+def search_meetup_place(keyword: str, region: str = "太原") -> dict | None:
+    """约骑集合点搜索：复用服务端腾讯地点检索，并把字段名翻成小程序更直观的 latitude/longitude。"""
+    result = tencent_place.search_place(keyword.strip(), region.strip())
+    if result is None:
+        return None
+    return {
+        "keyword": result["keyword"],
+        "title": result["title"],
+        "address": result.get("address"),
+        "latitude": result["lat"],
+        "longitude": result["lon"],
+        "source": result["source"],
+    }
 
 
 def _assemble_list_result(db: Session, base, page: int, page_size: int) -> dict:

@@ -155,11 +155,22 @@
       <view class="pub-iconbox"><image class="pub-icon" src="/assets/icons/meetup/map-pin.svg" mode="aspectFit" /></view>
       <view class="pub-row-body">
         <view class="pub-row-title">集合地点</view>
+        <view class="pub-row-sub pub-row-sub-muted">可手填，也可从地图选择</view>
       </view>
       <view class="pub-edit-col">
         <input class="pub-input" value="{{form.meeting_point}}" data-field="meeting_point" bindinput="updateField" placeholder="例如：晋祠公园北门" />
       </view>
     </view>
+    <view class="pub-place-actions">
+      <button class="pub-place-btn" bindtap="onTapChooseMeetingPoint">地图选点</button>
+      <button class="pub-place-btn pub-place-btn-save" bindtap="saveMeetingPointAsFavorite">保存常用</button>
+    </view>
+    <scroll-view wx:if="{{favoritePlaces.length}}" class="pub-favorite-places" scroll-x="true" show-scrollbar="{{false}}">
+      <view wx:for="{{favoritePlaces}}" wx:key="id" class="pub-favorite-place" data-index="{{index}}" bindtap="applyFavoritePlace">
+        <view class="pub-favorite-name">{{item.name}}</view>
+        <view class="pub-favorite-address">{{item.address}}</view>
+      </view>
+    </scroll-view>
 
     <!-- 人数上限：右侧加减器（catchtap onStepMax，已可用，不改） -->
     <view class="pub-row">
@@ -323,11 +334,11 @@
         </view>
         <view class="pv-pace-col">
           <view class="pv-pace-label">推荐功率</view>
-          <view class="pv-pace-value">{{recommendedPowerLabel}}</view>
+          <input class="pv-pace-input" value="{{recommendedPowerLabel}}" data-field="recommended_power_label" bindinput="updateField" placeholder="例如 FTP 180W+" />
         </view>
         <view class="pv-pace-col">
           <view class="pv-pace-label">预计均速</view>
-          <view class="pv-pace-value">{{averageSpeedRange}}</view>
+          <input class="pv-pace-input" value="{{averageSpeedRange}}" data-field="average_speed_range" bindinput="updateField" placeholder="例如 24-27 km/h" />
         </view>
       </view>
       <view class="pv-divider"></view>

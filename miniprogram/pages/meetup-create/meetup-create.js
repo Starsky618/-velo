@@ -178,6 +178,8 @@ Page({
     routePreviewPolylines: [],
     routePreviewMarkers: [],
     routePreviewIncludePoints: [],
+    favoritePlaces: [],
+    selectedMeetingPoint: null,
     // meetupId：进入"照片"步骤时存出来的草稿 id。
     // 为什么必须先有 id 才能加照片？因为上传接口是 /api/meetups/{id}/media，
     // 照片必须挂在一条已存在的约骑记录上。所以照片这一步的前提就是"草稿已落库拿到 id"。
@@ -197,6 +199,8 @@ Page({
       estimated_end_time: '',
       meeting_point: '',
       pace_level: 'cruise',
+      recommended_power_label: PACE_DISPLAY.cruise.recommended_power_label,
+      average_speed_range: PACE_DISPLAY.cruise.average_speed_range,
       max_participants: 6,
       description: '',
       supply_point: '',
@@ -241,6 +245,7 @@ Page({
     var routeBookId = Number(options && options.route_book_id)
     if (!Number.isFinite(routeBookId) || routeBookId <= 0) routeBookId = null
     this.initDefaultTime()
+    this.loadFavoritePlaces()
     this.loadRoutes()
     this.restoreDraft(routeBookId)
   },
@@ -262,6 +267,7 @@ Page({
       var end = splitLocal(new Date(draft.estimated_end_time))
       var paceIndex = findPaceIndex(that.data.paceOptions, draft.pace_level || 'cruise')
       var paceLabel = that.data.paceOptions[paceIndex].label
+      var pace = PACE_DISPLAY[draft.pace_level || 'cruise'] || PACE_DISPLAY.cruise
       that.setData({
         meetupId: draft.id,
         selectedSegmentId: draft.segment_id || null,
@@ -280,6 +286,8 @@ Page({
           estimated_end_time: draft.estimated_end_time,
           meeting_point: draft.meeting_point || '',
           pace_level: draft.pace_level || 'cruise',
+          recommended_power_label: draft.recommended_power_label || pace.recommended_power_label,
+          average_speed_range: draft.average_speed_range || pace.average_speed_range,
           max_participants: draft.max_participants || 6,
           description: draft.description || '',
           supply_point: draft.supply_point || '',
@@ -418,6 +426,18 @@ Page({
     })
   },
 
+  loadFavoritePlaces: function () {
+    var that = this
+    if (!api.getMeetupFavoritePlaces) return
+    api.getMeetupFavoritePlaces()
+      .then(function (places) {
+        that.setData({ favoritePlaces: places || [] })
+      })
+      .catch(function () {
+        that.setData({ favoritePlaces: [] })
+      })
+  },
+
   decorateItems: function (items, type) {
     return items.map(function (item) {
       var name = item.name || item.title || '未命名路线'
@@ -462,6 +482,52 @@ Page({
     this.chooseTencentPoint('end')
   },
 
+  onTapChooseMeetingPoint: function () {
+    var url = '/pages/map-picker/map-picker?kind=meeting'
+    if (this.data.form.meeting_point) {
+      url += '&name=' + encodeURIComponent(this.data.form.meeting_point)
+    }
+    if (this.data.selectedMeetingPoint) {
+      url += '&latitude=' + encodeURIComponent(this.data.selectedMeetingPoint.latitude)
+      url += '&longitude=' + encodeURIComponent(this.data.selectedMeetingPoint.longitude)
+      url += '&coordinate_system=' + encodeURIComponent(this.data.selectedMeetingPoint.coordinate_system || 'wgs84')
+      url += '&address=' + encodeURIComponent(this.data.selectedMeetingPoint.address || '')
+    }
+    wx.navigateTo({ url: url })
+  },
+
+  applyFavoritePlace: function (event) {
+    var index = Number(event.currentTarget.dataset.index)
+    var place = this.data.favoritePlaces[index]
+    if (!place) return
+    this.setData({
+      selectedMeetingPoint: Object.assign({}, place, { coordinate_system: 'wgs84' }),
+      'form.meeting_point': place.name,
+    })
+  },
+
+  saveMeetingPointAsFavorite: function () {
+    var that = this
+    var point = this.data.selectedMeetingPoint
+    var name = normalizeShortText(this.data.form.meeting_point)
+    if (!name || !point) {
+      wx.showToast({ title: '先用地图选择集合点', icon: 'none' })
+      return
+    }
+    api.saveMeetupFavoritePlace({
+      name: name,
+      address: point.address || '',
+      latitude: point.latitude,
+      longitude: point.longitude,
+      coordinate_system: point.coordinate_system || 'wgs84',
+    }).then(function () {
+      wx.showToast({ title: '已保存常用点', icon: 'success' })
+      that.loadFavoritePlaces()
+    }).catch(function (err) {
+      wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' })
+    })
+  },
+
   chooseTencentPoint: function (kind) {
     var current = kind === 'start' ? this.data.tencentStart : this.data.tencentEnd
     var url = '/pages/map-picker/map-picker?kind=' + kind
@@ -485,10 +551,18 @@ Page({
       return
     }
     var selected = {
-      name: limitText(point.name || (point.kind === 'start' ? '路线起点' : '路线终点'), TENCENT_POINT_NAME_MAX_LENGTH),
-      address: '',
+      name: limitText(point.name || (point.kind === 'meeting' ? '集合点' : (point.kind === 'start' ? '路线起点' : '路线终点')), TENCENT_POINT_NAME_MAX_LENGTH),
+      address: point.address || '',
       latitude: lat,
       longitude: lon,
+      coordinate_system: point.coordinate_system || 'gcj02',
+    }
+    if (point.kind === 'meeting') {
+      this.setData({
+        selectedMeetingPoint: selected,
+        'form.meeting_point': selected.name,
+      })
+      return
     }
     if (point.kind === 'start') {
       this.setData({
@@ -713,7 +787,11 @@ Page({
     var field = event.currentTarget.dataset.field
     var value = event.detail.value
     var key = 'form.' + field
-    this.setData({ [key]: value })
+    var patch = {}
+    patch[key] = value
+    if (field === 'recommended_power_label') patch.recommendedPowerLabel = value
+    if (field === 'average_speed_range') patch.averageSpeedRange = value
+    this.setData(patch)
   },
 
   // 发布页人数加减器：就地 +/- 人数，夹在 [2,20]（和后端 CHECK 一致），不跳步编辑
@@ -734,8 +812,15 @@ Page({
     var index = Number(event.detail.value)
     var option = this.data.paceOptions[index]
     if (!option) return
+    var pace = PACE_DISPLAY[option.value] || PACE_DISPLAY.cruise
     var that = this
-    this.setData({ 'form.pace_level': option.value, paceIndex: index, paceLabel: option.label }, function () {
+    this.setData({
+      'form.pace_level': option.value,
+      'form.recommended_power_label': pace.recommended_power_label,
+      'form.average_speed_range': pace.average_speed_range,
+      paceIndex: index,
+      paceLabel: option.label,
+    }, function () {
       that.updatePreviewDerived()
     })
   },
@@ -751,7 +836,7 @@ Page({
       })
   },
 
-  // 算图二的派生展示：预计时长（结束-出发）+ 推荐功率/均速（按节奏档位查表）
+  // 算图二的派生展示：预计时长（结束-出发）+ 推荐功率/均速（默认跟强度走，用户改过就用用户填的）
   updatePreviewDerived: function () {
     var pace = PACE_DISPLAY[this.data.form.pace_level] || PACE_DISPLAY.cruise
     var start = new Date(this.data.form.start_time)
@@ -769,8 +854,8 @@ Page({
       deadlineText = week + ' ' + String(dl.getHours()).padStart(2, '0') + ':' + String(dl.getMinutes()).padStart(2, '0') + ' 截止'
     }
     this.setData({
-      recommendedPowerLabel: pace.recommended_power_label,
-      averageSpeedRange: pace.average_speed_range,
+      recommendedPowerLabel: this.data.form.recommended_power_label || pace.recommended_power_label,
+      averageSpeedRange: this.data.form.average_speed_range || pace.average_speed_range,
       estimatedDurationText: duration,
       registrationDeadlineLabel: deadlineText,
     })
@@ -900,6 +985,8 @@ Page({
     this.setData({ submitting: true })
     api.updateMeetup(this.data.meetupId, {
       pace_level: this.data.form.pace_level,
+      recommended_power_label: this.data.form.recommended_power_label,
+      average_speed_range: this.data.form.average_speed_range,
       audience_tags: this.data.form.audience_tags,
       visibility: this.data.form.visibility,
       eligibility_note: this.data.form.eligibility_note,

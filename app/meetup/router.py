@@ -8,12 +8,14 @@
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user, get_optional_user
 from app.meetup import media_service, schemas, service
+from app.middleware.rate_limit import check_rate_limit_by_user
+from app.route_book.tencent_direction import TencentMapConfigError, TencentMapError
 
 
 router = APIRouter(prefix="/api/meetups", tags=["meetup"])
@@ -44,6 +46,8 @@ def _response(meetup, participants_count=0, first_media_file_id=None, current_us
         estimated_end_time=meetup.estimated_end_time,
         meeting_point=meetup.meeting_point,
         pace_level=meetup.pace_level,
+        recommended_power_label=meetup.recommended_power_label,
+        average_speed_range=meetup.average_speed_range,
         max_participants=meetup.max_participants,
         description=meetup.description,
         supply_point=meetup.supply_point,
@@ -143,6 +147,61 @@ def get_my_meetups(
     return schemas.MeetupListResponse(items=items, total=result["total"], page=page, page_size=page_size)
 
 
+@router.get("/favorite-places", response_model=list[schemas.MeetupFavoritePlaceOut])
+def list_favorite_places(
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return [service.favorite_place_response(place) for place in service.list_favorite_places(db, current_user_id)]
+
+
+@router.post("/favorite-places", response_model=schemas.MeetupFavoritePlaceOut)
+def save_favorite_place(
+    req: schemas.MeetupFavoritePlaceIn,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    place = service.save_favorite_place(
+        db,
+        current_user_id,
+        name=req.name,
+        address=req.address,
+        latitude=req.latitude,
+        longitude=req.longitude,
+        coordinate_system=req.coordinate_system,
+    )
+    return service.favorite_place_response(place)
+
+
+@router.delete("/favorite-places/{place_id}", status_code=204)
+def delete_favorite_place(
+    place_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service.delete_favorite_place(db, current_user_id, place_id)
+
+
+@router.get("/place-search", response_model=schemas.MeetupPlaceSearchOut | None)
+def search_meetup_place(
+    keyword: str = Query(..., min_length=1, max_length=80),
+    region: str = Query("太原", min_length=1, max_length=32),
+    current_user_id: int = Depends(get_current_user),
+):
+    check_rate_limit_by_user(
+        current_user_id,
+        "meetup-place-search",
+        limit=30,
+        window_sec=300,
+    )
+    try:
+        return service.search_meetup_place(keyword, region)
+    except TencentMapConfigError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except TencentMapError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.get("/{meetup_id}/participants", response_model=list[schemas.InviteeSummary])
 def list_participants(
     meetup_id: int,
@@ -205,6 +264,8 @@ def create_meetup(
         estimated_end_time=req.estimated_end_time,
         meeting_point=req.meeting_point,
         pace_level=req.pace_level,
+        recommended_power_label=req.recommended_power_label,
+        average_speed_range=req.average_speed_range,
         max_participants=req.max_participants,
         description=req.description,
         supply_point=req.supply_point,

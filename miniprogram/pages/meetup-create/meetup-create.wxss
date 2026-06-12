@@ -538,6 +538,66 @@ page {
   text-align: right;
 }
 
+.pub-place-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12rpx;
+  padding: 16rpx 28rpx 0;
+}
+
+.pub-place-btn {
+  height: 68rpx;
+  line-height: 68rpx;
+  border-radius: 14rpx;
+  background: #f2f2f7;
+  color: #1c1c1e;
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+.pub-place-btn-save {
+  background: #fff7ed;
+  color: #e07f00;
+}
+
+.pub-favorite-places {
+  width: 100%;
+  padding: 16rpx 28rpx 4rpx;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.pub-favorite-place {
+  display: inline-block;
+  min-width: 180rpx;
+  max-width: 280rpx;
+  margin-right: 12rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 14rpx;
+  background: #f2f2f7;
+  vertical-align: top;
+}
+
+.pub-favorite-name {
+  overflow: hidden;
+  color: #1c1c1e;
+  font-size: 25rpx;
+  line-height: 34rpx;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pub-favorite-address {
+  overflow: hidden;
+  margin-top: 2rpx;
+  color: #8a8a8e;
+  font-size: 21rpx;
+  line-height: 30rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pub-picker {
   display: flex;
   align-items: center;
@@ -1002,6 +1062,19 @@ page {
   color: #1c1c1e;
   font-size: 25rpx;
   line-height: 32rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+.pv-pace-input {
+  width: 150rpx;
+  height: 48rpx;
+  margin-top: 8rpx;
+  padding: 0;
+  color: #1c1c1e;
+  font-size: 24rpx;
+  line-height: 48rpx;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum';
