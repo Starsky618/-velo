@@ -7,7 +7,7 @@
 
   限制（Tim 需在小程序公众平台后台配置 / 否则 web-view 拒载）：
   - 业务域名加 https://www.strava.com（Strava OAuth 域）
-  - 业务域名加 https://114.132.190.245（我们后端 callback）
+  - 业务域名加 https://api.weiluai.top（我们后端 callback / 2026-06-12 起备案域名）
   - 开发版可在开发者工具勾选"不校验合法域名" / 临时绕过
 -->
 <web-view src="{{authorizeUrl}}" />

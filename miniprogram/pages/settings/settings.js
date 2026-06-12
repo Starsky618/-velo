@@ -39,9 +39,6 @@ const BIKE_TYPES = [
   { value: 'mtb', label: '山地车' },
 ]
 
-// 清缓存时必须保留的 key：清掉它们等于把用户登出（app.js 登录态存这两个）
-const PROTECTED_STORAGE_KEYS = ['token', 'userId']
-
 Page({
   data: {
     // —— 个人资料组（2026-06-12 重构新增）——
@@ -712,7 +709,7 @@ Page({
    *        用户在小程序内授权完 → 后端 callback 返成功 HTML → 用户左上返回 settings
    *        settings.onShow 自动拉新 bound 状态
    *
-   * 前置：小程序公众平台业务域名加 https://www.strava.com + https://114.132.190.245
+   * 前置：小程序公众平台业务域名加 https://www.strava.com + https://api.weiluai.top（2026-06-12 起备案域名）
    *      开发版可工具勾选"不校验合法域名"临时跳过
    */
   onBindStrava() {
