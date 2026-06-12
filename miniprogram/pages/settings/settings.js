@@ -32,8 +32,28 @@
 const api = require('../../utils/api')
 const app = getApp()
 
+// 车型选项（后端 BikeType 枚举 road/gravel/mtb，传别的 422）
+const BIKE_TYPES = [
+  { value: 'road', label: '公路车' },
+  { value: 'gravel', label: '砾石车' },
+  { value: 'mtb', label: '山地车' },
+]
+
+// 清缓存时必须保留的 key：清掉它们等于把用户登出（app.js 登录态存这两个）
+const PROTECTED_STORAGE_KEYS = ['token', 'userId']
+
 Page({
   data: {
+    // —— 个人资料组（2026-06-12 重构新增）——
+    bio: '',                       // 骑行宣言（≤30 字单行 / 编辑入口从 profile 页移来）
+    weeklyGoal: null,              // 每周目标（km / 10-2000）
+    bikeType: null,                // 车型枚举值 road/gravel/mtb
+    bikeTypeLabel: '',             // 车型中文展示
+    bikeTypeIndex: 0,              // picker 当前下标
+    bikeTypeOptions: BIKE_TYPES,
+    // —— 通用组 ——
+    cacheSizeText: '',             // 本地缓存占用展示（如 "1.2 MB"）
+    versionText: '',               // 小程序版本（线上版本号 / 开发版显示环境名）
     ftp: null,
     weight: null,                  // Sprint 9 task-6：体重（kg）/ 可选 / 算 W/kg 用
     birthYear: null,               // Sprint 10：出生年份 / 后端不存 age / 用来兜底估算最大心率
@@ -63,8 +83,134 @@ Page({
     this._ensureBirthYearOptions()
     this._fetchProfile()
     this._fetchStravaStatus()
+    this._initVersion()
     // Sprint 9 task-8：每次进 settings 时拉 pending breakthrough / 有则弹窗
     this._checkPendingBreakthroughs()
+  },
+
+  /**
+   * 版本号展示：wx.getAccountInfoSync 拿线上版本（开发/体验版 version 为空，
+   * 显示环境名兜底）。小程序自动热更新，没有"检查更新"这回事。
+   */
+  _initVersion() {
+    if (this.data.versionText) return
+    try {
+      const info = wx.getAccountInfoSync()
+      const mp = (info && info.miniProgram) || {}
+      const envName = { develop: '开发版', trial: '体验版', release: '' }[mp.envVersion] || ''
+      const text = mp.version ? 'v' + mp.version + (envName ? ' ' + envName : '') : envName
+      this.setData({ versionText: text })
+    } catch (e) {
+      // 拿不到就不显示版本（行右侧留空，不显示占位）
+    }
+  },
+
+  /**
+   * 骑行宣言编辑（2026-06-12 从 profile 页移来——我的页只展示，设置页才能改）。
+   * 走 PATCH /api/user/me（bio 专属端点，≤30 字单行，后端 422 兜底）。
+   */
+  onEditBio() {
+    const that = this
+    wx.showModal({
+      title: '编辑骑行宣言',
+      editable: true,
+      placeholderText: '不超过 30 字',
+      content: this.data.bio || '',
+      success: (res) => {
+        if (!res.confirm) return
+        const newBio = (res.content || '').trim()
+        if (newBio.length > 30) {
+          wx.showToast({ title: '不能超过 30 字', icon: 'none' })
+          return
+        }
+        api.patch('/api/user/me', { bio: newBio })
+          .then(() => {
+            that.setData({ bio: newBio })
+            wx.showToast({ title: '已保存', icon: 'success' })
+          })
+          .catch((err) => {
+            wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' })
+          })
+      },
+    })
+  },
+
+  /**
+   * 每周目标编辑（km / 10-2000，影响"我的"页本周进度条）。
+   * 走 PUT /api/user/profile（主资料端点，后端 schema ge=10 le=2000 兜底）。
+   */
+  onEditWeeklyGoal() {
+    const that = this
+    wx.showModal({
+      title: '每周目标',
+      editable: true,
+      placeholderText: '每周想骑多少公里（10-2000）',
+      content: this.data.weeklyGoal ? String(this.data.weeklyGoal) : '',
+      success: (res) => {
+        if (!res.confirm) return
+        const raw = (res.content || '').trim()
+        if (!raw) return
+        const goal = parseFloat(raw)
+        if (isNaN(goal) || goal < 10 || goal > 2000) {
+          wx.showToast({ title: '范围 10-2000 km', icon: 'none' })
+          return
+        }
+        api.put('/api/user/profile', { weekly_goal: goal })
+          .then(() => {
+            that.setData({ weeklyGoal: goal })
+            wx.showToast({ title: '目标已更新', icon: 'success' })
+          })
+          .catch((err) => {
+            wx.showToast({ title: (err && err.message) || '更新失败', icon: 'none' })
+          })
+      },
+    })
+  },
+
+  /**
+   * 车型滚轮选择（road/gravel/mtb，后端枚举白名单 422 兜底）
+   */
+  onBikeTypeChange(e) {
+    const that = this
+    const index = Number(e.detail.value)
+    const option = BIKE_TYPES[index]
+    if (!option) return
+    api.put('/api/user/profile', { bike_type: option.value })
+      .then(() => {
+        that.setData({
+          bikeType: option.value,
+          bikeTypeLabel: option.label,
+          bikeTypeIndex: index,
+        })
+        wx.showToast({ title: '车型已更新', icon: 'success' })
+      })
+      .catch((err) => {
+        wx.showToast({ title: (err && err.message) || '更新失败', icon: 'none' })
+      })
+  },
+
+  /**
+   * Strava 行点击分流（行式交互替代旧 inline 大按钮）：
+   * 已绑定 → 走原解绑确认流程；未绑定 → 走原绑定 OAuth 流程。
+   */
+  onTapStrava() {
+    if (this.data.stravaBound) {
+      this.onUnbindStrava()
+    } else {
+      this.onBindStrava()
+    }
+  },
+
+  /**
+   * 关于 VELO：版本信息弹窗（小程序热更新，无"检查更新"概念）
+   */
+  onAbout() {
+    wx.showModal({
+      title: 'VELO',
+      content: '公路骑行 · 成绩与约骑\n' + (this.data.versionText || '开发版'),
+      showCancel: false,
+      confirmText: '好',
+    })
   },
 
   /**
@@ -79,6 +225,15 @@ Page({
         // 三审 Important 修：用 != null 不用 ||（防 truthiness 陷阱 / 即使 ftp=0 也不会被当 null）
         // FTP schema 范围 50-500 / 实际 0 不会出现 / 但防御性写法
         // Sprint 9 task-6：同步拉 weight / 一起 setData（避免两次渲染闪烁）
+        // 车型：后端枚举值映射中文展示 + picker 下标
+        let bikeTypeLabel = ''
+        let bikeTypeIndex = 0
+        BIKE_TYPES.forEach((opt, i) => {
+          if (opt.value === p.bike_type) {
+            bikeTypeLabel = opt.label
+            bikeTypeIndex = i
+          }
+        })
         this.setData({
           ftp: p.ftp != null ? p.ftp : null,
           weight: p.weight != null ? p.weight : null,
@@ -86,6 +241,11 @@ Page({
           displayAge: this._ageFromBirthYear(birthYear),
           birthYearIndex: birthYearIndex,
           maxHr: p.max_hr != null ? p.max_hr : null,
+          bio: p.bio || '',
+          weeklyGoal: p.weekly_goal != null ? p.weekly_goal : null,
+          bikeType: p.bike_type || null,
+          bikeTypeLabel: bikeTypeLabel,
+          bikeTypeIndex: bikeTypeIndex,
         })
       })
       .catch((err) => {

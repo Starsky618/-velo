@@ -27,6 +27,7 @@
 //   - ActivitySummary.distance 是公里（service 已转）/ duration 秒 / elevation_gain 米
 
 const api = require('../../utils/api');
+const rideThumbs = require('../../utils/ride-thumbs');
 // 模块级 app 实例（v5 期老版本有 / 续工 subagent 漏写 → onLogin 调 app.login() ReferenceError
 // Tim 2026-05-16 Console 实证：app is not defined at ii.onLogin profile.js:367）
 // 这里 getApp() 是安全的：profile.js 是 page 文件 / Page() 注册时 App 已 onLaunch 完成
@@ -76,6 +77,7 @@ Page({
     // cityLabel 已删（Tim 2026-05-17 user.city 改任意中文 / hero 直接显示 profile.city）
     regionArr: ['', '', ''],  // picker mode="region" 初始值 / 三级 [省 市 区]
     stats: null,
+    statsPeriod: 'week',  // 训练统计卡当前档位：week（本周）| all（生涯）
     // heatmap / cityMedals 字段已删（heatmap 改用组件 / 城市勋章砍）
 
     // 活动列表（分页）
@@ -123,6 +125,9 @@ Page({
     const tasks = [
       this.fetchProfile(),
       this.fetchStats(),
+      // 预拉生涯档进缓存（fetchStats 内有 period 守卫不会覆盖当前显示）：
+      // 用户点"生涯"永远命中缓存即时切换，消除"标签已切、数值还是旧档"的瞬态错位（集成审 Important #3）
+      this.fetchStats('all'),
     ];
 
     // 活动列表独立 / 不参与 allSettled（避免分页失败影响顶部 2 块）
@@ -144,16 +149,31 @@ Page({
       });
   },
 
-  fetchStats() {
-    // GET /api/user/stats?period=week → StatsResponse
+  fetchStats(period) {
+    // GET /api/user/stats?period=week|all → StatsResponse（后端原生支持 all = 不加时间条件）
     // 注意：self stats 不返 avg_power_w / 见 tech-debt P3
-    return api.get('/api/user/stats', { period: 'week' })
+    const p = period || this.data.statsPeriod || 'week';
+    return api.get('/api/user/stats', { period: p })
       .then((res) => {
-        this.setData({ stats: res || null });
+        this._statsCache = this._statsCache || {};
+        this._statsCache[p] = res || null;
+        // 防竞态：响应回来时用户已切到另一档就不覆盖当前显示
+        if (p === this.data.statsPeriod) {
+          this.setData({ stats: res || null });
+        }
       })
       .catch((err) => {
         console.error('[profile] fetchStats failed', err);
       });
+  },
+
+  // 训练统计卡"本周 | 生涯"切换：缓存命中直接显示，否则拉对应 period
+  onSwitchStatsPeriod(e) {
+    const period = e.currentTarget.dataset.period;
+    if (!period || period === this.data.statsPeriod) return;
+    const cached = (this._statsCache || {})[period];
+    this.setData({ statsPeriod: period, stats: cached || this.data.stats });
+    if (!cached) this.fetchStats(period);
   },
 
   // Tim 2026-05-16 真用拍：
@@ -192,12 +212,32 @@ Page({
           ridesPage: page + 1,
           hasMoreRides: newRides.length < total,
           ridesLoading: false,
+        }, () => {
+          // 列表落地后异步补轨迹缩略点（拿到才显示，ride-card 组件 observer 自画）
+          this.fillTrackThumbs();
         });
       })
       .catch((err) => {
         console.error('[profile] fetchRides failed', err);
         this.setData({ ridesLoading: false });
       });
+  },
+
+  // 给当前 rides 批量补轨迹缩略点（utils/ride-thumbs 带模块级缓存，翻页/回页不重复请求）。
+  // 按 id 现场重找下标回写——异步回来时数组可能已被下拉刷新重建，防错位。
+  fillTrackThumbs() {
+    const that = this;
+    rideThumbs.fetchTrackPoints(this.data.rides).then((cache) => {
+      const updates = {};
+      that.data.rides.forEach((r, i) => {
+        if (r && cache[r.id] && !r.trackPoints) {
+          updates['rides[' + i + '].trackPoints'] = cache[r.id];
+        }
+      });
+      if (Object.keys(updates).length > 0) {
+        that.setData(updates);
+      }
+    });
   },
 
   onLoadMoreRides() {
@@ -216,35 +256,8 @@ Page({
 
   // 编辑 bio —— wx.showModal editable + PATCH /api/user/me
   // PATCH /me 是 settings 类小修（接 city / bio）/ 不与 PUT /profile 主资料字段耦合
-  onEditBio() {
-    const current = (this.data.profile && this.data.profile.bio) || '';
-    wx.showModal({
-      title: '编辑骑行宣言',
-      editable: true,
-      placeholderText: '不超过 30 字',
-      content: current,
-      success: (res) => {
-        if (!res.confirm) return;
-        const newBio = (res.content || '').trim();
-        if (newBio.length > 30) {
-          wx.showToast({ title: '不能超过 30 字', icon: 'none' });
-          return;
-        }
-        api.patch('/api/user/me', { bio: newBio })
-          .then(() => {
-            wx.showToast({ title: '已保存', icon: 'success' });
-            // 乐观更新：本地直接改 / 避免再次拉
-            this.setData({
-              'profile.bio': newBio,
-            });
-          })
-          .catch((err) => {
-            wx.showToast({ title: '保存失败', icon: 'none' });
-            console.error('[profile] update bio failed', err);
-          });
-      },
-    });
-  },
+  // onEditBio 已移除（Tim 2026-06-12 拍：bio 编辑入口移设置页"骑行宣言"行，
+  // profile 页只展示——对齐微信"我的页展示、设置页修改"惯例）
 
   // 编辑昵称 —— wx.showModal editable + PUT /api/user/profile
   // PUT /profile 用于改主资料字段（nickname / avatar_url / ftp / weight / bike_type / weekly_goal）

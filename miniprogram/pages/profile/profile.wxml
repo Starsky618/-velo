@@ -55,10 +55,10 @@
       </view>
     </view>
 
-    <!-- bio 签名（task-1 / 点击编辑 / 字段名 = profile.bio） -->
-    <view class="hero-bio" bindtap="onEditBio">
-      <text class="hero-bio-text" wx:if="{{profile.bio}}">{{profile.bio}}</text>
-      <text class="hero-bio-placeholder" wx:else>点这里写一句你的骑行宣言</text>
+    <!-- bio 签名：纯展示（Tim 2026-06-12 拍：去灰框，编辑入口移设置页，对齐微信"我的页只展示、设置页才能改"惯例）。
+         无 bio 整块隐藏（不显示占位引导） -->
+    <view class="hero-bio" wx:if="{{profile.bio}}">
+      <text class="hero-bio-text">{{profile.bio}}</text>
     </view>
 
     <!-- 徽章行 Tim 2026-05-16 真用拍砍（初期没用 / 后端 + schema 保留 / 仅前端隐藏）
@@ -69,13 +69,18 @@
   <!-- StatsResponse 真字段：distance(公里) / rides / elevation_gain(米int) / duration(秒) / -->
   <!--                       weekly_goal / goal_percent -->
   <!-- ⚠️ 不渲染当月平均功率 W：self stats endpoint 不返 avg_power_w / 见 tech-debt P3 -->
+  <!-- 训练统计卡：本周 | 生涯 两档切换（iOS segmented 语言）。
+       生涯 = period=all（后端原生支持，不加时间条件）；周目标进度只在"本周"档显示 -->
   <view class="stats-card" wx:if="{{stats}}">
     <view class="stats-title-row">
-      <text class="stats-title">本周训练</text>
-      <text class="stats-period" wx:if="{{stats.goal_percent !== null && stats.goal_percent !== undefined}}">目标 {{stats.goal_percent}}%</text>
+      <view class="stats-seg">
+        <view class="stats-seg-item {{statsPeriod === 'week' ? 'active' : ''}}" data-period="week" bindtap="onSwitchStatsPeriod">本周</view>
+        <view class="stats-seg-item {{statsPeriod === 'all' ? 'active' : ''}}" data-period="all" bindtap="onSwitchStatsPeriod">生涯</view>
+      </view>
+      <text class="stats-period" wx:if="{{statsPeriod === 'week' && stats.goal_percent !== null && stats.goal_percent !== undefined}}">目标 {{stats.goal_percent}}%</text>
     </view>
 
-    <view class="weekly-goal-progress" wx:if="{{stats.goal_percent !== null && stats.goal_percent !== undefined}}">
+    <view class="weekly-goal-progress" wx:if="{{statsPeriod === 'week' && stats.goal_percent !== null && stats.goal_percent !== undefined}}">
       <view class="goal-progress-track">
         <view class="goal-progress-fill" style="width: {{stats.goal_percent > 100 ? 100 : stats.goal_percent}}%;"></view>
       </view>
@@ -92,11 +97,11 @@
       </view>
       <view class="stats-cell" wx:if="{{stats.elevation_gain !== null && stats.elevation_gain !== undefined}}">
         <view class="stats-value">{{stats.elevation_gain}}</view>
-        <view class="stats-unit">累计爬升 m</view>
+        <view class="stats-unit">{{statsPeriod === 'week' ? '本周爬升 m' : '累计爬升 m'}}</view>
       </view>
       <view class="stats-cell" wx:if="{{stats.duration !== null && stats.duration !== undefined}}">
         <view class="stats-value">{{f.secToHm(stats.duration)}}</view>
-        <view class="stats-unit">本周时长</view>
+        <view class="stats-unit">{{statsPeriod === 'week' ? '本周时长' : '累计时长'}}</view>
       </view>
     </view>
   </view>

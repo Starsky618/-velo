@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.activity import schemas, service
+from app.activity.models import Activity
 
 # 创建路由器，所有骑行活动相关接口都挂在 /api/activities 下
 router = APIRouter(prefix="/api/activities", tags=["activity"])
@@ -77,6 +78,68 @@ def list_activities(
         page=page,
         page_size=page_size,
     )
+
+
+# ========== 轨迹缩略图批量端点（"我的"页/首页活动列表加路线小图）==========
+# ⚠ 必须声明在 /{activity_id} 之前：FastAPI 按声明顺序匹配，
+#   放后面的话 "track-thumbs" 会被当成 activity_id 解析成 422。
+
+def _downsample_track(track, max_points: int = 60) -> list[list[float]]:
+    """把 simplified_track（[{lat, lon, ele}, ...]）抽稀成 ≤max_points 的 [[lon, lat], ...]。
+
+    画"路线形状小图"不需要全部轨迹点——均匀跳点取样 + 终点必保，
+    既让一页 20 条活动的响应体保持轻量，又不丢路线的整体形状。
+    """
+    if not isinstance(track, list) or len(track) < 2:
+        return []
+    n = len(track)
+    step = max(1, -(-n // max_points))  # ceil(n / max_points)，不引入 math
+    indexes = list(range(0, n, step))
+    if indexes[-1] != n - 1:
+        indexes.append(n - 1)  # 终点必保，否则环线/折返路线尾巴会被截掉
+    points: list[list[float]] = []
+    for i in indexes:
+        p = track[i]
+        if isinstance(p, dict) and p.get("lat") is not None and p.get("lon") is not None:
+            points.append([float(p["lon"]), float(p["lat"])])
+    return points if len(points) >= 2 else []
+
+
+@router.get("/track-thumbs", response_model=schemas.TrackThumbsResponse)
+def get_track_thumbs(
+    ids: str = Query(..., description="逗号分隔的活动 id，最多取前 20 个"),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    批量获取活动的抽稀轨迹（owner-only）。
+
+    隐私边界：只返回请求者本人的活动；别人的 id、不存在的 id、
+    没有轨迹的 id 一律静默缺席——不报错也不泄露"这条活动存在与否"。
+    非法 id 片段（非数字）直接跳过，保证前端拼接出错也不会 500。
+    """
+    parsed_ids: list[int] = []
+    for part in ids.split(","):
+        part = part.strip()
+        if part.lstrip("-").isdigit():
+            value = int(part)
+            if value > 0:
+                parsed_ids.append(value)
+    parsed_ids = parsed_ids[:20]
+    if not parsed_ids:
+        return schemas.TrackThumbsResponse(items=[])
+
+    rows = (
+        db.query(Activity.id, Activity.simplified_track)
+        .filter(Activity.id.in_(parsed_ids), Activity.user_id == user_id)
+        .all()
+    )
+    items = []
+    for row in rows:
+        points = _downsample_track(row.simplified_track)
+        if points:
+            items.append(schemas.TrackThumbItem(activity_id=row.id, points=points))
+    return schemas.TrackThumbsResponse(items=items)
 
 
 @router.get("/{activity_id}", response_model=schemas.ActivityDetail)

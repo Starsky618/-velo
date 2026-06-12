@@ -21,9 +21,13 @@
 // - 与父页面契约：父页透传后端 ActivitySummary + 可选补 startedAtDisplay /
 //   组件不脑补字段名 / 不再做 distance_km / duration_display 那种映射层
 
+const routeThumb = require('../../utils/route-thumb')
+
 Component({
   properties: {
-    // 骑行列表数据；外部传入，组件不修改
+    // 骑行列表数据；外部传入，组件不修改。
+    // 每条可选带 trackPoints（[[lon, lat], ...]，父页面从 track-thumbs 端点拉好塞入），
+    // 有则组件在左侧画路线轨迹缩略线（iGPSport 式），没有则缩略图槽整块隐藏。
     rides: {
       type: Array,
       value: [],
@@ -42,6 +46,42 @@ Component({
     showEmpty: {
       type: Boolean,
       value: true,
+    },
+  },
+
+  lifetimes: {
+    // created（不是 attached）：observers 可能在 attached 之前触发，
+    // 晚初始化会让首批 trackPoints 撞上 guard 被静默丢弃（集成审 Important #1）
+    created() {
+      // 已画过的活动 id 登记（组件内部状态，不进 data 不触发渲染）：
+      // 父页面翻页/局部 setData 都会触发 observer，靠它防止同一张图反复重画
+      this._drawnThumbs = {};
+    },
+  },
+
+  observers: {
+    // 父页面塞入 trackPoints 后自动画缩略线。
+    // setTimeout 兜底 canvas 初始化（hidden 翻转与绘制不能同帧，陷阱 #17 pattern）。
+    // ⚠ 绘制坐标 70×70px = wxss .ride-thumb-canvas 140×140rpx 的一半（旧 canvas API 2:1）
+    rides: function (rides) {
+      if (!Array.isArray(rides) || !this._drawnThumbs) return;
+      const that = this;
+      const toDraw = rides.filter(function (r) {
+        return r && r.id && Array.isArray(r.trackPoints) && r.trackPoints.length >= 2
+          && !that._drawnThumbs[r.id];
+      });
+      if (toDraw.length === 0) return;
+      toDraw.forEach(function (r) { that._drawnThumbs[r.id] = true; });
+      setTimeout(function () {
+        toDraw.forEach(function (r) {
+          routeThumb.drawRouteThumb('ride-thumb-' + r.id, r.trackPoints, {
+            width: 70,
+            height: 70,
+            lineWidth: 2,
+            component: that,
+          });
+        });
+      }, 150);
     },
   },
 

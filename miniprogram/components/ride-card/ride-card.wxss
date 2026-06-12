@@ -1,13 +1,16 @@
-/* ride-card 组件样式 —— 从 home.wxss 提取沉淀 */
-/* 设计思路：卡片白底圆角 + 灰阴影；标题加粗，副标题次级灰；
-   stats 网格化 4 列，缺字段整块隐藏（不留空格） */
+/* ride-card 组件样式 —— 苹果方案（MASTER v0.4）。
+   布局升级为 iGPSport 式"左轨迹缩略图 + 右信息"：有轨迹的活动左侧画路线形状线，
+   无轨迹的缩略槽整块隐藏、信息区自动占满（不留空格）。 */
 
 .ride-card {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
   background: #fff;
-  border-radius: 16rpx;
-  padding: 28rpx 32rpx;
+  border-radius: 28rpx;
+  padding: 26rpx 28rpx;
   margin-bottom: 20rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
   transition: transform 0.15s ease;
 }
 
@@ -15,57 +18,82 @@
   transform: scale(0.98);
 }
 
+/* 轨迹缩略：浅灰圆角方块 + 橙线（组件 observer 自画）。
+   ⚠ 旧 canvas API：140×140rpx 必须与 js 绘制坐标 70×70px 保持 2:1，改一处同步另一处 */
+.ride-thumb {
+  flex: 0 0 140rpx;
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 16rpx;
+  overflow: hidden;
+  background: #f7f7f9;
+}
+
+.ride-thumb-canvas {
+  width: 140rpx;
+  height: 140rpx;
+}
+
+.ride-main {
+  flex: 1;
+  min-width: 0;
+}
+
 .ride-card-header {
-  margin-bottom: 20rpx;
+  margin-bottom: 16rpx;
 }
 
 .ride-title {
   font-size: 30rpx;
   font-weight: 600;
-  color: #1a1a1a;
+  color: #1c1c1e;
   line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ride-subtitle {
-  font-size: 24rpx;
-  color: #999;
-  margin-top: 6rpx;
+  font-size: 23rpx;
+  color: #8a8a8e;
+  margin-top: 4rpx;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .ride-stats {
   display: flex;
   flex-wrap: wrap;
-  /* 间距收紧让 4 项挤同一行 / 屏幕窄时 flex-wrap 兜底 */
-  gap: 16rpx 20rpx;
+  gap: 14rpx 18rpx;
 }
 
 .ride-stat {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  /* min-width 调小 / 4 项总宽 = 4×100 + 3×20 = 460rpx < 屏宽 / 同行能放下 */
-  min-width: 100rpx;
+  min-width: 96rpx;
 }
 
 .ride-stat-value {
-  font-size: 32rpx;
+  font-size: 30rpx;
   font-weight: 600;
-  color: #1a1a1a;
+  color: #1c1c1e;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
   line-height: 1.2;
 }
 
 /* 单位 km / km/h / m 跟在数值后 / 略小略灰 / 视觉次级 */
 .ride-stat-unit {
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 400;
-  color: #666;
+  color: #8a8a8e;
   margin-left: 4rpx;
 }
 
 .ride-stat-label {
-  font-size: 22rpx;
-  color: #999;
+  font-size: 21rpx;
+  color: #8a8a8e;
   margin-top: 4rpx;
 }
 
@@ -75,19 +103,13 @@
   text-align: center;
 }
 
-.ride-empty-icon {
-  font-size: 80rpx;
-  margin-bottom: 20rpx;
-  opacity: 0.6;
-}
-
 .ride-empty-text {
   font-size: 28rpx;
-  color: #666;
+  color: #3a3a3c;
   margin-bottom: 8rpx;
 }
 
 .ride-empty-subtext {
   font-size: 24rpx;
-  color: #999;
+  color: #8a8a8e;
 }

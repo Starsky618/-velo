@@ -15,6 +15,14 @@
     data-activity-id="{{item.id}}"
     bindtap="onTapRide"
   >
+    <!-- 路线轨迹缩略（iGPSport 式左图）：父页面塞 trackPoints 后组件 observer 自画。
+         用 hidden 而非 wx:if——canvas DOM 常在才能稳定绘制（陷阱 #17）；
+         无轨迹的活动整块隐藏，右侧信息自动占满全宽 -->
+    <view class="ride-thumb" hidden="{{!item.trackPoints || item.trackPoints.length < 2}}">
+      <canvas canvas-id="ride-thumb-{{item.id}}" class="ride-thumb-canvas"></canvas>
+    </view>
+
+    <view class="ride-main">
     <view class="ride-card-header">
       <view class="ride-title">{{item.title || '骑行记录'}}</view>
       <!-- started_at 由父页面预格式化成 startedAtDisplay 字段（如"今天 09:30"） -->
@@ -45,11 +53,11 @@
         <view class="ride-stat-label">爬升</view>
       </view>
     </view>
+    </view>
   </view>
 </block>
 
 <view class="ride-empty" wx:elif="{{showEmpty}}">
-  <view class="ride-empty-icon">🚴</view>
   <view class="ride-empty-text">{{emptyText}}</view>
   <view class="ride-empty-subtext" wx:if="{{emptySubtext}}">{{emptySubtext}}</view>
 </view>

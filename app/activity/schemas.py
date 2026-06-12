@@ -111,6 +111,21 @@ class ActivityListResponse(BaseModel):
     page_size: int
 
 
+class TrackThumbItem(BaseModel):
+    """单条活动的抽稀轨迹——给列表卡画"路线形状小图"用。
+
+    points 格式 [[lon, lat], ...]（与 route_book.preview_points 同序），
+    前端 utils/route-thumb.js 直接消费，不需要再转换。
+    """
+    activity_id: int
+    points: list[list[float]]
+
+
+class TrackThumbsResponse(BaseModel):
+    """批量轨迹缩略响应——只含请求者本人且有轨迹的活动，其余 id 静默缺席"""
+    items: list[TrackThumbItem]
+
+
 class ActivityUpdateRequest(BaseModel):
     """活动编辑请求——目前只能改标题"""
     title: str = Field(..., min_length=1, max_length=128)

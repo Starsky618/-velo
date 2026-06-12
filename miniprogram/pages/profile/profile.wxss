@@ -94,23 +94,14 @@ page {
   height: 40rpx;
 }
 
-/* bio 签名 */
+/* bio 签名：纯文字展示（灰框退场——编辑入口在设置页，对齐微信惯例）*/
 .hero-bio {
-  margin-top: 26rpx;
-  padding: 18rpx 22rpx;
-  background: #f2f2f7;
-  border-radius: 16rpx;
+  margin-top: 22rpx;
 }
 
 .hero-bio-text {
   font-size: 27rpx;
-  color: #1c1c1e;
-  line-height: 1.6;
-}
-
-.hero-bio-placeholder {
-  font-size: 27rpx;
-  color: #8a8a8e;
+  color: #3a3a3c;
   line-height: 1.6;
 }
 
@@ -125,15 +116,34 @@ page {
 
 .stats-title-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 24rpx;
 }
 
-.stats-title {
-  font-size: 30rpx;
-  font-weight: 600;
+/* 本周 | 生涯 segmented（iOS UISegmentedControl 语言：灰胶囊底 + 选中白片浮起）*/
+.stats-seg {
+  display: flex;
+  padding: 4rpx;
+  border-radius: 14rpx;
+  background: #f2f2f7;
+}
+
+.stats-seg-item {
+  min-width: 96rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 10rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #8a8a8e;
+  line-height: 32rpx;
+}
+
+.stats-seg-item.active {
+  background: #fff;
   color: #1c1c1e;
+  font-weight: 600;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
 }
 
 .stats-period {

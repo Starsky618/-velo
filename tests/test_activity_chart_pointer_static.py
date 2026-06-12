@@ -52,11 +52,16 @@ def test_bindchart_pointer_layer_is_optional_and_uses_active_index():
     assert "if (opts.activeIndex != null)" in js
 
 
-def test_chart_colors_use_strava_reference_palette():
+def test_chart_colors_use_ios_palette():
+    """图表五色 = iOS 系统语义色（MASTER v0.4 苹果方案，2026-06-12 Tim 过审）。
+
+    旧 Strava 参考色板（#487CD0 等）已随设计换轴废弃；本测试锚现行真值：
+    speed 蓝 / power 紫 / hr 红 / cadence 青 / elevation 灰。
+    """
     js = _read("miniprogram/pages/detail/detail.js")
     wxss = _read("miniprogram/pages/detail/detail.wxss")
 
-    for color in ["#487CD0", "#B268E6", "#D9504F", "#D14FBA", "#BFC1BB"]:
+    for color in ["#007AFF", "#AF52DE", "#FF3B30", "#30B0C7", "#BFC1BB"]:
         assert color in js or color in wxss
 
 

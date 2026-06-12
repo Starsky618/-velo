@@ -1,50 +1,66 @@
 <!--
-  设置页（Sprint 6 task-5）— 三区块结构
+  设置页 —— iOS 设置语言重构（2026-06-12 Tim 拍："像普通软件一样设计设置页"）。
 
-  这一页是用户的"控制台"，把"每天不点 / 但出问题时一定要能点到"的几件事集中起来：
-  - 账号资料：FTP 编辑（其他敏感字段未来扩展）
-  - 第三方账号：Strava 绑定 / 解绑状态
-  - 登录态：退出登录（危险操作 / 强制二次确认）
+  信息架构（五组 inset-grouped，每组一张白卡、行间 hairline、行点击编辑）：
+  1. 个人资料：骑行宣言（从 profile 页移来——我的页只展示，设置页才能改）/ 每周目标 / 车型
+  2. 训练参数：FTP（手动/估算）/ 体重 / 年龄 / 最大心率（原有逻辑全保留）
+  3. 账号与同步：Strava（行式：右侧状态 + 点行操作，替代旧 inline 大按钮）
+  4. 通用：清除缓存（真功能：显示占用 + 保留登录态清理）/ 关于 VELO（版本号）
+  5. 账号操作：退出登录 / 注销账号——iOS 惯例"居中红字行"（替代旧全宽大红按钮，防误触；
+     二次确认红线全保留：退出 1 道 / 注销 2 道）
 
-  类比：手机的"设置" App——平时不进，但出问题时（换号、退账号、改重要参数）
-  必须能找到入口。
-
-  入口来源：从"我的"页右上角设置 icon（task-4）跳进来。
-
-  红线（v0.2/v0.3 task 卡）：
-  - 解绑 / 退出**必须二次确认**（wx.showModal confirm）
-  - bound 状态走 GET /api/strava/status 的 `bound` 字段（不从 profile 拉）
-  - "-" 占位符永久规则：FTP 未设时显示 "未设置"（不是 "-"）
+  红线（沿袭 v0.2/v0.3 + 永久规则）：
+  - 解绑 / 退出 / 注销必须二次确认（wx.showModal confirm）
+  - bound 状态走 GET /api/strava/status 的 bound 字段
+  - 未设置显示"未设置"，永不显示 "-"
 -->
 <view class="settings-page">
 
-  <!-- 区块 1：账号资料 -->
-  <view class="section">
-    <view class="section-title">账号资料</view>
+  <!-- 组 1：个人资料 -->
+  <view class="group-title">个人资料</view>
+  <view class="group">
+    <view class="row" bindtap="onEditBio">
+      <text class="row-label">骑行宣言</text>
+      <view class="row-right">
+        <text class="row-value {{bio ? '' : 'muted'}}">{{bio || '未设置'}}</text>
+        <text class="row-arrow">›</text>
+      </view>
+    </view>
+    <view class="row" bindtap="onEditWeeklyGoal">
+      <text class="row-label">每周目标</text>
+      <view class="row-right">
+        <text class="row-value {{weeklyGoal ? '' : 'muted'}}">{{weeklyGoal ? weeklyGoal + ' km' : '未设置'}}</text>
+        <text class="row-arrow">›</text>
+      </view>
+    </view>
+    <picker mode="selector" range="{{bikeTypeOptions}}" range-key="label" value="{{bikeTypeIndex}}" bindchange="onBikeTypeChange">
+      <view class="row">
+        <text class="row-label">车型</text>
+        <view class="row-right">
+          <text class="row-value {{bikeTypeLabel ? '' : 'muted'}}">{{bikeTypeLabel || '未设置'}}</text>
+          <text class="row-arrow">›</text>
+        </view>
+      </view>
+    </picker>
+  </view>
 
-    <!-- FTP 行：点击后在操作菜单里选择手动编辑 / 系统估算，避免页面常驻大按钮 -->
-    <!-- task-6 Critical fix (quality reviewer 2026-05-21 抓 / 微信硬上限 #2)：button 嵌 flex 行拦截兄弟 tap →
-         button 移到 row 外单独一行 / 保留 row-value "未设置" + "›" 手动填入口 -->
+  <!-- 组 2：训练参数 -->
+  <view class="group-title">训练参数</view>
+  <view class="group">
     <view class="row" bindtap="onEditFtp">
       <text class="row-label">FTP</text>
       <view class="row-right">
-        <text class="row-value">{{ftp ? ftp + ' W' : '未设置'}}</text>
+        <text class="row-value {{ftp ? '' : 'muted'}}">{{ftp ? ftp + ' W' : '未设置'}}</text>
         <text class="row-arrow">›</text>
       </view>
     </view>
-    <text class="section-hint">骑行实力评估的核心参数 / 影响功率区间统计</text>
-
-    <!-- 体重行（Sprint 9 task-6 / 可选 / 算 W/kg 用） -->
     <view class="row" bindtap="onEditWeight">
       <text class="row-label">体重</text>
       <view class="row-right">
-        <text class="row-value">{{weight ? weight + ' kg' : '未设置'}}</text>
+        <text class="row-value {{weight ? '' : 'muted'}}">{{weight ? weight + ' kg' : '未设置'}}</text>
         <text class="row-arrow">›</text>
       </view>
     </view>
-    <text class="section-hint">可选 / 用于计算 W/kg（功重比 / 衡量爬坡能力）</text>
-
-    <!-- 年龄 + 最大心率（Sprint 10 / 后端存 birth_year，不存会过期的 age） -->
     <picker
       mode="selector"
       range="{{birthYearOptions}}"
@@ -53,22 +69,68 @@
       <view class="row">
         <text class="row-label">年龄</text>
         <view class="row-right">
-          <text class="row-value">{{displayAge ? displayAge + ' 岁' : '未设置'}}</text>
+          <text class="row-value {{displayAge ? '' : 'muted'}}">{{displayAge ? displayAge + ' 岁' : '未设置'}}</text>
           <text class="row-arrow">›</text>
         </view>
       </view>
     </picker>
-    <text class="section-hint">滚轮选择出生年份 / 用于缺少最大心率时估算心率门槛</text>
-
     <view class="row" bindtap="onEditMaxHr">
       <text class="row-label">最大心率</text>
       <view class="row-right">
-        <text class="row-value">{{maxHr ? maxHr + ' bpm' : '未设置'}}</text>
+        <text class="row-value {{maxHr ? '' : 'muted'}}">{{maxHr ? maxHr + ' bpm' : '未设置'}}</text>
         <text class="row-arrow">›</text>
       </view>
     </view>
-    <text class="section-hint">可选 / FTP 自动估算会优先用它判断 20 分钟是否真的够强</text>
   </view>
+  <view class="group-foot">FTP 影响功率区间与训练强度计算；点 FTP 可选"让系统估算"，最大心率与年龄用于估算时的心率门槛。</view>
+
+  <!-- 组 3：账号与同步 -->
+  <view class="group-title">账号与同步</view>
+  <view class="group">
+    <view class="row" bindtap="onTapStrava">
+      <text class="row-label">Strava</text>
+      <view class="row-right">
+        <text class="row-value" wx:if="{{stravaBound}}">已绑定</text>
+        <text class="row-value muted" wx:else>未绑定</text>
+        <text class="row-arrow">›</text>
+      </view>
+    </view>
+  </view>
+  <view class="group-foot" wx:if="{{stravaBound}}">解绑后历史活动保留，不再自动同步新活动。</view>
+
+  <!-- 组 4：通用（调研定稿：缓存清理不做——小程序 storage 微信统管且本项目只存登录态；
+       单位/多语言/深色模式不做——纯国内公制用户 + Komoot 官方把语言甩给系统 + Strava 2024 才上深色）-->
+  <view class="group-title">通用</view>
+  <view class="group">
+    <!-- 整行即 button（open-type=contact 拉起微信客服会话，零后端的真反馈通道）；
+         无兄弟元素，不踩"button 嵌 flex 行拦截兄弟 tap"陷阱 -->
+    <button class="row row-button" open-type="contact">
+      <text class="row-label">意见反馈</text>
+      <view class="row-right">
+        <text class="row-arrow">›</text>
+      </view>
+    </button>
+    <view class="row" bindtap="onAbout">
+      <text class="row-label">关于 VELO</text>
+      <view class="row-right">
+        <text class="row-value muted" wx:if="{{versionText}}">{{versionText}}</text>
+        <text class="row-arrow">›</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 组 5：账号操作（iOS 惯例：居中红字行 + 各自独立成卡，防误触）-->
+  <view class="group group-spaced">
+    <view class="row row-center" bindtap="onLogout">
+      <text class="row-danger">退出登录</text>
+    </view>
+  </view>
+  <view class="group group-spaced">
+    <view class="row row-center" bindtap="onDeleteAccount">
+      <text class="row-danger">注销账号</text>
+    </view>
+  </view>
+  <view class="group-foot">注销将彻底删除你的全部数据（骑行记录、赛段成绩、功率与训练数据），不可恢复。</view>
 
   <!-- Sprint 9 task-6：FTP 估算结果弹窗（手写 modal / 不用 wx.showModal 因为要展示富内容） -->
   <view class="modal-mask" wx:if="{{ftpEstimateModal}}" bindtap="onCloseEstimateModal">
@@ -77,7 +139,6 @@
       <view class="modal-body">
         <!-- insufficient：历史数据不足 / 引导手动填 -->
         <view wx:if="{{estimateResult.confidence === 'insufficient'}}" class="estimate-fail">
-          <view class="estimate-fail-icon">📉</view>
           <view class="estimate-fail-text">历史活动数据不足</view>
           <view class="estimate-fail-hint">需要最近 90 天内 20 分钟高强度窗口，且同一窗口同时有功率和心率 / 请补最大心率或手动填 FTP</view>
         </view>
@@ -99,11 +160,9 @@
   </view>
 
   <!-- Sprint 9 task-8：FTP Breakthrough 弹窗（worker 自动检测出的突破事件） -->
-  <!-- 弹窗内容 = 当前 ftp → 建议新 ftp / 用户点"更新 FTP" 或 "暂不更新" -->
-  <!-- task-8 quality reviewer Minor 修：mask tap 改成 onCloseBreakthrough（只关弹窗 / 不调 PATCH rejected / 防误触永久 reject）-->
   <view class="modal-mask" wx:if="{{breakthroughModal}}" bindtap="onCloseBreakthrough">
     <view class="modal-content" catchtap="noop">
-      <view class="modal-title">🎉 检测到 FTP 突破</view>
+      <view class="modal-title">检测到 FTP 突破</view>
       <view class="modal-body">
         <view class="breakthrough-success">
           <view class="estimate-hint">你最近的训练表现超出当前 FTP</view>
@@ -120,42 +179,6 @@
         <button class="modal-btn cancel-btn" bindtap="onRejectBreakthrough">暂不更新</button>
       </view>
     </view>
-  </view>
-
-  <!-- 区块 2：第三方账号 -->
-  <view class="section">
-    <view class="section-title">第三方账号</view>
-    <view class="row">
-      <text class="row-label">Strava</text>
-      <view class="row-right">
-        <text class="row-value" wx:if="{{stravaBound}}">已绑定</text>
-        <text class="row-value muted" wx:else>未绑定</text>
-        <button
-          class="inline-btn danger-btn"
-          wx:if="{{stravaBound}}"
-          bindtap="onUnbindStrava"
-          size="mini">解绑</button>
-        <button
-          class="inline-btn primary-btn"
-          wx:else
-          bindtap="onBindStrava"
-          size="mini">绑定</button>
-      </view>
-    </view>
-    <text class="section-hint" wx:if="{{stravaBound}}">解绑后历史活动保留 / 不再自动同步新活动</text>
-  </view>
-
-  <!-- 区块 3：登录态 -->
-  <view class="section">
-    <view class="section-title">登录态</view>
-    <button class="full-width-btn danger-btn" bindtap="onLogout">退出登录</button>
-  </view>
-
-  <!-- 区块 4：注销账号（最危险 / 不可逆 / 两步确认）-->
-  <view class="section">
-    <view class="section-title">注销账号</view>
-    <button class="full-width-btn danger-btn" bindtap="onDeleteAccount">注销账号</button>
-    <text class="section-hint">注销将彻底删除你的全部数据（骑行记录、赛段成绩、功率与训练数据），不可恢复。</text>
   </view>
 
 </view>
