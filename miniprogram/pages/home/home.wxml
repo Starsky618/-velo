@@ -12,7 +12,7 @@
   </view>
   <!-- 右上角铃铛 + 红点（未登录时隐藏，避免给陌生用户制造噪音） -->
   <view class="bell-btn" bindtap="goNotifications" wx:if="{{isLoggedIn}}">
-    <text class="bell-icon">🔔</text>
+    <image class="bell-icon" src="/assets/icons/bell.svg" />
     <view class="red-dot" wx:if="{{unreadCount > 0}}">
       <text wx:if="{{unreadCount < 100}}">{{unreadCount}}</text>
       <text wx:else>99+</text>
@@ -40,7 +40,6 @@
 
 <!-- ====== 未登录 ====== -->
 <view class="login-card" wx:if="{{!isLoggedIn}}">
-  <text class="login-emoji">🚴</text>
   <text class="login-text">登录后查看你的骑行动态</text>
   <navigator url="/pages/profile/profile" class="login-btn">
     <text>去登录</text>
@@ -121,8 +120,8 @@
 
   <!-- 空状态 -->
   <view class="empty" wx:if="{{!loading && rides.length === 0}}">
-    <text class="empty-icon">🚴</text>
     <text class="empty-title">还没有骑行记录</text>
     <text class="empty-sub">上传你的第一条 GPX，从码表 App 分享到微信即可</text>
+    <view class="empty-btn" bindtap="goUpload">去上传</view>
   </view>
 </view>

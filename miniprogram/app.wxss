@@ -13,18 +13,18 @@
 /* ── 全局变量（通过 CSS 变量统一管理颜色和间距）── */
 page {
   /* 主色调：骑行热情红，来自 velo.jsx 的 #FF2D55 */
-  --color-primary: #FF2D55;
-  --color-primary-light: rgba(255, 45, 85, 0.08);
+  --color-primary: #FF9500;
+  --color-primary-light: rgba(255, 149, 0, 0.10);
 
   /* 文字层级：从深到浅，对应"标题→正文→辅助→占位" */
-  --color-text-1: #1D1D1F;
-  --color-text-2: #6E6E73;
-  --color-text-3: #AEAEB2;
+  --color-text-1: #1C1C1E;
+  --color-text-2: #3A3A3C;
+  --color-text-3: #8A8A8E;
 
   /* 背景和分割线 */
-  --color-bg: #F2F1F6;
+  --color-bg: #F2F2F7;
   --color-card: #FFFFFF;
-  --color-divider: #E8E7EC;
+  --color-divider: #E5E5EA;
 
   /* 功能色（成功/警告/信息） */
   --color-success: #34C759;

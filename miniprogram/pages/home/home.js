@@ -90,6 +90,13 @@ Page({
     wx.navigateTo({ url: '/pages/notification/notification' })
   },
 
+  /**
+   * 空状态"去上传"按钮——上传页是 tab 页，必须用 switchTab。
+   */
+  goUpload() {
+    wx.switchTab({ url: '/pages/upload/upload' })
+  },
+
   fetchWeeklyStats() {
     var that = this
     api.get('/api/user/stats?period=week')
