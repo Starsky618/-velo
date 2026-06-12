@@ -4,13 +4,14 @@
 
   <view wx:else class="detail-body">
     <image class="hero-cover" src="{{coverSrc}}" mode="aspectFill" />
+    <view wx:if="{{guide.name}}" class="route-name">{{guide.name}}</view>
     <view wx:if="{{introText}}" class="intro-line">{{introText}}</view>
 
     <view class="accordion-list">
-      <view class="accordion-section {{item.expanded ? 'expanded' : 'collapsed'}}" wx:for="{{sections}}" wx:key="title">
+      <view class="accordion-section" wx:for="{{sections}}" wx:key="title">
         <view class="accordion-title-row" data-index="{{index}}" bindtap="toggleSection">
           <view class="accordion-title">{{item.title}}</view>
-          <view class="expand-indicator">{{item.expanded ? '▼' : '▶'}}</view>
+          <view class="expand-indicator {{item.expanded ? 'open' : ''}}">›</view>
         </view>
         <view class="accordion-body" hidden="{{!item.expanded}}">
           <rich-text nodes="{{item.nodes}}" />
