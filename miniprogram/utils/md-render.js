@@ -1,8 +1,16 @@
 /**
  * Markdown 小译员——把路线手册里的少量 Markdown 翻译成 rich-text 节点。
  *
- * 这个文件只认路线百科当前会用到的写法：标题、段落、粗体、无序列表、图片。
+ * 这个文件只认路线百科当前会用到的写法：标题、段落、粗体、无序/有序列表、键值对、图片。
  * 不认识的语法不会丢弃，而是当普通段落展示，像读手写笔记时先保住原话。
+ *
+ * 排版分层设计（2026-06-12 / "正文太密无分层"反馈后的升级）：
+ * 同样的 Markdown 行，按"长相"翻译成三种立体结构，让正文有层次可扫读——
+ *   - "- **距离**：10.05 km"  → 键值行（iOS 设置页式：左灰标签 + 右深色数字）
+ *   - "1. **汾河绿道** ..."   → 步骤行（橙色序号 + 正文，"怎么骑"导航感）
+ *   - "- 普通列表项"          → 自绘圆点行（橙点 + 正文，间距可控）
+ * 粗体用 span.md-b 而不是原生 strong：strong 触发 font-weight 700，
+ * 中文苹方真字重上限 600，700 会合成加粗笔画糊（MASTER §3 铁律）。
  */
 
 function textNode(text) {
@@ -19,7 +27,7 @@ function inlineNodes(text) {
     if (match.index > last) {
       nodes.push(textNode(source.slice(last, match.index)))
     }
-    nodes.push({ name: 'strong', children: [textNode(match[1])] })
+    nodes.push({ name: 'span', attrs: { class: 'md-b' }, children: [textNode(match[1])] })
     last = pattern.lastIndex
   }
   if (last < source.length) {
@@ -51,59 +59,86 @@ function imageNode(alt, src) {
       class: 'md-img',
       alt: alt || '',
       src: src || '',
-      style: 'max-width:100%;border-radius:8px;',
+      style: 'max-width:100%;border-radius:12px;',
     },
   }
 }
 
-function flushList(nodes, items) {
-  if (!items.length) return
-  nodes.push({
-    name: 'ul',
-    attrs: { class: 'md-ul' },
-    children: items.map(function (item) {
-      return { name: 'li', attrs: { class: 'md-li' }, children: inlineNodes(item) }
-    }),
-  })
-  items.length = 0
+// 键值行："**距离**：10.05 km" → 左灰标签右深色值（设置页式数据表）
+function keyValueNode(key, value) {
+  return {
+    name: 'div',
+    attrs: { class: 'md-kv' },
+    children: [
+      { name: 'span', attrs: { class: 'md-kv-k' }, children: [textNode(key)] },
+      { name: 'span', attrs: { class: 'md-kv-v' }, children: [textNode(value)] },
+    ],
+  }
+}
+
+// 步骤行："1. **汾河绿道** 沿汾河…" → 橙色序号 + 正文
+function stepNode(number, text) {
+  return {
+    name: 'div',
+    attrs: { class: 'md-step' },
+    children: [
+      { name: 'span', attrs: { class: 'md-step-n' }, children: [textNode(number)] },
+      { name: 'span', attrs: { class: 'md-step-body' }, children: inlineNodes(text) },
+    ],
+  }
+}
+
+// 自绘圆点行：替代原生 ul/li——li 的默认 bullet 和间距在 rich-text 里不可控
+function bulletNode(text) {
+  return {
+    name: 'div',
+    attrs: { class: 'md-li' },
+    children: [
+      { name: 'span', attrs: { class: 'md-dot' } },
+      { name: 'span', attrs: { class: 'md-li-body' }, children: inlineNodes(text) },
+    ],
+  }
+}
+
+function listItemNode(item) {
+  // "- **键**：值"（全行就是一组键值）→ 键值行；其余 → 圆点行
+  var kv = item.match(/^\*\*([^*]+)\*\*\s*[：:]\s*(.+)$/)
+  if (kv) return keyValueNode(kv[1].trim(), kv[2].trim())
+  return bulletNode(item)
 }
 
 function renderMarkdown(markdown) {
   var nodes = []
-  var listItems = []
   var lines = String(markdown || '').split(/\r?\n/)
 
   lines.forEach(function (rawLine) {
     var line = rawLine.trim()
+    if (!line) return
     var image = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)
-    if (!line) {
-      flushList(nodes, listItems)
-      return
-    }
     if (image) {
-      flushList(nodes, listItems)
       nodes.push(imageNode(image[1], image[2]))
       return
     }
     if (line.indexOf('## ') === 0) {
-      flushList(nodes, listItems)
       nodes.push(headingNode(2, line.slice(3).trim()))
       return
     }
     if (line.indexOf('# ') === 0) {
-      flushList(nodes, listItems)
       nodes.push(headingNode(1, line.slice(2).trim()))
       return
     }
     if (line.indexOf('- ') === 0 || line.indexOf('* ') === 0) {
-      listItems.push(line.slice(2).trim())
+      nodes.push(listItemNode(line.slice(2).trim()))
       return
     }
-    flushList(nodes, listItems)
+    var step = line.match(/^(\d+)[.、]\s+(.+)$/)
+    if (step) {
+      nodes.push(stepNode(step[1], step[2]))
+      return
+    }
     nodes.push(paragraphNode(line))
   })
 
-  flushList(nodes, listItems)
   return nodes
 }
 

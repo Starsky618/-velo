@@ -85,14 +85,7 @@
 }
 
 .accordion-body {
-  padding: 4rpx 30rpx 30rpx;
-}
-
-.accordion-body .md-h2:first-child,
-.accordion-body .md-h1:first-child,
-.accordion-body .md-p:first-child,
-.accordion-body .md-ul:first-child {
-  margin-top: 0;
+  padding: 0 30rpx 34rpx;
 }
 
 .route-map-wrap,
@@ -127,34 +120,103 @@
   background: #e07f00;
 }
 
-/* rich-text 内容排版（guide.md 渲染出的节点 class） */
-.md-h1 {
-  font-size: 34rpx;
-  font-weight: 600;
-  color: #1c1c1e;
-  line-height: 1.35;
-}
+/* ── rich-text 正文排版（guide.md 渲染节点） ──
+   分层三原则：段间留白造呼吸 / 键值表和步骤条造结构 / 600 字重粗体造锚点 */
 
+.md-h1,
 .md-h2 {
-  margin-top: 22rpx;
+  margin-top: 36rpx;
   font-size: 30rpx;
   font-weight: 600;
   color: #1c1c1e;
   line-height: 1.4;
 }
 
-.md-p,
-.md-li {
+.md-p {
+  margin-top: 24rpx;
   color: #3a3a3c;
+  font-size: 29rpx;
+  line-height: 1.8;
+}
+
+/* 粗体锚点：600 真字重（strong 的 700 会让中文合成加粗发糊） */
+.md-b {
+  font-weight: 600;
+  color: #1c1c1e;
+}
+
+/* 键值行（核心数据节）：iOS 设置页式数据表 */
+.md-kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #e5e5ea;
+}
+
+.md-kv:last-child {
+  border-bottom: none;
+}
+
+.md-kv-k {
+  color: #8a8a8e;
   font-size: 28rpx;
+}
+
+.md-kv-v {
+  color: #1c1c1e;
+  font-size: 29rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* 步骤行（怎么骑）：橙色序号导航感 */
+.md-step {
+  display: flex;
+  margin-top: 28rpx;
+}
+
+.md-step-n {
+  flex: 0 0 52rpx;
+  color: #ff9500;
+  font-size: 29rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   line-height: 1.7;
 }
 
-.md-ul {
-  padding-left: 34rpx;
+.md-step-body {
+  flex: 1;
+  color: #3a3a3c;
+  font-size: 29rpx;
+  line-height: 1.7;
+}
+
+/* 圆点行（普通列表/骑友语录）：自绘橙点，间距可控 */
+.md-li {
+  display: flex;
+  margin-top: 22rpx;
+}
+
+.md-dot {
+  flex: 0 0 auto;
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: #ff9500;
+  margin: 18rpx 22rpx 0 4rpx;
+}
+
+.md-li-body {
+  flex: 1;
+  color: #3a3a3c;
+  font-size: 29rpx;
+  line-height: 1.7;
 }
 
 .md-img {
   width: 100%;
+  margin-top: 24rpx;
   border-radius: 16rpx;
 }
