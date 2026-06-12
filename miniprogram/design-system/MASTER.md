@@ -74,6 +74,11 @@ velo 读作：iPhone 用户为主的骑行成就与社交工具。观感目标 =
 - [x] profile（我的）结构重排（2026-06-12）：4 张分散功能卡合并 iOS inset-grouped 单卡；📍⚙🚴 emoji 换 lucide SVG（新建 assets/icons/settings.svg）；清掉 224 行 v4 deprecated 样式；数字 tabular
 - [x] 全局地图轨迹线换橙：`utils/map-theme.js` routeColor `#F04452` → `#FF9500`（一处改全部地图生效）
 - [x] 共享轨迹缩略工具 `utils/route-thumb.js`（canvas 画"路线形状"非地图；列表卡 + create 缩略共用；⚠ wxss rpx 与 js 绘制 px 必须 2:1）
+- [x] 上传页（2026-06-12）：深底夜场区（开奖/成绩卡/约骑横幅）全白卡化——全 app 最后一块旧语言飞地清除；荧光绿换橙（含 js 海拔 canvas 画线）；🚴📄❌ emoji 换 lucide SVG（新建 file-up.svg）；字重 700/800/900 全清；约骑场景下"发到群"为主操作、详情按钮降级描边
+- [x] 动态活动详情页（2026-06-12）：深色渐变 hero 卡 + 旧红光晕装饰退场 → 白卡；⚙ emoji 换 settings.svg；隐私开关 `#FF6B00` → 系统橙；分隔线统一 1rpx hairline；数据数字全 tabular；赛段行速度色对齐图表蓝
+- [x] tabBar 五个选中态 png 图标重着色：旧红 → 系统橙（PIL 保 alpha 染色，形状不动）
+- [x] 长尾色值统一（2026-06-12 顺手清）：segment / segment-efforts 的非标橙 `#FF6B00` → `#FF9500`；home 通知红点阴影修正为语义红 rgba
+- [x] 地图纸面底图激活（2026-06-12 Tim 填 subkey + 样式编号 20568）：全部地图换浅色纸面风
 - [ ] 首页（涉及 feed 形态 = 功能层，与"冷启动内容密度"一起另议）
 - [ ] 开奖/分享水印（形态已定，等详情页之后实现）
-- [ ] 全局清除旧四色系（grep `#FF2D55|#f04452|#0f766e|#f7f3ea` 逐页勾销；2026-06-12 约骑七页 + map-theme 已清，upload 页深底霓虹 `#c8ff3d` 仍挂账）
+- [ ] 长尾残留：honor 空态 🚴 emoji；segment/segment-efforts/honor/route-list 布局级重排未做（仅色值统一）

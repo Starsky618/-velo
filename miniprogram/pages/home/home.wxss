@@ -46,7 +46,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1rpx 4rpx rgba(255, 45, 85, 0.3);
+  box-shadow: 0 1rpx 4rpx rgba(255, 59, 48, 0.3);
   box-sizing: border-box;
 }
 

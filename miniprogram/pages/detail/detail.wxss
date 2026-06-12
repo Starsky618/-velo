@@ -27,28 +27,13 @@
   color: var(--color-text-3);
 }
 
-/* ══════ 深色头部卡片 ══════ */
+/* ══════ 头部卡片：白卡（深色渐变 + 旧红光晕装饰退场，对齐全 app 卡语言） ══════ */
 .hero-card {
   margin: 24rpx;
-  padding: 32rpx;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(145deg, #1c1c1e, #2C2C2E);
-  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.15);
-  overflow: hidden;
-  position: relative;
-}
-
-/* 装饰光效（克制的，不是液态玻璃那种） */
-.hero-card::after {
-  content: '';
-  position: absolute;
-  top: -40rpx;
-  right: -40rpx;
-  width: 200rpx;
-  height: 200rpx;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 45, 85, 0.15), transparent 70%);
-  pointer-events: none;
+  padding: 32rpx 30rpx;
+  border-radius: 28rpx;
+  background: #fff;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 
 .hero-top {
@@ -65,16 +50,17 @@
 .hero-title {
   font-size: 36rpx;
   font-weight: 600;
-  color: #ffffff;
+  color: #1c1c1e;
   display: block;
-  letter-spacing: -0.5rpx;
 }
 
 .hero-date {
   font-size: 24rpx;
-  color: rgba(255, 255, 255, 0.45);
+  color: #8a8a8e;
   margin-top: 8rpx;
   display: block;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 /* task-4.6：隐私设置入口按钮（齿轮图标） */
@@ -84,14 +70,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.1);
+  background: #f2f2f7;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 .privacy-icon {
-  color: #FFFFFF;
-  font-size: 32rpx;
+  width: 34rpx;
+  height: 34rpx;
 }
 
 /* task-4.6：隐私设置抽屉 */
@@ -125,7 +111,7 @@
   justify-content: space-between;
   padding: 16rpx 0;
   margin-bottom: 16rpx;
-  border-bottom: 2rpx solid #F2F2F7;
+  border-bottom: 1rpx solid #e5e5ea;
 }
 
 .privacy-drawer-title {
@@ -185,28 +171,28 @@
 .hero-value {
   font-size: 52rpx;
   font-weight: 600;
-  color: #ffffff;
+  color: #1c1c1e;
   line-height: 1;
-  letter-spacing: -1rpx;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .hero-unit {
   font-size: 22rpx;
-  color: rgba(255, 255, 255, 0.4);
+  color: #8a8a8e;
   margin-top: 4rpx;
 }
 
 .hero-label {
   font-size: 22rpx;
-  color: rgba(255, 255, 255, 0.5);
+  color: #8a8a8e;
   margin-top: 8rpx;
-  font-weight: 500;
 }
 
 .hero-sep {
-  width: 2rpx;
+  width: 1rpx;
   height: 56rpx;
-  background: rgba(255, 255, 255, 0.12);
+  background: #e5e5ea;
 }
 
 /* ══════ 途经赛段 ══════ */
@@ -243,7 +229,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 20rpx 0;
-  border-bottom: 2rpx solid var(--color-divider);
+  border-bottom: 1rpx solid #e5e5ea;
 }
 
 .segment-item:last-child {
@@ -288,7 +274,7 @@
 
 .segment-speed {
   font-size: 24rpx;
-  color: #5AC8FA;
+  color: #007AFF;
 }
 
 .segment-power {
@@ -370,7 +356,7 @@
 .elevation-stats {
   margin-top: 20rpx;
   padding-top: 16rpx;
-  border-top: 2rpx solid var(--color-divider);
+  border-top: 1rpx solid #e5e5ea;
 }
 
 .elevation-stat-row {
@@ -390,6 +376,8 @@
   font-size: 28rpx;
   font-weight: 600;
   color: var(--color-text-1);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 /* ══════ 通用曲线图容器（速度/功率/心率/踏频共用） ══════ */
@@ -410,7 +398,7 @@
   margin: 0 24rpx 20rpx;
   padding: 28rpx 28rpx 24rpx;
   background: var(--color-card);
-  border-radius: var(--radius-md);
+  border-radius: 28rpx;
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
 }
 
@@ -454,7 +442,7 @@
   justify-content: space-between;
   align-items: baseline;
   padding: 18rpx 0;
-  border-bottom: 2rpx solid var(--color-divider);
+  border-bottom: 1rpx solid #e5e5ea;
 }
 
 .metric-row:last-child {
@@ -470,8 +458,9 @@
   font-size: 36rpx;
   font-weight: 600;
   color: var(--color-text-1);
-  letter-spacing: -0.5rpx;
   line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 /*
@@ -490,7 +479,7 @@
 .zones {
   margin-top: 24rpx;
   padding-top: 20rpx;
-  border-top: 2rpx solid var(--color-divider);
+  border-top: 1rpx solid #e5e5ea;
 }
 
 .zones-meta {
@@ -563,7 +552,7 @@
 .split-head {
   display: flex;
   padding: 12rpx 0;
-  border-bottom: 2rpx solid var(--color-divider);
+  border-bottom: 1rpx solid #e5e5ea;
 }
 
 .split-head .split-cell {
@@ -577,7 +566,7 @@
 .split-row {
   display: flex;
   padding: 18rpx 0;
-  border-bottom: 2rpx solid rgba(0, 0, 0, 0.03);
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.03);
 }
 
 .split-row:last-child {
@@ -589,6 +578,8 @@
   text-align: center;
   font-size: 26rpx;
   color: var(--color-text-1);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .split-cell.km {

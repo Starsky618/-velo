@@ -1,4 +1,8 @@
-/* 上传页样式 */
+/* 上传页（选文件 → 开奖 → 成绩卡）——苹果方案（MASTER v0.4）。
+   本次重写：深底夜场区（开奖 #0b0e13 / 成绩卡 #121722 / 荧光绿）
+   全部退场——这是全 app 最后一块旧设计语言飞地。开奖仪式感保留在
+   "数字逐行浮现 + 成绩卡放大浮现"的动画上，不靠深底。
+   中文字重 ≤600 铁律（旧 700/800/900 全清）；数据数字 tabular-nums。 */
 
 .center-content {
   display: flex;
@@ -7,12 +11,13 @@
   padding: 64rpx 24rpx;
 }
 
+/* 约骑交卷横幅：白卡 + 橙 tinted 药丸（旧深底黑卡退场）*/
 .meetup-banner {
   margin: 24rpx;
-  padding: 24rpx 28rpx;
-  border-radius: 16rpx;
-  background: #11151c;
-  border: 2rpx solid #2a3140;
+  padding: 26rpx 28rpx;
+  border-radius: 28rpx;
+  background: #fff;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -21,31 +26,33 @@
 .meetup-title {
   display: block;
   font-size: 30rpx;
-  font-weight: 700;
-  color: #ffffff;
+  font-weight: 600;
+  color: #1c1c1e;
   margin-bottom: 8rpx;
 }
 
 .meetup-sub {
   display: block;
   font-size: 24rpx;
-  color: #8b94a6;
+  color: #8a8a8e;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .meetup-pill {
-  padding: 8rpx 16rpx;
+  padding: 8rpx 18rpx;
   border-radius: 999rpx;
-  background: rgba(200, 255, 61, 0.12);
-  color: #c8ff3d;
+  background: rgba(255, 149, 0, 0.12);
+  color: #e07f00;
   font-size: 22rpx;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .upload-zone {
   margin: 32rpx 24rpx;
   padding: 76rpx 48rpx;
   background: var(--color-card);
-  border-radius: var(--radius-lg);
+  border-radius: 28rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -57,18 +64,21 @@
 .upload-icon-wrap {
   width: 144rpx;
   height: 144rpx;
-  border-radius: 72rpx;
-  background: var(--color-primary-light);
+  border-radius: 50%;
+  background: rgba(255, 149, 0, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.upload-icon { font-size: 64rpx; }
+.upload-icon {
+  width: 64rpx;
+  height: 64rpx;
+}
 
 .upload-title {
   font-size: 34rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-1);
 }
 
@@ -82,7 +92,7 @@
 .upload-ext {
   color: var(--color-primary);
   font-size: 24rpx;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .brand-list {
@@ -95,11 +105,11 @@
 
 .brand-tag {
   font-size: 22rpx;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text-3);
   background: var(--color-divider);
   padding: 8rpx 20rpx;
-  border-radius: 12rpx;
+  border-radius: 999rpx;
 }
 
 .upload-note {
@@ -126,14 +136,17 @@
 .file-icon-wrap {
   width: 96rpx;
   height: 96rpx;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, #FF6B35, #FF9500);
+  border-radius: 20rpx;
+  background: rgba(255, 149, 0, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.file-icon { font-size: 44rpx; }
+.file-icon {
+  width: 44rpx;
+  height: 44rpx;
+}
 
 .file-detail {
   display: flex;
@@ -155,6 +168,8 @@
 .file-meta {
   font-size: 24rpx;
   color: var(--color-text-2);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .confirm-btns {
@@ -170,12 +185,12 @@
 .btn-retry,
 .btn-share {
   min-height: 88rpx;
-  border-radius: var(--radius-sm);
+  border-radius: 24rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 30rpx;
-  font-weight: 700;
+  font-weight: 600;
   box-sizing: border-box;
 }
 
@@ -214,7 +229,7 @@
 
 .progress-title {
   font-size: 34rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-1);
   text-align: center;
 }
@@ -240,12 +255,12 @@
 
 .step-item.active {
   color: var(--color-text-1);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .step-item.done {
   color: var(--color-success);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .step-dot {
@@ -259,10 +274,13 @@
 .step-item.active .step-dot { background: var(--color-primary); }
 .step-item.done .step-dot { background: var(--color-success); }
 
+/* ── 开奖区：白卡上数字逐行浮现（深底退场，仪式感在动画和大数字）── */
 .reveal-section {
-  padding: 28rpx 28rpx 48rpx;
-  background: #0b0e13;
-  min-height: 640rpx;
+  margin: 24rpx;
+  padding: 28rpx 30rpx 40rpx;
+  background: #fff;
+  border-radius: 28rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 
 .file-chip {
@@ -270,13 +288,12 @@
   align-items: center;
   gap: 14rpx;
   max-width: 100%;
-  padding: 16rpx 24rpx;
+  padding: 14rpx 24rpx;
   border-radius: 999rpx;
-  background: #151a23;
-  border: 2rpx solid #2a3140;
-  color: #aeb6c5;
+  background: #f2f2f7;
+  color: #3a3a3c;
   font-size: 24rpx;
-  margin-bottom: 36rpx;
+  margin-bottom: 32rpx;
   box-sizing: border-box;
 }
 
@@ -290,7 +307,7 @@
   width: 14rpx;
   height: 14rpx;
   border-radius: 7rpx;
-  background: #c8ff3d;
+  background: #ff9500;
   animation: pulse 1s infinite;
   flex-shrink: 0;
 }
@@ -304,14 +321,16 @@
   align-items: baseline;
   gap: 12rpx;
   min-height: 44rpx;
-  color: #697386;
+  color: #8a8a8e;
   font-size: 26rpx;
   margin-bottom: 24rpx;
 }
 
 .parse-count {
-  color: #c8ff3d;
-  font-weight: 800;
+  color: #e07f00;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .stat-row {
@@ -319,7 +338,7 @@
   justify-content: space-between;
   align-items: baseline;
   padding: 30rpx 8rpx;
-  border-bottom: 2rpx solid #161b24;
+  border-bottom: 1rpx solid #e5e5ea;
   opacity: 0;
   transform: translateY(28rpx);
   transition: opacity 0.5s ease, transform 0.5s ease;
@@ -331,7 +350,7 @@
 }
 
 .stat-label {
-  color: #8b94a6;
+  color: #8a8a8e;
   font-size: 28rpx;
 }
 
@@ -342,21 +361,21 @@
 }
 
 .stat-value {
-  color: #ffffff;
+  color: #1c1c1e;
   font-size: 52rpx;
-  font-weight: 800;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .stat-unit {
-  color: #697386;
+  color: #8a8a8e;
   font-size: 24rpx;
 }
 
 .elevation-wrap {
   margin-top: 28rpx;
   height: 150rpx;
-  opacity: 1;
 }
 
 .elevation-canvas {
@@ -364,17 +383,16 @@
   height: 150rpx;
 }
 
+/* ── 成绩卡：白卡 + 橙 VELO 标（深底卡退场；未来形态 = 照片水印，本卡是过渡）── */
 .score-section {
-  padding: 28rpx;
-  background: #0b0e13;
-  min-height: 100vh;
+  padding: 24rpx 24rpx 48rpx;
 }
 
 .score-card {
-  background: #121722;
-  border: 2rpx solid #2a3140;
+  background: #fff;
   border-radius: 28rpx;
   padding: 36rpx 32rpx 32rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
   opacity: 0;
   transform: scale(0.94);
   transition: opacity 0.6s ease, transform 0.6s ease;
@@ -393,29 +411,31 @@
 }
 
 .card-logo {
-  color: #c8ff3d;
+  color: #ff9500;
   font-size: 28rpx;
-  font-weight: 900;
+  font-weight: 600;
   letter-spacing: 4rpx;
 }
 
 .card-date {
-  color: #697386;
+  color: #8a8a8e;
   font-size: 22rpx;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .card-route {
   display: block;
-  color: #ffffff;
+  color: #1c1c1e;
   font-size: 40rpx;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.25;
   margin-bottom: 8rpx;
 }
 
 .card-rider {
   display: block;
-  color: #8b94a6;
+  color: #8a8a8e;
   font-size: 24rpx;
   margin-bottom: 32rpx;
 }
@@ -428,21 +448,22 @@
 }
 
 .card-grid-value {
-  color: #ffffff;
+  color: #1c1c1e;
   font-size: 36rpx;
-  font-weight: 800;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .card-grid-unit {
-  color: #697386;
+  color: #8a8a8e;
   font-size: 20rpx;
   margin-left: 4rpx;
 }
 
 .card-grid-label {
   display: block;
-  color: #697386;
+  color: #8a8a8e;
   font-size: 20rpx;
   margin-top: 6rpx;
 }
@@ -451,21 +472,21 @@
   margin-top: 10rpx;
   padding: 22rpx 24rpx;
   border-radius: 16rpx;
-  border: 2rpx solid rgba(200, 255, 61, 0.22);
-  background: rgba(200, 255, 61, 0.08);
+  border: 1rpx solid rgba(255, 149, 0, 0.25);
+  background: rgba(255, 149, 0, 0.08);
 }
 
 .first-title {
   display: block;
-  color: #c8ff3d;
+  color: #e07f00;
   font-size: 26rpx;
-  font-weight: 800;
+  font-weight: 600;
   margin-bottom: 8rpx;
 }
 
 .first-hint {
   display: block;
-  color: #8b94a6;
+  color: #8a8a8e;
   font-size: 23rpx;
   line-height: 1.6;
 }
@@ -477,12 +498,13 @@
   margin-top: 28rpx;
 }
 
+/* 分享是这一屏的主操作（晒卡到群 = 核心反馈环），橙底白字 */
 .btn-share {
   width: 100%;
   padding: 0;
   border: none;
-  background: #c8ff3d;
-  color: #0b0e13;
+  background: #ff9500;
+  color: #fff;
   line-height: 1;
 }
 
@@ -490,10 +512,13 @@
   border: none;
 }
 
+.btn-share:active {
+  background: #e07f00;
+}
+
 .btn-report {
-  background: transparent;
-  color: #c8ff3d;
-  border: 2rpx solid rgba(200, 255, 61, 0.35);
+  background: rgba(255, 149, 0, 0.12);
+  color: #e07f00;
 }
 
 .btn-detail {
@@ -501,9 +526,16 @@
   color: #ffffff;
 }
 
+.btn-detail-secondary {
+  background: #fff;
+  color: #1c1c1e;
+  border: 1rpx solid #d1d1d6;
+}
+
 .btn-again {
-  background: #202632;
-  color: #aeb6c5;
+  background: #fff;
+  color: #1c1c1e;
+  border: 1rpx solid #d1d1d6;
 }
 
 .error-section {
@@ -513,11 +545,9 @@
   gap: 24rpx;
 }
 
-.error-icon { font-size: 80rpx; }
-
 .error-title {
   font-size: 30rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-1);
   text-align: center;
   line-height: 1.5;

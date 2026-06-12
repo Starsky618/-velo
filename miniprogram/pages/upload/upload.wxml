@@ -19,7 +19,7 @@
 <view wx:if="{{step === 'idle'}}">
   <view class="upload-zone" bindtap="chooseFile">
     <view class="upload-icon-wrap">
-      <text class="upload-icon">🚴</text>
+      <image class="upload-icon" src="/assets/icons/file-up.svg" mode="aspectFit" />
     </view>
     <text class="upload-title">选择你的码表文件</text>
     <text class="upload-hint">从微信聊天记录里选择原文件</text>
@@ -39,7 +39,7 @@
   <view class="confirm-card card">
     <view class="file-info">
       <view class="file-icon-wrap">
-        <text class="file-icon">📄</text>
+        <image class="file-icon" src="/assets/icons/meetup/file-text.svg" mode="aspectFit" />
       </view>
       <view class="file-detail">
         <text class="file-name">{{fileName}}</text>
@@ -139,7 +139,8 @@
     <view wx:if="{{meetupBannerVisible}}" class="btn-report" bindtap="viewReport">
       <text>看本场战报</text>
     </view>
-    <view class="btn-detail" bindtap="viewDetail">
+    <!-- 约骑场景下"发到群里"才是主操作，详情按钮降级为描边，避免两个橙实底打架 -->
+    <view class="btn-detail {{meetupBannerVisible ? 'btn-detail-secondary' : ''}}" bindtap="viewDetail">
       <text>查看骑行详情</text>
     </view>
     <view class="btn-again" bindtap="reset">
@@ -150,7 +151,6 @@
 
 <view wx:if="{{step === 'error'}}" class="center-content">
   <view class="error-section">
-    <text class="error-icon">❌</text>
     <text class="error-title">{{errorMsg}}</text>
     <view class="btn-retry" bindtap="reset">
       <text>重新上传</text>

@@ -14,7 +14,7 @@
 
 <view wx:if="{{!loading && activity}}">
 
-  <!-- ====== 深色头部卡片（距离/时长/爬升） ====== -->
+  <!-- ====== 头部卡片（距离/时长/爬升）：白卡（深色渐变卡退场，对齐全 app 卡语言） ====== -->
   <view class="hero-card">
     <view class="hero-top">
       <view class="hero-title-wrap">
@@ -23,7 +23,7 @@
       </view>
       <!-- task-4.6：隐私设置入口（仅 owner 可见） -->
       <view class="privacy-btn" wx:if="{{isOwner}}" bindtap="togglePrivacyDrawer">
-        <text class="privacy-icon">⚙</text>
+        <image class="privacy-icon" src="/assets/icons/settings.svg" mode="aspectFit" />
       </view>
     </view>
     <view class="hero-stats">
@@ -297,20 +297,20 @@
       <text class="privacy-row-label">仅自己可见</text>
       <text class="privacy-row-desc">开启后，他人将看不到这条骑行</text>
     </view>
-    <switch checked="{{privacyForm.visibility === 'private'}}" bindchange="onPrivacyVisibilityChange" color="#FF6B00" />
+    <switch checked="{{privacyForm.visibility === 'private'}}" bindchange="onPrivacyVisibilityChange" color="#FF9500" />
   </view>
   <view class="privacy-row">
     <view class="privacy-row-text">
       <text class="privacy-row-label">隐藏功率数据</text>
       <text class="privacy-row-desc">他人查看时功率卡片整块消失</text>
     </view>
-    <switch checked="{{privacyForm.hide_power}}" bindchange="onPrivacyHidePowerChange" color="#FF6B00" />
+    <switch checked="{{privacyForm.hide_power}}" bindchange="onPrivacyHidePowerChange" color="#FF9500" />
   </view>
   <view class="privacy-row">
     <view class="privacy-row-text">
       <text class="privacy-row-label">隐藏心率数据</text>
       <text class="privacy-row-desc">他人查看时心率卡片整块消失</text>
     </view>
-    <switch checked="{{privacyForm.hide_heartrate}}" bindchange="onPrivacyHideHeartrateChange" color="#FF6B00" />
+    <switch checked="{{privacyForm.hide_heartrate}}" bindchange="onPrivacyHideHeartrateChange" color="#FF9500" />
   </view>
 </view>

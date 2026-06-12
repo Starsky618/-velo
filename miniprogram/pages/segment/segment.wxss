@@ -252,7 +252,7 @@ page {
 }
 
 .record-row.record-current .record-time {
-  color: #FF6B00;  /* "本次"行用品牌橙色突出 / 跟 Strava 类似 */
+  color: #FF9500;  /* "本次"行用品牌橙色突出 / 跟 Strava 类似 */
 }
 
 .record-date {

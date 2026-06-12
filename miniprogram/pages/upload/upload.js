@@ -446,7 +446,7 @@ Page({
         ctx.lineTo(toX(data[data.length - 1].distance), pad.top + chartH)
         ctx.lineTo(toX(data[0].distance), pad.top + chartH)
         ctx.closePath()
-        ctx.fillStyle = 'rgba(200, 255, 61, 0.12)'
+        ctx.fillStyle = 'rgba(255, 149, 0, 0.10)'
         ctx.fill()
 
         ctx.beginPath()
@@ -454,7 +454,7 @@ Page({
         for (var k = 1; k < data.length; k++) {
           ctx.lineTo(toX(data[k].distance), toY(data[k].elevation))
         }
-        ctx.strokeStyle = '#c8ff3d'
+        ctx.strokeStyle = '#ff9500'
         ctx.lineWidth = 2
         ctx.stroke()
       })

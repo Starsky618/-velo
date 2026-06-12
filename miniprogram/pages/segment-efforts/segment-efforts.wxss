@@ -29,7 +29,7 @@ page {
 .btn-login {
   margin-top: 40rpx;
   padding: 20rpx 60rpx;
-  background: #FF6B00;
+  background: #FF9500;
   color: #FFFFFF;
   border-radius: 12rpx;
   font-size: 30rpx;
@@ -76,7 +76,7 @@ page {
   width: 14rpx;
   height: 14rpx;
   border-radius: 50%;
-  background: #FF6B00;       /* 改用品牌橙（白底上更醒目 / 跟黄色对比度不够）*/
+  background: #FF9500;       /* 改用品牌橙（白底上更醒目 / 跟黄色对比度不够）*/
   margin-left: 12rpx;
 }
 
