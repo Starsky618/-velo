@@ -1,0 +1,19 @@
+<view class="route-map-page">
+  <view wx:if="{{error}}" class="route-map-state">{{error}}</view>
+  <map wx:else
+       id="route-map"
+       class="route-map"
+       latitude="{{center.latitude}}"
+       longitude="{{center.longitude}}"
+       scale="13"
+       markers="{{markers}}"
+       polyline="{{polylines}}"
+       include-points="{{includePoints}}"
+       enable-traffic="{{false}}"
+       enable-3D="{{false}}"
+       enable-rotate="{{true}}"
+       show-location="{{false}}">
+    <cover-view class="route-map-title">{{title}}</cover-view>
+    <cover-view class="route-map-back" bindtap="onTapBack">返回</cover-view>
+  </map>
+</view>

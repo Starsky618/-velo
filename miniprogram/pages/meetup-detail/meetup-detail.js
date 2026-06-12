@@ -3,6 +3,8 @@ const api = require('../../utils/api')
 const { formatDistance, formatClimb, formatTime, paceText } = require('../../utils/meetup-format')
 const { wgs84ToGcj02 } = require('../../utils/coords')
 const mapTheme = require('../../utils/map-theme')
+const routeThumb = require('../../utils/route-thumb')
+const routeMapNav = require('../../utils/route-map-nav')
 
 // 把路书里的 WGS-84 轨迹点翻译成微信地图能显示的 GCJ-02 红线。
 // 类比：后端保存的是路线原稿，微信地图要的是本地门牌号；展示前翻译，数据源不改。
@@ -77,7 +79,7 @@ function decorateMeetup(meetup) {
 }
 
 Page({
-  data: Object.assign({}, mapTheme.getPaperMapData(), {
+  data: {
     meetupId: null,
     shareToken: '', // 私圈约骑分享链接带来的口令（onLoad 从 ?token= 取，透传给后端门禁）
     meetup: null,
@@ -92,7 +94,7 @@ Page({
     routePreviewPolylines: [],
     routePreviewMarkers: [],
     routePreviewIncludePoints: [],
-  }),
+  },
 
   onLoad: function (options) {
     // 私圈约骑分享链接是 ?id=X&token=Y——必须收下 token 并透传给详情/加入/照片接口，
@@ -141,12 +143,40 @@ Page({
     }
     api.getRouteBookDetail(routeBookId)
       .then(function (routeBook) {
-        that.setData(buildRoutePreview(routeBook.preview_points))
+        that.setData(buildRoutePreview(routeBook.preview_points), function () {
+          that.drawRoutePreviewThumb()
+        })
       })
       .catch(function () {
         // 路书被删或不可读时，只隐藏路线图；约骑详情其它信息仍照常可看。
         that.setData(buildRoutePreview([]))
       })
+  },
+
+  // 约骑详情页顶部地图只是让人先看路线形状，不承担拖动选点。
+  // 用自绘纸面路线卡替掉原生地图，真机上不会再露出腾讯默认导航底图。
+  drawRoutePreviewThumb: function () {
+    var that = this
+    if (!this.data.routePreviewVisible) return
+    setTimeout(function () {
+      routeThumb.drawRouteThumb('meetup-route-preview', that.data.routePreviewIncludePoints, {
+        width: 343,
+        height: 190,
+        lineWidth: 4,
+        dotR: 6,
+        paper: true,
+      })
+    }, 120)
+  },
+
+  onOpenRouteMapPage: function () {
+    routeMapNav.openRouteMapPage({
+      title: (this.data.meetup && this.data.meetup.snapshot_route_name) || '路线地图',
+      center: this.data.routePreviewCenter,
+      markers: this.data.routePreviewMarkers,
+      polylines: this.data.routePreviewPolylines,
+      includePoints: this.data.routePreviewIncludePoints,
+    })
   },
 
   onTapJoin: function () {

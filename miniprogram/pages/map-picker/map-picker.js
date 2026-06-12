@@ -1,7 +1,5 @@
 const api = require('../../utils/api')
 const { wgs84ToGcj02 } = require('../../utils/coords')
-const mapTheme = require('../../utils/map-theme')
-
 const DEFAULT_CENTER = { latitude: 37.8706, longitude: 112.5489 }
 
 function normalizeKind(kind) {
@@ -39,7 +37,7 @@ function mapPointFromSearchPlace(place, fallbackLat, fallbackLon) {
 }
 
 Page({
-  data: Object.assign({}, mapTheme.getPaperMapData(), {
+  data: {
     kind: 'start',
     title: '选择起点',
     confirmText: '确认起点',
@@ -50,7 +48,7 @@ Page({
     placeSearchResults: [],
     latitude: DEFAULT_CENTER.latitude,
     longitude: DEFAULT_CENTER.longitude,
-  }),
+  },
 
   onLoad: function (options) {
     var kind = normalizeKind(options && options.kind)

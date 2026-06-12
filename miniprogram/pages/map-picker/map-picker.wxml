@@ -1,26 +1,6 @@
 <view class="map-picker-page">
   <view class="map-picker-map-shell">
-    <map wx:if="{{paperMapHasCustomStyle}}"
-         id="picker-map"
-         class="map-picker-map"
-         latitude="{{latitude}}"
-         longitude="{{longitude}}"
-         scale="14"
-         subkey="{{paperMapSubkey}}"
-         layer-style="{{paperMapLayerStyle}}"
-         enable-poi="{{false}}"
-         enable-building="{{false}}"
-         enable-traffic="{{false}}"
-         enable-3D="{{false}}"
-         enable-rotate="{{false}}"
-         show-location="{{false}}"
-         bindregionchange="onRegionChange">
-      <cover-view class="map-picker-pin">
-        <cover-view class="map-picker-pin-core"></cover-view>
-      </cover-view>
-    </map>
-    <map wx:else
-         id="picker-map"
+    <map id="picker-map"
          class="map-picker-map"
          latitude="{{latitude}}"
          longitude="{{longitude}}"

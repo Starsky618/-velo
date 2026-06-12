@@ -54,38 +54,8 @@
       <input class="tencent-route-name" value="{{tencentRouteName}}" maxlength="40" bindinput="onTencentRouteNameInput" placeholder="给这条路线起个名字" />
       <button class="generate-button" loading="{{creatingTencentRoute}}" disabled="{{creatingTencentRoute}}" bindtap="onTapCreateTencentRoute">生成路线</button>
       <view wx:if="{{routePreviewVisible}}" class="route-preview-shell">
-        <map wx:if="{{paperMapHasCustomStyle}}"
-             class="route-preview-map"
-             latitude="{{routePreviewCenter.latitude}}"
-             longitude="{{routePreviewCenter.longitude}}"
-             scale="12"
-             markers="{{routePreviewMarkers}}"
-             polyline="{{routePreviewPolylines}}"
-             include-points="{{routePreviewIncludePoints}}"
-             subkey="{{paperMapSubkey}}"
-             layer-style="{{paperMapLayerStyle}}"
-             enable-poi="{{false}}"
-             enable-building="{{false}}"
-             enable-traffic="{{false}}"
-             enable-3D="{{false}}"
-             enable-rotate="{{false}}"
-             show-location="{{false}}">
-          <cover-view class="route-preview-label">路线预览图（非导航）</cover-view>
-        </map>
-        <map wx:else
-             class="route-preview-map"
-             latitude="{{routePreviewCenter.latitude}}"
-             longitude="{{routePreviewCenter.longitude}}"
-             scale="12"
-             markers="{{routePreviewMarkers}}"
-             polyline="{{routePreviewPolylines}}"
-             include-points="{{routePreviewIncludePoints}}"
-             enable-traffic="{{false}}"
-             enable-3D="{{false}}"
-             enable-rotate="{{false}}"
-             show-location="{{false}}">
-          <cover-view class="route-preview-label">路线预览图（非导航）</cover-view>
-        </map>
+        <canvas canvas-id="route-preview-main" class="route-preview-canvas"></canvas>
+        <view class="route-preview-label">路线预览图（非导航）</view>
       </view>
     </view>
 
@@ -117,7 +87,7 @@
     照片用真照片网格（复用 mediaList + onTapAddMedia/onTapDeleteMedia/onTapPreviewMedia）。
   -->
   <view wx:if="{{currentStep === 'edit'}}" class="panel pub-card">
-    <!-- 路线行：左侧轨迹缩略线（canvas 自绘形状，替代真 <map> ——原生组件层级
+    <!-- 路线行：左侧轨迹缩略线（canvas 自绘形状，替代原生地图——原生组件层级
          盖按钮 + 抢手势是"地图与按键位置冲突"bug 的根源），右侧"路线已生成"徽标；只读不可编辑 -->
     <view class="pub-row">
       <view class="pub-route-thumb">
@@ -433,43 +403,6 @@
       <view class="pv-learn-more"><text>了解更多</text><image class="pv-learn-chev" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" /></view>
     </view>
 
-  </view>
-
-  <view wx:if="{{routeMapOverlayVisible}}" class="route-map-overlay">
-    <map wx:if="{{paperMapHasCustomStyle}}"
-         class="preview-route-map"
-         latitude="{{routePreviewCenter.latitude}}"
-         longitude="{{routePreviewCenter.longitude}}"
-         scale="13"
-         markers="{{routePreviewMarkers}}"
-         polyline="{{routePreviewPolylines}}"
-         include-points="{{routePreviewIncludePoints}}"
-         subkey="{{paperMapSubkey}}"
-         layer-style="{{paperMapLayerStyle}}"
-         enable-poi="{{false}}"
-         enable-building="{{false}}"
-         enable-traffic="{{false}}"
-         enable-3D="{{false}}"
-         enable-rotate="{{true}}"
-         show-location="{{false}}">
-      <cover-view class="route-map-title">{{selectedRouteName}}</cover-view>
-      <cover-view class="route-map-close" bindtap="onCloseRouteMapOverlay">关闭</cover-view>
-    </map>
-    <map wx:else
-         class="preview-route-map"
-         latitude="{{routePreviewCenter.latitude}}"
-         longitude="{{routePreviewCenter.longitude}}"
-         scale="13"
-         markers="{{routePreviewMarkers}}"
-         polyline="{{routePreviewPolylines}}"
-         include-points="{{routePreviewIncludePoints}}"
-         enable-traffic="{{false}}"
-         enable-3D="{{false}}"
-         enable-rotate="{{true}}"
-         show-location="{{false}}">
-      <cover-view class="route-map-title">{{selectedRouteName}}</cover-view>
-      <cover-view class="route-map-close" bindtap="onCloseRouteMapOverlay">关闭</cover-view>
-    </map>
   </view>
 
   <!--

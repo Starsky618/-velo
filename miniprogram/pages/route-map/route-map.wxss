@@ -1,0 +1,49 @@
+.route-map-page {
+  min-height: 100vh;
+  background: #eef3ee;
+}
+
+.route-map {
+  width: 100%;
+  height: 100vh;
+}
+
+.route-map-state {
+  padding: 240rpx 40rpx 0;
+  color: #6e6e73;
+  font-size: 28rpx;
+  text-align: center;
+}
+
+.route-map-title {
+  position: absolute;
+  top: 92rpx;
+  right: 150rpx;
+  left: 28rpx;
+  overflow: hidden;
+  height: 64rpx;
+  padding: 0 24rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1c1c1e;
+  font-size: 27rpx;
+  font-weight: 600;
+  line-height: 64rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-map-back {
+  position: absolute;
+  top: 92rpx;
+  right: 28rpx;
+  width: 100rpx;
+  height: 64rpx;
+  border-radius: 18rpx;
+  background: rgba(28, 28, 30, 0.78);
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 64rpx;
+  text-align: center;
+}

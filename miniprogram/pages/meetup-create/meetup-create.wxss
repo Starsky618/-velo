@@ -220,7 +220,7 @@ page {
   background: #eef3ee;
 }
 
-.route-preview-map {
+.route-preview-canvas {
   width: 100%;
   height: 100%;
 }
@@ -237,54 +237,6 @@ page {
   color: #1c1c1e;
   font-size: 24rpx;
   font-weight: 600;
-}
-
-.route-map-overlay {
-  position: fixed;
-  z-index: 999;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  background: #eef3ee;
-}
-
-.preview-route-map {
-  width: 100%;
-  height: 100%;
-}
-
-.route-map-title {
-  position: absolute;
-  left: 28rpx;
-  right: 150rpx;
-  top: 92rpx;
-  overflow: hidden;
-  height: 64rpx;
-  line-height: 64rpx;
-  padding: 0 24rpx;
-  border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.94);
-  color: #1c1c1e;
-  font-size: 27rpx;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.route-map-close {
-  position: absolute;
-  right: 28rpx;
-  top: 92rpx;
-  width: 100rpx;
-  height: 64rpx;
-  line-height: 64rpx;
-  border-radius: 18rpx;
-  background: rgba(28, 28, 30, 0.78);
-  color: #fff;
-  font-size: 26rpx;
-  font-weight: 600;
-  text-align: center;
 }
 
 /* ===== 底部按钮栏（route 步单按钮 / edit·confirm 步双按钮）===== */

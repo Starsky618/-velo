@@ -15,6 +15,7 @@
     "pages/training-calendar/training-calendar",
     "pages/training-distribution/training-distribution",
     "pages/map-picker/map-picker",
+    "pages/route-map/route-map",
     "pages/meetup-report/meetup-report",
     "pages/meetups-mine/meetups-mine",
     "pages/route-list/route-list",

@@ -1,51 +1,32 @@
 /**
- * 小程序地图外衣 — 给所有页面内地图统一一张很浅的纸面底图。
+ * 小程序地图配色 — 给所有"画路线"的地方统一一支橙色笔。
  *
- * 这个文件像一盒彩铅：地图本身只负责把路、点、城市画出来；
- * 哪些颜色应该淡下去，哪些路线应该跳出来，都从这里拿。
+ * 这个文件像一盒彩铅：路线该用什么颜色、多粗的线、什么描边，都从这里拿，
+ * 业务页面不许自己配色（改主色只改这一个文件）。
  *
- * 操作注意事项：
- * 1. 这里只能放前端可公开的 Tencent 地图 subkey 和 layer-style。
- * 2. 不能放服务端 SK；服务端 SK 像后厨钥匙，只能留在后端环境变量里。
- * 3. 如果腾讯控制台换了浅色样式，只改 PAPER_MAP_CONFIG，不要逐页改。
+ * ⚠ 历史教训（2026-06-12 地图事故，改这个文件前必读）：
+ * 这里曾经放过腾讯个性化底图的 subkey + layerStyle，想给所有 <map> 换浅色纸面皮肤。
+ * 微信官方文档：自 2023-06-29 起，小程序个性化地图是"先购买再使用"的付费能力，
+ * 入口在微信公众平台-付费管理——只在腾讯位置服务控制台建 key/调样式/授权 AppID 是不够的。
+ * velo 没有购买该能力 → subkey 一挂到 <map> 上，真机鉴权必失败、地图直接卡死，
+ * 改任何代码都救不回来（codex 多轮代码层修复全部无效，根因在商务层不在代码层）。
+ *
+ * 现行架构（替代方案，免费且已验证）：
+ * 1. 装饰性展示（路线缩略图 / 热力图卡）→ utils/route-thumb.js canvas 自绘纸面 + 橙色轨迹；
+ * 2. 交互性地图（map-picker 选点 / route-map 全屏查看）→ 不带 subkey 的默认底图（免费）；
+ * 3. 全工程任何 <map> 禁止再传 subkey / layer-style（有静态测试守卫这条红线）。
+ * 未来真要复活纸面底图：先在微信公众平台-付费管理购买个性化地图，再从腾讯控制台
+ * weilu-mini key 取回 subkey 填上——顺序不能反。
  */
 
 const PAPER_MAP_CONFIG = {
-  // 腾讯控制台里的 weilu-mini（小程序浅色底图）key：客户端公开类 subkey，安全靠 APPID 白名单，
-  // 不靠保密；不要填 weilu-dev（路线规划）key。个性化样式已在腾讯控制台调好：高速等道路调浅。
-  subkey: 'GIHBZ-V6YWL-5TYPD-EXDCJ-6WCUT-TFBLI',
-  // 小程序 layer-style 填的是绑定列表里的顺序号 style_order，不是后台内部 style_id。
-  // 当前 weilu-mini 绑定“我的自定义样式1”：style_order=1，style_id=20568。
-  layerStyle: 1,
-  // 高速、主干路、水系、绿地这些底图颜色必须在腾讯个性化地图后台调浅。
-  // 小程序代码只保存公开 subkey 和样式编号，业务页面不能自己调底图颜色。
   // 路线主色 = 系统橙（MASTER v0.4 唯一强调色）；旧 #F04452 属已废弃四色系
   routeColor: '#FF9500',
   routeBorderColor: '#FFFFFF',
-  heatColor: '#FFB020CC',
 }
 
-function normalizePaperMapConfig(config) {
-  var source = config || PAPER_MAP_CONFIG
-  var subkey = String(source.subkey || '').trim()
-  var layerStyle = Number(source.layerStyle)
-  if (!Number.isFinite(layerStyle)) layerStyle = 1
-  return {
-    subkey: subkey,
-    layerStyle: layerStyle,
-    hasCustomStyle: Boolean(subkey),
-  }
-}
-
-function getPaperMapData(config) {
-  var normalized = normalizePaperMapConfig(config)
-  return {
-    paperMapSubkey: normalized.subkey,
-    paperMapLayerStyle: normalized.layerStyle,
-    paperMapHasCustomStyle: normalized.hasCustomStyle,
-  }
-}
-
+// 把一串 GCJ-02 点变成 <map> polyline 数组——route-map 全屏页画橙色路线用。
+// 展示型缩略图不走这里（那是 route-thumb.js canvas 的事），所以全工程只有"真地图"页消费它。
 function buildRoutePreviewPolylines(points) {
   if (!Array.isArray(points) || points.length < 2) return []
   return [{
@@ -59,20 +40,7 @@ function buildRoutePreviewPolylines(points) {
   }]
 }
 
-function buildHeatmapPolyline(points, dottedLine) {
-  return {
-    points: points,
-    color: PAPER_MAP_CONFIG.heatColor,
-    width: 4,
-    arrowLine: false,
-    dottedLine: Boolean(dottedLine),
-  }
-}
-
 module.exports = {
   PAPER_MAP_CONFIG,
-  normalizePaperMapConfig,
-  getPaperMapData,
   buildRoutePreviewPolylines,
-  buildHeatmapPolyline,
 }

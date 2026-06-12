@@ -3,15 +3,14 @@
  *
  * 这是个"自给自足的小卡片"：profile 页面只需要一行 <heatmap-card />（自己）
  * 或 <heatmap-card userId="{{otherId}}" />（看他人）就能让用户看到骑过的区域。
- * 所有数据获取、状态切换、坐标转换都在 component 内部消化，page 层完全不用管。
+ * 所有数据获取、状态切换、轨迹绘制都在 component 内部消化，page 层完全不用管。
  *
  * 类比：就像把"显示天气"这件事打包成一个独立小部件——
  * 你不需要知道它怎么取数据、怎么渲染图标，把它放到页面上就完事了。
  *
  * ─── v3 polish 关键改动（2026-05-08）───────────────
  * 1. 砍 city props：后端 v3 city 已可选，前端不再强制传 / 直接拉用户全部活动轨迹
- * 2. 内部 GCJ-02 转换：WGS-84 GPS → GCJ-02 中国地图坐标 / 防偏移 100-700 米
- *    转换时机：_convertToPolylines 和 _computeCenter 都在塞给小程序 map 之前转
+ * 2. 展示层改为 canvas 自绘纸面轨迹：只画路线形状，不再依赖原生地图底图
  *
  * props 设计（4.3 复用关键）：
  *   - userId: Number 默认 0
@@ -24,24 +23,19 @@
  *
  * 数据流：
  *   attached / props 变化 → _fetchAndRender → setData(loading)
- *   → api.get → 成功 → _convertToPolylines（含 GCJ-02 转换）→ setData(polylines + center)
+ *   → api.get → 成功 → setData(tracks) → canvas 自绘纸面轨迹
  *                  → 失败 → setData(error)
  *
  * 注意（坑预防）：
  *   1. 后端 tracks 是 list of list / 每条轨迹是 [[lon, lat], ...] GeoJSON 约定 lon 在前，
- *      小程序 marker 要的是 latitude / longitude，转换时别搞反！
+ *      canvas 画形状时仍按 lon/lat 读，别把经纬度顺序搞反
  *   2. props 变化不会自动触发 attached，需要 observers 监听重新 fetch
- *   3. tracks 保留 activity 边界让前端画 polyline / 多条 opacity 重叠形成自然热力（不需 count 字段）；
- *      所以"按 count 排序、颜色越深"是未来事，本期所有 polyline 用同一个透明黄色
- *   4. GCJ-02 转换：只在塞给小程序 map 之前转 / 后端 tracks 永远是 WGS-84（数据真相源不动）
+ *   3. tracks 保留 activity 边界让前端逐条画线 / 多条 opacity 重叠形成自然热力（不需 count 字段）；
+ *      所以"按 count 排序、颜色越深"是未来事，本期所有轨迹线用同一个透明橙
  */
 
 const api = require('../../utils/api')
-const { wgs84ToGcj02 } = require('../../utils/coords')
-const mapTheme = require('../../utils/map-theme')
-
-// 兜底中心点（轨迹空时让 map 别飘到大洋上 / 默认北京天安门）
-const DEFAULT_CENTER = { lat: 39.9042, lng: 116.4074 }
+const routeThumb = require('../../utils/route-thumb')
 
 Component({
   /**
@@ -62,13 +56,12 @@ Component({
    * 组件内部数据（data）
    * 类比：组件自己的"小本本"，只有自己看，外面看不到也改不到
    */
-  data: Object.assign({}, mapTheme.getPaperMapData(), {
+  data: {
     loading: true,         // 初始进入就是 loading 态
     error: false,          // 网络/接口报错
     isEmpty: false,        // 数据空（无活动记录）
-    polylines: [],         // 小程序 map 接受的 polylines 数组（D27 v2 polish / 每 activity 一条）
-    center: { lat: 39.9042, lng: 116.4074 },  // map 中心（默认北京）
-  }),
+    tracks: [],            // canvas 自绘用的原始轨迹（每 activity 一条）
+  },
 
   /**
    * 生命周期
@@ -94,12 +87,12 @@ Component({
     },
 
     /**
-     * 核心方法：拉数据 → 转换 → 渲染
+     * 核心方法：拉数据 → 渲染
      *
      * 流程：
      *   1. setData 进入 loading 态
      *   2. 根据 userId 选择 endpoint（看自己 vs 看他人）
-     *   3. 拿到响应后判空 → 转 polylines（含 GCJ-02）→ setData 渲染态
+     *   3. 拿到响应后判空 → setData(tracks) → canvas 渲染态
      *   4. 任何步骤报错 → setData error 态
      */
     _fetchAndRender() {
@@ -130,16 +123,13 @@ Component({
             return
           }
 
-          // 转 polylines + 算中心（两步内部都做 GCJ-02 转换）
-          const polylines = this._convertToPolylines(tracks)
-          const center = this._computeCenter(tracks)
-
           this.setData({
             loading: false,
             error: false,
             isEmpty: false,
-            polylines: polylines,
-            center: center,
+            tracks: tracks,
+          }, () => {
+            this._drawHeatmap()
           })
         })
         .catch(() => {
@@ -160,149 +150,19 @@ Component({
     },
 
     /**
-     * 把后端 tracks 数组转成小程序 polylines 数组（D27 v2 polish / v3 加 GCJ-02）
-     *
-     * 输入：[[[lon, lat], [lon, lat], ...], ...] / 每内层 list 是一个 activity 的 WGS-84 轨迹
-     * 输出：[{points: [{latitude, longitude}, ...], color, width, ...}, ...] / 已转 GCJ-02
-     *
-     * 视觉策略：
-     * - 每条 activity 一条独立 polyline / 黄色 #FFD700（接近 ride.fitcard.app 风格）
-     * - opacity 0.5 让多条 polyline 重叠时颜色叠加变深 → 自然热力效果（骑得越多越亮）
-     * - 不需要后端聚合 count / 重叠次数自带视觉梯度
-     *
-     * 坐标系（v3 polish 关键）：
-     * - 后端存的是 WGS-84（GPS 国际标准）
-     * - 小程序 <map> 在中国大陆显示要用 GCJ-02（中国加密坐标）
-     * - 不转直接传 → 轨迹偏移 100-700 米（明明骑大马路，地图上画到小区里）
-     *
-     * 类比：透明黄色马克笔在地图上多次描同一条路 → 自然变成更亮的黄
+     * 个人页热力图是展示卡，不需要拖动地图。
+     * 用自绘纸面 + 轨迹线，免费避开腾讯默认底图，同时保留"骑过哪些区域"的第一眼信息。
      */
-    _convertToPolylines(tracks) {
-      // hotfix 链总结（2026-05-09 task-4.2 v3 polish 真用迭代 / 第 6 次）：
-      // - v1 cap=8000 / 步长 21 → 网格状直线（失败）
-      // - v2 cap=50000 / 步长 3 → 视觉接近原版但放大后仍有 km 级直线（部分修）
-      // - v3 加 segment split 500m → 切断 km 级跳点（修一半）
-      // - v4 砍 cap → 恢复 30m 中位数精度
-      // - **v5 分层虚实线**（当前 / Tim 拍 C）：
-      //   * < 500m segment → 实线（真实骑过 / 高置信）
-      //   * 500-2000m segment → 虚线（GPS 跳点 / 中等置信"骑过这里 GPS 没记全"）
-      //   * > 2000m segment → 切断（真异常 / 不画连接 / 防误导）
-      //   解决 v3 山区 track 被切几十段视觉灾难（截图 #18 庄子乡/北田镇 S60 沿线断点）
-      //
-      // 保留：GCJ-02 转换 / Number.isFinite 防 NaN（v3 polish Codex 异源审 Important）/ 不 cap
-      const SOLID_MAX_M = 500    // ≤ 500m 实线（真实骑过 / 严格 d > SOLID_MAX_M 才转虚线）
-      const DOTTED_MAX_M = 2000  // 500-2000m 虚线（GPS 跳点 / 中等置信）/ > 2000m 切断（真异常）
-
-      // Haversine 球面距离（米）/ 用于 segment 分层判断
-      const distM = (a, b) => {
-        const R = 6371000
-        const dLat = (b.latitude - a.latitude) * Math.PI / 180
-        const dLng = (b.longitude - a.longitude) * Math.PI / 180
-        const lat1 = a.latitude * Math.PI / 180
-        const lat2 = b.latitude * Math.PI / 180
-        const aa = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
-        return R * 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa))
-      }
-
-      const polylines = []
-      // flushPolyline 加 dotted 参数 / 区分实线段 vs 虚线段（v5 分层视觉）
-      const flushPolyline = (points, dotted) => {
-        if (points.length < 2) return  // 单点不能成 polyline
-        polylines.push(mapTheme.buildHeatmapPolyline(points, dotted))
-      }
-
-      for (let i = 0; i < tracks.length; i++) {
-        const track = tracks[i]
-        if (!Array.isArray(track) || track.length < 2) continue
-        let points = []
-        let currentDotted = false  // 当前 polyline 段的虚线状态（实线 false / 虚线 true）
-        let lastPoint = null
-        for (let j = 0; j < track.length; j++) {  // 不采样 / 完整渲染原始 simplified_track 点
-          const c = track[j]
-          if (!Array.isArray(c) || c.length < 2) continue
-          const lon = c[0]
-          const lat = c[1]
-          // Number.isFinite 防 NaN/Infinity 静默通过（Codex 异源审 Important / typeof NaN === 'number' 是 true 坑）
-          if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue
-          // WGS-84 → GCJ-02（国外坐标在 wgs84ToGcj02 内部自动跳过转换）
-          const [gcjLat, gcjLng] = wgs84ToGcj02(lat, lon)
-          // 转换后再次校验防异常算法返回 NaN
-          if (!Number.isFinite(gcjLat) || !Number.isFinite(gcjLng)) continue
-          const newPoint = { latitude: gcjLat, longitude: gcjLng }
-
-          if (lastPoint) {
-            const d = distM(lastPoint, newPoint)
-            // v5 分层视觉：< 500m 实线 / 500-2000m 虚线 / > 2000m 切断
-            if (d > DOTTED_MAX_M) {
-              // 真异常 / flush 当前 polyline + 切断（开新点不连）
-              flushPolyline(points, currentDotted)
-              points = []
-              currentDotted = false  // 新段从实线起
-            } else {
-              const shouldBeDotted = d > SOLID_MAX_M  // 500-2000m 段虚线
-              // 模式切换：实↔虚切换时 flush 当前 polyline + 开新模式
-              // （需 lastPoint 入新 polyline 作为起点 / 让虚线段从上一个真实点开始）
-              if (shouldBeDotted !== currentDotted) {
-                flushPolyline(points, currentDotted)
-                points = [lastPoint]  // 新模式 polyline 以 lastPoint 起步 / 视觉连续
-                currentDotted = shouldBeDotted
-              }
-            }
-          }
-          points.push(newPoint)
-          lastPoint = newPoint
-        }
-        flushPolyline(points, currentDotted)  // 收尾 / 把当前 track 最后一段刷到 polylines
-      }
-      return polylines
-    },
-
-    /**
-     * 计算 map 中心点（接 tracks 输入 / D27 v2 polish / v3 加 GCJ-02）
-     *
-     * 策略：
-     *   - tracks 非空 → 扁平化所有点取均值，再转 GCJ-02 让 map 大致对准用户活动范围
-     *   - tracks 空 → 用默认北京中心兜底（理论上不触发，空 tracks 已进 isEmpty 分支）
-     *
-     * 为什么用平均值不用边界中心：边界中心会被一两个偏远点拉偏，
-     * 平均值更能代表"用户主要骑哪儿"。
-     *
-     * 为什么"先求均值再转 GCJ-02"而不是"先转每点再求均值"：
-     * - GCJ-02 偏移在小区域（< 50km）内是接近线性的近似常量
-     * - 先平均后转换 = 1 次 GCJ-02 计算（O(1)）/ 先转后平均 = N 次（O(N)）
-     * - 视觉结果几乎一样（差 < 10 米 / map scale 11 看不出来）
-     */
-    _computeCenter(tracks) {
-      if (!tracks || tracks.length === 0) {
-        return DEFAULT_CENTER
-      }
-      let sumLon = 0
-      let sumLat = 0
-      let n = 0
-      for (let i = 0; i < tracks.length; i++) {
-        const track = tracks[i]
-        if (!Array.isArray(track)) continue
-        for (let j = 0; j < track.length; j++) {
-          const c = track[j]
-          if (!Array.isArray(c) || c.length < 2) continue
-          // Number.isFinite 防 NaN/Infinity 污染 sumLon/sumLat（Codex 异源审 Important）
-          if (!Number.isFinite(c[0]) || !Number.isFinite(c[1])) continue
-          sumLon += c[0]
-          sumLat += c[1]
-          n += 1
-        }
-      }
-      if (n === 0) {
-        return DEFAULT_CENTER
-      }
-      // 求 WGS-84 均值后转 GCJ-02（map center 必须给 GCJ-02 才不偏移）
-      const avgLat = sumLat / n
-      const avgLon = sumLon / n
-      const [gcjLat, gcjLng] = wgs84ToGcj02(avgLat, avgLon)
-      return {
-        lat: gcjLat,
-        lng: gcjLng,
-      }
+    _drawHeatmap() {
+      if (!this.data.tracks || this.data.tracks.length === 0) return
+      setTimeout(() => {
+        routeThumb.drawHeatmapThumb('heatmap-canvas', this.data.tracks, {
+          width: 327,
+          height: 240,
+          lineWidth: 2,
+          component: this,
+        })
+      }, 120)
     },
   },
 })

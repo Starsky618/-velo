@@ -16,17 +16,36 @@
   text-align: center;
 }
 
-/* hero 全宽出血：负 margin 抵掉页面左右 padding */
-.hero-cover {
-  display: block;
+/* hero 全宽出血：负 margin 抵掉页面左右 padding。
+   图文融合三件套：包裹层定位 → 底部小面积渐变淡入页面底色 → 标题负 margin 上提坐进淡出区。
+   渐变只占图高 ~27%（Tim 拍：参考稿渐变太大看不清图，这里刻意收小） */
+.hero-wrap {
+  position: relative;
   width: calc(100% + 64rpx);
-  height: 420rpx;
+  height: 520rpx;
   margin: 0 -32rpx;
   background: #e9e9ee;
 }
 
+.hero-cover {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hero-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1rpx; /* 多压 1rpx 防个别机型渐变与页面底色间露出 1px 接缝 */
+  height: 140rpx;
+  background: linear-gradient(to bottom, rgba(242, 242, 247, 0), #f2f2f7);
+  pointer-events: none; /* 纯装饰层，不挡任何点击 */
+}
+
 .route-name {
-  margin-top: 28rpx;
+  position: relative; /* 上提后要压在 hero 上方，否则被图盖住 */
+  margin-top: -64rpx;
   color: #1c1c1e;
   font-size: 48rpx;
   font-weight: 600;
@@ -38,6 +57,27 @@
   color: #8a8a8e;
   font-size: 28rpx;
   line-height: 1.55;
+}
+
+/* 实景图横滑长廊：卡片化圆角图一字排开，溢出即横滑（不分页不加点，克制）。
+   ⚠ scroll-view 横滑三件套缺一不可：white-space nowrap + 子项 inline-block + 关 scrollbar */
+.gallery-strip {
+  margin-top: 26rpx;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.gallery-photo {
+  display: inline-block;
+  width: 340rpx;
+  height: 230rpx;
+  border-radius: 20rpx;
+  margin-right: 16rpx;
+  background: #e9e9ee; /* 加载中的占位底色，与 hero 同 */
+}
+
+.gallery-photo:last-child {
+  margin-right: 0;
 }
 
 /* 常显数据卡：三格数据 + 海拔缩略线（一张"路线档案卡"） */
@@ -150,10 +190,29 @@
   height: 256rpx;
 }
 
-.route-map {
-  width: 100%;
+.route-paper-canvas {
+  width: 640rpx;
+  max-width: 100%;
   height: 360rpx;
   border-radius: 20rpx;
+}
+
+.route-map-open-label {
+  position: absolute;
+  left: 20rpx;
+  bottom: 18rpx;
+  height: 54rpx;
+  line-height: 54rpx;
+  padding: 0 22rpx;
+  border-radius: 14rpx;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1c1c1e;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.route-map-wrap {
+  position: relative;
 }
 
 /* 主按钮：系统橙、胶囊感大圆角（HIG 主操作语言） */

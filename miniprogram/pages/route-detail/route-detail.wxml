@@ -3,7 +3,11 @@
   <view wx:elif="{{error}}" class="state-text">{{error}}</view>
 
   <view wx:else class="detail-body">
-    <image class="hero-cover" src="{{coverSrc}}" mode="aspectFill" />
+    <!-- hero：封面出血到屏幕边，底部一小段渐变淡入页面底色，标题坐在淡出区上（图文融合，Tim 2026-06-12 拍：渐变面积要小） -->
+    <view class="hero-wrap">
+      <image class="hero-cover" src="{{coverSrc}}" mode="aspectFill" />
+      <view class="hero-fade"></view>
+    </view>
     <view wx:if="{{guide.name}}" class="route-name">{{guide.name}}</view>
     <view wx:if="{{introText}}" class="intro-line">{{introText}}</view>
 
@@ -18,6 +22,19 @@
       <canvas canvas-id="elevation-thumb" class="elevation-thumb" hidden="{{!hasElevation}}"></canvas>
     </view>
 
+    <!-- 实景图横滑长廊：图片来自 content/routes/<路线>/（Tim 访达增删），点开全屏可翻页保存 -->
+    <scroll-view wx:if="{{gallerySrcs.length}}" class="gallery-strip" scroll-x enable-flex="{{true}}" show-scrollbar="{{false}}">
+      <image
+        wx:for="{{gallerySrcs}}"
+        wx:key="*this"
+        class="gallery-photo"
+        src="{{item}}"
+        mode="aspectFill"
+        lazy-load="{{true}}"
+        data-src="{{item}}"
+        bindtap="onTapGalleryPhoto" />
+    </scroll-view>
+
     <view class="accordion-list">
       <view class="accordion-section" wx:for="{{sections}}" wx:key="title">
         <view class="accordion-title-row" data-index="{{index}}" bindtap="toggleSection">
@@ -30,34 +47,8 @@
             <canvas canvas-id="elevation-canvas" class="elevation-canvas" hidden="{{!item.expanded || !hasElevation}}"></canvas>
           </view>
           <view wx:if="{{guide.ready && item.expanded && item.hasMapSlot && routePreviewVisible}}" class="route-map-wrap">
-            <map wx:if="{{paperMapHasCustomStyle}}"
-                 class="route-map"
-                 latitude="{{routePreviewCenter.latitude}}"
-                 longitude="{{routePreviewCenter.longitude}}"
-                 scale="12"
-                 markers="{{routePreviewMarkers}}"
-                 polyline="{{routePreviewPolylines}}"
-                 include-points="{{routePreviewIncludePoints}}"
-                 subkey="{{paperMapSubkey}}"
-                 layer-style="{{paperMapLayerStyle}}"
-                 enable-poi="{{false}}"
-                 enable-building="{{false}}"
-                 enable-traffic="{{false}}"
-                 enable-3D="{{false}}"
-                 enable-rotate="{{false}}"
-                 show-location="{{false}}"></map>
-            <map wx:else
-                 class="route-map"
-                 latitude="{{routePreviewCenter.latitude}}"
-                 longitude="{{routePreviewCenter.longitude}}"
-                 scale="12"
-                 markers="{{routePreviewMarkers}}"
-                 polyline="{{routePreviewPolylines}}"
-                 include-points="{{routePreviewIncludePoints}}"
-                 enable-traffic="{{false}}"
-                 enable-3D="{{false}}"
-                 enable-rotate="{{false}}"
-                 show-location="{{false}}"></map>
+            <canvas canvas-id="route-paper-preview" class="route-paper-canvas" bindtap="onOpenRouteMapPage"></canvas>
+            <view class="route-map-open-label" bindtap="onOpenRouteMapPage">查看地图</view>
           </view>
         </view>
       </view>

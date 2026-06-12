@@ -8,37 +8,11 @@
       <view class="meeting">{{meetup.meeting_point}}</view>
     </view>
 
-    <!-- 地图轨迹卡前置：路线长什么样是约骑第一眼要回答的问题（标杆图的地图卡语言）。
-         详情页单实例真 <map>，无列表多实例性能问题；无标题，图本身就是信息 -->
+    <!-- 路线轨迹卡前置：路线长什么样是约骑第一眼要回答的问题。
+         这里是展示卡，不承担拖动选点，所以用自绘纸面卡避开腾讯默认底图。 -->
     <view class="map-card" wx:if="{{routePreviewVisible}}">
-      <map wx:if="{{paperMapHasCustomStyle}}"
-           class="route-preview-map"
-           latitude="{{routePreviewCenter.latitude}}"
-           longitude="{{routePreviewCenter.longitude}}"
-           scale="12"
-           markers="{{routePreviewMarkers}}"
-           polyline="{{routePreviewPolylines}}"
-           include-points="{{routePreviewIncludePoints}}"
-           subkey="{{paperMapSubkey}}"
-           layer-style="{{paperMapLayerStyle}}"
-           enable-poi="{{false}}"
-           enable-building="{{false}}"
-           enable-traffic="{{false}}"
-           enable-3D="{{false}}"
-           enable-rotate="{{false}}"
-           show-location="{{false}}"></map>
-      <map wx:else
-           class="route-preview-map"
-           latitude="{{routePreviewCenter.latitude}}"
-           longitude="{{routePreviewCenter.longitude}}"
-           scale="12"
-           markers="{{routePreviewMarkers}}"
-           polyline="{{routePreviewPolylines}}"
-           include-points="{{routePreviewIncludePoints}}"
-           enable-traffic="{{false}}"
-           enable-3D="{{false}}"
-           enable-rotate="{{false}}"
-           show-location="{{false}}"></map>
+      <canvas canvas-id="meetup-route-preview" class="route-preview-canvas" bindtap="onOpenRouteMapPage"></canvas>
+      <view class="route-map-open-label" bindtap="onOpenRouteMapPage">查看地图</view>
     </view>
 
     <view class="metrics">

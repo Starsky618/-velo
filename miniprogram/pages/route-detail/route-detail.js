@@ -2,6 +2,8 @@ const api = require('../../utils/api')
 const { renderMarkdown, splitSections } = require('../../utils/md-render')
 const { wgs84ToGcj02 } = require('../../utils/coords')
 const mapTheme = require('../../utils/map-theme')
+const routeThumb = require('../../utils/route-thumb')
+const routeMapNav = require('../../utils/route-map-nav')
 
 function buildRoutePreview(points) {
   if (!Array.isArray(points) || points.length < 2) {
@@ -75,7 +77,7 @@ function buildStats(guide) {
 }
 
 Page({
-  data: Object.assign({}, mapTheme.getPaperMapData(), {
+  data: {
     guideId: null,
     loading: true,
     error: '',
@@ -84,6 +86,7 @@ Page({
     highlights: [],
     introText: '',
     coverSrc: '/assets/route-placeholder.svg',
+    gallerySrcs: [],   // 实景图完整 URL 数组；空 = 不渲染长廊（no-dash：缺内容整块消失）
     hasElevation: false,
     routeStats: [],
     routePreviewVisible: false,
@@ -91,7 +94,7 @@ Page({
     routePreviewMarkers: [],
     routePreviewPolylines: [],
     routePreviewIncludePoints: [],
-  }),
+  },
 
   onLoad: function (options) {
     var id = Number(options && options.id)
@@ -110,15 +113,20 @@ Page({
       .then(function (guide) {
         var preview = buildRoutePreview(guide.preview_points)
         var hasElevation = Array.isArray(guide.elevation_profile) && guide.elevation_profile.length > 1
+        // 相对路径（/uploads/...）拼 baseUrl，与列表页同规则——封面和实景图共用这把尺子
+        var base = (getApp().globalData && getApp().globalData.baseUrl) || ''
+        var toFullUrl = function (url) {
+          return url && url.indexOf('/uploads/') === 0 ? base + url : url
+        }
         that.setData(Object.assign({
           guide: guide,
           sections: buildSections(guide.content_md),
           highlights: Array.isArray(guide.highlights) ? guide.highlights : [],
           introText: Array.isArray(guide.highlights) && guide.highlights.length ? guide.highlights[0] : '',
-          // 封面相对路径（/uploads/...）拼 baseUrl，与列表页同规则
-          coverSrc: (guide.cover_url && guide.cover_url.indexOf('/uploads/') === 0
-            ? ((getApp().globalData && getApp().globalData.baseUrl) || '') + guide.cover_url
-            : guide.cover_url) || '/assets/route-placeholder.svg',
+          coverSrc: toFullUrl(guide.cover_url) || '/assets/route-placeholder.svg',
+          gallerySrcs: (Array.isArray(guide.gallery_urls) ? guide.gallery_urls : [])
+            .map(toFullUrl)
+            .filter(Boolean),
           hasElevation: hasElevation,
           routeStats: buildStats(guide),
           loading: false,
@@ -143,12 +151,43 @@ Page({
     var sections = this.data.sections || []
     if (!Number.isInteger(index) || index < 0 || index >= sections.length) return
     var nextExpanded = !sections[index].expanded
+    var that = this
     this.setData({
       ['sections[' + index + '].expanded']: nextExpanded,
+    }, function () {
+      if (nextExpanded && sections[index].hasElevationSlot && that.data.hasElevation && that.data.guide) {
+        that.drawElevation(that.data.guide.elevation_profile)
+      }
+      if (nextExpanded && sections[index].hasMapSlot && that.data.routePreviewVisible) {
+        that.drawRoutePreviewThumb()
+      }
     })
-    if (nextExpanded && sections[index].hasElevationSlot && this.data.hasElevation && this.data.guide) {
-      this.drawElevation(this.data.guide.elevation_profile)
-    }
+  },
+
+  // 展示型路线卡不再交给腾讯原生地图：免费链路画不出真实浅色底图，
+  // 所以这里用自绘纸面 + 橙色轨迹，让用户第一眼看到统一的路线形状。
+  drawRoutePreviewThumb: function () {
+    var that = this
+    if (!this.data.routePreviewVisible) return
+    setTimeout(function () {
+      routeThumb.drawRouteThumb('route-paper-preview', that.data.routePreviewIncludePoints, {
+        width: 320,
+        height: 180,
+        lineWidth: 4,
+        dotR: 6,
+        paper: true,
+      })
+    }, 120)
+  },
+
+  onOpenRouteMapPage: function () {
+    routeMapNav.openRouteMapPage({
+      title: (this.data.guide && this.data.guide.name) || '路线地图',
+      center: this.data.routePreviewCenter,
+      markers: this.data.routePreviewMarkers,
+      polylines: this.data.routePreviewPolylines,
+      includePoints: this.data.routePreviewIncludePoints,
+    })
   },
 
   // 常显海拔缩略线：橙线 + 浅橙面积填充，无轴无标注（坡的形状一眼可读）。
@@ -226,6 +265,14 @@ Page({
     })
     ctx.stroke()
     ctx.draw()
+  },
+
+  // 点实景图 → 微信原生看图器全屏预览（自带左右翻页/双指缩放/长按保存，零成本）
+  onTapGalleryPhoto: function (event) {
+    var src = event.currentTarget.dataset.src
+    var urls = this.data.gallerySrcs || []
+    if (!src || !urls.length) return
+    wx.previewImage({ current: src, urls: urls })
   },
 
   onStartMeetup: function () {

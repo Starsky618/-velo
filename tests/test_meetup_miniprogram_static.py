@@ -17,6 +17,10 @@ def _else_map_block(wxml: str) -> str:
     return wxml.split("<map wx:else", 1)[1].split("</map>", 1)[0]
 
 
+def _block_after(wxml: str, marker: str) -> str:
+    return wxml.split(marker, 1)[1]
+
+
 def test_meetup_pages_are_registered_at_app_json_tail():
     app_json = json.loads(_read(MINI / "app.json"))
 
@@ -171,14 +175,52 @@ def test_confirm_page_route_detail_and_pace_controls_are_real_actions():
     wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
 
     assert 'bindtap="onTapPreviewRouteDetail"' in wxml
-    assert "routeMapOverlayVisible" in js
-    assert "route-map-overlay" in wxml
-    assert "preview-route-map" in wxml
-    assert "onCloseRouteMapOverlay" in js
+    assert "routeMapOverlayVisible" not in js
+    assert "route-map-overlay" not in wxml
+    assert "require('../../utils/route-map-nav')" in js
+    assert "routeMapNav.openRouteMapPage" in js
     assert "paceIndex" in js
     assert 'class="pv-pace-picker"' in wxml
     assert 'bindchange="onPaceChange"' in wxml
     assert "this.updatePreviewDerived()" in js
+
+
+def test_route_detail_uses_free_paper_canvas_for_display_route_map():
+    js = _read(MINI / "pages" / "route-detail" / "route-detail.js")
+    wxml = _read(MINI / "pages" / "route-detail" / "route-detail.wxml")
+    wxss = _read(MINI / "pages" / "route-detail" / "route-detail.wxss")
+
+    assert "require('../../utils/route-thumb')" in js
+    assert "drawRoutePreviewThumb" in js
+    assert "require('../../utils/route-map-nav')" in js
+    assert "onOpenRouteMapPage" in js
+    assert "routeMapOverlayVisible" not in js
+    display_block = _block_after(wxml, 'class="route-map-wrap"')
+    assert "<map" not in display_block
+    assert "route-map-overlay" not in wxml
+    assert 'canvas-id="route-paper-preview"' in wxml
+    assert 'bindtap="onOpenRouteMapPage"' in wxml
+    assert ".route-paper-canvas" in wxss
+    assert ".route-map-overlay" not in wxss
+
+
+def test_meetup_detail_uses_free_paper_canvas_for_display_route_map():
+    js = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.js")
+    wxml = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.wxml")
+    wxss = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.wxss")
+
+    assert "require('../../utils/route-thumb')" in js
+    assert "drawRoutePreviewThumb" in js
+    assert "require('../../utils/route-map-nav')" in js
+    assert "onOpenRouteMapPage" in js
+    assert "routeMapOverlayVisible" not in js
+    display_block = _block_after(wxml, 'class="map-card"')
+    assert "<map" not in display_block
+    assert "route-map-overlay" not in wxml
+    assert 'canvas-id="meetup-route-preview"' in wxml
+    assert 'bindtap="onOpenRouteMapPage"' in wxml
+    assert ".route-preview-canvas" in wxss
+    assert ".route-map-overlay" not in wxss
 
 
 def test_confirm_publish_persists_confirm_page_pace_change():
@@ -304,52 +346,57 @@ def test_create_page_draws_light_route_preview_map():
 
     assert "wgs84ToGcj02" in js
     assert "preview_points" in js
-    assert "routePreviewPolylines" in js
-    assert "<map" in wxml
-    assert 'polyline="{{routePreviewPolylines}}"' in wxml
-    assert 'wx:if="{{paperMapHasCustomStyle}}"' in wxml
-    assert "enable-poi=\"{{false}}\"" in wxml.split("<map wx:else", 1)[0]
+    assert "drawMainRoutePreview" in js
+    assert 'canvas-id="route-preview-main"' in wxml
+    preview_block = _block_after(wxml, 'class="route-preview-shell"').split('class="pv-card pv-route-card"', 1)[0]
+    assert "<map" not in preview_block
     assert "route-preview-wash" not in wxml
-    assert ".route-preview-map" in wxss
+    assert ".route-preview-canvas" in wxss
 
 
-def test_shared_paper_map_theme_exists_and_hides_server_secret():
+def test_shared_paper_map_theme_exists_and_documents_paid_style_lesson():
     theme_path = MINI / "utils" / "map-theme.js"
     theme = _read(theme_path)
 
     assert "PAPER_MAP_CONFIG" in theme
-    assert "getPaperMapData" in theme
     assert "buildRoutePreviewPolylines" in theme
-    assert "buildHeatmapPolyline" in theme
+    # 个性化底图机器已拆除（付费能力未购买，挂上 = 真机鉴权卡死）
+    assert "getPaperMapData" not in theme
+    assert "buildHeatmapPolyline" not in theme
+    # 教训必须留在文件头：subkey 是先购买再使用的付费能力，防未来 agent 重新接上
+    assert "付费" in theme
     assert "TENCENT_MAP_SK" not in theme
-    assert "服务端 SK" in theme
 
 
-def test_shared_paper_map_theme_normalizes_public_style_config():
+def test_shared_paper_map_theme_builds_orange_route_polylines():
     script = """
 const assert = require('assert')
 const mapTheme = require('./miniprogram/utils/map-theme')
 
-assert.deepStrictEqual(
-  mapTheme.getPaperMapData({ subkey: ' paper-subkey ', layerStyle: '7' }),
-  {
-    paperMapSubkey: 'paper-subkey',
-    paperMapLayerStyle: 7,
-    paperMapHasCustomStyle: true,
-  },
-)
+assert.deepStrictEqual(mapTheme.buildRoutePreviewPolylines([]), [])
+assert.deepStrictEqual(mapTheme.buildRoutePreviewPolylines([{ latitude: 1, longitude: 2 }]), [])
 
-assert.deepStrictEqual(
-  mapTheme.getPaperMapData({ subkey: '   ', layerStyle: 'not-a-number' }),
-  {
-    paperMapSubkey: '',
-    paperMapLayerStyle: 1,
-    paperMapHasCustomStyle: false,
-  },
-)
+const lines = mapTheme.buildRoutePreviewPolylines([
+  { latitude: 37.8, longitude: 112.5 },
+  { latitude: 37.9, longitude: 112.6 },
+])
+assert.strictEqual(lines.length, 1)
+assert.strictEqual(lines[0].color, '#FF9500')
+assert.strictEqual(lines[0].points.length, 2)
 """
 
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_no_wxml_in_whole_project_uses_paid_personalized_map_style():
+    # 红线守卫：微信小程序个性化底图（subkey + layer-style）自 2023-06-29 起是
+    # "先购买再使用"的付费能力，velo 未购买——任何 <map> 挂上这两个属性，
+    # 真机鉴权必失败、地图卡死（2026-06-12 事故，codex 多轮代码修复全部无效）。
+    # 这条测试把教训变成结构约束：全工程 wxml 永远不许再出现这两个属性。
+    for wxml_path in MINI.rglob("*.wxml"):
+        wxml = _read(wxml_path)
+        assert "subkey" not in wxml, f"{wxml_path} 使用了付费个性化底图 subkey"
+        assert "layer-style" not in wxml, f"{wxml_path} 使用了付费个性化底图 layer-style"
 
 
 def test_create_page_uses_shared_paper_map_theme_for_route_preview():
@@ -358,40 +405,43 @@ def test_create_page_uses_shared_paper_map_theme_for_route_preview():
     wxss = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxss")
 
     assert "require('../../utils/map-theme')" in js
-    assert "getPaperMapData" in js
+    assert "getPaperMapData" not in js
     assert "buildRoutePreviewPolylines" in js
     assert "routePreviewMapSubkey" not in js
-    assert "paperMapSubkey" in wxml
-    assert "paperMapLayerStyle" in wxml
+    preview_block = _block_after(wxml, 'class="route-preview-shell"').split('class="pv-card pv-route-card"', 1)[0]
+    assert "paperMapSubkey" not in preview_block
+    assert "paperMapLayerStyle" not in preview_block
+    assert "route-map-overlay" not in wxml
     assert "route-preview-wash" not in wxml
     assert "rgba(255, 255, 255" in wxss
 
 
-def test_heatmap_card_uses_shared_paper_map_theme():
+def test_heatmap_card_uses_free_paper_canvas_instead_of_native_map():
     js = _read(MINI / "components" / "heatmap-card" / "heatmap-card.js")
     wxml = _read(MINI / "components" / "heatmap-card" / "heatmap-card.wxml")
     wxss = _read(MINI / "components" / "heatmap-card" / "heatmap-card.wxss")
 
-    assert "require('../../utils/map-theme')" in js
-    assert "getPaperMapData" in js
-    assert "buildHeatmapPolyline" in js
+    assert "require('../../utils/route-thumb')" in js
+    assert "drawHeatmapThumb" in js
     assert "#FFD700CC" not in js
-    assert "paperMapSubkey" in wxml
+    assert "<map" not in wxml
+    assert 'canvas-id="heatmap-canvas"' in wxml
     assert "heatmap-map-wash" not in wxml
     assert "background: #eef3ee" in wxss
 
 
-def test_map_picker_page_is_registered_and_uses_paper_map():
+def test_map_picker_page_is_registered_and_uses_native_map_without_custom_subkey():
     app_json = json.loads(_read(MINI / "app.json"))
     js = _read(MINI / "pages" / "map-picker" / "map-picker.js")
     wxml = _read(MINI / "pages" / "map-picker" / "map-picker.wxml")
     wxss = _read(MINI / "pages" / "map-picker" / "map-picker.wxss")
 
     assert "pages/map-picker/map-picker" in app_json["pages"]
-    assert "require('../../utils/map-theme')" in js
-    assert "getPaperMapData" in js
+    assert "require('../../utils/map-theme')" not in js
     assert "selectMapPoint" in js
-    assert "paperMapSubkey" in wxml
+    assert "<map" in wxml
+    assert "paperMapSubkey" not in wxml
+    assert "layer-style" not in wxml
     assert "map-picker-pin" in wxml
     assert "map-picker-wash" not in wxml
     assert "位置名称" in wxml
@@ -400,22 +450,40 @@ def test_map_picker_page_is_registered_and_uses_paper_map():
     assert "pointer-events: none" in wxss
 
 
-def test_map_picker_fallback_keeps_default_cartography_context():
+def test_map_picker_keeps_default_cartography_context():
     wxml = _read(MINI / "pages" / "map-picker" / "map-picker.wxml")
-    fallback = _else_map_block(wxml)
 
-    assert 'enable-poi="{{false}}"' not in fallback
-    assert 'enable-building="{{false}}"' not in fallback
-    assert 'enable-traffic="{{false}}"' in fallback
+    assert 'enable-poi="{{false}}"' not in wxml
+    assert 'enable-building="{{false}}"' not in wxml
+    assert 'enable-traffic="{{false}}"' in wxml
 
 
-def test_route_preview_fallback_keeps_default_cartography_context():
+def test_route_map_page_is_registered_and_uses_native_map_without_custom_subkey():
+    app_json = json.loads(_read(MINI / "app.json"))
+    js = _read(MINI / "pages" / "route-map" / "route-map.js")
+    wxml = _read(MINI / "pages" / "route-map" / "route-map.wxml")
+    wxss = _read(MINI / "pages" / "route-map" / "route-map.wxss")
+
+    assert "pages/route-map/route-map" in app_json["pages"]
+    assert "pendingRouteMap" in js
+    assert "onTapBack" in js
+    assert "<map" in wxml
+    assert "paperMapSubkey" not in wxml
+    assert "layer-style" not in wxml
+    assert 'polyline="{{polylines}}"' in wxml
+    assert "route-map-page" in wxss
+
+
+def test_create_route_preview_card_uses_canvas_but_detail_opens_dedicated_map_page():
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
     wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
-    fallback = _else_map_block(wxml)
 
-    assert 'enable-poi="{{false}}"' not in fallback
-    assert 'enable-building="{{false}}"' not in fallback
-    assert 'enable-traffic="{{false}}"' in fallback
+    preview_block = _block_after(wxml, 'class="route-preview-shell"').split('class="pv-card pv-route-card"', 1)[0]
+    assert "<map" not in preview_block
+    assert "route-map-overlay" not in wxml
+    assert 'canvas-id="route-preview-main"' in wxml
+    assert "require('../../utils/route-map-nav')" in js
+    assert "routeMapNav.openRouteMapPage" in js
 
 
 def test_create_page_avoids_object_spread_for_wechat_runtime():
@@ -492,7 +560,7 @@ def test_create_page_has_preview_step_and_social_fields():
     assert 'bindtap="onPublish"' not in wxml
     # 发布前总览页用 canvas 轨迹缩略线，点"查看详情"再打开完整地图，避免小 map 抢按钮手势
     assert 'canvas-id="route-thumb-confirm"' in wxml
-    assert "route-map-overlay" in wxml
+    assert "route-map-overlay" not in wxml
 
 
 def test_pace_display_table_covers_all_four_pace_levels():

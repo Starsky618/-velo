@@ -2,6 +2,7 @@ const api = require('../../utils/api')
 const { wgs84ToGcj02 } = require('../../utils/coords')
 const mapTheme = require('../../utils/map-theme')
 const routeThumb = require('../../utils/route-thumb')
+const routeMapNav = require('../../utils/route-map-nav')
 
 const TENCENT_POINT_NAME_MAX_LENGTH = 40
 const TENCENT_ROUTE_NAME_MAX_LENGTH = 80
@@ -151,7 +152,7 @@ const SAFETY_TEMPLATES = [
 ]
 
 Page({
-  data: Object.assign({}, mapTheme.getPaperMapData(), {
+  data: {
     // 四步向导：选路线 → 填详情 → 加照片 → 确认发布。
     // 把"照片"插在 details 和 publish 之间，让发起人发布前就能给约骑配图，
     // 而不是等发布后再回详情页补——发布即图文齐全，对围观者更有吸引力。
@@ -173,7 +174,6 @@ Page({
     tencentRouteNameEdited: false,
     creatingTencentRoute: false,
     routePreviewVisible: false,
-    routeMapOverlayVisible: false,
     routePreviewCenter: { latitude: 37.8706, longitude: 112.5489 },
     routePreviewPolylines: [],
     routePreviewMarkers: [],
@@ -239,7 +239,7 @@ Page({
     // 类比：像手机设置里某一行点一下才滑出输入框，平时只显示当前值，界面更干净。
     pvEditGate: false,
     pvEditSafety: false,
-  }),
+  },
 
   onLoad: function (options) {
     var routeBookId = Number(options && options.route_book_id)
@@ -317,6 +317,7 @@ Page({
     if (!routeBookId || !api.getRouteBookDetail) return Promise.resolve(null)
     return api.getRouteBookDetail(routeBookId).then(function (routeBook) {
       that.setData(buildRoutePreview(routeBook.preview_points), function () {
+        that.drawMainRoutePreview()
         that.drawStepThumb()
       })
       return routeBook
@@ -343,6 +344,22 @@ Page({
         width: size.width,
         height: size.height,
         lineWidth: 2,
+      })
+    }, 120)
+  },
+
+  // 第 1 步生成路线后的大预览图：这是展示卡，不需要原生地图拖动。
+  // 自绘浅色纸面 + 橙色轨迹，真机上不会再露出腾讯默认导航底图。
+  drawMainRoutePreview: function () {
+    var that = this
+    if (!this.data.routePreviewVisible || this.data.currentStep !== 'route') return
+    setTimeout(function () {
+      routeThumb.drawRouteThumb('route-preview-main', that.data.routePreviewIncludePoints, {
+        width: 323,
+        height: 180,
+        lineWidth: 4,
+        dotR: 6,
+        paper: true,
       })
     }, 120)
   },
@@ -471,7 +488,7 @@ Page({
       selectedRouteName: name,
       // 换了路线选择 → 作废上次"从骑行生成"缓存的路书 id，否则改选别的活动还会复用旧路书（指错）
       generatedRouteBookId: null,
-    }, routePreview))
+    }, routePreview), this.drawMainRoutePreview.bind(this))
   },
 
   onTapChooseTencentStart: function () {
@@ -633,7 +650,9 @@ Page({
         selectedRouteBookId: routeBook.id,
         selectedRouteName: decorated.displayName || routeName,
         generatedRouteBookId: null,
-      }, buildRoutePreview(decorated.preview_points)))
+      }, buildRoutePreview(decorated.preview_points)), function () {
+        that.drawMainRoutePreview()
+      })
       wx.showToast({ title: '已生成路线', icon: 'success' })
     }).catch(function (err) {
       wx.showToast({ title: formatTencentRouteError(err), icon: 'none' })
@@ -962,15 +981,13 @@ Page({
   },
 
   onTapPreviewRouteDetail: function () {
-    if (!this.data.routePreviewVisible) {
-      wx.showToast({ title: '暂无路线预览', icon: 'none' })
-      return
-    }
-    this.setData({ routeMapOverlayVisible: true })
-  },
-
-  onCloseRouteMapOverlay: function () {
-    this.setData({ routeMapOverlayVisible: false })
+    routeMapNav.openRouteMapPage({
+      title: this.data.selectedRouteName || '路线地图',
+      center: this.data.routePreviewCenter,
+      markers: this.data.routePreviewMarkers,
+      polylines: this.data.routePreviewPolylines,
+      includePoints: this.data.routePreviewIncludePoints,
+    })
   },
 
   // 确认并发布：把图二设的 social 字段再存一次 → 发布 → 跳详情

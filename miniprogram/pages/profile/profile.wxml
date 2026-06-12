@@ -109,9 +109,9 @@
   <!-- 功率曲线：已有组件 / 只在我的页挂载，不新增后端接口 -->
   <power-curve-card />
 
-  <!-- ============== 块 3：热图（复用既有 heatmap-card 组件 / 含原生 <map> + polylines） ============== -->
-  <!-- Tim 2026-05-16 真用拍：原占位 area 不真渲染腾讯地图 → 改用既有组件
-       组件 self-contained / 自己调 GET /api/user/me/heatmap + 用 <map> 渲染 polylines / 不需要 profile 传数据 -->
+  <!-- ============== 块 3：热图（复用既有 heatmap-card 组件 / 自绘浅色纸面轨迹） ============== -->
+  <!-- Tim 2026-05-16 真用拍：原占位 area 不真渲染热图 → 改用既有组件
+       组件 self-contained / 自己调 GET /api/user/me/heatmap + 用 canvas 渲染轨迹 / 不需要 profile 传数据 -->
   <heatmap-card />
 
   <!-- 功能入口：iOS inset-grouped 语言——整组一张大圆角白卡、行间 hairline

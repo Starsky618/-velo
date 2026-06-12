@@ -29,6 +29,9 @@ App({
     // 自研地图选点页返回创建页时的临时寄存位。
     // 它像前台临时寄存柜：map-picker 写一次，meetup-create 读走后立刻清空，避免下次误用旧点。
     pendingMapPoint: null,
+    // 路线详情页/约骑详情页打开全屏地图时的临时寄存位。
+    // 路线点很多，不适合塞进 URL，所以先存在这里，再让 route-map 页读取。
+    pendingRouteMap: null,
   },
 
   onLaunch() {
