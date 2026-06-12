@@ -41,7 +41,8 @@
 <!-- ====== 未登录 ====== -->
 <view class="login-card" wx:if="{{!isLoggedIn}}">
   <text class="login-text">登录后查看你的骑行动态</text>
-  <navigator url="/pages/profile/profile" class="login-btn">
+  <!-- profile 在 tabBar：navigator 默认 navigate 跳 tabBar 页会静默 fail，必须显式 switchTab -->
+  <navigator url="/pages/profile/profile" open-type="switchTab" class="login-btn">
     <text>去登录</text>
   </navigator>
 </view>

@@ -14,7 +14,7 @@
  *   - onShow：拉 GET /api/user/profile（FTP）+ GET /api/strava/status（bound）
  *   - 改 FTP：wx.showModal editable → PUT /api/user/profile { ftp }
  *   - 解绑 Strava：wx.showModal confirm → POST /api/strava/unbind（204）
- *   - 退出：wx.showModal confirm → app.logout() + wx.redirectTo /profile
+ *   - 退出：wx.showModal confirm → app.logout() + wx.switchTab /profile（profile 在 tabBar，必须 switchTab）
  *
  * 红线（v0.2/v0.3 task 卡 / 永久规则）：
  *   - 解绑 / 退出**强制二次确认**（wx.showModal confirm）
@@ -74,7 +74,7 @@ Page({
   onShow() {
     // 兜底：未登录直接跳回 profile（理论上"我的"页设置入口已挡 / 双保险）
     if (!app.globalData.token) {
-      wx.redirectTo({ url: '/pages/profile/profile' })
+      wx.switchTab({ url: '/pages/profile/profile' })
       return
     }
     this._ensureBirthYearOptions()
@@ -248,7 +248,7 @@ Page({
       .catch((err) => {
         if (err && err.code === 401) {
           // token 已被 api.js 清掉 / 跳回 profile
-          wx.redirectTo({ url: '/pages/profile/profile' })
+          wx.switchTab({ url: '/pages/profile/profile' })
         }
       })
   },
@@ -757,11 +757,12 @@ Page({
    * 流程：
    *   1. wx.showModal confirm（confirmColor 红色 / 提示后果）
    *   2. 用户确认 → app.logout()（清 token / userId / userInfo）
-   *   3. wx.redirectTo 跳回 profile 页（"我的"页未登录态显示"微信一键登录"）
+   *   3. wx.switchTab 跳回 profile 页（"我的"页未登录态显示"微信一键登录"）
    *
-   * 注意：用 redirectTo 不用 navigateTo / switchTab：
-   *   - settings 不在 tabBar 里 / navigateBack 不合适（栈里上一页就是 profile）
-   *   - redirectTo 关闭当前页 + 跳新页 / 防止用户回退按钮回到已退出状态的 settings
+   * 注意：必须用 switchTab，不能用 navigateTo / redirectTo：
+   *   - profile 在 tabBar 里，微信硬规则——navigateTo/redirectTo 跳 tabBar 页直接 fail、
+   *     页面纹丝不动（2026-06-13 全模块走查实证：退出登录后卡死在 settings）
+   *   - switchTab 自带"关闭所有非 tabBar 页"，回退按钮自然回不到已退出的 settings
    */
   onLogout() {
     wx.showModal({
@@ -784,7 +785,7 @@ Page({
             app.globalData.userInfo = null
           }
         }
-        wx.redirectTo({ url: '/pages/profile/profile' })
+        wx.switchTab({ url: '/pages/profile/profile' })
       },
     })
   },
@@ -834,7 +835,7 @@ Page({
                 wx.showToast({ title: '账号已注销', icon: 'success' })
                 // 稍等让 toast 可见，再跳回 profile（未登录态显示"微信一键登录"）
                 setTimeout(function () {
-                  wx.redirectTo({ url: '/pages/profile/profile' })
+                  wx.switchTab({ url: '/pages/profile/profile' })
                 }, 800)
               })
               .catch(function (err) {

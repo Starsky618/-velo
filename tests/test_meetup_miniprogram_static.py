@@ -1,6 +1,7 @@
 """约骑模块 Task 9：小程序静态合同测试。"""
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -432,6 +433,33 @@ assert.strictEqual(rt.drawRouteThumb('d', [[112.5, 37.8]], { width: 70, height: 
 """
 
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_no_wrong_method_jumps_to_tabbar_pages():
+    # 红线守卫（2026-06-13 全模块走查实证）：微信硬规则——wx.navigateTo / wx.redirectTo /
+    # navigator 默认 open-type 都不能跳 tabBar 页，调用静默 fail、页面纹丝不动。
+    # 实锤过的翻车：settings 退出登录后卡死原页 ×4 / home 登录按钮点了没反应 /
+    # 战报"交卷"跳不进上传页。tabBar 页只能 wx.switchTab（且带不了 url 参数，
+    # 上下文走 globalData 寄存柜约定）。
+    app_json = json.loads(_read(MINI / "app.json"))
+    tab_paths = {item["pagePath"] for item in app_json["tabBar"]["list"]}
+
+    js_jump = re.compile(r"wx\.(navigateTo|redirectTo)\(\s*\{\s*url:\s*['\"]([^'\"]+)['\"]")
+    for js_path in MINI.rglob("*.js"):
+        for m in js_jump.finditer(_read(js_path)):
+            target = m.group(2).lstrip("/").split("?")[0]
+            assert target not in tab_paths, (
+                f"{js_path}: wx.{m.group(1)} 跳 tabBar 页 {target} 会静默 fail，必须 wx.switchTab"
+            )
+
+    navigator_tag = re.compile(r"<navigator[^>]*url=\"([^\"]+)\"[^>]*>")
+    for wxml_path in MINI.rglob("*.wxml"):
+        for m in navigator_tag.finditer(_read(wxml_path)):
+            target = m.group(1).lstrip("/").split("?")[0]
+            if target in tab_paths:
+                assert 'open-type="switchTab"' in m.group(0), (
+                    f"{wxml_path}: navigator 指向 tabBar 页 {target} 缺 open-type=\"switchTab\""
+                )
 
 
 def test_no_wxml_in_whole_project_uses_paid_personalized_map_style():

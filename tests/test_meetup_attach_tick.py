@@ -71,6 +71,17 @@ def _activity_ids(db, meetup_id: int) -> list[int]:
     return [row.activity_id for row in rows]
 
 
+def _midday_bj_anchor() -> datetime:
+    """北京时间正午锚点（UTC 04:00）——约骑时间基准必须用它，不许裸用 now()。
+
+    attach 规则只认"同一个北京日历日"：裸用 now() 当约骑时间时，
+    分钟级偏移（+20min 等）会在北京时间 00:00~02:30 之间跨进下一个北京日，
+    测试随墙上时钟随机红（本地深夜跑 / CI 在 UTC 14:00-16:30 跑都会中招，
+    2026-06-13 凌晨 01:41 实锤 3 个测试齐挂）。锚到北京正午后偏移怎么加都不跨日。
+    """
+    return datetime.now(timezone.utc).replace(hour=4, minute=0, second=0, microsecond=0)
+
+
 def test_to_bj_date_handles_aware_utc_aware_bj_and_naive_utc():
     from app.common.bj_time import BJ_TZ, to_bj_date
 
@@ -82,7 +93,7 @@ def test_to_bj_date_handles_aware_utc_aware_bj_and_naive_utc():
 def test_same_day_two_rides_attach_earliest_activity(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime.now(timezone.utc) - timedelta(hours=2)
+    start = _midday_bj_anchor()
     meetup = _meetup(db, test_user.id, start)
     _participant(db, meetup.id, test_user.id)
     early = _activity(db, test_user.id, start + timedelta(minutes=10))
@@ -97,7 +108,7 @@ def test_overlapping_meetups_for_different_users_attach_to_own_meetup(db, test_u
     from app.meetup.cron import attach_meetup_activities
 
     other = _user(db, "overlap-other")
-    start = datetime.now(timezone.utc) - timedelta(hours=2)
+    start = _midday_bj_anchor()
     meetup_a = _meetup(db, test_user.id, start)
     meetup_b = _meetup(db, other.id, start + timedelta(minutes=15))
     _participant(db, meetup_a.id, test_user.id)
@@ -114,7 +125,7 @@ def test_overlapping_meetups_for_different_users_attach_to_own_meetup(db, test_u
 def test_same_user_can_attach_one_activity_to_two_overlapping_meetups(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime.now(timezone.utc) - timedelta(hours=2)
+    start = _midday_bj_anchor()
     meetup_a = _meetup(db, test_user.id, start)
     meetup_b = _meetup(db, test_user.id, start + timedelta(minutes=10))
     _participant(db, meetup_a.id, test_user.id)
@@ -130,9 +141,7 @@ def test_same_user_can_attach_one_activity_to_two_overlapping_meetups(db, test_u
 def test_completed_meetup_with_late_upload_inside_seven_days_still_attaches(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    # 固定到 UTC 04:00（北京时间中午）附近，避免测试在北京时间深夜运行时，
-    # “出发后 30 分钟”跨到北京次日，误把同一场约骑判断成不同日。
-    start = datetime.now(timezone.utc).replace(hour=4, minute=0, second=0, microsecond=0) - timedelta(days=3)
+    start = _midday_bj_anchor() - timedelta(days=3)
     meetup = _meetup(db, test_user.id, start, status="COMPLETED")
     _participant(db, meetup.id, test_user.id)
     activity = _activity(db, test_user.id, start + timedelta(minutes=30))
@@ -145,7 +154,7 @@ def test_completed_meetup_with_late_upload_inside_seven_days_still_attaches(db, 
 def test_cancelled_meetup_never_attaches(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime.now(timezone.utc) - timedelta(hours=2)
+    start = _midday_bj_anchor()
     meetup = _meetup(db, test_user.id, start, status="CANCELLED")
     _participant(db, meetup.id, test_user.id)
     _activity(db, test_user.id, start + timedelta(minutes=10))
@@ -158,7 +167,7 @@ def test_cancelled_meetup_never_attaches(db, test_user):
 def test_backfilled_yesterday_file_matches_by_started_at_not_upload_time(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime.now(timezone.utc) - timedelta(days=1)
+    start = _midday_bj_anchor() - timedelta(days=1)
     meetup = _meetup(db, test_user.id, start)
     _participant(db, meetup.id, test_user.id)
     activity = _activity(db, test_user.id, start + timedelta(minutes=10))
@@ -171,7 +180,7 @@ def test_backfilled_yesterday_file_matches_by_started_at_not_upload_time(db, tes
 def test_attach_tick_is_idempotent_when_run_twice(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime.now(timezone.utc) - timedelta(hours=2)
+    start = _midday_bj_anchor()
     meetup = _meetup(db, test_user.id, start)
     _participant(db, meetup.id, test_user.id)
     activity = _activity(db, test_user.id, start + timedelta(minutes=10))
@@ -185,7 +194,7 @@ def test_attach_tick_is_idempotent_when_run_twice(db, test_user):
 def test_second_upload_for_same_user_same_meetup_keeps_one_cell(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime.now(timezone.utc) - timedelta(hours=2)
+    start = _midday_bj_anchor()
     meetup = _meetup(db, test_user.id, start)
     _participant(db, meetup.id, test_user.id)
     first = _activity(db, test_user.id, start + timedelta(minutes=10))
@@ -202,7 +211,7 @@ def test_resume_after_mid_loop_crash_keeps_existing_row_and_fills_rest(db, test_
     from app.meetup.models import MeetupActivity
 
     other = _user(db, "resume-other")
-    start = datetime.now(timezone.utc) - timedelta(hours=2)
+    start = _midday_bj_anchor()
     meetup = _meetup(db, test_user.id, start)
     _participant(db, meetup.id, test_user.id)
     _participant(db, meetup.id, other.id)
@@ -219,7 +228,7 @@ def test_resume_after_mid_loop_crash_keeps_existing_row_and_fills_rest(db, test_
 def test_user_who_left_participants_before_upload_does_not_attach(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime.now(timezone.utc) - timedelta(hours=2)
+    start = _midday_bj_anchor()
     meetup = _meetup(db, test_user.id, start)
     row = _participant(db, meetup.id, test_user.id)
     db.delete(row)
@@ -260,7 +269,7 @@ def test_future_meetup_does_not_match_today_activity(db, test_user):
 def test_activity_started_thirty_one_minutes_before_start_does_not_attach(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime.now(timezone.utc) - timedelta(hours=2)
+    start = _midday_bj_anchor()
     meetup = _meetup(db, test_user.id, start)
     _participant(db, meetup.id, test_user.id)
     _activity(db, test_user.id, start - timedelta(minutes=31))
@@ -273,7 +282,7 @@ def test_activity_started_thirty_one_minutes_before_start_does_not_attach(db, te
 def test_processing_activity_does_not_attach(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime.now(timezone.utc) - timedelta(hours=2)
+    start = _midday_bj_anchor()
     meetup = _meetup(db, test_user.id, start)
     _participant(db, meetup.id, test_user.id)
     _activity(db, test_user.id, start + timedelta(minutes=10), status="processing")

@@ -32,6 +32,10 @@ App({
     // 路线详情页/约骑详情页打开全屏地图时的临时寄存位。
     // 路线点很多，不适合塞进 URL，所以先存在这里，再让 route-map 页读取。
     pendingRouteMap: null,
+    // 约骑战报"交卷"跳上传页的临时寄存位（{ meetupId, token }）。
+    // upload 是 tabBar 页：只能 switchTab 进入且收不到 url 参数，
+    // 所以约骑上下文走这个寄存柜，upload 页 onShow 读走后立刻清空。
+    pendingUploadMeetup: null,
   },
 
   onLaunch() {

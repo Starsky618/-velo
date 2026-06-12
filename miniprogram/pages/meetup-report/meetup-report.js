@@ -117,7 +117,16 @@ Page({
   onTapSubmit: function (event) {
     var path = event.currentTarget.dataset.path
     if (!path) return
-    wx.navigateTo({ url: path })
+    // upload 是 tabBar 页：navigateTo 跳 tabBar 直接 fail，且 switchTab 带不了 url 参数——
+    // 约骑上下文走 globalData 寄存柜（与 pendingMapPoint 同约定），upload 页 onShow 读走即清空
+    var app = getApp()
+    if (app && app.globalData) {
+      app.globalData.pendingUploadMeetup = {
+        meetupId: this.data.meetupId,
+        token: this.data.shareToken || '',
+      }
+    }
+    wx.switchTab({ url: '/pages/upload/upload' })
   },
 
   onTapPreviewMedia: function (event) {

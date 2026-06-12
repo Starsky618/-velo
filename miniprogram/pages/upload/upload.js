@@ -108,25 +108,40 @@ Page({
 
   onLoad: function (options) {
     options = options || {}
+    // tabBar 页正常入口收不到 query（正式入口=战报寄存柜走 onShow）；
+    // 这里保留 query 解析只作为本地调试直开页面时的兜底
     var meetupId = options.meetup_id || options.meetupId || ''
     var token = options.token || ''
-    // 只看 meetupId：公开约骑没有口令（token 为空），上下文照样要生效——
-    // 双条件会让公开约骑从战报"交卷"进来时横幅和战报分享整体失踪（跨任务契约，README 符号索引）
     if (meetupId) {
-      this.setData({
-        meetupId: meetupId,
-        meetupToken: token,
-        reportPath: this.buildReportPath(meetupId, token)
-      })
-      this.fetchMeetupReport(meetupId, token)
-      wx.showShareMenu({ withShareTicket: true })
+      this.applyMeetupContext(meetupId, token)
     } else {
       wx.hideShareMenu()
     }
   },
 
+  // 把约骑上下文装进上传页（战报"交卷"入口）。
+  // 只看 meetupId：公开约骑没有口令（token 为空），上下文照样要生效——
+  // 双条件会让公开约骑从战报"交卷"进来时横幅和战报分享整体失踪（跨任务契约，README 符号索引）
+  applyMeetupContext: function (meetupId, token) {
+    if (!meetupId) return
+    this.setData({
+      meetupId: meetupId,
+      meetupToken: token || '',
+      reportPath: this.buildReportPath(meetupId, token)
+    })
+    this.fetchMeetupReport(meetupId, token)
+    wx.showShareMenu({ withShareTicket: true })
+  },
+
   onShow: function () {
     var that = this
+    // upload 是 tabBar 页收不到 url 参数：战报"交卷"的约骑上下文从寄存柜取（取即清空）
+    // app 用文件顶层那个 const（不再局部 getApp()，防变量遮蔽分叉）
+    var pendingMeetup = app && app.globalData && app.globalData.pendingUploadMeetup
+    if (pendingMeetup) {
+      app.globalData.pendingUploadMeetup = null
+      this.applyMeetupContext(pendingMeetup.meetupId, pendingMeetup.token)
+    }
     if (this.elevationData && this.elevationData.length > 0 && this.data.step === 'done') {
       wx.nextTick(function () { that.drawElevationProfile() })
     }
