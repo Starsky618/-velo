@@ -13,10 +13,12 @@
   margin: 20rpx 4rpx 30rpx;
 }
 
+/* 中文字重铁律：PingFang 真字重上限是 600，写 700+ 会触发合成加粗（笔画糊）——
+   "字体丑"的头号来源。中文一律 ≤600。 */
 .page-title {
   color: #1c1c1e;
   font-size: 56rpx;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.5rpx;
   line-height: 1.2;
 }
@@ -81,17 +83,19 @@
 .guide-name {
   color: #1c1c1e;
   font-size: 34rpx;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.3;
 }
 
-/* 数据行：等宽数字（标杆图同款 "32.4 km · 420 m" 节奏） */
+/* 数据行：iOS 原生 App 的真实做法——不换字体族（mono 族会落到呆板的 Menlo），
+   用系统字 + tabular-nums 等宽数字特性：数字仍是 SF 的现代字形，宽度对齐不跳动 */
 .meta {
   margin-top: 10rpx;
   color: #1c1c1e;
   font-size: 26rpx;
   font-weight: 600;
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .highlight {
