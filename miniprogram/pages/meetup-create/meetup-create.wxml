@@ -167,7 +167,7 @@
       </view>
     </view>
 
-    <!-- 补给点：右侧就地输入 -->
+    <!-- 补给点：手填为主（地点高度自由），下面给最近用过的快选（本地缓存，复用率高） -->
     <view class="pub-row">
       <view class="pub-iconbox"><image class="pub-icon" src="/assets/icons/meetup/cup-soda.svg" mode="aspectFit" /></view>
       <view class="pub-row-body">
@@ -177,6 +177,9 @@
         <input class="pub-input" value="{{form.supply_point}}" data-field="supply_point" bindinput="updateField" placeholder="例如：天龙山景区口" />
       </view>
     </view>
+    <scroll-view wx:if="{{supplyPointHistory.length}}" class="pub-supply-history" scroll-x="true" show-scrollbar="{{false}}">
+      <view wx:for="{{supplyPointHistory}}" wx:key="*this" class="pub-supply-chip" data-value="{{item}}" bindtap="applySupplyPoint">{{item}}</view>
+    </scroll-view>
 
     <!-- 活动说明：右侧单行就地输入 -->
     <view class="pub-row">
@@ -316,7 +319,7 @@
         </view>
       </view>
       <view class="pv-divider"></view>
-      <!-- 报名门槛行：视觉照原型(圆图标 + 标题 + 副文案 + "修改门槛")，点行展开 textarea 可编辑 -->
+      <!-- 报名门槛行：点行展开后是预设标签多选（Tim 2026-06-13 拍：挑现成的，不手打）+ 兜底手打补充 -->
       <view class="pv-gate-row" bindtap="togglePvEditGate">
         <view class="pv-round-icon"><image class="pv-round-icon-img" src="/assets/icons/meetup/calendar-plus.svg" mode="aspectFit" /></view>
         <view class="pv-gate-body">
@@ -324,9 +327,16 @@
           <view wx:else class="pv-gate-title pv-gate-title-empty">未设置门槛</view>
           <view class="pv-gate-sub">为保障安全与体验，满足条件方可报名</view>
         </view>
-        <view class="pv-edit-link"><text>修改门槛</text><image class="pv-edit-chev" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" /></view>
+        <view class="pv-edit-link"><text>{{pvEditGate ? '收起' : '设置门槛'}}</text><image class="pv-edit-chev" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" /></view>
       </view>
-      <textarea wx:if="{{pvEditGate}}" class="pv-edit-textarea" value="{{form.eligibility_note}}" data-field="eligibility_note" bindinput="updateField" placeholder="例如：能稳定骑完 60km / 报名需有 5 次骑行记录" />
+      <block wx:if="{{pvEditGate}}">
+        <view class="pv-template-chips">
+          <view wx:for="{{eligibilityOptions}}" wx:key="label"
+                class="pv-template-chip {{item.selected ? 'active' : ''}}"
+                data-label="{{item.label}}" bindtap="toggleEligibilityTag">{{item.label}}</view>
+        </view>
+        <textarea class="pv-edit-textarea" value="{{form.eligibility_note}}" data-field="eligibility_note" bindinput="updateField" maxlength="100" placeholder="挑上面的标签，或在这里补充特殊要求" />
+      </block>
     </view>
 
     <!-- 报名规则：人数 / 可见范围两盒子 / 报名截止 / 安全提示(可编辑) / 集合信息 -->
@@ -370,7 +380,7 @@
         <image class="pv-rule-chev" src="/assets/icons/meetup/chevron-right.svg" mode="aspectFit" />
       </view>
       <block wx:if="{{pvEditSafety}}">
-        <textarea class="pv-edit-textarea" value="{{form.safety_note}}" data-field="safety_note" bindinput="updateField" />
+        <textarea class="pv-edit-textarea" value="{{form.safety_note}}" data-field="safety_note" bindinput="updateField" maxlength="200" />
         <view class="pv-template-chips">
           <view wx:for="{{safetyTemplates}}" wx:key="*this" class="pv-template-chip" data-index="{{index}}" bindtap="applySafetyTemplate">{{item}}</view>
         </view>

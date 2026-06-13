@@ -562,6 +562,30 @@ page {
   white-space: nowrap;
 }
 
+/* 补给点最近用过的快选：横滑胶囊，点一下填进输入框 */
+.pub-supply-history {
+  width: 100%;
+  padding: 0 28rpx 8rpx;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.pub-supply-chip {
+  display: inline-block;
+  max-width: 300rpx;
+  margin-right: 12rpx;
+  padding: 10rpx 20rpx;
+  border-radius: 999rpx;
+  background: #f2f2f7;
+  color: #3a3a3c;
+  font-size: 23rpx;
+  line-height: 30rpx;
+  vertical-align: top;
+  overflow: hidden;
+  white-space: nowrap; /* 配 text-overflow:ellipsis 才生效，否则长名折行撑高 chip */
+  text-overflow: ellipsis;
+}
+
 .pub-picker {
   display: flex;
   align-items: center;
@@ -1238,6 +1262,14 @@ page {
   color: #3a3a3c;
   font-size: 23rpx;
   line-height: 30rpx;
+}
+
+/* 多选门槛 chip 的选中态：系统橙描边 + 浅橙底（与全局 accent 一致）。
+   安全提示用同一个 chip 类但不传 active（单选替换式），所以不受影响 */
+.pv-template-chip.active {
+  background: rgba(255, 149, 0, 0.12);
+  color: #d97a00;
+  font-weight: 600;
 }
 
 /* —— 已邀请骑友 —— */

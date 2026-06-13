@@ -652,6 +652,37 @@ def test_create_page_has_preview_step_and_social_fields():
     assert "route-map-overlay" not in wxml
 
 
+def test_eligibility_and_supply_point_are_component_pick_not_freetype():
+    # Tim 2026-06-13 拍：给骑友现成组件挑，不让手打。门槛=预设多选 chips、
+    # 补给点=最近用过快选（本地缓存），安全提示=模板 chips（既有）。
+    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
+    wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
+    wxss = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxss")
+
+    # 门槛：预设标签常量 + 多选拼接逻辑 + chips 带选中态
+    assert "ELIGIBILITY_TAGS" in js
+    assert "toggleEligibilityTag" in js
+    assert "syncEligibilityOptions" in js
+    assert "eligibilityOptions" in js and "eligibilityOptions" in wxml
+    assert 'bindtap="toggleEligibilityTag"' in wxml
+    assert ".pv-template-chip.active" in wxss  # 多选选中态样式
+    # 草稿恢复 + 手打 textarea 都要同步 chips 选中态
+    assert "syncEligibilityOptions(draft.eligibility_note" in js
+    assert "syncEligibilityOptions(value)" in js
+
+    # 补给点：本地缓存快选（不进后端表，纯客户端记忆）
+    assert "SUPPLY_POINT_HISTORY_KEY" in js
+    assert "loadSupplyPointHistory" in js
+    assert "rememberSupplyPoint" in js
+    assert "applySupplyPoint" in js
+    assert "wx.getStorageSync" in js and "wx.setStorageSync" in js
+    assert "supplyPointHistory" in wxml
+    assert 'bindtap="applySupplyPoint"' in wxml
+    # 发布成功才记住（不是草稿阶段）
+    publish_block = js.split("onConfirmPublish: function ()", 1)[1].split("resolveRouteBookId", 1)[0]
+    assert "rememberSupplyPoint" in publish_block
+
+
 def test_pace_display_table_covers_all_four_pace_levels():
     js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
 

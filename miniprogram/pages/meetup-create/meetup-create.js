@@ -162,6 +162,23 @@ const SAFETY_TEMPLATES = [
   '山路多弯 · 控制下坡车速 · 保持车距',
 ]
 
+// 报名门槛预设标签（Tim 2026-06-13 拍：给现成标签挑，不让骑友手打）。
+// 多选：选中的几条用 " · " 拼成一句存进 form.eligibility_note（后端仍是 str 字段，零改动）。
+// 选完还能在底下 textarea 手打补充——预设兜住 90%，自由文本留给那 10% 特殊要求。
+const ELIGIBILITY_TAGS = [
+  '无特殊门槛',
+  '能跟住均速',
+  '会修补胎换胎',
+  '有 30km 连续骑行经验',
+  '自备水和补给',
+  '有码表/功率计',
+  '骑公路车',
+]
+
+// 报名门槛缓存键（本地存最近用过的补给点，纯客户端记忆，零后端）
+const SUPPLY_POINT_HISTORY_KEY = 'meetup_supply_point_history'
+const SUPPLY_POINT_HISTORY_MAX = 3
+
 Page({
   data: {
     // 四步向导：选路线 → 填详情 → 加照片 → 确认发布。
@@ -237,6 +254,9 @@ Page({
     // audienceOptions 带 selected 标志：WXML 不支持 .indexOf()，选中态必须在 JS 侧算
     audienceOptions: AUDIENCE_OPTIONS.map(function (o) { return { value: o.value, label: o.label, icon: o.icon, selected: false } }),
     safetyTemplates: SAFETY_TEMPLATES,
+    // 门槛预设 chips：带 selected 标志（WXML 不支持 indexOf，选中态 JS 侧算）
+    eligibilityOptions: ELIGIBILITY_TAGS.map(function (t) { return { label: t, selected: false } }),
+    supplyPointHistory: [], // 最近用过的补给点（本地缓存，onLoad 读）
     visibilityOptions: [
       { value: 'public', label: '本城可见' },
       { value: 'invite_only', label: '私圈可见' },
@@ -262,6 +282,7 @@ Page({
     if (!Number.isFinite(routeBookId) || routeBookId <= 0) routeBookId = null
     this.initDefaultTime()
     this.loadFavoritePlaces()
+    this.loadSupplyPointHistory()
     this.loadRoutes()
     this.restoreDraft(routeBookId)
   },
@@ -297,6 +318,7 @@ Page({
         paceLabel: paceLabel,
         shareToken: draft.share_token || '',
         audienceOptions: that.syncAudienceOptions(draft.audience_tags || []),
+        eligibilityOptions: that.syncEligibilityOptions(draft.eligibility_note || ''),
         form: {
           start_time: draft.start_time,
           estimated_end_time: draft.estimated_end_time,
@@ -824,8 +846,8 @@ Page({
     var key = 'form.' + field
     var patch = {}
     patch[key] = value
-    if (field === 'recommended_power_label') patch.recommendedPowerLabel = value
-    if (field === 'average_speed_range') patch.averageSpeedRange = value
+    // 门槛 textarea 手打时同步 chips 选中态（让"打了预设里的字"也能点亮对应 chip）
+    if (field === 'eligibility_note') patch.eligibilityOptions = this.syncEligibilityOptions(value)
     this.setData(patch)
   },
 
@@ -980,6 +1002,72 @@ Page({
     this.setData({ 'form.safety_note': this.data.safetyTemplates[index] || this.data.safetyTemplates[0] })
   },
 
+  // 门槛预设标签多选：选中的几条用 " · " 拼成一句存进 eligibility_note。
+  // selected 态由"该标签是否出现在当前文本里"反推，所以手打补充和 chips 能共存：
+  // 手打的部分原样保留，点 chips 只增删对应那一段。
+  toggleEligibilityTag: function (event) {
+    var label = event.currentTarget.dataset.label
+    // 把当前门槛文本按分隔符拆成段，逐段比对（手打段也在其中，原样保留）
+    var current = String(this.data.form.eligibility_note || '').trim()
+    var parts = current ? current.split(' · ').map(function (s) { return s.trim() }).filter(Boolean) : []
+    var idx = parts.indexOf(label)
+    if (idx >= 0) {
+      parts.splice(idx, 1)
+    } else {
+      parts.push(label)
+    }
+    var next = parts.join(' · ')
+    this.setData({
+      'form.eligibility_note': next,
+      eligibilityOptions: this.syncEligibilityOptions(next),
+    })
+  },
+
+  // 按当前文本里包含哪些预设标签，算每个 chip 的选中态
+  syncEligibilityOptions: function (text) {
+    var parts = String(text || '').split(' · ').map(function (s) { return s.trim() })
+    return ELIGIBILITY_TAGS.map(function (t) {
+      return { label: t, selected: parts.indexOf(t) >= 0 }
+    })
+  },
+
+  // 补给点常用快选：纯本地缓存（wx.getStorageSync），不进后端表。
+  // 理由（Tim 拍 + 防过度工程）：补给点是高度个性化的自由地点，但同一个人常复用；
+  // 100 用户量级不值得为它建表/端点，本地记住最近 3 个即可，真有需求再升级服务端。
+  loadSupplyPointHistory: function () {
+    var history = []
+    try {
+      var cached = wx.getStorageSync(SUPPLY_POINT_HISTORY_KEY)
+      if (Array.isArray(cached)) history = cached.filter(function (s) { return s && typeof s === 'string' })
+    } catch (e) {
+      history = []
+    }
+    this.setData({ supplyPointHistory: history.slice(0, SUPPLY_POINT_HISTORY_MAX) })
+  },
+
+  // 点常用补给点 chip：直接填进输入框
+  applySupplyPoint: function (event) {
+    var value = event.currentTarget.dataset.value
+    if (value) this.setData({ 'form.supply_point': value })
+  },
+
+  // 发布成功后把这次填的补给点存进最近列表（去重 + 置顶 + 限长）
+  rememberSupplyPoint: function (value) {
+    var name = String(value || '').trim()
+    if (!name) return
+    var history = (this.data.supplyPointHistory || []).slice()
+    var idx = history.indexOf(name)
+    if (idx >= 0) history.splice(idx, 1)
+    history.unshift(name)
+    history = history.slice(0, SUPPLY_POINT_HISTORY_MAX)
+    this.setData({ supplyPointHistory: history })
+    try {
+      wx.setStorageSync(SUPPLY_POINT_HISTORY_KEY, history)
+    } catch (e) {
+      // 缓存写失败不影响发布主流程，静默
+    }
+  },
+
   // 总览页"报名门槛"展示行：点一下翻开/收起底下的可编辑 textarea（视觉默认是只读行）
   togglePvEditGate: function () {
     this.setData({ pvEditGate: !this.data.pvEditGate })
@@ -1044,6 +1132,8 @@ Page({
     }).then(function () {
       return api.publishMeetup(that.data.meetupId)
     }).then(function (meetup) {
+      // 发布成功才记住补给点（草稿没发出去不算"用过"），下次发起约骑可快选
+      that.rememberSupplyPoint(that.data.form.supply_point)
       wx.redirectTo({ url: '/pages/meetup-detail/meetup-detail?id=' + meetup.id })
     }).catch(function (err) {
       wx.showToast({ title: formatMeetupPublishError(err), icon: 'none' })
