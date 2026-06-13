@@ -169,6 +169,20 @@ Sprint 13 T1 明确禁止在 `app/meetup/cron.py` import `app.segment`，避免�
 
 ---
 
+## 🟠 P1：用户头像存 wxfile:// 临时路径，跨设备加载不出来（2026-06-14 约骑真机回归暴露 / 升级 P1）
+
+**根因**：`profile.js:304-306` 选头像后直接把 `tempFilePath`（`wxfile://tmp_xxx.jpg`，微信本机临时路径）当 `avatar_url` 存进后端，没走"上传到对象存储拿持久 URL"。生产实测 user_id=2 的 avatar_url = `wxfile://tmp_a853...jpg`。
+
+**为什么升级到 P1**：约骑模块上线后这是**社交硬伤**——别人看你发起/加入的约骑，参与者列表里你的头像是**裂图**（wxfile:// 只在你本机有效）。"谁来了"这个社交信号废一半。原 P2 只讲"换头像入口布局"，没抓到这个更严重的跨设备失效。
+
+**已做的止血**（2026-06-14）：约骑详情参与者列表前端容错——检测到 `wxfile://` / `http://tmp` 前缀的头像当作无效，回退到昵称首字圆形占位（`meetup-detail.js:loadParticipants`），不留裂图破绽。但这只是遮丑，根本问题是头像没持久化。
+
+**真修法**：选头像后调后端上传接口（复用约骑照片墙的 `/uploads/` 链路 + caddy 静态服务），存持久 URL。后端已有文件上传基建（meetup_media），扩一个 `/api/user/avatar` 上传端点即可。
+
+**触发清理条件**：约骑模块真有多人参与 / 第一场约骑前必修（否则参与者头像全裂）
+
+---
+
 ## 🟡 P2：profile 头像微信一键导入待找方案（Sprint 6 task-4 hotfix 2 / 2026-05-16）
 
 Tim 真用拍要支持"微信头像一键导入"。小程序唯一 API = `<button open-type="chooseAvatar">` + `bind:chooseavatar`。但 button 嵌在 hero-top flex 行时**拦截 hero-info 区点击事件**（city 不可点 / Tim 2026-05-16 二次真用报）→ 退回 image bindtap + wx.chooseMedia（拍照/相册）/ 牺牲微信一键导入。

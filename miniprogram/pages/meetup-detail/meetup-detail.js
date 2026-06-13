@@ -277,6 +277,9 @@ Page({
           invitees: (list || []).map(function (p) {
             // 微信头像是完整 https，自存头像才是 /uploads/ 开头要拼 baseUrl
             var avatar = p.avatar_url || ''
+            // wxfile:// 是上传者本机微信临时路径（头像持久化是已知 tech-debt），
+            // 在别人设备上加载不出来 → 当作无效，清空走首字占位，不留裂图破绽。
+            if (avatar.indexOf('wxfile://') === 0 || avatar.indexOf('http://tmp') === 0) avatar = ''
             if (avatar.indexOf('/uploads/') === 0) avatar = base + avatar
             var nickname = p.nickname || '骑友'
             return {
