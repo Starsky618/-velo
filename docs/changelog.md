@@ -1,5 +1,21 @@
 # VELO 开发变更日志
 
+## 2026-06-14: 真机回归暴露的 A/C 批 bug 修复（热力图白屏/退出登录态/详情页参与者+分享）✅ 含后端鉴权改动需部署
+
+> **缘起**：Tim 真机走查回归清单，A 批（这几天修的 bug 复验）暴露 3 个真 bug + C6 详情页缺失。Tim 铁律重申"前端显示坚决不许敷衍，必须完整显示轨迹不留破绽"。
+
+**三个 bug 根因 + 修复**：
+1. **A2 热力图白屏**：个人页热力图 = 用户全部骑行的**全量轨迹**（几十万点），塞旧 `wx.createCanvasContext + ctx.draw()` 渲染超时白屏。**不许抽稀**（Tim 铁律），改用**新版 Canvas 2D**（`type="2d"` + `this.createSelectorQuery` + `getContext('2d')` + dpr 缩放，详情页 5 张图表同款）——同步立即渲染、无点数上限、每个点完整画。canvas 改永久在 DOM（loading/error/empty 改 hidden 覆盖层），消除 wx:else 销毁 canvas 致 createSelectorQuery 查不到的 race（陷阱 #17）。新增 `route-thumb.js:drawHeatmap2d`。
+2. **A5 退出登录不显示"微信登录"按钮**：switchTab 回 profile 时 onShow 刷登录态偶尔不生效、停旧态。settings 4 处 `switchTab`→`reLaunch`（清页面栈重建 profile 必重判登录态；reLaunch 跳 tabBar 合法）。
+3. **C6 详情页缺参与者/分享**：补 `loadParticipants`（拉已加入骑友昵称/头像/队长标，空态"喊上骑友"）+ 显眼的"邀请骑友"分享按钮（`open-type="share"` 触发既有 onShareAppMessage 带 token）。"地图无底图"是上轮个性化底图付费改 canvas 自绘的**预期行为**，非 bug。
+
+**Codex 风格集成审抓 2 Critical（真金）**：
+- **参与者端点鉴权 bug**：`/participants` 用 `get_current_user`（硬 401），而详情端点用 `get_optional_user`——未登录受邀者带 share token 进来调参与者必 401、骑友列表静默消失，私圈分享场景必翻车。改 `get_optional_user`（鉴权下放给 `_assert_invite_only_access` 已正确处理 None 用户）。**这是后端改动，需部署。**
+- settings 注释自相矛盾（写"必须 switchTab"实现已 reLaunch）已订正。
+- 另 2 Important（drawHeatmap2d 的 getSystemInfoSync node 防御 / nickname[0] emoji 安全改 Array.from）已修。
+
+**测试**：1074 passed，新增"未登录受邀者带 token 看参与者"回归锁。
+
 ## 2026-06-13(三): 发起约骑"手打文字"收尾组件化（贯彻 UX 原则最后三处）✅ 纯前端
 
 > **缘起**：上轮原则审计列出三处仍让骑友手打的残余，Tim 拍"继续做"。彻底贯彻"给现成组件挑选排列组合，不让用户自己写内容"。

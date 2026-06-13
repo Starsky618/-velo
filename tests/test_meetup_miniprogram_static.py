@@ -106,6 +106,29 @@ def test_detail_page_joins_and_leaves_without_user_chat():
     assert "评论" not in wxml
 
 
+def test_detail_page_shows_participants_and_invite_share_button():
+    # 2026-06-13 C6 修：详情页补已加入骑友列表 + 显眼的"邀请骑友"分享按钮。
+    # 约骑是"一群人一起骑"，谁来了是第一眼社交信号；邀请必须显眼不能只靠右上角菜单。
+    js = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.js")
+    wxml = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.wxml")
+
+    # 参与者：拉 + 渲染（昵称/头像/队长标）
+    assert "loadParticipants" in js
+    assert "api.getMeetupParticipants" in js
+    assert "invitees" in js and "invitees" in wxml
+    assert 'wx:for="{{invitees}}"' in wxml
+    assert "rider-list" in wxml
+    assert "队长" in wxml  # is_creator 标
+    # 0 人时空态 + 邀请按钮永远显示（刚发布最需要拉人）
+    assert "rider-empty" in wxml
+    # 分享：open-type="share" 触发 onShareAppMessage（带 token）
+    assert 'open-type="share"' in wxml
+    assert "onShareAppMessage" in js
+    assert "邀请骑友" in wxml
+    # 头像 baseUrl 拼接（自存头像 /uploads/ 才拼，微信完整 https 不拼）
+    assert "/uploads/" in js
+
+
 def test_create_page_is_three_step_flow_and_uses_backend_state():
     js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
     wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")
@@ -503,18 +526,28 @@ def test_create_page_uses_shared_paper_map_theme_for_route_preview():
     assert "rgba(255, 255, 255" in wxss
 
 
-def test_heatmap_card_uses_free_paper_canvas_instead_of_native_map():
+def test_heatmap_card_uses_canvas2d_for_full_tracks_no_whiteout():
+    # 2026-06-13 修白屏：全量轨迹（几十万点）塞旧 ctx.draw() 渲染超时白屏，
+    # 改用新版 Canvas 2D（type="2d" + this.createSelectorQuery）完整画不抽稀。
     js = _read(MINI / "components" / "heatmap-card" / "heatmap-card.js")
     wxml = _read(MINI / "components" / "heatmap-card" / "heatmap-card.wxml")
     wxss = _read(MINI / "components" / "heatmap-card" / "heatmap-card.wxss")
+    thumb = _read(MINI / "utils" / "route-thumb.js")
 
     assert "require('../../utils/route-thumb')" in js
-    assert "drawHeatmapThumb" in js
-    assert "#FFD700CC" not in js
+    assert "drawHeatmap2d" in js  # 新版 Canvas 2D 函数
     assert "<map" not in wxml
-    assert 'canvas-id="heatmap-canvas"' in wxml
-    assert "heatmap-map-wash" not in wxml
+    # 新版 Canvas 2D：type="2d" + id（不再是旧 canvas-id）
+    assert 'type="2d"' in wxml
+    assert 'id="heatmap-canvas"' in wxml
+    assert 'canvas-id="heatmap-canvas"' not in wxml
+    # canvas 永久在 DOM（hidden 状态层），不被 wx:else 销毁 → createSelectorQuery 永远查得到（防 race）
+    assert "heatmap-state" in wxml
     assert "background: #eef3ee" in wxss
+    # route-thumb 的 drawHeatmap2d 用组件作用域 createSelectorQuery + getContext('2d')
+    assert "drawHeatmap2d" in thumb
+    assert "comp.createSelectorQuery()" in thumb
+    assert "getContext('2d')" in thumb
 
 
 def test_map_picker_page_is_registered_and_uses_native_map_without_custom_subkey():

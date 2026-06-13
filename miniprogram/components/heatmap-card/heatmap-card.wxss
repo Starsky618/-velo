@@ -33,18 +33,22 @@
 }
 
 /*
- * 3 个状态文案（loading / error / empty）共用一套居中样式
- * min-height 让卡片有占位高度，不会因状态切换而高度跳变
+ * loading / error / empty 文案：绝对定位叠在 canvas 上层（cover），
+ * 白底遮住"还没画轨迹"的空 canvas；渲染态时三者都不渲染，露出轨迹。
+ * 这样 canvas 节点永久在 DOM，createSelectorQuery 任何时候都查得到（防白屏 race）。
  */
-.loading-mini,
-.error-mini,
-.empty-mini {
-  min-height: 200rpx;
+.heatmap-state {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 26rpx;
   color: var(--color-text-3);
+  background: #eef3ee; /* 与 shell 同底，遮住未绘制的 canvas */
 }
 
 /* error 状态可点击重试，给一点视觉反馈 */

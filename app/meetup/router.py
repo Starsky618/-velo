@@ -207,7 +207,10 @@ def suggest_meetup_places(
 def list_participants(
     meetup_id: int,
     token: str | None = Query(None),
-    current_user_id: int = Depends(get_current_user),
+    # 与详情端点同口径用 get_optional_user：未登录受邀者（带 share token）也要能看到"谁来了"，
+    # 否则私圈约骑分享链接进来的游客调本端点必 401、骑友列表静默消失。
+    # 鉴权由 service._assert_invite_only_access 统一管（None 用户走 token 检查）。
+    current_user_id: int | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     return service.list_participants(db, meetup_id, current_user_id, token=token)

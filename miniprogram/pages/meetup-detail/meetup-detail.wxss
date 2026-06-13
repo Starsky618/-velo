@@ -215,6 +215,81 @@ page {
 }
 
 /* 底部只显示一个按钮（按身份：取消/退出/加入）或一行状态文案，单列全宽 */
+/* 骑友列表：头像横向换行排开，每个头像下名字 + 队长标 */
+.rider-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24rpx 28rpx;
+  margin-top: 8rpx;
+}
+
+.rider {
+  position: relative;
+  width: 96rpx;
+  text-align: center;
+}
+
+.rider-avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background: #f2f2f7;
+}
+
+/* 没头像时用昵称首字占位（圆形橙底白字） */
+.rider-avatar-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  color: #fff;
+  background: #ff9500;
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.rider-name {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  line-height: 30rpx;
+  color: #3a3a3c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rider-badge {
+  position: absolute;
+  top: -6rpx;
+  right: 0;
+  padding: 2rpx 10rpx;
+  border-radius: 999rpx;
+  background: #ff9500;
+  color: #fff;
+  font-size: 18rpx;
+  line-height: 26rpx;
+}
+
+.rider-empty {
+  margin-top: 8rpx;
+  color: #8a8a8e;
+  font-size: 26rpx;
+  line-height: 36rpx;
+}
+
+/* 邀请骑友：tinted 风格（浅橙底橙字），约骑核心操作但不抢 fixed 底栏的主操作位 */
+.invite {
+  width: 100%;
+  height: 84rpx;
+  line-height: 84rpx;
+  margin-top: 24rpx;
+  border-radius: 22rpx;
+  background: rgba(255, 149, 0, 0.12);
+  color: #e07f00;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
 .actions {
   position: fixed;
   left: 0;

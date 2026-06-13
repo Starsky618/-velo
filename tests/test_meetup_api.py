@@ -518,6 +518,12 @@ def test_invite_only_requires_token_for_detail_join_and_participants(client, db,
     assert client.get(f"/api/meetups/{meetup_id}/media", headers=fresh).status_code == 404
     assert client.get(f"/api/meetups/{meetup_id}/media?token={token}").status_code == 200
 
+    # 参与者端点用 get_optional_user（C6 修 / 2026-06-13）：未登录受邀者（分享链接进来，
+    # 无 JWT、只带 token）也要能看到"谁来了"——否则前端骑友列表静默消失。
+    # 完全不带任何凭证 → 404（私圈门禁）；只带 token 不登录 → 200。
+    assert client.get(f"/api/meetups/{meetup_id}/participants").status_code == 404
+    assert client.get(f"/api/meetups/{meetup_id}/participants?token={token}").status_code == 200
+
 
 def test_invite_only_creator_can_open_without_token(client, db, auth_header):
     segment = _segment(db)
@@ -581,9 +587,17 @@ def test_public_meetup_detail_and_join_do_not_need_token(client, db, auth_header
     assert join.status_code == 200
 
 
-def test_participants_requires_login_and_missing_meetup_404(client, auth_header):
-    assert client.get("/api/meetups/1/participants").status_code == 401
+def test_participants_optional_auth_and_missing_meetup_404(client, db, auth_header):
+    # C6 修（2026-06-13）：参与者端点改 get_optional_user（私圈受邀游客带 token 也能看）。
+    # 不存在的约骑：无论登录与否都 404（不再是"未登录 401"——鉴权下放给私圈门禁）。
+    assert client.get("/api/meetups/999999/participants").status_code == 404
     assert client.get("/api/meetups/999999/participants", headers=auth_header).status_code == 404
+    # public 约骑：未登录游客也能看参与者（约骑就是要被围观、被加入）
+    segment = _segment(db)
+    create_res = client.post("/api/meetups", json=_payload(segment.id), headers=auth_header)
+    meetup_id = create_res.json()["id"]
+    client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+    assert client.get(f"/api/meetups/{meetup_id}/participants").status_code == 200
 
 
 def test_create_rejects_duplicate_draft(client, db, auth_header):

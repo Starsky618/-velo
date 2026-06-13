@@ -228,8 +228,94 @@ function drawHeatmapThumb(canvasId, tracks, opts) {
   return true
 }
 
+/**
+ * 热力图绘制（新版 Canvas 2D / type="2d"）—— 给"全量多轨迹"用。
+ *
+ * 为什么单独写一个：旧版 wx.createCanvasContext + ctx.draw() 在点数过多时
+ * （个人页热力图 = 用户全部骑行的完整轨迹，可达几十万点）会渲染超时直接白屏。
+ * 新版 Canvas 2D（与详情页 5 张图表同款）是同步立即渲染、无点数上限，
+ * 能把每一个轨迹点完整画出来不留破绽（Tim 2026-06-13 铁律：前端显示不许敷衍/抽稀）。
+ *
+ * 与旧 drawHeatmapThumb 的区别：
+ *   - 旧版：传 canvas-id，内部 createCanvasContext，调用方负责 setData 让 canvas 先存在
+ *   - 新版：传 selector（'#xxx'）+ component 实例，内部用 createSelectorQuery 拿真实 node，
+ *     自己做 dpr 缩放（高清屏不糊），用标准 ctx.beginPath/moveTo/lineTo/stroke
+ *
+ * @param {Object} comp     组件实例（this）——createSelectorQuery 要在组件作用域查
+ * @param {string} selector canvas 的 id 选择器（如 '#heatmap-canvas'）
+ * @param {Array} tracks    多条轨迹 [[[lon,lat],...], ...]，全部点都会画，不抽稀
+ * @param {Object} opts     { lineWidth, color }
+ */
+function drawHeatmap2d(comp, selector, tracks, opts) {
+  opts = opts || {}
+  if (!Array.isArray(tracks) || tracks.length === 0) return
+  var query = comp.createSelectorQuery()
+  query.select(selector)
+    .fields({ node: true, size: true })
+    .exec(function (res) {
+      if (!res || !res[0] || !res[0].node) return
+      var canvas = res[0].node
+      var width = res[0].width
+      var height = res[0].height
+      if (!width || !height) return
+
+      // 投影：复用纯计算函数（与坐标系/API 无关），把所有轨迹等比缩进画布
+      var projected = projectTracks(tracks, width, height, opts.pad || 12)
+      if (!projected) return
+
+      var ctx = canvas.getContext('2d')
+      // 高清屏适配：canvas 实际像素按 dpr 放大，再 scale 缩回，否则线条发糊。
+      // typeof 守卫让纯 node 单测（无 wx.getSystemInfoSync）也能跑这条路径不炸
+      var dpr = (typeof wx !== 'undefined' && wx.getSystemInfoSync
+        ? wx.getSystemInfoSync().pixelRatio : 2) || 2
+      canvas.width = width * dpr
+      canvas.height = height * dpr
+      ctx.scale(dpr, dpr)
+      ctx.clearRect(0, 0, width, height)
+
+      // 浅色纸面底（与小缩略图同一支笔，视觉统一）
+      drawPaperBackground2d(ctx, width, height)
+
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      ctx.strokeStyle = opts.color || 'rgba(255, 149, 0, 0.42)'
+      ctx.lineWidth = opts.lineWidth || 2
+
+      // 逐条轨迹完整画（每个点都画，半透明橙叠加 → 骑得越多越亮的自然热力）
+      projected.tracks.forEach(function (track) {
+        ctx.beginPath()
+        track.forEach(function (point, index) {
+          if (index === 0) ctx.moveTo(point.x, point.y)
+          else ctx.lineTo(point.x, point.y)
+        })
+        ctx.stroke()
+      })
+    })
+}
+
+// 新版 Canvas 2D 的纸面底纹（标准 ctx API，对应旧版 drawPaperBackground 的 set* 写法）
+function drawPaperBackground2d(ctx, width, height) {
+  ctx.fillStyle = '#F7F2E8'
+  ctx.fillRect(0, 0, width, height)
+  ctx.strokeStyle = 'rgba(214, 204, 184, 0.42)'
+  ctx.lineWidth = 1
+  for (var x = 18; x < width; x += 42) {
+    ctx.beginPath()
+    ctx.moveTo(x, 0)
+    ctx.lineTo(x - 10, height)
+    ctx.stroke()
+  }
+  for (var y = 24; y < height; y += 44) {
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.lineTo(width, y + 8)
+    ctx.stroke()
+  }
+}
+
 module.exports = {
   drawRouteThumb: drawRouteThumb,
   drawHeatmapThumb: drawHeatmapThumb,
+  drawHeatmap2d: drawHeatmap2d,
   normalizePoints: normalizePoints,
 }

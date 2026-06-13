@@ -89,6 +89,7 @@ Page({
     joining: false,
     mediaList: [], // 照片墙：每项含 url（拼好的可显示地址）+ isVideo
     mediaError: false, // 照片墙加载失败标记：true 时显示"加载失败"而非"还没有照片"，避免误导
+    invitees: [], // 已加入骑友（昵称/头像，JOIN users 返回）——空则不渲染骑友区块（no-dash）
     routePreviewVisible: false,
     routePreviewCenter: { latitude: 37.8706, longitude: 112.5489 },
     routePreviewPolylines: [],
@@ -124,6 +125,7 @@ Page({
         that.setData({ meetup: decorateMeetup(res) })
         that.updateReportEntrance()
         that.loadMedia()
+        that.loadParticipants()
         that.loadRoutePreview(res.route_book_id)
       })
       .catch(function (err) {
@@ -260,6 +262,36 @@ Page({
         // 否则接口 401/500、图片域名没配 https 等任何失败都被吞成"没人发照片"，误导用户。
         console.error('照片墙加载失败', err)
         that.setData({ mediaError: true })
+      })
+  },
+
+  // 拉已加入骑友（昵称/头像）。约骑 = 一群人一起骑，谁来了是第一眼最该看到的社交信号。
+  // 空列表/拉失败都静默隐藏骑友区块（no-dash），不阻塞详情主信息。
+  loadParticipants: function () {
+    var that = this
+    if (!this.data.meetupId || !api.getMeetupParticipants) return
+    api.getMeetupParticipants(this.data.meetupId, this.data.shareToken)
+      .then(function (list) {
+        var base = (getApp().globalData && getApp().globalData.baseUrl) || ''
+        that.setData({
+          invitees: (list || []).map(function (p) {
+            // 微信头像是完整 https，自存头像才是 /uploads/ 开头要拼 baseUrl
+            var avatar = p.avatar_url || ''
+            if (avatar.indexOf('/uploads/') === 0) avatar = base + avatar
+            var nickname = p.nickname || '骑友'
+            return {
+              user_id: p.user_id,
+              nickname: nickname,
+              // 无头像时的首字占位：Array.from 按码点取，避免 emoji 昵称取到半个代理对显示方块
+              avatar_initial: Array.from(nickname)[0] || '骑',
+              avatar_url: avatar,
+              is_creator: p.is_creator,
+            }
+          }),
+        })
+      })
+      .catch(function () {
+        that.setData({ invitees: [] })
       })
   },
 

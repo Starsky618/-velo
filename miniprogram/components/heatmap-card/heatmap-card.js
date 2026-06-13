@@ -12,6 +12,11 @@
  * 1. 砍 city props：后端 v3 city 已可选，前端不再强制传 / 直接拉用户全部活动轨迹
  * 2. 展示层改为 canvas 自绘纸面轨迹：只画路线形状，不再依赖原生地图底图
  *
+ * ─── 2026-06-13 修白屏：旧 canvas API → 新版 Canvas 2D ───
+ * 全量轨迹（几十万点）塞旧 wx.createCanvasContext + ctx.draw() 会渲染超时白屏。
+ * 改用新版 Canvas 2D（type="2d" + this.createSelectorQuery，详情页图表同款）：
+ * 同步立即渲染、无点数上限、每个轨迹点都完整画出来不抽稀。
+ *
  * props 设计（4.3 复用关键）：
  *   - userId: Number 默认 0
  *       0 = 看自己，调用 GET /api/user/me/heatmap
@@ -151,16 +156,16 @@ Component({
 
     /**
      * 个人页热力图是展示卡，不需要拖动地图。
-     * 用自绘纸面 + 轨迹线，免费避开腾讯默认底图，同时保留"骑过哪些区域"的第一眼信息。
+     * 用新版 Canvas 2D 自绘纸面 + 完整轨迹线：旧版 ctx.draw() 在全量轨迹
+     * （几十万点）时渲染超时白屏，新版无点数上限、每个点都画不抽稀
+     * （Tim 2026-06-13 铁律：前端显示不许敷衍）。
      */
     _drawHeatmap() {
       if (!this.data.tracks || this.data.tracks.length === 0) return
+      // setTimeout 兜底 canvas 节点初始化（setData 翻转渲染态与节点 ready 不同帧）
       setTimeout(() => {
-        routeThumb.drawHeatmapThumb('heatmap-canvas', this.data.tracks, {
-          width: 327,
-          height: 240,
+        routeThumb.drawHeatmap2d(this, '#heatmap-canvas', this.data.tracks, {
           lineWidth: 2,
-          component: this,
         })
       }, 120)
     },

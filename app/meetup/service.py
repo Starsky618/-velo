@@ -591,7 +591,7 @@ def get_first_media_file_id(db: Session, meetup_id: int) -> str | None:
 def list_participants(
     db: Session,
     meetup_id: int,
-    current_user_id: int,
+    current_user_id: int | None,
     token: str | None = None,
 ) -> list[InviteeSummary]:
     meetup = db.query(Meetup).filter(Meetup.id == meetup_id).first()
