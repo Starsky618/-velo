@@ -22,7 +22,7 @@
         <text class="hero-date">{{dateText}}</text>
       </view>
       <!-- task-4.6：隐私设置入口（仅 owner 可见） -->
-      <view class="privacy-btn" wx:if="{{isOwner}}" bindtap="togglePrivacyDrawer">
+      <view class="privacy-btn tappable" wx:if="{{isOwner}}" bindtap="togglePrivacyDrawer">
         <image class="privacy-icon" src="/assets/icons/settings.svg" mode="aspectFit" />
       </view>
     </view>
@@ -54,7 +54,7 @@
       <text class="segment-count">{{segments.length}} 个</text>
     </view>
     <view class="segment-list">
-      <view class="segment-item {{item.isPr ? 'segment-pr' : ''}}" wx:for="{{segments}}" wx:key="segment_id"
+      <view class="segment-item tappable {{item.isPr ? 'segment-pr' : ''}}" wx:for="{{segments}}" wx:key="segment_id"
             bindtap="goSegment" data-id="{{item.segment_id}}">
         <view class="segment-left">
           <text class="segment-name">{{item.name}}</text>

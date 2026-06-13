@@ -40,7 +40,7 @@
 
   <view wx:if="{{currentStep === 'route'}}" class="panel">
     <view class="section-title">赛段</view>
-    <view class="route-card {{selectedSegmentId === item.id ? 'selected' : ''}}" wx:for="{{segments}}" wx:key="id" data-type="segment" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+    <view class="route-card tappable {{selectedSegmentId === item.id ? 'selected' : ''}}" wx:for="{{segments}}" wx:key="id" data-type="segment" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
       <view>{{item.displayName}}</view>
       <text>{{item.displayMeta}}</text>
     </view>
@@ -60,19 +60,19 @@
     </view>
 
     <view wx:if="{{officialRouteBooks.length}}" class="section-title">官方路线</view>
-    <view class="route-card {{selectedRouteBookId === item.id ? 'selected' : ''}}" wx:for="{{officialRouteBooks}}" wx:key="id" data-type="route_book" data-source="official" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+    <view class="route-card tappable {{selectedRouteBookId === item.id ? 'selected' : ''}}" wx:for="{{officialRouteBooks}}" wx:key="id" data-type="route_book" data-source="official" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
       <view>{{item.displayName}}</view>
       <text>{{item.displayMeta}}</text>
     </view>
 
     <view class="section-title">我的路书</view>
-    <view class="route-card {{selectedRouteBookId === item.id ? 'selected' : ''}}" wx:for="{{routeBooks}}" wx:key="id" data-type="route_book" data-source="mine" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+    <view class="route-card tappable {{selectedRouteBookId === item.id ? 'selected' : ''}}" wx:for="{{routeBooks}}" wx:key="id" data-type="route_book" data-source="mine" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
       <view>{{item.displayName}}</view>
       <text>{{item.displayMeta}}</text>
     </view>
 
     <view class="section-title">从骑行生成</view>
-    <view class="route-card {{selectedActivityId === item.id ? 'selected' : ''}}" wx:for="{{activities}}" wx:key="id" data-type="activity" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
+    <view class="route-card tappable {{selectedActivityId === item.id ? 'selected' : ''}}" wx:for="{{activities}}" wx:key="id" data-type="activity" data-index="{{index}}" data-id="{{item.id}}" data-name="{{item.displayName}}" bindtap="selectRoute">
       <view>{{item.displayName}}</view>
       <text>{{item.displayMeta}}</text>
     </view>
@@ -134,7 +134,7 @@
       <button class="pub-place-btn pub-place-btn-save" bindtap="saveMeetingPointAsFavorite">存为常用集合点</button>
     </view>
     <scroll-view wx:if="{{favoritePlaces.length}}" class="pub-favorite-places" scroll-x="true" show-scrollbar="{{false}}">
-      <view wx:for="{{favoritePlaces}}" wx:key="id" class="pub-favorite-place" data-index="{{index}}" bindtap="applyFavoritePlace">
+      <view wx:for="{{favoritePlaces}}" wx:key="id" class="pub-favorite-place tappable" data-index="{{index}}" bindtap="applyFavoritePlace">
         <view class="pub-favorite-name">{{item.name}}</view>
         <view class="pub-favorite-address">{{item.address}}</view>
       </view>
@@ -281,7 +281,7 @@
       <view class="pv-section-title">适合谁</view>
       <view class="pv-pills">
         <view wx:for="{{audienceOptions}}" wx:key="value"
-              class="pv-pill {{item.selected ? 'active' : ''}} {{item.value === 'female_friendly' ? 'soft' : ''}} {{item.value === 'newbie_caution' ? 'muted' : ''}}"
+              class="pv-pill tappable {{item.selected ? 'active' : ''}} {{item.value === 'female_friendly' ? 'soft' : ''}} {{item.value === 'newbie_caution' ? 'muted' : ''}}"
               data-value="{{item.value}}" bindtap="toggleAudienceTag">
           <image class="pv-pill-icon" src="{{item.icon}}" mode="aspectFit" />
           <text>{{item.label}}</text>
@@ -351,14 +351,14 @@
       <view class="pv-rule-block">
         <view class="pv-rule-label">可见范围</view>
         <view class="pv-visibility-options">
-          <view class="pv-visibility-box {{form.visibility === 'invite_only' ? 'active' : ''}}" data-value="invite_only" bindtap="onSelectVisibility">
+          <view class="pv-visibility-box tappable {{form.visibility === 'invite_only' ? 'active' : ''}}" data-value="invite_only" bindtap="onSelectVisibility">
             <image class="pv-visibility-icon" src="{{form.visibility === 'invite_only' ? '/assets/icons/meetup/lock-keyhole-active.svg' : '/assets/icons/meetup/lock-keyhole.svg'}}" mode="aspectFit" />
             <view class="pv-visibility-text">
               <view class="pv-visibility-main">私圈可见</view>
               <view class="pv-visibility-sub">仅被邀请的人可见</view>
             </view>
           </view>
-          <view class="pv-visibility-box {{form.visibility === 'public' ? 'active' : ''}}" data-value="public" bindtap="onSelectVisibility">
+          <view class="pv-visibility-box tappable {{form.visibility === 'public' ? 'active' : ''}}" data-value="public" bindtap="onSelectVisibility">
             <image class="pv-visibility-icon" src="{{form.visibility === 'public' ? '/assets/icons/meetup/globe-active.svg' : '/assets/icons/meetup/globe.svg'}}" mode="aspectFit" />
             <view class="pv-visibility-text">
               <view class="pv-visibility-main">本城可见</view>

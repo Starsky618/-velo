@@ -9,7 +9,7 @@
   <!-- Tab 切换 -->
   <view class="tab-bar">
     <view
-      class="tab {{currentTab === 'kom' ? 'active' : ''}}"
+      class="tab tappable {{currentTab === 'kom' ? 'active' : ''}}"
       bindtap="switchTab"
       data-tab="kom"
     >
@@ -17,7 +17,7 @@
       <text class="tab-text">KOM ({{komCount}})</text>
     </view>
     <view
-      class="tab {{currentTab === 'top10' ? 'active' : ''}}"
+      class="tab tappable {{currentTab === 'top10' ? 'active' : ''}}"
       bindtap="switchTab"
       data-tab="top10"
     >
@@ -31,7 +31,7 @@
     <view
       wx:for="{{currentList}}"
       wx:key="segment_id"
-      class="honor-item"
+      class="honor-item tappable"
       bindtap="goSegment"
       data-id="{{item.segment_id}}"
     >

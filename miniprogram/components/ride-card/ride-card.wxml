@@ -8,53 +8,83 @@
 <wxs src="../../utils/format.wxs" module="f" />
 
 <block wx:if="{{rides && rides.length > 0}}">
+
+  <!-- ⚠ 关键结构（陷阱 #17 / 2026-06-14 回归实证）：
+       wx:for 必须在最外层、绝不被 layout 的 wx:if 包裹——否则 canvas 节点随条件块延迟挂载，
+       observer 首次绘制时 createCanvasContext 拿不到节点 → 静默画空（profile 轨迹一度消失就是这个）。
+       布局差异下沉到每张卡内部：根节点用 class 区分 list/cover，canvas 始终渲染（hidden 控可见性）。 -->
   <view
-    class="ride-card"
+    class="ride-card {{layout === 'cover' ? 'ride-card--cover' : ''}}"
     wx:for="{{rides}}"
     wx:key="id"
     data-activity-id="{{item.id}}"
     bindtap="onTapRide"
   >
-    <!-- 路线轨迹缩略（iGPSport 式左图）：父页面塞 trackPoints 后组件 observer 自画。
-         用 hidden 而非 wx:if——canvas DOM 常在才能稳定绘制（陷阱 #17）；
-         无轨迹的活动整块隐藏，右侧信息自动占满全宽 -->
-    <view class="ride-thumb" hidden="{{!item.trackPoints || item.trackPoints.length < 2}}">
-      <canvas canvas-id="ride-thumb-{{item.id}}" class="ride-thumb-canvas"></canvas>
-    </view>
 
-    <view class="ride-main">
-    <view class="ride-card-header">
-      <view class="ride-title">{{item.title || '骑行记录'}}</view>
-      <!-- started_at 由父页面预格式化成 startedAtDisplay 字段（如"今天 09:30"） -->
-      <view class="ride-subtitle" wx:if="{{item.startedAtDisplay}}">
-        {{item.startedAtDisplay}}
+    <!-- cover 头像行（Strava 式）：只 cover 模式有；list 模式整块不渲染（与 canvas 无关，纯信息可安全 wx:if）。
+         有 avatarUrl 用真头像，没有回落字母占位（工程无默认头像图 / images 不存在，不引用防 404，见 MASTER §7）。 -->
+    <view class="cover-head" wx:if="{{layout === 'cover' && item.nickname}}">
+      <image wx:if="{{item.avatarUrl}}" class="cover-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+      <view wx:else class="cover-avatar cover-avatar--letter"><text>{{item.initial}}</text></view>
+      <view class="cover-user">
+        <view class="cover-name">{{item.nickname}}</view>
+        <view class="cover-meta" wx:if="{{item.startedAtDisplay}}">{{item.startedAtDisplay}}</view>
       </view>
     </view>
 
-    <view class="ride-stats">
-      <!-- 距离：service 层已把米转公里 / wxs km() 保 2 位小数 / 单位 km 跟在数值后 -->
-      <view class="ride-stat" wx:if="{{item.distance !== null && item.distance !== undefined}}">
-        <view class="ride-stat-value">{{f.km(item.distance)}}<text class="ride-stat-unit">km</text></view>
-        <view class="ride-stat-label">距离</view>
-      </view>
-      <!-- 时长：后端秒 / 优先用 moving_time（移动时间）/ 老活动 fallback duration / wxs secToHm() 转 "Xh Ymin" -->
-      <view class="ride-stat" wx:if="{{item.moving_time || item.duration}}">
-        <view class="ride-stat-value">{{f.secToHm(item.moving_time || item.duration)}}</view>
-        <view class="ride-stat-label">时长</view>
-      </view>
-      <!-- 均速：单位 km/h 跟在数值后 / label 写"均速" / 4 项宽度均衡挤同行 -->
-      <view class="ride-stat" wx:if="{{item.avg_speed !== null && item.avg_speed !== undefined}}">
-        <view class="ride-stat-value">{{item.avg_speed}}<text class="ride-stat-unit">km/h</text></view>
-        <view class="ride-stat-label">均速</view>
-      </view>
-      <!-- 爬升：米 float / wxs roundInt() 四舍五入去 .0 尾巴 / 单位 m 跟在数值后 -->
-      <view class="ride-stat" wx:if="{{item.elevation_gain !== null && item.elevation_gain !== undefined}}">
-        <view class="ride-stat-value">{{f.roundInt(item.elevation_gain)}}<text class="ride-stat-unit">m</text></view>
-        <view class="ride-stat-label">爬升</view>
+    <!-- ⚠ 轨迹 canvas：唯一一份、提到任何 layout 条件块外，永远渲染（陷阱 #17 / 2026-06-14 回归实证）。
+         之前把 canvas 包进 layout 的 wx:if/block 里 → observer 首次绘制时 createCanvasContext 拿不到节点
+         → 静默画空（profile 轨迹消失就是这个）。class 随 layout 变（list 左方块 / cover 全宽大图），
+         可见性用 hidden（无轨迹整块隐藏），但 DOM 节点常在，绘制时序稳定。 -->
+    <view class="thumb-slot {{layout === 'cover' ? 'thumb-slot--cover' : 'thumb-slot--list'}}"
+          hidden="{{!item.trackPoints || item.trackPoints.length < 2}}">
+      <canvas canvas-id="ride-thumb-{{item.id}}" class="thumb-canvas {{layout === 'cover' ? 'thumb-canvas--cover' : 'thumb-canvas--list'}}"></canvas>
+    </view>
+
+    <!-- cover 信息区（标题 + 横排数据行）：纯文字，安全 wx:if -->
+    <view class="cover-body" wx:if="{{layout === 'cover'}}">
+      <view class="cover-title">{{item.title || '骑行记录'}}</view>
+      <!-- 数据行横排 "32.4 km · 420 m · 1h 18m"（探索页同款等宽）；缺字段不渲染该段 + 分隔点 -->
+      <view class="cover-data">
+        <text class="cover-data-item" wx:if="{{item.distance !== null && item.distance !== undefined}}">{{f.km(item.distance)}} km</text>
+        <text class="cover-dot" wx:if="{{(item.distance !== null && item.distance !== undefined) && (item.elevation_gain !== null && item.elevation_gain !== undefined)}}">·</text>
+        <text class="cover-data-item" wx:if="{{item.elevation_gain !== null && item.elevation_gain !== undefined}}">{{f.roundInt(item.elevation_gain)}} m</text>
+        <text class="cover-dot" wx:if="{{(item.elevation_gain !== null && item.elevation_gain !== undefined) && (item.moving_time || item.duration)}}">·</text>
+        <text class="cover-data-item" wx:if="{{item.moving_time || item.duration}}">{{f.secToHm(item.moving_time || item.duration)}}</text>
       </view>
     </view>
+
+    <!-- list 信息区（右侧标题 + 四格数据）：纯文字，安全 wx:if -->
+    <view class="ride-main" wx:if="{{layout !== 'cover'}}">
+      <view class="ride-card-header">
+        <view class="ride-title">{{item.title || '骑行记录'}}</view>
+        <view class="ride-subtitle" wx:if="{{item.startedAtDisplay}}">
+          {{item.startedAtDisplay}}
+        </view>
+      </view>
+
+      <view class="ride-stats">
+        <view class="ride-stat" wx:if="{{item.distance !== null && item.distance !== undefined}}">
+          <view class="ride-stat-value">{{f.km(item.distance)}}<text class="ride-stat-unit">km</text></view>
+          <view class="ride-stat-label">距离</view>
+        </view>
+        <view class="ride-stat" wx:if="{{item.moving_time || item.duration}}">
+          <view class="ride-stat-value">{{f.secToHm(item.moving_time || item.duration)}}</view>
+          <view class="ride-stat-label">时长</view>
+        </view>
+        <view class="ride-stat" wx:if="{{item.avg_speed !== null && item.avg_speed !== undefined}}">
+          <view class="ride-stat-value">{{item.avg_speed}}<text class="ride-stat-unit">km/h</text></view>
+          <view class="ride-stat-label">均速</view>
+        </view>
+        <view class="ride-stat" wx:if="{{item.elevation_gain !== null && item.elevation_gain !== undefined}}">
+          <view class="ride-stat-value">{{f.roundInt(item.elevation_gain)}}<text class="ride-stat-unit">m</text></view>
+          <view class="ride-stat-label">爬升</view>
+        </view>
+      </view>
     </view>
+
   </view>
+
 </block>
 
 <view class="ride-empty" wx:elif="{{showEmpty}}">

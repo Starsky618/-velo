@@ -13,8 +13,11 @@
 <view class="card power-curve-card">
   <text class="card-title">功率曲线</text>
 
-  <!-- v3 polish: period 切换 segment control -->
+  <!-- v3 polish: period 切换 segment control。
+       MASTER §4.5.2 选中态滑动：灰底容器 + 一个绝对定位白滑片，切档时滑片 transform 滑过去
+       （和 profile「本周/生涯」同一套手感，只是 5 档）。滑片位置由 periodIndex（js 算好的 0~4）驱动。 -->
   <view class="period-tabs">
+    <view class="period-seg-thumb" style="transform: translateX({{periodIndex * 100}}%);"></view>
     <view class="period-tab {{currentPeriod === 'last_30_days' ? 'active' : ''}}" bindtap="_onPeriodTap" data-period="last_30_days">30天</view>
     <view class="period-tab {{currentPeriod === 'last_90_days' ? 'active' : ''}}" bindtap="_onPeriodTap" data-period="last_90_days">90天</view>
     <view class="period-tab {{currentPeriod === 'last_180_days' ? 'active' : ''}}" bindtap="_onPeriodTap" data-period="last_180_days">半年</view>

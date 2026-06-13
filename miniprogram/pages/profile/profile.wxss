@@ -40,6 +40,19 @@ page {
   background: #f2f2f7;
 }
 
+/* 无真头像时的字母占位：灰底圆 + 居中昵称首字（替代旧的 404 默认图）*/
+.hero-avatar--letter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-avatar--letter text {
+  font-size: 52rpx;
+  font-weight: 600;
+  color: #8a8a8e;
+}
+
 .hero-info {
   flex: 1;
   min-width: 0;
@@ -121,29 +134,55 @@ page {
   margin-bottom: 24rpx;
 }
 
-/* 本周 | 生涯 segmented（iOS UISegmentedControl 语言：灰胶囊底 + 选中白片浮起）*/
+/* 本周 | 生涯 segmented（iOS UISegmentedControl 语言：灰胶囊底 + 选中白片浮起）
+   MASTER §4.5.2：白片是独立绝对定位元素 .stats-seg-thumb，切档时滑过去（不瞬变）。
+   外层 relative 当滑片的定位参照系；两档等宽，滑片宽 = 50% 减去左右内边距。 */
 .stats-seg {
+  position: relative;
   display: flex;
   padding: 4rpx;
   border-radius: 14rpx;
   background: #f2f2f7;
 }
 
+/* 白滑片：默认压在左档（本周）。计算：外层左右各 4rpx 内边距，
+   两档各占内容区一半 → 滑片宽用 calc 取一半内容宽，left 起点贴左内边距。 */
+.stats-seg-thumb {
+  position: absolute;
+  top: 4rpx;
+  left: 4rpx;
+  bottom: 4rpx;
+  width: calc(50% - 4rpx);
+  border-radius: 10rpx;
+  background: #fff;
+  /* 阴影加重让白片明显"浮"在灰底上，滑动轨迹才看得清（之前 0.08 太淡） */
+  box-shadow: 0 3rpx 10rpx rgba(0, 0, 0, 0.14);
+  /* iOS 弹性缓动：先快后稳，看得见滑动轨迹但不拖沓 */
+  transition: transform 0.32s cubic-bezier(.2, .8, .2, 1);
+}
+
+/* 选中"生涯"时，整组加 is-all → 滑片右移一格（一个内容半宽） */
+.stats-seg.is-all .stats-seg-thumb {
+  transform: translateX(100%);
+}
+
 .stats-seg-item {
+  position: relative;   /* 抬到滑片之上，文字不被白片盖住 */
+  z-index: 1;
+  flex: 1;
   min-width: 96rpx;
   padding: 8rpx 20rpx;
-  border-radius: 10rpx;
   text-align: center;
   font-size: 24rpx;
   color: #8a8a8e;
   line-height: 32rpx;
+  /* 文字颜色随选中过渡，和滑片同节奏 */
+  transition: color 0.28s ease, font-weight 0.28s ease;
 }
 
 .stats-seg-item.active {
-  background: #fff;
   color: #1c1c1e;
   font-weight: 600;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
 }
 
 .stats-period {

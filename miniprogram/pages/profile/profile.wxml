@@ -25,17 +25,29 @@
            前一版 <button open-type="chooseAvatar"> 在 hero-top flex 行内拦截 hero-info 区
            点击事件 / 导致 city 不可点击 / 退回 image bindtap 模式 /
            微信一键头像导入留 tech-debt 后续找方案如放 settings 页或独立链接） -->
+      <!-- 头像：有 avatar_url 用真头像图；没有则回落字母占位（灰底+昵称首字）。
+           不引用 /images/avatar-default.png——该图与 images/ 目录均不存在，旧写法导致没头像时 404 破图。
+           两种形态都挂 onEditAvatar，点击换头像交互不变。 -->
       <view class="hero-avatar-wrap">
         <image
-          class="hero-avatar"
-          src="{{profile.avatar_url || '/images/avatar-default.png'}}"
+          wx:if="{{profile.avatar_url}}"
+          class="hero-avatar tappable"
+          src="{{profile.avatar_url}}"
           mode="aspectFill"
           bindtap="onEditAvatar"
         />
+        <view
+          wx:else
+          class="hero-avatar hero-avatar--letter tappable"
+          bindtap="onEditAvatar"
+        >
+          <!-- 昵称首字（WXML 支持字符串下标）；无昵称兜底一个骑行小符号，不留空白圈 -->
+          <text>{{profile.nickname ? profile.nickname[0] : '骑'}}</text>
+        </view>
       </view>
 
       <view class="hero-info">
-        <view class="hero-name-row" bindtap="onEditNickname">
+        <view class="hero-name-row tappable" bindtap="onEditNickname">
           <text class="hero-name">{{profile.nickname || '未设置昵称'}}</text>
           <text class="hero-edit-hint">›</text>
         </view>
@@ -50,7 +62,7 @@
         </picker>
       </view>
 
-      <view class="hero-settings" bindtap="onTapSettings">
+      <view class="hero-settings tappable" bindtap="onTapSettings">
         <image class="hero-settings-icon" src="/assets/icons/settings.svg" mode="aspectFit" />
       </view>
     </view>
@@ -73,7 +85,11 @@
        生涯 = period=all（后端原生支持，不加时间条件）；周目标进度只在"本周"档显示 -->
   <view class="stats-card" wx:if="{{stats}}">
     <view class="stats-title-row">
-      <view class="stats-seg">
+      <!-- MASTER §4.5.2 选中态滑动：灰底胶囊 + 一个绝对定位的白滑片，
+           切档时滑片用 transform 滑过去（不再瞬间换底色）。
+           滑片位置只由外层 is-all 状态 class 决定，js 逻辑零改动。 -->
+      <view class="stats-seg {{statsPeriod === 'all' ? 'is-all' : ''}}">
+        <view class="stats-seg-thumb"></view>
         <view class="stats-seg-item {{statsPeriod === 'week' ? 'active' : ''}}" data-period="week" bindtap="onSwitchStatsPeriod">本周</view>
         <view class="stats-seg-item {{statsPeriod === 'all' ? 'active' : ''}}" data-period="all" bindtap="onSwitchStatsPeriod">生涯</view>
       </view>
@@ -117,7 +133,7 @@
   <!-- 功能入口：iOS inset-grouped 语言——整组一张大圆角白卡、行间 hairline
        （旧版 4 张分散小卡合并，对齐路线详情页手风琴的列表语言）-->
   <view class="action-group">
-    <view class="action-row" bindtap="onTapMyMeetups">
+    <view class="action-row tappable" bindtap="onTapMyMeetups">
       <view class="action-main">
         <text class="action-title">我的约骑</text>
         <text class="action-subtitle">我发起的和我加入的骑行</text>
@@ -125,7 +141,7 @@
       <text class="action-arrow">›</text>
     </view>
 
-    <view class="action-row" bindtap="onTapHonor">
+    <view class="action-row tappable" bindtap="onTapHonor">
       <view class="action-main">
         <text class="action-title">我的荣誉</text>
         <text class="action-subtitle">查看 KOM 和赛段前十成绩</text>
@@ -133,7 +149,7 @@
       <text class="action-arrow">›</text>
     </view>
 
-    <view class="action-row" bindtap="onTapTrainingAnalysis">
+    <view class="action-row tappable" bindtap="onTapTrainingAnalysis">
       <view class="action-main">
         <text class="action-title">训练分析</text>
         <text class="action-subtitle">看 30/90/全年训练负荷曲线</text>
@@ -141,7 +157,7 @@
       <text class="action-arrow">›</text>
     </view>
 
-    <view class="action-row" bindtap="onTapTrainingDistribution">
+    <view class="action-row tappable" bindtap="onTapTrainingDistribution">
       <view class="action-main">
         <text class="action-title">训练结构</text>
         <text class="action-subtitle">看最近 6 周训练时间怎么分布</text>

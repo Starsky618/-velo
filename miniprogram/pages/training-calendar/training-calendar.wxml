@@ -29,7 +29,7 @@
     <view
       wx:for="{{ranges}}"
       wx:key="value"
-      class="range-tab {{currentRange === item.value ? 'active' : ''}}"
+      class="range-tab tappable {{currentRange === item.value ? 'active' : ''}}"
       data-range="{{item.value}}"
       bindtap="onRangeTap"
     >

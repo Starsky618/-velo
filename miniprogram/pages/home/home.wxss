@@ -136,6 +136,70 @@
   box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
 }
 
+/* ── 首屏加载骨架（MASTER 体验止血）──
+   和 .activity-card 同外形（圆角/padding/阴影），内部头像/文字/数据换成灰块 + 扫光呼吸动画。
+   注：wxss 页面隔离，explore 的骨架样式进不来，这里独立定义一份（shimmer 动画同款保持手感一致）。 */
+.sk-activity-card {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  padding: 28rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
+}
+
+.sk-head {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.sk-avatar {
+  width: 64rpx;       /* 和真头像 .card-avatar 同尺寸 */
+  height: 64rpx;
+  border-radius: 32rpx;
+  flex: 0 0 64rpx;
+}
+
+.sk-head-lines {
+  flex: 1;
+}
+
+.sk-line {
+  height: 26rpx;
+  border-radius: 8rpx;
+}
+
+.sk-line-name { width: 40%; }
+.sk-line-date { width: 28%; height: 22rpx; margin-top: 12rpx; }
+.sk-line-title { width: 65%; height: 32rpx; margin-bottom: 22rpx; }
+
+.sk-stats {
+  display: flex;
+  gap: 40rpx;
+  padding: 14rpx 0;
+  border-top: 1rpx solid var(--color-divider);
+  border-bottom: 1rpx solid var(--color-divider);
+}
+
+.sk-stat {
+  width: 90rpx;
+  height: 44rpx;
+  border-radius: 8rpx;
+}
+
+/* 扫光动画：浅灰底上一条更亮的光带从左扫到右（和 explore 同款）*/
+.sk-shimmer {
+  background: linear-gradient(100deg, #ececf0 30%, #f5f5f7 50%, #ececf0 70%);
+  background-size: 200% 100%;
+  animation: sk-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes sk-shimmer {
+  0% { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+
 /* ── 卡片头部 ── */
 .card-header {
   display: flex;

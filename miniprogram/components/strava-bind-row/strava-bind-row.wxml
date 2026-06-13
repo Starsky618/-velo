@@ -3,7 +3,7 @@
   视觉沿用 profile 页 .menu-item / .menu-emoji / .menu-label / .menu-arrow 全局样式
   （由父 .menu-card 提供横向 padding，本行内只管纵向 28rpx + 内部排版）
 -->
-<view class="menu-item" hover-class="menu-item-hover" bindtap="_onTap">
+<view class="menu-item" bindtap="_onTap">
   <text class="menu-emoji">🟠</text>
   <text class="menu-label">Strava 账号</text>
   <text class="menu-status" wx:if="{{loading}}">加载中…</text>

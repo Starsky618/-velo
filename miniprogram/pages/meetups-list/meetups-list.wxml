@@ -11,7 +11,7 @@
   <view wx:elif="{{meetups.length === 0}}" class="state">暂时没有开放约骑</view>
 
   <view wx:else class="list">
-    <view class="meetup-card" wx:for="{{meetups}}" wx:key="id" data-id="{{item.id}}" bindtap="onTapMeetup">
+    <view class="meetup-card tappable" wx:for="{{meetups}}" wx:key="id" data-id="{{item.id}}" bindtap="onTapMeetup">
       <!-- 轨迹缩略区：canvas 自绘路线形状（图上信息下的大图卡语言）。
            用 hidden 而非 wx:if——canvas DOM 常在才能稳定绘制（陷阱 #17）；
            没有路书轨迹的约骑整块隐藏，不留空区 -->

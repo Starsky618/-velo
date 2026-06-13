@@ -59,6 +59,25 @@ page {
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
 }
 
+/* ── 全局按压反馈（MASTER §4.5.1）──
+   任何可点元素挂 .tappable：按下缩小变暗，松手"弹"回原位。
+   这是"摸起来像苹果原生"的关键——手感来源不是缩放幅度，是松手那一下的"回弹"。
+   实现要点（纯 CSS 做出 spring 手感）：
+   - 按下（:active）：用快而直接的曲线，立刻缩到位，让按压"跟手"
+   - 松手（回到默认态）：用带"过冲"的 cubic-bezier，先弹过头再收回 → 这就是弹性
+   缩放幅度 0.94（缩 6%，明显能看见；之前 0.98 太微肉眼分辨不出，已实证看不出）。
+   禁用 hover-class（有延迟、手感拖沓）。 */
+.tappable {
+  /* 松手回弹：曲线末段 1.4 是"过冲"，造成弹一下的手感 */
+  transition: transform 0.32s cubic-bezier(.34, 1.56, .64, 1), opacity 0.2s ease;
+}
+.tappable:active {
+  transform: scale(0.94);
+  opacity: 0.7;
+  /* 按下要跟手：缩放走快曲线，不用回弹（回弹只发生在松手） */
+  transition: transform 0.1s ease-out, opacity 0.1s ease-out;
+}
+
 /* ── 页面标题区 ── */
 .page-header {
   padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);

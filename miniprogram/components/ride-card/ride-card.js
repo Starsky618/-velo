@@ -47,6 +47,14 @@ Component({
       type: Boolean,
       value: true,
     },
+    // 卡片布局模式：
+    //   'list'（默认）= iGPSport 式左轨迹缩略图 + 右信息，紧凑（profile 我的页用）
+    //   'cover'       = 大图卡：轨迹全宽在上 + 头像行/标题/数据在下（home 动态流用，对齐探索页大图卡语言）
+    // 影响 wxml 结构（class 加 ride-card--cover 前缀）+ canvas 绘制尺寸（方块 vs 宽矩形）。
+    layout: {
+      type: String,
+      value: 'list',
+    },
   },
 
   lifetimes: {
@@ -72,12 +80,24 @@ Component({
       });
       if (toDraw.length === 0) return;
       toDraw.forEach(function (r) { that._drawnThumbs[r.id] = true; });
+      // ⚠ 不居中根因（2026-06-14 实证）：旧 canvas API（createCanvasContext）的绘制坐标单位 = CSS px，
+      //    而 canvas 节点的 CSS 尺寸由 wxss 的 rpx 决定，rpx→px 换算随屏幕宽度变（750rpx = 屏宽 px）。
+      //    旧代码写死"rpx÷2"只在 375px 屏成立；更宽的屏上 canvas 实际 px > 绘制 px → 轨迹偏左上不居中。
+      //    修法：用当前屏宽把 wxss 的真实 rpx 尺寸换算成本机 CSS px，绘制坐标系才和画布严丝合缝。
+      var winW = 375;
+      try { winW = (wx.getSystemInfoSync && wx.getSystemInfoSync().windowWidth) || 375; } catch (e) {}
+      var rpx2px = winW / 750;
+      var isCover = that.data.layout === 'cover';
+      // wxss 真实 rpx：list 方块 140×140；cover 全宽（屏宽 750 - home feed 左右各 24rpx = 702）× 高 320。
+      var dim = isCover
+        ? { width: Math.round((750 - 48) * rpx2px), height: Math.round(320 * rpx2px), lineWidth: 3 }
+        : { width: Math.round(140 * rpx2px), height: Math.round(140 * rpx2px), lineWidth: 2 };
       setTimeout(function () {
         toDraw.forEach(function (r) {
           routeThumb.drawRouteThumb('ride-thumb-' + r.id, r.trackPoints, {
-            width: 70,
-            height: 70,
-            lineWidth: 2,
+            width: dim.width,
+            height: dim.height,
+            lineWidth: dim.lineWidth,
             component: that,
           });
         });

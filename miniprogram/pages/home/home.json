@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "VELO"
+  "navigationBarTitleText": "VELO",
+  "usingComponents": {
+    "ride-card": "/components/ride-card/ride-card"
+  }
 }

@@ -64,6 +64,14 @@ const PERIOD_LABEL = {
   all_time: '全部历史',
 }
 
+// 5 档的固定顺序——和 wxml 里 period-tab 的排列、PERIOD_LABEL 的 key 顺序严格一致。
+// 用途：把 currentPeriod 字符串映射成 0~4 序号，驱动选中态白滑片滑到第几格（MASTER §4.5.2）。
+const PERIOD_ORDER = ['last_30_days', 'last_90_days', 'last_180_days', 'last_365_days', 'all_time']
+function periodToIndex(period) {
+  const i = PERIOD_ORDER.indexOf(period)
+  return i < 0 ? 0 : i   // 兜底：未知值落第 0 格，不让滑片飞出去
+}
+
 Component({
   properties: {
     // 0 = 看自己 / 非 0 = 看他人（4.3 用）
@@ -85,6 +93,7 @@ Component({
         if (newVal === this.data.currentPeriod) return
         this.setData({
           currentPeriod: newVal,
+          periodIndex: periodToIndex(newVal),   // 同步滑片位置
           subtitle: this._buildSubtitle(newVal),
         })
         if (this.data._mounted) this._fetchAndRender()
@@ -102,6 +111,9 @@ Component({
     // - properties.period 仅作为初始值 / 父组件想强制切档时用
     // - _fetchAndRender 永远读 currentPeriod
     currentPeriod: 'last_30_days',
+    // 选中态滑片位置（MASTER §4.5.2）：当前档在 5 档中的序号 0~4，驱动 wxml 里白滑片 translateX。
+    // 和 currentPeriod 同步更新，纯展示用、不参与业务逻辑。
+    periodIndex: 0,
     // 内部标记：attached 之后才允许 observer 触发 fetch（防 properties 默认值
     // 初始化时 observer 已触发一次 fetch，attached 又触发一次重复请求）
     _mounted: false,
@@ -113,6 +125,7 @@ Component({
       const initPeriod = this.data.period || 'last_30_days'
       this.setData({
         currentPeriod: initPeriod,
+        periodIndex: periodToIndex(initPeriod),   // 初始滑片位置
         subtitle: this._buildSubtitle(initPeriod),
         _mounted: true,
       })
@@ -151,6 +164,7 @@ Component({
       if (!period || period === this.data.currentPeriod) return  // 同档跳过
       this.setData({
         currentPeriod: period,
+        periodIndex: periodToIndex(period),   // 同步滑片位置
         subtitle: this._buildSubtitle(period),
       })
       this._fetchAndRender()

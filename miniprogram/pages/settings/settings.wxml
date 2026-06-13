@@ -19,14 +19,14 @@
   <!-- 组 1：个人资料 -->
   <view class="group-title">个人资料</view>
   <view class="group">
-    <view class="row" bindtap="onEditBio">
+    <view class="row tappable" bindtap="onEditBio">
       <text class="row-label">骑行宣言</text>
       <view class="row-right">
         <text class="row-value {{bio ? '' : 'muted'}}">{{bio || '未设置'}}</text>
         <text class="row-arrow">›</text>
       </view>
     </view>
-    <view class="row" bindtap="onEditWeeklyGoal">
+    <view class="row tappable" bindtap="onEditWeeklyGoal">
       <text class="row-label">每周目标</text>
       <view class="row-right">
         <text class="row-value {{weeklyGoal ? '' : 'muted'}}">{{weeklyGoal ? weeklyGoal + ' km' : '未设置'}}</text>
@@ -47,14 +47,14 @@
   <!-- 组 2：训练参数 -->
   <view class="group-title">训练参数</view>
   <view class="group">
-    <view class="row" bindtap="onEditFtp">
+    <view class="row tappable" bindtap="onEditFtp">
       <text class="row-label">FTP</text>
       <view class="row-right">
         <text class="row-value {{ftp ? '' : 'muted'}}">{{ftp ? ftp + ' W' : '未设置'}}</text>
         <text class="row-arrow">›</text>
       </view>
     </view>
-    <view class="row" bindtap="onEditWeight">
+    <view class="row tappable" bindtap="onEditWeight">
       <text class="row-label">体重</text>
       <view class="row-right">
         <text class="row-value {{weight ? '' : 'muted'}}">{{weight ? weight + ' kg' : '未设置'}}</text>
@@ -74,7 +74,7 @@
         </view>
       </view>
     </picker>
-    <view class="row" bindtap="onEditMaxHr">
+    <view class="row tappable" bindtap="onEditMaxHr">
       <text class="row-label">最大心率</text>
       <view class="row-right">
         <text class="row-value {{maxHr ? '' : 'muted'}}">{{maxHr ? maxHr + ' bpm' : '未设置'}}</text>
@@ -87,7 +87,7 @@
   <!-- 组 3：账号与同步 -->
   <view class="group-title">账号与同步</view>
   <view class="group">
-    <view class="row" bindtap="onTapStrava">
+    <view class="row tappable" bindtap="onTapStrava">
       <text class="row-label">Strava</text>
       <view class="row-right">
         <text class="row-value" wx:if="{{stravaBound}}">已绑定</text>
@@ -104,13 +104,13 @@
   <view class="group">
     <!-- 整行即 button（open-type=contact 拉起微信客服会话，零后端的真反馈通道）；
          无兄弟元素，不踩"button 嵌 flex 行拦截兄弟 tap"陷阱 -->
-    <button class="row row-button" open-type="contact">
+    <button class="row row-button tappable" open-type="contact">
       <text class="row-label">意见反馈</text>
       <view class="row-right">
         <text class="row-arrow">›</text>
       </view>
     </button>
-    <view class="row" bindtap="onAbout">
+    <view class="row tappable" bindtap="onAbout">
       <text class="row-label">关于 VELO</text>
       <view class="row-right">
         <text class="row-value muted" wx:if="{{versionText}}">{{versionText}}</text>
@@ -121,12 +121,12 @@
 
   <!-- 组 5：账号操作（iOS 惯例：居中红字行 + 各自独立成卡，防误触）-->
   <view class="group group-spaced">
-    <view class="row row-center" bindtap="onLogout">
+    <view class="row row-center tappable" bindtap="onLogout">
       <text class="row-danger">退出登录</text>
     </view>
   </view>
   <view class="group group-spaced">
-    <view class="row row-center" bindtap="onDeleteAccount">
+    <view class="row row-center tappable" bindtap="onDeleteAccount">
       <text class="row-danger">注销账号</text>
     </view>
   </view>

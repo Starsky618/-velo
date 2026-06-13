@@ -61,7 +61,7 @@
       <view wx:else class="media-grid">
         <view class="media-item" wx:for="{{mediaList}}" wx:key="id">
           <video wx:if="{{item.isVideo}}" src="{{item.url}}" class="media-thumb"></video>
-          <image wx:else src="{{item.url}}" mode="aspectFill" class="media-thumb" data-url="{{item.url}}" bindtap="onTapPreviewMedia"></image>
+          <image wx:else src="{{item.url}}" mode="aspectFill" class="media-thumb tappable" data-url="{{item.url}}" bindtap="onTapPreviewMedia"></image>
           <view wx:if="{{meetup.is_creator}}" class="media-del" data-id="{{item.id}}" catchtap="onTapDeleteMedia">×</view>
         </view>
       </view>

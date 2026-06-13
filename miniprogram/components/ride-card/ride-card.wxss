@@ -11,16 +11,21 @@
   padding: 26rpx 28rpx;
   margin-bottom: 20rpx;
   box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
-  transition: transform 0.15s ease;
+  /* 按压反馈对齐全局 MASTER §4.5.1（组件样式隔离，全局 .tappable 进不来，这里手抄一份保持手感一致）：
+     松手用带"过冲"的曲线弹回，按下走快曲线跟手 */
+  transition: transform 0.32s cubic-bezier(.34, 1.56, .64, 1), opacity 0.2s ease;
 }
 
 .ride-card:active {
-  transform: scale(0.98);
+  transform: scale(0.94);
+  opacity: 0.7;
+  transition: transform 0.1s ease-out, opacity 0.1s ease-out;
 }
 
-/* 轨迹缩略：浅灰圆角方块 + 橙线（组件 observer 自画）。
-   ⚠ 旧 canvas API：140×140rpx 必须与 js 绘制坐标 70×70px 保持 2:1，改一处同步另一处 */
-.ride-thumb {
+/* 轨迹缩略槽（统一 canvas 容器 / 提到 layout 条件块外永远渲染，防 canvas race 陷阱 #17）：
+   list = 左侧 140 方块；cover = 全宽 320 大图。canvas 同一份，class 随 layout 切。
+   ⚠ 旧 canvas API：wxss rpx 与 js 绘制 px 保持 2:1（list 140↔70 / cover 见 js 347×160）*/
+.thumb-slot--list {
   flex: 0 0 140rpx;
   width: 140rpx;
   height: 140rpx;
@@ -29,9 +34,21 @@
   background: #f7f7f9;
 }
 
-.ride-thumb-canvas {
+.thumb-canvas--list {
   width: 140rpx;
   height: 140rpx;
+}
+
+/* cover 全宽大图槽：和 explore 封面同高 320rpx；浅灰底兜住未绘制 canvas */
+.thumb-slot--cover {
+  width: 100%;
+  height: 320rpx;
+  background: #f7f7f9;
+}
+
+.thumb-canvas--cover {
+  width: 100%;
+  height: 320rpx;
 }
 
 .ride-main {
@@ -112,4 +129,104 @@
 .ride-empty-subtext {
   font-size: 24rpx;
   color: #8a8a8e;
+}
+
+/* ══════ cover 布局（home 动态流大图卡 / 对齐探索页路线卡语言）══════
+   外形和 explore 的 .guide-card 一致：白卡、大圆角 32rpx、轻阴影、无边框；
+   结构 = 头像行 → 全宽轨迹大图 → 标题 → 横排数据行。 */
+.ride-card--cover {
+  display: block;        /* 覆盖 list 的 flex 横向：cover 是竖向堆叠 */
+  align-items: initial;
+  gap: 0;
+  padding: 0;            /* 内部各区自己管 padding，封面要全宽出血 */
+  border-radius: 32rpx;
+  overflow: hidden;
+  margin-bottom: 28rpx;
+}
+
+/* 头像行（参照图顶部）：头像 + 昵称 + 时间地点 */
+.cover-head {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  padding: 24rpx 28rpx 16rpx;
+}
+
+.cover-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 32rpx;
+  background: #f2f2f7;   /* 头像图加载前的底色 */
+  flex: 0 0 64rpx;
+}
+
+/* 无真头像时的字母占位：灰底 + 居中昵称首字 */
+.cover-avatar--letter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cover-avatar--letter text {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #8a8a8e;
+}
+
+.cover-user {
+  flex: 1;
+  min-width: 0;
+}
+
+.cover-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1c1c1e;
+  line-height: 1.3;
+}
+
+.cover-meta {
+  font-size: 23rpx;
+  color: #8a8a8e;
+  margin-top: 2rpx;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+
+.cover-body {
+  padding: 22rpx 28rpx 28rpx;
+}
+
+.cover-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #1c1c1e;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 横排数据行 "32.4 km · 420 m · 1h 18m"（探索页 .meta 同款：等宽数字、加粗主文字色）*/
+.cover-data {
+  margin-top: 12rpx;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1c1c1e;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+.cover-data-item {
+  white-space: nowrap;
+}
+
+.cover-dot {
+  margin: 0 10rpx;
+  color: #c7c7cc;
+  font-weight: 400;
 }

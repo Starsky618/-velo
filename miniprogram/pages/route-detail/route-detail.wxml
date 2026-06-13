@@ -27,7 +27,7 @@
       <image
         wx:for="{{gallerySrcs}}"
         wx:key="*this"
-        class="gallery-photo"
+        class="gallery-photo tappable"
         src="{{item}}"
         mode="aspectFill"
         lazy-load="{{true}}"
@@ -37,7 +37,7 @@
 
     <view class="accordion-list">
       <view class="accordion-section" wx:for="{{sections}}" wx:key="title">
-        <view class="accordion-title-row" data-index="{{index}}" bindtap="toggleSection">
+        <view class="accordion-title-row tappable" data-index="{{index}}" bindtap="toggleSection">
           <view class="accordion-title">{{item.title}}</view>
           <view class="expand-indicator {{item.expanded ? 'open' : ''}}">›</view>
         </view>

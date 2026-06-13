@@ -11,7 +11,7 @@
     <text class="title">动态</text>
   </view>
   <!-- 右上角铃铛 + 红点（未登录时隐藏，避免给陌生用户制造噪音） -->
-  <view class="bell-btn" bindtap="goNotifications" wx:if="{{isLoggedIn}}">
+  <view class="bell-btn tappable" bindtap="goNotifications" wx:if="{{isLoggedIn}}">
     <image class="bell-icon" src="/assets/icons/bell.svg" />
     <view class="red-dot" wx:if="{{unreadCount > 0}}">
       <text wx:if="{{unreadCount < 100}}">{{unreadCount}}</text>
@@ -50,68 +50,36 @@
 <!-- ====== 骑行卡片流 ====== -->
 <view class="feed" wx:if="{{isLoggedIn}}">
 
-  <view class="activity-card {{item.status !== 'completed' ? 'is-pending' : ''}}" wx:for="{{rides}}" wx:key="id"
-    bindtap="openRide" data-id="{{item.id}}">
-
-    <!-- 卡片头部：头像 + 昵称 + 时间
-         home 流当前是单人（后端 ActivitySummary schema 不返 user_id）/ 头像跳转暂不接
-         未来后端开放多人 home 流（关注流 / city 推荐流）时一起做（task-4.3 评审 2026-05-10 拍删） -->
-    <view class="card-header">
-      <view class="card-avatar">
-        <text>{{item.initial}}</text>
-      </view>
-      <view class="card-user">
-        <text class="card-nickname">{{item.nickname}}</text>
-        <text class="card-date">{{item.dateText}}</text>
+  <!-- 首屏加载骨架（MASTER 体验止血）：仅"首次加载 + 还没任何数据"时显示 2 张灰卡，
+       数据来了 loading 转 false 自动消失换真卡。守卫 rides.length===0 防止下拉刷新/加载更多时也冒骨架。
+       简化版：不精确还原 pending/completed 多状态，就是头像+标题+数据条的通用灰块。 -->
+  <view class="sk-activity-card" wx:if="{{loading && rides.length === 0}}" wx:for="{{[1,2]}}" wx:key="*this">
+    <view class="sk-head">
+      <view class="sk-avatar sk-shimmer"></view>
+      <view class="sk-head-lines">
+        <view class="sk-line sk-line-name sk-shimmer"></view>
+        <view class="sk-line sk-line-date sk-shimmer"></view>
       </view>
     </view>
-
-    <!-- 活动标题 -->
-    <text class="card-title">{{item.title}}</text>
-
-    <!-- 解析中状态 -->
-    <view class="card-pending" wx:if="{{item.status !== 'completed'}}">
-      <text>{{item.status === 'failed' ? '解析失败' : '正在解析中...'}}</text>
+    <view class="sk-line sk-line-title sk-shimmer"></view>
+    <view class="sk-stats">
+      <view class="sk-stat sk-shimmer"></view>
+      <view class="sk-stat sk-shimmer"></view>
+      <view class="sk-stat sk-shimmer"></view>
     </view>
-
-    <!-- 核心数据块（已完成的骑行） -->
-    <view class="card-stats" wx:if="{{item.status === 'completed'}}">
-      <view class="stat-block">
-        <text class="stat-num">{{f.km(item.distance)}}</text>
-        <text class="stat-unit">km</text>
-        <text class="stat-name">距离</text>
-      </view>
-      <view class="stat-block">
-        <text class="stat-num">{{item.elevation_gain}}</text>
-        <text class="stat-unit">m</text>
-        <text class="stat-name">爬升</text>
-      </view>
-      <view class="stat-block">
-        <text class="stat-num">{{item.durationText}}</text>
-        <text class="stat-unit"> </text>
-        <text class="stat-name">时间</text>
-      </view>
-    </view>
-
-    <!-- 次要数据行 -->
-    <view class="card-secondary" wx:if="{{item.status === 'completed' && (item.avg_speed || item.avg_power)}}">
-      <text class="sec-item" wx:if="{{item.avg_speed}}">{{item.avg_speed}} km/h</text>
-      <text class="sec-dot" wx:if="{{item.avg_speed && item.avg_power}}">·</text>
-      <text class="sec-item power" wx:if="{{item.avg_power}}">{{item.avg_power}} W</text>
-      <text class="sec-dot" wx:if="{{item.avg_power && item.avg_hr}}">·</text>
-      <text class="sec-item hr" wx:if="{{item.avg_hr}}">{{item.avg_hr}} bpm</text>
-    </view>
-
-    <!-- 赛段匹配结果 -->
-    <view class="card-segments" wx:if="{{item.segments.length > 0}}">
-      <view class="seg-badge" wx:for="{{item.segments}}" wx:for-item="seg" wx:key="name">
-        <text class="seg-rank {{seg.is_pr ? 'pr' : ''}}">{{seg.is_pr ? 'PR' : '#' + seg.rank}}</text>
-        <text class="seg-name">{{seg.name}}</text>
-        <text class="seg-time">{{seg.timeText}}</text>
-      </view>
-    </view>
-
   </view>
+
+  <!-- 骑行卡片：改用 ride-card 组件 cover 大图卡模式（对齐探索页大图卡语言）。
+       组件自己 wx:for 整个 rides 数组 + 自画轨迹缩略大图；
+       showEmpty=false 关掉组件自带空态（home 用下面带"去上传"按钮的自定义空态）；
+       tap-ride 事件回到 onRideTap 跳详情。loading 首屏时骨架占位、组件先不渲染避免重叠。 -->
+  <ride-card
+    wx:if="{{!loading || rides.length > 0}}"
+    layout="cover"
+    rides="{{rides}}"
+    show-empty="{{false}}"
+    bind:tap-ride="onRideTap"
+  />
 
   <!-- 加载更多 footer（v5 / onReachBottom 触发）-->
   <view class="feed-footer" wx:if="{{rides.length > 0}}">

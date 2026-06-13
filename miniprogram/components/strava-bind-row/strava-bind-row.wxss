@@ -11,10 +11,15 @@
   align-items: center;
   padding: 28rpx 0;
   gap: 20rpx;
+  /* 按压反馈对齐全局 MASTER §4.5.1（组件隔离手抄一份）：
+     改用缩放回弹替代旧 hover-class 背景变灰（hover-class 有延迟、合同已禁用）*/
+  transition: transform 0.32s cubic-bezier(.34, 1.56, .64, 1), opacity 0.2s ease;
 }
 
-.menu-item-hover {
-  background: rgba(0, 0, 0, 0.02);
+.menu-item:active {
+  transform: scale(0.94);
+  opacity: 0.7;
+  transition: transform 0.1s ease-out, opacity 0.1s ease-out;
 }
 
 .menu-emoji {

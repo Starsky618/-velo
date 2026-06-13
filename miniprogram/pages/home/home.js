@@ -11,6 +11,9 @@
  */
 
 const api = require('../../utils/api')
+// 轨迹缩略点拉取（profile 页同款 / 带模块级缓存，翻页不重复请求）：
+// 大图卡的封面就是这条骑行的轨迹形状，由 ride-card 组件 observer + route-thumb canvas 自画。
+const rideThumbs = require('../../utils/ride-thumbs')
 const app = getApp()
 
 Page({
@@ -36,6 +39,7 @@ Page({
   onShow() {
     if (app.globalData.token) {
       this.setData({ isLoggedIn: true })
+      this.ensureUserInfo()   // 拉自己的昵称/头像（动态流头像行要用，像 Strava 那样）
       this.fetchWeeklyStats()
       this.fetchRides()
       // v4 新增：每次进首页都刷新未读数
@@ -84,6 +88,54 @@ Page({
   },
 
   /**
+   * 拉自己的昵称 + 头像，供动态流卡片头像行用（像 Strava：真头像 + 真昵称 + 时间）。
+   *
+   * 为什么 home 要自己拉：app.globalData.userInfo 只有进过"我的"页才会被填，
+   * 用户直接打开"动态"页时它是 null → 昵称回落成"骑行者"、头像只有字母占位。
+   * 这里在 onShow 主动拉一次 GET /api/user/profile（profile 页同一接口），
+   * 缓存进 globalData.userInfo 避免重复请求，拿到后回填到已渲染的 rides 卡片。
+   *
+   * 时序：和 fetchRides 并行不阻塞列表——profile 回来后再批量给所有卡片补昵称/头像
+   * （home 是单人流，所有卡片的作者都是自己，昵称/头像一致）。
+   */
+  ensureUserInfo() {
+    var that = this
+    var cached = app.globalData.userInfo
+    if (cached && cached.nickname) {
+      this._applyAuthorToRides(cached)
+      return
+    }
+    api.get('/api/user/profile')
+      .then(function (info) {
+        app.globalData.userInfo = info
+        that._applyAuthorToRides(info)
+      })
+      .catch(function () {
+        // 失败静默：拉不到就维持"骑行者"占位，不阻塞动态流主功能
+      })
+  },
+
+  /**
+   * 把作者信息（昵称 + 头像）回填到当前所有 rides 卡片。
+   * 单人流下所有卡片作者都是自己，统一覆盖；按下标批量 setData。
+   */
+  _applyAuthorToRides(info) {
+    var nickname = (info && info.nickname) || '骑行者'
+    var avatarUrl = (info && info.avatar_url) || ''
+    var initial = nickname[0]
+    this._author = { nickname: nickname, avatarUrl: avatarUrl, initial: initial }
+    var rides = this.data.rides || []
+    if (rides.length === 0) return
+    var updates = {}
+    rides.forEach(function (r, i) {
+      updates['rides[' + i + '].nickname'] = nickname
+      updates['rides[' + i + '].avatarUrl'] = avatarUrl
+      updates['rides[' + i + '].initial'] = initial
+    })
+    this.setData(updates)
+  },
+
+  /**
    * 点铃铛跳通知中心页。
    */
   goNotifications() {
@@ -128,18 +180,24 @@ Page({
 
     api.get('/api/activities?page=' + page + '&page_size=20')
       .then(function (data) {
-        var list = (data.items || []).map(function (item) {
-          // 获取用户昵称首字（头像用）
-          var userInfo = app.globalData.userInfo
-          var nickname = (userInfo && userInfo.nickname) || '骑行者'
-          var initial = nickname[0]
+        // 作者信息（昵称/头像/首字）：优先用已拉到的 _author（ensureUserInfo 填），
+        // 还没拉到则先用 globalData 或"骑行者"占位，待 ensureUserInfo 回来 _applyAuthorToRides 补全。
+        var author = that._author
+          || (app.globalData.userInfo && {
+                nickname: app.globalData.userInfo.nickname || '骑行者',
+                avatarUrl: app.globalData.userInfo.avatar_url || '',
+                initial: (app.globalData.userInfo.nickname || '骑行者')[0],
+              })
+          || { nickname: '骑行者', avatarUrl: '', initial: '骑' }
 
+        var list = (data.items || []).map(function (item) {
           return {
             id: item.id,
             title: item.title || '骑行记录',
             status: item.status,
-            nickname: nickname,
-            initial: initial,
+            nickname: author.nickname,
+            initial: author.initial,
+            avatarUrl: author.avatarUrl,
             // 核心三项
             distance: item.distance || 0,
             // 时长统一显示"移动时间"/ 老活动 GPX 没存 moving_time 时 fallback duration
@@ -152,6 +210,8 @@ Page({
             avg_hr: item.avg_hr != null ? Math.round(item.avg_hr) : null,
             // 时间
             dateText: that.fmtDate(item.started_at || item.created_at),
+            // ride-card 组件 cover 模式头像行的时间槽位读 startedAtDisplay（组件契约字段名）
+            startedAtDisplay: that.fmtDate(item.started_at || item.created_at),
             // 赛段成绩（后续异步填充）
             segments: [],
             segLoaded: false,
@@ -170,6 +230,9 @@ Page({
           currentPage: page,
           hasMore: hasMore,
         })
+
+        // 列表落地后异步补轨迹缩略点（拿到才有图，ride-card 组件 observer 自画大图）。
+        that.fillTrackThumbs()
 
         // 对每条已完成的骑行 / 异步加载赛段匹配结果。
         // startIdx 必须是该 page 在最终 rides 数组里的起点（page_size=20 hardcode）。
@@ -223,9 +286,29 @@ Page({
       .catch(function () {})
   },
 
-  openRide(e) {
-    var id = e.currentTarget.dataset.id
+  // 骑行卡片点击 → 跳详情。
+  // ride-card 组件 triggerEvent('tap-ride', { activity_id }) → 这里接 e.detail（和 profile 同契约）。
+  onRideTap(e) {
+    var id = e.detail && e.detail.activity_id
+    if (!id) return
     wx.navigateTo({ url: '/pages/detail/detail?id=' + id })
+  },
+
+  // 给当前 rides 批量补轨迹缩略点（utils/ride-thumbs 带模块级缓存，翻页/回页不重复请求）。
+  // 按 id 现场重找下标回写——异步回来时数组可能已被下拉刷新重建，防错位（profile 同款 pattern）。
+  fillTrackThumbs() {
+    var that = this
+    rideThumbs.fetchTrackPoints(this.data.rides).then(function (cache) {
+      var updates = {}
+      that.data.rides.forEach(function (r, i) {
+        if (r && cache[r.id] && !r.trackPoints) {
+          updates['rides[' + i + '].trackPoints'] = cache[r.id]
+        }
+      })
+      if (Object.keys(updates).length > 0) {
+        that.setData(updates)
+      }
+    })
   },
 
   fmtDur(seconds) {

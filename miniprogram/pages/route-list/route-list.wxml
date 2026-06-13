@@ -8,7 +8,7 @@
   <view wx:elif="{{error}}" class="state-text">{{error}}</view>
 
   <view wx:else class="guide-list">
-    <view class="guide-card" wx:for="{{guides}}" wx:key="id" data-id="{{item.id}}" bindtap="openGuide">
+    <view class="guide-card tappable" wx:for="{{guides}}" wx:key="id" data-id="{{item.id}}" bindtap="openGuide">
       <image wx:if="{{item.cover_url}}" class="cover" src="{{item.cover_url}}" mode="aspectFill" />
       <image wx:else class="cover" src="{{item.coverSrc}}" mode="aspectFill" />
       <view class="card-main">

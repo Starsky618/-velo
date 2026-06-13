@@ -51,9 +51,16 @@
   background: #eef3ee; /* 与 shell 同底，遮住未绘制的 canvas */
 }
 
-/* error 状态可点击重试，给一点视觉反馈 */
+/* error 状态可点击重试，按压反馈对齐全局 §4.5.1（组件隔离手抄）*/
 .error-mini {
   color: var(--color-primary);
+  transition: transform 0.32s cubic-bezier(.34, 1.56, .64, 1), opacity 0.2s ease;
+}
+
+.error-mini:active {
+  transform: scale(0.94);
+  opacity: 0.7;
+  transition: transform 0.1s ease-out, opacity 0.1s ease-out;
 }
 
 /*

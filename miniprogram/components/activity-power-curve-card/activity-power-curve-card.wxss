@@ -45,6 +45,14 @@
 
 .curve-state.error {
   color: var(--color-primary);
+  /* error 态是可点重试 → 按压反馈对齐全局 §4.5.1（组件隔离手抄）*/
+  transition: transform 0.32s cubic-bezier(.34, 1.56, .64, 1), opacity 0.2s ease;
+}
+
+.curve-state.error:active {
+  transform: scale(0.94);
+  opacity: 0.7;
+  transition: transform 0.1s ease-out, opacity 0.1s ease-out;
 }
 
 .curve-summary {

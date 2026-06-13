@@ -24,7 +24,7 @@
       <input class="picker-search-input" value="{{searchKeyword}}" maxlength="40" bindinput="onSearchKeywordInput" confirm-type="search" placeholder="输入地名实时搜索，例如：晋祠公园" />
     </view>
     <view class="picker-search-results" wx:if="{{placeSearchResults.length}}">
-      <view class="picker-search-result" wx:for="{{placeSearchResults}}" wx:key="title" data-index="{{index}}" bindtap="onTapSearchResult">
+      <view class="picker-search-result tappable" wx:for="{{placeSearchResults}}" wx:key="title" data-index="{{index}}" bindtap="onTapSearchResult">
         <view class="picker-result-title">{{item.title}}</view>
         <view class="picker-result-address">{{item.address}}</view>
       </view>

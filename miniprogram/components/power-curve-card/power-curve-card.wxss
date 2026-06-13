@@ -32,28 +32,47 @@
  * 5 档均分 / 默认灰字 / 当前档主色调红高亮
  * 设计参考 iOS segment control 风格：圆角胶囊 + 浅红背景 + 红字加粗
  */
+/* 灰底容器（UISegmentedControl 语言）：relative 当滑片定位参照系；
+   去掉旧 gap → 5 档严格等分，滑片位移才能精确对齐每一格 */
 .period-tabs {
+  position: relative;
   display: flex;
   flex-direction: row;
   margin-top: 12rpx;
   margin-bottom: 4rpx;
-  gap: 8rpx;
+  padding: 4rpx;
+  border-radius: 16rpx;
+  background: #f2f2f7;
+}
+
+/* 白滑片：默认压在第 0 格（30天）。宽 = 内容区 1/5；
+   periodIndex 驱动 translateX(index×100%) → 滑片整格滑过去（和 profile 同套缓动）*/
+.period-seg-thumb {
+  position: absolute;
+  top: 4rpx;
+  left: 4rpx;
+  bottom: 4rpx;
+  width: calc((100% - 8rpx) / 5);
+  border-radius: 12rpx;
+  background: #fff;
+  box-shadow: 0 3rpx 10rpx rgba(0, 0, 0, 0.14);
+  transition: transform 0.32s cubic-bezier(.2, .8, .2, 1);
 }
 
 .period-tab {
+  position: relative;   /* 抬到滑片之上，文字不被白片盖住 */
+  z-index: 1;
   flex: 1;
   text-align: center;
   font-size: 24rpx;
   color: var(--color-text-3);
   padding: 10rpx 0;
-  border-radius: 16rpx;
-  background-color: rgba(0, 0, 0, 0.04);
-  transition: background-color 0.15s, color 0.15s;
+  /* 文字颜色随选中过渡，和滑片同节奏；底色交给滑片，自己透明 */
+  transition: color 0.28s ease;
 }
 
 .period-tab.active {
   color: var(--color-primary);
-  background-color: rgba(255, 45, 85, 0.1);
   font-weight: 600;
 }
 
@@ -70,6 +89,14 @@
 
 .error-mini {
   color: var(--color-primary);
+  /* 重试条可点 → 按压反馈对齐全局 §4.5.1 */
+  transition: transform 0.32s cubic-bezier(.34, 1.56, .64, 1), opacity 0.2s ease;
+}
+
+.error-mini:active {
+  transform: scale(0.94);
+  opacity: 0.7;
+  transition: transform 0.1s ease-out, opacity 0.1s ease-out;
 }
 
 /* ── canvas 容器：固定高度让 hidden 切换不撑塌布局 ── */
