@@ -129,6 +129,18 @@ def test_detail_page_shows_participants_and_invite_share_button():
     assert "/uploads/" in js
 
 
+def test_detail_page_refreshes_participants_after_join_or_leave():
+    # 加入/退出会改变"谁来了"这块社交信号；后端操作响应只带人数，不带头像昵称列表，
+    # 所以前端成功后必须重新拉 /participants，避免按钮和骑友列表各显示一套旧状态。
+    js = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.js")
+
+    join_block = js.split("onTapJoin: function ()", 1)[1].split("onTapLeave: function ()", 1)[0]
+    leave_block = js.split("onTapLeave: function ()", 1)[1].split("onTapCancel: function ()", 1)[0]
+
+    assert "loadParticipants()" in join_block
+    assert "loadParticipants()" in leave_block
+
+
 def test_create_page_is_three_step_flow_and_uses_backend_state():
     js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
     wxml = _read(MINI / "pages" / "meetup-create" / "meetup-create.wxml")

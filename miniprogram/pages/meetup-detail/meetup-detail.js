@@ -189,6 +189,7 @@ Page({
     api.joinMeetup(this.data.meetupId, this.data.shareToken)
       .then(function (res) {
         that.setData({ meetup: decorateMeetup(res) })
+        that.loadParticipants()
         wx.showToast({ title: '已加入', icon: 'success' })
       })
       .catch(function (err) {
@@ -206,6 +207,7 @@ Page({
     api.leaveMeetup(this.data.meetupId)
       .then(function (res) {
         that.setData({ meetup: decorateMeetup(res) })
+        that.loadParticipants()
         wx.showToast({ title: '已退出', icon: 'success' })
       })
       .catch(function (err) {
