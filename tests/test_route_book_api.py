@@ -28,6 +28,9 @@ def _disable_tencent_direction_rate_limit(monkeypatch):
 def test_generic_create_source_excludes_tencent_direction():
     assert get_args(schemas.RouteBookCreateSource) == ("file_upload", "activity_derived")
     assert "tencent_direction" in get_args(schemas.RouteBookSource)
+    assert "manual_drawn" in get_args(schemas.RouteBookSource)
+    assert "curated_composite" in get_args(schemas.RouteBookSource)
+    assert "ai_generated" in get_args(schemas.RouteBookSource)
 
 
 def _activity(db, user_id: int, **overrides):
@@ -77,6 +80,8 @@ def test_activity_derived_rejects_other_user_activity(client, db, auth_header, a
 
 
 def test_activity_derived_creates_route_book(client, db, auth_header, test_user):
+    from app.route_book.models import RouteBook, RouteVersion
+
     activity = _activity(db, test_user.id, city="taiyuan")
 
     res = client.post(
@@ -93,6 +98,18 @@ def test_activity_derived_creates_route_book(client, db, auth_header, test_user)
     assert body["file_id"] is None
     assert body["file_type"] is None
     assert body["city"] == "taiyuan"
+    assert body["visibility"] == "private"
+    assert body["publish_status"] == "draft"
+    assert body["current_version_id"] is not None
+
+    route = db.query(RouteBook).filter(RouteBook.id == body["id"]).one()
+    version = db.query(RouteVersion).filter(RouteVersion.route_book_id == route.id).one()
+    assert route.current_version_id == version.id
+    assert route.line_hash == version.line_hash
+    assert version.version_no == 1
+    assert version.status == "current"
+    assert version.navigation_status == "ready"
+    assert version.geometry_source == "activity_derived"
 
 
 def test_file_upload_supports_gpx_and_preserves_file_id(client, auth_header, monkeypatch):
@@ -363,7 +380,7 @@ def test_tencent_direction_rejects_empty_polyline(client, db, auth_header, monke
     assert db.query(RouteBook).filter(RouteBook.name == "空路线").first() is None
 
 
-def test_list_supports_public_mine_and_city_filters(client, db, auth_header, admin_header, test_user, admin_user):
+def test_list_supports_visibility_mine_and_city_filters(client, db, auth_header, admin_header, test_user, admin_user):
     from app.route_book.models import RouteBook
 
     mine = RouteBook(
@@ -375,42 +392,109 @@ def test_list_supports_public_mine_and_city_filters(client, db, auth_header, adm
         source_activity_id=None,
         city="taiyuan",
     )
-    other = RouteBook(
+    public_other = RouteBook(
         creator_id=admin_user.id,
-        name="别人的路线",
+        name="别人公开路线",
         distance=2200.0,
         reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.7 37.9)",
         source="activity_derived",
         source_activity_id=None,
         city="taiyuan",
+        visibility="public",
+        publish_status="published",
     )
-    db.add_all([mine, other])
+    private_other = RouteBook(
+        creator_id=admin_user.id,
+        name="别人私密路线",
+        distance=2600.0,
+        reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.8 37.9)",
+        source="activity_derived",
+        source_activity_id=None,
+        city="taiyuan",
+    )
+    db.add_all([mine, public_other, private_other])
     db.commit()
     db.refresh(mine)
-    db.refresh(other)
+    db.refresh(public_other)
+    db.refresh(private_other)
 
     list_res = client.get("/api/route-books?city=taiyuan", headers=auth_header)
     assert list_res.status_code == 200
     names = [item["name"] for item in list_res.json()["items"]]
     assert "我的训练路线" in names
-    assert "别人的路线" in names
+    assert "别人公开路线" in names
+    assert "别人私密路线" not in names
 
     public_res = client.get("/api/route-books?city=taiyuan")
     assert public_res.status_code == 200
-    assert len(public_res.json()["items"]) == 2
+    assert [item["name"] for item in public_res.json()["items"]] == ["别人公开路线"]
 
     mine_res = client.get("/api/route-books?mine=1", headers=auth_header)
     assert mine_res.status_code == 200
     mine_names = [item["name"] for item in mine_res.json()["items"]]
     assert "我的训练路线" in mine_names
-    assert "别人的路线" not in mine_names
+    assert "别人公开路线" not in mine_names
 
     unauth_mine = client.get("/api/route-books?mine=1")
     assert unauth_mine.status_code == 401
 
-    detail_res = client.get(f"/api/route-books/{other.id}", headers=auth_header)
+    detail_res = client.get(f"/api/route-books/{public_other.id}", headers=auth_header)
     assert detail_res.status_code == 200
-    assert detail_res.json()["id"] == other.id
+    assert detail_res.json()["id"] == public_other.id
+
+    hidden_detail = client.get(f"/api/route-books/{private_other.id}", headers=auth_header)
+    assert hidden_detail.status_code == 404
+
+
+def test_public_route_hides_source_activity_id_for_non_owner(client, db, auth_header, admin_header, test_user, admin_user):
+    from app.route_book.models import RouteBook
+
+    activity = _activity(db, admin_user.id, city="taiyuan")
+    route = RouteBook(
+        creator_id=admin_user.id,
+        name="公开活动衍生路线",
+        distance=2200.0,
+        reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.7 37.9)",
+        source="activity_derived",
+        source_activity_id=activity.id,
+        city="taiyuan",
+        visibility="public",
+        publish_status="published",
+    )
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+
+    owner_res = client.get(f"/api/route-books/{route.id}", headers=admin_header)
+    other_res = client.get(f"/api/route-books/{route.id}", headers=auth_header)
+
+    assert owner_res.status_code == 200
+    assert owner_res.json()["source_activity_id"] == activity.id
+    assert other_res.status_code == 200
+    assert other_res.json()["source_activity_id"] is None
+
+
+def test_creatorless_private_route_is_not_visible_to_anonymous(client, db):
+    from app.route_book.models import RouteBook
+
+    route = RouteBook(
+        creator_id=None,
+        name="无主私密路线",
+        distance=2200.0,
+        reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.7 37.9)",
+        source="activity_derived",
+        source_activity_id=None,
+        city="taiyuan",
+        visibility="private",
+        publish_status="draft",
+    )
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+
+    res = client.get(f"/api/route-books/{route.id}")
+
+    assert res.status_code == 404
 
 
 def test_list_filters_official_route_books(client, db, test_user):
@@ -424,6 +508,8 @@ def test_list_filters_official_route_books(client, db, test_user):
         source="tencent_direction",
         city="taiyuan",
         is_official=True,
+        visibility="public",
+        publish_status="published",
     )
     personal = RouteBook(
         creator_id=test_user.id,
@@ -455,6 +541,8 @@ def test_list_filters_non_official_route_books(client, db, test_user):
         source="tencent_direction",
         city="taiyuan",
         is_official=True,
+        visibility="public",
+        publish_status="published",
     )
     personal = RouteBook(
         creator_id=test_user.id,
@@ -465,6 +553,8 @@ def test_list_filters_non_official_route_books(client, db, test_user):
         source_activity_id=None,
         city="taiyuan",
         is_official=False,
+        visibility="public",
+        publish_status="published",
     )
     db.add_all([official, personal])
     db.commit()
@@ -486,6 +576,8 @@ def test_list_without_official_keeps_existing_unfiltered_behavior(client, db, te
         source="tencent_direction",
         city="taiyuan",
         is_official=True,
+        visibility="public",
+        publish_status="published",
     )
     personal = RouteBook(
         creator_id=test_user.id,
@@ -496,6 +588,8 @@ def test_list_without_official_keeps_existing_unfiltered_behavior(client, db, te
         source_activity_id=None,
         city="taiyuan",
         is_official=False,
+        visibility="public",
+        publish_status="published",
     )
     db.add_all([official, personal])
     db.commit()

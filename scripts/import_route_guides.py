@@ -25,6 +25,7 @@ from app.parsing.geo_math import haversine
 from app.parsing.gpx_parser import GPXParser
 from app.parsing.types import Trackpoint
 from app.route_book.models import RouteBook, RouteGuide  # noqa: F401
+from app.route_book.service import create_initial_route_version
 from app.user.models import User  # noqa: F401
 
 
@@ -199,6 +200,15 @@ def upsert_route(db, route: RouteInput) -> None:
         # （高危双审 C1：本地两层盾牌掩盖的生产事故位）。
         apply_route_book(route_book, route, parsed)
         db.flush()
+        if route_book.current_version_id is None:
+            create_initial_route_version(
+                db,
+                route_book,
+                reference_line_wkt=parsed.reference_line,
+                geometry_source="file_upload",
+                created_by=None,
+                elevation_profile=parsed.elevation_profile,
+            )
         route_book_id = route_book.id
         elevation_profile = parsed.elevation_profile
 
@@ -248,6 +258,8 @@ def apply_route_book(route_book: RouteBook, route: RouteInput, parsed: ParsedTra
     route_book.source_activity_id = None
     route_book.city = "taiyuan"
     route_book.is_official = True
+    route_book.visibility = "public"
+    route_book.publish_status = "published"
 
 
 def cumulative_distances(points: list[Trackpoint]) -> list[float]:

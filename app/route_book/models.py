@@ -10,7 +10,20 @@ import re
 import struct
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.sql import false, func
 
 from app.database import Base
@@ -34,13 +47,38 @@ class RouteBook(Base):
     city = Column(String(32), nullable=False, server_default="unknown")
     is_official = Column(Boolean, nullable=False, server_default=false())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    visibility = Column(String(16), nullable=False, server_default="private")
+    publish_status = Column(String(16), nullable=False, server_default="draft")
+    line_hash = Column(String(64), nullable=True)
+    elevation_profile = Column(Text, nullable=True)
+    current_version_id = Column(
+        Integer,
+        ForeignKey(
+            "route_versions.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_route_books_current_version_id",
+        ),
+        nullable=True,
+    )
 
     __table_args__ = (
         Index("idx_route_books_geom", "reference_line", postgresql_using="gist"),
         Index("idx_route_books_creator_created", "creator_id", text("created_at DESC")),
+        Index("idx_route_books_visibility_status", "visibility", "publish_status"),
         CheckConstraint(
-            "source IN ('file_upload', 'activity_derived', 'tencent_direction')",
+            "source IN ('file_upload', 'activity_derived', 'tencent_direction', "
+            "'manual_drawn', 'curated_composite', 'ai_generated')",
             name="ck_route_books_source",
+        ),
+        CheckConstraint(
+            "visibility IN ('private', 'unlisted', 'public')",
+            name="ck_route_books_visibility",
+        ),
+        CheckConstraint(
+            "publish_status IN ('draft', 'published', 'archived')",
+            name="ck_route_books_publish_status",
         ),
         CheckConstraint(
             "city IN ('beijing', 'shanghai', 'hangzhou', 'shenzhen', 'chengdu', 'taiyuan', 'unknown')",
@@ -51,7 +89,9 @@ class RouteBook(Base):
             "AND source_activity_id IS NULL) OR "
             "(source = 'activity_derived' AND file_type IS NULL AND file_id IS NULL) OR "
             "(source = 'tencent_direction' AND file_type IS NULL AND file_id IS NULL "
-            "AND source_activity_id IS NULL)",
+            "AND source_activity_id IS NULL) OR "
+            "(source IN ('manual_drawn', 'curated_composite', 'ai_generated') "
+            "AND file_type IS NULL AND file_id IS NULL AND source_activity_id IS NULL)",
             name="ck_route_books_file_type_source",
         ),
     )
@@ -81,6 +121,47 @@ class RouteBook(Base):
             return _preview_points_from_wkb(data)
         except (AttributeError, TypeError, ValueError, struct.error):
             return []
+
+
+class RouteVersion(Base):
+    """路线版本表——给每张路线图纸拍下不可变的"第几版底片"。"""
+
+    __tablename__ = "route_versions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    route_book_id = Column(Integer, ForeignKey("route_books.id", ondelete="CASCADE"), nullable=False)
+    version_no = Column(Integer, nullable=False)
+    status = Column(String(16), nullable=False, server_default="current")
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    geometry_source = Column(String(32), nullable=False)
+    navigation_status = Column(String(16), nullable=False, server_default="ready")
+    reference_line_snapshot = Column(Geometry("LINESTRING", srid=4326, spatial_index=False), nullable=False)
+    line_hash = Column(String(64), nullable=False)
+    distance = Column(Float, nullable=False)
+    climb = Column(Float, nullable=True)
+    elevation_profile = Column(Text, nullable=True)
+    point_count = Column(Integer, nullable=True)
+    component_snapshot_hash = Column(String(64), nullable=True)
+    validation_warnings_json = Column(Text, nullable=True)
+    navigation_metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("route_book_id", "version_no", name="uq_route_versions_route_book_version"),
+        UniqueConstraint("id", "route_book_id", name="uq_route_versions_id_route_book"),
+        Index("idx_route_versions_route_book_status", "route_book_id", "status"),
+        Index("idx_route_versions_navigation_status", "navigation_status"),
+        Index("idx_route_versions_geom", "reference_line_snapshot", postgresql_using="gist"),
+        CheckConstraint("version_no >= 1", name="ck_route_versions_version_no"),
+        CheckConstraint("status IN ('current', 'archived')", name="ck_route_versions_status"),
+        CheckConstraint("navigation_status IN ('pending', 'ready', 'failed')", name="ck_route_versions_navigation_status"),
+        CheckConstraint(
+            "geometry_source IN ('route_book_reference', 'components_generated', 'normalized_upload', "
+            "'file_upload', 'activity_derived', 'tencent_direction', 'manual_drawn', "
+            "'curated_composite', 'ai_generated')",
+            name="ck_route_versions_geometry_source",
+        ),
+    )
 
 
 def _preview_points_from_wkt(wkt: str) -> list[list[float]]:

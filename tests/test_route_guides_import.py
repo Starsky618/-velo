@@ -19,12 +19,14 @@ def _load_script():
 
 @pytest.fixture()
 def route_guide_tables(db):
-    from app.route_book.models import RouteBook, RouteGuide
+    from app.route_book.models import RouteBook, RouteGuide, RouteVersion
 
     if db.bind.dialect.name == "postgresql":
         RouteBook.__table__.create(bind=db.bind, checkfirst=True)
+        RouteVersion.__table__.create(bind=db.bind, checkfirst=True)
     else:
         db.execute(text("DROP TABLE IF EXISTS route_guides"))
+        db.execute(text("DROP TABLE IF EXISTS route_versions"))
         db.execute(text("DROP TABLE IF EXISTS route_books"))
         db.execute(text(
             """
@@ -41,7 +43,38 @@ def route_guide_tables(db):
                 source_activity_id INTEGER,
                 city VARCHAR(32) NOT NULL DEFAULT 'unknown',
                 is_official BOOLEAN NOT NULL DEFAULT 0,
-                created_at DATETIME
+                created_at DATETIME,
+                updated_at DATETIME,
+                visibility VARCHAR(16) NOT NULL DEFAULT 'private',
+                publish_status VARCHAR(16) NOT NULL DEFAULT 'draft',
+                line_hash VARCHAR(64),
+                elevation_profile TEXT,
+                current_version_id INTEGER
+            )
+            """
+        ))
+        db.execute(text(
+            """
+            CREATE TABLE route_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                route_book_id INTEGER NOT NULL,
+                version_no INTEGER NOT NULL,
+                status VARCHAR(16) NOT NULL DEFAULT 'current',
+                created_by INTEGER,
+                geometry_source VARCHAR(32) NOT NULL,
+                navigation_status VARCHAR(16) NOT NULL DEFAULT 'ready',
+                reference_line_snapshot TEXT NOT NULL,
+                line_hash VARCHAR(64) NOT NULL,
+                distance FLOAT NOT NULL,
+                climb FLOAT,
+                elevation_profile TEXT,
+                point_count INTEGER,
+                component_snapshot_hash VARCHAR(64),
+                validation_warnings_json TEXT,
+                navigation_metadata_json TEXT,
+                created_at DATETIME,
+                UNIQUE(route_book_id, version_no),
+                UNIQUE(id, route_book_id)
             )
             """
         ))
@@ -51,8 +84,10 @@ def route_guide_tables(db):
     finally:
         RouteGuide.__table__.drop(bind=db.bind, checkfirst=True)
         if db.bind.dialect.name == "postgresql":
+            RouteVersion.__table__.drop(bind=db.bind, checkfirst=True)
             RouteBook.__table__.drop(bind=db.bind, checkfirst=True)
         else:
+            db.execute(text("DROP TABLE IF EXISTS route_versions"))
             db.execute(text("DROP TABLE IF EXISTS route_books"))
 
 
@@ -67,6 +102,8 @@ def _copy_fixture(tmp_path: Path, *route_names: str) -> Path:
 def test_imports_gpx_route_and_creates_official_route_book(db, route_guide_tables, tmp_path, monkeypatch):
     if db.bind.dialect.name != "postgresql":
         pytest.skip("requires PostGIS")
+    from app.route_book.models import RouteVersion
+
     RouteBook, RouteGuide = route_guide_tables
     script = _load_script()
     content_dir = _copy_fixture(tmp_path, "test-gpx-route")
@@ -85,6 +122,15 @@ def test_imports_gpx_route_and_creates_official_route_book(db, route_guide_table
     assert book.file_type == "gpx"
     assert book.file_id
     assert book.city == "taiyuan"
+    assert book.visibility == "public"
+    assert book.publish_status == "published"
+    assert book.current_version_id is not None
+    version = db.query(RouteVersion).filter_by(route_book_id=book.id).one()
+    assert version.id == book.current_version_id
+    assert version.version_no == 1
+    assert version.status == "current"
+    assert version.navigation_status == "ready"
+    assert version.geometry_source == "file_upload"
     assert len(profile) <= 100
     assert profile[0][0] == 0
     assert profile[-1][0] > profile[0][0]

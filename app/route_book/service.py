@@ -10,8 +10,10 @@
 """
 
 import logging
+import hashlib
 
 from geoalchemy2 import WKTElement
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.activity.models import Activity, Trackpoint
@@ -19,7 +21,7 @@ from app.activity.service import validate_ride_file
 from app.common.geo import infer_city_from_coords
 from app.parsing.fit_parser import FITParser, FITParseError
 from app.parsing.gpx_parser import GPXParser, GPXParseError
-from app.route_book.models import RouteBook
+from app.route_book.models import RouteBook, RouteVersion
 from app.route_book.tencent_direction import plan_tencent_bicycling_route
 from app.segment.coord_convert import convert_points_to_wgs84
 from app.storage.local import LocalStorage
@@ -66,6 +68,55 @@ def _route_payload_from_points(points: list[dict], distance: float | None, climb
         "city": infer_city_from_coords(first.get("lat"), first.get("lon")),
         "wkt": f"SRID=4326;LINESTRING({coords})",
     }
+
+
+def _line_hash(reference_line_wkt: str) -> str:
+    """给路线线条算指纹；像文件校验码一样，用来判断两版路线是不是同一条线。"""
+    normalized = " ".join(reference_line_wkt.strip().split())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _point_count_from_wkt(reference_line_wkt: str) -> int:
+    body = reference_line_wkt.split("LINESTRING(", 1)[-1].rstrip(")")
+    return len([pair for pair in body.split(",") if pair.strip()])
+
+
+def create_initial_route_version(
+    db: Session,
+    route: RouteBook,
+    *,
+    reference_line_wkt: str,
+    geometry_source: str,
+    created_by: int | None,
+    elevation_profile: str | None = None,
+) -> RouteVersion:
+    """
+    给新路书创建 v1 快照。
+
+    route_books 像用户书架上那本路线图纸，route_versions 像每次定稿时拍下的照片。
+    之后用户编辑图纸，旧照片仍然能证明当时导出/导航用的是哪一版。
+    """
+    line_hash = _line_hash(reference_line_wkt)
+    route.line_hash = line_hash
+    route.elevation_profile = elevation_profile
+    version = RouteVersion(
+        route_book_id=route.id,
+        version_no=1,
+        status="current",
+        created_by=created_by,
+        geometry_source=geometry_source,
+        navigation_status="ready",
+        reference_line_snapshot=WKTElement(reference_line_wkt, srid=4326),
+        line_hash=line_hash,
+        distance=route.distance,
+        climb=route.climb,
+        elevation_profile=elevation_profile,
+        point_count=_point_count_from_wkt(reference_line_wkt),
+    )
+    db.add(version)
+    db.flush()
+    route.current_version_id = version.id
+    return version
 
 
 def create_route_book(
@@ -138,6 +189,14 @@ def create_route_book(
     uploaded_file_id = route.file_id if source == "file_upload" else None
     db.add(route)
     try:
+        db.flush()
+        create_initial_route_version(
+            db,
+            route,
+            reference_line_wkt=payload["wkt"],
+            geometry_source=source,
+            created_by=current_user_id,
+        )
         db.commit()
     except Exception:
         db.rollback()
@@ -183,6 +242,14 @@ def create_route_book_from_tencent_direction(
     )
     db.add(route)
     try:
+        db.flush()
+        create_initial_route_version(
+            db,
+            route,
+            reference_line_wkt=payload["wkt"],
+            geometry_source="tencent_direction",
+            created_by=current_user_id,
+        )
         db.commit()
     except Exception:
         db.rollback()
@@ -205,6 +272,15 @@ def list_route_books(
         if current_user_id is None:
             raise PermissionError("login required")
         query = query.filter(RouteBook.creator_id == current_user_id)
+    elif current_user_id is None:
+        query = query.filter(RouteBook.visibility == "public", RouteBook.publish_status == "published")
+    else:
+        query = query.filter(
+            or_(
+                RouteBook.creator_id == current_user_id,
+                (RouteBook.visibility == "public") & (RouteBook.publish_status == "published"),
+            )
+        )
     if official is True:
         query = query.filter(RouteBook.is_official.is_(True))
     elif official is False:
@@ -214,11 +290,16 @@ def list_route_books(
     return query.order_by(RouteBook.created_at.desc()).all()
 
 
-def get_route_book(db: Session, route_book_id: int) -> RouteBook:
+def get_route_book(db: Session, route_book_id: int, current_user_id: int | None = None) -> RouteBook:
     route = db.query(RouteBook).filter(RouteBook.id == route_book_id).first()
     if route is None:
         raise LookupError("route_book not found")
-    return route
+    if current_user_id is not None and route.creator_id == current_user_id:
+        return route
+    if route.visibility == "public" and route.publish_status == "published":
+        return route
+    # 私人 / 未发布路线对非本人表现为不存在，避免泄露“这条路线确实存在”。
+    raise LookupError("route_book not found")
 
 
 def delete_route_book(db: Session, route_book_id: int, current_user_id: int) -> None:

@@ -39,11 +39,36 @@ def test_route_book_orphan_semantics_are_preserved():
     models = _read("app/route_book/models.py")
 
     assert "ck_route_books_file_type_source" in models
+    assert '__tablename__ = "route_versions"' in models
+    assert "current_version_id" in models
+    assert "visibility" in models
+    assert "publish_status" in models
     assert "source_activity_id" in models
     assert "ondelete=\"SET NULL\"" in models
     assert "source = 'activity_derived'" in models
     assert "tencent_direction" in models
     assert "source_activity_id IS NOT NULL" not in models
+
+
+def test_route_versions_migration_contract():
+    migration = _read("migrations/versions/20260618_route_versions.py")
+    revision_line = next(line for line in migration.splitlines() if line.startswith("revision = "))
+    revision = revision_line.split('"')[1]
+
+    assert len(revision) <= 32
+    assert "op.create_table(" in migration
+    assert '"route_versions",' in migration
+    assert "uq_route_versions_route_book_version" in migration
+    assert "uq_route_versions_id_route_book" in migration
+    assert "ck_route_books_source" in migration
+    assert "op.drop_constraint(\"ck_route_books_source\"" in migration
+    assert "op.create_check_constraint(\"ck_route_books_source\"" in migration
+    assert "op.create_foreign_key(" in migration
+    assert '"fk_route_books_current_version_id"' in migration
+    assert "WHERE reference_line IS NOT NULL" in migration
+    assert "visibility = CASE WHEN is_official THEN 'public' ELSE 'private' END" in migration
+    assert "publish_status = CASE WHEN is_official THEN 'published' ELSE 'draft' END" in migration
+    assert "WHERE is_official = true" not in migration
 
 
 def test_tencent_direction_migration_extends_route_book_source():

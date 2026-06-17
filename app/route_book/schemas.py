@@ -8,10 +8,19 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-RouteBookSource = Literal["file_upload", "activity_derived", "tencent_direction"]
+RouteBookSource = Literal[
+    "file_upload",
+    "activity_derived",
+    "tencent_direction",
+    "manual_drawn",
+    "curated_composite",
+    "ai_generated",
+]
 RouteBookCreateSource = Literal["file_upload", "activity_derived"]
 RouteBookFileType = Literal["gpx", "fit"]
 City = Literal["beijing", "shanghai", "hangzhou", "shenzhen", "chengdu", "taiyuan", "unknown"]
+RouteBookVisibility = Literal["private", "unlisted", "public"]
+RouteBookPublishStatus = Literal["draft", "published", "archived"]
 
 
 class RouteBookResponse(BaseModel):
@@ -26,14 +35,31 @@ class RouteBookResponse(BaseModel):
     source: RouteBookSource
     source_activity_id: int | None = None
     city: City
+    visibility: RouteBookVisibility
+    publish_status: RouteBookPublishStatus
+    current_version_id: int | None = None
     preview_points: list[list[float]] = Field(default_factory=list)
     created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class RouteBookListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[RouteBookResponse]
+
+
+def route_book_response(route, viewer_user_id: int | None) -> RouteBookResponse:
+    """
+    把数据库路线翻译成接口响应。
+
+    公开路线像一张可以分享的地图，但 source_activity_id 像背后的私人骑行小票；
+    只有创建者自己能看到这张小票，其他人只看路线本身。
+    """
+    response = RouteBookResponse.model_validate(route)
+    if viewer_user_id is None or route.creator_id != viewer_user_id:
+        response.source_activity_id = None
+    return response
 
 
 class RouteGuideListItem(BaseModel):

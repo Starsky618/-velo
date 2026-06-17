@@ -22,6 +22,8 @@ def _route_book(db, name="天龙山路书"):
         file_type="gpx",
         city="taiyuan",
         is_official=True,
+        visibility="public",
+        publish_status="published",
     )
     db.add(route)
     db.commit()

@@ -262,6 +262,36 @@ _route_books_table = Table(
     # 插入时会省略本列，Python 端 default 帮不上忙，省略即撞 NOT NULL。
     Column("is_official", Boolean, nullable=False, server_default="0"),
     Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
+    Column("visibility", String(16), nullable=False, server_default="private"),
+    Column("publish_status", String(16), nullable=False, server_default="draft"),
+    Column("line_hash", String(64)),
+    Column("elevation_profile", Text),
+    Column("current_version_id", Integer),
+)
+
+_route_versions_table = Table(
+    "route_versions",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("route_book_id", Integer, nullable=False),
+    Column("version_no", Integer, nullable=False),
+    Column("status", String(16), nullable=False, server_default="current"),
+    Column("created_by", Integer),
+    Column("geometry_source", String(32), nullable=False),
+    Column("navigation_status", String(16), nullable=False, server_default="ready"),
+    Column("reference_line_snapshot", Text, nullable=False),
+    Column("line_hash", String(64), nullable=False),
+    Column("distance", Float, nullable=False),
+    Column("climb", Float),
+    Column("elevation_profile", Text),
+    Column("point_count", Integer),
+    Column("component_snapshot_hash", String(64)),
+    Column("validation_warnings_json", Text),
+    Column("navigation_metadata_json", Text),
+    Column("created_at", DateTime(timezone=True)),
+    UniqueConstraint("route_book_id", "version_no", name="uq_route_versions_route_book_version"),
+    UniqueConstraint("id", "route_book_id", name="uq_route_versions_id_route_book"),
 )
 
 _meetups_table = Table(

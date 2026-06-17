@@ -33,7 +33,9 @@ def list_route_books(
 ):
     try:
         items = service.list_route_books(db, current_user_id, mine=mine, city=city, official=official)
-        return schemas.RouteBookListResponse(items=items)
+        return schemas.RouteBookListResponse(
+            items=[schemas.route_book_response(route, current_user_id) for route in items]
+        )
     except PermissionError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -105,10 +107,12 @@ def list_activity_candidates(
 @router.get("/{route_book_id}", response_model=schemas.RouteBookResponse)
 def get_route_book(
     route_book_id: int,
+    current_user_id: int | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     try:
-        return service.get_route_book(db, route_book_id)
+        route = service.get_route_book(db, route_book_id, current_user_id)
+        return schemas.route_book_response(route, current_user_id)
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
