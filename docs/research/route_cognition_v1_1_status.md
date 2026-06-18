@@ -2,13 +2,13 @@
 
 ## Active batch
 
-Batch 6: segment eligibility internal write workflow
+Batch 7: route_collections foundation
 
-- No new migration expected.
+- New migration: `migrations/versions/20260618_route_collections.py`.
 - No public API.
 - No admin UI.
 - No automatic backfill.
-- Admission only through internal service.
+- Route collection membership is not implemented.
 
 ## Completed batches
 
@@ -59,6 +59,30 @@ Batch 6: segment eligibility internal write workflow
     - `legacy_reviewed` whitelist rows keep `primary_geometry_source_id` as `NULL` and do not create `segment_geometry_sources` rows.
     - `provenance_verified` whitelist rows must point to a matching `segment_geometry_sources` row with the same `segment_id` and `geometry_hash`.
     - Every whitelist row must point to a `judgment_runs` record; the future service/admin writer must choose an accepted same-segment judgment run.
+
+- Batch 6: segment eligibility internal write workflow
+  - migration: none
+  - commit: `8451e289` route cognition batch6 segment eligibility workflow
+  - notes:
+    - Added `app/route_cognition/services/segment_eligibility.py`.
+    - Added `app/route_cognition/geometry_hash.py`.
+    - Admission is internal-only and does not expose public API or admin UI.
+    - Provenance admission requires the source geometry hash to match the current `segments.reference_line` hash.
+
+- Batch 7: route_collections foundation
+  - migration: `migrations/versions/20260618_route_collections.py`
+  - commit: pending
+  - notes:
+    - Added `route_collections` as the independent route system / regional topic container.
+    - `route_collections` is not `concept_nodes`.
+    - `route_collections` has no members yet.
+    - Collection membership tables are not implemented.
+    - Concept tables are not implemented.
+    - Candidate and formal relationship tables are not implemented.
+    - stats_json is projection only and must not contain route ids, segment ids, ordering, roles, or membership truth.
+    - metadata_json is not relationship truth and must not contain route ids, segment ids, concept ids, candidate ids, or membership truth.
+    - No public API.
+    - No admin UI.
 
 ## Accepted architecture decisions
 
@@ -279,12 +303,56 @@ Batch 6: segment eligibility internal write workflow
 - `accepted_judgment_run_id` is the authoritative audit pointer; `review_note` is recommended context, not the source of truth.
 - The service flushes changes but does not commit; callers own the transaction boundary.
 
+## Batch 7 scope
+
+- Add `route_collections`.
+- Add `RouteCollection` ORM model.
+- Add one Batch 7 migration.
+- Add Batch 7 schema tests.
+- Do not backfill old routes, route versions, segments, or route cognition segments.
+- Do not expose public APIs or admin UI.
+
+## Batch 7 must not do
+
+- No `collection_routes`.
+- No `collection_segments`.
+- No `collection_concept_links`.
+- No `concept_nodes`.
+- No concept links or concept tables.
+- No candidate tables.
+- No formal relationship tables.
+- No `segment_submissions`.
+- No external search worker.
+- No rewrite of `content/routes/**`.
+- No change to `guide.md`.
+- No change to `route_guides.content_md`.
+- No change to old `segments.reference_line` or `segment_efforts`.
+
+## Batch 7 implementation notes
+
+- `route_collections` is a collection container, not a concept graph node.
+- `route_collections` has no members yet; future membership must be represented by separate reviewed tables.
+- `collection_type` is limited to `area_system`, `route_family`, `race_route_family`, `training_corridor`, `theme_pack`, and `other`.
+- `visibility` is limited to `private`, `unlisted`, and `public`.
+- `publish_status` is limited to `draft`, `published`, and `archived`.
+- `source` is limited to `manual` and `imported`; there is no `agent` source.
+- Public collections must be `published`.
+- Published collections require `source_judgment_run_id`.
+- Imported collections require `source_ref` or `source_judgment_run_id`.
+- `source_judgment_run_id` references `judgment_runs.id` without `ON DELETE SET NULL`.
+- `created_by` references `users.id` with `ON DELETE SET NULL`.
+- `UNIQUE(city, slug)` keeps slugs unique inside a city while allowing the same slug in different cities.
+- `geom` is nullable PostGIS geometry with SRID 4326, explicit GIST index, and a CHECK allowing polygon / multipolygon / linestring / multilinestring only.
+- `stats_json` is projection only.
+- `metadata_json` is not relationship truth.
+- There is no automatic backfill; `SELECT count(*) FROM route_collections;` should be `0` immediately after migration.
+
 ## Open issues
 
 - Candidate tables are not built yet.
 - Formal relationship hard gate is not built yet.
 - Segment submissions are not built yet.
-- Route collection tables are not built yet.
+- Route collection membership tables are not built yet.
 - Concept tables are not built yet.
 - External search worker is not implemented.
 - Evidence is internal-only storage for now; there is no user-facing evidence API.

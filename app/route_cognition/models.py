@@ -8,6 +8,7 @@
 这些表，后续人工审核和内容导入只读取结构化摘要与来源编号。
 """
 
+from geoalchemy2 import Geometry
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -93,6 +94,111 @@ class JudgmentRun(Base):
         Index("idx_judgment_runs_segment", "segment_id"),
         Index("idx_judgment_runs_parent", "parent_run_id"),
         Index("idx_judgment_runs_challenged", "challenged_run_id"),
+    )
+
+
+class RouteCollection(Base):
+    """路线专题容器表——给一组未来路线成员先发一张独立“专题身份证”。
+
+    这张表只保存专题自身的信息、地图范围和审核来源；它还不能直接装 route 或 segment。
+    后续成员关系必须另走受控关系表，避免把 collection 偷偷写成 concept 或候选池。
+    """
+
+    __tablename__ = "route_collections"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(128), nullable=False)
+    slug = Column(String(128), nullable=False)
+    collection_type = Column(String(32), nullable=False)
+    city = Column(String(64), nullable=False, server_default="unknown")
+    visibility = Column(String(16), nullable=False, server_default="private")
+    publish_status = Column(String(16), nullable=False, server_default="draft")
+    description_md = Column(Text, nullable=True)
+    cover_url = Column(Text, nullable=True)
+    geom = Column(Geometry("GEOMETRY", srid=4326, spatial_index=False), nullable=True)
+    center_lat = Column(Numeric(9, 6), nullable=True)
+    center_lon = Column(Numeric(9, 6), nullable=True)
+    source = Column(String(16), nullable=False, server_default="manual")
+    source_ref = Column(String(512), nullable=True)
+    confidence = Column(Numeric(5, 4), nullable=True)
+    stats_json = Column(JSONB, nullable=True)
+    metadata_json = Column(JSONB, nullable=True)
+    source_judgment_run_id = Column(Integer, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", name="fk_route_collections_created_by", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source_judgment_run_id"],
+            ["judgment_runs.id"],
+            name="fk_route_collections_source_judgment_run",
+        ),
+        CheckConstraint("length(btrim(name)) > 0", name="ck_route_collections_name_nonempty"),
+        CheckConstraint(
+            "slug ~ '^[a-z0-9][a-z0-9_-]{1,127}$'",
+            name="ck_route_collections_slug_format",
+        ),
+        CheckConstraint(
+            "collection_type IN ('area_system', 'route_family', 'race_route_family', "
+            "'training_corridor', 'theme_pack', 'other')",
+            name="ck_route_collections_collection_type",
+        ),
+        CheckConstraint(
+            "visibility IN ('private', 'unlisted', 'public')",
+            name="ck_route_collections_visibility",
+        ),
+        CheckConstraint(
+            "publish_status IN ('draft', 'published', 'archived')",
+            name="ck_route_collections_publish_status",
+        ),
+        CheckConstraint("source IN ('manual', 'imported')", name="ck_route_collections_source"),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
+            name="ck_route_collections_confidence_range",
+        ),
+        CheckConstraint(
+            "center_lat IS NULL OR (center_lat >= -90 AND center_lat <= 90)",
+            name="ck_route_collections_center_lat_range",
+        ),
+        CheckConstraint(
+            "center_lon IS NULL OR (center_lon >= -180 AND center_lon <= 180)",
+            name="ck_route_collections_center_lon_range",
+        ),
+        CheckConstraint(
+            "(center_lat IS NULL AND center_lon IS NULL) OR "
+            "(center_lat IS NOT NULL AND center_lon IS NOT NULL)",
+            name="ck_route_collections_center_pair",
+        ),
+        CheckConstraint(
+            "visibility <> 'public' OR publish_status = 'published'",
+            name="ck_route_collections_publication_state",
+        ),
+        CheckConstraint(
+            "publish_status <> 'published' OR source_judgment_run_id IS NOT NULL",
+            name="ck_route_collections_published_judgment",
+        ),
+        CheckConstraint(
+            "source <> 'imported' OR source_ref IS NOT NULL OR source_judgment_run_id IS NOT NULL",
+            name="ck_route_collections_import_source_ref",
+        ),
+        CheckConstraint(
+            "geom IS NULL OR ("
+            "ST_IsValid(geom) "
+            "AND upper(replace(GeometryType(geom), 'ST_', '')) IN "
+            "('POLYGON', 'MULTIPOLYGON', 'LINESTRING', 'MULTILINESTRING')"
+            ")",
+            name="ck_route_collections_geom_valid_type",
+        ),
+        UniqueConstraint("city", "slug", name="uq_route_collections_city_slug"),
+        Index("idx_route_collections_city", "city"),
+        Index("idx_route_collections_slug", "slug"),
+        Index("idx_route_collections_collection_type", "collection_type"),
+        Index("idx_route_collections_visibility_publish_status", "visibility", "publish_status"),
+        Index("idx_route_collections_created_by", "created_by"),
+        Index("idx_route_collections_source_judgment_run", "source_judgment_run_id"),
+        Index("idx_route_collections_source", "source"),
+        Index("idx_route_collections_geom", "geom", postgresql_using="gist"),
     )
 
 
