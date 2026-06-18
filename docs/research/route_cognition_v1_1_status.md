@@ -5,6 +5,8 @@
 Completed:
 v1.1 remaining step B: typed concept relationship candidate tables
 
+- Current alembic head: `20260618_concept_rel_candidates`.
+- Step C (`concept formal relationship foundation`) has not started.
 - New migration: `migrations/versions/20260618_concept_relationship_candidates.py`.
 - No public API.
 - No admin UI.
@@ -79,7 +81,7 @@ v1.1 remaining step B: typed concept relationship candidate tables
 
 - Batch 7: route_collections foundation
   - migration: `migrations/versions/20260618_route_collections.py`
-  - commit: pending
+  - commit: `d3c520fe` route cognition batch7 route collections foundation
   - notes:
     - Added `route_collections` as the independent route system / regional topic container.
     - `route_collections` is not `concept_nodes`.
@@ -94,7 +96,7 @@ v1.1 remaining step B: typed concept relationship candidate tables
 
 - v1.1 remaining step A: concept_nodes foundation
   - migration: `migrations/versions/20260618_concept_nodes.py`
-  - commit: pending
+  - commit: `288aa69a` route cognition v1.1 concept nodes foundation
   - notes:
     - Added `concept_nodes` as the semantic concept object table.
     - `concept_nodes` is not `route_collections`.
@@ -112,7 +114,7 @@ v1.1 remaining step B: typed concept relationship candidate tables
 
 - v1.1 remaining step B: typed concept relationship candidate tables
   - migration: `migrations/versions/20260618_concept_relationship_candidates.py`
-  - commit: pending
+  - commit: `c8693241` route cognition v1.1 concept relationship candidates
   - notes:
     - Added `route_concept_candidates`, `segment_concept_candidates`, and `collection_concept_candidates`.
     - These are typed relationship candidate tables, not a generic polymorphic candidate table.
