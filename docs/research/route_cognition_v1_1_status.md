@@ -2,13 +2,13 @@
 
 ## Active batch
 
-Batch 4: judgment ledger + external research loop
+Pre-Batch 5 planning. Batch 5 has not started.
 
 ## Completed batches
 
 - Batch 1: route_books + route_versions
   - migration: `migrations/versions/20260618_route_versions.py`
-  - commit: pending / current workspace
+  - commit: `f6814026` route versions batch 1
   - notes:
     - `route_books` now carries `visibility`, `publish_status`, `updated_at`, `line_hash`, `elevation_profile`, and `current_version_id`.
     - `route_versions` is the geometry / navigation snapshot table.
@@ -17,7 +17,7 @@ Batch 4: judgment ledger + external research loop
 
 - Batch 2: route_guides provenance
   - migration: `migrations/versions/20260618_route_guides_provenance.py`
-  - commit: pending / current workspace
+  - commit: `a374217c` route cognition schema foundation
   - notes:
     - `route_guides` now carries import provenance fields: `source_ref`, `content_hash`, `imported_at`, `source_route_version_id`, and `content_origin`.
     - `content_origin` is limited to `content_routes_import` and `legacy_import`.
@@ -25,7 +25,7 @@ Batch 4: judgment ledger + external research loop
 
 - Batch 3: route export foundation
   - migration: `migrations/versions/20260618_route_exports.py`
-  - commit: pending / current workspace
+  - commit: `a374217c` route cognition schema foundation
   - notes:
     - `route_export_jobs` records who requested which `route_version_id` in `gpx` / `tcx` format.
     - `route_export_artifacts` stores the backend-only `file_id` for generated export files.
@@ -34,7 +34,7 @@ Batch 4: judgment ledger + external research loop
 
 - Batch 4: judgment ledger + external research loop
   - migration: `migrations/versions/20260618_route_cognition_batch4.py`
-  - commit: pending / current workspace
+  - commit: `a374217c` route cognition schema foundation
   - notes:
     - Added `judgment_runs`, `evidence_items`, `judgment_run_evidence`, `research_questions`, and `research_runs`.
     - Added `route_guides.source_judgment_run_id` as a nullable pointer to the source judgment run.
