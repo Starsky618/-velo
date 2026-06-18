@@ -2,7 +2,13 @@
 
 ## Active batch
 
-Post-Batch 5 verification. Batch 6 has not started.
+Batch 6: segment eligibility internal write workflow
+
+- No new migration expected.
+- No public API.
+- No admin UI.
+- No automatic backfill.
+- Admission only through internal service.
 
 ## Completed batches
 
@@ -43,7 +49,7 @@ Post-Batch 5 verification. Batch 6 has not started.
 
 - Batch 5: segment geometry provenance + route cognition segment whitelist
   - migration: `migrations/versions/20260618_route_cognition_batch5.py`
-  - commit: pending
+  - commit: `b623b555` route cognition batch5 segment eligibility foundation
   - notes:
     - Added `segment_geometry_sources` for real segment geometry provenance.
     - Added `route_cognition_segments` as the 0..1 formal segment whitelist for route cognition.
@@ -236,6 +242,40 @@ Post-Batch 5 verification. Batch 6 has not started.
   - `fk_segment_geometry_sources_segment` -> `NO ACTION`
   - `fk_segment_geometry_sources_source_activity` -> `SET NULL`
 - Note: results above were executed on an isolated temporary PostgreSQL database `velo_batch5_verify`; real counts depend on the target database after migration.
+
+## Batch 6 scope
+
+- Add an internal segment eligibility write workflow.
+- Add `app/route_cognition/services/segment_eligibility.py`.
+- Add deterministic segment geometry hash helper.
+- Add focused service tests.
+- Do not add a migration.
+- Do not expose public APIs or admin UI.
+- Do not automatically backfill old `segments`.
+
+## Batch 6 must not do
+
+- No `segment_submissions`.
+- No `route_collections`.
+- No `route_segments` / `collection_segments` / `collection_routes`.
+- No concept tables or formal relationship tables.
+- No candidate tables.
+- No external search worker.
+- No user-facing evidence API.
+- No rewrite of `content/routes/**`.
+- No change to `route_guides.content_md`.
+- No change to old `segments.reference_line` or `segment_efforts`.
+
+## Batch 6 implementation notes
+
+- `admit_legacy_reviewed_segment` writes only `route_cognition_segments`; it does not create `segment_geometry_sources`.
+- `admit_provenance_verified_segment` accepts only `segment_geometry_sources.quality_status = 'verified'`.
+- Both admission paths require an accepted human review judgment run: `run_type = 'human_review'`, `status = 'succeeded'`, and `confidence_state IN ('human_accepted', 'stable')`.
+- If `judgment_runs.segment_id` is set, it must match the target segment.
+- Legacy admission computes a segment geometry hash from the existing `segments.reference_line`.
+- Provenance admission copies `geometry_hash` and `normalization_version` from the verified source.
+- Existing or newly created provenance sources must satisfy the Batch 5 durable material pointer rule.
+- The service flushes changes but does not commit; callers own the transaction boundary.
 
 ## Open issues
 
