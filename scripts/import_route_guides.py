@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -37,6 +39,7 @@ class RouteInput:
     name: str
     city: str
     content_md: str
+    source_ref: str | None
     highlights: str | None
     cover_url: str | None
     gallery_urls: str | None
@@ -102,6 +105,9 @@ def load_routes(content_dir: Path) -> list[RouteInput]:
         cover_url = meta.get("cover_url")
         if cover_url is not None and not isinstance(cover_url, str):
             _die(f"{route_dir}: meta.json field 'cover_url' must be a string")
+        source_ref = meta.get("source_ref")
+        if source_ref is not None and not isinstance(source_ref, str):
+            _die(f"{route_dir}: meta.json field 'source_ref' must be a string")
         gallery_urls = _load_gallery_urls(route_dir, meta)
 
         distance_km = _numeric_meta_value(meta, "distance_km")
@@ -113,6 +119,7 @@ def load_routes(content_dir: Path) -> list[RouteInput]:
                 name=name.strip(),
                 city=meta.get("city") or "太原",  # spec §3.6：city 可选，默认太原
                 content_md=guide_path.read_text(encoding="utf-8"),
+                source_ref=source_ref.strip() if isinstance(source_ref, str) and source_ref.strip() else None,
                 highlights=highlights,
                 cover_url=cover_url,
                 gallery_urls=gallery_urls,
@@ -181,6 +188,7 @@ def print_dry_run(routes: list[RouteInput]) -> None:
 def upsert_route(db, route: RouteInput) -> None:
     guide = db.query(RouteGuide).filter(RouteGuide.name == route.name).first()
     route_book_id = None
+    route_book = None
     elevation_profile = None
 
     if route.track_path is not None:
@@ -189,7 +197,6 @@ def upsert_route(db, route: RouteInput) -> None:
             distance_override_m=route.distance_override_m,
             climb_override_m=route.climb_override_m,
         )
-        route_book = None
         if guide is not None and guide.route_book_id is not None:
             route_book = db.query(RouteBook).filter(RouteBook.id == guide.route_book_id).first()
         if route_book is None:
@@ -223,6 +230,16 @@ def upsert_route(db, route: RouteInput) -> None:
     guide.highlights = route.highlights
     guide.route_book_id = route_book_id
     guide.elevation_profile = elevation_profile
+    guide.source_ref = route.source_ref
+    guide.content_hash = content_hash(route.content_md)
+    guide.imported_at = datetime.now(timezone.utc)
+    guide.content_origin = "content_routes_import"
+    guide.source_route_version_id = route_book.current_version_id if route_book is not None else None
+
+
+def content_hash(content_md: str) -> str:
+    """给导入后的正文算指纹；像快递单号一样，用来判断 DB 投影是否还是这份 guide.md。"""
+    return hashlib.sha256(content_md.encode("utf-8")).hexdigest()
 
 
 def parse_track(

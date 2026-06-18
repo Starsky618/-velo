@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib
+import hashlib
 import json
 import os
 import shutil
@@ -22,7 +23,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from app.activity.models import Activity
+from app.route_cognition.models import JudgmentRun
 from app.route_book.models import RouteBook, RouteGuide, RouteVersion
+from app.segment.models import Segment
 from app.user.models import User
 
 
@@ -76,8 +79,10 @@ def _create_import_tables(pg_engine) -> None:
     """创建导入脚本所需的最小真实表集合。"""
     User.__table__.create(bind=pg_engine, checkfirst=True)
     Activity.__table__.create(bind=pg_engine, checkfirst=True)
+    Segment.__table__.create(bind=pg_engine, checkfirst=True)
     RouteBook.__table__.create(bind=pg_engine, checkfirst=True)
     RouteVersion.__table__.create(bind=pg_engine, checkfirst=True)
+    JudgmentRun.__table__.create(bind=pg_engine, checkfirst=True)
     RouteGuide.__table__.create(bind=pg_engine, checkfirst=True)
 
 
@@ -317,3 +322,54 @@ def test_route_versions_migration_backfills_official_visibility_and_skips_null_l
             "uq_route_versions_route_book_version",
             "uq_route_versions_id_route_book",
         } <= constraints
+
+
+def test_route_guides_provenance_migration_backfills_hash_without_touching_content(pg_engine):
+    """真实跑 Batch 2 migration：只补来源标签，不改 guide 正文。"""
+    migration = importlib.import_module("migrations.versions.20260618_route_guides_provenance")
+    content_md = "# 老路线\n\n这段正文不能被迁移改写。\n"
+    with pg_engine.begin() as conn:
+        conn.execute(text("CREATE TABLE route_books (id INTEGER PRIMARY KEY, current_version_id INTEGER)"))
+        conn.execute(text(
+            """
+            CREATE TABLE route_versions (
+                id INTEGER PRIMARY KEY,
+                route_book_id INTEGER NOT NULL,
+                UNIQUE(id, route_book_id)
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE route_guides (
+                id INTEGER PRIMARY KEY,
+                name VARCHAR(128) NOT NULL,
+                route_book_id INTEGER,
+                content_md TEXT NOT NULL
+            )
+            """
+        ))
+        conn.execute(text("INSERT INTO route_books (id, current_version_id) VALUES (1, 10)"))
+        conn.execute(text("INSERT INTO route_versions (id, route_book_id) VALUES (10, 1)"))
+        conn.execute(
+            text("INSERT INTO route_guides (id, name, route_book_id, content_md) VALUES (1, '老路线', 1, :content_md)"),
+            {"content_md": content_md},
+        )
+
+        context = MigrationContext.configure(conn)
+        operations = Operations(context)
+        with patch.object(migration, "op", operations):
+            migration.upgrade()
+
+        row = conn.execute(text("SELECT * FROM route_guides WHERE id = 1")).mappings().one()
+        assert row["content_md"] == content_md
+        assert row["content_hash"] == hashlib.sha256(content_md.encode("utf-8")).hexdigest()
+        assert row["content_origin"] == "legacy_import"
+        assert row["imported_at"] is None
+        assert row["source_ref"] is None
+        assert row["source_route_version_id"] == 10
+
+        with pytest.raises(SQLAlchemyError):
+            # 非法枚举检查放进 SAVEPOINT：失败是预期结果，不能污染外层测试事务。
+            with conn.begin_nested():
+                conn.execute(text("UPDATE route_guides SET content_origin = 'manual_admin' WHERE id = 1"))

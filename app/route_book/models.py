@@ -17,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -252,4 +253,119 @@ class RouteGuide(Base):
     gallery_urls = Column(Text, nullable=True)
     highlights = Column(Text, nullable=True)
     elevation_profile = Column(Text, nullable=True)
+    source_ref = Column(Text, nullable=True)
+    content_hash = Column(String(64), nullable=True)
+    imported_at = Column(DateTime(timezone=True), nullable=True)
+    source_route_version_id = Column(Integer, nullable=True)
+    source_judgment_run_id = Column(
+        Integer,
+        ForeignKey("judgment_runs.id", name="fk_route_guides_source_judgment_run", ondelete="SET NULL"),
+        nullable=True,
+    )
+    content_origin = Column(String(32), nullable=False, server_default="legacy_import")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "content_origin IN ('content_routes_import', 'legacy_import')",
+            name="ck_route_guides_content_origin",
+        ),
+        ForeignKeyConstraint(
+            ["source_route_version_id", "route_book_id"],
+            ["route_versions.id", "route_versions.route_book_id"],
+            name="fk_route_guides_source_route_version",
+        ),
+        Index("idx_route_guides_source_judgment_run", "source_judgment_run_id"),
+    )
+
+
+class RouteExportJob(Base):
+    """路线导出任务——记录用户要把哪一版路线打包成什么文件。"""
+
+    __tablename__ = "route_export_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    route_book_id = Column(Integer, ForeignKey("route_books.id", ondelete="CASCADE"), nullable=False)
+    # route_version_id 故意不挂单列 FK：下面的组合 FK fk_route_export_jobs_route_version_book
+    # 已经把 (route_version_id, route_book_id) 一起约束到 route_versions(id, route_book_id)，
+    # 既保证 version 存在、又保证它确实属于这本路书。再加一条单列 FK 是重复约束（多一条无用索引 + 语义噪音），故省去。
+    route_version_id = Column(Integer, nullable=False)
+    requester_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    target_platform = Column(String(32), nullable=True)
+    export_format = Column(String(8), nullable=False)
+    export_mode = Column(String(24), nullable=False, server_default="download_file")
+    status = Column(String(16), nullable=False, server_default="queued")
+    simplification_strategy_json = Column(Text, nullable=True)
+    target_constraints_json = Column(Text, nullable=True)
+    include_course_points = Column(Boolean, nullable=False, server_default=false())
+    error_code = Column(String(64), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["route_version_id", "route_book_id"],
+            ["route_versions.id", "route_versions.route_book_id"],
+            name="fk_route_export_jobs_route_version_book",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("export_format IN ('gpx', 'tcx')", name="ck_route_export_jobs_format"),
+        CheckConstraint(
+            "export_mode IN ('download_file', 'manual_upload')",
+            name="ck_route_export_jobs_mode",
+        ),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')",
+            name="ck_route_export_jobs_status",
+        ),
+        CheckConstraint("include_course_points = false", name="ck_route_export_jobs_no_course_points"),
+        Index("idx_route_export_jobs_route_version", "route_version_id"),
+        Index("idx_route_export_jobs_route_book", "route_book_id"),
+        Index("idx_route_export_jobs_requester", "requester_id"),
+        Index("idx_route_export_jobs_status_created", "status", "created_at"),
+        Index("idx_route_export_jobs_format", "export_format"),
+    )
+
+
+class RouteExportArtifact(Base):
+    """路线导出产物——保存导出文件的内部钥匙，不直接给前端公开。"""
+
+    __tablename__ = "route_export_artifacts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    export_job_id = Column(Integer, ForeignKey("route_export_jobs.id", ondelete="CASCADE"), nullable=False)
+    route_book_id = Column(Integer, ForeignKey("route_books.id", ondelete="CASCADE"), nullable=False)
+    # 同 route_export_jobs：route_version_id 由下面的组合 FK fk_route_export_artifacts_route_version_book
+    # 统一约束，不再单独挂单列 FK，避免重复。
+    route_version_id = Column(Integer, nullable=False)
+    format = Column(String(8), nullable=False)
+    file_id = Column(String(512), nullable=False)
+    file_size = Column(Integer, nullable=True)
+    content_hash = Column(String(64), nullable=True)
+    input_point_count = Column(Integer, nullable=True)
+    output_point_count = Column(Integer, nullable=True)
+    generated_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    metadata_json = Column(Text, nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["route_version_id", "route_book_id"],
+            ["route_versions.id", "route_versions.route_book_id"],
+            name="fk_route_export_artifacts_route_version_book",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("format IN ('gpx', 'tcx')", name="ck_route_export_artifacts_format"),
+        Index("idx_route_export_artifacts_job", "export_job_id"),
+        Index("idx_route_export_artifacts_route_version", "route_version_id"),
+        Index("idx_route_export_artifacts_route_book", "route_book_id"),
+        Index("idx_route_export_artifacts_content_hash", "content_hash"),
+        Index("idx_route_export_artifacts_expires", "expires_at"),
+    )
+
+
+# 注册 Batch 4 的 judgment_runs 表，让 route_guides.source_judgment_run_id 的字符串外键
+# 在单独创建 RouteGuide 测试表时也能找到“审稿编号登记簿”。
+import app.route_cognition.models  # noqa: E402,F401

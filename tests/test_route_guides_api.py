@@ -1,14 +1,20 @@
 """路线百科 API 测试——验证官方路线手册列表和详情能稳定喂给小程序。"""
 
+from datetime import datetime, timezone
+
+from sqlalchemy import text
+
 from app.route_book.models import RouteBook, RouteGuide
 
 
 def _create_route_guides_table(db):
+    db.execute(text("CREATE TABLE IF NOT EXISTS judgment_runs (id INTEGER PRIMARY KEY AUTOINCREMENT)"))
     RouteGuide.__table__.create(bind=db.bind, checkfirst=True)
 
 
 def _drop_route_guides_table(db):
     RouteGuide.__table__.drop(bind=db.bind, checkfirst=True)
+    db.execute(text("DROP TABLE IF EXISTS judgment_runs"))
 
 
 def _route_book(db, name="天龙山路书"):
@@ -119,6 +125,31 @@ def test_detail_ready_false_keeps_content_but_hides_track_fields(client, db):
         assert body["climb"] is None
         assert body["elevation_profile"] is None
         assert body["preview_points"] is None
+    finally:
+        _drop_route_guides_table(db)
+
+
+def test_detail_does_not_expose_internal_provenance(client, db):
+    _create_route_guides_table(db)
+    try:
+        guide = _guide(
+            db,
+            source_ref="route-workspace/tianlongshan/route.json @ 2026-06-18",
+            content_hash="f" * 64,
+            imported_at=datetime.now(timezone.utc),
+            content_origin="content_routes_import",
+            source_route_version_id=None,
+        )
+
+        detail = client.get(f"/api/route-guides/{guide.id}").json()
+        listing = client.get("/api/route-guides").json()["items"][0]
+
+        for payload in (detail, listing):
+            assert "source_ref" not in payload
+            assert "content_hash" not in payload
+            assert "imported_at" not in payload
+            assert "content_origin" not in payload
+            assert "source_route_version_id" not in payload
     finally:
         _drop_route_guides_table(db)
 

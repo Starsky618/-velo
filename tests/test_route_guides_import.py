@@ -1,14 +1,53 @@
 """路线百科灌库脚本测试——先在模拟仓库里验收路线手册能否安全进库。"""
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import CheckConstraint, ForeignKeyConstraint, text
 
 
 FIXTURE_ROUTES = Path(__file__).parent / "fixtures" / "routes"
+
+
+def test_route_guide_model_declares_batch2_provenance_columns():
+    """Batch 2 只给导入投影加来源标签，不改变用户可见文案。"""
+    from app.route_book.models import RouteGuide
+
+    columns = RouteGuide.__table__.c
+    assert {
+        "source_ref",
+        "content_hash",
+        "imported_at",
+        "source_route_version_id",
+        "content_origin",
+    } <= set(columns.keys())
+    assert columns.content_origin.nullable is False
+    assert str(columns.content_origin.server_default.arg) == "legacy_import"
+
+    origin_checks = [
+        constraint
+        for constraint in RouteGuide.__table__.constraints
+        if isinstance(constraint, CheckConstraint) and constraint.name == "ck_route_guides_content_origin"
+    ]
+    assert origin_checks
+    assert "content_routes_import" in str(origin_checks[0].sqltext)
+    assert "legacy_import" in str(origin_checks[0].sqltext)
+    assert "manual_admin" not in str(origin_checks[0].sqltext)
+
+    composite_fks = [
+        constraint
+        for constraint in RouteGuide.__table__.constraints
+        if isinstance(constraint, ForeignKeyConstraint)
+        and constraint.name == "fk_route_guides_source_route_version"
+    ]
+    assert composite_fks
+    assert {element.parent.name for element in composite_fks[0].elements} == {
+        "source_route_version_id",
+        "route_book_id",
+    }
 
 
 def _load_script():
@@ -78,6 +117,13 @@ def route_guide_tables(db):
             )
             """
         ))
+        db.execute(text(
+            """
+            CREATE TABLE judgment_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT
+            )
+            """
+        ))
     RouteGuide.__table__.create(bind=db.bind, checkfirst=True)
     try:
         yield RouteBook, RouteGuide
@@ -89,6 +135,7 @@ def route_guide_tables(db):
         else:
             db.execute(text("DROP TABLE IF EXISTS route_versions"))
             db.execute(text("DROP TABLE IF EXISTS route_books"))
+            db.execute(text("DROP TABLE IF EXISTS judgment_runs"))
 
 
 def _copy_fixture(tmp_path: Path, *route_names: str) -> Path:
@@ -127,6 +174,7 @@ def test_imports_gpx_route_and_creates_official_route_book(db, route_guide_table
     assert book.current_version_id is not None
     version = db.query(RouteVersion).filter_by(route_book_id=book.id).one()
     assert version.id == book.current_version_id
+    assert guide.source_route_version_id == book.current_version_id
     assert version.version_no == 1
     assert version.status == "current"
     assert version.navigation_status == "ready"
@@ -216,6 +264,31 @@ def test_imports_route_without_gpx_as_track_pending(db, route_guide_tables, tmp_
     assert guide.elevation_profile is None
     assert guide.gallery_urls is None  # meta 没有 gallery_urls 键 → 存 NULL（老路线无图不报错）
     assert db.query(RouteBook).count() == 0
+
+
+def test_import_records_content_provenance_from_meta_json(db, route_guide_tables, tmp_path, monkeypatch):
+    _, RouteGuide = route_guide_tables
+    script = _load_script()
+    route_dir = tmp_path / "routes" / "with-source"
+    route_dir.mkdir(parents=True)
+    content_md = "# 有来源的路线\n\n这段文字来自 guide.md。\n"
+    source_ref = "route-workspace/with-source/route.json @ 2026-06-18"
+    (route_dir / "guide.md").write_text(content_md, encoding="utf-8")
+    (route_dir / "meta.json").write_text(
+        json.dumps({"name": "有来源的路线", "source_ref": source_ref}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(script, "SessionLocal", lambda: db)
+
+    script.main(["--content-dir", str(tmp_path / "routes")])
+
+    guide = db.query(RouteGuide).filter_by(name="有来源的路线").one()
+    assert guide.content_md == content_md
+    assert guide.source_ref == source_ref
+    assert guide.content_hash == hashlib.sha256(content_md.encode("utf-8")).hexdigest()
+    assert guide.imported_at is not None
+    assert guide.content_origin == "content_routes_import"
+    assert guide.source_route_version_id is None
 
 
 def test_missing_guide_md_exits_before_writing(db, route_guide_tables, tmp_path, monkeypatch, capsys):
