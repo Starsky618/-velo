@@ -169,7 +169,8 @@ def test_legacy_reviewed_does_not_auto_backfill_other_segments(db, batch6_sqlite
 
 def test_provenance_verified_admission_succeeds_with_verified_source(db, batch6_sqlite_tables):
     _seed_batch6_base(db)
-    _insert_source(db, geometry_hash="source-hash-a", normalization_version="source-norm-v1")
+    current_segment_hash = _current_segment_hash(db)
+    _insert_source(db, geometry_hash=current_segment_hash, normalization_version="source-norm-v1")
 
     row = admit_provenance_verified_segment(
         db,
@@ -183,8 +184,23 @@ def test_provenance_verified_admission_succeeds_with_verified_source(db, batch6_
     assert row.review_basis == "provenance_verified"
     assert row.primary_geometry_source_id == 1
     assert row.eligibility_status == "active"
-    assert row.geometry_hash == "source-hash-a"
+    assert row.geometry_hash == current_segment_hash
     assert row.normalization_version == "source-norm-v1"
+
+
+def test_provenance_verified_rejects_existing_source_with_mismatched_geometry_hash(db, batch6_sqlite_tables):
+    _seed_batch6_base(db)
+    _insert_source(db, geometry_hash="not-current-segment-hash")
+
+    with pytest.raises(SegmentEligibilityError, match="current segment geometry_hash"):
+        admit_provenance_verified_segment(
+            db,
+            segment_id=1,
+            accepted_judgment_run_id=1,
+            reviewer_id=1,
+            primary_geometry_source_id=1,
+            review_note="source hash 不能和 segment 当前线条不一致",
+        )
 
 
 def test_provenance_verified_rejects_source_from_another_segment(db, batch6_sqlite_tables):
@@ -254,6 +270,7 @@ def test_provenance_verified_rejects_source_without_normalization_version(db, ba
 
 def test_provenance_verified_can_create_verified_source_in_same_transaction(db, batch6_sqlite_tables):
     _seed_batch6_base(db)
+    current_segment_hash = _current_segment_hash(db)
 
     row = admit_provenance_verified_segment(
         db,
@@ -263,7 +280,7 @@ def test_provenance_verified_can_create_verified_source_in_same_transaction(db, 
         source_input=SegmentGeometrySourceInput(
             source_type="admin_import",
             source_file_id="files/segment-1.gpx",
-            geometry_hash="created-source-hash",
+            geometry_hash=current_segment_hash,
             normalization_version="source-norm-v1",
             quality_status="verified",
         ),
@@ -271,12 +288,37 @@ def test_provenance_verified_can_create_verified_source_in_same_transaction(db, 
     )
 
     assert row.primary_geometry_source_id is not None
-    assert row.geometry_hash == "created-source-hash"
+    assert row.geometry_hash == current_segment_hash
+    source_hash = db.execute(text("SELECT geometry_hash FROM segment_geometry_sources WHERE id = :id"), {"id": row.primary_geometry_source_id}).scalar_one()
+    assert source_hash == current_segment_hash
     assert db.execute(text("SELECT count(*) FROM segment_geometry_sources")).scalar_one() == 1
+
+
+def test_provenance_verified_rejects_created_source_with_mismatched_geometry_hash(db, batch6_sqlite_tables):
+    _seed_batch6_base(db)
+
+    with pytest.raises(SegmentEligibilityError, match="current segment geometry_hash"):
+        admit_provenance_verified_segment(
+            db,
+            segment_id=1,
+            accepted_judgment_run_id=1,
+            reviewer_id=1,
+            source_input=SegmentGeometrySourceInput(
+                source_type="admin_import",
+                source_file_id="files/segment-1.gpx",
+                geometry_hash="not-current-segment-hash",
+                normalization_version="source-norm-v1",
+                quality_status="verified",
+            ),
+            review_note="新建 source hash 也必须等于当前 segment 线条",
+        )
+
+    assert db.execute(text("SELECT count(*) FROM segment_geometry_sources")).scalar_one() == 0
 
 
 def test_provenance_verified_refuses_created_source_without_durable_pointer(db, batch6_sqlite_tables):
     _seed_batch6_base(db)
+    current_segment_hash = _current_segment_hash(db)
 
     with pytest.raises(SegmentEligibilityError, match="durable material pointer"):
         admit_provenance_verified_segment(
@@ -286,7 +328,7 @@ def test_provenance_verified_refuses_created_source_without_durable_pointer(db, 
             reviewer_id=1,
             source_input=SegmentGeometrySourceInput(
                 source_type="admin_import",
-                geometry_hash="created-source-hash",
+                geometry_hash=current_segment_hash,
                 normalization_version="source-norm-v1",
                 quality_status="verified",
             ),
@@ -298,6 +340,7 @@ def test_provenance_verified_refuses_created_source_without_durable_pointer(db, 
 
 def test_provenance_verified_refuses_activity_clip_without_content_hash(db, batch6_sqlite_tables):
     _seed_batch6_base(db)
+    current_segment_hash = _current_segment_hash(db)
 
     with pytest.raises(SegmentEligibilityError, match="source_content_hash"):
         admit_provenance_verified_segment(
@@ -308,7 +351,7 @@ def test_provenance_verified_refuses_activity_clip_without_content_hash(db, batc
             source_input=SegmentGeometrySourceInput(
                 source_type="activity_clip",
                 source_activity_id=1,
-                geometry_hash="activity-source-hash",
+                geometry_hash=current_segment_hash,
                 normalization_version="source-norm-v1",
                 quality_status="verified",
             ),
@@ -324,6 +367,7 @@ def test_provenance_verified_refuses_created_source_with_invalid_index_order(
     end_index,
 ):
     _seed_batch6_base(db)
+    current_segment_hash = _current_segment_hash(db)
 
     with pytest.raises(SegmentEligibilityError, match="source_start_index"):
         admit_provenance_verified_segment(
@@ -336,7 +380,7 @@ def test_provenance_verified_refuses_created_source_with_invalid_index_order(
                 source_file_id="files/segment-1.gpx",
                 source_start_index=start_index,
                 source_end_index=end_index,
-                geometry_hash="created-source-hash",
+                geometry_hash=current_segment_hash,
                 normalization_version="source-norm-v1",
                 quality_status="verified",
             ),
@@ -348,6 +392,7 @@ def test_provenance_verified_refuses_created_source_with_invalid_index_order(
 
 def test_provenance_verified_refuses_created_source_with_invalid_coordinate_system(db, batch6_sqlite_tables):
     _seed_batch6_base(db)
+    current_segment_hash = _current_segment_hash(db)
 
     with pytest.raises(SegmentEligibilityError, match="original_coordinate_system"):
         admit_provenance_verified_segment(
@@ -359,7 +404,7 @@ def test_provenance_verified_refuses_created_source_with_invalid_coordinate_syst
                 source_type="admin_import",
                 source_file_id="files/segment-1.gpx",
                 original_coordinate_system="bd09",
-                geometry_hash="created-source-hash",
+                geometry_hash=current_segment_hash,
                 normalization_version="source-norm-v1",
                 quality_status="verified",
             ),
@@ -522,6 +567,14 @@ def _insert_judgment_run(
     )
 
 
+def _current_segment_hash(db, segment_id: int = 1) -> str:
+    reference_line_wkt = db.execute(
+        text("SELECT ST_AsText(reference_line) FROM segments WHERE id = :segment_id"),
+        {"segment_id": segment_id},
+    ).scalar_one()
+    return hash_segment_geometry_wkt(reference_line_wkt)
+
+
 def _insert_source(
     db,
     *,
@@ -532,10 +585,12 @@ def _insert_source(
     source_file_id: str | None = None,
     source_url: str | None = None,
     source_content_hash: str | None = "content-hash-a",
-    geometry_hash: str = "geom-hash-a",
+    geometry_hash: str | None = None,
     normalization_version: str = "norm-v1",
     quality_status: str = "verified",
 ) -> None:
+    if geometry_hash is None:
+        geometry_hash = _current_segment_hash(db, segment_id)
     db.execute(
         text(
             """

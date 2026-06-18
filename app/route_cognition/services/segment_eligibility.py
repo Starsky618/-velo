@@ -112,7 +112,8 @@ def admit_provenance_verified_segment(
     source 可以是已有行，也可以由本函数在同一事务内创建。白名单复制 source 的 geometry_hash，
     不重新计算，避免“来源说一条线、白名单认另一条线”。
     """
-    _load_segment_reference_line(db, segment_id)
+    reference_line_wkt = _load_segment_reference_line(db, segment_id)
+    current_segment_hash = hash_segment_geometry_wkt(reference_line_wkt)
     _ensure_segment_not_admitted(db, segment_id)
     _validate_human_review_judgment(db, accepted_judgment_run_id, segment_id)
 
@@ -122,8 +123,9 @@ def admit_provenance_verified_segment(
         reviewer_id=reviewer_id,
         primary_geometry_source_id=primary_geometry_source_id,
         source_input=source_input,
+        current_segment_hash=current_segment_hash,
     )
-    _validate_source_for_provenance(source, segment_id)
+    _validate_source_for_provenance(source, segment_id, current_segment_hash)
 
     row = RouteCognitionSegment(
         segment_id=segment_id,
@@ -203,12 +205,13 @@ def _resolve_source(
     reviewer_id: int,
     primary_geometry_source_id: int | None,
     source_input: SegmentGeometrySourceInput | None,
+    current_segment_hash: str,
 ) -> _SourceSnapshot:
     if (primary_geometry_source_id is None) == (source_input is None):
         raise SegmentEligibilityError("provide exactly one of primary_geometry_source_id or source_input")
 
     if source_input is not None:
-        _validate_input_source_for_creation(source_input)
+        _validate_input_source_for_creation(source_input, current_segment_hash)
         source = SegmentGeometrySource(
             segment_id=segment_id,
             source_type=source_input.source_type,
@@ -271,7 +274,11 @@ def _resolve_source(
     )
 
 
-def _validate_input_source_for_creation(source_input: SegmentGeometrySourceInput) -> None:
+def _validate_input_source_for_creation(
+    source_input: SegmentGeometrySourceInput,
+    current_segment_hash: str,
+) -> None:
+    _validate_source_hash_matches_current_segment(source_input.geometry_hash, current_segment_hash)
     if (
         source_input.original_coordinate_system is not None
         and source_input.original_coordinate_system not in ALLOWED_COORDINATE_SYSTEMS
@@ -294,7 +301,11 @@ def _validate_input_source_for_creation(source_input: SegmentGeometrySourceInput
     )
 
 
-def _validate_source_for_provenance(source: _SourceSnapshot, segment_id: int) -> None:
+def _validate_source_for_provenance(
+    source: _SourceSnapshot,
+    segment_id: int,
+    current_segment_hash: str,
+) -> None:
     if source.segment_id != segment_id:
         raise SegmentEligibilityError("source.segment_id must match target segment_id")
     _validate_source_values(
@@ -306,6 +317,12 @@ def _validate_source_for_provenance(source: _SourceSnapshot, segment_id: int) ->
         normalization_version=source.normalization_version,
         quality_status=source.quality_status,
     )
+    _validate_source_hash_matches_current_segment(source.geometry_hash, current_segment_hash)
+
+
+def _validate_source_hash_matches_current_segment(source_hash: str, current_segment_hash: str) -> None:
+    if source_hash != current_segment_hash:
+        raise SegmentEligibilityError("source geometry_hash must match current segment geometry_hash")
 
 
 def _validate_source_values(

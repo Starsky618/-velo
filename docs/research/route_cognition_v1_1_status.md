@@ -274,7 +274,9 @@ Batch 6: segment eligibility internal write workflow
 - If `judgment_runs.segment_id` is set, it must match the target segment.
 - Legacy admission computes a segment geometry hash from the existing `segments.reference_line`.
 - Provenance admission copies `geometry_hash` and `normalization_version` from the verified source.
+- Provenance admission also requires the source `geometry_hash` to match the current `segments.reference_line` hash.
 - Existing or newly created provenance sources must satisfy the Batch 5 durable material pointer rule.
+- `accepted_judgment_run_id` is the authoritative audit pointer; `review_note` is recommended context, not the source of truth.
 - The service flushes changes but does not commit; callers own the transaction boundary.
 
 ## Open issues
@@ -288,6 +290,8 @@ Batch 6: segment eligibility internal write workflow
 - Evidence is internal-only storage for now; there is no user-facing evidence API.
 - `route_share_links` decision when unlisted sharing/download opens.
 - Actual GPX/TCX generation worker is deferred until the export pipeline batch.
+- `normalization_version` should eventually be tied to the canonical geometry hash helper version.
+- Shared line hash helper should eventually move out of `app.route_book.service._line_hash` into a neutral utility.
 
 ## Superseded docs
 

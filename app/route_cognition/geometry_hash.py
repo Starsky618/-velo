@@ -1,5 +1,7 @@
 """路线认知几何指纹工具——给 segment 线条贴一张稳定的“身份证”。"""
 
+# TODO: 路线认知继续扩展前，把 route_book 与 segment 共用的线条 hash 迁到中性工具模块。
+# 现在先复用既有口径，避免 Batch 6 临时造出第二套“同线不同指纹”的算法。
 from app.route_book.service import _line_hash as _route_book_line_hash
 
 
