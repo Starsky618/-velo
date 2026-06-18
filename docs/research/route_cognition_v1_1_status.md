@@ -2,7 +2,7 @@
 
 ## Active batch
 
-Pre-Batch 5 planning. Batch 5 has not started.
+Post-Batch 5 verification. Batch 6 has not started.
 
 ## Completed batches
 
@@ -41,6 +41,19 @@ Pre-Batch 5 planning. Batch 5 has not started.
     - Evidence defaults to internal storage; user-facing APIs still do not read `evidence_items` directly.
     - Research starts from `research_questions`; there is no free-form external crawl worker in this batch.
 
+- Batch 5: segment geometry provenance + route cognition segment whitelist
+  - migration: `migrations/versions/20260618_route_cognition_batch5.py`
+  - commit: pending
+  - notes:
+    - Added `segment_geometry_sources` for real segment geometry provenance.
+    - Added `route_cognition_segments` as the 0..1 formal segment whitelist for route cognition.
+    - `route_cognition_segments` is not a review queue; segments that are rejected, blocked, or still under review stay out of this table.
+    - Existing `segments` are not backfilled into the whitelist automatically.
+    - Existing `segments` do not receive fake geometry sources.
+    - `legacy_reviewed` whitelist rows keep `primary_geometry_source_id` as `NULL` and do not create `segment_geometry_sources` rows.
+    - `provenance_verified` whitelist rows must point to a matching `segment_geometry_sources` row with the same `segment_id` and `geometry_hash`.
+    - Every whitelist row must point to a `judgment_runs` record; the future service/admin writer must choose an accepted same-segment judgment run.
+
 ## Accepted architecture decisions
 
 - `route_books` is route identity.
@@ -57,6 +70,11 @@ Pre-Batch 5 planning. Batch 5 has not started.
 - `research_questions` is the required reason for future external research.
 - `route_guides.source_judgment_run_id` is optional and is not backfilled automatically.
 - Old segments enter later via `route_cognition_segments` with `legacy_reviewed`.
+- `segment_geometry_sources` only records real provenance; there is no `legacy_existing` / `unknown` source type.
+- `route_cognition_segments` is a whitelist subset of `segments`, not a one-to-one mirror.
+- Future route / collection / concept links should target `route_cognition_segments.segment_id`, not raw `segments.id`.
+- Future formal relationships must reference `route_cognition_segments.segment_id`; they must not bypass the whitelist through raw `segments.id`.
+- Private personal segments and `segment_submissions` are not implemented in Batch 5.
 - AI never writes formal relationships directly.
 - Concept is a first-version target but not Batch 2.
 
@@ -149,10 +167,83 @@ Pre-Batch 5 planning. Batch 5 has not started.
 - route/version mismatch query -> `0 rows`
 - Note: results above were executed on an isolated empty verification database; real counts depend on the target database after migration.
 
+## Batch 5 scope
+
+- Add `segment_geometry_sources`.
+- Add `route_cognition_segments`.
+- Do not backfill old `segments`.
+- Do not create fake provenance for old `segments`.
+- Do not expose public APIs or admin UI.
+
+## Batch 5 must not do
+
+- No `segment_submissions`.
+- No `route_collections`.
+- No `route_segments` / `collection_segments` / `collection_routes`.
+- No concept tables or formal relationship tables.
+- No candidate tables.
+- No external search worker.
+- No user-facing evidence API.
+- No rewrite of `content/routes/**`.
+- No change to `route_guides.content_md`.
+- No change to old `segments.reference_line` or `segment_efforts`.
+
+## Batch 5 implementation notes
+
+- `segment_geometry_sources.source_type` is limited to `activity_clip`, `gpx_upload`, `fit_upload`, and `admin_import`.
+- `segment_geometry_sources.quality_status` is limited to `verified`, `needs_review`, `rejected`, and `deprecated`.
+- `segment_geometry_sources.source_start_index` / `source_end_index` allow open-ended clips, but when both exist the start index must be strictly less than the end index.
+- `segment_geometry_sources` requires a durable material pointer: `activity_clip` needs `source_content_hash`; `gpx_upload` / `fit_upload` / `admin_import` need at least one of `source_file_id`, `source_url`, or `source_content_hash`.
+- `segment_geometry_sources.source_file_id` remains a string pointer without a foreign key until a real file table exists.
+- `segment_geometry_sources.source_content_hash` remains nullable.
+- `route_cognition_segments.review_basis` is limited to `provenance_verified` and `legacy_reviewed`.
+- `route_cognition_segments.eligibility_status` is limited to `active`, `suspended`, and `deprecated`.
+- `route_cognition_segments.reviewed_at` is required.
+- `provenance_verified` requires `primary_geometry_source_id`.
+- The database guarantees the source exists and has matching `segment_id` / `geometry_hash`; the future service/admin writer must choose a `segment_geometry_sources.quality_status = 'verified'` source before inserting `provenance_verified`.
+- `legacy_reviewed` requires `primary_geometry_source_id IS NULL`.
+- `(primary_geometry_source_id, segment_id)` references `segment_geometry_sources(id, segment_id)` without `ON DELETE SET NULL`.
+- `(primary_geometry_source_id, segment_id, geometry_hash)` references `segment_geometry_sources(id, segment_id, geometry_hash)` without `ON DELETE SET NULL`.
+- `UNIQUE(primary_geometry_source_id)` is retained so one geometry source cannot become the primary source for multiple whitelist rows.
+- `accepted_judgment_run_id` references `judgment_runs.id` without `ON DELETE SET NULL`.
+
+## Batch 5 acceptance SQL result
+
+- `SELECT version_num FROM alembic_version;` -> `20260618_route_cognition_batch5`
+- `SELECT count(*) FROM segment_geometry_sources;` -> `0`
+- `SELECT count(*) FROM route_cognition_segments;` -> `0`
+- `SELECT review_basis, eligibility_status, count(*) FROM route_cognition_segments GROUP BY review_basis, eligibility_status ORDER BY review_basis, eligibility_status;` -> `0 rows`
+- `SELECT count(*) FROM route_cognition_segments WHERE review_basis = 'legacy_reviewed' AND primary_geometry_source_id IS NOT NULL;` -> `0`
+- `SELECT count(*) FROM route_cognition_segments WHERE review_basis = 'provenance_verified' AND primary_geometry_source_id IS NULL;` -> `0`
+- `SELECT count(*) FROM route_cognition_segments rcs JOIN segment_geometry_sources sgs ON rcs.primary_geometry_source_id = sgs.id WHERE rcs.primary_geometry_source_id IS NOT NULL AND rcs.segment_id <> sgs.segment_id;` -> `0`
+- `SELECT count(*) FROM route_cognition_segments rcs LEFT JOIN judgment_runs jr ON rcs.accepted_judgment_run_id = jr.id WHERE jr.id IS NULL;` -> `0`
+- automatic backfill check (`SELECT count(*) FROM route_cognition_segments;`) -> `0`
+- Constraint definitions verified on isolated PostgreSQL:
+  - `ck_route_cognition_segments_eligibility_status` -> `active` / `suspended` / `deprecated`
+  - `ck_route_cognition_segments_required_review_fields` -> `reviewed_at IS NOT NULL`
+  - `ck_segment_geometry_sources_quality_status` -> `verified` / `needs_review` / `rejected` / `deprecated`
+  - `ck_segment_geometry_sources_index_order` -> `source_start_index < source_end_index`
+  - `ck_segment_geometry_sources_material_pointer` -> durable material pointer required
+  - `uq_segment_geometry_sources_id_segment_geometry_hash` -> `UNIQUE (id, segment_id, geometry_hash)`
+  - `uq_route_cognition_segments_primary_source` -> `UNIQUE (primary_geometry_source_id)`
+- FK delete actions on an isolated verification database:
+  - `fk_route_cognition_segments_accepted_judgment` -> `NO ACTION`
+  - `fk_route_cognition_segments_primary_source_geometry_hash` -> `NO ACTION`
+  - `fk_route_cognition_segments_primary_source_segment` -> `NO ACTION`
+  - `fk_route_cognition_segments_reviewed_by` -> `SET NULL`
+  - `fk_route_cognition_segments_segment` -> `NO ACTION`
+  - `fk_segment_geometry_sources_created_by` -> `SET NULL`
+  - `fk_segment_geometry_sources_segment` -> `NO ACTION`
+  - `fk_segment_geometry_sources_source_activity` -> `SET NULL`
+- Note: results above were executed on an isolated temporary PostgreSQL database `velo_batch5_verify`; real counts depend on the target database after migration.
+
 ## Open issues
 
 - Candidate tables are not built yet.
 - Formal relationship hard gate is not built yet.
+- Segment submissions are not built yet.
+- Route collection tables are not built yet.
+- Concept tables are not built yet.
 - External search worker is not implemented.
 - Evidence is internal-only storage for now; there is no user-facing evidence API.
 - `route_share_links` decision when unlisted sharing/download opens.

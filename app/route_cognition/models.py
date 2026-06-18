@@ -1,8 +1,9 @@
 """
 路线认知台账模型——给路线判断建立一间“审稿室”。
 
-这个文件只登记判断、证据和外部研究问题：像论文审稿记录一样，说明某个结论是谁在什么时候、
-依据哪些材料做出的。操作注意事项：这里不是路线正文编辑器，不能直接改 `route_guides.content_md`；
+这个文件登记判断、证据、外部研究问题，以及正式 segment 进入路线认知系统前的几何来源门禁：
+像论文审稿记录一样，说明某个结论是谁在什么时候、依据哪些材料做出的。操作注意事项：
+这里不是路线正文编辑器，不能直接改 `route_guides.content_md`，也不能给旧 segment 伪造来源；
 证据默认只在内部流转，用户展示必须走未来的受控接口。输入输出：judgment/research/review 服务写入
 这些表，后续人工审核和内容导入只读取结构化摘要与来源编号。
 """
@@ -335,4 +336,147 @@ class JudgmentRunEvidence(Base):
         Index("idx_judgment_run_evidence_item", "evidence_item_id"),
         Index("idx_judgment_run_evidence_result", "assessment_result"),
         Index("idx_judgment_run_evidence_anchor", "anchor_evidence_item_id"),
+    )
+
+
+class SegmentGeometrySource(Base):
+    """赛段几何来源表——记录一条正式 segment 的线条从哪份真实材料裁出来。"""
+
+    __tablename__ = "segment_geometry_sources"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    segment_id = Column(Integer, ForeignKey("segments.id"), nullable=False)
+    source_type = Column(String(32), nullable=False)
+    source_activity_id = Column(Integer, ForeignKey("activities.id", ondelete="SET NULL"), nullable=True)
+    source_file_id = Column(String(512), nullable=True)
+    source_url = Column(Text, nullable=True)
+    source_start_index = Column(Integer, nullable=True)
+    source_end_index = Column(Integer, nullable=True)
+    source_start_time = Column(DateTime(timezone=True), nullable=True)
+    source_end_time = Column(DateTime(timezone=True), nullable=True)
+    original_coordinate_system = Column(String(16), nullable=True)
+    geometry_hash = Column(String(64), nullable=False)
+    source_content_hash = Column(String(64), nullable=True)
+    normalization_version = Column(String(64), nullable=False)
+    quality_status = Column(String(16), nullable=False)
+    quality_metrics_json = Column(JSONB, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "source_type IN ('activity_clip', 'gpx_upload', 'fit_upload', 'admin_import')",
+            name="ck_segment_geometry_sources_source_type",
+        ),
+        CheckConstraint(
+            "quality_status IN ('verified', 'needs_review', 'rejected', 'deprecated')",
+            name="ck_segment_geometry_sources_quality_status",
+        ),
+        CheckConstraint(
+            "original_coordinate_system IS NULL OR "
+            "original_coordinate_system IN ('wgs84', 'gcj02', 'unknown')",
+            name="ck_segment_geometry_sources_coordinate_system",
+        ),
+        CheckConstraint(
+            "source_start_index IS NULL OR source_end_index IS NULL "
+            "OR source_start_index < source_end_index",
+            name="ck_segment_geometry_sources_index_order",
+        ),
+        CheckConstraint(
+            "("
+            "source_type = 'activity_clip' "
+            "AND source_content_hash IS NOT NULL"
+            ") OR ("
+            "source_type IN ('gpx_upload', 'fit_upload', 'admin_import') "
+            "AND ("
+            "source_file_id IS NOT NULL "
+            "OR source_url IS NOT NULL "
+            "OR source_content_hash IS NOT NULL"
+            ")"
+            ")",
+            name="ck_segment_geometry_sources_material_pointer",
+        ),
+        UniqueConstraint("id", "segment_id", name="uq_segment_geometry_sources_id_segment"),
+        UniqueConstraint(
+            "id",
+            "segment_id",
+            "geometry_hash",
+            name="uq_segment_geometry_sources_id_segment_geometry_hash",
+        ),
+        Index("idx_segment_geometry_sources_segment", "segment_id"),
+        Index("idx_segment_geometry_sources_source_type", "source_type"),
+        Index("idx_segment_geometry_sources_activity", "source_activity_id"),
+        Index("idx_segment_geometry_sources_file", "source_file_id"),
+        Index("idx_segment_geometry_sources_geometry_hash", "geometry_hash"),
+        Index("idx_segment_geometry_sources_quality", "quality_status"),
+    )
+
+
+class RouteCognitionSegment(Base):
+    """路线认知 segment 白名单——只有审过的正式 segment 才能进入后续路线认知。"""
+
+    __tablename__ = "route_cognition_segments"
+
+    segment_id = Column(Integer, ForeignKey("segments.id"), primary_key=True)
+    primary_geometry_source_id = Column(Integer, nullable=True)
+    review_basis = Column(String(32), nullable=False)
+    eligibility_status = Column(String(16), nullable=False)
+    geometry_hash = Column(String(64), nullable=False)
+    normalization_version = Column(String(64), nullable=False)
+    accepted_judgment_run_id = Column(Integer, ForeignKey("judgment_runs.id"), nullable=False)
+    reviewed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=False)
+    review_note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["primary_geometry_source_id", "segment_id"],
+            ["segment_geometry_sources.id", "segment_geometry_sources.segment_id"],
+            name="fk_route_cognition_segments_primary_source_segment",
+        ),
+        ForeignKeyConstraint(
+            ["primary_geometry_source_id", "segment_id", "geometry_hash"],
+            [
+                "segment_geometry_sources.id",
+                "segment_geometry_sources.segment_id",
+                "segment_geometry_sources.geometry_hash",
+            ],
+            name="fk_route_cognition_segments_primary_source_geometry_hash",
+        ),
+        CheckConstraint(
+            "review_basis IN ('provenance_verified', 'legacy_reviewed')",
+            name="ck_route_cognition_segments_review_basis",
+        ),
+        CheckConstraint(
+            "eligibility_status IN ('active', 'suspended', 'deprecated')",
+            name="ck_route_cognition_segments_eligibility_status",
+        ),
+        CheckConstraint(
+            "accepted_judgment_run_id IS NOT NULL "
+            "AND geometry_hash IS NOT NULL "
+            "AND normalization_version IS NOT NULL "
+            "AND reviewed_at IS NOT NULL",
+            name="ck_route_cognition_segments_required_review_fields",
+        ),
+        CheckConstraint(
+            "("
+            "review_basis = 'provenance_verified' "
+            "AND primary_geometry_source_id IS NOT NULL"
+            ") OR ("
+            "review_basis = 'legacy_reviewed' "
+            "AND primary_geometry_source_id IS NULL"
+            ")",
+            name="ck_route_cognition_segments_review_basis_source",
+        ),
+        UniqueConstraint(
+            "primary_geometry_source_id",
+            name="uq_route_cognition_segments_primary_source",
+        ),
+        Index("idx_route_cognition_segments_eligibility", "eligibility_status"),
+        Index("idx_route_cognition_segments_review_basis", "review_basis"),
+        Index("idx_route_cognition_segments_judgment", "accepted_judgment_run_id"),
+        Index("idx_route_cognition_segments_reviewed_by", "reviewed_by"),
+        Index("idx_route_cognition_segments_geometry_hash", "geometry_hash"),
     )
