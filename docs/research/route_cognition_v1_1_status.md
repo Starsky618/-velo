@@ -3,16 +3,14 @@
 ## Active work
 
 Completed:
-v1.1 remaining step B: typed concept relationship candidate tables
+v1.1 remaining step C: concept formal relationship foundation
 
-- Current alembic head: `20260618_concept_rel_candidates`.
-- Step C (`concept formal relationship foundation`) has not started.
-- New migration: `migrations/versions/20260618_concept_relationship_candidates.py`.
+- Current alembic head: `20260618_concept_formal_links`.
+- New migration: `migrations/versions/20260618_concept_formal_links.py`.
 - No public API.
 - No admin UI.
 - No automatic backfill.
-- Typed concept relationship candidates are implemented for route, segment, and collection targets.
-- Concept formal links are not implemented.
+- Concept formal links are implemented for route, segment, and collection targets.
 - route/segment/collection membership formal tables are not implemented.
 - other candidate tables are not implemented.
 - segment_submissions are not implemented.
@@ -128,6 +126,25 @@ v1.1 remaining step B: typed concept relationship candidate tables
     - Target and judgment-run foreign keys do not use `ON DELETE SET NULL`; only `created_by` and `reviewed_by` may be set null.
     - Open candidate uniqueness only applies to `candidate_status IN ('proposed', 'needs_review')`, so rejected history does not block a new proposal.
     - Concept formal links are not implemented.
+    - route/segment/collection membership formal tables are not implemented.
+    - other candidate tables are not implemented.
+    - segment_submissions are not implemented.
+    - No public API.
+    - No admin UI.
+    - external search worker is not implemented.
+
+- v1.1 remaining step C: concept formal relationship foundation
+  - migration: `migrations/versions/20260618_concept_formal_links.py`
+  - commit: pending
+  - notes:
+    - Added `route_concept_links`, `segment_concept_links`, and `collection_concept_links`.
+    - Formal links are not candidate queues; `link_status` is limited to `active`, `deprecated`, and `superseded`.
+    - Formal links require `accepted_judgment_run_id` and `accepted_judgment_run_type = 'human_review'`.
+    - `judgment_runs` now has `UNIQUE(id, run_type)` so formal links can DB-enforce human-review acceptance.
+    - Candidate-accepted links use wide composite FKs back to the matching Step B typed candidate table, including accepted judgment, target, frozen hash projection, concept, and relation type where applicable.
+    - Manual curated and legacy import links still require a human-review judgment and must not point to a source candidate.
+    - Active uniqueness is scoped to target + concept + relation type; deprecated history does not block a new active link.
+    - `segment_concept_links.segment_id` references `route_cognition_segments.segment_id`, not raw `segments.id`.
     - route/segment/collection membership formal tables are not implemented.
     - other candidate tables are not implemented.
     - segment_submissions are not implemented.
@@ -490,10 +507,48 @@ v1.1 remaining step B: typed concept relationship candidate tables
 - Step B does not DB-enforce hash equality to avoid modifying old tables.
 - There is no automatic backfill; all three candidate tables should have count `0` immediately after migration.
 
+## v1.1 remaining step C scope
+
+- Add `route_concept_links`.
+- Add `segment_concept_links`.
+- Add `collection_concept_links`.
+- Add typed formal link ORM models.
+- Add `UNIQUE(id, run_type)` to `judgment_runs`.
+- Add wide formal-gate unique constraints to the Step B typed candidate tables.
+- Add one v1.1 remaining step C migration.
+- Add concept formal relationship schema tests.
+- Do not backfill routes, route versions, route collections, segments, route cognition segments, concept nodes, candidates, or formal links.
+- Do not expose public APIs or admin UI.
+
+## v1.1 remaining step C must not do
+
+- No `route_segments`.
+- No `collection_routes`.
+- No `collection_segments`.
+- No other candidate tables.
+- No `segment_submissions`.
+- No external search worker.
+- No rewrite of `content/routes/**`.
+- No change to `guide.md`.
+- No change to `route_guides.content_md`.
+- No change to old `segments.reference_line` or `segment_efforts`.
+
+## v1.1 remaining step C implementation notes
+
+- `relation_type` uses the same values as Step B candidates: `suitable_for`, `passes_near`, `has_feature`, `has_risk`, `part_of_event`, `story_reference`, `training_theme`, `local_name`, and `associated_with`.
+- `link_status` is limited to `active`, `deprecated`, and `superseded`; it does not include `proposed`, `needs_review`, or `rejected`.
+- `source_kind` is limited to `candidate_accepted`, `manual_curated`, and `legacy_import`.
+- Every formal link requires `accepted_judgment_run_id`.
+- Every formal link stores `accepted_judgment_run_type = 'human_review'` and uses a composite FK to `judgment_runs(id, run_type)`.
+- `source_kind = 'candidate_accepted'` requires a source candidate id.
+- `source_kind IN ('manual_curated', 'legacy_import')` requires the source candidate id to be `NULL`.
+- Candidate-accepted source FKs are wide composite FKs so target, concept, relation type, accepted judgment, and frozen hash projection cannot drift during promotion.
+- `UNIQUE(source_*_concept_candidate_id)` prevents one accepted candidate from creating multiple formal links.
+- Partial unique active indexes prevent duplicate active links while allowing deprecated history.
+- There is no automatic backfill; all three formal link tables should have count `0` immediately after migration.
+
 ## Open issues
 
-- Formal relationship hard gate is not built yet.
-- Concept formal links are not implemented.
 - Other candidate tables are not built yet.
 - segment_submissions are not implemented.
 - route/segment/collection membership formal tables are not implemented.
