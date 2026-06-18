@@ -26,7 +26,7 @@ ADR **不是**:
 
 ---
 
-## 2. 当前 11 份 ADR 总表
+## 2. 当前 12 份 ADR 总表
 
 | 编号 | 决策主题 | 核心结论 | 类型 |
 |---|---|---|---|
@@ -41,6 +41,7 @@ ADR **不是**:
 | [ADR-009](./009-为什么-agent-层独立.md) | AI 集成 | Agent 层**独立模块**,薄接口对接主 SaaS | 产品 + 架构 |
 | [ADR-010](./010-为什么不做实时导航.md) | 功能边界 | **永不做**实时导航,跳转高德 | 产品战略 |
 | [ADR-011](./011-为什么抽-app-common-层.md) | 共享工具归属 | **`app/common/` 独立层**,任意业务模块向下依赖,common 不反向 import 业务模块 | 架构原则 |
+| [ADR-012](./012-为什么路线认知用防火墙式-db-foundation.md) | 路线认知地基 | **防火墙式 DB foundation**,不直接改旧路线主流程 | 数据库设计 + 架构原则 |
 
 另有 `00-ADR-编号大纲.md` — 这是 ADR 批次 3 的**历史 index**,包含每份 ADR 的决策背景、触发时机、引用路径。当你需要**跨 ADR 对比**或理解**决策时间线**时读这份。
 
@@ -61,6 +62,8 @@ ADR **不是**:
 如果功能涉及事件通知:读 **ADR-004(PR/KOM 活在 notifications)**。
 
 如果跨业务模块共享工具(haversine / 时间窗口 / 字符串规范化等):读 **ADR-011(app/common 层)**——禁止把共享工具放任一业务模块。
+
+如果功能涉及路线认知、concept、candidate、formal links、route_segments 或 collection memberships:读 **ADR-012(route cognition DB foundation)**——不要把 DB foundation 误当成 public API / admin UI / 自动 backfill。
 
 ### 我要做产品决策
 
@@ -128,10 +131,10 @@ agent 检索 ADR 全文的触发条件:
 
 ## 7. 维护
 
-- **版本**:v1.1(2026-05-10) — 加 ADR-011 共享工具层(v5 task-1.A.1 实施时第二轮 spec 双审抓的反向依赖问题)
+- **版本**:v1.2(2026-06-19) — 加 ADR-012 路线认知 DB foundation 决策(route cognition v1.1 收口)
 - **下次新 ADR 可能产生的场景**:
   - v6 发布后新增重大架构调整
-  - v7 agent 层具体实现决策(可能产生 ADR-012 到 ADR-014)
+  - v7 agent 层具体实现决策(可能产生 ADR-013 到 ADR-015)
   - 遇到现有 ADR 没覆盖的决策争议
 - **维护者**:Tim + 技术团队(颜颜 / CCF)
-- **编号分配**:按时间顺序,下一个新 ADR 编号为 ADR-012
+- **编号分配**:按时间顺序,下一个新 ADR 编号为 ADR-013

@@ -30,6 +30,7 @@
 18. [未实现链路(易踩坑)](#未实现链路易踩坑)
 20. [链路 20: 约骑核心链路（创建→发布→加入/退出→自动完成）](#链路-20约骑核心链路)
 21. [链路 21: 赛段页 upcoming-meetups 反向读](#链路-21赛段页-upcoming-meetups-反向读)
+22. [链路 22: 路线认知 DB foundation → 内部 writer → 审核发布（尚未运营化）](#链路-22路线认知-db-foundation--内部-writer--审核发布尚未运营化)
 
 ---
 
@@ -1524,6 +1525,18 @@ strava:   与 notification 同层 —— 依赖 user + activity + segment + pars
 - 单文件 > 300 行 → 黄灯,汇报时提
 - 单文件 > 600 行 → 红灯,评估是否拆分(职责统一的不强拆)
 
+### 10.9 route cognition hard gates
+
+route cognition v1.1 已完成 DB foundation，但还没有用户可见链路。任何后续 writer / reviewer 流程必须遵守：
+
+- `route_versions.reference_line_snapshot` 是路线几何真相源；`route_books.reference_line` 是当前版本投影。
+- `route_segments` 是组成/解释层，不得改 `route_versions.reference_line_snapshot` 或 `route_books.reference_line`。
+- `route_cognition_segments` 是 `segments` 的 0..1 白名单，不是待审池；正式 segment 关系必须引用它，不得引用裸 `segments.id`。
+- `evidence_items` 只记录被 `judgment_run` 实际使用的证据，不是通用研究仓库，也没有 public API。
+- formal concept links / formal memberships 必须带 `accepted_judgment_run_id`，且对应 judgment 必须是 `human_review`。
+- AI / agent 不得直接写 formal links 或 formal membership rows。
+- 后续所有 formal writer 必须共享内部写入守卫；计划文件是 `app/route_cognition/services/write_guard.py`，当前尚未实现。
+
 ---
 
 ## 链路 18：训练负荷 PMC（Sprint 10 / CTL·ATL·TSB）
@@ -1610,6 +1623,70 @@ strava:   与 notification 同层 —— 依赖 user + activity + segment + pars
 - **实际:未实现**,router 只支持 `page / page_size / unread_only`
 - 详情页徽章由前端拉全量通知后本地过滤
 
+### 11.7 route cognition public/admin surface ❌
+
+- route cognition v1.1 只完成 DB foundation。
+- **实际:未实现**：public API / admin UI / evidence public API / segment_submissions / membership candidates / external search worker / bulk backfill。
+- 不要假设存在 `/api/route-cognition/*`、后台候选审核页、公开 concept 页面或自动 seed 脚本。
+- 下一步应从内部 writer + reviewer/admin workflow 开始，见 `docs/research/route_cognition_v1_1_operationalization_plan.md`。
+
+## 链路 22：路线认知 DB foundation → 内部 writer → 审核发布（尚未运营化）
+
+**这条链路是未来链路，不是当前用户流程。** 当前只有 DB/ORM foundation 和 `segment_eligibility` 内部 writer；还没有 public API、admin UI、seed 数据、外部搜索 worker。
+
+### 22.1 当前已存在的地基
+
+```
+route_books / route_versions
+  ↓
+route_guides provenance + route export foundation
+  ↓
+judgment_runs + evidence_items + research_questions/runs
+  ↓
+route_cognition_segments whitelist
+  ↓
+route_collections + concept_nodes
+  ↓
+typed concept candidates
+  ↓
+formal concept links
+  ↓
+route_segments + collection_routes + collection_segments
+```
+
+最终 Alembic head：`20260618_membership_formal`。
+
+### 22.2 未来安全写入顺序
+
+```
+[内部人员/脚本]
+  │
+  │ 创建或选择 human_review judgment_run
+  ▼
+[internal write guard]  app/route_cognition/services/write_guard.py  (尚未实现)
+  │
+  ├── P1 concept node writer
+  ├── P2 route collection writer
+  ├── P3 concept candidate writer
+  ├── P4 concept formal link promotion writer
+  ├── P5 route segment manual writer
+  └── P6 collection membership manual writer
+```
+
+### 22.3 事务与发布规则
+
+- 候选接受和 formal link 创建必须在同一个 DB transaction。
+- formal writer 不允许绕过 human_review judgment。
+- seed objects 和 formal links 默认 private/draft 或 internal-only，单独批准后才能发布。
+- 任何 writer 都不能修改 `content/routes/**`、`guide.md`、`route_guides.content_md`。
+- `route_segment` writer 不能改 route geometry truth，只能写 composition overlay。
+
+### 22.4 当前验收口径
+
+- 看到 DB 表存在 ≠ 产品可用。
+- 看到 `route_cognition_v1_1_completion_report.md` 写 complete，只表示数据库地基完成。
+- 看到 `route_cognition_v1_1_operationalization_plan.md` 才是下一阶段工作入口。
+
 ---
 
 ## 附录 A: 数据库读写矩阵
@@ -1622,6 +1699,17 @@ strava:   与 notification 同层 —— 依赖 user + activity + segment + pars
 | notification | R | R | - | R | R | R/W | - |
 | strava | R/W | R/W | W | - | W | W | R/W |
 | parsing ✨ | - | - | - | - | - | - | - |
+
+route cognition 读写矩阵（v1.1 DB foundation）：
+
+| 模块 \ 表组 | route_books / route_versions | segments | route_cognition_segments | judgment/evidence/research | collections/concepts | candidates | formal links/memberships |
+|---|---|---|---|---|---|---|---|
+| route_book | R/W | - | - | - | - | - | - |
+| segment | - | R/W | - | - | - | - | - |
+| route_cognition models | R | R | R/W | R/W | R/W | R/W | R/W |
+| route_cognition segment_eligibility writer | R | R | W | R | - | - | - |
+| future writer services | R | R | R | R/W | R/W | R/W | R/W |
+| public API | - | - | - | - | - | - | - |
 
 ✨ parsing 是纯函数模块,不碰 DB。
 

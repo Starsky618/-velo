@@ -1,5 +1,26 @@
 # VELO 开发变更日志
 
+## 2026-06-19: route cognition v1.1 数据库地基完成 + 架构文档同步 ✅ 文档/Schema 收口
+
+> **缘起**：路线认知数据库从 Batch 1 到 Step D 已完成，Tim 确认“不再继续建 schema”，下一阶段转向内部 writer、审核流程和小范围 Taiyuan/Xishan seed 数据。为避免下个 agent 只读旧 architecture-guide 后误判系统不存在 route cognition，本次同步主架构文档、数据流文档、研究目录索引和 ADR。
+
+**完成态**：
+- 最终 Alembic head：`20260618_membership_formal`。
+- v1.1 DB foundation 已包含：route_versions、route_guides provenance、route export foundation、judgment/evidence/research ledger、segment whitelist、route_collections、concept_nodes、typed concept candidates、formal concept links、route_segments / collection_routes / collection_segments。
+- 完成报告：`docs/research/route_cognition_v1_1_completion_report.md`。
+- 后续计划：`docs/research/route_cognition_v1_1_operationalization_plan.md`。
+
+**关键边界**：
+- DB 地基完成 ≠ 产品运营完成。
+- 目前没有 public API、admin UI、evidence public API、segment_submissions、membership candidates、external search worker、bulk backfill。
+- `route_segments` 是 composition overlay，不是路线几何真相源；`route_versions.reference_line_snapshot` 仍是真相源。
+- formal writer 未来必须带 `accepted_judgment_run_id → human_review`，并经过共享内部 write guard。
+
+**文档同步**：
+- `docs/architecture-guide.md`：补 route_cognition 模块、表组、依赖边界、AI 改动定位表。
+- `docs/data-flow-guide.md`：补 route cognition hard gates、未实现 public/admin surface、未来内部 writer 审核链路。
+- `docs/adr/012-为什么路线认知用防火墙式-db-foundation.md`：记录为什么不改旧主流程、不让 agent 直接写正式关系、不把 DB complete 当产品 complete。
+
 ## 2026-06-14: 真机回归暴露的 A/C 批 bug 修复（热力图白屏/退出登录态/详情页参与者+分享）✅ 含后端鉴权改动需部署
 
 > **缘起**：Tim 真机走查回归清单，A 批（这几天修的 bug 复验）暴露 3 个真 bug + C6 详情页缺失。Tim 铁律重申"前端显示坚决不许敷衍，必须完整显示轨迹不留破绽"。
@@ -1050,7 +1071,7 @@ CLAUDE.md pg_dump 命令 user 错（写 `-U postgres velo`，实测 DB user 是 
 ### 新增 ADR（1 份）
 
 - `docs/adr/011-为什么抽-app-common-层.md` —— v5 task-1.A.1 第二轮 spec 双审抓的反向依赖问题 / 解法 = `app/common/` 独立层 / 任意业务模块向下依赖 / common 不反向 import 业务模块 / 准入规则 + 失败边界 / 触发重评估条件
-- ADR README v1.0 → v1.1 / 总表 10 → 11 / 下个编号 ADR-012
+- ADR README v1.0 → v1.1 / 总表 10 → 11 / 当时下个编号为 ADR-012（2026-06-19 已由路线认知 DB foundation 正式占用）
 
 ### 更新 tech-debt（4 条 P2/P3）
 
@@ -1061,9 +1082,9 @@ CLAUDE.md pg_dump 命令 user 错（写 `-U postgres velo`，实测 DB user 是 
 
 每条都标"重评估触发"条件，防 v6+ agent 主动优化没必要的项。
 
-### 候选 ADR-012（AI 草稿走 RQ 异步）— 不写
+### 历史候选 ADR（AI 草稿走 RQ 异步）— 不写
 
-理由：是 ADR-002（rq + Redis 异步队列）+ ADR-009（agent 层独立）的具体应用，不引入新架构 pattern。如果未来真出现"是否改同步阻塞"的争议，再开 ADR-012。
+理由：是 ADR-002（rq + Redis 异步队列）+ ADR-009（agent 层独立）的具体应用，不引入新架构 pattern。如果未来真出现"是否改同步阻塞"的争议，再开新的可用 ADR 编号。注意：2026-06-19 起 ADR-012 已被路线认知 DB foundation 决策正式占用。
 
 ### Q1/Q2/Q3 三问复盘的处理路径
 
