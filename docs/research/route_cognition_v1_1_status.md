@@ -3,18 +3,22 @@
 ## Active work
 
 Completed:
-v1.1 remaining step C: concept formal relationship foundation
+v1.1 remaining step D: route and collection membership formal tables
 
-- Current alembic head: `20260618_concept_formal_links`.
-- New migration: `migrations/versions/20260618_concept_formal_links.py`.
+- Current alembic head: `20260618_membership_formal`.
+- New migration: `migrations/versions/20260618_membership_formal.py`.
 - No public API.
 - No admin UI.
 - No automatic backfill.
 - Concept formal links are implemented for route, segment, and collection targets.
-- route/segment/collection membership formal tables are not implemented.
-- other candidate tables are not implemented.
+- Route and collection membership formal tables are implemented for `route_segments`, `collection_routes`, and `collection_segments`.
+- Step D membership tables only support `source_kind IN ('manual_curated', 'legacy_import')`.
+- Membership candidate tables are not implemented.
+- Other candidate tables are not implemented.
 - segment_submissions are not implemented.
 - external search worker is not implemented.
+- `route_segments` is a composition overlay; it is not route geometry truth.
+- `route_versions.reference_line_snapshot` remains route geometry truth.
 - metadata_json is not relationship truth.
 - evidence_items are not a public content source.
 
@@ -152,6 +156,28 @@ v1.1 remaining step C: concept formal relationship foundation
     - No admin UI.
     - external search worker is not implemented.
 
+- v1.1 remaining step D: route and collection membership formal tables
+  - migration: `migrations/versions/20260618_membership_formal.py`
+  - commit: pending
+  - notes:
+    - Added `route_segments`, `collection_routes`, and `collection_segments`.
+    - Step D implements formal membership only; membership candidate tables are not implemented.
+    - `source_kind` is limited to `manual_curated` and `legacy_import`; there is no candidate promotion path yet.
+    - Formal membership rows require `accepted_judgment_run_id` and `accepted_judgment_run_type = 'human_review'`.
+    - `legacy_import` rows require either `source_ref` or `reason_summary`.
+    - `route_segments.segment_id` and `collection_segments.segment_id` reference `route_cognition_segments.segment_id`, not raw `segments.id`.
+    - `route_segments` stores route composition as ordered components and must not replace `route_versions.reference_line_snapshot`.
+    - `route_versions.reference_line_snapshot` remains the route geometry truth.
+    - `collection_routes` references `route_collections.id` and `route_books.id`.
+    - `collection_segments` references `route_collections.id` and the segment whitelist.
+    - Active partial unique indexes prevent duplicate active membership while allowing deprecated history.
+    - Added `UNIQUE(segment_id, geometry_hash)` to `route_cognition_segments` so membership rows can freeze the reviewed segment geometry hash.
+    - No automatic backfill.
+    - No public API.
+    - No admin UI.
+    - segment_submissions are not implemented.
+    - external search worker is not implemented.
+
 ## Accepted architecture decisions
 
 - `route_books` is route identity.
@@ -172,6 +198,8 @@ v1.1 remaining step C: concept formal relationship foundation
 - `route_cognition_segments` is a whitelist subset of `segments`, not a one-to-one mirror.
 - Future route / collection / concept links should target `route_cognition_segments.segment_id`, not raw `segments.id`.
 - Future formal relationships must reference `route_cognition_segments.segment_id`; they must not bypass the whitelist through raw `segments.id`.
+- `route_segments` is a composition overlay, not route geometry truth.
+- `route_versions.reference_line_snapshot` remains the route geometry truth.
 - Private personal segments and `segment_submissions` are not implemented in Batch 5.
 - AI never writes formal relationships directly.
 - Concept is a first-version target but not Batch 2.
@@ -547,11 +575,55 @@ v1.1 remaining step C: concept formal relationship foundation
 - Partial unique active indexes prevent duplicate active links while allowing deprecated history.
 - There is no automatic backfill; all three formal link tables should have count `0` immediately after migration.
 
+## v1.1 remaining step D scope
+
+- Add `route_segments`.
+- Add `collection_routes`.
+- Add `collection_segments`.
+- Add typed formal membership ORM models.
+- Add `UNIQUE(segment_id, geometry_hash)` to `route_cognition_segments`.
+- Add one v1.1 remaining step D migration.
+- Add formal membership schema tests.
+- Do not backfill routes, route versions, route collections, segments, route cognition segments, concept nodes, candidates, formal links, or membership rows.
+- Do not expose public APIs or admin UI.
+
+## v1.1 remaining step D must not do
+
+- No membership candidate tables.
+- No `route_segment_candidates`.
+- No `collection_route_candidates`.
+- No `collection_segment_candidates`.
+- No concept candidate tables beyond Step B.
+- No `segment_submissions`.
+- No external search worker.
+- No rewrite of `content/routes/**`.
+- No change to `guide.md`.
+- No change to `route_guides.content_md`.
+- No change to old `segments.reference_line` or `segment_efforts`.
+
+## v1.1 remaining step D implementation notes
+
+- `route_segments` records ordered route composition for one `route_version_id`; it is a membership overlay, not the source of route geometry truth.
+- `route_versions.reference_line_snapshot` remains the route geometry truth.
+- `route_segments.component_type` is limited to `segment_clip` and `custom_geometry`.
+- `segment_clip` rows require `segment_id`, `segment_geometry_hash`, `component_geometry`, `component_geometry_hash`, and `direction IN ('forward', 'reverse')`.
+- `custom_geometry` rows require `component_geometry` and `component_geometry_hash`; they must keep `segment_id`, `segment_geometry_hash`, and `direction` as `NULL`.
+- `route_segments.segment_id` references `route_cognition_segments.segment_id`, not raw `segments.id`.
+- `route_segments.segment_geometry_hash` is checked through `(segment_id, segment_geometry_hash)` against `route_cognition_segments(segment_id, geometry_hash)`.
+- `route_segments.component_geometry` is SRID 4326 geometry and only allows valid linestring / multilinestring geometry.
+- `collection_routes` records reviewed collection-to-route membership with role, sequence, importance, and source metadata.
+- `collection_segments` records reviewed collection-to-segment membership and only targets whitelisted route cognition segments.
+- All three Step D tables limit `membership_status` to `active`, `deprecated`, and `superseded`.
+- All three Step D tables limit `source_kind` to `manual_curated` and `legacy_import`; candidate promotion is future work.
+- All three Step D tables require a human-review judgment through `(accepted_judgment_run_id, accepted_judgment_run_type)`.
+- Active partial unique indexes prevent duplicate active membership while allowing deprecated history.
+- There is no automatic backfill; all three formal membership tables should have count `0` immediately after migration.
+
 ## Open issues
 
 - Other candidate tables are not built yet.
+- Membership candidate tables are not built yet.
 - segment_submissions are not implemented.
-- route/segment/collection membership formal tables are not implemented.
 - external search worker is not implemented.
 - Evidence is internal-only storage for now; there is no user-facing evidence API.
 - `route_share_links` decision when unlisted sharing/download opens.

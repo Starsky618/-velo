@@ -954,6 +954,306 @@ class CollectionConceptLink(Base):
     )
 
 
+class RouteSegment(Base):
+    """路线成员段表——记录一版路线由哪些正式 segment 或人工线段拼成。
+
+    它像路线图纸旁边的“装配清单”：说明第几段用哪个白名单 segment 或哪条人工线；
+    真正的路线几何仍以 `route_versions.reference_line_snapshot` 为准，这里不能反向改路线图纸。
+    """
+
+    __tablename__ = "route_segments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    route_book_id = Column(Integer, nullable=False)
+    route_version_id = Column(Integer, nullable=False)
+    route_line_hash = Column(String(64), nullable=False)
+    seq = Column(Integer, nullable=False)
+    component_type = Column(String(32), nullable=False)
+    segment_id = Column(Integer, nullable=True)
+    segment_geometry_hash = Column(String(64), nullable=True)
+    component_geometry = Column(Geometry("GEOMETRY", srid=4326, spatial_index=False), nullable=False)
+    component_geometry_hash = Column(String(64), nullable=False)
+    direction = Column(String(16), nullable=True)
+    start_fraction = Column(Numeric(8, 7), nullable=True)
+    end_fraction = Column(Numeric(8, 7), nullable=True)
+    membership_status = Column(String(16), nullable=False, server_default="active")
+    source_kind = Column(String(32), nullable=False)
+    source_ref = Column(Text, nullable=True)
+    accepted_judgment_run_id = Column(Integer, nullable=False)
+    accepted_judgment_run_type = Column(String(32), nullable=False, server_default="human_review")
+    display_priority = Column(Integer, nullable=True)
+    reason_summary = Column(Text, nullable=True)
+    metadata_json = Column(JSONB, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", name="fk_route_segments_created_by", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(["route_book_id"], ["route_books.id"], name="fk_route_segments_route_book"),
+        ForeignKeyConstraint(
+            ["route_version_id", "route_book_id"],
+            ["route_versions.id", "route_versions.route_book_id"],
+            name="fk_route_segments_route_version_book",
+        ),
+        ForeignKeyConstraint(["segment_id"], ["route_cognition_segments.segment_id"], name="fk_route_segments_segment"),
+        ForeignKeyConstraint(
+            ["segment_id", "segment_geometry_hash"],
+            ["route_cognition_segments.segment_id", "route_cognition_segments.geometry_hash"],
+            name="fk_route_segments_segment_hash",
+        ),
+        ForeignKeyConstraint(
+            ["accepted_judgment_run_id", "accepted_judgment_run_type"],
+            ["judgment_runs.id", "judgment_runs.run_type"],
+            name="fk_route_segments_accepted_judgment_run",
+        ),
+        CheckConstraint("seq >= 1", name="ck_route_segments_seq_positive"),
+        CheckConstraint(
+            "component_type IN ('segment_clip', 'custom_geometry')",
+            name="ck_route_segments_component_type",
+        ),
+        CheckConstraint(
+            "membership_status IN ('active', 'deprecated', 'superseded')",
+            name="ck_route_segments_membership_status",
+        ),
+        CheckConstraint(
+            "source_kind IN ('manual_curated', 'legacy_import')",
+            name="ck_route_segments_source_kind",
+        ),
+        CheckConstraint(
+            "accepted_judgment_run_type = 'human_review'",
+            name="ck_route_segments_accepted_judgment_run_type",
+        ),
+        CheckConstraint(
+            "source_kind <> 'legacy_import' OR source_ref IS NOT NULL OR reason_summary IS NOT NULL",
+            name="ck_route_segments_legacy_source",
+        ),
+        CheckConstraint(
+            "display_priority IS NULL OR (display_priority >= 0 AND display_priority <= 100)",
+            name="ck_route_segments_display_priority_range",
+        ),
+        CheckConstraint(
+            "((component_type = 'segment_clip' "
+            "AND segment_id IS NOT NULL "
+            "AND segment_geometry_hash IS NOT NULL "
+            "AND component_geometry IS NOT NULL "
+            "AND component_geometry_hash IS NOT NULL "
+            "AND direction IN ('forward', 'reverse')) "
+            "OR (component_type = 'custom_geometry' "
+            "AND segment_id IS NULL "
+            "AND segment_geometry_hash IS NULL "
+            "AND component_geometry IS NOT NULL "
+            "AND component_geometry_hash IS NOT NULL "
+            "AND direction IS NULL))",
+            name="ck_route_segments_component_contract",
+        ),
+        CheckConstraint(
+            "((start_fraction IS NULL AND end_fraction IS NULL) OR "
+            "(component_type = 'segment_clip' "
+            "AND start_fraction IS NOT NULL "
+            "AND end_fraction IS NOT NULL "
+            "AND start_fraction >= 0 "
+            "AND end_fraction <= 1 "
+            "AND start_fraction < end_fraction))",
+            name="ck_route_segments_fraction_range",
+        ),
+        CheckConstraint(
+            "ST_IsValid(component_geometry) "
+            "AND upper(replace(GeometryType(component_geometry), 'ST_', '')) IN "
+            "('LINESTRING', 'MULTILINESTRING')",
+            name="ck_route_segments_component_geometry_valid_type",
+        ),
+        Index("idx_route_segments_route_version", "route_version_id"),
+        Index("idx_route_segments_segment", "segment_id"),
+        Index("idx_route_segments_status", "membership_status"),
+        Index("idx_route_segments_accepted_judgment", "accepted_judgment_run_id"),
+        Index("idx_route_segments_geom", "component_geometry", postgresql_using="gist"),
+        Index(
+            "uq_route_segments_active_seq",
+            "route_book_id",
+            "route_version_id",
+            "seq",
+            unique=True,
+            postgresql_where=text("membership_status = 'active'"),
+        ),
+    )
+
+
+class CollectionRoute(Base):
+    """路线专题-路线成员表——记录 collection 正式收录哪些路线。"""
+
+    __tablename__ = "collection_routes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(Integer, nullable=False)
+    route_book_id = Column(Integer, nullable=False)
+    reviewed_route_version_id = Column(Integer, nullable=False)
+    reviewed_route_line_hash = Column(String(64), nullable=False)
+    role = Column(String(32), nullable=False)
+    seq = Column(Integer, nullable=True)
+    importance = Column(Integer, nullable=True)
+    membership_status = Column(String(16), nullable=False, server_default="active")
+    source_kind = Column(String(32), nullable=False)
+    source_ref = Column(Text, nullable=True)
+    accepted_judgment_run_id = Column(Integer, nullable=False)
+    accepted_judgment_run_type = Column(String(32), nullable=False, server_default="human_review")
+    display_priority = Column(Integer, nullable=True)
+    reason_summary = Column(Text, nullable=True)
+    metadata_json = Column(JSONB, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", name="fk_collection_routes_created_by", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(["collection_id"], ["route_collections.id"], name="fk_collection_routes_collection"),
+        ForeignKeyConstraint(["route_book_id"], ["route_books.id"], name="fk_collection_routes_route_book"),
+        ForeignKeyConstraint(
+            ["reviewed_route_version_id", "route_book_id"],
+            ["route_versions.id", "route_versions.route_book_id"],
+            name="fk_collection_routes_route_version_book",
+        ),
+        ForeignKeyConstraint(
+            ["accepted_judgment_run_id", "accepted_judgment_run_type"],
+            ["judgment_runs.id", "judgment_runs.run_type"],
+            name="fk_collection_routes_accepted_judgment_run",
+        ),
+        CheckConstraint(
+            "role IN ('primary', 'featured', 'alternate', 'connector', 'reference', 'supporting')",
+            name="ck_collection_routes_role",
+        ),
+        CheckConstraint(
+            "membership_status IN ('active', 'deprecated', 'superseded')",
+            name="ck_collection_routes_membership_status",
+        ),
+        CheckConstraint(
+            "source_kind IN ('manual_curated', 'legacy_import')",
+            name="ck_collection_routes_source_kind",
+        ),
+        CheckConstraint(
+            "accepted_judgment_run_type = 'human_review'",
+            name="ck_collection_routes_accepted_judgment_run_type",
+        ),
+        CheckConstraint(
+            "source_kind <> 'legacy_import' OR source_ref IS NOT NULL OR reason_summary IS NOT NULL",
+            name="ck_collection_routes_legacy_source",
+        ),
+        CheckConstraint("seq IS NULL OR seq >= 1", name="ck_collection_routes_seq_positive"),
+        CheckConstraint(
+            "importance IS NULL OR (importance >= 0 AND importance <= 100)",
+            name="ck_collection_routes_importance_range",
+        ),
+        CheckConstraint(
+            "display_priority IS NULL OR (display_priority >= 0 AND display_priority <= 100)",
+            name="ck_collection_routes_display_priority_range",
+        ),
+        Index("idx_collection_routes_collection", "collection_id"),
+        Index("idx_collection_routes_route_book", "route_book_id"),
+        Index("idx_collection_routes_reviewed_route_version", "reviewed_route_version_id"),
+        Index("idx_collection_routes_status", "membership_status"),
+        Index("idx_collection_routes_accepted_judgment", "accepted_judgment_run_id"),
+        Index(
+            "uq_collection_routes_active_route",
+            "collection_id",
+            "route_book_id",
+            unique=True,
+            postgresql_where=text("membership_status = 'active'"),
+        ),
+        Index(
+            "uq_collection_routes_active_seq",
+            "collection_id",
+            "seq",
+            unique=True,
+            postgresql_where=text("membership_status = 'active' AND seq IS NOT NULL"),
+        ),
+    )
+
+
+class CollectionSegment(Base):
+    """路线专题-segment 成员表——collection 只能收录已经进入白名单的正式 segment。"""
+
+    __tablename__ = "collection_segments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(Integer, nullable=False)
+    segment_id = Column(Integer, nullable=False)
+    segment_geometry_hash = Column(String(64), nullable=False)
+    role = Column(String(32), nullable=False)
+    seq = Column(Integer, nullable=True)
+    importance = Column(Integer, nullable=True)
+    membership_status = Column(String(16), nullable=False, server_default="active")
+    source_kind = Column(String(32), nullable=False)
+    source_ref = Column(Text, nullable=True)
+    accepted_judgment_run_id = Column(Integer, nullable=False)
+    accepted_judgment_run_type = Column(String(32), nullable=False, server_default="human_review")
+    display_priority = Column(Integer, nullable=True)
+    reason_summary = Column(Text, nullable=True)
+    metadata_json = Column(JSONB, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", name="fk_collection_segments_created_by", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(["collection_id"], ["route_collections.id"], name="fk_collection_segments_collection"),
+        ForeignKeyConstraint(["segment_id"], ["route_cognition_segments.segment_id"], name="fk_collection_segments_segment"),
+        ForeignKeyConstraint(
+            ["segment_id", "segment_geometry_hash"],
+            ["route_cognition_segments.segment_id", "route_cognition_segments.geometry_hash"],
+            name="fk_collection_segments_segment_hash",
+        ),
+        ForeignKeyConstraint(
+            ["accepted_judgment_run_id", "accepted_judgment_run_type"],
+            ["judgment_runs.id", "judgment_runs.run_type"],
+            name="fk_collection_segments_accepted_judgment_run",
+        ),
+        CheckConstraint(
+            "role IN ('core', 'connector', 'landmark', 'risk_area', 'training_interval', 'supporting')",
+            name="ck_collection_segments_role",
+        ),
+        CheckConstraint(
+            "membership_status IN ('active', 'deprecated', 'superseded')",
+            name="ck_collection_segments_membership_status",
+        ),
+        CheckConstraint(
+            "source_kind IN ('manual_curated', 'legacy_import')",
+            name="ck_collection_segments_source_kind",
+        ),
+        CheckConstraint(
+            "accepted_judgment_run_type = 'human_review'",
+            name="ck_collection_segments_accepted_judgment_run_type",
+        ),
+        CheckConstraint(
+            "source_kind <> 'legacy_import' OR source_ref IS NOT NULL OR reason_summary IS NOT NULL",
+            name="ck_collection_segments_legacy_source",
+        ),
+        CheckConstraint("seq IS NULL OR seq >= 1", name="ck_collection_segments_seq_positive"),
+        CheckConstraint(
+            "importance IS NULL OR (importance >= 0 AND importance <= 100)",
+            name="ck_collection_segments_importance_range",
+        ),
+        CheckConstraint(
+            "display_priority IS NULL OR (display_priority >= 0 AND display_priority <= 100)",
+            name="ck_collection_segments_display_priority_range",
+        ),
+        Index("idx_collection_segments_collection", "collection_id"),
+        Index("idx_collection_segments_segment", "segment_id"),
+        Index("idx_collection_segments_status", "membership_status"),
+        Index("idx_collection_segments_accepted_judgment", "accepted_judgment_run_id"),
+        Index(
+            "uq_collection_segments_active_segment",
+            "collection_id",
+            "segment_id",
+            unique=True,
+            postgresql_where=text("membership_status = 'active'"),
+        ),
+        Index(
+            "uq_collection_segments_active_seq",
+            "collection_id",
+            "seq",
+            unique=True,
+            postgresql_where=text("membership_status = 'active' AND seq IS NOT NULL"),
+        ),
+    )
+
+
 class ResearchQuestion(Base):
     """研究问题表——记录为什么要去外部搜索，避免自由抓取。"""
 
@@ -1331,6 +1631,11 @@ class RouteCognitionSegment(Base):
         UniqueConstraint(
             "primary_geometry_source_id",
             name="uq_route_cognition_segments_primary_source",
+        ),
+        UniqueConstraint(
+            "segment_id",
+            "geometry_hash",
+            name="uq_route_cognition_segments_segment_geometry_hash",
         ),
         Index("idx_route_cognition_segments_eligibility", "eligibility_status"),
         Index("idx_route_cognition_segments_review_basis", "review_basis"),
