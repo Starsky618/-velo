@@ -202,6 +202,129 @@ class RouteCollection(Base):
     )
 
 
+class ConceptNode(Base):
+    """语义概念表——给“FTP 测试、网红桥、碎石风险”这类概念发身份证。
+
+    它只保存概念本体和审核来源，不保存路线、segment 或 collection 关系；
+    未来关系必须走候选和人工审核后再进入具体关系表，避免把 metadata_json 当知识仓库。
+    """
+
+    __tablename__ = "concept_nodes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(128), nullable=False)
+    slug = Column(String(128), nullable=False)
+    node_type = Column(String(32), nullable=False)
+    scope_type = Column(String(16), nullable=False, server_default="global")
+    scope_value = Column(String(128), nullable=False, server_default="global")
+    city = Column(String(64), nullable=True)
+    region = Column(String(128), nullable=True)
+    visibility = Column(String(16), nullable=False, server_default="private")
+    publish_status = Column(String(16), nullable=False, server_default="draft")
+    summary = Column(Text, nullable=True)
+    description_md = Column(Text, nullable=True)
+    cover_url = Column(Text, nullable=True)
+    geom = Column(Geometry("GEOMETRY", srid=4326, spatial_index=False), nullable=True)
+    center_lat = Column(Numeric(9, 6), nullable=True)
+    center_lon = Column(Numeric(9, 6), nullable=True)
+    source = Column(String(16), nullable=False, server_default="manual")
+    source_ref = Column(Text, nullable=True)
+    confidence = Column(Numeric(5, 4), nullable=True)
+    metadata_json = Column(JSONB, nullable=True)
+    source_judgment_run_id = Column(Integer, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", name="fk_concept_nodes_created_by", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source_judgment_run_id"],
+            ["judgment_runs.id"],
+            name="fk_concept_nodes_source_judgment_run",
+        ),
+        CheckConstraint("length(btrim(name)) > 0", name="ck_concept_nodes_name_nonempty"),
+        CheckConstraint(
+            "slug ~ '^[a-z0-9][a-z0-9_-]{1,127}$'",
+            name="ck_concept_nodes_slug_format",
+        ),
+        CheckConstraint(
+            "node_type IN ('practice_type', 'landmark', 'road_condition', 'safety_risk', "
+            "'event', 'local_term', 'place', 'training_theme', 'other')",
+            name="ck_concept_nodes_node_type",
+        ),
+        CheckConstraint(
+            "scope_type IN ('global', 'city', 'region')",
+            name="ck_concept_nodes_scope_type",
+        ),
+        CheckConstraint(
+            "(scope_type = 'global' AND scope_value = 'global') OR "
+            "(scope_type = 'city' AND scope_value <> 'global') OR "
+            "(scope_type = 'region' AND scope_value <> 'global')",
+            name="ck_concept_nodes_scope_rule",
+        ),
+        CheckConstraint(
+            "visibility IN ('private', 'unlisted', 'public')",
+            name="ck_concept_nodes_visibility",
+        ),
+        CheckConstraint(
+            "publish_status IN ('draft', 'published', 'archived')",
+            name="ck_concept_nodes_publish_status",
+        ),
+        CheckConstraint("source IN ('manual', 'imported')", name="ck_concept_nodes_source"),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
+            name="ck_concept_nodes_confidence_range",
+        ),
+        CheckConstraint(
+            "center_lat IS NULL OR (center_lat >= -90 AND center_lat <= 90)",
+            name="ck_concept_nodes_center_lat_range",
+        ),
+        CheckConstraint(
+            "center_lon IS NULL OR (center_lon >= -180 AND center_lon <= 180)",
+            name="ck_concept_nodes_center_lon_range",
+        ),
+        CheckConstraint(
+            "(center_lat IS NULL AND center_lon IS NULL) OR "
+            "(center_lat IS NOT NULL AND center_lon IS NOT NULL)",
+            name="ck_concept_nodes_center_pair",
+        ),
+        CheckConstraint(
+            "visibility <> 'public' OR publish_status = 'published'",
+            name="ck_concept_nodes_publication_state",
+        ),
+        CheckConstraint(
+            "publish_status <> 'published' OR source_judgment_run_id IS NOT NULL",
+            name="ck_concept_nodes_published_judgment",
+        ),
+        CheckConstraint(
+            "source <> 'imported' OR source_ref IS NOT NULL OR source_judgment_run_id IS NOT NULL",
+            name="ck_concept_nodes_import_source_ref",
+        ),
+        CheckConstraint(
+            "geom IS NULL OR ("
+            "ST_IsValid(geom) "
+            "AND upper(replace(GeometryType(geom), 'ST_', '')) IN "
+            "('POINT', 'MULTIPOINT', 'LINESTRING', 'MULTILINESTRING', 'POLYGON', 'MULTIPOLYGON')"
+            ")",
+            name="ck_concept_nodes_geom_valid_type",
+        ),
+        UniqueConstraint(
+            "scope_type",
+            "scope_value",
+            "node_type",
+            "slug",
+            name="uq_concept_nodes_scope_type_scope_value_node_type_slug",
+        ),
+        Index("idx_concept_nodes_scope", "scope_type", "scope_value"),
+        Index("idx_concept_nodes_type", "node_type"),
+        Index("idx_concept_nodes_slug", "slug"),
+        Index("idx_concept_nodes_visibility_status", "visibility", "publish_status"),
+        Index("idx_concept_nodes_source_judgment", "source_judgment_run_id"),
+        Index("idx_concept_nodes_created_by", "created_by"),
+        Index("idx_concept_nodes_geom", "geom", postgresql_using="gist"),
+    )
+
+
 class ResearchQuestion(Base):
     """研究问题表——记录为什么要去外部搜索，避免自由抓取。"""
 

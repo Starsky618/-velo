@@ -1,14 +1,20 @@
 # Route Cognition v1.1 Implementation Status
 
-## Active batch
+## Active work
 
-Batch 7: route_collections foundation
+Completed:
+v1.1 remaining step A: concept_nodes foundation
 
-- New migration: `migrations/versions/20260618_route_collections.py`.
+- New migration: `migrations/versions/20260618_concept_nodes.py`.
 - No public API.
 - No admin UI.
 - No automatic backfill.
-- Route collection membership is not implemented.
+- `concept_nodes` has no links yet.
+- Concept candidates are not implemented.
+- Formal concept links are not implemented.
+- Concept hierarchy is not implemented.
+- metadata_json is not relationship truth.
+- evidence_items are not a public content source.
 
 ## Completed batches
 
@@ -84,6 +90,24 @@ Batch 7: route_collections foundation
     - No public API.
     - No admin UI.
 
+- v1.1 remaining step A: concept_nodes foundation
+  - migration: `migrations/versions/20260618_concept_nodes.py`
+  - commit: pending
+  - notes:
+    - Added `concept_nodes` as the semantic concept object table.
+    - `concept_nodes` is not `route_collections`.
+    - `concept_nodes` has no links yet.
+    - Concept candidates are not implemented.
+    - Formal concept links are not implemented.
+    - Concept hierarchy is not implemented.
+    - Public concepts must be `published`.
+    - Published concepts require `source_judgment_run_id`.
+    - Imported concepts require `source_ref` or `source_judgment_run_id`.
+    - `metadata_json` is not relationship truth and must not contain route ids, segment ids, collection ids, concept link truth, candidate truth, or formal relationship truth.
+    - `evidence_items` are not a public content source.
+    - No public API.
+    - No admin UI.
+
 ## Accepted architecture decisions
 
 - `route_books` is route identity.
@@ -107,6 +131,7 @@ Batch 7: route_collections foundation
 - Private personal segments and `segment_submissions` are not implemented in Batch 5.
 - AI never writes formal relationships directly.
 - Concept is a first-version target but not Batch 2.
+- `concept_nodes` is not `route_collections`.
 
 ## Batch 2 scope
 
@@ -347,13 +372,61 @@ Batch 7: route_collections foundation
 - `metadata_json` is not relationship truth.
 - There is no automatic backfill; `SELECT count(*) FROM route_collections;` should be `0` immediately after migration.
 
+## v1.1 remaining step A scope
+
+- Add `concept_nodes`.
+- Add `ConceptNode` ORM model.
+- Add one v1.1 remaining step A migration.
+- Add concept node schema tests.
+- Do not backfill old routes, route versions, route collections, segments, or route cognition segments.
+- Do not expose public APIs or admin UI.
+
+## v1.1 remaining step A must not do
+
+- No `route_concept_links`.
+- No `segment_concept_links`.
+- No `collection_concept_links`.
+- No concept candidate tables.
+- No route / segment / collection candidate tables.
+- No formal relationship tables.
+- No concept hierarchy.
+- No concept aliases table.
+- No `route_segments`.
+- No `collection_routes`.
+- No `collection_segments`.
+- No `segment_submissions`.
+- No external search worker.
+- No rewrite of `content/routes/**`.
+- No change to `guide.md`.
+- No change to `route_guides.content_md`.
+- No change to old `segments.reference_line` or `segment_efforts`.
+
+## v1.1 remaining step A implementation notes
+
+- `concept_nodes` stores semantic concepts such as practice types, landmarks, road conditions, safety risks, events, local terms, places, and training themes.
+- `concept_nodes` is not `route_collections`; route collection types such as `route_family`, `area_system`, and `training_corridor` are not valid concept node types.
+- `scope_type` is limited to `global`, `city`, and `region`.
+- `scope_value` is required; global concepts must use `scope_value = 'global'`, while city and region concepts must not use `global`.
+- `visibility` is limited to `private`, `unlisted`, and `public`.
+- `publish_status` is limited to `draft`, `published`, and `archived`.
+- `source` is limited to `manual` and `imported`; there is no `agent`, `ai`, `algorithm`, or `generated` source.
+- Public concepts must be `published`.
+- Published concepts require `source_judgment_run_id`.
+- Imported concepts require `source_ref` or `source_judgment_run_id`.
+- `source_judgment_run_id` references `judgment_runs.id` without `ON DELETE SET NULL`.
+- `created_by` references `users.id` with `ON DELETE SET NULL`.
+- `UNIQUE(scope_type, scope_value, node_type, slug)` keeps slugs unique inside one concrete semantic scope.
+- `geom` is nullable PostGIS geometry with SRID 4326, explicit GIST index, and a CHECK allowing point / multipoint / linestring / multilinestring / polygon / multipolygon only.
+- `metadata_json` is display/source supplement only; it is not relationship truth.
+- There is no automatic backfill; `SELECT count(*) FROM concept_nodes;` should be `0` immediately after migration.
+
 ## Open issues
 
 - Candidate tables are not built yet.
 - Formal relationship hard gate is not built yet.
 - Segment submissions are not built yet.
 - Route collection membership tables are not built yet.
-- Concept tables are not built yet.
+- Concept links and concept candidates are not built yet.
 - External search worker is not implemented.
 - Evidence is internal-only storage for now; there is no user-facing evidence API.
 - `route_share_links` decision when unlisted sharing/download opens.
