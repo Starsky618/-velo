@@ -22,6 +22,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import false, func
@@ -322,6 +323,326 @@ class ConceptNode(Base):
         Index("idx_concept_nodes_source_judgment", "source_judgment_run_id"),
         Index("idx_concept_nodes_created_by", "created_by"),
         Index("idx_concept_nodes_geom", "geom", postgresql_using="gist"),
+    )
+
+
+class RouteConceptCandidate(Base):
+    """路线-概念候选表——先把“这条路线像什么”放进待审队列。
+
+    它只保存 route 与 concept 的关系候选，不是正式关系；以后正式 link 必须引用已接受候选。
+    """
+
+    __tablename__ = "route_concept_candidates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    route_book_id = Column(Integer, nullable=False)
+    route_version_id = Column(Integer, nullable=False)
+    route_line_hash = Column(String(64), nullable=False)
+    concept_node_id = Column(Integer, nullable=False)
+    relation_type = Column(String(32), nullable=False)
+    proposer_kind = Column(String(16), nullable=False)
+    candidate_status = Column(String(16), nullable=False)
+    created_by_judgment_run_id = Column(Integer, nullable=False)
+    latest_judgment_run_id = Column(Integer, nullable=False)
+    accepted_by_judgment_run_id = Column(Integer, nullable=True)
+    latest_confidence = Column(Numeric(5, 4), nullable=True)
+    latest_confidence_state = Column(String(32), nullable=False)
+    latest_evidence_summary_json = Column(JSONB, nullable=True)
+    latest_missing_data_summary_json = Column(JSONB, nullable=True)
+    latest_contradiction_summary_json = Column(JSONB, nullable=True)
+    reason_summary = Column(Text, nullable=True)
+    metadata_json = Column(JSONB, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", name="fk_route_concept_candidates_created_by", ondelete="SET NULL"), nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id", name="fk_route_concept_candidates_reviewed_by", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(["route_book_id"], ["route_books.id"], name="fk_route_concept_candidates_route_book"),
+        ForeignKeyConstraint(
+            ["route_version_id", "route_book_id"],
+            ["route_versions.id", "route_versions.route_book_id"],
+            name="fk_route_concept_candidates_route_version_book",
+        ),
+        ForeignKeyConstraint(["concept_node_id"], ["concept_nodes.id"], name="fk_route_concept_candidates_concept_node"),
+        ForeignKeyConstraint(
+            ["created_by_judgment_run_id"],
+            ["judgment_runs.id"],
+            name="fk_route_concept_candidates_created_by_judgment_run",
+        ),
+        ForeignKeyConstraint(
+            ["latest_judgment_run_id"],
+            ["judgment_runs.id"],
+            name="fk_route_concept_candidates_latest_judgment_run",
+        ),
+        ForeignKeyConstraint(
+            ["accepted_by_judgment_run_id"],
+            ["judgment_runs.id"],
+            name="fk_route_concept_candidates_accepted_by_judgment_run",
+        ),
+        CheckConstraint(
+            "relation_type IN ('suitable_for', 'passes_near', 'has_feature', 'has_risk', "
+            "'part_of_event', 'story_reference', 'training_theme', 'local_name', 'associated_with')",
+            name="ck_route_concept_candidates_relation_type",
+        ),
+        CheckConstraint(
+            "proposer_kind IN ('algorithm', 'agent', 'human', 'imported')",
+            name="ck_route_concept_candidates_proposer_kind",
+        ),
+        CheckConstraint(
+            "candidate_status IN ('proposed', 'needs_review', 'accepted', 'rejected', "
+            "'withdrawn', 'superseded', 'stale', 'inconclusive')",
+            name="ck_route_concept_candidates_candidate_status",
+        ),
+        CheckConstraint(
+            "latest_confidence IS NULL OR (latest_confidence >= 0 AND latest_confidence <= 1)",
+            name="ck_route_concept_candidates_latest_confidence_range",
+        ),
+        CheckConstraint(
+            "latest_confidence_state IN ('raw', 'proposed', 'challenged', 'stable', "
+            "'human_accepted', 'stale', 'inconclusive')",
+            name="ck_route_concept_candidates_latest_confidence_state",
+        ),
+        CheckConstraint(
+            "((candidate_status = 'accepted' AND accepted_by_judgment_run_id IS NOT NULL "
+            "AND reviewed_at IS NOT NULL) OR "
+            "(candidate_status <> 'accepted' AND accepted_by_judgment_run_id IS NULL))",
+            name="ck_route_concept_candidates_acceptance_gate",
+        ),
+        UniqueConstraint(
+            "route_book_id",
+            "route_version_id",
+            "concept_node_id",
+            "relation_type",
+            "created_by_judgment_run_id",
+            name="uq_route_concept_candidates_idempotency",
+        ),
+        UniqueConstraint("id", "accepted_by_judgment_run_id", name="uq_route_concept_candidates_formal_gate"),
+        Index("idx_route_concept_candidates_route_book", "route_book_id"),
+        Index("idx_route_concept_candidates_route_version", "route_version_id"),
+        Index("idx_route_concept_candidates_concept_node", "concept_node_id"),
+        Index("idx_route_concept_candidates_status", "candidate_status"),
+        Index("idx_route_concept_candidates_relation_type", "relation_type"),
+        Index("idx_route_concept_candidates_created_by_run", "created_by_judgment_run_id"),
+        Index("idx_route_concept_candidates_latest_run", "latest_judgment_run_id"),
+        Index("idx_route_concept_candidates_accepted_run", "accepted_by_judgment_run_id"),
+        Index("idx_route_concept_candidates_created_by", "created_by"),
+        Index("idx_route_concept_candidates_reviewed_by", "reviewed_by"),
+        Index(
+            "uq_route_concept_candidates_open_candidate",
+            "route_book_id",
+            "route_version_id",
+            "concept_node_id",
+            "relation_type",
+            unique=True,
+            postgresql_where=text("candidate_status IN ('proposed', 'needs_review')"),
+        ),
+    )
+
+
+class SegmentConceptCandidate(Base):
+    """赛段-概念候选表——只允许已进路线认知白名单的 segment 提交概念关系候选。"""
+
+    __tablename__ = "segment_concept_candidates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    segment_id = Column(Integer, nullable=False)
+    segment_geometry_hash = Column(String(64), nullable=False)
+    concept_node_id = Column(Integer, nullable=False)
+    relation_type = Column(String(32), nullable=False)
+    proposer_kind = Column(String(16), nullable=False)
+    candidate_status = Column(String(16), nullable=False)
+    created_by_judgment_run_id = Column(Integer, nullable=False)
+    latest_judgment_run_id = Column(Integer, nullable=False)
+    accepted_by_judgment_run_id = Column(Integer, nullable=True)
+    latest_confidence = Column(Numeric(5, 4), nullable=True)
+    latest_confidence_state = Column(String(32), nullable=False)
+    latest_evidence_summary_json = Column(JSONB, nullable=True)
+    latest_missing_data_summary_json = Column(JSONB, nullable=True)
+    latest_contradiction_summary_json = Column(JSONB, nullable=True)
+    reason_summary = Column(Text, nullable=True)
+    metadata_json = Column(JSONB, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", name="fk_segment_concept_candidates_created_by", ondelete="SET NULL"), nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id", name="fk_segment_concept_candidates_reviewed_by", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(["segment_id"], ["route_cognition_segments.segment_id"], name="fk_segment_concept_candidates_segment"),
+        ForeignKeyConstraint(["concept_node_id"], ["concept_nodes.id"], name="fk_segment_concept_candidates_concept_node"),
+        ForeignKeyConstraint(
+            ["created_by_judgment_run_id"],
+            ["judgment_runs.id"],
+            name="fk_segment_concept_candidates_created_by_judgment_run",
+        ),
+        ForeignKeyConstraint(
+            ["latest_judgment_run_id"],
+            ["judgment_runs.id"],
+            name="fk_segment_concept_candidates_latest_judgment_run",
+        ),
+        ForeignKeyConstraint(
+            ["accepted_by_judgment_run_id"],
+            ["judgment_runs.id"],
+            name="fk_segment_concept_candidates_accepted_by_judgment_run",
+        ),
+        CheckConstraint(
+            "relation_type IN ('suitable_for', 'passes_near', 'has_feature', 'has_risk', "
+            "'part_of_event', 'story_reference', 'training_theme', 'local_name', 'associated_with')",
+            name="ck_segment_concept_candidates_relation_type",
+        ),
+        CheckConstraint(
+            "proposer_kind IN ('algorithm', 'agent', 'human', 'imported')",
+            name="ck_segment_concept_candidates_proposer_kind",
+        ),
+        CheckConstraint(
+            "candidate_status IN ('proposed', 'needs_review', 'accepted', 'rejected', "
+            "'withdrawn', 'superseded', 'stale', 'inconclusive')",
+            name="ck_segment_concept_candidates_candidate_status",
+        ),
+        CheckConstraint(
+            "latest_confidence IS NULL OR (latest_confidence >= 0 AND latest_confidence <= 1)",
+            name="ck_segment_concept_candidates_latest_confidence_range",
+        ),
+        CheckConstraint(
+            "latest_confidence_state IN ('raw', 'proposed', 'challenged', 'stable', "
+            "'human_accepted', 'stale', 'inconclusive')",
+            name="ck_segment_concept_candidates_latest_confidence_state",
+        ),
+        CheckConstraint(
+            "((candidate_status = 'accepted' AND accepted_by_judgment_run_id IS NOT NULL "
+            "AND reviewed_at IS NOT NULL) OR "
+            "(candidate_status <> 'accepted' AND accepted_by_judgment_run_id IS NULL))",
+            name="ck_segment_concept_candidates_acceptance_gate",
+        ),
+        UniqueConstraint(
+            "segment_id",
+            "concept_node_id",
+            "relation_type",
+            "created_by_judgment_run_id",
+            name="uq_segment_concept_candidates_idempotency",
+        ),
+        UniqueConstraint("id", "accepted_by_judgment_run_id", name="uq_segment_concept_candidates_formal_gate"),
+        Index("idx_segment_concept_candidates_segment", "segment_id"),
+        Index("idx_segment_concept_candidates_concept_node", "concept_node_id"),
+        Index("idx_segment_concept_candidates_status", "candidate_status"),
+        Index("idx_segment_concept_candidates_relation_type", "relation_type"),
+        Index("idx_segment_concept_candidates_created_by_run", "created_by_judgment_run_id"),
+        Index("idx_segment_concept_candidates_latest_run", "latest_judgment_run_id"),
+        Index("idx_segment_concept_candidates_accepted_run", "accepted_by_judgment_run_id"),
+        Index("idx_segment_concept_candidates_created_by", "created_by"),
+        Index("idx_segment_concept_candidates_reviewed_by", "reviewed_by"),
+        Index(
+            "uq_segment_concept_candidates_open_candidate",
+            "segment_id",
+            "concept_node_id",
+            "relation_type",
+            unique=True,
+            postgresql_where=text("candidate_status IN ('proposed', 'needs_review')"),
+        ),
+    )
+
+
+class CollectionConceptCandidate(Base):
+    """路线专题-概念候选表——给 collection 和 concept 的关系先排队审查。"""
+
+    __tablename__ = "collection_concept_candidates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(Integer, nullable=False)
+    concept_node_id = Column(Integer, nullable=False)
+    relation_type = Column(String(32), nullable=False)
+    proposer_kind = Column(String(16), nullable=False)
+    candidate_status = Column(String(16), nullable=False)
+    created_by_judgment_run_id = Column(Integer, nullable=False)
+    latest_judgment_run_id = Column(Integer, nullable=False)
+    accepted_by_judgment_run_id = Column(Integer, nullable=True)
+    latest_confidence = Column(Numeric(5, 4), nullable=True)
+    latest_confidence_state = Column(String(32), nullable=False)
+    latest_evidence_summary_json = Column(JSONB, nullable=True)
+    latest_missing_data_summary_json = Column(JSONB, nullable=True)
+    latest_contradiction_summary_json = Column(JSONB, nullable=True)
+    reason_summary = Column(Text, nullable=True)
+    metadata_json = Column(JSONB, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", name="fk_collection_concept_candidates_created_by", ondelete="SET NULL"), nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id", name="fk_collection_concept_candidates_reviewed_by", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(["collection_id"], ["route_collections.id"], name="fk_collection_concept_candidates_collection"),
+        ForeignKeyConstraint(["concept_node_id"], ["concept_nodes.id"], name="fk_collection_concept_candidates_concept_node"),
+        ForeignKeyConstraint(
+            ["created_by_judgment_run_id"],
+            ["judgment_runs.id"],
+            name="fk_collection_concept_candidates_created_by_judgment_run",
+        ),
+        ForeignKeyConstraint(
+            ["latest_judgment_run_id"],
+            ["judgment_runs.id"],
+            name="fk_collection_concept_candidates_latest_judgment_run",
+        ),
+        ForeignKeyConstraint(
+            ["accepted_by_judgment_run_id"],
+            ["judgment_runs.id"],
+            name="fk_collection_concept_candidates_accepted_by_judgment_run",
+        ),
+        CheckConstraint(
+            "relation_type IN ('suitable_for', 'passes_near', 'has_feature', 'has_risk', "
+            "'part_of_event', 'story_reference', 'training_theme', 'local_name', 'associated_with')",
+            name="ck_collection_concept_candidates_relation_type",
+        ),
+        CheckConstraint(
+            "proposer_kind IN ('algorithm', 'agent', 'human', 'imported')",
+            name="ck_collection_concept_candidates_proposer_kind",
+        ),
+        CheckConstraint(
+            "candidate_status IN ('proposed', 'needs_review', 'accepted', 'rejected', "
+            "'withdrawn', 'superseded', 'stale', 'inconclusive')",
+            name="ck_collection_concept_candidates_candidate_status",
+        ),
+        CheckConstraint(
+            "latest_confidence IS NULL OR (latest_confidence >= 0 AND latest_confidence <= 1)",
+            name="ck_collection_concept_candidates_latest_confidence_range",
+        ),
+        CheckConstraint(
+            "latest_confidence_state IN ('raw', 'proposed', 'challenged', 'stable', "
+            "'human_accepted', 'stale', 'inconclusive')",
+            name="ck_collection_concept_candidates_latest_confidence_state",
+        ),
+        CheckConstraint(
+            "((candidate_status = 'accepted' AND accepted_by_judgment_run_id IS NOT NULL "
+            "AND reviewed_at IS NOT NULL) OR "
+            "(candidate_status <> 'accepted' AND accepted_by_judgment_run_id IS NULL))",
+            name="ck_collection_concept_candidates_acceptance_gate",
+        ),
+        UniqueConstraint(
+            "collection_id",
+            "concept_node_id",
+            "relation_type",
+            "created_by_judgment_run_id",
+            name="uq_collection_concept_candidates_idempotency",
+        ),
+        UniqueConstraint("id", "accepted_by_judgment_run_id", name="uq_collection_concept_candidates_formal_gate"),
+        Index("idx_collection_concept_candidates_collection", "collection_id"),
+        Index("idx_collection_concept_candidates_concept_node", "concept_node_id"),
+        Index("idx_collection_concept_candidates_status", "candidate_status"),
+        Index("idx_collection_concept_candidates_relation_type", "relation_type"),
+        Index("idx_collection_concept_candidates_created_by_run", "created_by_judgment_run_id"),
+        Index("idx_collection_concept_candidates_latest_run", "latest_judgment_run_id"),
+        Index("idx_collection_concept_candidates_accepted_run", "accepted_by_judgment_run_id"),
+        Index("idx_collection_concept_candidates_created_by", "created_by"),
+        Index("idx_collection_concept_candidates_reviewed_by", "reviewed_by"),
+        Index(
+            "uq_collection_concept_candidates_open_candidate",
+            "collection_id",
+            "concept_node_id",
+            "relation_type",
+            unique=True,
+            postgresql_where=text("candidate_status IN ('proposed', 'needs_review')"),
+        ),
     )
 
 

@@ -3,16 +3,18 @@
 ## Active work
 
 Completed:
-v1.1 remaining step A: concept_nodes foundation
+v1.1 remaining step B: typed concept relationship candidate tables
 
-- New migration: `migrations/versions/20260618_concept_nodes.py`.
+- New migration: `migrations/versions/20260618_concept_relationship_candidates.py`.
 - No public API.
 - No admin UI.
 - No automatic backfill.
-- `concept_nodes` has no links yet.
-- Concept candidates are not implemented.
-- Formal concept links are not implemented.
-- Concept hierarchy is not implemented.
+- Typed concept relationship candidates are implemented for route, segment, and collection targets.
+- Concept formal links are not implemented.
+- route/segment/collection membership formal tables are not implemented.
+- other candidate tables are not implemented.
+- segment_submissions are not implemented.
+- external search worker is not implemented.
 - metadata_json is not relationship truth.
 - evidence_items are not a public content source.
 
@@ -83,8 +85,8 @@ v1.1 remaining step A: concept_nodes foundation
     - `route_collections` is not `concept_nodes`.
     - `route_collections` has no members yet.
     - Collection membership tables are not implemented.
-    - Concept tables are not implemented.
-    - Candidate and formal relationship tables are not implemented.
+    - Batch 7 did not implement concept tables.
+    - Batch 7 did not implement candidate or formal relationship tables.
     - stats_json is projection only and must not contain route ids, segment ids, ordering, roles, or membership truth.
     - metadata_json is not relationship truth and must not contain route ids, segment ids, concept ids, candidate ids, or membership truth.
     - No public API.
@@ -97,9 +99,9 @@ v1.1 remaining step A: concept_nodes foundation
     - Added `concept_nodes` as the semantic concept object table.
     - `concept_nodes` is not `route_collections`.
     - `concept_nodes` has no links yet.
-    - Concept candidates are not implemented.
-    - Formal concept links are not implemented.
-    - Concept hierarchy is not implemented.
+    - Concept candidates are not implemented by Step A.
+    - Formal concept links are not implemented by Step A.
+    - Concept hierarchy is not implemented by Step A.
     - Public concepts must be `published`.
     - Published concepts require `source_judgment_run_id`.
     - Imported concepts require `source_ref` or `source_judgment_run_id`.
@@ -107,6 +109,29 @@ v1.1 remaining step A: concept_nodes foundation
     - `evidence_items` are not a public content source.
     - No public API.
     - No admin UI.
+
+- v1.1 remaining step B: typed concept relationship candidate tables
+  - migration: `migrations/versions/20260618_concept_relationship_candidates.py`
+  - commit: pending
+  - notes:
+    - Added `route_concept_candidates`, `segment_concept_candidates`, and `collection_concept_candidates`.
+    - These are typed relationship candidate tables, not a generic polymorphic candidate table.
+    - There is no `entity_type` / `entity_id` universal candidate table.
+    - Candidate rows store projection fields from judgment runs: `created_by_judgment_run_id`, `latest_judgment_run_id`, `accepted_by_judgment_run_id`, latest confidence state, and latest evidence / missing-data / contradiction summaries.
+    - `accepted_by_judgment_run_id` is nullable until `candidate_status = 'accepted'`.
+    - Future formal concept links must use `(source_candidate_id, accepted_judgment_run_id)` against `(id, accepted_by_judgment_run_id)` on the matching typed candidate table.
+    - `route_concept_candidates` binds `(route_version_id, route_book_id)` to `route_versions(id, route_book_id)` and stores `route_line_hash` as a frozen projection.
+    - `segment_concept_candidates.segment_id` references `route_cognition_segments.segment_id`, not raw `segments.id`, and stores `segment_geometry_hash` as a frozen projection.
+    - `collection_concept_candidates.collection_id` references `route_collections.id`.
+    - Target and judgment-run foreign keys do not use `ON DELETE SET NULL`; only `created_by` and `reviewed_by` may be set null.
+    - Open candidate uniqueness only applies to `candidate_status IN ('proposed', 'needs_review')`, so rejected history does not block a new proposal.
+    - Concept formal links are not implemented.
+    - route/segment/collection membership formal tables are not implemented.
+    - other candidate tables are not implemented.
+    - segment_submissions are not implemented.
+    - No public API.
+    - No admin UI.
+    - external search worker is not implemented.
 
 ## Accepted architecture decisions
 
@@ -420,14 +445,57 @@ v1.1 remaining step A: concept_nodes foundation
 - `metadata_json` is display/source supplement only; it is not relationship truth.
 - There is no automatic backfill; `SELECT count(*) FROM concept_nodes;` should be `0` immediately after migration.
 
+## v1.1 remaining step B scope
+
+- Add `route_concept_candidates`.
+- Add `segment_concept_candidates`.
+- Add `collection_concept_candidates`.
+- Add typed candidate ORM models.
+- Add one v1.1 remaining step B migration.
+- Add concept relationship candidate schema tests.
+- Do not backfill routes, route versions, route collections, segments, route cognition segments, or concept nodes.
+- Do not expose public APIs or admin UI.
+
+## v1.1 remaining step B must not do
+
+- No `route_concept_links`.
+- No `segment_concept_links`.
+- No `collection_concept_links`.
+- No `route_segments`.
+- No `collection_routes`.
+- No `collection_segments`.
+- No `segment_submissions`.
+- No other candidate tables.
+- No generic polymorphic candidate table.
+- No `entity_type` / `entity_id` universal candidate table.
+- No external search worker.
+- No rewrite of `content/routes/**`.
+- No change to `guide.md`.
+- No change to `route_guides.content_md`.
+- No change to old `segments.reference_line` or `segment_efforts`.
+
+## v1.1 remaining step B implementation notes
+
+- `candidate_status` is limited to `proposed`, `needs_review`, `accepted`, `rejected`, `withdrawn`, `superseded`, `stale`, and `inconclusive`.
+- `relation_type` is limited to `suitable_for`, `passes_near`, `has_feature`, `has_risk`, `part_of_event`, `story_reference`, `training_theme`, `local_name`, and `associated_with`.
+- `proposer_kind` is limited to `algorithm`, `agent`, `human`, and `imported`.
+- `latest_confidence_state` uses the same values as `judgment_runs.confidence_state`.
+- `candidate_status = 'accepted'` requires `accepted_by_judgment_run_id` and `reviewed_at`.
+- Non-accepted candidates must keep `accepted_by_judgment_run_id` as `NULL`.
+- `UNIQUE(id, accepted_by_judgment_run_id)` prepares the future formal-link hard gate.
+- `route_line_hash` is a frozen projection copied from `route_versions.line_hash` by the future writer workflow.
+- `segment_geometry_hash` is a frozen projection copied from `route_cognition_segments.geometry_hash` by the future writer workflow.
+- Step B does not DB-enforce hash equality to avoid modifying old tables.
+- There is no automatic backfill; all three candidate tables should have count `0` immediately after migration.
+
 ## Open issues
 
-- Candidate tables are not built yet.
 - Formal relationship hard gate is not built yet.
-- Segment submissions are not built yet.
-- Route collection membership tables are not built yet.
-- Concept links and concept candidates are not built yet.
-- External search worker is not implemented.
+- Concept formal links are not implemented.
+- Other candidate tables are not built yet.
+- segment_submissions are not implemented.
+- route/segment/collection membership formal tables are not implemented.
+- external search worker is not implemented.
 - Evidence is internal-only storage for now; there is no user-facing evidence API.
 - `route_share_links` decision when unlisted sharing/download opens.
 - Actual GPX/TCX generation worker is deferred until the export pipeline batch.
