@@ -18,6 +18,9 @@ uploads/
 .idea/
 *.swp
 
+# 微信开发者工具本机私有配置：每台电脑的开关不一样，不应该跟着代码库发布。
+miniprogram/project.private.config.json
+
 # OS
 .DS_Store
 Thumbs.db
