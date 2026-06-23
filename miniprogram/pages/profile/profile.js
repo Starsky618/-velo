@@ -357,7 +357,7 @@ Page({
       });
   },
 
-  // 跳到设置页（bio / 隐私 / Strava 绑定 / 退出登录）
+  // 跳到设置页（bio / 训练参数 / 退出登录 / 注销账号）
   onTapSettings() {
     wx.navigateTo({ url: '/pages/settings/settings' });
   },

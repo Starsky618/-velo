@@ -1,18 +1,17 @@
 <!--
   设置页 —— iOS 设置语言重构（2026-06-12 Tim 拍："像普通软件一样设计设置页"）。
 
-  信息架构（五组 inset-grouped，每组一张白卡、行间 hairline、行点击编辑）：
+  信息架构（四组 inset-grouped，每组一张白卡、行间 hairline、行点击编辑）：
   1. 个人资料：骑行宣言（从 profile 页移来——我的页只展示，设置页才能改）/ 每周目标 / 车型
   2. 训练参数：FTP（手动/估算）/ 体重 / 年龄 / 最大心率（原有逻辑全保留）
-  3. 账号与同步：Strava（行式：右侧状态 + 点行操作，替代旧 inline 大按钮）
-  4. 通用：清除缓存（真功能：显示占用 + 保留登录态清理）/ 关于 VELO（版本号）
-  5. 账号操作：退出登录 / 注销账号——iOS 惯例"居中红字行"（替代旧全宽大红按钮，防误触；
+  3. 通用：意见反馈 / 关于 VELO（版本号）
+  4. 账号操作：退出登录 / 注销账号——iOS 惯例"居中红字行"（替代旧全宽大红按钮，防误触；
      二次确认红线全保留：退出 1 道 / 注销 2 道）
 
   红线（沿袭 v0.2/v0.3 + 永久规则）：
-  - 解绑 / 退出 / 注销必须二次确认（wx.showModal confirm）
-  - bound 状态走 GET /api/strava/status 的 bound 字段
+  - 退出 / 注销必须二次确认（wx.showModal confirm）
   - 未设置显示"未设置"，永不显示 "-"
+  - Strava 入口正式提审前暂时隐藏，避免 web-view 业务域名未配置导致审核员点进失败
 -->
 <view class="settings-page">
 
@@ -84,22 +83,8 @@
   </view>
   <view class="group-foot">FTP 影响功率区间与训练强度计算；点 FTP 可选"让系统估算"，最大心率与年龄用于估算时的心率门槛。</view>
 
-  <!-- 组 3：账号与同步 -->
-  <view class="group-title">账号与同步</view>
-  <view class="group">
-    <view class="row tappable" bindtap="onTapStrava">
-      <text class="row-label">Strava</text>
-      <view class="row-right">
-        <text class="row-value" wx:if="{{stravaBound}}">已绑定</text>
-        <text class="row-value muted" wx:else>未绑定</text>
-        <text class="row-arrow">›</text>
-      </view>
-    </view>
-  </view>
-  <view class="group-foot" wx:if="{{stravaBound}}">解绑后历史活动保留，不再自动同步新活动。</view>
-
-  <!-- 组 4：通用（调研定稿：缓存清理不做——小程序 storage 微信统管且本项目只存登录态；
-       单位/多语言/深色模式不做——纯国内公制用户 + Komoot 官方把语言甩给系统 + Strava 2024 才上深色）-->
+  <!-- 组 3：通用（调研定稿：缓存清理不做——小程序 storage 微信统管且本项目只存登录态；
+       单位/多语言/深色模式不做——纯国内公制用户 + 系统级设置已足够）-->
   <view class="group-title">通用</view>
   <view class="group">
     <!-- 整行即 button（open-type=contact 拉起微信客服会话，零后端的真反馈通道）；
@@ -119,7 +104,7 @@
     </view>
   </view>
 
-  <!-- 组 5：账号操作（iOS 惯例：居中红字行 + 各自独立成卡，防误触）-->
+  <!-- 组 4：账号操作（iOS 惯例：居中红字行 + 各自独立成卡，防误触）-->
   <view class="group group-spaced">
     <view class="row row-center tappable" bindtap="onLogout">
       <text class="row-danger">退出登录</text>

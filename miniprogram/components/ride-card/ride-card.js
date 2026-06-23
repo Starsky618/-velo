@@ -40,7 +40,7 @@ Component({
     // 空态副文案
     emptySubtext: {
       type: String,
-      value: '上传 GPX 或绑定 Strava 同步活动',
+      value: '上传 GPX/FIT 文件记录第一次骑行',
     },
     // 是否显示空态（外层可强制隐藏）
     showEmpty: {

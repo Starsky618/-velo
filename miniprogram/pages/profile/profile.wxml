@@ -182,7 +182,7 @@
       rides="{{rides}}"
       show-empty="{{!ridesLoading}}"
       empty-text="还没有骑行记录"
-      empty-subtext="上传 GPX 或绑定 Strava 同步活动"
+      empty-subtext="上传 GPX/FIT 文件记录第一次骑行"
       bind:tap-ride="onRideTap"
     />
 
