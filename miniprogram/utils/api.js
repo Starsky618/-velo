@@ -177,24 +177,39 @@ function safeLocalFileName(fileName) {
   return cleaned.slice(0, 80)
 }
 
+function saveDownloadedFile(tempFilePath, fileName) {
+  if (!tempFilePath || !fileName || !wx.env || !wx.env.USER_DATA_PATH || typeof wx.getFileSystemManager !== 'function') {
+    return Promise.resolve(tempFilePath)
+  }
+  var localPath = wx.env.USER_DATA_PATH + '/' + Date.now() + '-' + safeLocalFileName(fileName)
+  var fs = wx.getFileSystemManager()
+  return new Promise(function (resolve) {
+    fs.saveFile({
+      tempFilePath: tempFilePath,
+      filePath: localPath,
+      success: function (res) {
+        resolve(res.savedFilePath || localPath)
+      },
+      fail: function (err) {
+        console.warn('route export save file failed:', err && err.errMsg)
+        resolve(tempFilePath)
+      },
+    })
+  })
+}
+
 function downloadFile(url, fileName) {
   var app = getAppSafe()
   var token = app && app.globalData.token
   return new Promise(function (resolve, reject) {
-    var localPath = ''
-    if (fileName && wx.env && wx.env.USER_DATA_PATH) {
-      localPath = wx.env.USER_DATA_PATH + '/' + Date.now() + '-' + safeLocalFileName(fileName)
-    }
     var options = {
       url: absoluteUrl(url),
-      filePath: localPath,
       header: {
         'Authorization': token ? 'Bearer ' + token : '',
       },
       success: function (res) {
-        var filePath = res.filePath || res.tempFilePath
-        if (res.statusCode >= 200 && res.statusCode < 300 && filePath) {
-          resolve(filePath)
+        if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
+          saveDownloadedFile(res.tempFilePath, fileName).then(resolve)
           return
         }
         var message = '文件下载失败'
@@ -211,7 +226,6 @@ function downloadFile(url, fileName) {
         })
       },
     }
-    if (!localPath) delete options.filePath
     wx.downloadFile(options)
   })
 }
