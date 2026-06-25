@@ -198,13 +198,42 @@
 
 .export-result {
   margin-top: 16rpx;
-  color: #3a3a3c;
-  font-size: 25rpx;
-  line-height: 1.55;
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: #f2f2f7;
+}
+
+.export-result-label {
+  color: #34c759;
+  font-size: 23rpx;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.export-result-name {
+  margin-top: 6rpx;
+  color: #1c1c1e;
+  font-size: 27rpx;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-all;
+}
+
+.export-result-tip {
+  margin-top: 6rpx;
+  color: #8a8a8e;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.export-next-actions {
+  display: flex;
+  gap: 14rpx;
+  margin-top: 14rpx;
 }
 
 .export-share-button {
-  margin-top: 14rpx;
+  flex: 1;
   height: 72rpx;
   border-radius: 20rpx;
   background: #1c1c1e;
@@ -213,6 +242,29 @@
   font-weight: 600;
   line-height: 72rpx;
   padding: 0;
+}
+
+.export-copy-button {
+  flex: 1;
+  height: 72rpx;
+  border-radius: 20rpx;
+  background: #ffffff;
+  color: #1c1c1e;
+  border: 1rpx solid #d1d1d6;
+  font-size: 27rpx;
+  font-weight: 600;
+  line-height: 72rpx;
+  padding: 0;
+}
+
+.export-fallback {
+  margin-top: 12rpx;
+  padding: 16rpx 18rpx;
+  border-radius: 16rpx;
+  background: rgba(255, 149, 0, 0.12);
+  color: #8a5a00;
+  font-size: 24rpx;
+  line-height: 1.45;
 }
 
 .export-hint {

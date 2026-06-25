@@ -170,18 +170,31 @@ function absoluteUrl(url) {
   return baseUrl + url
 }
 
-function downloadFile(url) {
+function safeLocalFileName(fileName) {
+  var raw = String(fileName || ('route-' + Date.now() + '.gpx')).trim()
+  var cleaned = raw.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '-')
+  if (!cleaned) cleaned = 'route-' + Date.now() + '.gpx'
+  return cleaned.slice(0, 80)
+}
+
+function downloadFile(url, fileName) {
   var app = getAppSafe()
   var token = app && app.globalData.token
   return new Promise(function (resolve, reject) {
-    wx.downloadFile({
+    var localPath = ''
+    if (fileName && wx.env && wx.env.USER_DATA_PATH) {
+      localPath = wx.env.USER_DATA_PATH + '/' + Date.now() + '-' + safeLocalFileName(fileName)
+    }
+    var options = {
       url: absoluteUrl(url),
+      filePath: localPath,
       header: {
         'Authorization': token ? 'Bearer ' + token : '',
       },
       success: function (res) {
-        if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
-          resolve(res.tempFilePath)
+        var filePath = res.filePath || res.tempFilePath
+        if (res.statusCode >= 200 && res.statusCode < 300 && filePath) {
+          resolve(filePath)
           return
         }
         var message = '文件下载失败'
@@ -190,8 +203,30 @@ function downloadFile(url) {
         if (res.statusCode >= 500) message = '服务器开小差了，请稍后重试'
         reject({ code: res.statusCode || -1, message: message })
       },
-      fail: function () {
-        reject({ code: -1, message: '网络连接失败，请检查网络' })
+      fail: function (err) {
+        reject({
+          code: -1,
+          message: '网络连接失败，请检查网络',
+          rawMessage: err && err.errMsg,
+        })
+      },
+    }
+    if (!localPath) delete options.filePath
+    wx.downloadFile(options)
+  })
+}
+
+function copyText(text) {
+  return new Promise(function (resolve, reject) {
+    wx.setClipboardData({
+      data: text,
+      success: resolve,
+      fail: function (err) {
+        reject({
+          code: -1,
+          message: '复制失败，请稍后再试',
+          rawMessage: err && err.errMsg,
+        })
       },
     })
   })
@@ -206,9 +241,15 @@ function shareFile(filePath, fileName) {
     wx.shareFileMessage({
       filePath: filePath,
       fileName: fileName,
-      success: resolve,
-      fail: function () {
-        reject({ code: -1, message: '发送文件失败' })
+      success: function (res) {
+        resolve(res)
+      },
+      fail: function (err) {
+        reject({
+          code: -1,
+          message: '微信没有打开发送面板',
+          rawMessage: err && err.errMsg,
+        })
       },
     })
   })
@@ -520,12 +561,20 @@ module.exports = {
     })
   },
 
-  downloadRouteExport: function (downloadUrl) {
-    return downloadFile(downloadUrl)
+  downloadRouteExport: function (downloadUrl, fileName) {
+    return downloadFile(downloadUrl, fileName)
   },
 
   shareRouteExportFile: function (filePath, fileName) {
     return shareFile(filePath, fileName)
+  },
+
+  resolveUrl: function (url) {
+    return absoluteUrl(url)
+  },
+
+  copyText: function (text) {
+    return copyText(text)
   },
 
   /**

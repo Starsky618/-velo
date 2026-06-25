@@ -116,6 +116,9 @@ Page({
     exportingFormat: '',
     lastExportFilename: '',
     lastExportTempPath: '',
+    lastExportDownloadUrl: '',
+    exportSendFailed: false,
+    exportSendError: '',
   },
 
   onLoad: function (options) {
@@ -315,16 +318,20 @@ Page({
       exportingFormat: format,
       lastExportFilename: '',
       lastExportTempPath: '',
+      lastExportDownloadUrl: '',
+      exportSendFailed: false,
+      exportSendError: '',
     })
     api.createRouteExport(guide.route_book_id, format, 'generic')
       .then(function (exportInfo) {
-        return api.downloadRouteExport(exportInfo.download_url)
-          .then(function (tempFilePath) {
+        return api.downloadRouteExport(exportInfo.download_url, exportInfo.filename)
+          .then(function (localFilePath) {
             that.setData({
               lastExportFilename: exportInfo.filename,
-              lastExportTempPath: tempFilePath,
+              lastExportTempPath: localFilePath,
+              lastExportDownloadUrl: api.resolveUrl(exportInfo.download_url),
             })
-            that.promptShareExportFile(tempFilePath, exportInfo.filename)
+            wx.showToast({ title: '路线文件已下载', icon: 'success' })
           })
       })
       .catch(function (err) {
@@ -338,32 +345,19 @@ Page({
       })
   },
 
-  promptShareExportFile: function (filePath, fileName) {
-    var that = this
-    wx.showModal({
-      title: '路线文件已下载',
-      content: '下一步可以把文件发送到微信聊天或文件传输助手，再从聊天文件或目标 App 的路线导入页选择它。\n\n如果目标 App 没出现，打开 Garmin Connect / iGPSPORT / 顽鹿 / Wahoo 的路书导入页手动选择文件。',
-      cancelText: '稍后',
-      confirmText: '发送文件',
-      success: function (res) {
-        if (res.confirm) {
-          that.shareExportFile(filePath, fileName)
-        }
-      },
-    })
-  },
-
   shareExportFile: function (filePath, fileName) {
     if (!filePath) {
       wx.showToast({ title: '请先下载路线文件', icon: 'none' })
       return
     }
+    this.setData({ exportSendFailed: false, exportSendError: '' })
+    var that = this
     api.shareRouteExportFile(filePath, fileName)
       .then(function () {
-        wx.showToast({ title: '文件已发出', icon: 'success' })
+        wx.showToast({ title: '已打开微信发送', icon: 'success' })
       })
       .catch(function (err) {
-        wx.showToast({ title: (err && err.message) || '发送文件失败', icon: 'none' })
+        that.showExportSendFallback(err)
       })
   },
 
@@ -371,10 +365,36 @@ Page({
     this.shareExportFile(this.data.lastExportTempPath, this.data.lastExportFilename)
   },
 
+  showExportSendFallback: function (err) {
+    if (err && err.rawMessage) {
+      console.warn('route export share failed:', err.rawMessage)
+    }
+    this.setData({
+      exportSendFailed: true,
+      exportSendError: '微信没有打开发送面板。点“复制下载链接”，到手机浏览器粘贴打开。',
+    })
+    wx.showToast({ title: '发送失败，可复制链接', icon: 'none' })
+  },
+
+  onCopyLastExportLink: function () {
+    var url = this.data.lastExportDownloadUrl
+    if (!url) {
+      wx.showToast({ title: '请先下载路线文件', icon: 'none' })
+      return
+    }
+    api.copyText(url)
+      .then(function () {
+        wx.showToast({ title: '下载链接已复制', icon: 'success' })
+      })
+      .catch(function (err) {
+        wx.showToast({ title: (err && err.message) || '复制失败', icon: 'none' })
+      })
+  },
+
   onShowExportHelp: function () {
     wx.showModal({
-      title: '怎么导入码表',
-      content: '先下载 GPX 或 TCX 文件，再发送到微信聊天或文件传输助手。\n\nGarmin Connect / iGPSPORT / 顽鹿 / Wahoo 通常都在“路线/路书/导入”里选择文件。\n\n如果打开列表里没有目标 App，就进目标 App 的导入页手动选刚下载的文件。',
+      title: '两步导入',
+      content: '1. 点“发送到微信”，把文件发给自己。\n2. 打开 Garmin / iGPSPORT / 顽鹿 / Wahoo 的路线导入，选择这个文件。\n\n发不出去时，点“复制下载链接”，到手机浏览器粘贴打开。',
       showCancel: false,
       confirmText: '知道了',
     })

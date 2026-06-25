@@ -25,7 +25,7 @@
     <view wx:if="{{guide.export_ready}}" class="export-card">
       <view class="export-head">
         <view class="export-title">导出到码表</view>
-        <view class="export-subtitle">下载文件后，用目标 App 的路线导入页打开</view>
+        <view class="export-subtitle">先下载路线文件，再发到微信或复制链接</view>
       </view>
       <view class="export-actions">
         <button
@@ -41,11 +41,17 @@
           disabled="{{exporting}}"
           bindtap="onDownloadRouteExport">下载 TCX</button>
       </view>
-      <button class="export-help-button" bindtap="onShowExportHelp">怎么导入码表</button>
+      <button class="export-help-button" bindtap="onShowExportHelp">两步导入</button>
       <view wx:if="{{lastExportFilename}}" class="export-result">
-        已下载 {{lastExportFilename}}。可发送到微信，再去 Garmin Connect / iGPSPORT / 顽鹿 / Wahoo 导入。
+        <view class="export-result-label">已下载</view>
+        <view class="export-result-name">{{lastExportFilename}}</view>
+        <view class="export-result-tip">下一步把文件发给自己，再去码表 App 导入。</view>
       </view>
-      <button wx:if="{{lastExportTempPath}}" class="export-share-button" bindtap="onShareLastExport">发送文件到微信</button>
+      <view wx:if="{{lastExportTempPath}}" class="export-next-actions">
+        <button class="export-share-button" bindtap="onShareLastExport">发送到微信</button>
+        <button class="export-copy-button" bindtap="onCopyLastExportLink">复制下载链接</button>
+      </view>
+      <view wx:if="{{exportSendFailed}}" class="export-fallback">{{exportSendError}}</view>
     </view>
     <view wx:elif="{{exportHint}}" class="export-hint">{{exportHint}}</view>
 

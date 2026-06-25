@@ -240,6 +240,22 @@ def test_route_detail_uses_free_paper_canvas_for_display_route_map():
     assert ".route-map-overlay" not in wxss
 
 
+def test_route_detail_export_flow_has_clear_fallback_actions():
+    js = _read(MINI / "pages" / "route-detail" / "route-detail.js")
+    wxml = _read(MINI / "pages" / "route-detail" / "route-detail.wxml")
+    api = _read(MINI / "utils" / "api.js")
+
+    assert "promptShareExportFile" not in js
+    assert "lastExportDownloadUrl" in js
+    assert "onCopyLastExportLink" in js
+    assert "showExportSendFallback" in js
+    assert "复制下载链接" in wxml
+    assert "两步导入" in wxml
+    assert "wx.env.USER_DATA_PATH" in api
+    assert "filePath: localPath" in api
+    assert "err && err.errMsg" in api
+
+
 def test_meetup_detail_uses_free_paper_canvas_for_display_route_map():
     js = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.js")
     wxml = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.wxml")
