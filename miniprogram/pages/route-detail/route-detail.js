@@ -333,9 +333,10 @@ Page({
           .then(function (downloadedFile) {
             var tempFilePath = downloadedFile && downloadedFile.tempFilePath
             var savedFilePath = downloadedFile && downloadedFile.savedFilePath
+            var shareFilePath = downloadedFile && downloadedFile.filePath
             that.setData({
               lastExportFilename: exportInfo.filename,
-              lastExportTempPath: tempFilePath || (downloadedFile && downloadedFile.filePath) || '',
+              lastExportTempPath: shareFilePath || tempFilePath || '',
               lastExportSavedPath: savedFilePath || '',
               lastExportDownloadUrl: api.resolveUrl(exportInfo.download_url),
             })
@@ -370,7 +371,7 @@ Page({
   },
 
   onShareLastExport: function () {
-    this.shareExportFile(this.data.lastExportTempPath, this.data.lastExportFilename)
+    this.shareExportFile(this.data.lastExportSavedPath || this.data.lastExportTempPath, this.data.lastExportFilename)
   },
 
   showExportSendFallback: function (err) {

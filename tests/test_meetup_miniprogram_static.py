@@ -258,6 +258,8 @@ def test_route_detail_export_flow_has_clear_fallback_actions():
     assert "saveDownloadedFile" in api
     assert "tempFilePath: tempFilePath" in api
     assert "savedFilePath: savedFilePath" in api
+    assert "filePath: savedFilePath || tempFilePath" in api
+    assert "lastExportSavedPath || this.data.lastExportTempPath" in js
     assert "开发者工具不支持发送文件，请用真机测试" in api
     assert "wx.getFileSystemManager" in api
     assert "err && err.errMsg" in api

@@ -214,7 +214,7 @@ function downloadFile(url, fileName) {
             resolve({
               tempFilePath: tempFilePath,
               savedFilePath: savedFilePath,
-              filePath: tempFilePath,
+              filePath: savedFilePath || tempFilePath,
             })
           })
           return
