@@ -120,6 +120,7 @@ Page({
     lastExportDownloadUrl: '',
     exportSendFailed: false,
     exportSendError: '',
+    exportSendRawMessage: '',
   },
 
   onLoad: function (options) {
@@ -324,6 +325,7 @@ Page({
       lastExportDownloadUrl: '',
       exportSendFailed: false,
       exportSendError: '',
+      exportSendRawMessage: '',
     })
     api.createRouteExport(guide.route_book_id, format, 'generic')
       .then(function (exportInfo) {
@@ -356,7 +358,7 @@ Page({
       wx.showToast({ title: '请先下载路线文件', icon: 'none' })
       return
     }
-    this.setData({ exportSendFailed: false, exportSendError: '' })
+    this.setData({ exportSendFailed: false, exportSendError: '', exportSendRawMessage: '' })
     var that = this
     api.shareRouteExportFile(filePath, fileName)
       .then(function () {
@@ -377,7 +379,8 @@ Page({
     }
     this.setData({
       exportSendFailed: true,
-      exportSendError: (err && err.message) || '微信没有打开文件发送面板。不影响导入，直接复制链接到浏览器下载。',
+      exportSendError: (err && err.message) || '微信没能发送文件。复制下载链接，用浏览器下载后导入码表 App。',
+      exportSendRawMessage: (err && err.rawMessage) || '',
     })
     wx.showToast({ title: '发送失败，请复制链接', icon: 'none' })
   },
@@ -400,7 +403,7 @@ Page({
   onShowExportHelp: function () {
     wx.showModal({
       title: '两步导入',
-      content: '1. 点“复制下载链接”，到手机浏览器打开下载文件。\n2. 打开 Garmin / iGPSPORT / 顽鹿 / Wahoo 的路线导入，选择这个文件。\n\n“尝试发送微信”只是备用入口，部分微信版本打不开。',
+      content: '1. 点“复制下载链接”，到手机浏览器打开下载文件。\n2. 打开 Garmin / iGPSPORT / 顽鹿 / Wahoo 的路线导入，选择这个文件。\n\n“发送到微信”是备用入口，部分微信版本打不开。',
       showCancel: false,
       confirmText: '知道了',
     })

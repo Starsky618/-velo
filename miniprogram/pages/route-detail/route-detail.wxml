@@ -49,7 +49,7 @@
       </view>
       <view wx:if="{{lastExportTempPath}}" class="export-next-actions">
         <button class="export-copy-button primary" bindtap="onCopyLastExportLink">复制下载链接</button>
-        <button class="export-share-button secondary" bindtap="onShareLastExport">尝试发送微信</button>
+        <button class="export-share-button secondary" bindtap="onShareLastExport">发送到微信</button>
       </view>
       <view wx:if="{{exportSendFailed}}" class="export-fallback">{{exportSendError}}</view>
     </view>
