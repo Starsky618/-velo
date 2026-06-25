@@ -116,6 +116,7 @@ Page({
     exportingFormat: '',
     lastExportFilename: '',
     lastExportTempPath: '',
+    lastExportSavedPath: '',
     lastExportDownloadUrl: '',
     exportSendFailed: false,
     exportSendError: '',
@@ -157,6 +158,7 @@ Page({
           exportHint: exportBlockHint(guide),
           lastExportFilename: '',
           lastExportTempPath: '',
+          lastExportSavedPath: '',
           loading: false,
           // 折叠区大图不在 onLoad 画：全折叠态下 canvas 在 hidden 祖先里画了也是空白——
           // 唯一生效的绘制时机是 toggleSection 展开「核心数据」那一刻（集成审 I1）。
@@ -318,6 +320,7 @@ Page({
       exportingFormat: format,
       lastExportFilename: '',
       lastExportTempPath: '',
+      lastExportSavedPath: '',
       lastExportDownloadUrl: '',
       exportSendFailed: false,
       exportSendError: '',
@@ -325,10 +328,13 @@ Page({
     api.createRouteExport(guide.route_book_id, format, 'generic')
       .then(function (exportInfo) {
         return api.downloadRouteExport(exportInfo.download_url, exportInfo.filename)
-          .then(function (localFilePath) {
+          .then(function (downloadedFile) {
+            var tempFilePath = downloadedFile && downloadedFile.tempFilePath
+            var savedFilePath = downloadedFile && downloadedFile.savedFilePath
             that.setData({
               lastExportFilename: exportInfo.filename,
-              lastExportTempPath: localFilePath,
+              lastExportTempPath: tempFilePath || (downloadedFile && downloadedFile.filePath) || '',
+              lastExportSavedPath: savedFilePath || '',
               lastExportDownloadUrl: api.resolveUrl(exportInfo.download_url),
             })
             wx.showToast({ title: '路线文件已下载', icon: 'success' })
@@ -371,7 +377,7 @@ Page({
     }
     this.setData({
       exportSendFailed: true,
-      exportSendError: '微信没有打开文件发送面板。不影响导入，直接复制链接到浏览器下载。',
+      exportSendError: (err && err.message) || '微信没有打开文件发送面板。不影响导入，直接复制链接到浏览器下载。',
     })
     wx.showToast({ title: '发送失败，请复制链接', icon: 'none' })
   },

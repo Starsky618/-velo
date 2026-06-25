@@ -209,7 +209,14 @@ function downloadFile(url, fileName) {
       },
       success: function (res) {
         if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
-          saveDownloadedFile(res.tempFilePath, fileName).then(resolve)
+          var tempFilePath = res.tempFilePath
+          saveDownloadedFile(tempFilePath, fileName).then(function (savedFilePath) {
+            resolve({
+              tempFilePath: tempFilePath,
+              savedFilePath: savedFilePath,
+              filePath: tempFilePath,
+            })
+          })
           return
         }
         var message = '文件下载失败'
@@ -259,10 +266,15 @@ function shareFile(filePath, fileName) {
         resolve(res)
       },
       fail: function (err) {
+        var rawMessage = err && err.errMsg
+        var message = '微信没有打开发送面板'
+        if (rawMessage && rawMessage.indexOf('开发者工具暂时不支持') >= 0) {
+          message = '开发者工具不支持发送文件，请用真机测试'
+        }
         reject({
           code: -1,
-          message: '微信没有打开发送面板',
-          rawMessage: err && err.errMsg,
+          message: message,
+          rawMessage: rawMessage,
         })
       },
     })

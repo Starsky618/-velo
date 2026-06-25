@@ -255,6 +255,9 @@ def test_route_detail_export_flow_has_clear_fallback_actions():
     assert "两步导入" in wxml
     assert "wx.env.USER_DATA_PATH" in api
     assert "saveDownloadedFile" in api
+    assert "tempFilePath: tempFilePath" in api
+    assert "savedFilePath: savedFilePath" in api
+    assert "开发者工具不支持发送文件，请用真机测试" in api
     assert "wx.getFileSystemManager" in api
     assert "err && err.errMsg" in api
 
