@@ -232,29 +232,26 @@
   margin-top: 14rpx;
 }
 
+.export-copy-button,
 .export-share-button {
   flex: 1;
   height: 72rpx;
   border-radius: 20rpx;
-  background: #1c1c1e;
-  color: #ffffff;
   font-size: 27rpx;
   font-weight: 600;
   line-height: 72rpx;
   padding: 0;
 }
 
-.export-copy-button {
-  flex: 1;
-  height: 72rpx;
-  border-radius: 20rpx;
+.export-copy-button.primary {
+  background: #1c1c1e;
+  color: #ffffff;
+}
+
+.export-share-button.secondary {
   background: #ffffff;
   color: #1c1c1e;
   border: 1rpx solid #d1d1d6;
-  font-size: 27rpx;
-  font-weight: 600;
-  line-height: 72rpx;
-  padding: 0;
 }
 
 .export-fallback {

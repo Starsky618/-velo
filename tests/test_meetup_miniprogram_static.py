@@ -250,6 +250,8 @@ def test_route_detail_export_flow_has_clear_fallback_actions():
     assert "onCopyLastExportLink" in js
     assert "showExportSendFallback" in js
     assert "复制下载链接" in wxml
+    assert wxml.index("复制下载链接") < wxml.index("尝试发送微信")
+    assert "先生成路线文件" in wxml
     assert "两步导入" in wxml
     assert "wx.env.USER_DATA_PATH" in api
     assert "saveDownloadedFile" in api

@@ -25,7 +25,7 @@
     <view wx:if="{{guide.export_ready}}" class="export-card">
       <view class="export-head">
         <view class="export-title">导出到码表</view>
-        <view class="export-subtitle">先下载路线文件，再发到微信或复制链接</view>
+        <view class="export-subtitle">先生成路线文件，再复制链接到浏览器下载</view>
       </view>
       <view class="export-actions">
         <button
@@ -45,11 +45,11 @@
       <view wx:if="{{lastExportFilename}}" class="export-result">
         <view class="export-result-label">已下载</view>
         <view class="export-result-name">{{lastExportFilename}}</view>
-        <view class="export-result-tip">下一步把文件发给自己，再去码表 App 导入。</view>
+        <view class="export-result-tip">下一步复制链接，用手机浏览器打开，再去码表 App 导入。</view>
       </view>
       <view wx:if="{{lastExportTempPath}}" class="export-next-actions">
-        <button class="export-share-button" bindtap="onShareLastExport">发送到微信</button>
-        <button class="export-copy-button" bindtap="onCopyLastExportLink">复制下载链接</button>
+        <button class="export-copy-button primary" bindtap="onCopyLastExportLink">复制下载链接</button>
+        <button class="export-share-button secondary" bindtap="onShareLastExport">尝试发送微信</button>
       </view>
       <view wx:if="{{exportSendFailed}}" class="export-fallback">{{exportSendError}}</view>
     </view>

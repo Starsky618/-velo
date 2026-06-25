@@ -151,6 +151,24 @@ def test_public_route_export_creates_downloadable_gpx_without_leaking_file_id(cl
     assert b"TrainingCenterDatabase" not in download.content
 
 
+def test_public_route_export_created_by_login_user_still_downloads_without_auth(client, db, auth_header, test_user, monkeypatch):
+    route, _version = _route_with_current_version(db, test_user.id)
+    monkeypatch.setattr("app.route_book.export_workflow._storage", _FakeExportStorage())
+
+    created = client.post(
+        f"/api/route-books/{route.id}/exports",
+        json={"format": "gpx"},
+        headers=auth_header,
+    )
+    assert created.status_code == 200
+
+    download = client.get(created.json()["download_url"])
+
+    assert download.status_code == 200
+    assert download.headers["content-type"].startswith("application/gpx+xml")
+    assert b"<gpx" in download.content
+
+
 def test_creator_can_export_private_route_but_anonymous_cannot(client, db, auth_header, test_user, monkeypatch):
     route, _version = _route_with_current_version(
         db,

@@ -73,8 +73,8 @@ def can_download_export_artifact(
     """
     判断当前用户能不能下载某个导出产物。
 
-    默认只放行两类人：管理员、当时发起这次导出的用户。这样公开路线也不会把
-    别人的 `file_id` 变成公共链接；路线主人要下载，也应创建自己的导出任务。
+    公开且已发布的路线本来就是给骑友传播的，所以只要 artifact/job/route 三者
+    对得上，就允许匿名下载。私密路线仍只放行管理员或当时发起导出的用户。
     """
     if artifact is None:
         return False
@@ -86,12 +86,11 @@ def can_download_export_artifact(
         return False
     if is_admin:
         return True
+    if _route_is_public(route):
+        return True
 
     requester_id = getattr(job, "requester_id", None)
     if requester_id is not None and requester_id == current_user_id:
-        return True
-
-    if requester_id is None and _route_is_public(route):
         return True
 
     return False

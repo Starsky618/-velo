@@ -371,9 +371,9 @@ Page({
     }
     this.setData({
       exportSendFailed: true,
-      exportSendError: '微信没有打开发送面板。点“复制下载链接”，到手机浏览器粘贴打开。',
+      exportSendError: '微信没有打开文件发送面板。不影响导入，直接复制链接到浏览器下载。',
     })
-    wx.showToast({ title: '发送失败，可复制链接', icon: 'none' })
+    wx.showToast({ title: '发送失败，请复制链接', icon: 'none' })
   },
 
   onCopyLastExportLink: function () {
@@ -394,7 +394,7 @@ Page({
   onShowExportHelp: function () {
     wx.showModal({
       title: '两步导入',
-      content: '1. 点“发送到微信”，把文件发给自己。\n2. 打开 Garmin / iGPSPORT / 顽鹿 / Wahoo 的路线导入，选择这个文件。\n\n发不出去时，点“复制下载链接”，到手机浏览器粘贴打开。',
+      content: '1. 点“复制下载链接”，到手机浏览器打开下载文件。\n2. 打开 Garmin / iGPSPORT / 顽鹿 / Wahoo 的路线导入，选择这个文件。\n\n“尝试发送微信”只是备用入口，部分微信版本打不开。',
       showCancel: false,
       confirmText: '知道了',
     })
