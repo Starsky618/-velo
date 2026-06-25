@@ -28,16 +28,16 @@ def can_export_route(
     if is_admin:
         return True
 
+    visibility = getattr(route, "visibility", None)
+    publish_status = getattr(route, "publish_status", None)
+    if visibility == "public" and publish_status == "published":
+        return True
+
     route_owner_id = getattr(route, "creator_id", None)
     if current_user_id is not None and route_owner_id == current_user_id:
         return True
     if current_user_id is None:
         return False
-
-    visibility = getattr(route, "visibility", None)
-    publish_status = getattr(route, "publish_status", None)
-    if visibility == "public" and publish_status == "published":
-        return True
 
     if visibility == "unlisted" and publish_status == "published":
         return _share_link_can_export(share_link, route_id=getattr(route, "id", None), now=now)
@@ -80,13 +80,18 @@ def can_download_export_artifact(
         return False
     if not _artifact_matches_route(artifact, route):
         return False
+    if not _artifact_matches_job(artifact, job):
+        return False
+    if _is_expired(getattr(artifact, "expires_at", None), now=None):
+        return False
     if is_admin:
         return True
-    if current_user_id is None:
-        return False
 
     requester_id = getattr(job, "requester_id", None)
     if requester_id is not None and requester_id == current_user_id:
+        return True
+
+    if requester_id is None and _route_is_public(route):
         return True
 
     return False
@@ -100,6 +105,34 @@ def _artifact_matches_route(artifact: Any, route: Any | None) -> bool:
     if artifact_route_id is None or route_id is None:
         return True
     return artifact_route_id == route_id
+
+
+def _artifact_matches_job(artifact: Any, job: Any | None) -> bool:
+    if job is None:
+        return False
+    checks = (
+        ("export_job_id", "id"),
+        ("route_book_id", "route_book_id"),
+        ("route_version_id", "route_version_id"),
+        ("format", "export_format"),
+    )
+    for artifact_attr, job_attr in checks:
+        artifact_value = getattr(artifact, artifact_attr, None)
+        job_value = getattr(job, job_attr, None)
+        if artifact_value is None or job_value is None:
+            return False
+        if artifact_value != job_value:
+            return False
+    return True
+
+
+def _route_is_public(route: Any | None) -> bool:
+    if route is None:
+        return False
+    return (
+        getattr(route, "visibility", None) == "public"
+        and getattr(route, "publish_status", None) == "published"
+    )
 
 
 def assert_can_download_export_artifact(

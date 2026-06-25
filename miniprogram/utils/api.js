@@ -163,6 +163,57 @@ function buildQuery(params) {
   return parts.length > 0 ? '?' + parts.join('&') : ''
 }
 
+function absoluteUrl(url) {
+  if (/^https?:\/\//.test(url)) return url
+  var app = getAppSafe()
+  var baseUrl = (app && app.globalData.baseUrl) || BASE_URL
+  return baseUrl + url
+}
+
+function downloadFile(url) {
+  var app = getAppSafe()
+  var token = app && app.globalData.token
+  return new Promise(function (resolve, reject) {
+    wx.downloadFile({
+      url: absoluteUrl(url),
+      header: {
+        'Authorization': token ? 'Bearer ' + token : '',
+      },
+      success: function (res) {
+        if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
+          resolve(res.tempFilePath)
+          return
+        }
+        var message = '文件下载失败'
+        if (res.statusCode === 403) message = '你没有权限下载这条路线'
+        if (res.statusCode === 404) message = '下载文件不存在'
+        if (res.statusCode >= 500) message = '服务器开小差了，请稍后重试'
+        reject({ code: res.statusCode || -1, message: message })
+      },
+      fail: function () {
+        reject({ code: -1, message: '网络连接失败，请检查网络' })
+      },
+    })
+  })
+}
+
+function shareFile(filePath, fileName) {
+  return new Promise(function (resolve, reject) {
+    if (typeof wx.shareFileMessage !== 'function') {
+      reject({ code: -2, message: '当前微信版本不支持发送文件' })
+      return
+    }
+    wx.shareFileMessage({
+      filePath: filePath,
+      fileName: fileName,
+      success: resolve,
+      fail: function () {
+        reject({ code: -1, message: '发送文件失败' })
+      },
+    })
+  })
+}
+
 // 快捷方法：api.get('/path')、api.post('/path', data)
 module.exports = {
   // v4 扩展：get 支持可选 params 对象（不传则等同旧行为，向后兼容）
@@ -460,6 +511,21 @@ module.exports = {
 
   createRouteBookFromTencentDirection: function (payload) {
     return request('/api/route-books/tencent-direction', 'POST', payload)
+  },
+
+  createRouteExport: function (routeBookId, format, targetPlatform) {
+    return request('/api/route-books/' + routeBookId + '/exports', 'POST', {
+      format: format,
+      target_platform: targetPlatform || 'generic',
+    })
+  },
+
+  downloadRouteExport: function (downloadUrl) {
+    return downloadFile(downloadUrl)
+  },
+
+  shareRouteExportFile: function (filePath, fileName) {
+    return shareFile(filePath, fileName)
   },
 
   /**

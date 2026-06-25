@@ -76,6 +76,23 @@ function buildStats(guide) {
   return stats
 }
 
+function exportBlockHint(guide) {
+  if (!guide || guide.export_ready) return ''
+  if (guide.export_block_reason === 'no_route_book' || guide.export_block_reason === 'no_current_version') {
+    return '这条路线还没有可下载轨迹'
+  }
+  return ''
+}
+
+function exportErrorMessage(err) {
+  var code = err && err.code
+  if (code === 403) return '这条路线暂时不能下载'
+  if (code === 422) return '这条路线还没有可下载轨迹'
+  if (code === -1) return '网络失败，请稍后再试'
+  if (code >= 500) return '服务器开小差了，请稍后再试'
+  return (err && err.message) || '下载失败，请稍后再试'
+}
+
 Page({
   data: {
     guideId: null,
@@ -94,6 +111,11 @@ Page({
     routePreviewMarkers: [],
     routePreviewPolylines: [],
     routePreviewIncludePoints: [],
+    exportHint: '',
+    exporting: false,
+    exportingFormat: '',
+    lastExportFilename: '',
+    lastExportTempPath: '',
   },
 
   onLoad: function (options) {
@@ -129,6 +151,9 @@ Page({
             .filter(Boolean),
           hasElevation: hasElevation,
           routeStats: buildStats(guide),
+          exportHint: exportBlockHint(guide),
+          lastExportFilename: '',
+          lastExportTempPath: '',
           loading: false,
           // 折叠区大图不在 onLoad 画：全折叠态下 canvas 在 hidden 祖先里画了也是空白——
           // 唯一生效的绘制时机是 toggleSection 展开「核心数据」那一刻（集成审 I1）。
@@ -273,6 +298,86 @@ Page({
     var urls = this.data.gallerySrcs || []
     if (!src || !urls.length) return
     wx.previewImage({ current: src, urls: urls })
+  },
+
+  onDownloadRouteExport: function (event) {
+    var format = event.currentTarget.dataset.format
+    var guide = this.data.guide
+    if (!format || this.data.exporting) return
+    if (!guide || !guide.export_ready || !guide.route_book_id) {
+      wx.showToast({ title: '这条路线还没有可下载轨迹', icon: 'none' })
+      return
+    }
+
+    var that = this
+    this.setData({
+      exporting: true,
+      exportingFormat: format,
+      lastExportFilename: '',
+      lastExportTempPath: '',
+    })
+    api.createRouteExport(guide.route_book_id, format, 'generic')
+      .then(function (exportInfo) {
+        return api.downloadRouteExport(exportInfo.download_url)
+          .then(function (tempFilePath) {
+            that.setData({
+              lastExportFilename: exportInfo.filename,
+              lastExportTempPath: tempFilePath,
+            })
+            that.promptShareExportFile(tempFilePath, exportInfo.filename)
+          })
+      })
+      .catch(function (err) {
+        wx.showToast({ title: exportErrorMessage(err), icon: 'none' })
+      })
+      .then(function () {
+        that.setData({
+          exporting: false,
+          exportingFormat: '',
+        })
+      })
+  },
+
+  promptShareExportFile: function (filePath, fileName) {
+    var that = this
+    wx.showModal({
+      title: '路线文件已下载',
+      content: '下一步可以把文件发送到微信聊天或文件传输助手，再从聊天文件或目标 App 的路线导入页选择它。\n\n如果目标 App 没出现，打开 Garmin Connect / iGPSPORT / 顽鹿 / Wahoo 的路书导入页手动选择文件。',
+      cancelText: '稍后',
+      confirmText: '发送文件',
+      success: function (res) {
+        if (res.confirm) {
+          that.shareExportFile(filePath, fileName)
+        }
+      },
+    })
+  },
+
+  shareExportFile: function (filePath, fileName) {
+    if (!filePath) {
+      wx.showToast({ title: '请先下载路线文件', icon: 'none' })
+      return
+    }
+    api.shareRouteExportFile(filePath, fileName)
+      .then(function () {
+        wx.showToast({ title: '文件已发出', icon: 'success' })
+      })
+      .catch(function (err) {
+        wx.showToast({ title: (err && err.message) || '发送文件失败', icon: 'none' })
+      })
+  },
+
+  onShareLastExport: function () {
+    this.shareExportFile(this.data.lastExportTempPath, this.data.lastExportFilename)
+  },
+
+  onShowExportHelp: function () {
+    wx.showModal({
+      title: '怎么导入码表',
+      content: '先下载 GPX 或 TCX 文件，再发送到微信聊天或文件传输助手。\n\nGarmin Connect / iGPSPORT / 顽鹿 / Wahoo 通常都在“路线/路书/导入”里选择文件。\n\n如果打开列表里没有目标 App，就进目标 App 的导入页手动选刚下载的文件。',
+      showCancel: false,
+      confirmText: '知道了',
+    })
   },
 
   onStartMeetup: function () {

@@ -23,6 +23,7 @@ def _disable_tencent_direction_rate_limit(monkeypatch):
     # 路书业务测试像“模拟考场”：每题应只考本题逻辑，不能被真实 Redis 里的旧限流计数串扰。
     # 专门的限流测试会在测试函数内再次 monkeypatch，单独验证 router 是否按正确参数调用限流门卫。
     monkeypatch.setattr("app.route_book.router.check_rate_limit_by_user", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.route_book.router.check_rate_limit_by_ip", lambda *args, **kwargs: None)
 
 
 def test_generic_create_source_excludes_tencent_direction():
@@ -55,6 +56,177 @@ def _activity(db, user_id: int, **overrides):
     ])
     db.commit()
     return activity
+
+
+def _route_with_current_version(db, creator_id: int | None, **overrides):
+    from app.route_book.models import RouteBook, RouteVersion
+
+    line = "SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)"
+    data = {
+        "creator_id": creator_id,
+        "name": "公开可下载路线",
+        "distance": 42000.0,
+        "climb": 580.0,
+        "reference_line": line,
+        "source": "file_upload",
+        "file_id": "original/private-source.gpx",
+        "file_type": "gpx",
+        "source_activity_id": None,
+        "city": "taiyuan",
+        "visibility": "public",
+        "publish_status": "published",
+    }
+    data.update(overrides)
+    route = RouteBook(**data)
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+
+    version = RouteVersion(
+        route_book_id=route.id,
+        version_no=1,
+        status="current",
+        created_by=creator_id,
+        geometry_source=route.source,
+        navigation_status="ready",
+        reference_line_snapshot=line,
+        line_hash=f"hash-{route.id}",
+        distance=route.distance,
+        climb=route.climb,
+        point_count=2,
+    )
+    db.add(version)
+    db.commit()
+    db.refresh(version)
+    route.current_version_id = version.id
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+    return route, version
+
+
+class _FakeExportStorage:
+    def __init__(self):
+        self.files = {}
+        self.uploads = []
+
+    def upload(self, file_bytes, filename, subdir=""):
+        assert file_bytes.startswith(b"<?xml")
+        file_id = f"{subdir}/{filename}" if subdir else filename
+        self.files[file_id] = file_bytes
+        self.uploads.append((file_id, filename, subdir))
+        return file_id
+
+    def download(self, file_id):
+        return self.files[file_id]
+
+
+def test_public_route_export_creates_downloadable_gpx_without_leaking_file_id(client, db, admin_user, monkeypatch):
+    route, version = _route_with_current_version(db, admin_user.id)
+    fake_storage = _FakeExportStorage()
+    monkeypatch.setattr("app.route_book.export_workflow._storage", fake_storage)
+
+    res = client.post(
+        f"/api/route-books/{route.id}/exports",
+        json={"format": "gpx", "target_platform": "garmin"},
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["route_book_id"] == route.id
+    assert body["route_version_id"] == version.id
+    assert body["format"] == "gpx"
+    assert body["filename"].endswith(f"-{route.id}-v{version.id}.gpx")
+    assert body["download_url"] == f"/api/route-books/{route.id}/exports/{body['artifact_id']}/download"
+    assert "file_id" not in body
+    assert fake_storage.uploads
+
+    download = client.get(body["download_url"])
+    assert download.status_code == 200
+    assert download.headers["content-type"].startswith("application/gpx+xml")
+    assert "attachment" in download.headers["content-disposition"]
+    assert ".gpx" in download.headers["content-disposition"]
+    assert not download.headers["content-type"].startswith("application/json")
+    assert b"<gpx" in download.content
+    assert b"TrainingCenterDatabase" not in download.content
+
+
+def test_creator_can_export_private_route_but_anonymous_cannot(client, db, auth_header, test_user, monkeypatch):
+    route, _version = _route_with_current_version(
+        db,
+        test_user.id,
+        name="我的私密路线",
+        visibility="private",
+        publish_status="draft",
+    )
+    monkeypatch.setattr("app.route_book.export_workflow._storage", _FakeExportStorage())
+
+    anonymous = client.post(f"/api/route-books/{route.id}/exports", json={"format": "tcx"})
+    assert anonymous.status_code == 403
+
+    owner = client.post(
+        f"/api/route-books/{route.id}/exports",
+        json={"format": "tcx", "target_platform": "wahoo"},
+        headers=auth_header,
+    )
+    assert owner.status_code == 200
+    assert owner.json()["format"] == "tcx"
+    assert "file_id" not in owner.json()
+
+
+def test_route_export_rejects_public_route_without_current_version(client, db, admin_user):
+    from app.route_book.models import RouteBook
+
+    route = RouteBook(
+        creator_id=admin_user.id,
+        name="只有壳没有轨迹",
+        distance=42000.0,
+        reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        source="file_upload",
+        source_activity_id=None,
+        city="taiyuan",
+        visibility="public",
+        publish_status="published",
+        current_version_id=None,
+    )
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+
+    res = client.post(f"/api/route-books/{route.id}/exports", json={"format": "gpx"})
+
+    assert res.status_code == 422
+    assert "没有可下载轨迹" in res.text
+
+
+def test_route_export_download_rejects_artifact_job_mismatch(client, db, admin_user, monkeypatch):
+    from app.route_book.models import RouteExportArtifact
+
+    route, _version = _route_with_current_version(db, admin_user.id)
+    monkeypatch.setattr("app.route_book.export_workflow._storage", _FakeExportStorage())
+    created = client.post(f"/api/route-books/{route.id}/exports", json={"format": "gpx"}).json()
+
+    artifact = db.query(RouteExportArtifact).filter(RouteExportArtifact.id == created["artifact_id"]).one()
+    artifact.export_job_id = artifact.export_job_id + 999
+    db.add(artifact)
+    db.commit()
+
+    res = client.get(created["download_url"])
+
+    assert res.status_code == 403
+
+
+def test_route_export_download_returns_404_when_storage_file_is_missing(client, db, admin_user, monkeypatch):
+    route, _version = _route_with_current_version(db, admin_user.id)
+    storage = _FakeExportStorage()
+    monkeypatch.setattr("app.route_book.export_workflow._storage", storage)
+    created = client.post(f"/api/route-books/{route.id}/exports", json={"format": "gpx"}).json()
+    storage.files.clear()
+
+    res = client.get(created["download_url"])
+
+    assert res.status_code == 404
+    assert "not found" in res.json()["detail"]
 
 
 def test_activity_derived_requires_source_activity_id(client, auth_header):

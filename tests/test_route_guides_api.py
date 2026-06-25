@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import text
 
-from app.route_book.models import RouteBook, RouteGuide
+from app.route_book.models import RouteBook, RouteGuide, RouteVersion
 
 
 def _create_route_guides_table(db):
@@ -36,6 +36,34 @@ def _route_book(db, name="天龙山路书"):
     db.refresh(route)
     route._preview_points_override = [[112.5, 37.8], [112.6, 37.9]]
     return route
+
+
+def _attach_current_version(db, route, **overrides):
+    data = {
+        "route_book_id": route.id,
+        "version_no": 1,
+        "status": "current",
+        "created_by": route.creator_id,
+        "geometry_source": route.source,
+        "navigation_status": "ready",
+        "reference_line_snapshot": "SRID=4326;LINESTRING(112.50 37.80, 112.60 37.90)",
+        "line_hash": "hash-" + str(route.id),
+        "distance": route.distance,
+        "climb": route.climb,
+        "point_count": 2,
+    }
+    data.update(overrides)
+    version = RouteVersion(
+        **data,
+    )
+    db.add(version)
+    db.commit()
+    db.refresh(version)
+    route.current_version_id = version.id
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+    return version
 
 
 def _guide(db, **overrides):
@@ -104,6 +132,72 @@ def test_detail_ready_true_returns_profile_preview_and_km_distance(client, db):
         assert body["climb"] == 456.0
         assert body["elevation_profile"] == [[0, 780], [3.5, 920], [12.34, 1100]]
         assert body["preview_points"] == [[112.5, 37.8], [112.6, 37.9]]
+        assert body["export_ready"] is False
+        assert body["export_formats"] == []
+        assert body["export_block_reason"] == "no_current_version"
+    finally:
+        _drop_route_guides_table(db)
+
+
+def test_detail_export_ready_only_for_public_published_current_version(client, db):
+    _create_route_guides_table(db)
+    try:
+        route = _route_book(db)
+        version = _attach_current_version(db, route)
+        guide = _guide(db, route_book_id=route.id, source_route_version_id=version.id)
+
+        res = client.get(f"/api/route-guides/{guide.id}")
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["ready"] is True
+        assert body["export_ready"] is True
+        assert body["export_formats"] == ["gpx", "tcx"]
+        assert body["export_block_reason"] is None
+    finally:
+        _drop_route_guides_table(db)
+
+
+def test_detail_export_not_ready_when_current_version_is_not_navigation_ready(client, db):
+    _create_route_guides_table(db)
+    try:
+        route = _route_book(db)
+        version = _attach_current_version(db, route, navigation_status="pending")
+        guide = _guide(db, route_book_id=route.id, source_route_version_id=version.id)
+
+        res = client.get(f"/api/route-guides/{guide.id}")
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["ready"] is True
+        assert body["export_ready"] is False
+        assert body["export_formats"] == []
+        assert body["export_block_reason"] == "no_current_version"
+    finally:
+        _drop_route_guides_table(db)
+
+
+def test_detail_export_block_reason_distinguishes_no_route_and_private_route(client, db):
+    _create_route_guides_table(db)
+    try:
+        no_route = _guide(db, name="只有文字的路线", route_book_id=None)
+        private_route = _route_book(db, name="未公开路线")
+        private_route.visibility = "private"
+        private_route.publish_status = "published"
+        _attach_current_version(db, private_route)
+        private_guide = _guide(db, name="挂着私密路书的路线", route_book_id=private_route.id)
+
+        no_route_body = client.get(f"/api/route-guides/{no_route.id}").json()
+        private_body = client.get(f"/api/route-guides/{private_guide.id}").json()
+
+        assert no_route_body["ready"] is False
+        assert no_route_body["export_ready"] is False
+        assert no_route_body["export_formats"] == []
+        assert no_route_body["export_block_reason"] == "no_route_book"
+        assert private_body["ready"] is True
+        assert private_body["export_ready"] is False
+        assert private_body["export_formats"] == []
+        assert private_body["export_block_reason"] == "not_public"
     finally:
         _drop_route_guides_table(db)
 
@@ -125,6 +219,9 @@ def test_detail_ready_false_keeps_content_but_hides_track_fields(client, db):
         assert body["climb"] is None
         assert body["elevation_profile"] is None
         assert body["preview_points"] is None
+        assert body["export_ready"] is False
+        assert body["export_formats"] == []
+        assert body["export_block_reason"] == "no_route_book"
     finally:
         _drop_route_guides_table(db)
 

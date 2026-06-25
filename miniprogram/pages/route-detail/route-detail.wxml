@@ -22,6 +22,33 @@
       <canvas canvas-id="elevation-thumb" class="elevation-thumb" hidden="{{!hasElevation}}"></canvas>
     </view>
 
+    <view wx:if="{{guide.export_ready}}" class="export-card">
+      <view class="export-head">
+        <view class="export-title">导出到码表</view>
+        <view class="export-subtitle">下载文件后，用目标 App 的路线导入页打开</view>
+      </view>
+      <view class="export-actions">
+        <button
+          class="export-button"
+          data-format="gpx"
+          loading="{{exportingFormat === 'gpx'}}"
+          disabled="{{exporting}}"
+          bindtap="onDownloadRouteExport">下载 GPX</button>
+        <button
+          class="export-button secondary"
+          data-format="tcx"
+          loading="{{exportingFormat === 'tcx'}}"
+          disabled="{{exporting}}"
+          bindtap="onDownloadRouteExport">下载 TCX</button>
+      </view>
+      <button class="export-help-button" bindtap="onShowExportHelp">怎么导入码表</button>
+      <view wx:if="{{lastExportFilename}}" class="export-result">
+        已下载 {{lastExportFilename}}。可发送到微信，再去 Garmin Connect / iGPSPORT / 顽鹿 / Wahoo 导入。
+      </view>
+      <button wx:if="{{lastExportTempPath}}" class="export-share-button" bindtap="onShareLastExport">发送文件到微信</button>
+    </view>
+    <view wx:elif="{{exportHint}}" class="export-hint">{{exportHint}}</view>
+
     <!-- 实景图横滑长廊：图片来自 content/routes/<路线>/（Tim 访达增删），点开全屏可翻页保存 -->
     <scroll-view wx:if="{{gallerySrcs.length}}" class="gallery-strip" scroll-x enable-flex="{{true}}" show-scrollbar="{{false}}">
       <image

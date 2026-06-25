@@ -18,6 +18,9 @@ RouteBookSource = Literal[
 ]
 RouteBookCreateSource = Literal["file_upload", "activity_derived"]
 RouteBookFileType = Literal["gpx", "fit"]
+RouteExportFormat = Literal["gpx", "tcx"]
+RouteExportTargetPlatform = Literal["generic", "garmin", "igpsport", "magene", "wahoo"]
+RouteExportBlockReason = Literal["no_route_book", "no_current_version", "not_public"]
 City = Literal["beijing", "shanghai", "hangzhou", "shenzhen", "chengdu", "taiyuan", "unknown"]
 RouteBookVisibility = Literal["private", "unlisted", "public"]
 RouteBookPublishStatus = Literal["draft", "published", "archived"]
@@ -47,6 +50,29 @@ class RouteBookListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[RouteBookResponse]
+
+
+class RouteExportCreateRequest(BaseModel):
+    """导出请求——用户点下载时只说想要哪种文件、偏向哪个码表品牌。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    format: RouteExportFormat
+    target_platform: RouteExportTargetPlatform | None = "generic"
+
+
+class RouteExportResponse(BaseModel):
+    """导出结果——只给下载地址，不把仓库内部 file_id 交给前端。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: int
+    artifact_id: int
+    route_book_id: int
+    route_version_id: int
+    format: RouteExportFormat
+    filename: str
+    download_url: str
 
 
 def route_book_response(route, viewer_user_id: int | None) -> RouteBookResponse:
@@ -102,6 +128,9 @@ class RouteGuideOut(BaseModel):
     distance: float | None = None
     climb: float | None = None
     preview_points: list[list[float]] | None = None
+    export_ready: bool
+    export_formats: list[RouteExportFormat] = Field(default_factory=list)
+    export_block_reason: RouteExportBlockReason | None = None
 
 
 class ActivityCandidateItem(BaseModel):

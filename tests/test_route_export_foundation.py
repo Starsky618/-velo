@@ -128,6 +128,63 @@ def test_route_export_artifact_model_keeps_internal_file_id_and_version_binding(
     } <= index_names
 
 
+def test_export_generator_builds_minimal_gpx_from_reference_line_snapshot():
+    from app.route_book.export_generator import generate_route_export
+
+    generated = generate_route_export(
+        route_name="天龙山<>路书",
+        reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        export_format="gpx",
+    )
+
+    text = generated.content.decode("utf-8")
+    assert generated.point_count == 2
+    assert generated.content_type == "application/gpx+xml"
+    assert "<gpx" in text
+    assert "<trk>" in text
+    assert "<trkseg>" in text
+    assert '<trkpt lat="37.8" lon="112.5">' in text
+    assert '<trkpt lat="37.9" lon="112.6">' in text
+    assert "<TrainingCenterDatabase" not in text
+
+
+def test_export_generator_builds_minimal_tcx_from_reference_line_snapshot():
+    from app.route_book.export_generator import generate_route_export
+
+    generated = generate_route_export(
+        route_name="汾河训练线",
+        reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        export_format="tcx",
+    )
+
+    text = generated.content.decode("utf-8")
+    assert generated.point_count == 2
+    assert generated.content_type == "application/vnd.garmin.tcx+xml"
+    assert "<TrainingCenterDatabase" in text
+    assert "<Courses>" in text
+    assert "<Course>" in text
+    assert "<Trackpoint>" in text
+    assert "<LatitudeDegrees>37.8</LatitudeDegrees>" in text
+    assert "<LongitudeDegrees>112.5</LongitudeDegrees>" in text
+    assert "<CoursePoint>" not in text
+    assert "<AltitudeMeters>" not in text
+
+
+def test_export_generator_rejects_routes_with_too_few_points():
+    from app.route_book.export_generator import generate_route_export
+
+    try:
+        generate_route_export(
+            route_name="坏路线",
+            reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8)",
+            export_format="gpx",
+        )
+    except ValueError as exc:
+        assert "至少需要 2 个坐标点" in str(exc)
+    else:
+        raise AssertionError("单点路线不该生成可下载文件")
+
+
 def test_route_export_permissions_keep_private_and_unlisted_routes_closed():
     from app.route_book.export_service import can_export_route
 
@@ -156,7 +213,7 @@ def test_route_export_permissions_keep_private_and_unlisted_routes_closed():
     assert can_export_route(private_route, current_user_id=stranger_id, is_admin=True)
     assert not can_export_route(private_route, current_user_id=stranger_id)
     assert can_export_route(public_route, current_user_id=stranger_id)
-    assert not can_export_route(public_route, current_user_id=None)
+    assert can_export_route(public_route, current_user_id=None)
     assert not can_export_route(unlisted_route, current_user_id=stranger_id)
 
     valid_share = SimpleNamespace(
@@ -188,13 +245,22 @@ def test_artifact_download_permission_never_exposes_someone_elses_file_id():
 
     artifact = SimpleNamespace(
         id=101,
+        export_job_id=201,
         route_book_id=7,
         route_version_id=9,
+        format="gpx",
         file_id="exports/secret-route.gpx",
+        expires_at=None,
     )
-    job = SimpleNamespace(requester_id=33)
-    route = SimpleNamespace(id=7, creator_id=44)
-    wrong_route = SimpleNamespace(id=8, creator_id=44)
+    job = SimpleNamespace(
+        id=201,
+        requester_id=33,
+        route_book_id=7,
+        route_version_id=9,
+        export_format="gpx",
+    )
+    route = SimpleNamespace(id=7, creator_id=44, visibility="private", publish_status="draft")
+    wrong_route = SimpleNamespace(id=8, creator_id=44, visibility="private", publish_status="draft")
 
     assert can_download_export_artifact(artifact, current_user_id=33, job=job, route=route)
     assert not can_download_export_artifact(artifact, current_user_id=33, job=job, route=wrong_route)
@@ -202,6 +268,40 @@ def test_artifact_download_permission_never_exposes_someone_elses_file_id():
     assert can_download_export_artifact(artifact, current_user_id=55, job=job, route=route, is_admin=True)
     assert not can_download_export_artifact(artifact, current_user_id=55, job=job, route=route)
     assert not can_download_export_artifact(artifact, current_user_id=None, job=job, route=route)
+
+
+def test_artifact_download_rejects_artifact_job_version_or_format_mismatch():
+    from app.route_book.export_service import can_download_export_artifact
+
+    route = SimpleNamespace(id=7, creator_id=44, visibility="public", publish_status="published")
+    artifact = SimpleNamespace(
+        id=101,
+        export_job_id=201,
+        route_book_id=7,
+        route_version_id=9,
+        format="gpx",
+        file_id="exports/secret-route.gpx",
+        expires_at=None,
+    )
+    job = SimpleNamespace(
+        id=201,
+        requester_id=None,
+        route_book_id=7,
+        route_version_id=9,
+        export_format="gpx",
+    )
+
+    assert can_download_export_artifact(artifact, current_user_id=None, job=job, route=route)
+
+    wrong_job_id = SimpleNamespace(**{**job.__dict__, "id": 202})
+    wrong_route_id = SimpleNamespace(**{**job.__dict__, "route_book_id": 8})
+    wrong_version = SimpleNamespace(**{**job.__dict__, "route_version_id": 10})
+    wrong_format = SimpleNamespace(**{**job.__dict__, "export_format": "tcx"})
+
+    assert not can_download_export_artifact(artifact, current_user_id=None, job=wrong_job_id, route=route)
+    assert not can_download_export_artifact(artifact, current_user_id=None, job=wrong_route_id, route=route)
+    assert not can_download_export_artifact(artifact, current_user_id=None, job=wrong_version, route=route)
+    assert not can_download_export_artifact(artifact, current_user_id=None, job=wrong_format, route=route)
 
 
 def test_batch3_migration_creates_export_tables_without_share_or_fit_scope():
