@@ -47,6 +47,28 @@ def test_backfill_script_requires_source_license_note_before_apply():
     assert "--source-license-note" in result.stderr
 
 
+def test_backfill_script_rejects_multiple_source_arguments():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "scripts/backfill_route_elevation.py",
+            "--route-book-id",
+            "1",
+            "--source-json",
+            "source.json",
+            "--use-route-source-activity",
+        ],
+        cwd=ROOT_DIR,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "not allowed with argument" in result.stderr
+
+
 def test_cli_reports_validation_error_as_json(tmp_path, db, monkeypatch, capsys):
     from scripts import backfill_route_elevation as script
 
@@ -94,6 +116,127 @@ def test_parse_igpsport_share_tracks_reads_altitude_and_longitute_typo():
     points = parse_igpsport_share_payload(payload)
 
     assert points == [[112.5, 37.8, 701.2], [112.6, 37.9, 735.8]]
+
+
+def test_source_points_from_activity_reads_trackpoint_elevation(db):
+    from app.activity.models import Activity, Trackpoint
+    from scripts.backfill_route_elevation import source_points_from_activity
+
+    activity = Activity(
+        user_id=1,
+        title="有海拔的骑行",
+        status="completed",
+        activity_type="cycling",
+        distance=1000.0,
+        elevation_gain=34.6,
+    )
+    db.add(activity)
+    db.flush()
+    db.add_all(
+        [
+            Trackpoint(activity_id=activity.id, seq=0, latitude=37.8, longitude=112.5, elevation=701.2),
+            Trackpoint(activity_id=activity.id, seq=1, latitude=37.9, longitude=112.6, elevation=735.8),
+        ]
+    )
+    db.commit()
+
+    points = source_points_from_activity(db, activity.id)
+
+    assert points == [[112.5, 37.8, 701.2], [112.6, 37.9, 735.8]]
+
+
+def test_source_points_from_activity_rejects_missing_elevation(db):
+    from app.activity.models import Activity, Trackpoint
+    from scripts.backfill_route_elevation import source_points_from_activity
+
+    activity = Activity(
+        user_id=1,
+        title="有缺口的骑行",
+        status="completed",
+        activity_type="cycling",
+        distance=1000.0,
+    )
+    db.add(activity)
+    db.flush()
+    db.add_all(
+        [
+            Trackpoint(activity_id=activity.id, seq=0, latitude=37.8, longitude=112.5, elevation=701.2),
+            Trackpoint(activity_id=activity.id, seq=1, latitude=37.85, longitude=112.55, elevation=None),
+            Trackpoint(activity_id=activity.id, seq=2, latitude=37.9, longitude=112.6, elevation=735.8),
+        ]
+    )
+    db.commit()
+
+    with pytest.raises(ValueError, match="每个轨迹点都必须有海拔"):
+        source_points_from_activity(db, activity.id)
+
+
+def test_use_route_source_activity_reads_bound_activity_points(db):
+    from app.activity.models import Activity, Trackpoint
+    from app.route_book.models import RouteBook
+    from scripts.backfill_route_elevation import load_source_points
+
+    activity = Activity(
+        user_id=1,
+        title="源活动",
+        status="completed",
+        activity_type="cycling",
+        distance=1000.0,
+    )
+    db.add(activity)
+    db.flush()
+    db.add_all(
+        [
+            Trackpoint(activity_id=activity.id, seq=0, latitude=37.8, longitude=112.5, elevation=701.2),
+            Trackpoint(activity_id=activity.id, seq=1, latitude=37.9, longitude=112.6, elevation=735.8),
+        ]
+    )
+    route = RouteBook(
+        name="活动生成路线",
+        distance=1000.0,
+        reference_line=WKTElement("SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)", srid=4326),
+        source="activity_derived",
+        source_activity_id=activity.id,
+        city="taiyuan",
+    )
+    db.add(route)
+    db.commit()
+
+    class Args:
+        source_json = None
+        use_route_source_activity = True
+        igpsport_route_id = None
+        igpsport_share_url = None
+
+    points = load_source_points(Args(), db=db, route_book_id=route.id)
+
+    assert points == [[112.5, 37.8, 701.2], [112.6, 37.9, 735.8]]
+
+
+def test_use_route_source_activity_requires_route_bound_activity(db):
+    from app.route_book.models import RouteBook
+    from scripts.backfill_route_elevation import load_source_points
+
+    route = RouteBook(
+        name="没有源活动的路线",
+        distance=1000.0,
+        reference_line=WKTElement("SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)", srid=4326),
+        file_id="source.gpx",
+        file_type="gpx",
+        source="file_upload",
+        city="taiyuan",
+    )
+    db.add(route)
+    db.commit()
+
+    class Args:
+        source_json = None
+        use_route_source_activity = True
+        igpsport_route_id = None
+        igpsport_share_url = None
+
+    with pytest.raises(ValueError, match="没有 source_activity_id"):
+        load_source_points(Args(), db=db, route_book_id=route.id)
 
 
 def test_project_precise_elevation_rejects_different_route():
@@ -216,6 +359,87 @@ def test_backfill_creates_new_route_version_and_preserves_old_version(db, monkey
     assert versions[1].elevation_points_snapshot == "[[112.5,37.8,701.2],[112.6,37.9,735.8]]"
     assert route.current_version_id == versions[1].id
     assert json.loads(route.elevation_profile) == [[0.0, 701.2], [1.0, 735.8]]
+
+
+def test_cli_route_source_activity_preserves_activity_elevation_gain(db, monkeypatch, capsys):
+    from app.activity.models import Activity, Trackpoint
+    from app.route_book.models import RouteBook, RouteVersion
+    from app.route_book.service import _line_hash
+    from scripts import backfill_route_elevation as script
+
+    activity = Activity(
+        user_id=1,
+        title="设备总爬升更可信",
+        status="completed",
+        activity_type="cycling",
+        distance=1000.0,
+        elevation_gain=12.3,
+    )
+    db.add(activity)
+    db.flush()
+    db.add_all(
+        [
+            Trackpoint(activity_id=activity.id, seq=0, latitude=37.8, longitude=112.5, elevation=100.0),
+            Trackpoint(activity_id=activity.id, seq=1, latitude=37.9, longitude=112.6, elevation=200.0),
+        ]
+    )
+    reference_line = "SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)"
+    route = RouteBook(
+        name="活动路线",
+        distance=1000.0,
+        climb=12.3,
+        reference_line=WKTElement(reference_line, srid=4326),
+        source="activity_derived",
+        source_activity_id=activity.id,
+        city="taiyuan",
+        line_hash=_line_hash(reference_line),
+    )
+    db.add(route)
+    db.flush()
+    old_version = RouteVersion(
+        route_book_id=route.id,
+        version_no=1,
+        status="current",
+        geometry_source="activity_derived",
+        navigation_status="ready",
+        reference_line_snapshot=WKTElement(reference_line, srid=4326),
+        line_hash=_line_hash(reference_line),
+        distance=1000.0,
+        climb=12.3,
+        elevation_profile=None,
+        elevation_points_snapshot=None,
+        point_count=2,
+    )
+    db.add(old_version)
+    db.flush()
+    route.current_version_id = old_version.id
+    db.commit()
+    route_id = route.id
+    monkeypatch.setattr(script, "SessionLocal", lambda: db)
+    monkeypatch.setattr(script, "reference_points_from_version", lambda _version: [[112.5, 37.8], [112.6, 37.9]])
+
+    script.main(
+        [
+            "--route-book-id",
+            str(route_id),
+            "--use-route-source-activity",
+            "--max-distance-m",
+            "5",
+            "--apply",
+            "--source-license-note",
+            "pytest fixture: user-owned activity trackpoints",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    route = db.query(RouteBook).filter_by(id=route_id).first()
+    versions = db.query(RouteVersion).filter_by(route_book_id=route_id).order_by(RouteVersion.version_no).all()
+
+    assert payload["climb_m"] == 12.3
+    assert payload["computed_climb_m"] == 100.0
+    assert route.climb == 12.3
+    assert versions[1].climb == 12.3
+    assert versions[1].elevation_points_snapshot == "[[112.5,37.8,100.0],[112.6,37.9,200.0]]"
 
 
 def test_backfill_dry_run_does_not_create_new_route_version(db, monkeypatch):

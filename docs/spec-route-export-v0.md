@@ -109,7 +109,7 @@
 
 ## 海拔数据优先级
 
-1. **VELO 原始逐点海拔**：来自用户上传 GPX/FIT 或已有活动 trackpoints，和路线点一一对应。导出时先用这份数据，让 Garmin / iGPSPORT / 迈金 / Wahoo 尽量读取 VELO 给出的海拔。
+1. **VELO 原始逐点海拔**：来自用户上传 GPX/FIT 或 route_book 绑定的源活动 trackpoints，和路线点一一对应。导出时先用这份数据，让 Garmin / iGPSPORT / 迈金 / Wahoo 尽量读取 VELO 给出的海拔。
 2. **VELO 合规高程补全**：后续只能接中国合法合规、可商用授权的高程数据源；没有授权前不把 DEM 猜测写成精确海拔。
 3. **目标 App 自行补算**：只有前两层都没有时才退回二维文件。这个模式最低优先级，因为不同厂商会用自己的高程库重算爬升，用户看到的数据会漂。
 
@@ -117,6 +117,8 @@
 
 - 对旧路线补海拔时，只接受同一路线的精确来源，例如原始 GPX/FIT、已有活动 trackpoints、或经几何匹配确认同线的公开路书数据。
 - `scripts/backfill_route_elevation.py` 是运维回填工具，默认 dry-run；只有 `--apply` 才会创建新版。
+- 如果路书本身由一次 VELO 骑行生成，优先用 `--use-route-source-activity` 从 `route_books.source_activity_id` 读取原始 trackpoints，不先求助第三方数据。
+- 源活动回填时，逐点海拔用于 GPX/TCX 导出；`route_books.climb` 和新版 `route_versions.climb` 优先沿用 `activities.elevation_gain`，避免用裸逐点高差覆盖设备/解析摘要口径。
 - `--apply` 必须附带来源/授权说明；能访问公开链接不等于 VELO 可以缓存并再分发这份海拔。
 - 外部来源的坐标只用于寻找高度，最终写入 `elevation_points_snapshot` 的坐标必须是 VELO 当前 `route_versions.reference_line_snapshot` 的坐标。
 - 几何匹配超过阈值时必须拒绝，不能为了让导出文件“看起来有海拔”而把另一条路线的高度贴上来。

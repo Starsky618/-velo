@@ -1,12 +1,13 @@
 """路线精确海拔回填工具——像验货员一样，只给同一条路线补高度。
 
-干啥用：当我们拿到 iGPSPORT 等外部来源的逐点海拔时，先确认它和 VELO 当前路线是同一条线，
-再创建一个新的 route_versions 版本，把高度贴到 VELO 自己的坐标点上。
+干啥用：当我们拿到 VELO 自有骑行记录、iGPSPORT 等外部来源的逐点海拔时，
+先确认它和 VELO 当前路线是同一条线，再创建一个新的 route_versions 版本，
+把高度贴到 VELO 自己的坐标点上。
 
 操作注意事项：默认 dry-run，不写数据库；只有加 `--apply` 才会真正创建新版。
 禁止用它把“看起来差不多”的路线硬补进库，匹配距离超阈值会直接拒绝。
 
-输入输出：输入 route_book_id + 外部轨迹 JSON/分享 routeId；输出回填摘要。
+输入输出：输入 route_book_id + 源活动 / 外部轨迹 JSON / 分享 routeId；输出回填摘要。
 写库时只更新 route_books.current_version_id / elevation_profile / climb，并新增一条 RouteVersion。
 """
 
@@ -29,7 +30,7 @@ if str(ROOT_DIR) not in sys.path:
 from geoalchemy2 import WKTElement
 from sqlalchemy.orm import Session
 
-from app.activity.models import Activity  # noqa: F401
+from app.activity.models import Activity, Trackpoint  # noqa: F401
 from app.database import SessionLocal
 from app.route_book.models import RouteBook, RouteVersion, _preview_points_from_wkb, _preview_points_from_wkt
 from app.user.models import User  # noqa: F401
@@ -57,6 +58,7 @@ class BackfillResult:
     new_version_id: int | None
     matched_point_count: int
     max_match_distance_m: float
+    computed_climb_m: float | None
     climb_m: float | None
     message: str
 
@@ -154,6 +156,7 @@ def apply_elevation_backfill(
     max_distance_m: float,
     commit: bool = False,
     source_license_note: str | None = None,
+    authoritative_climb_m: float | None = None,
 ) -> BackfillResult:
     """
     给一条 route_book 的当前版本补逐点海拔。
@@ -188,7 +191,8 @@ def apply_elevation_backfill(
     target_points = reference_points_from_version(version)
     projection = project_precise_elevation(target_points, source_points, max_distance_m=max_distance_m)
     elevation_snapshot = _compact_json(projection.elevation_points)
-    climb_m = calculate_climb_from_elevations(projection.elevation_points)
+    computed_climb_m = calculate_climb_from_elevations(projection.elevation_points)
+    climb_m = authoritative_climb_m if authoritative_climb_m is not None else computed_climb_m
     profile = _compact_json(
         build_elevation_profile(
             target_points,
@@ -205,6 +209,7 @@ def apply_elevation_backfill(
             new_version_id=None,
             matched_point_count=projection.matched_point_count,
             max_match_distance_m=projection.max_match_distance_m,
+            computed_climb_m=computed_climb_m,
             climb_m=climb_m,
             message="当前版本已经有相同逐点海拔，无需回填",
         )
@@ -217,6 +222,7 @@ def apply_elevation_backfill(
             new_version_id=None,
             matched_point_count=projection.matched_point_count,
             max_match_distance_m=projection.max_match_distance_m,
+            computed_climb_m=computed_climb_m,
             climb_m=climb_m,
             message="dry-run 通过：加 --apply 才会创建新版",
         )
@@ -255,6 +261,7 @@ def apply_elevation_backfill(
         new_version_id=new_version.id,
         matched_point_count=projection.matched_point_count,
         max_match_distance_m=projection.max_match_distance_m,
+        computed_climb_m=computed_climb_m,
         climb_m=climb_m,
         message="已创建带精确海拔的新路线版本",
     )
@@ -316,9 +323,17 @@ def build_elevation_profile(
     return profile
 
 
-def load_source_points(args: argparse.Namespace) -> list[list[float]]:
+def load_source_points(
+    args: argparse.Namespace,
+    *,
+    db: Session,
+    route_book_id: int,
+) -> list[list[float]]:
     if args.source_json:
         return parse_igpsport_share_payload(json.loads(Path(args.source_json).read_text(encoding="utf-8")))
+    if args.use_route_source_activity:
+        activity = _route_source_activity_or_raise(db, route_book_id)
+        return source_points_from_activity(db, activity.id)
 
     route_id = args.igpsport_route_id
     if args.igpsport_share_url:
@@ -326,7 +341,57 @@ def load_source_points(args: argparse.Namespace) -> list[list[float]]:
     if route_id:
         return parse_igpsport_share_payload(fetch_igpsport_share_payload(route_id))
 
-    raise ValueError("必须提供 --source-json、--igpsport-route-id 或 --igpsport-share-url")
+    raise ValueError(
+        "必须提供 --use-route-source-activity、--source-json、--igpsport-route-id 或 --igpsport-share-url"
+    )
+
+
+def source_points_from_activity(db: Session, activity_id: int) -> list[list[float]]:
+    activity = _activity_source_or_raise(db, activity_id)
+    trackpoints = (
+        db.query(Trackpoint)
+        .filter(Trackpoint.activity_id == activity_id)
+        .order_by(Trackpoint.seq.asc())
+        .all()
+    )
+    points: list[list[float]] = []
+    for point in trackpoints:
+        lon = _finite_float(point.longitude)
+        lat = _finite_float(point.latitude)
+        ele = _finite_float(point.elevation)
+        if lon is None or lat is None:
+            raise ValueError("activity 轨迹点坐标无效，不能作为精确海拔来源")
+        if ele is None:
+            raise ValueError("activity 每个轨迹点都必须有海拔，不能用邻近点伪补")
+        points.append([lon, lat, ele])
+    if len(points) < 2:
+        raise ValueError("activity 至少需要 2 个带海拔的轨迹点")
+    return points
+
+
+def load_authoritative_climb_m(args: argparse.Namespace, *, db: Session, route_book_id: int) -> float | None:
+    if not args.use_route_source_activity:
+        return None
+    activity = _route_source_activity_or_raise(db, route_book_id)
+    return _finite_float(activity.elevation_gain)
+
+
+def _route_source_activity_or_raise(db: Session, route_book_id: int) -> Activity:
+    route = db.query(RouteBook).filter(RouteBook.id == route_book_id).first()
+    if route is None:
+        raise LookupError("route_book not found")
+    if route.source_activity_id is None:
+        raise ValueError("route_book 没有 source_activity_id，不能使用源活动回填")
+    return _activity_source_or_raise(db, route.source_activity_id)
+
+
+def _activity_source_or_raise(db: Session, activity_id: int) -> Activity:
+    activity = db.query(Activity).filter(Activity.id == activity_id).first()
+    if activity is None:
+        raise LookupError("activity not found")
+    if activity.status != "completed" or activity.activity_type != "cycling":
+        raise ValueError("activity is not a completed cycling ride")
+    return activity
 
 
 def fetch_igpsport_share_payload(route_id: str) -> dict:
@@ -348,9 +413,15 @@ def fetch_igpsport_share_payload(route_id: str) -> dict:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Backfill precise elevation points for a VELO route version.")
     parser.add_argument("--route-book-id", type=int, required=True)
-    parser.add_argument("--source-json", help="saved iGPSPORT share JSON payload")
-    parser.add_argument("--igpsport-route-id", help="iGPSPORT public share routeId")
-    parser.add_argument("--igpsport-share-url", help="iGPSPORT public share URL")
+    source_group = parser.add_mutually_exclusive_group()
+    source_group.add_argument("--source-json", help="saved iGPSPORT share JSON payload")
+    source_group.add_argument(
+        "--use-route-source-activity",
+        action="store_true",
+        help="use route_books.source_activity_id as precise source",
+    )
+    source_group.add_argument("--igpsport-route-id", help="iGPSPORT public share routeId")
+    source_group.add_argument("--igpsport-share-url", help="iGPSPORT public share URL")
     parser.add_argument("--max-distance-m", type=float, default=35.0)
     parser.add_argument("--source-license-note", help="写库前必须说明来源、授权或用户自有数据依据")
     parser.add_argument("--apply", action="store_true", help="write a new route version; default is dry-run")
@@ -360,7 +431,8 @@ def main(argv: list[str] | None = None) -> None:
 
     db = SessionLocal()
     try:
-        source_points = load_source_points(args)
+        source_points = load_source_points(args, db=db, route_book_id=args.route_book_id)
+        authoritative_climb_m = load_authoritative_climb_m(args, db=db, route_book_id=args.route_book_id)
         result = apply_elevation_backfill(
             db,
             route_book_id=args.route_book_id,
@@ -368,6 +440,7 @@ def main(argv: list[str] | None = None) -> None:
             max_distance_m=args.max_distance_m,
             commit=args.apply,
             source_license_note=args.source_license_note,
+            authoritative_climb_m=authoritative_climb_m,
         )
         if args.apply:
             db.commit()
@@ -392,6 +465,7 @@ def main(argv: list[str] | None = None) -> None:
                 "new_version_id": result.new_version_id,
                 "matched_point_count": result.matched_point_count,
                 "max_match_distance_m": round(result.max_match_distance_m, 3),
+                "computed_climb_m": result.computed_climb_m,
                 "climb_m": result.climb_m,
                 "message": result.message,
             },

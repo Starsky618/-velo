@@ -37,6 +37,8 @@ VELO 导出路线的最高优先级，是保留同一条路线的原始逐点海
 
 - `scripts/backfill_route_elevation.py`
 - 默认 dry-run。
+- 路书如果绑定了 VELO 源活动，优先用 `--use-route-source-activity` 读取活动 trackpoints；这是比第三方公开路书更干净的来源。
+- 源活动回填时，逐点海拔给导出文件使用，总爬升沿用 `activities.elevation_gain`；dry-run 同时输出裸算 `computed_climb_m` 和最终写入 `climb_m`。
 - `--apply` 才写库，且必须填写来源/授权说明。
 - 几何不匹配直接拒绝。
 - 写库时创建新的 `route_versions`，旧版本归档，不改旧版本底片。
