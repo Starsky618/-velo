@@ -10,13 +10,15 @@
 输入输出：接 multipart/form 表单（含可选上传文件）→ 调 service → 返回 schemas 定义的 JSON。
 """
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user, get_optional_user
-from app.middleware.rate_limit import check_rate_limit_by_user
-from app.route_book import schemas, service
+from app.middleware.rate_limit import check_rate_limit_by_ip, check_rate_limit_by_user
+from app.route_book import export_workflow, schemas, service
 from app.route_book.tencent_direction import TencentMapConfigError, TencentMapError
 
 
@@ -104,6 +106,64 @@ def list_activity_candidates(
     return schemas.ActivityCandidateResponse(items=items)
 
 
+@router.post("/{route_book_id}/exports", response_model=schemas.RouteExportResponse)
+def create_route_export(
+    request: Request,
+    route_book_id: int,
+    payload: schemas.RouteExportCreateRequest,
+    current_user_id: int | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    check_rate_limit_by_ip(request, "route-book-export", limit=30, window_sec=300)
+    if current_user_id is not None:
+        check_rate_limit_by_user(current_user_id, "route-book-export", limit=30, window_sec=300)
+    try:
+        created = export_workflow.create_route_export(
+            db,
+            route_book_id=route_book_id,
+            export_format=payload.format,
+            target_platform=payload.target_platform,
+            current_user_id=current_user_id,
+        )
+        return schemas.RouteExportResponse(**created.__dict__)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.get("/{route_book_id}/exports/{artifact_id}/download")
+def download_route_export(
+    route_book_id: int,
+    artifact_id: int,
+    current_user_id: int | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        download = export_workflow.get_route_export_download(
+            db,
+            route_book_id=route_book_id,
+            artifact_id=artifact_id,
+            current_user_id=current_user_id,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    fallback = _ascii_filename(download.filename)
+    disposition = (
+        f'attachment; filename="{fallback}"; '
+        f"filename*=UTF-8''{quote(download.filename)}"
+    )
+    return Response(
+        content=download.content,
+        media_type=download.content_type,
+        headers={"Content-Disposition": disposition},
+    )
+
+
 @router.get("/{route_book_id}", response_model=schemas.RouteBookResponse)
 def get_route_book(
     route_book_id: int,
@@ -129,3 +189,9 @@ def delete_route_book(
         raise HTTPException(status_code=404, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+
+
+def _ascii_filename(filename: str) -> str:
+    safe = "".join(ch if ord(ch) < 128 and ch not in {'"', "\\", ";"} else "-" for ch in filename)
+    safe = safe.strip(" .-_")
+    return safe or "route-export"

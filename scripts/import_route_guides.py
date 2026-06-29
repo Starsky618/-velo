@@ -26,8 +26,13 @@ from app.database import SessionLocal
 from app.parsing.geo_math import haversine
 from app.parsing.gpx_parser import GPXParser
 from app.parsing.types import Trackpoint
-from app.route_book.models import RouteBook, RouteGuide  # noqa: F401
-from app.route_book.service import create_initial_route_version
+from app.route_book.models import RouteBook, RouteGuide, RouteVersion  # noqa: F401
+from app.route_book.service import (
+    _elevation_points_snapshot_from_points,
+    _line_hash,
+    _point_count_from_wkt,
+    create_initial_route_version,
+)
 from app.user.models import User  # noqa: F401
 
 
@@ -56,6 +61,7 @@ class ParsedTrack:
     climb: float | None
     reference_line: str
     elevation_profile: str | None
+    elevation_points_snapshot: str | None
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -215,7 +221,10 @@ def upsert_route(db, route: RouteInput) -> None:
                 geometry_source="file_upload",
                 created_by=None,
                 elevation_profile=parsed.elevation_profile,
+                elevation_points_snapshot=parsed.elevation_points_snapshot,
             )
+        else:
+            refresh_current_route_version(db, route_book, parsed)
         route_book_id = route_book.id
         elevation_profile = parsed.elevation_profile
 
@@ -258,7 +267,46 @@ def parse_track(
         elevation_profile=(
             json.dumps(downsample_elevation(points, cumulative), ensure_ascii=False) if has_elevation else None
         ),
+        elevation_points_snapshot=build_elevation_points_snapshot(points),
     )
+
+
+def refresh_current_route_version(db, route_book: RouteBook, parsed: ParsedTrack) -> RouteVersion:
+    """
+    重灌官方路线时刷新当前版本底片。
+
+    路书像一本会被重新校对的官方手册：内容文件重跑后，route_book 和
+    route_version 必须一起换成同一份轨迹底片，否则导出会继续拿旧数据。
+    """
+    version = (
+        db.query(RouteVersion)
+        .filter(RouteVersion.id == route_book.current_version_id, RouteVersion.route_book_id == route_book.id)
+        .first()
+    )
+    if version is None:
+        return create_initial_route_version(
+            db,
+            route_book,
+            reference_line_wkt=parsed.reference_line,
+            geometry_source="file_upload",
+            created_by=None,
+            elevation_profile=parsed.elevation_profile,
+            elevation_points_snapshot=parsed.elevation_points_snapshot,
+        )
+
+    line_hash = _line_hash(parsed.reference_line)
+    route_book.line_hash = line_hash
+    route_book.elevation_profile = parsed.elevation_profile
+    version.geometry_source = "file_upload"
+    version.navigation_status = "ready"
+    version.reference_line_snapshot = WKTElement(parsed.reference_line, srid=4326)
+    version.line_hash = line_hash
+    version.distance = parsed.distance
+    version.climb = parsed.climb
+    version.elevation_profile = parsed.elevation_profile
+    version.elevation_points_snapshot = parsed.elevation_points_snapshot
+    version.point_count = _point_count_from_wkt(parsed.reference_line)
+    return version
 
 
 def apply_route_book(route_book: RouteBook, route: RouteInput, parsed: ParsedTrack) -> None:
@@ -307,6 +355,15 @@ def calculate_climb(points: list[Trackpoint]) -> float | None:
 def build_linestring(points: list[Trackpoint]) -> str:
     pairs = ", ".join(f"{point.lon} {point.lat}" for point in points)
     return f"SRID=4326;LINESTRING({pairs})"
+
+
+def build_elevation_points_snapshot(points: list[Trackpoint]) -> str | None:
+    route_points = [
+        {"lat": point.lat, "lon": point.lon, "ele": point.ele}
+        for point in points
+        if point.lat is not None and point.lon is not None
+    ]
+    return _elevation_points_snapshot_from_points(route_points)
 
 
 def downsample_elevation(points: list[Trackpoint], cumulative: list[float], limit: int = 100) -> list[list[float | None]]:

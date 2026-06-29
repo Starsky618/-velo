@@ -163,6 +163,124 @@ function buildQuery(params) {
   return parts.length > 0 ? '?' + parts.join('&') : ''
 }
 
+function absoluteUrl(url) {
+  if (/^https?:\/\//.test(url)) return url
+  var app = getAppSafe()
+  var baseUrl = (app && app.globalData.baseUrl) || BASE_URL
+  return baseUrl + url
+}
+
+function safeLocalFileName(fileName) {
+  var raw = String(fileName || ('route-' + Date.now() + '.gpx')).trim()
+  var cleaned = raw.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '-')
+  if (!cleaned) cleaned = 'route-' + Date.now() + '.gpx'
+  return cleaned.slice(0, 80)
+}
+
+function saveDownloadedFile(tempFilePath, fileName) {
+  if (!tempFilePath || !fileName || !wx.env || !wx.env.USER_DATA_PATH || typeof wx.getFileSystemManager !== 'function') {
+    return Promise.resolve(tempFilePath)
+  }
+  var localPath = wx.env.USER_DATA_PATH + '/' + Date.now() + '-' + safeLocalFileName(fileName)
+  var fs = wx.getFileSystemManager()
+  return new Promise(function (resolve) {
+    fs.saveFile({
+      tempFilePath: tempFilePath,
+      filePath: localPath,
+      success: function (res) {
+        resolve(res.savedFilePath || localPath)
+      },
+      fail: function (err) {
+        console.warn('route export save file failed:', err && err.errMsg)
+        resolve(tempFilePath)
+      },
+    })
+  })
+}
+
+function downloadFile(url, fileName) {
+  var app = getAppSafe()
+  var token = app && app.globalData.token
+  return new Promise(function (resolve, reject) {
+    var options = {
+      url: absoluteUrl(url),
+      header: {
+        'Authorization': token ? 'Bearer ' + token : '',
+      },
+      success: function (res) {
+        if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
+          var tempFilePath = res.tempFilePath
+          saveDownloadedFile(tempFilePath, fileName).then(function (savedFilePath) {
+            resolve({
+              tempFilePath: tempFilePath,
+              savedFilePath: savedFilePath,
+              filePath: savedFilePath || tempFilePath,
+            })
+          })
+          return
+        }
+        var message = '文件下载失败'
+        if (res.statusCode === 403) message = '你没有权限下载这条路线'
+        if (res.statusCode === 404) message = '下载文件不存在'
+        if (res.statusCode >= 500) message = '服务器开小差了，请稍后重试'
+        reject({ code: res.statusCode || -1, message: message })
+      },
+      fail: function (err) {
+        reject({
+          code: -1,
+          message: '网络连接失败，请检查网络',
+          rawMessage: err && err.errMsg,
+        })
+      },
+    }
+    wx.downloadFile(options)
+  })
+}
+
+function copyText(text) {
+  return new Promise(function (resolve, reject) {
+    wx.setClipboardData({
+      data: text,
+      success: resolve,
+      fail: function (err) {
+        reject({
+          code: -1,
+          message: '复制失败，请稍后再试',
+          rawMessage: err && err.errMsg,
+        })
+      },
+    })
+  })
+}
+
+function shareFile(filePath, fileName) {
+  return new Promise(function (resolve, reject) {
+    if (typeof wx.shareFileMessage !== 'function') {
+      reject({ code: -2, message: '当前微信版本不支持发送文件' })
+      return
+    }
+    wx.shareFileMessage({
+      filePath: filePath,
+      fileName: fileName,
+      success: function (res) {
+        resolve(res)
+      },
+      fail: function (err) {
+        var rawMessage = err && err.errMsg
+        var message = '微信没有打开发送面板'
+        if (rawMessage && rawMessage.indexOf('开发者工具暂时不支持') >= 0) {
+          message = '开发者工具不支持发送文件，请用真机测试'
+        }
+        reject({
+          code: -1,
+          message: message,
+          rawMessage: rawMessage,
+        })
+      },
+    })
+  })
+}
+
 // 快捷方法：api.get('/path')、api.post('/path', data)
 module.exports = {
   // v4 扩展：get 支持可选 params 对象（不传则等同旧行为，向后兼容）
@@ -460,6 +578,29 @@ module.exports = {
 
   createRouteBookFromTencentDirection: function (payload) {
     return request('/api/route-books/tencent-direction', 'POST', payload)
+  },
+
+  createRouteExport: function (routeBookId, format, targetPlatform) {
+    return request('/api/route-books/' + routeBookId + '/exports', 'POST', {
+      format: format,
+      target_platform: targetPlatform || 'generic',
+    })
+  },
+
+  downloadRouteExport: function (downloadUrl, fileName) {
+    return downloadFile(downloadUrl, fileName)
+  },
+
+  shareRouteExportFile: function (filePath, fileName) {
+    return shareFile(filePath, fileName)
+  },
+
+  resolveUrl: function (url) {
+    return absoluteUrl(url)
+  },
+
+  copyText: function (text) {
+    return copyText(text)
   },
 
   /**

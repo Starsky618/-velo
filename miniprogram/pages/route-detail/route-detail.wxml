@@ -22,6 +22,39 @@
       <canvas canvas-id="elevation-thumb" class="elevation-thumb" hidden="{{!hasElevation}}"></canvas>
     </view>
 
+    <view wx:if="{{guide.export_ready}}" class="export-card">
+      <view class="export-head">
+        <view class="export-title">导出到码表</view>
+        <view class="export-subtitle">先生成路线文件，再复制链接到浏览器下载</view>
+      </view>
+      <view class="export-actions">
+        <button
+          class="export-button"
+          data-format="gpx"
+          loading="{{exportingFormat === 'gpx'}}"
+          disabled="{{exporting}}"
+          bindtap="onDownloadRouteExport">下载 GPX</button>
+        <button
+          class="export-button secondary"
+          data-format="tcx"
+          loading="{{exportingFormat === 'tcx'}}"
+          disabled="{{exporting}}"
+          bindtap="onDownloadRouteExport">下载 TCX</button>
+      </view>
+      <button class="export-help-button" bindtap="onShowExportHelp">两步导入</button>
+      <view wx:if="{{lastExportFilename}}" class="export-result">
+        <view class="export-result-label">已下载</view>
+        <view class="export-result-name">{{lastExportFilename}}</view>
+        <view class="export-result-tip">下一步复制链接，用手机浏览器打开，再去码表 App 导入。</view>
+      </view>
+      <view wx:if="{{lastExportTempPath}}" class="export-next-actions">
+        <button class="export-copy-button primary" bindtap="onCopyLastExportLink">复制下载链接</button>
+        <button class="export-share-button secondary" bindtap="onShareLastExport">发送到微信</button>
+      </view>
+      <view wx:if="{{exportSendFailed}}" class="export-fallback">{{exportSendError}}</view>
+    </view>
+    <view wx:elif="{{exportHint}}" class="export-hint">{{exportHint}}</view>
+
     <!-- 实景图横滑长廊：图片来自 content/routes/<路线>/（Tim 访达增删），点开全屏可翻页保存 -->
     <scroll-view wx:if="{{gallerySrcs.length}}" class="gallery-strip" scroll-x enable-flex="{{true}}" show-scrollbar="{{false}}">
       <image
