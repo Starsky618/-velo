@@ -113,6 +113,15 @@
 2. **VELO 合规高程补全**：后续只能接中国合法合规、可商用授权的高程数据源；没有授权前不把 DEM 猜测写成精确海拔。
 3. **目标 App 自行补算**：只有前两层都没有时才退回二维文件。这个模式最低优先级，因为不同厂商会用自己的高程库重算爬升，用户看到的数据会漂。
 
+### 精确海拔回填
+
+- 对旧路线补海拔时，只接受同一路线的精确来源，例如原始 GPX/FIT、已有活动 trackpoints、或经几何匹配确认同线的公开路书数据。
+- `scripts/backfill_route_elevation.py` 是运维回填工具，默认 dry-run；只有 `--apply` 才会创建新版。
+- `--apply` 必须附带来源/授权说明；能访问公开链接不等于 VELO 可以缓存并再分发这份海拔。
+- 外部来源的坐标只用于寻找高度，最终写入 `elevation_points_snapshot` 的坐标必须是 VELO 当前 `route_versions.reference_line_snapshot` 的坐标。
+- 几何匹配超过阈值时必须拒绝，不能为了让导出文件“看起来有海拔”而把另一条路线的高度贴上来。
+- 回填成功必须创建新的 `route_versions` 当前版本，旧版本归档，已有导出文件仍指向旧版本。
+
 ### 旧路线回填边界
 
 - 新创建 / 新导入路线会保存 `elevation_points_snapshot`。
@@ -133,6 +142,7 @@
 - 腾讯位置服务 WebService API：https://lbs.qq.com/webservice_v1/index.html
 - 百度地图开放平台常见问题：https://lbsyun.baidu.com/index.php?title=open/question
 - 国家基础地理信息中心：https://www.ngcc.cn/
+- 本轮调研记录：`docs/research/2026-06-29-route-elevation-data-source.md`
 
 ## 路线详情合同
 
@@ -177,6 +187,8 @@ FIT、转弯点、官方品牌同步都不进 V0。合规高程补全单独立�
 
 ```bash
 pytest tests/test_route_export_foundation.py tests/test_route_book_api.py
+pytest tests/test_route_elevation_backfill.py
+pytest tests/test_route_elevation_backfill_pg.py
 pytest tests/test_route_guides_import.py tests/test_route_guides_api.py
 node --check miniprogram/utils/api.js
 node --check miniprogram/pages/route-detail/route-detail.js
