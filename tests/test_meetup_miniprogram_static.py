@@ -240,38 +240,6 @@ def test_route_detail_uses_free_paper_canvas_for_display_route_map():
     assert ".route-map-overlay" not in wxss
 
 
-def test_route_detail_export_flow_has_clear_fallback_actions():
-    js = _read(MINI / "pages" / "route-detail" / "route-detail.js")
-    wxml = _read(MINI / "pages" / "route-detail" / "route-detail.wxml")
-    api = _read(MINI / "utils" / "api.js")
-
-    assert "promptShareExportFile" not in js
-    assert "lastExportDownloadUrl" in js
-    assert "buildExportElevationState" in js
-    assert "exportElevationResultTip" in js
-    assert "onCopyLastExportLink" in js
-    assert "showExportSendFallback" in js
-    assert "含海拔点" in js
-    assert "仅路线轨迹" in js
-    assert "码表可能自行估算爬升" in js
-    assert "复制下载链接" in wxml
-    assert "尝试发送微信" not in wxml
-    assert wxml.index("复制下载链接") < wxml.index("发送到微信")
-    assert "先生成路线文件" in wxml
-    assert "exportElevationState" in wxml
-    assert "lastExportElevationTip" in wxml
-    assert "两步导入" in wxml
-    assert "wx.env.USER_DATA_PATH" in api
-    assert "saveDownloadedFile" in api
-    assert "tempFilePath: tempFilePath" in api
-    assert "savedFilePath: savedFilePath" in api
-    assert "filePath: savedFilePath || tempFilePath" in api
-    assert "lastExportSavedPath || this.data.lastExportTempPath" in js
-    assert "开发者工具不支持发送文件，请用真机测试" in api
-    assert "wx.getFileSystemManager" in api
-    assert "err && err.errMsg" in api
-
-
 def test_meetup_detail_uses_free_paper_canvas_for_display_route_map():
     js = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.js")
     wxml = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.wxml")

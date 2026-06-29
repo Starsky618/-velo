@@ -285,7 +285,6 @@ _route_versions_table = Table(
     Column("distance", Float, nullable=False),
     Column("climb", Float),
     Column("elevation_profile", Text),
-    Column("elevation_points_snapshot", Text),
     Column("point_count", Integer),
     Column("component_snapshot_hash", String(64)),
     Column("validation_warnings_json", Text),
@@ -293,45 +292,6 @@ _route_versions_table = Table(
     Column("created_at", DateTime(timezone=True)),
     UniqueConstraint("route_book_id", "version_no", name="uq_route_versions_route_book_version"),
     UniqueConstraint("id", "route_book_id", name="uq_route_versions_id_route_book"),
-)
-
-_route_export_jobs_table = Table(
-    "route_export_jobs",
-    _test_metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("route_book_id", Integer, nullable=False),
-    Column("route_version_id", Integer, nullable=False),
-    Column("requester_id", Integer),
-    Column("target_platform", String(32)),
-    Column("export_format", String(8), nullable=False),
-    Column("export_mode", String(24), nullable=False, server_default="download_file"),
-    Column("status", String(16), nullable=False, server_default="queued"),
-    Column("simplification_strategy_json", Text),
-    Column("target_constraints_json", Text),
-    Column("include_course_points", Boolean, nullable=False, server_default="0"),
-    Column("error_code", String(64)),
-    Column("error_message", Text),
-    Column("created_at", DateTime(timezone=True)),
-    Column("started_at", DateTime(timezone=True)),
-    Column("finished_at", DateTime(timezone=True)),
-)
-
-_route_export_artifacts_table = Table(
-    "route_export_artifacts",
-    _test_metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("export_job_id", Integer, nullable=False),
-    Column("route_book_id", Integer, nullable=False),
-    Column("route_version_id", Integer, nullable=False),
-    Column("format", String(8), nullable=False),
-    Column("file_id", String(512), nullable=False),
-    Column("file_size", Integer),
-    Column("content_hash", String(64)),
-    Column("input_point_count", Integer),
-    Column("output_point_count", Integer),
-    Column("generated_at", DateTime(timezone=True)),
-    Column("expires_at", DateTime(timezone=True)),
-    Column("metadata_json", Text),
 )
 
 _meetups_table = Table(

@@ -26,13 +26,8 @@ from app.database import SessionLocal
 from app.parsing.geo_math import haversine
 from app.parsing.gpx_parser import GPXParser
 from app.parsing.types import Trackpoint
-from app.route_book.models import RouteBook, RouteGuide, RouteVersion  # noqa: F401
-from app.route_book.service import (
-    _elevation_points_snapshot_from_points,
-    _line_hash,
-    _point_count_from_wkt,
-    create_initial_route_version,
-)
+from app.route_book.models import RouteBook, RouteGuide  # noqa: F401
+from app.route_book.service import create_initial_route_version
 from app.user.models import User  # noqa: F401
 
 
@@ -61,7 +56,6 @@ class ParsedTrack:
     climb: float | None
     reference_line: str
     elevation_profile: str | None
-    elevation_points_snapshot: str | None
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -204,7 +198,7 @@ def upsert_route(db, route: RouteInput) -> None:
             climb_override_m=route.climb_override_m,
         )
         if guide is not None and guide.route_book_id is not None:
-            route_book = _lock_route_book_for_update(db, guide.route_book_id)
+            route_book = db.query(RouteBook).filter(RouteBook.id == guide.route_book_id).first()
         if route_book is None:
             route_book = RouteBook()
             db.add(route_book)
@@ -221,10 +215,7 @@ def upsert_route(db, route: RouteInput) -> None:
                 geometry_source="file_upload",
                 created_by=None,
                 elevation_profile=parsed.elevation_profile,
-                elevation_points_snapshot=parsed.elevation_points_snapshot,
             )
-        else:
-            refresh_current_route_version(db, route_book, parsed)
         route_book_id = route_book.id
         elevation_profile = parsed.elevation_profile
 
@@ -267,102 +258,7 @@ def parse_track(
         elevation_profile=(
             json.dumps(downsample_elevation(points, cumulative), ensure_ascii=False) if has_elevation else None
         ),
-        elevation_points_snapshot=build_elevation_points_snapshot(points),
     )
-
-
-def refresh_current_route_version(db, route_book: RouteBook, parsed: ParsedTrack) -> RouteVersion:
-    """
-    重灌官方路线时同步当前版本底片。
-
-    route_version 像已经发出去的纸质地图，旧版可能已经生成下载文件。
-    所以轨迹底片变化时只能创建新版，不能把旧版偷偷擦掉重画。
-    """
-    route_book = _lock_route_book_for_update(db, route_book.id) or route_book
-    version = (
-        db.query(RouteVersion)
-        .filter(RouteVersion.id == route_book.current_version_id, RouteVersion.route_book_id == route_book.id)
-        .first()
-    )
-    if version is None:
-        return create_initial_route_version(
-            db,
-            route_book,
-            reference_line_wkt=parsed.reference_line,
-            geometry_source="file_upload",
-            created_by=None,
-            elevation_profile=parsed.elevation_profile,
-            elevation_points_snapshot=parsed.elevation_points_snapshot,
-        )
-
-    line_hash = _line_hash(parsed.reference_line)
-    route_book.line_hash = line_hash
-    route_book.elevation_profile = parsed.elevation_profile
-    if _route_version_matches_parsed(version, parsed, line_hash):
-        return version
-
-    version.status = "archived"
-    new_version = RouteVersion(
-        route_book_id=route_book.id,
-        version_no=_next_route_version_no(db, route_book.id),
-        status="current",
-        created_by=None,
-        geometry_source="file_upload",
-        navigation_status="ready",
-        reference_line_snapshot=WKTElement(parsed.reference_line, srid=4326),
-        line_hash=line_hash,
-        distance=parsed.distance,
-        climb=parsed.climb,
-        elevation_profile=parsed.elevation_profile,
-        elevation_points_snapshot=parsed.elevation_points_snapshot,
-        point_count=_point_count_from_wkt(parsed.reference_line),
-    )
-    db.add(new_version)
-    db.flush()
-    route_book.current_version_id = new_version.id
-    return new_version
-
-
-def _lock_route_book_for_update(db, route_book_id: int) -> RouteBook | None:
-    # 官方导入通常是单进程手动跑，但这里仍给 route_book 加行锁：
-    # 像两个人同时改同一本纸质地图，必须一个人改完另一个人再看最新版，
-    # 否则可能同时生出两个 current 版本。
-    return (
-        db.query(RouteBook)
-        .filter(RouteBook.id == route_book_id)
-        .populate_existing()
-        .with_for_update()
-        .first()
-    )
-
-
-def _route_version_matches_parsed(version: RouteVersion, parsed: ParsedTrack, line_hash: str) -> bool:
-    return (
-        version.geometry_source == "file_upload"
-        and version.navigation_status == "ready"
-        and version.line_hash == line_hash
-        and _same_float(version.distance, parsed.distance)
-        and _same_float(version.climb, parsed.climb)
-        and version.elevation_profile == parsed.elevation_profile
-        and version.elevation_points_snapshot == parsed.elevation_points_snapshot
-        and version.point_count == _point_count_from_wkt(parsed.reference_line)
-    )
-
-
-def _same_float(left: float | None, right: float | None) -> bool:
-    if left is None or right is None:
-        return left is None and right is None
-    return math.isclose(float(left), float(right), rel_tol=1e-9, abs_tol=1e-6)
-
-
-def _next_route_version_no(db, route_book_id: int) -> int:
-    last = (
-        db.query(RouteVersion.version_no)
-        .filter(RouteVersion.route_book_id == route_book_id)
-        .order_by(RouteVersion.version_no.desc())
-        .first()
-    )
-    return (last[0] if last is not None else 0) + 1
 
 
 def apply_route_book(route_book: RouteBook, route: RouteInput, parsed: ParsedTrack) -> None:
@@ -411,15 +307,6 @@ def calculate_climb(points: list[Trackpoint]) -> float | None:
 def build_linestring(points: list[Trackpoint]) -> str:
     pairs = ", ".join(f"{point.lon} {point.lat}" for point in points)
     return f"SRID=4326;LINESTRING({pairs})"
-
-
-def build_elevation_points_snapshot(points: list[Trackpoint]) -> str | None:
-    route_points = [
-        {"lat": point.lat, "lon": point.lon, "ele": point.ele}
-        for point in points
-        if point.lat is not None and point.lon is not None
-    ]
-    return _elevation_points_snapshot_from_points(route_points)
 
 
 def downsample_elevation(points: list[Trackpoint], cumulative: list[float], limit: int = 100) -> list[list[float | None]]:

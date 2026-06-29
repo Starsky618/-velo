@@ -11,8 +11,6 @@
 
 import logging
 import hashlib
-import json
-import math
 
 from geoalchemy2 import WKTElement
 from sqlalchemy import or_
@@ -69,41 +67,7 @@ def _route_payload_from_points(points: list[dict], distance: float | None, climb
         "climb": climb,
         "city": infer_city_from_coords(first.get("lat"), first.get("lon")),
         "wkt": f"SRID=4326;LINESTRING({coords})",
-        "elevation_points_snapshot": _elevation_points_snapshot_from_points(points),
     }
-
-
-def _finite_float(value: object) -> float | None:
-    if value is None:
-        return None
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if math.isfinite(number) else None
-
-
-def _elevation_points_snapshot_from_points(points: list[dict]) -> str | None:
-    """
-    保存和路线点一一对应的海拔底片。
-
-    elevation_profile 是给前端画图的缩略图；这里像保存原图一样保留每个点，
-    导出 GPX/TCX 时才能把海拔交给码表，而不是让目标 App 自己猜。
-    """
-    snapshot: list[list[float | None]] = []
-    has_elevation = False
-    for point in points:
-        lon = _finite_float(point.get("lon"))
-        lat = _finite_float(point.get("lat"))
-        if lon is None or lat is None:
-            continue
-        ele = _finite_float(point.get("ele"))
-        if ele is not None:
-            has_elevation = True
-        snapshot.append([lon, lat, ele])
-    if len(snapshot) < 2 or not has_elevation:
-        return None
-    return json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
 
 
 def _line_hash(reference_line_wkt: str) -> str:
@@ -125,7 +89,6 @@ def create_initial_route_version(
     geometry_source: str,
     created_by: int | None,
     elevation_profile: str | None = None,
-    elevation_points_snapshot: str | None = None,
 ) -> RouteVersion:
     """
     给新路书创建 v1 快照。
@@ -148,7 +111,6 @@ def create_initial_route_version(
         distance=route.distance,
         climb=route.climb,
         elevation_profile=elevation_profile,
-        elevation_points_snapshot=elevation_points_snapshot,
         point_count=_point_count_from_wkt(reference_line_wkt),
     )
     db.add(version)
@@ -234,7 +196,6 @@ def create_route_book(
             reference_line_wkt=payload["wkt"],
             geometry_source=source,
             created_by=current_user_id,
-            elevation_points_snapshot=payload.get("elevation_points_snapshot"),
         )
         db.commit()
     except Exception:
@@ -288,7 +249,6 @@ def create_route_book_from_tencent_direction(
             reference_line_wkt=payload["wkt"],
             geometry_source="tencent_direction",
             created_by=current_user_id,
-            elevation_points_snapshot=payload.get("elevation_points_snapshot"),
         )
         db.commit()
     except Exception:

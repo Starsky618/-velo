@@ -76,51 +76,6 @@ function buildStats(guide) {
   return stats
 }
 
-function exportBlockHint(guide) {
-  if (!guide || guide.export_ready) return ''
-  if (guide.export_block_reason === 'no_route_book' || guide.export_block_reason === 'no_current_version') {
-    return '这条路线还没有可下载轨迹'
-  }
-  return ''
-}
-
-function buildExportElevationState(guide) {
-  if (!guide || !guide.export_ready) return null
-  var count = Number(guide.export_elevation_point_count)
-  if (guide.export_elevation_included && Number.isFinite(count) && count > 0) {
-    return {
-      tone: 'good',
-      title: '含海拔点',
-      desc: Math.round(count) + ' 个海拔点会随文件带过去',
-    }
-  }
-  return {
-    tone: 'warn',
-    title: '仅路线轨迹',
-    desc: '没有海拔点，码表可能自行估算爬升',
-  }
-}
-
-function exportElevationResultTip(exportInfo) {
-  if (exportInfo && exportInfo.elevation_included) {
-    var count = Number(exportInfo.elevation_point_count)
-    if (Number.isFinite(count) && count > 0) {
-      return '这个文件含 ' + Math.round(count) + ' 个海拔点，导入码表时会随路线一起带过去。'
-    }
-    return '这个文件含海拔点，导入码表时会随路线一起带过去。'
-  }
-  return '这个文件没有海拔点，码表 App 可能自行估算爬升。'
-}
-
-function exportErrorMessage(err) {
-  var code = err && err.code
-  if (code === 403) return '这条路线暂时不能下载'
-  if (code === 422) return '这条路线还没有可下载轨迹'
-  if (code === -1) return '网络失败，请稍后再试'
-  if (code >= 500) return '服务器开小差了，请稍后再试'
-  return (err && err.message) || '下载失败，请稍后再试'
-}
-
 Page({
   data: {
     guideId: null,
@@ -139,18 +94,6 @@ Page({
     routePreviewMarkers: [],
     routePreviewPolylines: [],
     routePreviewIncludePoints: [],
-    exportHint: '',
-    exportElevationState: null,
-    exporting: false,
-    exportingFormat: '',
-    lastExportFilename: '',
-    lastExportElevationTip: '',
-    lastExportTempPath: '',
-    lastExportSavedPath: '',
-    lastExportDownloadUrl: '',
-    exportSendFailed: false,
-    exportSendError: '',
-    exportSendRawMessage: '',
   },
 
   onLoad: function (options) {
@@ -186,12 +129,6 @@ Page({
             .filter(Boolean),
           hasElevation: hasElevation,
           routeStats: buildStats(guide),
-          exportHint: exportBlockHint(guide),
-          exportElevationState: buildExportElevationState(guide),
-          lastExportFilename: '',
-          lastExportElevationTip: '',
-          lastExportTempPath: '',
-          lastExportSavedPath: '',
           loading: false,
           // 折叠区大图不在 onLoad 画：全折叠态下 canvas 在 hidden 祖先里画了也是空白——
           // 唯一生效的绘制时机是 toggleSection 展开「核心数据」那一刻（集成审 I1）。
@@ -336,112 +273,6 @@ Page({
     var urls = this.data.gallerySrcs || []
     if (!src || !urls.length) return
     wx.previewImage({ current: src, urls: urls })
-  },
-
-  onDownloadRouteExport: function (event) {
-    var format = event.currentTarget.dataset.format
-    var guide = this.data.guide
-    if (!format || this.data.exporting) return
-    if (!guide || !guide.export_ready || !guide.route_book_id) {
-      wx.showToast({ title: '这条路线还没有可下载轨迹', icon: 'none' })
-      return
-    }
-
-    var that = this
-    this.setData({
-      exporting: true,
-      exportingFormat: format,
-      lastExportFilename: '',
-      lastExportElevationTip: '',
-      lastExportTempPath: '',
-      lastExportSavedPath: '',
-      lastExportDownloadUrl: '',
-      exportSendFailed: false,
-      exportSendError: '',
-      exportSendRawMessage: '',
-    })
-    api.createRouteExport(guide.route_book_id, format, 'generic')
-      .then(function (exportInfo) {
-        return api.downloadRouteExport(exportInfo.download_url, exportInfo.filename)
-          .then(function (downloadedFile) {
-            var tempFilePath = downloadedFile && downloadedFile.tempFilePath
-            var savedFilePath = downloadedFile && downloadedFile.savedFilePath
-            var shareFilePath = downloadedFile && downloadedFile.filePath
-            that.setData({
-              lastExportFilename: exportInfo.filename,
-              lastExportElevationTip: exportElevationResultTip(exportInfo),
-              lastExportTempPath: shareFilePath || tempFilePath || '',
-              lastExportSavedPath: savedFilePath || '',
-              lastExportDownloadUrl: api.resolveUrl(exportInfo.download_url),
-            })
-            wx.showToast({ title: '路线文件已下载', icon: 'success' })
-          })
-      })
-      .catch(function (err) {
-        wx.showToast({ title: exportErrorMessage(err), icon: 'none' })
-      })
-      .then(function () {
-        that.setData({
-          exporting: false,
-          exportingFormat: '',
-        })
-      })
-  },
-
-  shareExportFile: function (filePath, fileName) {
-    if (!filePath) {
-      wx.showToast({ title: '请先下载路线文件', icon: 'none' })
-      return
-    }
-    this.setData({ exportSendFailed: false, exportSendError: '', exportSendRawMessage: '' })
-    var that = this
-    api.shareRouteExportFile(filePath, fileName)
-      .then(function () {
-        wx.showToast({ title: '已打开微信发送', icon: 'success' })
-      })
-      .catch(function (err) {
-        that.showExportSendFallback(err)
-      })
-  },
-
-  onShareLastExport: function () {
-    this.shareExportFile(this.data.lastExportSavedPath || this.data.lastExportTempPath, this.data.lastExportFilename)
-  },
-
-  showExportSendFallback: function (err) {
-    if (err && err.rawMessage) {
-      console.warn('route export share failed:', err.rawMessage)
-    }
-    this.setData({
-      exportSendFailed: true,
-      exportSendError: (err && err.message) || '微信没能发送文件。复制下载链接，用浏览器下载后导入码表 App。',
-      exportSendRawMessage: (err && err.rawMessage) || '',
-    })
-    wx.showToast({ title: '发送失败，请复制链接', icon: 'none' })
-  },
-
-  onCopyLastExportLink: function () {
-    var url = this.data.lastExportDownloadUrl
-    if (!url) {
-      wx.showToast({ title: '请先下载路线文件', icon: 'none' })
-      return
-    }
-    api.copyText(url)
-      .then(function () {
-        wx.showToast({ title: '下载链接已复制', icon: 'success' })
-      })
-      .catch(function (err) {
-        wx.showToast({ title: (err && err.message) || '复制失败', icon: 'none' })
-      })
-  },
-
-  onShowExportHelp: function () {
-    wx.showModal({
-      title: '两步导入',
-      content: '1. 点“复制下载链接”，到手机浏览器打开下载文件。\n2. 打开 Garmin / iGPSPORT / 顽鹿 / Wahoo 的路线导入，选择这个文件。\n\n“发送到微信”是备用入口，部分微信版本打不开。',
-      showCancel: false,
-      confirmText: '知道了',
-    })
   },
 
   onStartMeetup: function () {

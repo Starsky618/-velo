@@ -107,7 +107,6 @@ def route_guide_tables(db):
                 distance FLOAT NOT NULL,
                 climb FLOAT,
                 elevation_profile TEXT,
-                elevation_points_snapshot TEXT,
                 point_count INTEGER,
                 component_snapshot_hash VARCHAR(64),
                 validation_warnings_json TEXT,
@@ -180,8 +179,6 @@ def test_imports_gpx_route_and_creates_official_route_book(db, route_guide_table
     assert version.status == "current"
     assert version.navigation_status == "ready"
     assert version.geometry_source == "file_upload"
-    assert version.elevation_points_snapshot is not None
-    assert json.loads(version.elevation_points_snapshot)[0][2] is not None
     assert len(profile) <= 100
     assert profile[0][0] == 0
     assert profile[-1][0] > profile[0][0]
@@ -229,11 +226,6 @@ def test_parse_track_uses_numeric_meta_distance_and_climb_overrides(tmp_path):
     assert parsed.distance == 12300.0
     assert parsed.climb == 456
     assert parsed.elevation_profile is not None
-    assert json.loads(parsed.elevation_points_snapshot) == [
-        [112.0, 37.0, 10.0],
-        [112.0, 37.001, 30.0],
-        [112.0, 37.002, 20.0],
-    ]
 
 
 def test_parse_track_without_elevation_and_without_override_stores_nulls(tmp_path):
@@ -245,7 +237,6 @@ def test_parse_track_without_elevation_and_without_override_stores_nulls(tmp_pat
 
     assert parsed.climb is None
     assert parsed.elevation_profile is None
-    assert parsed.elevation_points_snapshot is None
 
 
 def test_parse_track_without_elevation_uses_climb_override_but_keeps_profile_null(tmp_path):
@@ -257,7 +248,6 @@ def test_parse_track_without_elevation_uses_climb_override_but_keeps_profile_nul
 
     assert parsed.climb == 314
     assert parsed.elevation_profile is None
-    assert parsed.elevation_points_snapshot is None
 
 
 def test_imports_route_without_gpx_as_track_pending(db, route_guide_tables, tmp_path, monkeypatch):
@@ -411,8 +401,6 @@ def test_bad_gallery_urls_exits_before_writing(db, route_guide_tables, tmp_path,
 def test_idempotent_rerun_updates_existing_guide_and_book(db, route_guide_tables, tmp_path, monkeypatch):
     if db.bind.dialect.name != "postgresql":
         pytest.skip("requires PostGIS")
-    from app.route_book.models import RouteVersion
-
     RouteBook, RouteGuide = route_guide_tables
     script = _load_script()
     content_dir = _copy_fixture(tmp_path, "test-gpx-route")
@@ -421,16 +409,13 @@ def test_idempotent_rerun_updates_existing_guide_and_book(db, route_guide_tables
     script.main(["--content-dir", str(content_dir)])
     first_guide = db.query(RouteGuide).filter_by(name="测试 GPX 路线").one()
     first_book_id = first_guide.route_book_id
-    first_version_id = first_guide.source_route_version_id
     (content_dir / "test-gpx-route" / "guide.md").write_text("# 测试 GPX 路线\n\n第二版介绍。\n", encoding="utf-8")
     script.main(["--content-dir", str(content_dir)])
 
     guide = db.query(RouteGuide).filter_by(name="测试 GPX 路线").one()
     assert db.query(RouteGuide).count() == 1
     assert db.query(RouteBook).count() == 1
-    assert db.query(RouteVersion).count() == 1
     assert guide.route_book_id == first_book_id
-    assert guide.source_route_version_id == first_version_id
     assert guide.content_md.endswith("第二版介绍。\n")
 
 
@@ -479,148 +464,8 @@ def test_track_pending_guide_upgrades_to_route_book_on_rerun(db, route_guide_tab
     assert upgraded.id == pending_id
     assert upgraded.route_book_id is not None
     assert upgraded.elevation_profile is not None
-    version = db.query(RouteVersion).filter_by(route_book_id=upgraded.route_book_id).one()
-    assert version.elevation_points_snapshot is not None
     assert db.query(RouteGuide).count() == 1
     assert db.query(RouteBook).count() == 1
-
-
-def test_refresh_current_route_version_creates_new_version_instead_of_mutating_old(db, route_guide_tables):
-    from app.route_book.models import RouteVersion
-
-    RouteBook, _RouteGuide = route_guide_tables
-    script = _load_script()
-    old_line = "SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)"
-    new_line = "SRID=4326;LINESTRING(112.7 38.1, 112.8 38.2)"
-    old_hash = script._line_hash(old_line)
-    old_elevation = "[[112.5,37.8,701.2],[112.6,37.9,735.8]]"
-    route_book = RouteBook(
-        name="官方路线",
-        distance=1000.0,
-        climb=35.0,
-        reference_line=old_line,
-        file_id="content/routes/official/track.gpx",
-        file_type="gpx",
-        source="file_upload",
-        city="taiyuan",
-        is_official=True,
-        visibility="public",
-        publish_status="published",
-        line_hash=old_hash,
-        elevation_profile="[[0,701.2],[1000,735.8]]",
-    )
-    db.add(route_book)
-    db.commit()
-    db.refresh(route_book)
-    old_version = RouteVersion(
-        route_book_id=route_book.id,
-        version_no=1,
-        status="current",
-        geometry_source="file_upload",
-        navigation_status="ready",
-        reference_line_snapshot=old_line,
-        line_hash=old_hash,
-        distance=1000.0,
-        climb=35.0,
-        elevation_profile="[[0,701.2],[1000,735.8]]",
-        elevation_points_snapshot=old_elevation,
-        point_count=2,
-    )
-    db.add(old_version)
-    db.commit()
-    db.refresh(old_version)
-    route_book.current_version_id = old_version.id
-    db.add(route_book)
-    db.commit()
-
-    parsed = script.ParsedTrack(
-        distance=2000.0,
-        climb=88.0,
-        reference_line=new_line,
-        elevation_profile="[[0,801.2],[2000,835.8]]",
-        elevation_points_snapshot="[[112.7,38.1,801.2],[112.8,38.2,835.8]]",
-    )
-
-    created = script.refresh_current_route_version(db, route_book, parsed)
-    db.commit()
-
-    versions = db.query(RouteVersion).filter_by(route_book_id=route_book.id).order_by(RouteVersion.version_no).all()
-    assert len(versions) == 2
-    assert versions[0].id == old_version.id
-    assert versions[0].status == "archived"
-    assert versions[0].line_hash == old_hash
-    assert versions[0].elevation_points_snapshot == old_elevation
-    assert versions[1].id == created.id
-    assert versions[1].status == "current"
-    assert versions[1].version_no == 2
-    assert versions[1].elevation_points_snapshot == parsed.elevation_points_snapshot
-    assert route_book.current_version_id == versions[1].id
-
-
-def test_refresh_current_route_version_keeps_current_version_when_track_is_unchanged(db, route_guide_tables):
-    from app.route_book.models import RouteVersion
-
-    RouteBook, _RouteGuide = route_guide_tables
-    script = _load_script()
-    line = "SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)"
-    line_hash = script._line_hash(line)
-    elevation_profile = "[[0,701.2],[1000,735.8]]"
-    elevation_points = "[[112.5,37.8,701.2],[112.6,37.9,735.8]]"
-    route_book = RouteBook(
-        name="官方路线",
-        distance=1000.0,
-        climb=35.0,
-        reference_line=line,
-        file_id="content/routes/official/track.gpx",
-        file_type="gpx",
-        source="file_upload",
-        city="taiyuan",
-        is_official=True,
-        visibility="public",
-        publish_status="published",
-        line_hash=line_hash,
-        elevation_profile=elevation_profile,
-    )
-    db.add(route_book)
-    db.commit()
-    db.refresh(route_book)
-    version = RouteVersion(
-        route_book_id=route_book.id,
-        version_no=1,
-        status="current",
-        geometry_source="file_upload",
-        navigation_status="ready",
-        reference_line_snapshot=line,
-        line_hash=line_hash,
-        distance=1000.0,
-        climb=35.0,
-        elevation_profile=elevation_profile,
-        elevation_points_snapshot=elevation_points,
-        point_count=2,
-    )
-    db.add(version)
-    db.commit()
-    db.refresh(version)
-    route_book.current_version_id = version.id
-    db.add(route_book)
-    db.commit()
-
-    parsed = script.ParsedTrack(
-        distance=1000.0,
-        climb=35.0,
-        reference_line=line,
-        elevation_profile=elevation_profile,
-        elevation_points_snapshot=elevation_points,
-    )
-
-    current = script.refresh_current_route_version(db, route_book, parsed)
-    db.commit()
-
-    versions = db.query(RouteVersion).filter_by(route_book_id=route_book.id).all()
-    assert len(versions) == 1
-    assert current.id == version.id
-    assert versions[0].status == "current"
-    assert route_book.current_version_id == version.id
 
 
 def test_dry_run_prints_plan_and_makes_no_db_writes(db, route_guide_tables, monkeypatch, capsys):

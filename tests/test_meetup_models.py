@@ -1,7 +1,6 @@
 """约骑模块 Task 1：模型和迁移静态合同测试。"""
 
 from pathlib import Path
-import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,13 +80,11 @@ def test_tencent_direction_migration_extends_route_book_source():
 
 
 def test_tencent_direction_migration_revision_fits_alembic_version_column():
-    for path in (ROOT / "migrations/versions").glob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        match = re.search(r'^revision(?:\s*:[^=]+)?\s*=\s*["\']([^"\']+)["\']', text, re.MULTILINE)
-        assert match is not None, f"{path.name} missing revision"
-        revision = match.group(1)
+    migration = _read("migrations/versions/20260602_route_book_tencent_direction.py")
+    revision_line = next(line for line in migration.splitlines() if line.startswith("revision = "))
+    revision = revision_line.split('"')[1]
 
-        assert len(revision) <= 32, f"{path.name} revision too long for alembic_version.version_num"
+    assert len(revision) <= 32
 
 
 def test_tencent_direction_migration_downgrade_aborts_with_existing_rows():
