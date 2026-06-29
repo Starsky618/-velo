@@ -17,11 +17,13 @@
 
 ## 合同
 
-- 只从 `route_versions.reference_line_snapshot` 生成。
+- 线路只从 `route_versions.reference_line_snapshot` 生成。
+- 有 `route_versions.elevation_points_snapshot` 时，GPX/TCX 必须优先写入 VELO 原始逐点海拔。
 - GPX 输出 `trk/trkseg/trkpt`。
 - TCX 输出 `Course/Track/Trackpoint/Position`。
 - 少于 2 个点拒绝生成。
-- 不生成 FIT、海拔点、转弯点。
+- 不生成 FIT、转弯点。
+- 没有原始逐点海拔时不自动猜海拔。
 - 下载前核 artifact、job、route version、format 是否完全一致。
 
 ## 验收

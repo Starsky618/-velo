@@ -66,6 +66,7 @@ def create_route_export(
     generated = generate_route_export(
         route_name=route.name,
         reference_line_snapshot=version.reference_line_snapshot,
+        elevation_points_snapshot=version.elevation_points_snapshot,
         export_format=export_format,
     )
     filename = safe_export_filename(route.name, route.id, version.id, export_format)
@@ -101,7 +102,12 @@ def create_route_export(
             output_point_count=generated.point_count,
             generated_at=now,
             metadata_json=json.dumps(
-                {"filename": filename, "content_type": generated.content_type},
+                {
+                    "filename": filename,
+                    "content_type": generated.content_type,
+                    "elevation_included": generated.elevation_point_count > 0,
+                    "elevation_point_count": generated.elevation_point_count,
+                },
                 ensure_ascii=False,
             ),
         )

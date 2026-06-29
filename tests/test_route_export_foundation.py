@@ -148,6 +148,22 @@ def test_export_generator_builds_minimal_gpx_from_reference_line_snapshot():
     assert "<TrainingCenterDatabase" not in text
 
 
+def test_export_generator_prefers_precise_elevation_snapshot_for_gpx():
+    from app.route_book.export_generator import generate_route_export
+
+    generated = generate_route_export(
+        route_name="奥申",
+        reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
+        export_format="gpx",
+    )
+
+    text = generated.content.decode("utf-8")
+    assert '<trkpt lat="37.8" lon="112.5">' in text
+    assert "<ele>701.2</ele>" in text
+    assert "<ele>735.8</ele>" in text
+
+
 def test_export_generator_builds_minimal_tcx_from_reference_line_snapshot():
     from app.route_book.export_generator import generate_route_export
 
@@ -168,6 +184,22 @@ def test_export_generator_builds_minimal_tcx_from_reference_line_snapshot():
     assert "<LongitudeDegrees>112.5</LongitudeDegrees>" in text
     assert "<CoursePoint>" not in text
     assert "<AltitudeMeters>" not in text
+
+
+def test_export_generator_prefers_precise_elevation_snapshot_for_tcx():
+    from app.route_book.export_generator import generate_route_export
+
+    generated = generate_route_export(
+        route_name="奥申",
+        reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
+        export_format="tcx",
+    )
+
+    text = generated.content.decode("utf-8")
+    assert "<LatitudeDegrees>37.8</LatitudeDegrees>" in text
+    assert "<AltitudeMeters>701.2</AltitudeMeters>" in text
+    assert "<AltitudeMeters>735.8</AltitudeMeters>" in text
 
 
 def test_export_generator_rejects_routes_with_too_few_points():

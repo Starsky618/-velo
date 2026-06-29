@@ -35,13 +35,15 @@
 - 路线详情页入口、下载按钮、导入说明。
 - 公开且已发布路线免登录下载。
 - 私有路线只允许创建者或管理员导出。
+- 如果路线版本有 VELO 原始逐点海拔，GPX/TCX 导出必须携带这份海拔。
 
 不包含：
 - FIT 文件生成。
 - Garmin 官方 Courses API 同步。
 - iGPSPORT / 迈金 / Wahoo 私有接口。
 - 自动拉起目标 App。
-- 转弯提示、逐点海拔、实时导航。
+- 转弯提示、实时导航。
+- 没有原始海拔时自动猜海拔。
 - RQ 队列和 worker 配置变更。
 
 ## 后端合同
@@ -96,12 +98,33 @@
 
 ## 文件生成规则
 
-- 文件只从 `route_versions.reference_line_snapshot` 生成。
-- 不从 `RouteBook.file_id` 原始上传文件直出。
-- GPX V0 输出 `gpx > trk > trkseg > trkpt(lat/lon)`。
-- TCX V0 输出 `TrainingCenterDatabase > Courses > Course > Track > Trackpoint > Position`。
-- V0 只承诺二维经纬度线，不承诺逐点海拔，不生成 Course Points。
+- 文件从 `route_versions.reference_line_snapshot` 生成线路。
+- 如果 `route_versions.elevation_points_snapshot` 有逐点海拔，导出必须优先使用它。
+- 不从 `RouteBook.file_id` 原始上传文件直出，避免绕过版本门禁和权限门禁。
+- GPX 输出 `gpx > trk > trkseg > trkpt(lat/lon)`；有海拔时每个有值的点输出 `<ele>`。
+- TCX 输出 `TrainingCenterDatabase > Courses > Course > Track > Trackpoint > Position`；有海拔时输出 `AltitudeMeters`。
+- 不生成 Course Points。
 - 文件名格式为 `{route_name}-{route_book_id}-v{route_version_id}.{gpx|tcx}`，路线名要清理路径字符和超长文本。
+
+## 海拔数据优先级
+
+1. **VELO 原始逐点海拔**：来自用户上传 GPX/FIT 或已有活动 trackpoints，和路线点一一对应。导出时先用这份数据，让 Garmin / iGPSPORT / 迈金 / Wahoo 尽量读取 VELO 给出的海拔。
+2. **VELO 合规高程补全**：后续只能接中国合法合规、可商用授权的高程数据源；没有授权前不把 DEM 猜测写成精确海拔。
+3. **目标 App 自行补算**：只有前两层都没有时才退回二维文件。这个模式最低优先级，因为不同厂商会用自己的高程库重算爬升，用户看到的数据会漂。
+
+### 合规高程源调研闸门
+
+| 候选 | 当前判断 | 下一步 |
+| --- | --- | --- |
+| 高德 / 腾讯 / 百度公开 WebService | 官方公开 WebService 文档能确认路线规划、地理编码等能力；本轮未找到可直接商用的逐点高程接口。 | 继续只作为地图/路线规划候选，不默认当高程源。 |
+| 天地图 / 国家基础地理信息中心体系 | 合规来源优先级最高，但需要确认 API、授权、使用范围、成果展示/分发规则。 | 作为第二优先级首选调研对象，先走授权确认，再写代码。 |
+| SRTM / Mapbox / Google 等境外或全球 DEM | 技术上可补海拔，但中国境内地图/测绘合规、服务稳定性、商用授权都不适合作为默认生产源。 | 不进默认链路，只能做离线评估样本。 |
+
+参考入口：
+- 高德 WebService API：https://lbs.amap.com/api/webservice/summary
+- 腾讯位置服务 WebService API：https://lbs.qq.com/webservice_v1/index.html
+- 百度地图开放平台常见问题：https://lbsyun.baidu.com/index.php?title=open/question
+- 国家基础地理信息中心：https://www.ngcc.cn/
 
 ## 路线详情合同
 
@@ -140,7 +163,7 @@ V1：调研并申请 Garmin Courses API 官方同步。只有拿到官方授权�
 
 V2：确认 iGPSPORT / 迈金 / Wahoo 是否有开放接口或官方导入协议。没有公开接口时，继续保持“标准文件下载 + 用户手动导入”。
 
-FIT、转弯点、逐点海拔都不进 V0。
+FIT、转弯点、官方品牌同步都不进 V0。合规高程补全单独立项。
 
 ## 验收命令
 

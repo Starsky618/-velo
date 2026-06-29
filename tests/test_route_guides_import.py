@@ -107,6 +107,7 @@ def route_guide_tables(db):
                 distance FLOAT NOT NULL,
                 climb FLOAT,
                 elevation_profile TEXT,
+                elevation_points_snapshot TEXT,
                 point_count INTEGER,
                 component_snapshot_hash VARCHAR(64),
                 validation_warnings_json TEXT,
@@ -179,6 +180,8 @@ def test_imports_gpx_route_and_creates_official_route_book(db, route_guide_table
     assert version.status == "current"
     assert version.navigation_status == "ready"
     assert version.geometry_source == "file_upload"
+    assert version.elevation_points_snapshot is not None
+    assert json.loads(version.elevation_points_snapshot)[0][2] is not None
     assert len(profile) <= 100
     assert profile[0][0] == 0
     assert profile[-1][0] > profile[0][0]
@@ -226,6 +229,11 @@ def test_parse_track_uses_numeric_meta_distance_and_climb_overrides(tmp_path):
     assert parsed.distance == 12300.0
     assert parsed.climb == 456
     assert parsed.elevation_profile is not None
+    assert json.loads(parsed.elevation_points_snapshot) == [
+        [112.0, 37.0, 10.0],
+        [112.0, 37.001, 30.0],
+        [112.0, 37.002, 20.0],
+    ]
 
 
 def test_parse_track_without_elevation_and_without_override_stores_nulls(tmp_path):
@@ -237,6 +245,7 @@ def test_parse_track_without_elevation_and_without_override_stores_nulls(tmp_pat
 
     assert parsed.climb is None
     assert parsed.elevation_profile is None
+    assert parsed.elevation_points_snapshot is None
 
 
 def test_parse_track_without_elevation_uses_climb_override_but_keeps_profile_null(tmp_path):
@@ -248,6 +257,7 @@ def test_parse_track_without_elevation_uses_climb_override_but_keeps_profile_nul
 
     assert parsed.climb == 314
     assert parsed.elevation_profile is None
+    assert parsed.elevation_points_snapshot is None
 
 
 def test_imports_route_without_gpx_as_track_pending(db, route_guide_tables, tmp_path, monkeypatch):
@@ -464,6 +474,8 @@ def test_track_pending_guide_upgrades_to_route_book_on_rerun(db, route_guide_tab
     assert upgraded.id == pending_id
     assert upgraded.route_book_id is not None
     assert upgraded.elevation_profile is not None
+    version = db.query(RouteVersion).filter_by(route_book_id=upgraded.route_book_id).one()
+    assert version.elevation_points_snapshot is not None
     assert db.query(RouteGuide).count() == 1
     assert db.query(RouteBook).count() == 1
 

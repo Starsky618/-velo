@@ -285,6 +285,7 @@ _route_versions_table = Table(
     Column("distance", Float, nullable=False),
     Column("climb", Float),
     Column("elevation_profile", Text),
+    Column("elevation_points_snapshot", Text),
     Column("point_count", Integer),
     Column("component_snapshot_hash", String(64)),
     Column("validation_warnings_json", Text),

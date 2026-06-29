@@ -1,6 +1,7 @@
 """约骑模块 Task 2：路书 API 测试。"""
 
 from datetime import datetime, timezone
+import json
 from typing import get_args
 
 import pytest
@@ -151,6 +152,21 @@ def test_public_route_export_creates_downloadable_gpx_without_leaking_file_id(cl
     assert b"TrainingCenterDatabase" not in download.content
 
 
+def test_public_route_export_uses_route_version_precise_elevation_snapshot(client, db, admin_user, monkeypatch):
+    route, version = _route_with_current_version(db, admin_user.id)
+    version.elevation_points_snapshot = "[[112.5,37.8,701.2],[112.6,37.9,735.8]]"
+    db.add(version)
+    db.commit()
+    monkeypatch.setattr("app.route_book.export_workflow._storage", _FakeExportStorage())
+
+    created = client.post(f"/api/route-books/{route.id}/exports", json={"format": "gpx"})
+    download = client.get(created.json()["download_url"])
+
+    assert download.status_code == 200
+    assert b"<ele>701.2</ele>" in download.content
+    assert b"<ele>735.8</ele>" in download.content
+
+
 def test_public_route_export_created_by_login_user_still_downloads_without_auth(client, db, auth_header, test_user, monkeypatch):
     route, _version = _route_with_current_version(db, test_user.id)
     monkeypatch.setattr("app.route_book.export_workflow._storage", _FakeExportStorage())
@@ -273,6 +289,9 @@ def test_activity_derived_creates_route_book(client, db, auth_header, test_user)
     from app.route_book.models import RouteBook, RouteVersion
 
     activity = _activity(db, test_user.id, city="taiyuan")
+    db.query(Trackpoint).filter(Trackpoint.activity_id == activity.id, Trackpoint.seq == 0).update({"elevation": 701.2})
+    db.query(Trackpoint).filter(Trackpoint.activity_id == activity.id, Trackpoint.seq == 1).update({"elevation": 735.8})
+    db.commit()
 
     res = client.post(
         "/api/route-books",
@@ -300,9 +319,10 @@ def test_activity_derived_creates_route_book(client, db, auth_header, test_user)
     assert version.status == "current"
     assert version.navigation_status == "ready"
     assert version.geometry_source == "activity_derived"
+    assert json.loads(version.elevation_points_snapshot) == [[112.5, 37.8, 701.2], [112.6, 37.9, 735.8]]
 
 
-def test_file_upload_supports_gpx_and_preserves_file_id(client, auth_header, monkeypatch):
+def test_file_upload_supports_gpx_and_preserves_file_id(client, db, auth_header, monkeypatch):
     class FakeStorage:
         def upload(self, file_bytes, filename):
             assert filename == "route.gpx"
@@ -314,6 +334,7 @@ def test_file_upload_supports_gpx_and_preserves_file_id(client, auth_header, mon
         "climb": 50.0,
         "city": "taiyuan",
         "wkt": "SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        "elevation_points_snapshot": "[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
     })
 
     res = client.post(
@@ -327,6 +348,10 @@ def test_file_upload_supports_gpx_and_preserves_file_id(client, auth_header, mon
     body = res.json()
     assert body["file_id"] == "202605/route.gpx"
     assert body["file_type"] == "gpx"
+    from app.route_book.models import RouteVersion
+
+    version = db.query(RouteVersion).filter(RouteVersion.route_book_id == body["id"]).one()
+    assert json.loads(version.elevation_points_snapshot)[0] == [112.5, 37.8, 701.2]
 
 
 def test_file_upload_supports_fit_and_preserves_file_id(client, auth_header, monkeypatch):
