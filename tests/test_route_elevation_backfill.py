@@ -47,6 +47,36 @@ def test_backfill_script_requires_source_license_note_before_apply():
     assert "--source-license-note" in result.stderr
 
 
+def test_cli_reports_validation_error_as_json(tmp_path, db, monkeypatch, capsys):
+    from scripts import backfill_route_elevation as script
+
+    source_json = tmp_path / "source.json"
+    source_json.write_text(
+        json.dumps(
+            {
+                "data": {
+                    "routeInfo": {
+                        "tracks": [
+                            {"longitute": 112.5, "latitude": 37.8, "alt": 701.2},
+                            {"longitute": 112.6, "latitude": 37.9, "alt": 735.8},
+                        ]
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(script, "SessionLocal", lambda: db)
+
+    with pytest.raises(SystemExit) as exc:
+        script.main(["--route-book-id", "9999", "--source-json", str(source_json)])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.err)
+    assert exc.value.code == 1
+    assert payload == {"ok": False, "error": "route_book not found"}
+
+
 def test_parse_igpsport_share_tracks_reads_altitude_and_longitute_typo():
     from scripts.backfill_route_elevation import parse_igpsport_share_payload
 

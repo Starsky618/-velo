@@ -358,9 +358,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.apply and not args.source_license_note:
         parser.error("--apply 写库前必须提供 --source-license-note")
 
-    source_points = load_source_points(args)
     db = SessionLocal()
     try:
+        source_points = load_source_points(args)
         result = apply_elevation_backfill(
             db,
             route_book_id=args.route_book_id,
@@ -373,6 +373,10 @@ def main(argv: list[str] | None = None) -> None:
             db.commit()
         else:
             db.rollback()
+    except (LookupError, ValueError) as exc:
+        db.rollback()
+        print(_compact_json({"ok": False, "error": str(exc)}), file=sys.stderr)
+        raise SystemExit(1) from exc
     except Exception:
         db.rollback()
         raise
