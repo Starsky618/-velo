@@ -197,9 +197,11 @@ FIT、转弯点、官方品牌同步都不进 V0。合规高程补全单独立�
 
 ```bash
 pytest tests/test_route_export_foundation.py tests/test_route_book_api.py
+pytest tests/test_route_export_elevation_audit.py
 pytest tests/test_route_elevation_backfill.py
 pytest tests/test_route_elevation_backfill_pg.py
 pytest tests/test_route_guides_import.py tests/test_route_guides_api.py
+python3 -B scripts/audit_route_export_elevation.py --public-only
 node --check miniprogram/utils/api.js
 node --check miniprogram/pages/route-detail/route-detail.js
 git diff --check

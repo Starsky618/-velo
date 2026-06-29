@@ -38,10 +38,12 @@
 
 ```bash
 pytest tests/test_route_export_foundation.py tests/test_route_book_api.py
+pytest tests/test_route_export_elevation_audit.py
 pytest tests/test_route_elevation_backfill.py
 pytest tests/test_route_elevation_backfill_pg.py
 pytest tests/test_route_guides_import.py tests/test_route_guides_api.py
 pytest tests/test_meetup_models.py tests/test_route_guides_import_pg.py
+python3 -B scripts/audit_route_export_elevation.py --public-only
 node --check miniprogram/utils/api.js
 node --check miniprogram/pages/route-detail/route-detail.js
 git diff --check
