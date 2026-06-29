@@ -17,6 +17,7 @@ import argparse
 from dataclasses import dataclass
 import json
 import math
+import os
 from pathlib import Path
 import sys
 from urllib.parse import parse_qs, urlparse
@@ -33,6 +34,7 @@ from sqlalchemy.orm import Session
 from app.activity.models import Activity, Trackpoint  # noqa: F401
 from app.database import SessionLocal
 from app.route_book.models import RouteBook, RouteVersion, _preview_points_from_wkb, _preview_points_from_wkt
+from app.route_book.service import _parse_route_file
 from app.user.models import User  # noqa: F401
 
 
@@ -329,21 +331,45 @@ def load_source_points(
     db: Session,
     route_book_id: int,
 ) -> list[list[float]]:
-    if args.source_json:
+    if getattr(args, "source_route_file", None):
+        return source_points_from_route_file(args.source_route_file)
+    if getattr(args, "source_json", None):
         return parse_igpsport_share_payload(json.loads(Path(args.source_json).read_text(encoding="utf-8")))
-    if args.use_route_source_activity:
+    if getattr(args, "use_route_source_activity", False):
         activity = _route_source_activity_or_raise(db, route_book_id)
         return source_points_from_activity(db, activity.id)
 
-    route_id = args.igpsport_route_id
-    if args.igpsport_share_url:
+    route_id = getattr(args, "igpsport_route_id", None)
+    if getattr(args, "igpsport_share_url", None):
         route_id = _route_id_from_share_url(args.igpsport_share_url)
     if route_id:
         return parse_igpsport_share_payload(fetch_igpsport_share_payload(route_id))
 
     raise ValueError(
-        "必须提供 --use-route-source-activity、--source-json、--igpsport-route-id 或 --igpsport-share-url"
+        "必须提供 --source-route-file、--use-route-source-activity、"
+        "--source-json、--igpsport-route-id 或 --igpsport-share-url"
     )
+
+
+def source_points_from_route_file(source_route_file: str) -> list[list[float]]:
+    payload = _source_route_file_payload(source_route_file)
+    snapshot = payload.get("elevation_points_snapshot")
+    if not snapshot:
+        raise ValueError("路线文件没有可用逐点海拔，不能作为精确来源")
+    try:
+        points = json.loads(snapshot)
+    except json.JSONDecodeError as exc:
+        raise ValueError("路线文件海拔快照解析失败") from exc
+    if not isinstance(points, list) or len(points) < 2:
+        raise ValueError("路线文件至少需要 2 个带海拔的轨迹点")
+    for point in points:
+        if not isinstance(point, list) or len(point) < 3:
+            raise ValueError("路线文件轨迹点格式错误")
+        if _finite_float(point[0]) is None or _finite_float(point[1]) is None:
+            raise ValueError("路线文件轨迹点坐标无效，不能作为精确海拔来源")
+        if _finite_float(point[2]) is None:
+            raise ValueError("路线文件每个轨迹点都必须有海拔，不能用邻近点伪补")
+    return points
 
 
 def source_points_from_activity(db: Session, activity_id: int) -> list[list[float]]:
@@ -370,10 +396,41 @@ def source_points_from_activity(db: Session, activity_id: int) -> list[list[floa
 
 
 def load_authoritative_climb_m(args: argparse.Namespace, *, db: Session, route_book_id: int) -> float | None:
-    if not args.use_route_source_activity:
-        return None
-    activity = _route_source_activity_or_raise(db, route_book_id)
-    return _finite_float(activity.elevation_gain)
+    if getattr(args, "source_route_file", None):
+        return _existing_route_climb_m(db, route_book_id)
+    if getattr(args, "use_route_source_activity", False):
+        activity = _route_source_activity_or_raise(db, route_book_id)
+        return _finite_float(activity.elevation_gain)
+    return None
+
+
+def _existing_route_climb_m(db: Session, route_book_id: int) -> float | None:
+    route = db.query(RouteBook).filter(RouteBook.id == route_book_id).first()
+    if route is None:
+        raise LookupError("route_book not found")
+    if route.climb is not None:
+        return _finite_float(route.climb)
+    version = (
+        db.query(RouteVersion)
+        .filter(RouteVersion.id == route.current_version_id, RouteVersion.route_book_id == route.id)
+        .first()
+    )
+    return _finite_float(version.climb if version else None)
+
+
+def _source_route_file_payload(source_route_file: str) -> dict:
+    path = _resolve_repo_file(source_route_file)
+    return _parse_route_file(path.name, path.read_bytes())
+
+
+def _resolve_repo_file(source_route_file: str) -> Path:
+    raw_path = Path(source_route_file)
+    path = raw_path.resolve() if raw_path.is_absolute() else (ROOT_DIR / raw_path).resolve()
+    if os.path.commonpath([str(ROOT_DIR), str(path)]) != str(ROOT_DIR):
+        raise ValueError("source route file 必须位于仓库目录内")
+    if not path.is_file():
+        raise ValueError(f"source route file not found: {source_route_file}")
+    return path
 
 
 def _route_source_activity_or_raise(db: Session, route_book_id: int) -> Activity:
@@ -414,6 +471,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Backfill precise elevation points for a VELO route version.")
     parser.add_argument("--route-book-id", type=int, required=True)
     source_group = parser.add_mutually_exclusive_group()
+    source_group.add_argument("--source-route-file", help="repo-local GPX/FIT file, such as content/routes/aoshen/track.gpx")
     source_group.add_argument("--source-json", help="saved iGPSPORT share JSON payload")
     source_group.add_argument(
         "--use-route-source-activity",

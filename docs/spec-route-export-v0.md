@@ -115,8 +115,9 @@
 
 ### 精确海拔回填
 
-- 对旧路线补海拔时，只接受同一路线的精确来源，例如原始 GPX/FIT、已有活动 trackpoints、或经几何匹配确认同线的公开路书数据。
+- 对旧路线补海拔时，只接受同一路线的精确来源，例如仓库内官方原始 GPX/FIT、已有活动 trackpoints、或经几何匹配确认同线的公开路书数据。
 - `scripts/backfill_route_elevation.py` 是运维回填工具，默认 dry-run；只有 `--apply` 才会创建新版。
+- 如果官方路线的原始轨迹还在 `content/routes/<slug>/track.gpx`，优先用 `--source-route-file` 从这个文件读取逐点海拔；文件必须位于仓库目录内，且每个轨迹点都要有海拔。
 - 如果路书本身由一次 VELO 骑行生成，优先用 `--use-route-source-activity` 从 `route_books.source_activity_id` 读取原始 trackpoints，不先求助第三方数据。
 - 源活动回填时，逐点海拔用于 GPX/TCX 导出；`route_books.climb` 和新版 `route_versions.climb` 优先沿用 `activities.elevation_gain`，避免用裸逐点高差覆盖设备/解析摘要口径。
 - `--apply` 必须附带来源/授权说明；能访问公开链接不等于 VELO 可以缓存并再分发这份海拔。

@@ -118,6 +118,46 @@ def test_parse_igpsport_share_tracks_reads_altitude_and_longitute_typo():
     assert points == [[112.5, 37.8, 701.2], [112.6, 37.9, 735.8]]
 
 
+def test_source_points_from_route_file_reads_full_elevation():
+    from scripts.backfill_route_elevation import source_points_from_route_file
+
+    points = source_points_from_route_file("tests/fixtures/routes/test-gpx-route/track.gpx")
+
+    assert points == [
+        [112.5, 37.8, 800.0],
+        [112.51, 37.81, 830.0],
+        [112.52, 37.82, 820.0],
+    ]
+
+
+def test_source_points_from_route_file_rejects_outside_repo():
+    from scripts.backfill_route_elevation import source_points_from_route_file
+
+    with pytest.raises(ValueError, match="仓库目录内"):
+        source_points_from_route_file("/etc/passwd")
+
+
+def test_source_points_from_route_file_rejects_missing_elevation(tmp_path, monkeypatch):
+    from scripts import backfill_route_elevation as script
+
+    route_file = tmp_path / "missing-ele.gpx"
+    route_file.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="velo-test" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><trkseg>
+    <trkpt lat="37.800000" lon="112.500000"><ele>800</ele></trkpt>
+    <trkpt lat="37.810000" lon="112.510000"></trkpt>
+  </trkseg></trk>
+</gpx>
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(script, "ROOT_DIR", tmp_path)
+
+    with pytest.raises(ValueError, match="每个轨迹点都必须有海拔"):
+        script.source_points_from_route_file(str(route_file))
+
+
 def test_source_points_from_activity_reads_trackpoint_elevation(db):
     from app.activity.models import Activity, Trackpoint
     from scripts.backfill_route_elevation import source_points_from_activity
@@ -203,6 +243,7 @@ def test_use_route_source_activity_reads_bound_activity_points(db):
     db.commit()
 
     class Args:
+        source_route_file = None
         source_json = None
         use_route_source_activity = True
         igpsport_route_id = None
@@ -230,6 +271,7 @@ def test_use_route_source_activity_requires_route_bound_activity(db):
     db.commit()
 
     class Args:
+        source_route_file = None
         source_json = None
         use_route_source_activity = True
         igpsport_route_id = None
@@ -440,6 +482,91 @@ def test_cli_route_source_activity_preserves_activity_elevation_gain(db, monkeyp
     assert route.climb == 12.3
     assert versions[1].climb == 12.3
     assert versions[1].elevation_points_snapshot == "[[112.5,37.8,100.0],[112.6,37.9,200.0]]"
+
+
+def test_route_file_source_preserves_existing_route_climb(db, monkeypatch, tmp_path):
+    from app.route_book.models import RouteBook, RouteVersion
+    from app.route_book.service import _line_hash
+    from scripts.backfill_route_elevation import apply_elevation_backfill, load_authoritative_climb_m, load_source_points
+
+    route_file = tmp_path / "track.gpx"
+    route_file.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="velo-test" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><trkseg>
+    <trkpt lat="37.800000" lon="112.500000"><ele>100</ele></trkpt>
+    <trkpt lat="37.900000" lon="112.600000"><ele>200</ele></trkpt>
+  </trkseg></trk>
+</gpx>
+""",
+        encoding="utf-8",
+    )
+    reference_line = "SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)"
+    route = RouteBook(
+        name="官方路线",
+        distance=1000.0,
+        climb=363.0,
+        reference_line=WKTElement(reference_line, srid=4326),
+        file_id="content/routes/aoshen/track.gpx",
+        file_type="gpx",
+        source="file_upload",
+        city="taiyuan",
+        line_hash=_line_hash(reference_line),
+    )
+    db.add(route)
+    db.flush()
+    version = RouteVersion(
+        route_book_id=route.id,
+        version_no=1,
+        status="current",
+        geometry_source="file_upload",
+        navigation_status="ready",
+        reference_line_snapshot=WKTElement(reference_line, srid=4326),
+        line_hash=_line_hash(reference_line),
+        distance=1000.0,
+        climb=363.0,
+        elevation_profile=None,
+        elevation_points_snapshot=None,
+        point_count=2,
+    )
+    db.add(version)
+    db.flush()
+    route.current_version_id = version.id
+    db.commit()
+    route_id = route.id
+
+    class Args:
+        source_route_file = str(route_file)
+        source_json = None
+        use_route_source_activity = False
+        igpsport_route_id = None
+        igpsport_share_url = None
+
+    monkeypatch.setattr("scripts.backfill_route_elevation.ROOT_DIR", tmp_path)
+    monkeypatch.setattr(
+        "scripts.backfill_route_elevation.reference_points_from_version",
+        lambda _version: [[112.5, 37.8], [112.6, 37.9]],
+    )
+
+    source_points = load_source_points(Args(), db=db, route_book_id=route_id)
+    authoritative_climb_m = load_authoritative_climb_m(Args(), db=db, route_book_id=route_id)
+    result = apply_elevation_backfill(
+        db,
+        route_book_id=route_id,
+        source_points=source_points,
+        max_distance_m=5,
+        commit=True,
+        source_license_note="pytest fixture: official route file",
+        authoritative_climb_m=authoritative_climb_m,
+    )
+
+    versions = db.query(RouteVersion).filter_by(route_book_id=route_id).order_by(RouteVersion.version_no).all()
+    route = db.query(RouteBook).filter_by(id=route_id).first()
+
+    assert result.computed_climb_m == 100.0
+    assert result.climb_m == 363.0
+    assert route.climb == 363.0
+    assert versions[1].climb == 363.0
 
 
 def test_backfill_dry_run_does_not_create_new_route_version(db, monkeypatch):

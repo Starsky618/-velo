@@ -52,8 +52,9 @@ git diff --check
 1. 先部署新代码并跑 `python3 -m alembic upgrade head`，确认 `route_versions.elevation_points_snapshot` 已存在。
 2. 再跑 `python3 scripts/import_route_guides.py --content-dir content/routes`，让官方路线用原始 GPX 重灌出带逐点海拔的新当前版本。
 3. 抽查至少一条官方路线：`route_books.current_version_id` 指向新版，当前 `route_versions.elevation_points_snapshot` 非空。
-4. 如果路书由 VELO 骑行生成，先跑 `python3 scripts/backfill_route_elevation.py --route-book-id <id> --use-route-source-activity` 做 dry-run；检查 `computed_climb_m` 和最终写入的 `climb_m` 差异，通过后再加 `--apply --source-license-note "<说明>"`。
-5. 如果是外部路书来源，优先先保存来源 JSON，再跑 `python3 scripts/backfill_route_elevation.py --route-book-id <id> --source-json <file>` 做 dry-run；只有确认同线，且确认来源授权或用户自有数据依据，才加 `--apply --source-license-note "<说明>"`。
-6. 回填后再跑同一命令 dry-run，必须返回 no-op；SQL 抽查同一路线只能有一个 `status='current'`，且 `route_books.current_version_id` 指向新版。
-7. 真实创建 GPX/TCX 导出并下载文件，检查 GPX 有 `<ele>`、TCX 有 `AltitudeMeters`。
-8. 用户上传 / 活动派生的旧路线不在本步骤里自动猜海拔；只有能拿到原始文件或原始 trackpoints 时，才允许单独回填。
+4. 如果官方路线还有仓库内原始文件，先跑 `python3 scripts/backfill_route_elevation.py --route-book-id <id> --source-route-file content/routes/<slug>/track.gpx` 做 dry-run；通过后再加 `--apply --source-license-note "<说明>"`。
+5. 如果路书由 VELO 骑行生成，先跑 `python3 scripts/backfill_route_elevation.py --route-book-id <id> --use-route-source-activity` 做 dry-run；检查 `computed_climb_m` 和最终写入的 `climb_m` 差异，通过后再加 `--apply --source-license-note "<说明>"`。
+6. 如果是外部路书来源，优先先保存来源 JSON，再跑 `python3 scripts/backfill_route_elevation.py --route-book-id <id> --source-json <file>` 做 dry-run；只有确认同线，且确认来源授权或用户自有数据依据，才加 `--apply --source-license-note "<说明>"`。
+7. 回填后再跑同一命令 dry-run，必须返回 no-op；SQL 抽查同一路线只能有一个 `status='current'`，且 `route_books.current_version_id` 指向新版。
+8. 真实创建 GPX/TCX 导出并下载文件，检查 GPX 有 `<ele>`、TCX 有 `AltitudeMeters`。
+9. 用户上传 / 活动派生的旧路线不在本步骤里自动猜海拔；只有能拿到原始文件或原始 trackpoints 时，才允许单独回填。
