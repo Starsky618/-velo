@@ -1,6 +1,6 @@
 """保存路线版本逐点海拔快照。
 
-Revision ID: 20260629_route_version_elevation_points
+Revision ID: 20260629_route_elev_points
 Revises: 20260618_membership_formal
 Create Date: 2026-06-29
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260629_route_version_elevation_points"
+revision = "20260629_route_elev_points"
 down_revision = "20260618_membership_formal"
 branch_labels = None
 depends_on = None
