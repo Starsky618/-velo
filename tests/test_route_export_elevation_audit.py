@@ -105,6 +105,28 @@ def test_audit_reports_current_version_elevation_points(db):
     assert row.action == "export_contains_elevation"
 
 
+def test_audit_skips_backfill_candidate_scan_when_current_version_has_elevation(db, monkeypatch):
+    from scripts import audit_route_export_elevation as script
+
+    route, _version = _route_with_version(
+        db,
+        route={"source_activity_id": 123},
+        version={
+            "elevation_points_snapshot": "[[112.55,37.87,701.2],[112.55,37.875,735.8]]",
+        },
+    )
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("已有海拔的当前版本不该再扫描回填候选")
+
+    monkeypatch.setattr(script, "source_points_from_activity", fail_if_called)
+    row = script.audit_route_export_elevation(db, route_book_ids=[route.id])[0]
+
+    assert row.export_elevation_included is True
+    assert row.precise_source_candidates == ["current_version"]
+    assert row.action == "export_contains_elevation"
+
+
 def test_audit_finds_source_activity_as_precise_backfill_candidate(db):
     from app.activity.models import Activity, Trackpoint
     from scripts.audit_route_export_elevation import audit_route_export_elevation

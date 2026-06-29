@@ -137,6 +137,7 @@ def _precise_source_candidates(
     candidates: list[str] = []
     if elevation_count > 0:
         candidates.append("current_version")
+        return candidates
     if version is None or version.navigation_status != "ready":
         return candidates
     if _source_activity_matches_current_version(db, route, version):
