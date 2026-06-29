@@ -39,6 +39,8 @@ class RouteExportCreated:
     format: RouteExportFormat
     filename: str
     download_url: str
+    elevation_included: bool
+    elevation_point_count: int
 
 
 @dataclass(frozen=True)
@@ -128,6 +130,8 @@ def create_route_export(
         format=export_format,
         filename=filename,
         download_url=f"/api/route-books/{route.id}/exports/{artifact.id}/download",
+        elevation_included=generated.elevation_point_count > 0,
+        elevation_point_count=generated.elevation_point_count,
     )
 
 

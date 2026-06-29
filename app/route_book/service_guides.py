@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
+from app.route_book.export_generator import count_exportable_elevation_points
 from app.route_book.models import RouteBook, RouteGuide, RouteVersion
 from app.route_book import schemas
 
@@ -51,6 +52,7 @@ def _list_item(guide: RouteGuide, route: RouteBook | None) -> schemas.RouteGuide
 def _detail(guide: RouteGuide, route: RouteBook | None, version: RouteVersion | None) -> schemas.RouteGuideOut:
     ready = guide.route_book_id is not None
     export_ready, export_formats, export_block_reason = _export_state(guide, route, version)
+    export_elevation_point_count = _export_elevation_point_count(export_ready, version)
     return schemas.RouteGuideOut(
         id=guide.id,
         name=guide.name,
@@ -68,6 +70,8 @@ def _detail(guide: RouteGuide, route: RouteBook | None, version: RouteVersion | 
         export_ready=export_ready,
         export_formats=export_formats,
         export_block_reason=export_block_reason,
+        export_elevation_included=export_elevation_point_count > 0,
+        export_elevation_point_count=export_elevation_point_count,
     )
 
 
@@ -96,6 +100,15 @@ def _export_state(
     if route.current_version_id is None or version is None or version.navigation_status != "ready":
         return False, [], "no_current_version"
     return True, ["gpx", "tcx"], None
+
+
+def _export_elevation_point_count(export_ready: bool, version: RouteVersion | None) -> int:
+    if not export_ready or version is None:
+        return 0
+    return count_exportable_elevation_points(
+        reference_line_snapshot=version.reference_line_snapshot,
+        elevation_points_snapshot=version.elevation_points_snapshot,
+    )
 
 
 def list_route_guides(db: Session) -> list[schemas.RouteGuideListItem]:

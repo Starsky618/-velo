@@ -73,6 +73,8 @@ class RouteExportResponse(BaseModel):
     format: RouteExportFormat
     filename: str
     download_url: str
+    elevation_included: bool = False
+    elevation_point_count: int = 0
 
 
 def route_book_response(route, viewer_user_id: int | None) -> RouteBookResponse:
@@ -131,6 +133,8 @@ class RouteGuideOut(BaseModel):
     export_ready: bool
     export_formats: list[RouteExportFormat] = Field(default_factory=list)
     export_block_reason: RouteExportBlockReason | None = None
+    export_elevation_included: bool = False
+    export_elevation_point_count: int = 0
 
 
 class ActivityCandidateItem(BaseModel):

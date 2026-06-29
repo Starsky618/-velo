@@ -84,6 +84,34 @@ function exportBlockHint(guide) {
   return ''
 }
 
+function buildExportElevationState(guide) {
+  if (!guide || !guide.export_ready) return null
+  var count = Number(guide.export_elevation_point_count)
+  if (guide.export_elevation_included && Number.isFinite(count) && count > 0) {
+    return {
+      tone: 'good',
+      title: '含海拔点',
+      desc: Math.round(count) + ' 个海拔点会随文件带过去',
+    }
+  }
+  return {
+    tone: 'warn',
+    title: '仅路线轨迹',
+    desc: '没有海拔点，码表可能自行估算爬升',
+  }
+}
+
+function exportElevationResultTip(exportInfo) {
+  if (exportInfo && exportInfo.elevation_included) {
+    var count = Number(exportInfo.elevation_point_count)
+    if (Number.isFinite(count) && count > 0) {
+      return '这个文件含 ' + Math.round(count) + ' 个海拔点，导入码表时会随路线一起带过去。'
+    }
+    return '这个文件含海拔点，导入码表时会随路线一起带过去。'
+  }
+  return '这个文件没有海拔点，码表 App 可能自行估算爬升。'
+}
+
 function exportErrorMessage(err) {
   var code = err && err.code
   if (code === 403) return '这条路线暂时不能下载'
@@ -112,9 +140,11 @@ Page({
     routePreviewPolylines: [],
     routePreviewIncludePoints: [],
     exportHint: '',
+    exportElevationState: null,
     exporting: false,
     exportingFormat: '',
     lastExportFilename: '',
+    lastExportElevationTip: '',
     lastExportTempPath: '',
     lastExportSavedPath: '',
     lastExportDownloadUrl: '',
@@ -157,7 +187,9 @@ Page({
           hasElevation: hasElevation,
           routeStats: buildStats(guide),
           exportHint: exportBlockHint(guide),
+          exportElevationState: buildExportElevationState(guide),
           lastExportFilename: '',
+          lastExportElevationTip: '',
           lastExportTempPath: '',
           lastExportSavedPath: '',
           loading: false,
@@ -320,6 +352,7 @@ Page({
       exporting: true,
       exportingFormat: format,
       lastExportFilename: '',
+      lastExportElevationTip: '',
       lastExportTempPath: '',
       lastExportSavedPath: '',
       lastExportDownloadUrl: '',
@@ -336,6 +369,7 @@ Page({
             var shareFilePath = downloadedFile && downloadedFile.filePath
             that.setData({
               lastExportFilename: exportInfo.filename,
+              lastExportElevationTip: exportElevationResultTip(exportInfo),
               lastExportTempPath: shareFilePath || tempFilePath || '',
               lastExportSavedPath: savedFilePath || '',
               lastExportDownloadUrl: api.resolveUrl(exportInfo.download_url),

@@ -135,6 +135,8 @@ def test_detail_ready_true_returns_profile_preview_and_km_distance(client, db):
         assert body["export_ready"] is False
         assert body["export_formats"] == []
         assert body["export_block_reason"] == "no_current_version"
+        assert body["export_elevation_included"] is False
+        assert body["export_elevation_point_count"] == 0
     finally:
         _drop_route_guides_table(db)
 
@@ -154,6 +156,32 @@ def test_detail_export_ready_only_for_public_published_current_version(client, d
         assert body["export_ready"] is True
         assert body["export_formats"] == ["gpx", "tcx"]
         assert body["export_block_reason"] is None
+        assert body["export_elevation_included"] is False
+        assert body["export_elevation_point_count"] == 0
+    finally:
+        _drop_route_guides_table(db)
+
+
+def test_detail_export_reports_when_download_file_contains_elevation_points(client, db):
+    _create_route_guides_table(db)
+    try:
+        route = _route_book(db)
+        version = _attach_current_version(
+            db,
+            route,
+            # SQLite 测试库的 Geometry 列会返回固定假 EWKB；这里跟随测试库坐标，
+            # 只验证详情接口和导出生成器使用同一把“同一点才带海拔”的尺子。
+            elevation_points_snapshot="[[112.55,37.87,701.2],[112.55,37.875,735.8]]",
+        )
+        guide = _guide(db, route_book_id=route.id, source_route_version_id=version.id)
+
+        res = client.get(f"/api/route-guides/{guide.id}")
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["export_ready"] is True
+        assert body["export_elevation_included"] is True
+        assert body["export_elevation_point_count"] == 2
     finally:
         _drop_route_guides_table(db)
 
@@ -194,10 +222,14 @@ def test_detail_export_block_reason_distinguishes_no_route_and_private_route(cli
         assert no_route_body["export_ready"] is False
         assert no_route_body["export_formats"] == []
         assert no_route_body["export_block_reason"] == "no_route_book"
+        assert no_route_body["export_elevation_included"] is False
+        assert no_route_body["export_elevation_point_count"] == 0
         assert private_body["ready"] is True
         assert private_body["export_ready"] is False
         assert private_body["export_formats"] == []
         assert private_body["export_block_reason"] == "not_public"
+        assert private_body["export_elevation_included"] is False
+        assert private_body["export_elevation_point_count"] == 0
     finally:
         _drop_route_guides_table(db)
 
@@ -222,6 +254,8 @@ def test_detail_ready_false_keeps_content_but_hides_track_fields(client, db):
         assert body["export_ready"] is False
         assert body["export_formats"] == []
         assert body["export_block_reason"] == "no_route_book"
+        assert body["export_elevation_included"] is False
+        assert body["export_elevation_point_count"] == 0
     finally:
         _drop_route_guides_table(db)
 

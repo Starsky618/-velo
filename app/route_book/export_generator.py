@@ -72,6 +72,19 @@ def generate_route_export(
     raise ValueError("只支持导出 gpx 或 tcx")
 
 
+def count_exportable_elevation_points(
+    *,
+    reference_line_snapshot: object,
+    elevation_points_snapshot: str | None,
+) -> int:
+    """数一数这张路线底片里有多少个能安全带进导出文件的海拔点。"""
+    points = _points_from_reference_line(reference_line_snapshot)
+    elevations = _elevations_from_snapshot(elevation_points_snapshot, reference_points=points)
+    if not elevations:
+        return 0
+    return sum(1 for ele in elevations if ele is not None)
+
+
 def _points_from_reference_line(value: object) -> list[list[float]]:
     if value is None:
         return []

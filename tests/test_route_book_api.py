@@ -139,6 +139,8 @@ def test_public_route_export_creates_downloadable_gpx_without_leaking_file_id(cl
     assert body["format"] == "gpx"
     assert body["filename"].endswith(f"-{route.id}-v{version.id}.gpx")
     assert body["download_url"] == f"/api/route-books/{route.id}/exports/{body['artifact_id']}/download"
+    assert body["elevation_included"] is False
+    assert body["elevation_point_count"] == 0
     assert "file_id" not in body
     assert fake_storage.uploads
 
@@ -163,6 +165,8 @@ def test_public_route_export_uses_route_version_precise_elevation_snapshot(clien
     created = client.post(f"/api/route-books/{route.id}/exports", json={"format": "gpx"})
     download = client.get(created.json()["download_url"])
 
+    assert created.json()["elevation_included"] is True
+    assert created.json()["elevation_point_count"] == 2
     assert download.status_code == 200
     assert b"<ele>701.2</ele>" in download.content
     assert b"<ele>735.8</ele>" in download.content

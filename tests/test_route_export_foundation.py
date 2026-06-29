@@ -149,12 +149,15 @@ def test_export_generator_builds_minimal_gpx_from_reference_line_snapshot():
 
 
 def test_export_generator_prefers_precise_elevation_snapshot_for_gpx():
-    from app.route_book.export_generator import generate_route_export
+    from app.route_book.export_generator import count_exportable_elevation_points, generate_route_export
+
+    reference_line = "SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)"
+    elevation_snapshot = "[[112.5,37.8,701.2],[112.6,37.9,735.8]]"
 
     generated = generate_route_export(
         route_name="奥申",
-        reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
-        elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
+        reference_line_snapshot=reference_line,
+        elevation_points_snapshot=elevation_snapshot,
         export_format="gpx",
     )
 
@@ -162,10 +165,14 @@ def test_export_generator_prefers_precise_elevation_snapshot_for_gpx():
     assert '<trkpt lat="37.8" lon="112.5">' in text
     assert "<ele>701.2</ele>" in text
     assert "<ele>735.8</ele>" in text
+    assert count_exportable_elevation_points(
+        reference_line_snapshot=reference_line,
+        elevation_points_snapshot=elevation_snapshot,
+    ) == 2
 
 
 def test_export_generator_never_lets_elevation_snapshot_replace_reference_line():
-    from app.route_book.export_generator import generate_route_export
+    from app.route_book.export_generator import count_exportable_elevation_points, generate_route_export
 
     generated = generate_route_export(
         route_name="奥申",
@@ -180,6 +187,10 @@ def test_export_generator_never_lets_elevation_snapshot_replace_reference_line()
     assert 'lat="40" lon="120"' not in text
     assert "<ele>" not in text
     assert generated.elevation_point_count == 0
+    assert count_exportable_elevation_points(
+        reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        elevation_points_snapshot="[[120,40,701.2],[121,41,735.8]]",
+    ) == 0
 
 
 def test_export_generator_builds_minimal_tcx_from_reference_line_snapshot():

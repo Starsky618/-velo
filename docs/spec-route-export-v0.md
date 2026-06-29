@@ -36,6 +36,7 @@
 - 公开且已发布路线免登录下载。
 - 私有路线只允许创建者或管理员导出。
 - 如果路线版本有 VELO 原始逐点海拔，GPX/TCX 导出必须携带这份海拔。
+- 前端必须告诉用户导出文件是否含海拔点；没有海拔点时，要明确提示目标 App 可能自行估算爬升。
 
 不包含：
 - FIT 文件生成。
@@ -75,7 +76,9 @@
   "route_version_id": 7,
   "format": "gpx",
   "filename": "天龙山西线-106502-v7.gpx",
-  "download_url": "/api/route-books/106502/exports/1/download"
+  "download_url": "/api/route-books/106502/exports/1/download",
+  "elevation_included": true,
+  "elevation_point_count": 7435
 }
 ```
 
@@ -155,7 +158,9 @@
 {
   "export_ready": true,
   "export_formats": ["gpx", "tcx"],
-  "export_block_reason": null
+  "export_block_reason": null,
+  "export_elevation_included": true,
+  "export_elevation_point_count": 7435
 }
 ```
 
@@ -166,6 +171,8 @@
 - `null`
 
 前端只用 `export_ready` 决定是否显示下载按钮。`ready` 仍表示这篇路线手册是否挂了路书，不再拿来判断是否能下载。
+
+`export_elevation_included` 只表示“按当前路线版本生成的 GPX/TCX 会不会写入海拔点”。它不是下载门禁，也不是“官方精确爬升”的承诺。没有海拔点，或 `export_ready=false` 时，这两个字段必须返回 `false / 0`；前端必须提示用户：码表 App 可能自行估算爬升。
 
 ## 失败场景
 

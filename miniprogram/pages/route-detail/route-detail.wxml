@@ -27,6 +27,10 @@
         <view class="export-title">导出到码表</view>
         <view class="export-subtitle">先生成路线文件，再复制链接到浏览器下载</view>
       </view>
+      <view wx:if="{{exportElevationState}}" class="export-elevation {{exportElevationState.tone}}">
+        <view class="export-elevation-title">{{exportElevationState.title}}</view>
+        <view class="export-elevation-desc">{{exportElevationState.desc}}</view>
+      </view>
       <view class="export-actions">
         <button
           class="export-button"
@@ -45,6 +49,7 @@
       <view wx:if="{{lastExportFilename}}" class="export-result">
         <view class="export-result-label">已下载</view>
         <view class="export-result-name">{{lastExportFilename}}</view>
+        <view class="export-result-tip">{{lastExportElevationTip}}</view>
         <view class="export-result-tip">下一步复制链接，用手机浏览器打开，再去码表 App 导入。</view>
       </view>
       <view wx:if="{{lastExportTempPath}}" class="export-next-actions">
