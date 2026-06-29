@@ -12,6 +12,7 @@
 - 小程序路线详情页展示下载入口和品牌导入说明。
 - 文档写清 V1/V2 不混入本期。
 - 有 VELO 原始逐点海拔时，导出文件携带这份海拔。
+- 旧路线不自动猜海拔；官方路线通过重灌生成新版补上，用户旧路线只能在拿得到原始精确数据时回填。
 
 不做：
 - FIT。
@@ -33,7 +34,15 @@
 ```bash
 pytest tests/test_route_export_foundation.py tests/test_route_book_api.py
 pytest tests/test_route_guides_import.py tests/test_route_guides_api.py
+pytest tests/test_meetup_models.py tests/test_route_guides_import_pg.py
 node --check miniprogram/utils/api.js
 node --check miniprogram/pages/route-detail/route-detail.js
 git diff --check
 ```
+
+## 生产上线顺序
+
+1. 先部署新代码并跑 `python3 -m alembic upgrade head`，确认 `route_versions.elevation_points_snapshot` 已存在。
+2. 再跑 `python3 scripts/import_route_guides.py --content-dir content/routes`，让官方路线用原始 GPX 重灌出带逐点海拔的新当前版本。
+3. 抽查至少一条官方路线：`route_books.current_version_id` 指向新版，当前 `route_versions.elevation_points_snapshot` 非空。
+4. 用户上传 / 活动派生的旧路线不在本步骤里自动猜海拔；只有能拿到原始文件或原始 trackpoints 时，才允许单独回填。

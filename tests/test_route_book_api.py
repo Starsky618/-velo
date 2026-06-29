@@ -154,7 +154,8 @@ def test_public_route_export_creates_downloadable_gpx_without_leaking_file_id(cl
 
 def test_public_route_export_uses_route_version_precise_elevation_snapshot(client, db, admin_user, monkeypatch):
     route, version = _route_with_current_version(db, admin_user.id)
-    version.elevation_points_snapshot = "[[112.5,37.8,701.2],[112.6,37.9,735.8]]"
+    # SQLite 测试库用固定假 EWKB 模拟 PostGIS 读 Geometry；这里跟随假坐标，只测 API 链路是否带出高程。
+    version.elevation_points_snapshot = "[[112.55,37.87,701.2],[112.55,37.875,735.8]]"
     db.add(version)
     db.commit()
     monkeypatch.setattr("app.route_book.export_workflow._storage", _FakeExportStorage())
@@ -352,6 +353,38 @@ def test_file_upload_supports_gpx_and_preserves_file_id(client, db, auth_header,
 
     version = db.query(RouteVersion).filter(RouteVersion.route_book_id == body["id"]).one()
     assert json.loads(version.elevation_points_snapshot)[0] == [112.5, 37.8, 701.2]
+
+
+def test_file_upload_real_gpx_parser_saves_precise_elevation_points(client, db, auth_header, monkeypatch):
+    class FakeStorage:
+        def upload(self, file_bytes, filename):
+            assert filename == "real-route.gpx"
+            return "202605/real-route.gpx"
+
+    gpx = b"""<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="pytest" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <trkseg>
+      <trkpt lat="37.8" lon="112.5"><ele>701.2</ele></trkpt>
+      <trkpt lat="37.9" lon="112.6"><ele>735.8</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>
+"""
+    monkeypatch.setattr("app.route_book.service._storage", FakeStorage())
+
+    res = client.post(
+        "/api/route-books",
+        data={"name": "真实 GPX 上传路线", "source": "file_upload"},
+        files={"file": ("real-route.gpx", gpx, "application/gpx+xml")},
+        headers=auth_header,
+    )
+
+    assert res.status_code == 200
+    from app.route_book.models import RouteVersion
+
+    version = db.query(RouteVersion).filter(RouteVersion.route_book_id == res.json()["id"]).one()
+    assert json.loads(version.elevation_points_snapshot) == [[112.5, 37.8, 701.2], [112.6, 37.9, 735.8]]
 
 
 def test_file_upload_supports_fit_and_preserves_file_id(client, auth_header, monkeypatch):

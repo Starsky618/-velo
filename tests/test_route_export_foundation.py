@@ -164,6 +164,24 @@ def test_export_generator_prefers_precise_elevation_snapshot_for_gpx():
     assert "<ele>735.8</ele>" in text
 
 
+def test_export_generator_never_lets_elevation_snapshot_replace_reference_line():
+    from app.route_book.export_generator import generate_route_export
+
+    generated = generate_route_export(
+        route_name="奥申",
+        reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        elevation_points_snapshot="[[120,40,701.2],[121,41,735.8]]",
+        export_format="gpx",
+    )
+
+    text = generated.content.decode("utf-8")
+    assert '<trkpt lat="37.8" lon="112.5"></trkpt>' in text
+    assert '<trkpt lat="37.9" lon="112.6"></trkpt>' in text
+    assert 'lat="40" lon="120"' not in text
+    assert "<ele>" not in text
+    assert generated.elevation_point_count == 0
+
+
 def test_export_generator_builds_minimal_tcx_from_reference_line_snapshot():
     from app.route_book.export_generator import generate_route_export
 
@@ -300,6 +318,36 @@ def test_artifact_download_permission_never_exposes_someone_elses_file_id():
     assert can_download_export_artifact(artifact, current_user_id=55, job=job, route=route, is_admin=True)
     assert not can_download_export_artifact(artifact, current_user_id=55, job=job, route=route)
     assert not can_download_export_artifact(artifact, current_user_id=None, job=job, route=route)
+
+
+def test_artifact_download_allows_old_version_after_route_gets_new_current_version():
+    from app.route_book.export_service import can_download_export_artifact
+
+    route = SimpleNamespace(
+        id=7,
+        creator_id=44,
+        visibility="public",
+        publish_status="published",
+        current_version_id=10,
+    )
+    artifact = SimpleNamespace(
+        id=101,
+        export_job_id=201,
+        route_book_id=7,
+        route_version_id=9,
+        format="gpx",
+        file_id="exports/old-v9.gpx",
+        expires_at=None,
+    )
+    job = SimpleNamespace(
+        id=201,
+        requester_id=None,
+        route_book_id=7,
+        route_version_id=9,
+        export_format="gpx",
+    )
+
+    assert can_download_export_artifact(artifact, current_user_id=None, job=job, route=route)
 
 
 def test_artifact_download_rejects_artifact_job_version_or_format_mismatch():

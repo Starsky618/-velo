@@ -42,8 +42,10 @@ def generate_route_export(
     这里仍然不生成转弯提示，避免把不完整的数据伪装成完整导航。
     """
     points = _points_from_reference_line(reference_line_snapshot)
-    export_points = _points_with_elevation_from_snapshot(elevation_points_snapshot, expected_count=len(points)) or [
-        [lon, lat, None] for lon, lat in points
+    elevations = _elevations_from_snapshot(elevation_points_snapshot, reference_points=points)
+    export_points = [
+        [lon, lat, ele]
+        for (lon, lat), ele in zip(points, elevations or [None] * len(points))
     ]
     if len(export_points) < 2:
         raise ValueError("导出至少需要 2 个坐标点")
@@ -84,30 +86,36 @@ def _points_from_reference_line(value: object) -> list[list[float]]:
     return _preview_points_from_wkb(data)
 
 
-def _points_with_elevation_from_snapshot(value: str | None, *, expected_count: int) -> list[list[float | None]] | None:
+def _elevations_from_snapshot(value: str | None, *, reference_points: list[list[float]]) -> list[float | None] | None:
     if not value:
         return None
     try:
         raw_points = json.loads(value)
     except (TypeError, json.JSONDecodeError):
         return None
-    if not isinstance(raw_points, list) or len(raw_points) != expected_count:
+    if not isinstance(raw_points, list) or len(raw_points) != len(reference_points):
         return None
 
-    points: list[list[float | None]] = []
+    elevations: list[float | None] = []
     has_elevation = False
-    for raw in raw_points:
+    for raw, reference in zip(raw_points, reference_points):
         if not isinstance(raw, list) or len(raw) < 3:
             return None
         lon = _finite_coord(raw[0])
         lat = _finite_coord(raw[1])
-        if lon is None or lat is None:
+        if lon is None or lat is None or not _same_point(lon, lat, reference):
             return None
         ele = _finite_coord(raw[2])
         if ele is not None:
             has_elevation = True
-        points.append([lon, lat, ele])
-    return points if has_elevation else None
+        elevations.append(ele)
+    return elevations if has_elevation else None
+
+
+def _same_point(lon: float, lat: float, reference: list[float]) -> bool:
+    # 高程快照只能当“同一点的高度标签”使用；坐标对不上时宁可不带高度，也不能把路线画偏。
+    tolerance = 1e-6
+    return abs(lon - reference[0]) <= tolerance and abs(lat - reference[1]) <= tolerance
 
 
 def _finite_coord(value: object) -> float | None:

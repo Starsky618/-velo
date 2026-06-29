@@ -100,6 +100,7 @@
 
 - 文件从 `route_versions.reference_line_snapshot` 生成线路。
 - 如果 `route_versions.elevation_points_snapshot` 有逐点海拔，导出必须优先使用它。
+- `elevation_points_snapshot` 只能补高度，不能替换线路坐标；点数或坐标对不上时退回二维导出。
 - 不从 `RouteBook.file_id` 原始上传文件直出，避免绕过版本门禁和权限门禁。
 - GPX 输出 `gpx > trk > trkseg > trkpt(lat/lon)`；有海拔时每个有值的点输出 `<ele>`。
 - TCX 输出 `TrainingCenterDatabase > Courses > Course > Track > Trackpoint > Position`；有海拔时输出 `AltitudeMeters`。
@@ -111,6 +112,13 @@
 1. **VELO 原始逐点海拔**：来自用户上传 GPX/FIT 或已有活动 trackpoints，和路线点一一对应。导出时先用这份数据，让 Garmin / iGPSPORT / 迈金 / Wahoo 尽量读取 VELO 给出的海拔。
 2. **VELO 合规高程补全**：后续只能接中国合法合规、可商用授权的高程数据源；没有授权前不把 DEM 猜测写成精确海拔。
 3. **目标 App 自行补算**：只有前两层都没有时才退回二维文件。这个模式最低优先级，因为不同厂商会用自己的高程库重算爬升，用户看到的数据会漂。
+
+### 旧路线回填边界
+
+- 新创建 / 新导入路线会保存 `elevation_points_snapshot`。
+- 已存在的旧路线不会因为迁移自动获得逐点海拔；迁移只加字段，不凭空猜数据。
+- 官方路线重灌时，如果轨迹或逐点海拔变化，必须创建新的 `route_versions` 当前版本，旧版本归档，避免旧导出文件和旧版本底片语义分叉。
+- 用户上传或活动派生的旧路线，只有能重新拿到原始文件或原始 trackpoints 时才允许回填；拿不到原始精确数据时继续二维导出，不写 DEM 猜测值。
 
 ### 合规高程源调研闸门
 
