@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
+from app.route_book.elevation_quality import has_complete_elevation_snapshot
 from app.route_book.models import RouteBook, RouteGuide, RouteVersion
 from app.route_book import schemas
 
@@ -95,6 +96,8 @@ def _export_state(
         return False, [], "not_public"
     if route.current_version_id is None or version is None or version.navigation_status != "ready":
         return False, [], "no_current_version"
+    if not has_complete_elevation_snapshot(version.elevation_points_snapshot, expected_count=version.point_count):
+        return False, [], "no_elevation"
     return True, ["gpx", "tcx"], None
 
 

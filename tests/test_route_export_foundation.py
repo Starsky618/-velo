@@ -128,12 +128,13 @@ def test_route_export_artifact_model_keeps_internal_file_id_and_version_binding(
     } <= index_names
 
 
-def test_export_generator_builds_minimal_gpx_from_reference_line_snapshot():
+def test_export_generator_builds_gpx_with_required_elevation_snapshot():
     from app.route_book.export_generator import generate_route_export
 
     generated = generate_route_export(
         route_name="天龙山<>路书",
         reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
         export_format="gpx",
     )
 
@@ -145,31 +146,35 @@ def test_export_generator_builds_minimal_gpx_from_reference_line_snapshot():
     assert "<trkseg>" in text
     assert '<trkpt lat="37.8" lon="112.5">' in text
     assert '<trkpt lat="37.9" lon="112.6">' in text
+    assert "<ele>701.2</ele>" in text
+    assert "<ele>735.8</ele>" in text
     assert "<TrainingCenterDatabase" not in text
 
 
-def test_export_generator_prefers_precise_elevation_snapshot_for_gpx():
+def test_export_generator_rejects_gpx_without_complete_elevation_snapshot():
     from app.route_book.export_generator import generate_route_export
 
-    generated = generate_route_export(
-        route_name="奥申",
-        reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
-        elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
-        export_format="gpx",
-    )
+    for snapshot in (None, "[[112.5,37.8,701.2],[112.6,37.9,null]]", "[[112.5,37.8,701.2]]"):
+        try:
+            generate_route_export(
+                route_name="奥申",
+                reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+                elevation_points_snapshot=snapshot,
+                export_format="gpx",
+            )
+        except ValueError as exc:
+            assert "海拔" in str(exc)
+        else:
+            raise AssertionError("缺完整逐点海拔时不该生成码表文件")
 
-    text = generated.content.decode("utf-8")
-    assert '<trkpt lat="37.8" lon="112.5">' in text
-    assert "<ele>701.2</ele>" in text
-    assert "<ele>735.8</ele>" in text
 
-
-def test_export_generator_builds_minimal_tcx_from_reference_line_snapshot():
+def test_export_generator_builds_tcx_with_required_elevation_snapshot():
     from app.route_book.export_generator import generate_route_export
 
     generated = generate_route_export(
         route_name="汾河训练线",
         reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
         export_format="tcx",
     )
 
@@ -182,24 +187,9 @@ def test_export_generator_builds_minimal_tcx_from_reference_line_snapshot():
     assert "<Trackpoint>" in text
     assert "<LatitudeDegrees>37.8</LatitudeDegrees>" in text
     assert "<LongitudeDegrees>112.5</LongitudeDegrees>" in text
-    assert "<CoursePoint>" not in text
-    assert "<AltitudeMeters>" not in text
-
-
-def test_export_generator_prefers_precise_elevation_snapshot_for_tcx():
-    from app.route_book.export_generator import generate_route_export
-
-    generated = generate_route_export(
-        route_name="奥申",
-        reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
-        elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
-        export_format="tcx",
-    )
-
-    text = generated.content.decode("utf-8")
-    assert "<LatitudeDegrees>37.8</LatitudeDegrees>" in text
     assert "<AltitudeMeters>701.2</AltitudeMeters>" in text
     assert "<AltitudeMeters>735.8</AltitudeMeters>" in text
+    assert "<CoursePoint>" not in text
 
 
 def test_export_generator_rejects_routes_with_too_few_points():

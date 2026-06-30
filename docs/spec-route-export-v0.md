@@ -35,7 +35,7 @@
 - 路线详情页入口、下载按钮、导入说明。
 - 公开且已发布路线免登录下载。
 - 私有路线只允许创建者或管理员导出。
-- 如果路线版本有 VELO 原始逐点海拔，GPX/TCX 导出必须携带这份海拔。
+- 路线版本必须有完整逐点海拔才能导出；GPX/TCX 每个轨迹点都必须携带海拔。
 
 不包含：
 - FIT 文件生成。
@@ -99,18 +99,18 @@
 ## 文件生成规则
 
 - 文件从 `route_versions.reference_line_snapshot` 生成线路。
-- 如果 `route_versions.elevation_points_snapshot` 有逐点海拔，导出必须优先使用它。
+- `route_versions.elevation_points_snapshot` 必须存在、点数必须和 `reference_line_snapshot` 一致、每个点必须有合法海拔；否则拒绝导出。
 - 不从 `RouteBook.file_id` 原始上传文件直出，避免绕过版本门禁和权限门禁。
-- GPX 输出 `gpx > trk > trkseg > trkpt(lat/lon)`；有海拔时每个有值的点输出 `<ele>`。
-- TCX 输出 `TrainingCenterDatabase > Courses > Course > Track > Trackpoint > Position`；有海拔时输出 `AltitudeMeters`。
+- GPX 输出 `gpx > trk > trkseg > trkpt(lat/lon) > ele`；每个点都必须有 `<ele>`。
+- TCX 输出 `TrainingCenterDatabase > Courses > Course > Track > Trackpoint > Position + AltitudeMeters`；每个点都必须有 `AltitudeMeters`。
 - 不生成 Course Points。
 - 文件名格式为 `{route_name}-{route_book_id}-v{route_version_id}.{gpx|tcx}`，路线名要清理路径字符和超长文本。
 
 ## 海拔数据优先级
 
-1. **VELO 原始逐点海拔**：来自用户上传 GPX/FIT 或已有活动 trackpoints，和路线点一一对应。导出时先用这份数据，让 Garmin / iGPSPORT / 迈金 / Wahoo 尽量读取 VELO 给出的海拔。
-2. **VELO 合规高程补全**：后续只能接中国合法合规、可商用授权的高程数据源；没有授权前不把 DEM 猜测写成精确海拔。
-3. **目标 App 自行补算**：只有前两层都没有时才退回二维文件。这个模式最低优先级，因为不同厂商会用自己的高程库重算爬升，用户看到的数据会漂。
+1. **VELO 原始逐点海拔**：来自用户上传 GPX/FIT 或已有活动 trackpoints，和路线点一一对应。
+2. **VELO 合规高程补全**：只能接中国合法合规、可商用授权、可长期写库的高程数据源，并记录 source / license / accuracy。
+3. **没有可信逐点海拔**：不导出。iGPSPORT 真机 A/B 已验证：无 `<ele>` 的 GPX 会触发目标 App 自行补算，可能得到显著偏高的爬升。
 
 ### 合规高程源调研闸门
 
@@ -142,6 +142,7 @@
 - `no_route_book`
 - `no_current_version`
 - `not_public`
+- `no_elevation`
 - `null`
 
 前端只用 `export_ready` 决定是否显示下载按钮。`ready` 仍表示这篇路线手册是否挂了路书，不再拿来判断是否能下载。
@@ -152,6 +153,7 @@
 | --- | --- |
 | 没有 route_book_id | “这条路线还没有可下载轨迹” |
 | 没有 current_version_id | “这条路线还没有可下载轨迹” |
+| 没有完整逐点海拔 | “这条路线还在补全海拔，暂时不能导出到码表” |
 | 私有路线匿名导出 | “这条路线暂时不能下载” |
 | 网络失败 | “网络失败，请稍后再试” |
 | 服务端失败 | “服务器开小差了，请稍后再试” |
@@ -163,12 +165,12 @@ V1：调研并申请 Garmin Courses API 官方同步。只有拿到官方授权�
 
 V2：确认 iGPSPORT / 迈金 / Wahoo 是否有开放接口或官方导入协议。没有公开接口时，继续保持“标准文件下载 + 用户手动导入”。
 
-FIT、转弯点、官方品牌同步都不进 V0。合规高程补全单独立项。
+FIT、转弯点、官方品牌同步都不进 V0。合规高程数据源采购/授权确认必须先于生产回填。
 
 ## 验收命令
 
 ```bash
-pytest tests/test_route_export_foundation.py tests/test_route_book_api.py
+pytest tests/test_route_export_foundation.py tests/test_route_book_api.py tests/test_route_elevation_backfill.py
 pytest tests/test_route_guides_import.py tests/test_route_guides_api.py
 node --check miniprogram/utils/api.js
 node --check miniprogram/pages/route-detail/route-detail.js

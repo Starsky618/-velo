@@ -50,6 +50,7 @@ def _attach_current_version(db, route, **overrides):
         "line_hash": "hash-" + str(route.id),
         "distance": route.distance,
         "climb": route.climb,
+        "elevation_points_snapshot": "[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
         "point_count": 2,
     }
     data.update(overrides)
@@ -173,6 +174,25 @@ def test_detail_export_not_ready_when_current_version_is_not_navigation_ready(cl
         assert body["export_ready"] is False
         assert body["export_formats"] == []
         assert body["export_block_reason"] == "no_current_version"
+    finally:
+        _drop_route_guides_table(db)
+
+
+def test_detail_export_not_ready_when_route_lacks_complete_elevation(client, db):
+    _create_route_guides_table(db)
+    try:
+        route = _route_book(db)
+        version = _attach_current_version(db, route, elevation_points_snapshot=None)
+        guide = _guide(db, route_book_id=route.id, source_route_version_id=version.id)
+
+        res = client.get(f"/api/route-guides/{guide.id}")
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["ready"] is True
+        assert body["export_ready"] is False
+        assert body["export_formats"] == []
+        assert body["export_block_reason"] == "no_elevation"
     finally:
         _drop_route_guides_table(db)
 

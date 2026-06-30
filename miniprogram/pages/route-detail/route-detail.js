@@ -81,13 +81,20 @@ function exportBlockHint(guide) {
   if (guide.export_block_reason === 'no_route_book' || guide.export_block_reason === 'no_current_version') {
     return '这条路线还没有可下载轨迹'
   }
+  if (guide.export_block_reason === 'no_elevation') {
+    return '这条路线还在补全海拔，暂时不能导出到码表'
+  }
   return ''
 }
 
 function exportErrorMessage(err) {
   var code = err && err.code
   if (code === 403) return '这条路线暂时不能下载'
-  if (code === 422) return '这条路线还没有可下载轨迹'
+  if (code === 422) {
+    var message = err && err.message
+    if (message && message.indexOf('海拔') >= 0) return '这条路线还在补全海拔，暂时不能导出到码表'
+    return '这条路线还没有可下载轨迹'
+  }
   if (code === -1) return '网络失败，请稍后再试'
   if (code >= 500) return '服务器开小差了，请稍后再试'
   return (err && err.message) || '下载失败，请稍后再试'

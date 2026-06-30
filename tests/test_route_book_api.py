@@ -94,6 +94,7 @@ def _route_with_current_version(db, creator_id: int | None, **overrides):
         line_hash=f"hash-{route.id}",
         distance=route.distance,
         climb=route.climb,
+        elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
         point_count=2,
     )
     db.add(version)
@@ -165,6 +166,18 @@ def test_public_route_export_uses_route_version_precise_elevation_snapshot(clien
     assert download.status_code == 200
     assert b"<ele>701.2</ele>" in download.content
     assert b"<ele>735.8</ele>" in download.content
+
+
+def test_route_export_rejects_route_without_complete_elevation_snapshot(client, db, admin_user):
+    route, version = _route_with_current_version(db, admin_user.id)
+    version.elevation_points_snapshot = None
+    db.add(version)
+    db.commit()
+
+    res = client.post(f"/api/route-books/{route.id}/exports", json={"format": "gpx"})
+
+    assert res.status_code == 422
+    assert "海拔" in res.json()["detail"]
 
 
 def test_public_route_export_created_by_login_user_still_downloads_without_auth(client, db, auth_header, test_user, monkeypatch):

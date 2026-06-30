@@ -11,14 +11,14 @@
 - 后端提供创建导出和下载文件接口。
 - 小程序路线详情页展示下载入口和品牌导入说明。
 - 文档写清 V1/V2 不混入本期。
-- 有 VELO 原始逐点海拔时，导出文件携带这份海拔。
+- 只有路线版本具备完整可信逐点海拔时才允许导出；导出文件每个点都携带海拔。
 
 不做：
 - FIT。
 - Garmin OAuth 或 Courses API。
 - iGPSPORT / 迈金 / Wahoo 私有协议。
 - 转弯提示。
-- 没有原始海拔时自动猜海拔。
+- 没有可信逐点海拔时导出二维文件。
 - 新队列、新 worker、新 docker-compose 配置。
 
 ## 任务卡
@@ -31,7 +31,7 @@
 ## 验收命令
 
 ```bash
-pytest tests/test_route_export_foundation.py tests/test_route_book_api.py
+pytest tests/test_route_export_foundation.py tests/test_route_book_api.py tests/test_route_elevation_backfill.py
 pytest tests/test_route_guides_import.py tests/test_route_guides_api.py
 node --check miniprogram/utils/api.js
 node --check miniprogram/pages/route-detail/route-detail.js
