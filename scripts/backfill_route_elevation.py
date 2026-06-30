@@ -1,11 +1,12 @@
 """路线逐点海拔回填工具。
 
-两步使用：
+三种使用：
 1. --export-missing 导出缺海拔的路线点，交给国内合规授权的高程数据源处理。
 2. --import-csv 导入供应商返回的逐点海拔，并强制记录 source/license。
+3. --backfill-srtm 用项目统一的 SRTM3 公共地形源直接补齐缺海拔路书。
 
-这个脚本故意不内置国外 DEM 或未授权 API。码表导出会信任 `<ele>`，所以数据
-来源必须可审计：每次写库都要留下 source_name / license_id / accuracy_m。
+码表导出会信任 `<ele>`，所以数据来源必须可审计：每次写库都要留下
+source_name / license_id / accuracy_m。
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ from __future__ import annotations
 import argparse
 import csv
 from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sys
@@ -22,15 +22,19 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from sqlalchemy import func, inspect
+from sqlalchemy import func
 
 from app.database import SessionLocal
-from app.parsing.geo_math import haversine
-from app.route_book.elevation_quality import parse_complete_elevation_snapshot
-from app.route_book.models import RouteBook, RouteGuide, RouteVersion, _preview_points_from_wkt
+from app.elevation.dem_client import query_elevations
+from app.elevation.route_elevation import build_route_elevation_result_from_values
+from app.route_book.elevation_workflow import backfill_route_version_elevation, write_route_elevation_result
+from app.route_book.elevation_quality import has_trusted_route_elevation, parse_complete_elevation_snapshot
+from app.route_book.models import RouteBook, RouteVersion, _preview_points_from_wkt
 
 COORD_TOLERANCE_DEG = 0.00001
-PROFILE_LIMIT = 100
+SRTM_SOURCE_NAME = "SRTM3 90m DEM"
+SRTM_LICENSE_ID = "CGIAR-CSI SRTM public DEM"
+SRTM_ACCURACY_M = 16.0
 
 
 @dataclass(frozen=True)
@@ -47,9 +51,11 @@ def main(argv: list[str] | None = None) -> None:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--export-missing", type=Path, help="write missing route points CSV")
     group.add_argument("--import-csv", type=Path, help="read authorized elevation CSV")
+    group.add_argument("--backfill-srtm", action="store_true", help="fill missing route elevations from shared SRTM3 DEM")
     parser.add_argument("--source-name", help="authorized domestic elevation source name")
     parser.add_argument("--license-id", help="license/contract/order id proving legal use")
     parser.add_argument("--accuracy-m", type=float, help="declared vertical accuracy in meters")
+    parser.add_argument("--route-book-id", type=int, action="append", help="only backfill selected route book id")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
@@ -58,6 +64,18 @@ def main(argv: list[str] | None = None) -> None:
         if args.export_missing:
             count = export_missing_points(db, args.export_missing)
             print(f"exported {count} point(s) to {args.export_missing}")
+            return
+
+        if args.backfill_srtm:
+            count = backfill_missing_with_srtm(
+                db,
+                source_name=args.source_name or SRTM_SOURCE_NAME,
+                license_id=args.license_id or SRTM_LICENSE_ID,
+                accuracy_m=args.accuracy_m if args.accuracy_m is not None else SRTM_ACCURACY_M,
+                dry_run=args.dry_run,
+                route_book_ids=args.route_book_id,
+            )
+            print(f"{'validated' if args.dry_run else 'updated'} {count} route version(s) from SRTM3")
             return
 
         if not args.source_name or not args.license_id or args.accuracy_m is None:
@@ -84,7 +102,11 @@ def export_missing_points(db, output_path: Path) -> int:
         writer.writeheader()
         for route, version, reference_line_wkt in rows:
             points = _points_from_wkt(reference_line_wkt)
-            if parse_complete_elevation_snapshot(version.elevation_points_snapshot, expected_count=len(points)):
+            if has_trusted_route_elevation(
+                version.elevation_points_snapshot,
+                metadata_json=version.navigation_metadata_json,
+                expected_count=len(points),
+            ):
                 continue
             for seq, (lon, lat) in enumerate(points):
                 writer.writerow(
@@ -100,6 +122,49 @@ def export_missing_points(db, output_path: Path) -> int:
     return count
 
 
+def backfill_missing_with_srtm(
+    db,
+    *,
+    query_func=query_elevations,
+    source_name: str = SRTM_SOURCE_NAME,
+    license_id: str = SRTM_LICENSE_ID,
+    accuracy_m: float = SRTM_ACCURACY_M,
+    dry_run: bool,
+    route_book_ids: list[int] | None = None,
+) -> int:
+    if accuracy_m <= 0:
+        raise ValueError("accuracy_m must be positive")
+
+    selected_route_ids = set(route_book_ids or [])
+    updated = 0
+    for route, version, reference_line_wkt in _current_route_versions(db):
+        if selected_route_ids and route.id not in selected_route_ids:
+            continue
+        points = _points_from_wkt(reference_line_wkt)
+        if has_trusted_route_elevation(
+            version.elevation_points_snapshot,
+            metadata_json=version.navigation_metadata_json,
+            expected_count=len(points),
+        ):
+            continue
+        backfill_route_version_elevation(
+            db,
+            version.id,
+            query_func=query_func,
+            source_name=source_name,
+            license_id=license_id,
+            accuracy_m=accuracy_m,
+            dry_run=dry_run,
+            commit=False,
+        )
+        updated += 1
+    if dry_run:
+        db.rollback()
+    else:
+        db.commit()
+    return updated
+
+
 def import_elevation_csv(
     db,
     input_path: Path,
@@ -113,7 +178,6 @@ def import_elevation_csv(
         raise ValueError("accuracy_m must be positive")
     grouped = _read_elevation_csv(input_path)
     updated = 0
-    now = datetime.now(timezone.utc)
 
     for version_id, imported_points in grouped.items():
         row = (
@@ -128,25 +192,21 @@ def import_elevation_csv(
         route_points = _points_from_wkt(reference_line_wkt)
         _assert_points_match(version.id, route_points, imported_points)
 
-        snapshot = [[lon, lat, point.elevation_m] for (lon, lat), point in zip(route_points, imported_points)]
-        profile = _downsample_profile(route_points, [point.elevation_m for point in imported_points])
-        climb = _calculate_climb([point.elevation_m for point in imported_points])
-        metadata = _merged_navigation_metadata(
-            version.navigation_metadata_json,
+        result = build_route_elevation_result_from_values(
+            route_points,
+            [point.elevation_m for point in imported_points],
+        )
+        write_route_elevation_result(
+            db,
+            route=route,
+            version=version,
+            result=result,
             source_name=source_name,
             license_id=license_id,
             accuracy_m=accuracy_m,
-            imported_at=now,
-            point_count=len(snapshot),
+            method="authorized_point_elevation_csv_v1",
+            timestamp_field="imported_at",
         )
-
-        version.elevation_points_snapshot = json.dumps(snapshot, ensure_ascii=False)
-        version.elevation_profile = json.dumps(profile, ensure_ascii=False)
-        version.climb = climb
-        version.navigation_metadata_json = json.dumps(metadata, ensure_ascii=False)
-        route.elevation_profile = version.elevation_profile
-        route.climb = climb
-        _update_route_guides(db, route.id, version.elevation_profile)
         updated += 1
 
     if dry_run:
@@ -164,14 +224,6 @@ def _current_route_versions(db):
         .order_by(RouteBook.id.asc())
         .all()
     )
-
-
-def _update_route_guides(db, route_book_id: int, elevation_profile: str) -> None:
-    if not inspect(db.bind).has_table("route_guides"):
-        return
-    guides = db.query(RouteGuide).filter(RouteGuide.route_book_id == route_book_id).all()
-    for guide in guides:
-        guide.elevation_profile = elevation_profile
 
 
 def _read_elevation_csv(input_path: Path) -> dict[int, list[ElevationPoint]]:
@@ -215,72 +267,6 @@ def _assert_points_match(
     snapshot = [[point.lon, point.lat, point.elevation_m] for point in imported_points]
     if parse_complete_elevation_snapshot(json.dumps(snapshot), expected_count=len(snapshot)) is None:
         raise ValueError(f"route version {version_id}: invalid elevation values")
-
-
-def _calculate_climb(elevations: list[float]) -> float:
-    climb = 0.0
-    for prev, curr in zip(elevations, elevations[1:]):
-        delta = curr - prev
-        if delta > 0:
-            climb += delta
-    return round(climb, 1)
-
-
-def _downsample_profile(points: list[list[float]], elevations: list[float]) -> list[list[float]]:
-    cumulative = _cumulative_distances(points)
-    if len(points) <= PROFILE_LIMIT:
-        return [[round(distance / 1000, 3), round(ele, 1)] for distance, ele in zip(cumulative, elevations)]
-
-    total = cumulative[-1]
-    selected: list[int] = [0]
-    cursor = 1
-    for step in range(1, PROFILE_LIMIT - 1):
-        target = total * step / (PROFILE_LIMIT - 1)
-        while cursor < len(cumulative) - 1 and cumulative[cursor] < target:
-            cursor += 1
-        before = max(cursor - 1, 0)
-        after = cursor
-        chosen = before if abs(cumulative[before] - target) <= abs(cumulative[after] - target) else after
-        if chosen != selected[-1]:
-            selected.append(chosen)
-    if selected[-1] != len(points) - 1:
-        selected.append(len(points) - 1)
-    return [[round(cumulative[index] / 1000, 3), round(elevations[index], 1)] for index in selected]
-
-
-def _cumulative_distances(points: list[list[float]]) -> list[float]:
-    distances = [0.0]
-    total = 0.0
-    for prev, curr in zip(points, points[1:]):
-        total += haversine(prev[1], prev[0], curr[1], curr[0])
-        distances.append(total)
-    return distances
-
-
-def _merged_navigation_metadata(
-    value: str | None,
-    *,
-    source_name: str,
-    license_id: str,
-    accuracy_m: float,
-    imported_at: datetime,
-    point_count: int,
-) -> dict:
-    try:
-        metadata = json.loads(value) if value else {}
-    except json.JSONDecodeError:
-        metadata = {}
-    if not isinstance(metadata, dict):
-        metadata = {}
-    metadata["elevation"] = {
-        "source_name": source_name,
-        "license_id": license_id,
-        "accuracy_m": accuracy_m,
-        "imported_at": imported_at.isoformat(),
-        "point_count": point_count,
-        "method": "authorized_point_elevation_csv_v1",
-    }
-    return metadata
 
 
 if __name__ == "__main__":

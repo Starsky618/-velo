@@ -27,8 +27,8 @@ rq-scheduler>=0.13.1           # RQ 定时任务调度（调度器用）
 # DeepSeek 兼容 OpenAI Python SDK，只换 base_url 即可（Tim 2026-04-29 拍国产模型）
 openai>=1.0.0
 
-# DEM 海拔查询遗留依赖：只能做离线评估/开发样本，不能作为码表导出的生产海拔源。
-# 码表导出要求国内合规授权 + 更高精度 + 可审计 source/license/accuracy（见 route-export V0）。
+# DEM 海拔查询依赖：当前赛段和路书统一走 SRTM3 90m 公共地形源。
+# 码表导出会记录 source/license/accuracy；后续更高精度或商业授权源只替换公共海拔模块。
 SRTM.py==0.3.7
 
 # Sprint 9 新增：FTP 估算（task-5 ftp_estimator 用 scipy.optimize.curve_fit 拟合 CP 模型）

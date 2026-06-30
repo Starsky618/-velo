@@ -3,9 +3,9 @@
 为什么写这个：
 原算法用 GPS 海拔，精度 ±10-15m，造成 11km 平路赛段被算成 26.1% 假坡度
 （生产 segment id=24 "夜骑清徐" 实证）。GPS 噪声系统偏差无法通过平滑消除，
-业界共识必须换数据源——从 SRTM 30m DEM 查表替换。
+业界共识必须换数据源——从统一 DEM 入口查 SRTM3 90m 地形海拔替换。
 
-实测验证（DEM 公共 API）：
+实测验证（DEM 地形源）：
 - 夜骑清徐起点 768m / 终点 766m → 11km 平路真实坡度 0.018% ✓
 - 天龙山网红公路 起点 831m / 终点 1357m → 真实 max ~10-13% ✓
 
@@ -28,7 +28,7 @@
 
 数据源：
 - 等距采样 lat/lon：PostGIS ST_LineInterpolatePoint
-- DEM 海拔：opentopodata 公共 API（SRTM 30m）
+- DEM 海拔：app.elevation.dem_client（SRTM.py + CGIAR-CSI SRTM3 90m，本地缓存）
 """
 
 from __future__ import annotations

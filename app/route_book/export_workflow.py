@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.route_book.export_generator import generate_route_export
+from app.route_book.elevation_quality import has_trusted_route_elevation
 from app.route_book.export_service import (
     assert_can_download_export_artifact,
     assert_can_export_route,
@@ -63,10 +64,17 @@ def create_route_export(
     assert_can_export_route(route, current_user_id=current_user_id, is_admin=is_admin)
 
     version = _get_current_version(db, route)
+    if not has_trusted_route_elevation(
+        version.elevation_points_snapshot,
+        metadata_json=version.navigation_metadata_json,
+        expected_count=version.point_count or 0,
+    ):
+        raise ValueError("这条路线还没有用 VELO 统一海拔源生成可导出的逐点海拔")
     generated = generate_route_export(
         route_name=route.name,
         reference_line_snapshot=version.reference_line_snapshot,
         elevation_points_snapshot=version.elevation_points_snapshot,
+        elevation_metadata_json=version.navigation_metadata_json,
         export_format=export_format,
     )
     filename = safe_export_filename(route.name, route.id, version.id, export_format)

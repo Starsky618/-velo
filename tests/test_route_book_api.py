@@ -19,6 +19,19 @@ if not any(getattr(route, "path", "") == "/api/route-books" for route in app.rou
     app.include_router(route_book_router)
 
 
+_TRUSTED_ELEVATION_METADATA = json.dumps(
+    {
+        "elevation": {
+            "method": "shared_route_elevation_v1",
+            "source_name": "SRTM3 90m DEM",
+            "license_id": "CGIAR-CSI SRTM public DEM",
+            "accuracy_m": 16.0,
+            "point_count": 2,
+        }
+    }
+)
+
+
 @pytest.fixture(autouse=True)
 def _disable_tencent_direction_rate_limit(monkeypatch):
     # 路书业务测试像“模拟考场”：每题应只考本题逻辑，不能被真实 Redis 里的旧限流计数串扰。
@@ -95,6 +108,7 @@ def _route_with_current_version(db, creator_id: int | None, **overrides):
         distance=route.distance,
         climb=route.climb,
         elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
+        navigation_metadata_json=_TRUSTED_ELEVATION_METADATA,
         point_count=2,
     )
     db.add(version)
@@ -178,6 +192,40 @@ def test_route_export_rejects_route_without_complete_elevation_snapshot(client, 
 
     assert res.status_code == 422
     assert "海拔" in res.json()["detail"]
+
+
+def test_route_export_rejects_complete_but_untrusted_elevation_snapshot(client, db, admin_user):
+    route, version = _route_with_current_version(db, admin_user.id)
+    version.navigation_metadata_json = None
+    db.add(version)
+    db.commit()
+
+    res = client.post(f"/api/route-books/{route.id}/exports", json={"format": "gpx"})
+
+    assert res.status_code == 422
+    assert "统一海拔源" in res.json()["detail"]
+
+
+def test_route_export_allows_authorized_csv_elevation_snapshot(client, db, admin_user, monkeypatch):
+    route, version = _route_with_current_version(db, admin_user.id)
+    version.navigation_metadata_json = json.dumps(
+        {
+            "elevation": {
+                "method": "authorized_point_elevation_csv_v1",
+                "source_name": "国内合规高程供应商",
+                "license_id": "contract-2026-001",
+                "accuracy_m": 5.0,
+                "point_count": 2,
+            }
+        }
+    )
+    db.add(version)
+    db.commit()
+    monkeypatch.setattr("app.route_book.export_workflow._storage", _FakeExportStorage())
+
+    res = client.post(f"/api/route-books/{route.id}/exports", json={"format": "gpx"})
+
+    assert res.status_code == 200
 
 
 def test_public_route_export_created_by_login_user_still_downloads_without_auth(client, db, auth_header, test_user, monkeypatch):

@@ -7,6 +7,15 @@ from types import SimpleNamespace
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint
 
 
+_TRUSTED_ELEVATION_METADATA = (
+    "{\"elevation\":{\"method\":\"shared_route_elevation_v1\","
+    "\"source_name\":\"SRTM3 90m DEM\","
+    "\"license_id\":\"CGIAR-CSI SRTM public DEM\","
+    "\"accuracy_m\":16.0,"
+    "\"point_count\":2}}"
+)
+
+
 def _check_sql(table, name: str) -> str:
     checks = [
         constraint
@@ -135,6 +144,7 @@ def test_export_generator_builds_gpx_with_required_elevation_snapshot():
         route_name="天龙山<>路书",
         reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
         elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
+        elevation_metadata_json=_TRUSTED_ELEVATION_METADATA,
         export_format="gpx",
     )
 
@@ -160,12 +170,30 @@ def test_export_generator_rejects_gpx_without_complete_elevation_snapshot():
                 route_name="奥申",
                 reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
                 elevation_points_snapshot=snapshot,
+                elevation_metadata_json=_TRUSTED_ELEVATION_METADATA,
                 export_format="gpx",
             )
         except ValueError as exc:
             assert "海拔" in str(exc)
         else:
             raise AssertionError("缺完整逐点海拔时不该生成码表文件")
+
+
+def test_export_generator_rejects_complete_but_untrusted_elevation_snapshot():
+    from app.route_book.export_generator import generate_route_export
+
+    try:
+        generate_route_export(
+            route_name="旧 GPX 海拔",
+            reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+            elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
+            elevation_metadata_json=None,
+            export_format="gpx",
+        )
+    except ValueError as exc:
+        assert "统一海拔源" in str(exc)
+    else:
+        raise AssertionError("缺可信海拔来源时不该生成码表文件")
 
 
 def test_export_generator_builds_tcx_with_required_elevation_snapshot():
@@ -175,6 +203,7 @@ def test_export_generator_builds_tcx_with_required_elevation_snapshot():
         route_name="汾河训练线",
         reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
         elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
+        elevation_metadata_json=_TRUSTED_ELEVATION_METADATA,
         export_format="tcx",
     )
 

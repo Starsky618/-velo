@@ -51,6 +51,13 @@ def _attach_current_version(db, route, **overrides):
         "distance": route.distance,
         "climb": route.climb,
         "elevation_points_snapshot": "[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
+        "navigation_metadata_json": (
+            "{\"elevation\":{\"method\":\"shared_route_elevation_v1\","
+            "\"source_name\":\"SRTM3 90m DEM\","
+            "\"license_id\":\"CGIAR-CSI SRTM public DEM\","
+            "\"accuracy_m\":16.0,"
+            "\"point_count\":2}}"
+        ),
         "point_count": 2,
     }
     data.update(overrides)

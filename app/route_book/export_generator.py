@@ -1,8 +1,9 @@
 """
 路书导出生成器——把路线版本底片翻译成码表能读的 GPX/TCX 文件。
 
-这个文件只负责“造文件”，不判断谁能下载、也不碰存储。
-输入是一条 route_versions.reference_line_snapshot，输出是二进制 XML 和点数。
+这个文件只负责“造文件”，不判断谁能下载、也不碰存储；但它会确认海拔来源可信，
+避免后续代码绕开下载工作流，直接把旧 GPX 的脏海拔打印进码表文件。
+输入是一条 route_versions.reference_line_snapshot 和可信海拔底片，输出二进制 XML 和点数。
 """
 
 from dataclasses import dataclass
@@ -10,7 +11,7 @@ import math
 from typing import Literal
 from xml.sax.saxutils import escape
 
-from app.route_book.elevation_quality import parse_complete_elevation_snapshot
+from app.route_book.elevation_quality import has_trusted_route_elevation, parse_complete_elevation_snapshot
 from app.route_book.models import _preview_points_from_wkb, _preview_points_from_wkt
 
 
@@ -33,6 +34,7 @@ def generate_route_export(
     route_name: str,
     reference_line_snapshot: object,
     elevation_points_snapshot: str | None = None,
+    elevation_metadata_json: str | None = None,
     export_format: ExportFormat,
 ) -> GeneratedRouteExport:
     """
@@ -47,6 +49,12 @@ def generate_route_export(
     export_points = parse_complete_elevation_snapshot(elevation_points_snapshot, expected_count=len(points))
     if export_points is None:
         raise ValueError("这条路线还没有可用海拔数据")
+    if not has_trusted_route_elevation(
+        elevation_points_snapshot,
+        metadata_json=elevation_metadata_json,
+        expected_count=len(points),
+    ):
+        raise ValueError("这条路线还没有用 VELO 统一海拔源生成可导出的逐点海拔")
     elevation_point_count = sum(1 for _lon, _lat, ele in export_points if ele is not None)
 
     if export_format == "gpx":

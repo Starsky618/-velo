@@ -106,7 +106,7 @@ def create_segment(
 
     # DEM 海拔替换（v3 / 2026-05-14）：GPS 海拔精度 ±10-15m 物理限制，
     # 任何平滑算法都洗不掉系统偏差（夜骑清徐 GPS 测得 26% 假坡度，DEM 实测 0.018%）。
-    # 业界 2024 共识：换数据源，从 SRTM 30m DEM 查表替换。
+    # 当前统一走 app.elevation 的 SRTM3 90m DEM 查表路径，避免赛段和路书各接一套海拔源。
     # 失败时抛 DEMServiceError，让 admin 知道服务挂了不要默默用 GPS 假数据。
     dem_coords = [(p["lat"], p["lon"]) for p in reference_points]
     dem_elevations = query_elevations(dem_coords)
@@ -247,7 +247,7 @@ def create_segment_from_activity(
     if distance < 1000:
         raise InvalidSegmentRangeError("赛段太短，至少 1 公里")
 
-    # 3.5 DEM 海拔替换（v3 / 2026-05-14）：用 SRTM 30m DEM 查表替换 GPS 海拔。
+    # 3.5 DEM 海拔替换（v3 / 2026-05-14）：用统一 SRTM3 90m DEM 查表替换 GPS 海拔。
     # 详 service_create.create_segment 同步说明 / from-gpx 路径同款逻辑。
     # 用 SimpleNamespace wrapper 不动 ORM 实例，避免 SQLAlchemy 误以为要 update Trackpoint。
     dem_coords = [(tp.latitude, tp.longitude) for tp in tps]

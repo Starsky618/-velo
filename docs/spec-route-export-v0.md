@@ -108,8 +108,8 @@
 
 ## 海拔数据优先级
 
-1. **VELO 原始逐点海拔**：来自用户上传 GPX/FIT 或已有活动 trackpoints，和路线点一一对应。
-2. **VELO 合规高程补全**：只能接中国合法合规、可商用授权、可长期写库的高程数据源，并记录 source / license / accuracy。
+1. **VELO 统一地形源逐点海拔**：当前实现为 `shared_route_elevation_v1`，统一走公共海拔模块补齐每个路线点，并记录 source / license / accuracy / point_count。用户上传 GPX/FIT 或已有活动里的原始海拔只能作为历史输入，不再直接视为可导出可信源。
+2. **VELO 授权高程补全**：国内合规授权供应商返回的逐点海拔可通过 CSV 导入，方法标记为 `authorized_point_elevation_csv_v1`，必须记录 source / license / accuracy / point_count。
 3. **没有可信逐点海拔**：不导出。iGPSPORT 真机 A/B 已验证：无 `<ele>` 的 GPX 会触发目标 App 自行补算，可能得到显著偏高的爬升。
 
 ### 合规高程源调研闸门
@@ -118,7 +118,8 @@
 | --- | --- | --- |
 | 高德 / 腾讯 / 百度公开 WebService | 官方公开 WebService 文档能确认路线规划、地理编码等能力；本轮未找到可直接商用的逐点高程接口。 | 继续只作为地图/路线规划候选，不默认当高程源。 |
 | 天地图 / 国家基础地理信息中心体系 | 合规来源优先级最高，但需要确认 API、授权、使用范围、成果展示/分发规则。 | 作为第二优先级首选调研对象，先走授权确认，再写代码。 |
-| SRTM / Mapbox / Google 等境外或全球 DEM | 技术上可补海拔，但中国境内地图/测绘合规、服务稳定性、商用授权都不适合作为默认生产源。 | 不进默认链路，只能做离线评估样本。 |
+| SRTM3 公共 DEM | Tim 已拍当前阶段优先用统一 SRTM3 地形源覆盖原始 GPS 海拔；实现必须自托管/缓存、记录 source/license/accuracy/point_count，且不调用境外实时地图 API。 | 当前作为 `shared_route_elevation_v1` 进入默认可信方法；上线前保留合规复核，若授权判断否定则从 trusted methods 撤出。 |
+| Mapbox / Google 等境外商业地图高程源 | 技术上可补海拔，但中国境内地图/测绘合规、服务稳定性、商用授权都不适合作为默认生产源。 | 不进默认链路。 |
 
 参考入口：
 - 高德 WebService API：https://lbs.amap.com/api/webservice/summary

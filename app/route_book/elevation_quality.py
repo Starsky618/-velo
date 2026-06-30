@@ -8,6 +8,13 @@ import math
 
 MIN_REASONABLE_ELEVATION_M = -500.0
 MAX_REASONABLE_ELEVATION_M = 9000.0
+TRUSTED_ROUTE_ELEVATION_METHOD = "shared_route_elevation_v1"
+TRUSTED_ROUTE_ELEVATION_METHODS = frozenset(
+    {
+        "shared_route_elevation_v1",
+        "authorized_point_elevation_csv_v1",
+    }
+)
 
 
 def parse_complete_elevation_snapshot(
@@ -60,6 +67,54 @@ def has_complete_elevation_snapshot(value: str | None, *, expected_count: int | 
     if not isinstance(raw_points, list) or len(raw_points) < 2:
         return False
     return parse_complete_elevation_snapshot(value, expected_count=len(raw_points)) is not None
+
+
+def has_trusted_route_elevation(
+    value: str | None,
+    *,
+    metadata_json: str | None,
+    expected_count: int,
+    methods: frozenset[str] = TRUSTED_ROUTE_ELEVATION_METHODS,
+) -> bool:
+    """
+    判断一条路书能不能把海拔交给码表。
+
+    只看逐点海拔是否完整还不够：旧 GPX 可能带了码表/GPS 原始海拔。当前产品策略是
+    统一用公共 SRTM3 路径覆盖，所以这里同时检查“点完整”和“来源方法正确”。
+    """
+    if parse_complete_elevation_snapshot(value, expected_count=expected_count) is None:
+        return False
+    return has_elevation_metadata_method(metadata_json, methods=methods, expected_count=expected_count)
+
+
+def has_elevation_metadata_method(
+    metadata_json: str | None,
+    *,
+    methods: frozenset[str] = TRUSTED_ROUTE_ELEVATION_METHODS,
+    expected_count: int | None = None,
+) -> bool:
+    try:
+        metadata = json.loads(metadata_json) if metadata_json else {}
+    except (TypeError, json.JSONDecodeError):
+        return False
+    if not isinstance(metadata, dict):
+        return False
+    elevation = metadata.get("elevation")
+    if not isinstance(elevation, dict):
+        return False
+    source_name = elevation.get("source_name")
+    license_id = elevation.get("license_id")
+    accuracy_m = _finite_float(elevation.get("accuracy_m"))
+    point_count = _finite_float(elevation.get("point_count"))
+    if not isinstance(source_name, str) or not source_name.strip():
+        return False
+    if not isinstance(license_id, str) or not license_id.strip():
+        return False
+    if accuracy_m is None or accuracy_m <= 0:
+        return False
+    if expected_count is not None and point_count != expected_count:
+        return False
+    return elevation.get("method") in methods
 
 
 def _finite_float(value: object) -> float | None:
