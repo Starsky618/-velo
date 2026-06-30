@@ -515,6 +515,166 @@ def test_tencent_direction_creates_route_book(client, db, auth_header, monkeypat
     assert route.source == "tencent_direction"
 
 
+def test_manual_drawn_route_creates_route_with_elevation_profile(client, db, auth_header, monkeypatch):
+    from app.route_book.models import RouteBook, RouteVersion
+
+    calls = []
+
+    def fake_query(coords):
+        calls.append(coords)
+        return [700.0, 725.0, 720.0]
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    res = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "手画山地绕圈",
+            "points": [
+                [112.5, 37.8],
+                [112.55, 37.85],
+                [112.6, 37.9],
+            ],
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["name"] == "手画山地绕圈"
+    assert body["source"] == "manual_drawn"
+    assert body["file_id"] is None
+    assert body["file_type"] is None
+    assert body["source_activity_id"] is None
+    assert body["preview_points"] == [[112.5, 37.8], [112.55, 37.85], [112.6, 37.9]]
+    assert body["elevation_ready"] is True
+    assert body["elevation_profile"][0] == [0.0, 700.0]
+    assert body["elevation_profile"][-1][1] == 720.0
+    assert body["climb"] == 25.0
+    assert calls == [[(37.8, 112.5), (37.85, 112.55), (37.9, 112.6)]]
+
+    route = db.query(RouteBook).filter(RouteBook.id == body["id"]).one()
+    version = db.query(RouteVersion).filter(RouteVersion.id == body["current_version_id"]).one()
+    metadata = json.loads(version.navigation_metadata_json)
+    assert route.source == "manual_drawn"
+    assert route.current_version_id == version.id
+    assert json.loads(version.elevation_points_snapshot) == [
+        [112.5, 37.8, 700.0],
+        [112.55, 37.85, 725.0],
+        [112.6, 37.9, 720.0],
+    ]
+    assert metadata["elevation"]["method"] == "shared_route_elevation_v1"
+    assert metadata["elevation"]["point_count"] == 3
+
+
+def test_route_book_detail_returns_elevation_profile_for_owner(client, auth_header, monkeypatch):
+    def fake_query(_coords):
+        return [700.0, 725.0]
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    created = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "详情有海拔",
+            "points": [[112.5, 37.8], [112.6, 37.9]],
+        },
+        headers=auth_header,
+    )
+    assert created.status_code == 200
+
+    detail = client.get(f"/api/route-books/{created.json()['id']}", headers=auth_header)
+
+    assert detail.status_code == 200
+    assert detail.json()["elevation_ready"] is True
+    assert detail.json()["elevation_profile"] == created.json()["elevation_profile"]
+
+
+def test_route_book_list_marks_elevation_ready_without_sending_profile(client, auth_header, monkeypatch):
+    def fake_query(_coords):
+        return [700.0, 725.0]
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    created = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "列表只亮状态",
+            "points": [[112.5, 37.8], [112.6, 37.9]],
+        },
+        headers=auth_header,
+    )
+    assert created.status_code == 200
+
+    listed = client.get("/api/route-books?mine=true", headers=auth_header)
+
+    assert listed.status_code == 200
+    item = next(route for route in listed.json()["items"] if route["id"] == created.json()["id"])
+    assert item["elevation_ready"] is True
+    assert item["elevation_profile"] is None
+
+
+def test_manual_drawn_route_rejects_invalid_coordinates(client, db, auth_header):
+    from app.route_book.models import RouteBook
+
+    res = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "坏坐标路线",
+            "points": [[181.0, 37.8], [112.6, 37.9]],
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 422
+    assert db.query(RouteBook).filter(RouteBook.name == "坏坐标路线").first() is None
+
+
+def test_manual_drawn_route_returns_503_when_elevation_source_fails(client, db, auth_header, monkeypatch):
+    from app.elevation.dem_client import DEMServiceError
+    from app.route_book.models import RouteBook
+
+    def fake_query(_coords):
+        raise DEMServiceError("cache unavailable")
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    res = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "海拔源失败",
+            "points": [[112.5, 37.8], [112.6, 37.9]],
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 503
+    assert "路线海拔查询失败" in res.text
+    assert db.query(RouteBook).filter(RouteBook.name == "海拔源失败").first() is None
+
+
+def test_manual_drawn_route_rejects_too_many_points_before_elevation_query(client, auth_header, monkeypatch):
+    calls = []
+
+    def fake_query(coords):
+        calls.append(coords)
+        return [700.0 for _ in coords]
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    res = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "点太多",
+            "points": [[112.5 + index * 0.0001, 37.8] for index in range(501)],
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 422
+    assert calls == []
+
+
 def test_route_book_preview_points_parse_wkb_without_shapely(monkeypatch):
     import struct
 

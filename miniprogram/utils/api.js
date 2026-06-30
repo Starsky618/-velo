@@ -580,6 +580,10 @@ module.exports = {
     return request('/api/route-books/tencent-direction', 'POST', payload)
   },
 
+  createRouteBookFromManualDrawn: function (payload) {
+    return request('/api/route-books/manual-drawn', 'POST', payload)
+  },
+
   createRouteExport: function (routeBookId, format, targetPlatform) {
     return request('/api/route-books/' + routeBookId + '/exports', 'POST', {
       format: format,

@@ -3,9 +3,11 @@
 """
 
 from datetime import datetime
+import json
+import math
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 RouteBookSource = Literal[
@@ -42,8 +44,23 @@ class RouteBookResponse(BaseModel):
     publish_status: RouteBookPublishStatus
     current_version_id: int | None = None
     preview_points: list[list[float]] = Field(default_factory=list)
+    elevation_ready: bool = False
+    elevation_profile: list[list[float]] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @field_validator("elevation_profile", mode="before")
+    @classmethod
+    def parse_elevation_profile(cls, value):
+        if value is None or isinstance(value, list):
+            return value
+        if not isinstance(value, str):
+            return None
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, list) else None
 
 
 class RouteBookListResponse(BaseModel):
@@ -75,7 +92,12 @@ class RouteExportResponse(BaseModel):
     download_url: str
 
 
-def route_book_response(route, viewer_user_id: int | None) -> RouteBookResponse:
+def route_book_response(
+    route,
+    viewer_user_id: int | None,
+    *,
+    include_elevation_profile: bool = False,
+) -> RouteBookResponse:
     """
     把数据库路线翻译成接口响应。
 
@@ -85,6 +107,10 @@ def route_book_response(route, viewer_user_id: int | None) -> RouteBookResponse:
     response = RouteBookResponse.model_validate(route)
     if viewer_user_id is None or route.creator_id != viewer_user_id:
         response.source_activity_id = None
+    has_elevation_profile = bool(response.elevation_profile and len(response.elevation_profile) >= 2)
+    if not include_elevation_profile:
+        response.elevation_profile = None
+    response.elevation_ready = has_elevation_profile
     return response
 
 
@@ -166,3 +192,22 @@ class TencentDirectionRouteBookRequest(BaseModel):
         if self.from_lat == self.to_lat and self.from_lon == self.to_lon:
             raise ValueError("起点和终点不能相同")
         return self
+
+
+class ManualDrawnRouteBookRequest(BaseModel):
+    """手画路线请求——前端只交线条，海拔由后端统一补齐。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, max_length=128)
+    points: list[tuple[float, float]] = Field(..., min_length=2, max_length=500)
+
+    @field_validator("points")
+    @classmethod
+    def validate_points(cls, points: list[tuple[float, float]]):
+        for index, (lon, lat) in enumerate(points):
+            if not math.isfinite(lon) or not math.isfinite(lat):
+                raise ValueError(f"第 {index + 1} 个路线点不是有效数字")
+            if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
+                raise ValueError(f"第 {index + 1} 个路线点超出经纬度范围")
+        return points

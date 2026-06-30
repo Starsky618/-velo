@@ -21,8 +21,19 @@ from sqlalchemy.orm import Session
 from app.activity.models import Activity, Trackpoint
 from app.activity.service import validate_ride_file
 from app.common.geo import infer_city_from_coords
+from app.elevation.dem_client import (
+    DEMServiceError,
+    SRTM_LICENSE_ID,
+    SRTM_HORIZONTAL_RESOLUTION_M,
+    SRTM_SOURCE_NAME,
+    SRTM_VERTICAL_ACCURACY_M,
+    query_elevations,
+)
+from app.elevation.route_elevation import build_route_elevation_result
 from app.parsing.fit_parser import FITParser, FITParseError
+from app.parsing.geo_math import haversine
 from app.parsing.gpx_parser import GPXParser, GPXParseError
+from app.route_book.elevation_workflow import write_route_elevation_result
 from app.route_book.models import RouteBook, RouteVersion
 from app.route_book.tencent_direction import plan_tencent_bicycling_route
 from app.segment.coord_convert import convert_points_to_wgs84
@@ -32,6 +43,8 @@ from app.storage.local import LocalStorage
 logger = logging.getLogger(__name__)
 
 MIN_TENCENT_ROUTE_DISTANCE_METERS = 100.0
+MIN_MANUAL_ROUTE_DISTANCE_METERS = 20.0
+MANUAL_ROUTE_MAX_POINTS = 500
 _storage = LocalStorage()
 
 
@@ -71,6 +84,32 @@ def _route_payload_from_points(points: list[dict], distance: float | None, climb
         "wkt": f"SRID=4326;LINESTRING({coords})",
         "elevation_points_snapshot": _elevation_points_snapshot_from_points(points),
     }
+
+
+def _manual_route_payload_from_points(points: list[tuple[float, float]]) -> dict:
+    if len(points) > MANUAL_ROUTE_MAX_POINTS:
+        raise ValueError(f"手画路线最多支持 {MANUAL_ROUTE_MAX_POINTS} 个点，请先简化路线")
+    route_points: list[dict] = []
+    for index, (lon, lat) in enumerate(points):
+        lon = float(lon)
+        lat = float(lat)
+        if not math.isfinite(lon) or not math.isfinite(lat):
+            raise ValueError(f"第 {index + 1} 个路线点不是有效数字")
+        if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
+            raise ValueError(f"第 {index + 1} 个路线点超出经纬度范围")
+        route_points.append({"lon": lon, "lat": lat, "ele": None})
+
+    distance = _distance_from_lonlat_points(route_points)
+    if distance < MIN_MANUAL_ROUTE_DISTANCE_METERS:
+        raise ValueError("路线太短，至少画出一小段真实路径")
+    return _route_payload_from_points(route_points, distance, None)
+
+
+def _distance_from_lonlat_points(points: list[dict]) -> float:
+    total = 0.0
+    for prev, curr in zip(points, points[1:]):
+        total += haversine(prev["lat"], prev["lon"], curr["lat"], curr["lon"])
+    return total
 
 
 def _finite_float(value: object) -> float | None:
@@ -296,6 +335,71 @@ def create_route_book_from_tencent_direction(
         raise
     db.refresh(route)
     route._preview_points_override = [[p["lon"], p["lat"]] for p in points_wgs84]
+    return route
+
+
+def create_route_book_from_manual_drawn(
+    db: Session,
+    current_user_id: int,
+    name: str,
+    points: list[tuple[float, float]],
+) -> RouteBook:
+    """
+    保存用户在地图上手画的路书，并立刻补齐同一版路线的逐点海拔。
+
+    类比：用户只是在纸上画了一条线；这里负责把这条线归档成正式图纸，
+    再拿公共地形尺量出每个点的高度，后面详情页和码表导出都读这张定稿图。
+    """
+    payload = _manual_route_payload_from_points(points)
+    preview_points = [[float(lon), float(lat)] for lon, lat in points]
+    try:
+        elevation_result = build_route_elevation_result(preview_points, query_func=query_elevations)
+    except DEMServiceError as e:
+        raise RuntimeError(f"路线海拔查询失败：{e}") from e
+    except ValueError as e:
+        raise RuntimeError(f"路线海拔查询失败：{e}") from e
+
+    route = RouteBook(
+        creator_id=current_user_id,
+        name=name,
+        distance=payload["distance"],
+        climb=payload["climb"],
+        reference_line=WKTElement(payload["wkt"], srid=4326),
+        file_id=None,
+        file_type=None,
+        source="manual_drawn",
+        source_activity_id=None,
+        city=payload["city"],
+    )
+    db.add(route)
+    try:
+        db.flush()
+        version = create_initial_route_version(
+            db,
+            route,
+            reference_line_wkt=payload["wkt"],
+            geometry_source="manual_drawn",
+            created_by=current_user_id,
+            elevation_points_snapshot=payload.get("elevation_points_snapshot"),
+        )
+        write_route_elevation_result(
+            db,
+            route=route,
+            version=version,
+            result=elevation_result,
+            source_name=SRTM_SOURCE_NAME,
+            license_id=SRTM_LICENSE_ID,
+            accuracy_m=SRTM_VERTICAL_ACCURACY_M,
+            method="shared_route_elevation_v1",
+            timestamp_field="generated_at",
+            extra_metadata={"horizontal_resolution_m": SRTM_HORIZONTAL_RESOLUTION_M},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(route)
+    route._preview_points_override = preview_points
     return route
 
 

@@ -15,6 +15,7 @@ import json
 
 from sqlalchemy import func, inspect
 
+from app.elevation.dem_client import SRTM_HORIZONTAL_RESOLUTION_M
 from app.elevation.route_elevation import ElevationQuery, RouteElevationResult, build_route_elevation_result
 from app.route_book.models import RouteBook, RouteGuide, RouteVersion, _preview_points_from_wkt
 
@@ -61,7 +62,7 @@ def backfill_route_version_elevation(
         accuracy_m=accuracy_m,
         method="shared_route_elevation_v1",
         timestamp_field="generated_at",
-        extra_metadata={"horizontal_resolution_m": 90.0},
+        extra_metadata={"horizontal_resolution_m": SRTM_HORIZONTAL_RESOLUTION_M},
     )
 
     if commit:
@@ -116,7 +117,9 @@ def _points_from_wkt(reference_line_wkt: str) -> list[list[float]]:
 
 
 def _update_route_guides(db, route_book_id: int, elevation_profile: str) -> None:
-    if not inspect(db.bind).has_table("route_guides"):
+    # 查表也走当前 session 的连接，不能绕到 engine 上另开入口。
+    # SQLite 测试库会复用同一条底层连接，engine 旁路检查可能冲掉尚未提交的新路线。
+    if not inspect(db.connection()).has_table("route_guides"):
         return
     guides = db.query(RouteGuide).filter(RouteGuide.route_book_id == route_book_id).all()
     for guide in guides:

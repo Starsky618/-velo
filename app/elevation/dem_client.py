@@ -19,6 +19,10 @@ import srtm
 logger = logging.getLogger(__name__)
 
 # CGIAR-CSI SRTM 90m 数据（srtm3=True 表示 3 弧秒 = 约 90m / srtm1=False 跳过需账号的 30m）
+SRTM_SOURCE_NAME = "SRTM3 90m DEM"
+SRTM_LICENSE_ID = "CGIAR-CSI SRTM public DEM"
+SRTM_VERTICAL_ACCURACY_M = 16.0
+SRTM_HORIZONTAL_RESOLUTION_M = 90.0
 _dem_data = None
 
 

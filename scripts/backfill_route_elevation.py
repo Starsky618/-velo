@@ -25,16 +25,18 @@ if str(ROOT_DIR) not in sys.path:
 from sqlalchemy import func
 
 from app.database import SessionLocal
-from app.elevation.dem_client import query_elevations
+from app.elevation.dem_client import (
+    SRTM_LICENSE_ID,
+    SRTM_SOURCE_NAME,
+    SRTM_VERTICAL_ACCURACY_M,
+    query_elevations,
+)
 from app.elevation.route_elevation import build_route_elevation_result_from_values
 from app.route_book.elevation_workflow import backfill_route_version_elevation, write_route_elevation_result
 from app.route_book.elevation_quality import has_trusted_route_elevation, parse_complete_elevation_snapshot
 from app.route_book.models import RouteBook, RouteVersion, _preview_points_from_wkt
 
 COORD_TOLERANCE_DEG = 0.00001
-SRTM_SOURCE_NAME = "SRTM3 90m DEM"
-SRTM_LICENSE_ID = "CGIAR-CSI SRTM public DEM"
-SRTM_ACCURACY_M = 16.0
 
 
 @dataclass(frozen=True)
@@ -71,7 +73,7 @@ def main(argv: list[str] | None = None) -> None:
                 db,
                 source_name=args.source_name or SRTM_SOURCE_NAME,
                 license_id=args.license_id or SRTM_LICENSE_ID,
-                accuracy_m=args.accuracy_m if args.accuracy_m is not None else SRTM_ACCURACY_M,
+                accuracy_m=args.accuracy_m if args.accuracy_m is not None else SRTM_VERTICAL_ACCURACY_M,
                 dry_run=args.dry_run,
                 route_book_ids=args.route_book_id,
             )
@@ -128,7 +130,7 @@ def backfill_missing_with_srtm(
     query_func=query_elevations,
     source_name: str = SRTM_SOURCE_NAME,
     license_id: str = SRTM_LICENSE_ID,
-    accuracy_m: float = SRTM_ACCURACY_M,
+    accuracy_m: float = SRTM_VERTICAL_ACCURACY_M,
     dry_run: bool,
     route_book_ids: list[int] | None = None,
 ) -> int:

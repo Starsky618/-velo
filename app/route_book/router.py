@@ -54,7 +54,7 @@ def create_route_book(
     upload_bytes = file.file.read() if file is not None else None
     upload_filename = file.filename if file is not None else None
     try:
-        return service.create_route_book(
+        route = service.create_route_book(
             db=db,
             current_user_id=current_user_id,
             name=name,
@@ -63,6 +63,7 @@ def create_route_book(
             upload_filename=upload_filename,
             upload_bytes=upload_bytes,
         )
+        return schemas.route_book_response(route, current_user_id, include_elevation_profile=True)
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except PermissionError as e:
@@ -84,16 +85,43 @@ def create_route_book_from_tencent_direction(
         window_sec=300,
     )
     try:
-        return service.create_route_book_from_tencent_direction(
+        route = service.create_route_book_from_tencent_direction(
             db=db,
             current_user_id=current_user_id,
             name=payload.name,
             start=(payload.from_lat, payload.from_lon),
             end=(payload.to_lat, payload.to_lon),
         )
+        return schemas.route_book_response(route, current_user_id, include_elevation_profile=True)
     except TencentMapConfigError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except (TencentMapError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/manual-drawn", response_model=schemas.RouteBookResponse)
+def create_route_book_from_manual_drawn(
+    payload: schemas.ManualDrawnRouteBookRequest,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    check_rate_limit_by_user(
+        current_user_id,
+        "route-book-manual-drawn",
+        limit=20,
+        window_sec=300,
+    )
+    try:
+        route = service.create_route_book_from_manual_drawn(
+            db=db,
+            current_user_id=current_user_id,
+            name=payload.name,
+            points=payload.points,
+        )
+        return schemas.route_book_response(route, current_user_id, include_elevation_profile=True)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
 
@@ -172,7 +200,7 @@ def get_route_book(
 ):
     try:
         route = service.get_route_book(db, route_book_id, current_user_id)
-        return schemas.route_book_response(route, current_user_id)
+        return schemas.route_book_response(route, current_user_id, include_elevation_profile=True)
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
