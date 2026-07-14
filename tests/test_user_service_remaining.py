@@ -369,8 +369,8 @@ class TestUpdateUserCity:
             _cleanup_db(db)
             db.close()
 
-    def test_invalid_city_raises_value_error(self, pg_session_factory, real_redis):
-        """非 7 主城枚举抛 ValueError（不应到 DB CheckConstraint 才被拦）。"""
+    def test_too_long_city_raises_value_error(self, pg_session_factory, real_redis):
+        """用户家乡可自定义，但超过 32 字符必须拒绝。"""
         db = pg_session_factory()
         user_id = None
         try:
@@ -379,8 +379,8 @@ class TestUpdateUserCity:
             db.commit()
             user_id = user.id
 
-            with pytest.raises(ValueError, match="invalid city"):
-                update_user_city(db, user_id, "guangzhou")
+            with pytest.raises(ValueError, match="city too long"):
+                update_user_city(db, user_id, "城" * 33)
         finally:
             _cleanup_db(db)
             db.close()
