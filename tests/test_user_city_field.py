@@ -1,18 +1,17 @@
 """
-v5 task-2.C.1：User.city 字段防回退测试。
+User.city 真 PostgreSQL 防回退测试。
 
-字段本身在 task-1.A.1 加 ORM Column / task-0.6 加 DB 列 + CheckConstraint。
-本测试不是"新加字段"，而是**防回退**——
-未来 user/models.py 改动若误删 city 字段或 CheckConstraint，本测试会立即报警。
+Sprint 6 task-4 已把用户家乡从 6 城枚举放宽为任意地区标签：数据库保留
+String(64) / NULL，不再有 ck_users_city；应用层负责 32 字符长度校验。
 
-走真 PG（不走 SQLite）：CheckConstraint 是 PG 层约束，SQLite 不模拟 → 必须真触达 DB。
+这里走真 PostgreSQL，验证迁移后的表结构和真实写入行为，避免 SQLite 掩盖迁移漂移。
 """
 
 import os
 
 import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from app.user.models import User
@@ -107,21 +106,17 @@ def test_user_city_six_cities_plus_unknown_allowed(pg_session_factory):
         db.close()
 
 
-def test_user_city_invalid_value_rejected(pg_session_factory):
-    """DB 实测：CheckConstraint 拒非法值（防脏数据进热图聚合）。"""
+def test_user_city_region_label_allowed(pg_session_factory):
+    """DB 实测：用户能保存 6 城枚举之外的真实省市标签。"""
     db = pg_session_factory()
     try:
         _cleanup(db)
-        # 'guangzhou' 不在 6 主城枚举里 → CheckConstraint 应抛 IntegrityError
-        user = User(openid=f"{_PREFIX}_guangzhou", nickname="task-2.C.1 invalid", city="guangzhou")
+        user = User(openid=f"{_PREFIX}_region", nickname="task-2.C.1 region", city="山西-太原")
         db.add(user)
-        with pytest.raises(IntegrityError):
-            db.commit()
-        db.rollback()
+        db.commit()
 
-        # 验证非法值确实没写入
-        loaded = db.query(User).filter(User.openid == f"{_PREFIX}_guangzhou").first()
-        assert loaded is None
+        loaded = db.query(User).filter(User.openid == f"{_PREFIX}_region").one()
+        assert loaded.city == "山西-太原"
     finally:
         _cleanup(db)
         db.close()

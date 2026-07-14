@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
-
 import pytest
 from sqlalchemy import text
 
@@ -458,30 +456,12 @@ def test_provenance_verified_rejects_existing_source_without_durable_pointer(db,
         )
 
 
-def test_batch6_does_not_create_public_route_cognition_router():
-    assert not Path("app/route_cognition/router.py").exists()
+def test_route_cognition_has_no_public_api():
+    """路线认知目前只供内部服务使用，不能意外暴露成公开接口。"""
+    from app.main import app
 
-
-def test_batch6_does_not_add_migration():
-    migration_names = {path.name for path in Path("migrations/versions").glob("*route_cognition_batch*.py")}
-    assert migration_names == {
-        "20260618_route_cognition_batch4.py",
-        "20260618_route_cognition_batch5.py",
-    }
-
-
-def test_batch6_does_not_touch_route_content_surfaces():
-    changed_files = _git_tracked_and_diff_names()
-    assert not any(path.startswith("content/routes/") for path in changed_files)
-    assert not any(path.endswith("guide.md") for path in changed_files)
-    assert "route_guides.content_md" not in "\n".join(changed_files)
-
-
-def test_batch6_does_not_touch_old_segment_surfaces():
-    changed_files = _git_tracked_and_diff_names()
-    changed_text = "\n".join(changed_files)
-    assert "segment_efforts" not in changed_text
-    assert "segments.reference_line" not in changed_text
+    public_paths = app.openapi()["paths"]
+    assert not any(path.startswith("/api/route-cognition") for path in public_paths)
 
 
 @pytest.fixture()
@@ -494,22 +474,6 @@ def batch6_sqlite_tables(db):
     finally:
         db.rollback()
         _drop_batch6_tables(db)
-
-
-def _git_tracked_and_diff_names() -> list[str]:
-    import subprocess
-
-    commands = [
-        ["git", "show", "--name-only", "--format=", "HEAD"],
-        ["git", "diff", "--name-only"],
-        ["git", "diff", "--cached", "--name-only"],
-        ["git", "ls-files", "--others", "--exclude-standard"],
-    ]
-    names: set[str] = set()
-    for command in commands:
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
-        names.update(line.strip() for line in result.stdout.splitlines() if line.strip())
-    return sorted(names)
 
 
 def _seed_batch6_base(db) -> None:
