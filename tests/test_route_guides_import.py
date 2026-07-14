@@ -147,47 +147,6 @@ def _copy_fixture(tmp_path: Path, *route_names: str) -> Path:
     return target
 
 
-def test_imports_gpx_route_and_creates_official_route_book(db, route_guide_tables, tmp_path, monkeypatch):
-    if db.bind.dialect.name != "postgresql":
-        pytest.skip("requires PostGIS")
-    from app.route_book.models import RouteVersion
-
-    RouteBook, RouteGuide = route_guide_tables
-    script = _load_script()
-    content_dir = _copy_fixture(tmp_path, "test-gpx-route")
-    monkeypatch.setattr(script, "SessionLocal", lambda: db)
-
-    script.main(["--content-dir", str(content_dir)])
-
-    guide = db.query(RouteGuide).filter_by(name="测试 GPX 路线").one()
-    book = db.query(RouteBook).filter_by(id=guide.route_book_id).one()
-    profile = json.loads(guide.elevation_profile)
-    assert guide.city == "太原"
-    assert guide.highlights == "[\"起点清晰\", \"终点清晰\"]"
-    assert guide.cover_url == "https://example.com/test-gpx.jpg"
-    assert book.is_official is True
-    assert book.source == "file_upload"
-    assert book.file_type == "gpx"
-    assert book.file_id
-    assert book.city == "taiyuan"
-    assert book.visibility == "public"
-    assert book.publish_status == "published"
-    assert book.current_version_id is not None
-    version = db.query(RouteVersion).filter_by(route_book_id=book.id).one()
-    assert version.id == book.current_version_id
-    assert guide.source_route_version_id == book.current_version_id
-    assert version.version_no == 1
-    assert version.status == "current"
-    assert version.navigation_status == "ready"
-    assert version.geometry_source == "file_upload"
-    assert version.elevation_points_snapshot is not None
-    assert json.loads(version.elevation_points_snapshot)[0][2] is not None
-    assert len(profile) <= 100
-    assert profile[0][0] == 0
-    assert profile[-1][0] > profile[0][0]
-    assert all(curr[0] >= prev[0] for prev, curr in zip(profile, profile[1:]))
-
-
 def _write_gpx(path: Path, elevations: list[float | None]) -> None:
     points = []
     for index, elevation in enumerate(elevations):
@@ -408,27 +367,6 @@ def test_bad_gallery_urls_exits_before_writing(db, route_guide_tables, tmp_path,
     assert db.query(RouteGuide).count() == 0
 
 
-def test_idempotent_rerun_updates_existing_guide_and_book(db, route_guide_tables, tmp_path, monkeypatch):
-    if db.bind.dialect.name != "postgresql":
-        pytest.skip("requires PostGIS")
-    RouteBook, RouteGuide = route_guide_tables
-    script = _load_script()
-    content_dir = _copy_fixture(tmp_path, "test-gpx-route")
-    monkeypatch.setattr(script, "SessionLocal", lambda: db)
-
-    script.main(["--content-dir", str(content_dir)])
-    first_guide = db.query(RouteGuide).filter_by(name="测试 GPX 路线").one()
-    first_book_id = first_guide.route_book_id
-    (content_dir / "test-gpx-route" / "guide.md").write_text("# 测试 GPX 路线\n\n第二版介绍。\n", encoding="utf-8")
-    script.main(["--content-dir", str(content_dir)])
-
-    guide = db.query(RouteGuide).filter_by(name="测试 GPX 路线").one()
-    assert db.query(RouteGuide).count() == 1
-    assert db.query(RouteBook).count() == 1
-    assert guide.route_book_id == first_book_id
-    assert guide.content_md.endswith("第二版介绍。\n")
-
-
 def test_missing_highlights_is_optional_and_stored_as_null(db, route_guide_tables, tmp_path, monkeypatch):
     """highlights 是可选字段（spec §3.6 必填只有 name）——缺省存 NULL 不报错。
 
@@ -447,37 +385,6 @@ def test_missing_highlights_is_optional_and_stored_as_null(db, route_guide_table
     guide = db.query(RouteGuide).filter_by(name="无亮点路线").one()
     assert guide.highlights is None
     assert guide.route_book_id is None
-
-
-def test_track_pending_guide_upgrades_to_route_book_on_rerun(db, route_guide_tables, tmp_path, monkeypatch):
-    """track_pending 升级路径（卡 §6 #2）：先无 GPX 灌 → 补 GPX 重跑 → 同一 guide 挂上 book，不新建 guide。
-
-    这是汾河等"先有介绍后补轨迹"路线的真实生命周期，幂等键 = name。
-    """
-    if db.bind.dialect.name != "postgresql":
-        pytest.skip("requires PostGIS")
-    RouteBook, RouteGuide = route_guide_tables
-    script = _load_script()
-    content_dir = _copy_fixture(tmp_path, "test-no-track")
-    monkeypatch.setattr(script, "SessionLocal", lambda: db)
-
-    script.main(["--content-dir", str(content_dir)])
-    pending = db.query(RouteGuide).filter_by(name="测试无轨迹路线").one()
-    assert pending.route_book_id is None
-    pending_id = pending.id
-
-    # 补 GPX（借 gpx fixture 的轨迹文件）后重跑——升级不重建
-    shutil.copy(FIXTURE_ROUTES / "test-gpx-route" / "track.gpx", content_dir / "test-no-track" / "track.gpx")
-    script.main(["--content-dir", str(content_dir)])
-
-    upgraded = db.query(RouteGuide).filter_by(name="测试无轨迹路线").one()
-    assert upgraded.id == pending_id
-    assert upgraded.route_book_id is not None
-    assert upgraded.elevation_profile is not None
-    version = db.query(RouteVersion).filter_by(route_book_id=upgraded.route_book_id).one()
-    assert version.elevation_points_snapshot is not None
-    assert db.query(RouteGuide).count() == 1
-    assert db.query(RouteBook).count() == 1
 
 
 def test_dry_run_prints_plan_and_makes_no_db_writes(db, route_guide_tables, monkeypatch, capsys):

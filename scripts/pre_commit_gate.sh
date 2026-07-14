@@ -7,13 +7,30 @@
 
 fail=0
 
-# 一、承载性新文件检查(原 CLAUDE.md L26 附加门禁):
-# app/ alembic/ tests/ miniprogram/ 下的 untracked 文件,若被本次 staged 代码 import/引用,
-# 干净 clone 会 ImportError——这里先宽口径列出所有承载性目录的 untracked,逼一次显式决定。
-untracked=$(git status --porcelain | grep '^??' | awk '{print $2}' | grep -E '^(app|alembic|migrations|tests|miniprogram)/' )
-if [ -n "$untracked" ]; then
-  echo "🔴 门禁拦截:承载性目录存在 untracked 文件,先决定 stage 还是 .gitignore:"
-  echo "$untracked" | sed 's/^/    /'
+# 一、只拦“本次 staged 新增行引用了、但仍未跟踪”的承载文件。
+# 旧版扫描整个工作区：别的模块有草稿时，连一行无关文档都提交不了。这里改为读 staged patch，
+# 识别常见的 Python dotted import、文件路径和小程序 page 路径；未被本次提交引用的草稿不干扰。
+staged_added=$(git diff --cached --unified=0 -- . | grep '^+' | grep -v '^+++' || true)
+referenced_untracked=()
+while IFS= read -r -d '' path; do
+  no_ext="${path%.*}"
+  dotted=$(printf '%s' "$no_ext" | tr '/' '.')
+  project_relative="$no_ext"
+  if [[ "$project_relative" == miniprogram/* ]]; then
+    project_relative="${project_relative#miniprogram/}"
+  fi
+
+  if printf '%s\n' "$staged_added" | grep -Fq -- "$path" \
+    || printf '%s\n' "$staged_added" | grep -Fq -- "$no_ext" \
+    || printf '%s\n' "$staged_added" | grep -Fq -- "$dotted" \
+    || printf '%s\n' "$staged_added" | grep -Fq -- "$project_relative"; then
+    referenced_untracked+=("$path")
+  fi
+done < <(git ls-files --others --exclude-standard -z -- app alembic migrations tests miniprogram scripts)
+
+if [ "${#referenced_untracked[@]}" -gt 0 ]; then
+  echo "🔴 门禁拦截:本次 staged 代码引用了仍未跟踪的文件;干净 clone 会缺件:"
+  printf '    %s\n' "${referenced_untracked[@]}"
   fail=1
 fi
 
@@ -60,6 +77,20 @@ if echo "$added_lines" | grep -qE '\.one\(\)'; then
 fi
 if echo "$added_lines" | grep -qE 'with_for_update\(\)' && ! echo "$added_lines" | grep -qE 'populate_existing'; then
   echo "⚠️ 新增 with_for_update() 未见 populate_existing():行锁拿到但字段值 stale(陷阱 #12)。"
+fi
+
+# 五、只有本次真的改了 agent 入口时，才跑 Codex CLI 提示体检；普通代码提交不付这 1-2 秒成本。
+cli_checker="scripts/check_codex_cli_prompt.sh"
+if git diff --cached --name-only -- AGENTS.md .codex .agents/skills scripts/pre_commit_gate.sh "$cli_checker" | grep -q .; then
+  if ! git cat-file -e ":$cli_checker" 2>/dev/null; then
+    echo "🔴 门禁拦截:$cli_checker 没有和调用方一起进入 Git index；干净 clone 会缺少体检器。"
+    fail=1
+  elif [ ! -x "$cli_checker" ]; then
+    echo "🔴 门禁拦截:$cli_checker 不可执行。"
+    fail=1
+  elif ! "$cli_checker"; then
+    fail=1
+  fi
 fi
 
 if [ "$fail" -eq 1 ]; then

@@ -5,8 +5,9 @@
 #
 # 不做 CD（不自动部署生产）—— velo 走手工 6 步部署 SOP，保留"按一下确认"的暂停点。
 #
-# 不挂 PostgreSQL / Redis 服务 —— tests/ 用 SQLite fixture + mock，不依赖外部服务。
-# 实测本地 `python3 -m pytest tests/` 832 passed 56 skipped，CI 应同样结果。
+# CI 会临时启动一套空白 PostGIS + Redis：先证明全部 Alembic 迁移能从 0 升级，
+# 再激活仓库里显式标成真 PG / 真 Redis 的集成测试。其余大多数 pytest 仍使用
+# SQLite / mock；不能把“全套测试已跑”误说成“每条测试都连接真实服务”。
 #
 # 触发：所有分支的 push + 任何 PR。
 
@@ -19,6 +20,33 @@ on:
 jobs:
   pytest:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: velo_test
+          POSTGRES_USER: velo
+          POSTGRES_PASSWORD: velo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U velo -d velo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://velo:velo_test@127.0.0.1:5432/velo_test
+      VELO_TEST_DATABASE_URL: postgresql://velo:velo_test@127.0.0.1:5432/velo_test
+      REDIS_URL: redis://127.0.0.1:6379/0
     steps:
       - uses: actions/checkout@v4
 
@@ -31,5 +59,23 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run pytest
-        run: pytest tests/ -q
+      - name: Upgrade a fresh PostGIS database
+        run: python -m alembic upgrade head
+
+      - name: Run tests and reject silent skips
+        run: |
+          pytest tests/ -q --junitxml=/tmp/tests.xml
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("/tmp/tests.xml").getroot()
+          skipped = {
+              f"{case.attrib.get('classname', '')}::{case.attrib.get('name', '')}: "
+              f"{case.find('skipped').attrib.get('message', '')}"
+              for case in root.iter("testcase")
+              if case.find("skipped") is not None
+          }
+          if skipped:
+              details = "\n".join(f"- {item}" for item in sorted(skipped))
+              raise SystemExit(f"skipped tests are not accepted as CI evidence:\n{details}")
+          PY

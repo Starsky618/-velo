@@ -23,6 +23,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from app.activity.models import Activity
+from app.database import Base
 from app.route_cognition.models import JudgmentRun
 from app.route_book.models import RouteBook, RouteGuide, RouteVersion
 from app.segment.models import Segment
@@ -76,14 +77,31 @@ def pg_session_factory(pg_engine):
 
 
 def _create_import_tables(pg_engine) -> None:
-    """创建导入脚本所需的最小真实表集合。"""
-    User.__table__.create(bind=pg_engine, checkfirst=True)
-    Activity.__table__.create(bind=pg_engine, checkfirst=True)
-    Segment.__table__.create(bind=pg_engine, checkfirst=True)
-    RouteBook.__table__.create(bind=pg_engine, checkfirst=True)
-    RouteVersion.__table__.create(bind=pg_engine, checkfirst=True)
-    JudgmentRun.__table__.create(bind=pg_engine, checkfirst=True)
-    RouteGuide.__table__.create(bind=pg_engine, checkfirst=True)
+    """在随机 schema 强制创建最小表集，不复用 search_path 可见的 public 表。"""
+    tables = (
+        User.__table__,
+        Activity.__table__,
+        Segment.__table__,
+        RouteBook.__table__,
+        RouteVersion.__table__,
+        JudgmentRun.__table__,
+        RouteGuide.__table__,
+    )
+    Base.metadata.create_all(bind=pg_engine, tables=tables, checkfirst=False)
+
+    expected = {table.name for table in tables}
+    with pg_engine.connect() as conn:
+        schema_name = conn.execute(text("SELECT current_schema()")).scalar_one()
+        actual = set(
+            conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = current_schema()"
+                )
+            ).scalars()
+        )
+    assert schema_name.startswith("route_batch1_")
+    assert expected <= actual
 
 
 def _copy_fixture(tmp_path: Path, *route_names: str) -> Path:
@@ -128,10 +146,13 @@ def test_imports_gpx_route_and_creates_public_official_route_book_on_postgis(
         assert book.publish_status == "published"
         assert book.current_version_id is not None
         assert version.id == book.current_version_id
+        assert guide.source_route_version_id == book.current_version_id
         assert version.version_no == 1
         assert version.status == "current"
         assert version.navigation_status == "ready"
         assert version.geometry_source == "file_upload"
+        assert version.elevation_points_snapshot is not None
+        assert json.loads(version.elevation_points_snapshot)[0][2] is not None
         assert db.execute(
             text(
                 """
@@ -163,6 +184,81 @@ def test_imports_gpx_route_and_creates_public_official_route_book_on_postgis(
         assert profile[0][0] == 0
         assert profile[-1][0] > profile[0][0]
         assert all(curr[0] >= prev[0] for prev, curr in zip(profile, profile[1:]))
+    finally:
+        db.close()
+
+
+def test_idempotent_rerun_updates_existing_guide_and_book_on_postgis(
+    pg_engine,
+    pg_session_factory,
+    tmp_path,
+    monkeypatch,
+):
+    """重复导入只更新原记录，不复制 route_book 或 route_version。"""
+    from scripts import import_route_guides as script
+
+    _create_import_tables(pg_engine)
+    db = pg_session_factory()
+    try:
+        content_dir = _copy_fixture(tmp_path, "test-gpx-route")
+        monkeypatch.setattr(script, "SessionLocal", lambda: db)
+
+        script.main(["--content-dir", str(content_dir)])
+        first_guide = db.query(RouteGuide).filter_by(name="测试 GPX 路线").one()
+        first_book_id = first_guide.route_book_id
+        (content_dir / "test-gpx-route" / "guide.md").write_text(
+            "# 测试 GPX 路线\n\n第二版介绍。\n",
+            encoding="utf-8",
+        )
+
+        script.main(["--content-dir", str(content_dir)])
+
+        guide = db.query(RouteGuide).filter_by(name="测试 GPX 路线").one()
+        assert db.query(RouteGuide).count() == 1
+        assert db.query(RouteBook).count() == 1
+        assert db.query(RouteVersion).count() == 1
+        assert guide.route_book_id == first_book_id
+        assert guide.content_md.endswith("第二版介绍。\n")
+    finally:
+        db.close()
+
+
+def test_track_pending_guide_upgrades_in_place_on_postgis(
+    pg_engine,
+    pg_session_factory,
+    tmp_path,
+    monkeypatch,
+):
+    """先导入无轨迹介绍，补 GPX 后原 guide 原地升级且只创建一套路线。"""
+    from scripts import import_route_guides as script
+
+    _create_import_tables(pg_engine)
+    db = pg_session_factory()
+    try:
+        content_dir = _copy_fixture(tmp_path, "test-no-track")
+        monkeypatch.setattr(script, "SessionLocal", lambda: db)
+
+        script.main(["--content-dir", str(content_dir)])
+        pending = db.query(RouteGuide).filter_by(name="测试无轨迹路线").one()
+        pending_id = pending.id
+        assert pending.route_book_id is None
+        assert db.query(RouteBook).count() == 0
+
+        shutil.copy(
+            FIXTURE_ROUTES / "test-gpx-route" / "track.gpx",
+            content_dir / "test-no-track" / "track.gpx",
+        )
+        script.main(["--content-dir", str(content_dir)])
+
+        upgraded = db.query(RouteGuide).filter_by(name="测试无轨迹路线").one()
+        assert upgraded.id == pending_id
+        assert upgraded.route_book_id is not None
+        assert upgraded.elevation_profile is not None
+        version = db.query(RouteVersion).filter_by(route_book_id=upgraded.route_book_id).one()
+        assert version.elevation_points_snapshot is not None
+        assert db.query(RouteGuide).count() == 1
+        assert db.query(RouteBook).count() == 1
+        assert db.query(RouteVersion).count() == 1
     finally:
         db.close()
 
