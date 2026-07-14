@@ -8,7 +8,7 @@
 >
 > **来源**：合并自 Claude 侧 9 条 memory（deploy-curl-verify / deploy-rebuild-all-containers / diagnosis-container-stack-first / real-usage-vs-mock-blindspot / ssh-remote-secret-redact / standalone-script-orm-loading / logger-warning-narrative-trap / throttling-real-rate-limit / oneshot-cron-sentinel / alert-channel-deferred）+ `~/.claude/skills/deploy` skill。本文已把 mock 盲区从 skill 旧版的 5 类**更新到 6 类**（补 2026-05-21 Sprint 9 算法语义错实证）。
 >
-> **⚠ 若你是被 hook 自动注入看到这段** = 这只是本文顶部摘要。部署前请读全文 §2（6 步 SOP）+ §3（checklist）+ §5（排查因果链），别只看这段。
+> **部署前请读全文** §2（6 步 SOP）+ §3（checklist）+ §5（排查因果链），不要只看顶部摘要。
 
 ---
 
@@ -65,7 +65,16 @@ sudo docker compose logs api --tail 20      # 看启动日志确认 healthy
 # 并行开发时别人加的迁移你也得跑；2026-05-15 跳过这步 → 生产全 endpoint 500
 sudo docker compose exec -T api python3 -m alembic upgrade head
 
-# DEPLOY-5  curl verify（必跑 / 不能信 docker ps Up）
+# DEPLOY-5A  OpenAPI 合同（新增 / 改动 endpoint 时必跑；网络上只发 GET）
+# `--require POST:/path` 只是检查 OpenAPI 是否声明 POST，不会真的调用业务接口。
+# 下列占位符故意无法通过；每次必须替换为本次新增 / 改动的全部方法与真实路径。
+sudo docker compose exec -T api python3 scripts/check_live_api_contract.py \
+  --base-url https://api.weiluai.top \
+  --require 'POST:/api/<changed-resource>' \
+  --require 'GET:/api/<changed-resource>/{id}'
+# 任一非 0 都阻断：1=脚本异常，2=参数错误，3=目标/OpenAPI 不可采信，4=合同缺失。
+
+# DEPLOY-5B  authenticated curl verify（必跑 / 不能信 docker ps Up）
 # docker ps "Up" 只代表容器进程在跑，不代表代码更新了
 TOKEN=$(sudo docker compose exec -T api python -c '<token 签发 snippet>' | tail -1)
 curl -s -H "Authorization: Bearer $TOKEN" "http://localhost:8000/<改动的 endpoint>"

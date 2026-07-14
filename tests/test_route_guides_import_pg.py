@@ -24,6 +24,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from app.activity.models import Activity
+from app.database import Base
 from app.route_cognition.models import JudgmentRun
 from app.route_book.models import RouteBook, RouteGuide, RouteVersion
 from app.segment.models import Segment
@@ -128,14 +129,31 @@ def pg_session_factory(pg_engine):
 
 
 def _create_import_tables(pg_engine) -> None:
-    """创建导入脚本所需的最小真实表集合。"""
-    User.__table__.create(bind=pg_engine, checkfirst=True)
-    Activity.__table__.create(bind=pg_engine, checkfirst=True)
-    Segment.__table__.create(bind=pg_engine, checkfirst=True)
-    RouteBook.__table__.create(bind=pg_engine, checkfirst=True)
-    RouteVersion.__table__.create(bind=pg_engine, checkfirst=True)
-    JudgmentRun.__table__.create(bind=pg_engine, checkfirst=True)
-    RouteGuide.__table__.create(bind=pg_engine, checkfirst=True)
+    """在随机 schema 强制创建最小表集，不复用 search_path 可见的 public 表。"""
+    tables = (
+        User.__table__,
+        Activity.__table__,
+        Segment.__table__,
+        RouteBook.__table__,
+        RouteVersion.__table__,
+        JudgmentRun.__table__,
+        RouteGuide.__table__,
+    )
+    Base.metadata.create_all(bind=pg_engine, tables=tables, checkfirst=False)
+
+    expected = {table.name for table in tables}
+    with pg_engine.connect() as conn:
+        schema_name = conn.execute(text("SELECT current_schema()")).scalar_one()
+        actual = set(
+            conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = current_schema()"
+                )
+            ).scalars()
+        )
+    assert schema_name.startswith("route_batch1_")
+    assert expected <= actual
 
 
 def _copy_fixture(tmp_path: Path, *route_names: str) -> Path:
@@ -181,6 +199,7 @@ def test_imports_gpx_route_and_creates_public_official_route_book_on_postgis(
         assert book.publish_status == "published"
         assert book.current_version_id is not None
         assert version.id == book.current_version_id
+        assert guide.source_route_version_id == book.current_version_id
         assert version.version_no == 1
         assert version.status == "current"
         assert version.navigation_status == "ready"
