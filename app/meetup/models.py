@@ -40,6 +40,7 @@ class Meetup(Base):
     snapshot_distance = Column(Float, nullable=False)
     snapshot_climb = Column(Float, nullable=True)
     snapshot_city = Column(String(32), nullable=False, server_default="unknown")
+    snapshot_route_points = Column(Text, nullable=True)
     start_time = Column(DateTime(timezone=True), nullable=False)
     estimated_end_time = Column(DateTime(timezone=True), nullable=False)
     meeting_point = Column(String(128), nullable=False)

@@ -1,6 +1,7 @@
 """约骑模块 Task 3：service 状态机测试。"""
 
 from datetime import datetime, timedelta, timezone
+import json
 
 import pytest
 from fastapi import HTTPException
@@ -101,6 +102,74 @@ def test_update_draft_route_recalculates_snapshot(db, test_user):
     assert updated.segment_id is None
     assert updated.snapshot_route_name == "新路书"
     assert updated.snapshot_distance == 42000.0
+    assert json.loads(updated.snapshot_route_points) == service._geometry_preview_points(route.reference_line)
+
+
+def test_create_meetup_rejects_another_users_private_route(db, test_user, admin_user):
+    route = _route_book(db, admin_user.id, name="别人的私密路书")
+
+    with pytest.raises(HTTPException) as exc:
+        service.create_meetup(
+            db,
+            test_user.id,
+            None,
+            route.id,
+            _start(),
+            _start() + timedelta(hours=2),
+            "A",
+            "cruise",
+            4,
+            None,
+        )
+
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "route_book not found"
+
+
+def test_update_meetup_rejects_another_users_private_route(db, test_user, admin_user):
+    segment = _segment(db)
+    private_route = _route_book(db, admin_user.id, name="别人的私密路书")
+    meetup = service.create_meetup(
+        db, test_user.id, segment.id, None, _start(), _start() + timedelta(hours=2), "A", "cruise", 4, None
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        service.update_meetup(
+            db,
+            meetup.id,
+            test_user.id,
+            route_book_id=private_route.id,
+            segment_id=None,
+        )
+
+    assert exc.value.status_code == 404
+    db.rollback()
+    db.refresh(meetup)
+    assert meetup.segment_id == segment.id
+    assert meetup.route_book_id is None
+
+
+def test_public_published_route_can_seed_meetup_without_leaking_private_routes(db, test_user, admin_user):
+    route = _route_book(db, admin_user.id, name="公开路书")
+    route.visibility = "public"
+    route.publish_status = "published"
+    db.commit()
+
+    meetup = service.create_meetup(
+        db,
+        test_user.id,
+        None,
+        route.id,
+        _start(),
+        _start() + timedelta(hours=2),
+        "A",
+        "cruise",
+        4,
+        None,
+    )
+
+    assert meetup.snapshot_route_name == "公开路书"
+    assert json.loads(meetup.snapshot_route_points) == service._geometry_preview_points(route.reference_line)
 
 
 def test_publish_freezes_snapshot_and_adds_creator_participant(db, test_user):

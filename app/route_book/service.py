@@ -44,6 +44,7 @@ from app.route_book.elevation_workflow import write_route_elevation_result
 from app.route_book.export_service import can_export_route
 from app.route_book.models import (
     RouteBook,
+    RouteExportArtifact,
     RouteBookSaveRequest,
     RouteVersion,
     _preview_points_from_wkb,
@@ -497,8 +498,8 @@ def _delete_uploaded_route_file(file_id: str | None) -> None:
         return
     try:
         _storage.delete(file_id)
-    except Exception as exc:
-        logger.warning("补偿删除孤儿文件失败 file_id=%s: %s", file_id, exc)
+    except Exception:
+        logger.exception("补偿删除孤儿文件失败 file_id=%s", file_id)
 
 
 def create_route_book_from_tencent_direction(
@@ -822,7 +823,15 @@ def delete_route_book(db: Session, route_book_id: int, current_user_id: int) -> 
         raise LookupError("route_book not found")
     if route.creator_id != current_user_id:
         raise PermissionError("not owner")
-    file_id = route.file_id
+    file_ids = {
+        row.file_id
+        for row in db.query(RouteExportArtifact.file_id)
+        .filter(RouteExportArtifact.route_book_id == route.id)
+        .all()
+        if row.file_id
+    }
+    if route.file_id:
+        file_ids.add(route.file_id)
     # 保存凭据必须比路线活得久；先断开关联再删除，SQLite 测试与真实 PostgreSQL
     # 都会留下同一个 tombstone，迟到重放只会收到冲突，不会把路线重新创建。
     db.query(RouteBookSaveRequest).filter(
@@ -830,14 +839,13 @@ def delete_route_book(db: Session, route_book_id: int, current_user_id: int) -> 
     ).update({RouteBookSaveRequest.route_book_id: None}, synchronize_session=False)
     db.delete(route)
     db.commit()
-    if file_id:
-        # storage 删文件失败不阻塞用户：DB 是 source of truth，记录已删即算成功。
-        # 文件本来不存在时 LocalStorage.delete 返回 False（不抛）；但权限/IO 异常会抛 OSError，
-        # 这里吞掉并记日志，孤儿文件留待定期清理（v2）——与 meetup_media 删除策略一致（spec §4.3）。
+    for file_id in file_ids:
+        # DB 是 source of truth；commit 后再删原文件和所有 GPX/TCX 导出物。
+        # 失败不把已删路线复活，但必须留完整 traceback 便于清理孤儿私密轨迹。
         try:
             _storage.delete(file_id)
-        except OSError as e:
-            logger.warning("route_book 文件删除失败 file_id=%s: %s", file_id, e)
+        except Exception:
+            logger.exception("route_book 文件删除失败 file_id=%s", file_id)
 
 
 def list_activity_candidates(db: Session, current_user_id: int) -> list[Activity]:

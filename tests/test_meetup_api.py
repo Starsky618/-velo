@@ -105,6 +105,35 @@ def test_create_patch_and_list_return_custom_power_speed_hints(client, db, auth_
     assert item["average_speed_range"] == "26 km/h 左右"
 
 
+def test_meetup_detail_uses_frozen_route_points_without_leaking_draft_geometry(
+    client, db, auth_header
+):
+    segment = _segment(db)
+    create_res = client.post("/api/meetups", json=_payload(segment.id), headers=auth_header)
+
+    assert create_res.status_code == 200
+    meetup_id = create_res.json()["id"]
+    assert create_res.json()["snapshot_route_points"] is None
+    draft_detail = client.get(f"/api/meetups/{meetup_id}")
+    assert draft_detail.status_code == 200
+    assert draft_detail.json()["snapshot_route_points"] is None
+
+    owner_detail = client.get(f"/api/meetups/{meetup_id}", headers=auth_header)
+    assert owner_detail.status_code == 200
+    frozen_points = owner_detail.json()["snapshot_route_points"]
+    assert len(frozen_points) == 2
+
+    published = client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
+    assert published.status_code == 200
+    public_detail = client.get(f"/api/meetups/{meetup_id}")
+    assert public_detail.status_code == 200
+    assert public_detail.json()["snapshot_route_points"] == frozen_points
+
+    listed = client.get("/api/meetups?status=OPEN").json()["items"]
+    item = next(row for row in listed if row["id"] == meetup_id)
+    assert item["snapshot_route_points"] is None
+
+
 def test_meetup_favorite_places_are_user_scoped_and_sort_by_recent_use(client, db, auth_header, monkeypatch):
     now = datetime(2026, 6, 12, 10, 0, tzinfo=timezone.utc)
     monkeypatch.setattr("app.meetup.service._now_utc", lambda: now)

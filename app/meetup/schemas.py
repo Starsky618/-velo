@@ -6,6 +6,7 @@
 """
 
 from datetime import datetime
+import json
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -118,6 +119,7 @@ class MeetupResponse(BaseModel):
     snapshot_distance: float
     snapshot_climb: float | None = None
     snapshot_city: City
+    snapshot_route_points: list[list[float]] | None = None
     start_time: datetime
     estimated_end_time: datetime
     meeting_point: str
@@ -141,6 +143,19 @@ class MeetupResponse(BaseModel):
     created_at: datetime | None = None
     cancelled_at: datetime | None = None
     completed_at: datetime | None = None
+
+    @field_validator("snapshot_route_points", mode="before")
+    @classmethod
+    def parse_snapshot_route_points(cls, value):
+        if value is None or isinstance(value, list):
+            return value
+        if not isinstance(value, str):
+            return None
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, list) else None
 
 
 class MeetupListResponse(BaseModel):

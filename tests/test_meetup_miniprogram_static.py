@@ -645,6 +645,14 @@ def test_create_route_preview_card_uses_canvas_but_detail_opens_dedicated_map_pa
     assert "routeMapNav.openRouteMapPage" in js
 
 
+def test_meetup_detail_draws_the_access_controlled_frozen_route_snapshot():
+    js = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.js")
+
+    assert "that.loadRoutePreview(res.snapshot_route_points)" in js
+    preview_block = js.split("loadRoutePreview: function", 1)[1].split("drawRoutePreviewThumb", 1)[0]
+    assert "api.getRouteBookDetail" not in preview_block
+
+
 def test_create_page_avoids_object_spread_for_wechat_runtime():
     js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
 

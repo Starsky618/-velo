@@ -6,6 +6,7 @@
 """
 
 import logging
+import json
 import math
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -18,7 +19,8 @@ from sqlalchemy.orm import Session
 from app.activity.models import Activity
 from app.meetup.models import Meetup, MeetupActivity, MeetupFavoritePlace, MeetupMedia, MeetupParticipant
 from app.meetup.schemas import InviteeSummary, MeetupReportCell, MeetupReportOut, MeetupReportTotals
-from app.route_book.models import RouteBook
+from app.route_book import service as route_book_service
+from app.route_book.models import RouteBook, _preview_points_from_wkb, _preview_points_from_wkt
 from app.route_book import tencent_place
 from app.segment.models import Segment
 from app.segment.coord_convert import gcj02_to_wgs84
@@ -88,7 +90,44 @@ def _cleanup_meetup_storage(file_ids: list[str]) -> None:
             logger.warning("清理约骑媒体文件失败 file_id=%s", file_id, exc_info=True)
 
 
-def _snapshot_from_route(db: Session, segment_id: int | None, route_book_id: int | None) -> dict:
+def _geometry_preview_points(value: object) -> list[list[float]]:
+    """把 PostGIS/WKT 几何缩成约骑可用的路线快照。"""
+    if value is None:
+        return []
+    try:
+        if isinstance(value, str):
+            points = _preview_points_from_wkt(value)
+            return points or _preview_points_from_wkb(value)
+        data = getattr(value, "data", value)
+        if isinstance(data, str):
+            points = _preview_points_from_wkt(data)
+            return points or _preview_points_from_wkb(data)
+        return _preview_points_from_wkb(data)
+    except (AttributeError, TypeError, ValueError):
+        return []
+
+
+def _bounded_route_points(points: list[list[float]], limit: int = 500) -> list[list[float]]:
+    """保留首尾的等距抽样，避免一条长 GPX 把约骑详情响应撑大。"""
+    if len(points) <= limit:
+        return points
+    indexes = [round(index * (len(points) - 1) / (limit - 1)) for index in range(limit)]
+    return [points[index] for index in indexes]
+
+
+def _encoded_route_points(points: list[list[float]]) -> str | None:
+    bounded = _bounded_route_points(points)
+    if len(bounded) < 2:
+        return None
+    return json.dumps(bounded, ensure_ascii=False, separators=(",", ":"))
+
+
+def _snapshot_from_route(
+    db: Session,
+    segment_id: int | None,
+    route_book_id: int | None,
+    current_user_id: int,
+) -> dict:
     """从 segment 或 route_book 抄一份发布卡片快照，像给路线拍照留档。"""
     if (segment_id is None) == (route_book_id is None):
         raise HTTPException(status_code=422, detail="segment_id 和 route_book_id 必须二选一")
@@ -102,16 +141,27 @@ def _snapshot_from_route(db: Session, segment_id: int | None, route_book_id: int
             "snapshot_distance": segment.distance,
             "snapshot_climb": segment.elevation_gain,
             "snapshot_city": segment.city or "unknown",
+            "snapshot_route_points": _encoded_route_points(
+                _geometry_preview_points(segment.reference_line)
+            ),
         }
 
-    route = db.query(RouteBook).filter(RouteBook.id == route_book_id).first()
-    if route is None:
+    try:
+        route, _export_ready, _formats, _block_reason = route_book_service.get_route_book_detail(
+            db,
+            route_book_id,
+            current_user_id,
+        )
+    except LookupError:
         raise HTTPException(status_code=404, detail="route_book not found")
     return {
         "snapshot_route_name": route.name,
         "snapshot_distance": route.distance,
         "snapshot_climb": route.climb,
         "snapshot_city": route.city or "unknown",
+        "snapshot_route_points": _encoded_route_points(
+            route.preview_points or _geometry_preview_points(route.reference_line)
+        ),
     }
 
 
@@ -188,7 +238,7 @@ def create_meetup(
     end_aware = _ensure_aware(estimated_end_time)
     _ensure_time_order(start_aware, end_aware)
 
-    snapshot = _snapshot_from_route(db, segment_id, route_book_id)
+    snapshot = _snapshot_from_route(db, segment_id, route_book_id, current_user_id)
     meetup = Meetup(
         creator_id=current_user_id,
         status="DRAFT",
@@ -233,7 +283,12 @@ def update_meetup(db: Session, meetup_id: int, current_user_id: int, **changes) 
     )
     route_changed = "segment_id" in changes or "route_book_id" in changes
     if route_changed:
-        snapshot = _snapshot_from_route(db, changes.get("segment_id"), changes.get("route_book_id"))
+        snapshot = _snapshot_from_route(
+            db,
+            changes.get("segment_id"),
+            changes.get("route_book_id"),
+            current_user_id,
+        )
         for key, value in snapshot.items():
             setattr(meetup, key, value)
         meetup.segment_id = changes.get("segment_id")

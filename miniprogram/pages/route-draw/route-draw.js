@@ -503,6 +503,7 @@ function clonePending(pending) {
 
 function buildMarkers(actions) {
   var markerPoints = []
+  var hasConfirmedSegment = false
   cloneActions(actions).forEach(function (action) {
     if (action.kind === 'anchor') {
       markerPoints.push(action.point)
@@ -511,7 +512,11 @@ function buildMarkers(actions) {
     if (action.kind === 'segment') {
       var points = normalizeLonLatPoints(action.points)
       if (!points.length) return
-      if (!markerPoints.length) markerPoints.push(points[0])
+      if (!hasConfirmedSegment) {
+        if (markerPoints.length) markerPoints[0] = points[0]
+        else markerPoints.push(points[0])
+        hasConfirmedSegment = true
+      }
       markerPoints.push(points[points.length - 1])
     }
   })
@@ -1498,6 +1503,7 @@ Page({
 if (typeof module !== 'undefined') {
   module.exports = {
     buildDrawPolylines: buildDrawPolylines,
+    buildMarkers: buildMarkers,
     buildRouteStats: buildRouteStats,
     simplifyForSave: simplifyForSave,
     simplifyForSnap: simplifyForSnap,

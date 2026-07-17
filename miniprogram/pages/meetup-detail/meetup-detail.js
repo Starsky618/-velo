@@ -126,7 +126,7 @@ Page({
         that.updateReportEntrance()
         that.loadMedia()
         that.loadParticipants()
-        that.loadRoutePreview(res.route_book_id)
+        that.loadRoutePreview(res.snapshot_route_points)
       })
       .catch(function (err) {
         wx.showToast({ title: err.message || '加载失败', icon: 'none' })
@@ -137,22 +137,11 @@ Page({
       })
   },
 
-  loadRoutePreview: function (routeBookId) {
+  loadRoutePreview: function (routePoints) {
     var that = this
-    if (!routeBookId || !api.getRouteBookDetail) {
-      this.setData(buildRoutePreview([]))
-      return
-    }
-    api.getRouteBookDetail(routeBookId)
-      .then(function (routeBook) {
-        that.setData(buildRoutePreview(routeBook.preview_points), function () {
-          that.drawRoutePreviewThumb()
-        })
-      })
-      .catch(function () {
-        // 路书被删或不可读时，只隐藏路线图；约骑详情其它信息仍照常可看。
-        that.setData(buildRoutePreview([]))
-      })
+    this.setData(buildRoutePreview(routePoints), function () {
+      if (that.data.routePreviewVisible) that.drawRoutePreviewThumb()
+    })
   },
 
   // 约骑详情页顶部地图只是让人先看路线形状，不承担拖动选点。

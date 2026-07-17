@@ -22,7 +22,14 @@ router = APIRouter(prefix="/api/meetups", tags=["meetup"])
 logger = logging.getLogger(__name__)
 
 
-def _response(meetup, participants_count=0, first_media_file_id=None, current_user_id=None, db=None) -> schemas.MeetupResponse:
+def _response(
+    meetup,
+    participants_count=0,
+    first_media_file_id=None,
+    current_user_id=None,
+    db=None,
+    include_route_points=False,
+) -> schemas.MeetupResponse:
     """把 ORM 行翻译成 API 卡片，像把后台单据整理成前台可读票面。
 
     current_user_id + db：算当前请求者视角的 is_creator / has_joined（详情页角色按钮用）。
@@ -42,6 +49,11 @@ def _response(meetup, participants_count=0, first_media_file_id=None, current_us
         snapshot_distance=round(meetup.snapshot_distance / 1000, 2),
         snapshot_climb=meetup.snapshot_climb,
         snapshot_city=meetup.snapshot_city,
+        snapshot_route_points=(
+            meetup.snapshot_route_points
+            if include_route_points and (meetup.status != "DRAFT" or is_creator)
+            else None
+        ),
         start_time=meetup.start_time,
         estimated_end_time=meetup.estimated_end_time,
         meeting_point=meetup.meeting_point,
@@ -66,7 +78,13 @@ def _response(meetup, participants_count=0, first_media_file_id=None, current_us
     )
 
 
-def _live_response(db: Session, meetup, participants_count=None, current_user_id=None) -> schemas.MeetupResponse:
+def _live_response(
+    db: Session,
+    meetup,
+    participants_count=None,
+    current_user_id=None,
+    include_route_points=False,
+) -> schemas.MeetupResponse:
     """单条约骑响应统一查人数和首图，避免列表页、详情页、操作返回口径分裂。
     current_user_id 透传给 _response 算角色标记（is_creator / has_joined）。"""
     if participants_count is None:
@@ -77,6 +95,7 @@ def _live_response(db: Session, meetup, participants_count=None, current_user_id
         first_media_file_id=service.get_first_media_file_id(db, meetup.id),
         current_user_id=current_user_id,
         db=db,
+        include_route_points=include_route_points,
     )
 
 
@@ -250,7 +269,12 @@ def get_meetup(
         token,
         source,
     )
-    return _live_response(db, meetup, current_user_id=current_user_id)
+    return _live_response(
+        db,
+        meetup,
+        current_user_id=current_user_id,
+        include_route_points=True,
+    )
 
 
 @router.post("", response_model=schemas.MeetupResponse)

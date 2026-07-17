@@ -196,6 +196,9 @@ class _FakeExportStorage:
     def download(self, file_id):
         return self.files[file_id]
 
+    def delete(self, file_id):
+        return self.files.pop(file_id, None) is not None
+
 
 def _install_dynamic_linestring_ewkb_stub(db):
     def ewkb_from_ewkt(value):
@@ -2052,6 +2055,33 @@ def test_delete_route_book_is_owner_only(client, db, auth_header, admin_header, 
 
     ok = client.delete(f"/api/route-books/{route.id}", headers=auth_header)
     assert ok.status_code == 204
+
+
+def test_delete_route_book_removes_generated_export_files(
+    client, db, auth_header, test_user, monkeypatch
+):
+    route, _version = _route_with_current_version(
+        db,
+        test_user.id,
+        visibility="private",
+        publish_status="draft",
+    )
+    storage = _FakeExportStorage()
+    monkeypatch.setattr("app.route_book.export_workflow._storage", storage)
+    monkeypatch.setattr("app.route_book.service._storage", storage)
+
+    exported = client.post(
+        f"/api/route-books/{route.id}/exports",
+        json={"format": "gpx"},
+        headers=auth_header,
+    )
+    assert exported.status_code == 200
+    assert storage.files
+
+    deleted = client.delete(f"/api/route-books/{route.id}", headers=auth_header)
+
+    assert deleted.status_code == 204
+    assert storage.files == {}
 
 
 def test_activity_candidates_only_returns_current_user_completed_cycling(client, db, auth_header, test_user, admin_user):

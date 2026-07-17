@@ -363,6 +363,7 @@ _meetups_table = Table(
     Column("snapshot_distance", Float, nullable=False),
     Column("snapshot_climb", Float),
     Column("snapshot_city", String(32), nullable=False, default="unknown"),
+    Column("snapshot_route_points", Text),
     Column("start_time", DateTime(timezone=True), nullable=False),
     Column("estimated_end_time", DateTime(timezone=True), nullable=False),
     Column("meeting_point", String(128), nullable=False),

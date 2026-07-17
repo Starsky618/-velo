@@ -82,8 +82,8 @@ def query_elevations(
             try:
                 value = _sample_tile(tile, south=south, west=west, lat=lat, lon=lon)
                 results[index] = value if math.isfinite(value) else None
-            except Exception as exc:
-                logger.warning("GLO-30 单点查询失败 lat=%s lon=%s: %s", lat, lon, exc)
+            except Exception:
+                logger.exception("GLO-30 单点查询失败 lat=%s lon=%s", lat, lon)
     return results
 
 

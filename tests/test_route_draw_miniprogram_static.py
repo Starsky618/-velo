@@ -129,6 +129,40 @@ def test_second_smart_map_tap_snaps_and_auto_merges_draft_segment():
     assert "确认当前段" not in wxml
 
 
+def test_first_marker_moves_to_the_confirmed_snapped_start():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                global.Page = function () {}
+                const helpers = require('./miniprogram/pages/route-draw/route-draw.js')
+                const markers = helpers.buildMarkers([
+                  { kind: 'anchor', point: [112.5, 37.8] },
+                  {
+                    kind: 'segment',
+                    mode: 'snap',
+                    rawPoints: [[112.5, 37.8], [112.6, 37.9]],
+                    points: [[112.5003, 37.8002], [112.6, 37.9]],
+                    warnings: [],
+                  },
+                ])
+                process.stdout.write(JSON.stringify(markers))
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    markers = json.loads(result.stdout)
+
+    assert [markers[0]["longitude"], markers[0]["latitude"]] == [112.5003, 37.8002]
+    assert markers[0]["callout"]["content"] == "起点"
+
+
 def test_manual_mode_uses_freehand_contract_without_snap_or_manual_backend_mode():
     js = _read(PAGE_DIR / "route-draw.js")
     wxml = _read(PAGE_DIR / "route-draw.wxml")
