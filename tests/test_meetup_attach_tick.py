@@ -243,10 +243,10 @@ def test_user_who_left_participants_before_upload_does_not_attach(db, test_user)
 def test_bj_evening_meetup_matches_same_bj_day_activity(db, test_user):
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime(2026, 6, 11, 12, 0, tzinfo=timezone.utc)
+    start = _midday_bj_anchor() + timedelta(hours=8)  # 北京当天 20:00
     meetup = _meetup(db, test_user.id, start)
     _participant(db, meetup.id, test_user.id)
-    activity = _activity(db, test_user.id, datetime(2026, 6, 11, 12, 0, tzinfo=timezone.utc))
+    activity = _activity(db, test_user.id, start)
 
     assert attach_meetup_activities(db) == 1
 
@@ -297,10 +297,10 @@ def test_cross_midnight_night_ride_attaches(db, test_user):
     # 格子必须能点亮——旧"同北京日"规则会让它永远灰（清徐夜骑真实场景）。
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime(2026, 6, 11, 15, 30, tzinfo=timezone.utc)  # 北京 6-11 23:30
+    start = _midday_bj_anchor() + timedelta(hours=11, minutes=30)  # 北京当天 23:30
     meetup = _meetup(db, test_user.id, start)
     _participant(db, meetup.id, test_user.id)
-    activity = _activity(db, test_user.id, datetime(2026, 6, 11, 16, 5, tzinfo=timezone.utc))  # 北京 6-12 00:05
+    activity = _activity(db, test_user.id, start + timedelta(minutes=35))  # 北京次日 00:05
 
     assert attach_meetup_activities(db) == 1
 
@@ -312,10 +312,10 @@ def test_same_bj_day_but_many_hours_later_activity_does_not_attach(db, test_user
     # 相隔 19.5 小时）显然不是同一场——旧"同日"规则会误挂，新窗口必须拒绝。
     from app.meetup.cron import attach_meetup_activities
 
-    start = datetime(2026, 6, 10, 16, 30, tzinfo=timezone.utc)  # 北京 6-11 00:30
+    start = _midday_bj_anchor() - timedelta(hours=11, minutes=30)  # 北京当天 00:30
     meetup = _meetup(db, test_user.id, start)
     _participant(db, meetup.id, test_user.id)
-    _activity(db, test_user.id, datetime(2026, 6, 11, 12, 0, tzinfo=timezone.utc))  # 北京 6-11 20:00
+    _activity(db, test_user.id, start + timedelta(hours=19, minutes=30))  # 北京当天 20:00
 
     assert attach_meetup_activities(db) == 0
 
