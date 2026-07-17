@@ -5,13 +5,31 @@ from __future__ import annotations
 import json
 import math
 
+from app.elevation.dem_client import (
+    GLO30_DATASET_ID,
+    GLO30_GRID_REGISTRATION,
+    GLO30_HORIZONTAL_RESOLUTION_M,
+    GLO30_LICENSE_ID,
+    GLO30_SOURCE_NAME,
+    GLO30_VERTICAL_DATUM,
+    GLO30_VERTICAL_ACCURACY_M,
+)
+from app.elevation.route_elevation import (
+    ASCENT_MINIMUM_SPAN_M,
+    ASCENT_PROMINENCE_M,
+    MEDIAN_FILTER_POINTS,
+    MAX_PROCESSING_DISTANCE_M,
+    PROCESSING_GRID_M,
+    ROUTE_ELEVATION_METHOD,
+    SMOOTHING_SIGMA_M,
+)
 
 MIN_REASONABLE_ELEVATION_M = -500.0
 MAX_REASONABLE_ELEVATION_M = 9000.0
-TRUSTED_ROUTE_ELEVATION_METHOD = "shared_route_elevation_v1"
+TRUSTED_ROUTE_ELEVATION_METHOD = ROUTE_ELEVATION_METHOD
 TRUSTED_ROUTE_ELEVATION_METHODS = frozenset(
     {
-        "shared_route_elevation_v1",
+        TRUSTED_ROUTE_ELEVATION_METHOD,
         "authorized_point_elevation_csv_v1",
     }
 )
@@ -79,8 +97,8 @@ def has_trusted_route_elevation(
     """
     判断一条路书能不能把海拔交给码表。
 
-    只看逐点海拔是否完整还不够：旧 GPX 可能带了码表/GPS 原始海拔。当前产品策略是
-    统一用公共 SRTM3 路径覆盖，所以这里同时检查“点完整”和“来源方法正确”。
+    只看逐点海拔是否完整还不够：旧 GPX 或旧公共底图快照可能仍有完整数值。当前产品
+    策略只信任 GLO-30 自研算法或明确授权的逐点导入，因此同时检查点完整和方法版本。
     """
     if parse_complete_elevation_snapshot(value, expected_count=expected_count) is None:
         return False
@@ -114,7 +132,36 @@ def has_elevation_metadata_method(
         return False
     if expected_count is not None and point_count != expected_count:
         return False
-    return elevation.get("method") in methods
+    method = elevation.get("method")
+    if method not in methods:
+        return False
+    if method == TRUSTED_ROUTE_ELEVATION_METHOD:
+        return _matches_glo30_v1_contract(elevation)
+    return True
+
+
+def _matches_glo30_v1_contract(elevation: dict) -> bool:
+    """方法名不能只贴标签；底座、基准面和算法参数也必须完整一致。"""
+    expected_strings = {
+        "source_name": GLO30_SOURCE_NAME,
+        "license_id": GLO30_LICENSE_ID,
+        "dataset_id": GLO30_DATASET_ID,
+        "vertical_datum": GLO30_VERTICAL_DATUM,
+        "grid_registration": GLO30_GRID_REGISTRATION,
+    }
+    if any(elevation.get(key) != value for key, value in expected_strings.items()):
+        return False
+    expected_numbers = {
+        "accuracy_m": GLO30_VERTICAL_ACCURACY_M,
+        "horizontal_resolution_m": GLO30_HORIZONTAL_RESOLUTION_M,
+        "processing_grid_m": PROCESSING_GRID_M,
+        "median_filter_points": MEDIAN_FILTER_POINTS,
+        "smoothing_sigma_m": SMOOTHING_SIGMA_M,
+        "ascent_prominence_m": ASCENT_PROMINENCE_M,
+        "ascent_minimum_span_m": ASCENT_MINIMUM_SPAN_M,
+        "maximum_processing_distance_m": MAX_PROCESSING_DISTANCE_M,
+    }
+    return all(_finite_float(elevation.get(key)) == float(value) for key, value in expected_numbers.items())
 
 
 def _finite_float(value: object) -> float | None:

@@ -9,6 +9,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.route_book.export_service import can_export_route
+
 
 RouteBookSource = Literal[
     "file_upload",
@@ -26,6 +28,9 @@ RouteExportBlockReason = Literal["no_route_book", "no_current_version", "not_pub
 City = Literal["beijing", "shanghai", "hangzhou", "shenzhen", "chengdu", "taiyuan", "unknown"]
 RouteBookVisibility = Literal["private", "unlisted", "public"]
 RouteBookPublishStatus = Literal["draft", "published", "archived"]
+RouteDrawCoordinateSystem = Literal["gcj02"]
+RouteDrawMode = Literal["snap", "freehand"]
+ManualDrawnCoordinateSystem = Literal["wgs84", "gcj02"]
 
 
 class RouteBookResponse(BaseModel):
@@ -67,6 +72,54 @@ class RouteBookListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[RouteBookResponse]
+
+
+class RouteBookDetailResponse(BaseModel):
+    """路书详情页数据——只给页面看路线本身，不泄露内部文件钥匙。"""
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: int
+    name: str
+    distance: float
+    climb: float | None = None
+    preview_points: list[list[float]] = Field(default_factory=list)
+    elevation_ready: bool = False
+    elevation_profile: list[list[float]] | None = None
+    export_ready: bool = False
+    export_formats: list[RouteExportFormat] = Field(default_factory=list)
+    export_block_reason: RouteExportBlockReason | None = None
+    anonymous_export_download_allowed: bool = False
+
+    @field_validator("elevation_profile", mode="before")
+    @classmethod
+    def parse_elevation_profile(cls, value):
+        if value is None or isinstance(value, list):
+            return value
+        if not isinstance(value, str):
+            return None
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, list) else None
+
+
+def route_book_detail_response(
+    route,
+    viewer_user_id: int | None,
+    *,
+    export_ready: bool,
+    export_formats: list[RouteExportFormat],
+    export_block_reason: RouteExportBlockReason | None,
+) -> RouteBookDetailResponse:
+    response = RouteBookDetailResponse.model_validate(route)
+    response.elevation_ready = bool(response.elevation_profile and len(response.elevation_profile) >= 2)
+    response.export_ready = export_ready
+    response.export_formats = export_formats
+    response.export_block_reason = export_block_reason
+    response.anonymous_export_download_allowed = can_export_route(route, current_user_id=None)
+    return response
 
 
 class RouteExportCreateRequest(BaseModel):
@@ -194,13 +247,90 @@ class TencentDirectionRouteBookRequest(BaseModel):
         return self
 
 
+class ManualDrawnSnapPreviewRequest(BaseModel):
+    """手画路线预览请求——只看这段线怎么贴路，不保存正式路线。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    coordinate_system: RouteDrawCoordinateSystem
+    mode: RouteDrawMode
+    points: list[tuple[float, float]] = Field(..., min_length=2, max_length=120)
+
+    @field_validator("points")
+    @classmethod
+    def validate_points(cls, points: list[tuple[float, float]]):
+        for index, (lon, lat) in enumerate(points):
+            if not math.isfinite(lon) or not math.isfinite(lat):
+                raise ValueError(f"第 {index + 1} 个路线点不是有效数字")
+            if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
+                raise ValueError(f"第 {index + 1} 个路线点超出经纬度范围")
+        return points
+
+
+class ManualDrawnSnapPreviewResponse(BaseModel):
+    """手画路线预览结果——灰线是用户原线，橙线是临时贴路线。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: RouteDrawMode
+    coordinate_system: RouteDrawCoordinateSystem
+    snapped_points: list[list[float]]
+    raw_points: list[list[float]]
+    anchor_points: list[list[float]]
+    raw_distance_m: float
+    distance_m: float
+    segment_count: int
+    warnings: list[str] = Field(default_factory=list)
+    failed_segment: int | None = None
+
+
+class ManualDrawnRawPointsSummary(BaseModel):
+    """原始手画线摘要——像抽样照片，只留少量点用于排查，不存完整触摸轨迹。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total_raw_points: int | None = Field(None, ge=0)
+    sample: list[tuple[float, float]] = Field(default_factory=list, max_length=20)
+
+    @field_validator("sample")
+    @classmethod
+    def validate_sample(cls, points: list[tuple[float, float]]):
+        for index, (lon, lat) in enumerate(points):
+            if not math.isfinite(lon) or not math.isfinite(lat):
+                raise ValueError(f"第 {index + 1} 个原始采样点不是有效数字")
+            if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
+                raise ValueError(f"第 {index + 1} 个原始采样点超出经纬度范围")
+        return points
+
+
+class ManualDrawnDrawMetadata(BaseModel):
+    """手画保存附带信息——记录这条线怎么画出来，方便以后排查和导出解释。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tool: str | None = Field(None, min_length=1, max_length=64)
+    snap_provider: str | None = Field(None, min_length=1, max_length=64)
+    segment_count: int | None = Field(None, ge=0, le=500)
+    freehand_segment_count: int | None = Field(None, ge=0, le=500)
+    warnings: list[str] = Field(default_factory=list, max_length=20)
+    raw_points_summary: ManualDrawnRawPointsSummary | None = None
+
+
 class ManualDrawnRouteBookRequest(BaseModel):
     """手画路线请求——前端只交线条，海拔由后端统一补齐。"""
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(..., min_length=1, max_length=128)
+    client_request_id: str = Field(
+        ...,
+        min_length=16,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    coordinate_system: ManualDrawnCoordinateSystem = "wgs84"
     points: list[tuple[float, float]] = Field(..., min_length=2, max_length=500)
+    draw_metadata: ManualDrawnDrawMetadata | None = None
 
     @field_validator("points")
     @classmethod

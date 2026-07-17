@@ -11,6 +11,8 @@
  * 物业不管每户内部怎么装修，只管公共事务。
  */
 
+const ROUTE_DRAW_PENDING_SAVE_PREFIX = 'route_draw_pending_save_v1:'
+
 App({
   globalData: {
     // 后端 API 地址（2026-06-12 切回 https 域名）：备案白名单已同步（80 端口 308 跳转实证）、
@@ -104,6 +106,10 @@ App({
    * 退出登录：清除 token 和用户信息
    */
   logout() {
+    const oldUserId = this.globalData.userId || wx.getStorageSync('userId')
+    if (oldUserId) {
+      wx.removeStorageSync(ROUTE_DRAW_PENDING_SAVE_PREFIX + oldUserId)
+    }
     this.globalData.token = null
     this.globalData.userId = 0
     this.globalData.userInfo = null

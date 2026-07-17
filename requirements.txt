@@ -27,9 +27,9 @@ rq-scheduler>=0.13.1           # RQ 定时任务调度（调度器用）
 # DeepSeek 兼容 OpenAI Python SDK，只换 base_url 即可（Tim 2026-04-29 拍国产模型）
 openai>=1.0.0
 
-# DEM 海拔查询依赖：当前赛段和路书统一走 SRTM3 90m 公共地形源。
-# 码表导出会记录 source/license/accuracy；后续更高精度或商业授权源只替换公共海拔模块。
-SRTM.py==0.3.7
+# 路线与赛段统一读取 Copernicus GLO-30 COG GeoTIFF；numpy/scipy 用于固定物理
+# 网格、去毛刺、平滑和 prominence/span 有效爬升累计。
+Pillow>=10.0
 
 # Sprint 9 新增：FTP 估算（task-5 ftp_estimator 用 scipy.optimize.curve_fit 拟合 CP 模型）
 scipy>=1.11

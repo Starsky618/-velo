@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import uuid
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -30,6 +31,57 @@ from app.user.models import User
 
 
 FIXTURE_ROUTES = Path(__file__).parent / "fixtures" / "routes"
+FAKE_GLO_ELEVATION_M = 1234.5
+
+
+def _flat_glo_elevations(coords):
+    """返回和 fixture GPX 原始 800/830/820m 明显不同的 GLO 成品输入。"""
+    assert coords[0] == pytest.approx((37.8, 112.5))
+    assert coords[-1] == pytest.approx((37.82, 112.52))
+    return [FAKE_GLO_ELEVATION_M for _coord in coords]
+
+
+def _assert_strict_glo_product(book, version, guide) -> None:
+    from app.elevation.dem_client import (
+        GLO30_HORIZONTAL_RESOLUTION_M,
+        GLO30_LICENSE_ID,
+        GLO30_SOURCE_NAME,
+        GLO30_VERTICAL_ACCURACY_M,
+    )
+    from app.elevation.route_elevation import ROUTE_ELEVATION_METHOD, route_elevation_metadata
+    from app.route_book.elevation_quality import has_trusted_route_elevation
+
+    snapshot = json.loads(version.elevation_points_snapshot)
+    assert snapshot == [
+        [112.5, 37.8, FAKE_GLO_ELEVATION_M],
+        [112.51, 37.81, FAKE_GLO_ELEVATION_M],
+        [112.52, 37.82, FAKE_GLO_ELEVATION_M],
+    ]
+    assert [point[2] for point in snapshot] != [800.0, 830.0, 820.0]
+    assert version.point_count == 3
+    assert version.climb == book.climb == 0.0
+    assert version.elevation_profile == book.elevation_profile == guide.elevation_profile
+    assert all(point[1] == FAKE_GLO_ELEVATION_M for point in json.loads(version.elevation_profile))
+
+    elevation_metadata = json.loads(version.navigation_metadata_json)["elevation"]
+    generated_at = elevation_metadata.get("generated_at")
+    assert generated_at is not None
+    assert datetime.fromisoformat(generated_at).tzinfo is not None
+    assert elevation_metadata == {
+        "source_name": GLO30_SOURCE_NAME,
+        "license_id": GLO30_LICENSE_ID,
+        "accuracy_m": GLO30_VERTICAL_ACCURACY_M,
+        "point_count": 3,
+        "method": ROUTE_ELEVATION_METHOD,
+        "horizontal_resolution_m": GLO30_HORIZONTAL_RESOLUTION_M,
+        **route_elevation_metadata(),
+        "generated_at": generated_at,
+    }
+    assert has_trusted_route_elevation(
+        version.elevation_points_snapshot,
+        metadata_json=version.navigation_metadata_json,
+        expected_count=version.point_count,
+    )
 
 
 def _db_url() -> str:
@@ -108,6 +160,7 @@ def test_imports_gpx_route_and_creates_public_official_route_book_on_postgis(
     try:
         content_dir = _copy_fixture(tmp_path, "test-gpx-route")
         monkeypatch.setattr(script, "SessionLocal", lambda: db)
+        monkeypatch.setattr(script, "query_elevations", _flat_glo_elevations)
 
         script.main(["--content-dir", str(content_dir)])
 
@@ -132,6 +185,7 @@ def test_imports_gpx_route_and_creates_public_official_route_book_on_postgis(
         assert version.status == "current"
         assert version.navigation_status == "ready"
         assert version.geometry_source == "file_upload"
+        _assert_strict_glo_product(book, version, guide)
         assert db.execute(
             text(
                 """
@@ -166,6 +220,86 @@ def test_imports_gpx_route_and_creates_public_official_route_book_on_postgis(
     finally:
         db.close()
 
+
+def test_idempotent_rerun_updates_existing_guide_and_book_on_postgis(
+    pg_engine,
+    pg_session_factory,
+    tmp_path,
+    monkeypatch,
+):
+    """重复导入只更新原记录，不复制 route_book 或 route_version。"""
+    from scripts import import_route_guides as script
+
+    _create_import_tables(pg_engine)
+    db = pg_session_factory()
+    try:
+        content_dir = _copy_fixture(tmp_path, "test-gpx-route")
+        monkeypatch.setattr(script, "SessionLocal", lambda: db)
+        monkeypatch.setattr(script, "query_elevations", _flat_glo_elevations)
+
+        script.main(["--content-dir", str(content_dir)])
+        first_guide = db.query(RouteGuide).filter_by(name="测试 GPX 路线").one()
+        first_book_id = first_guide.route_book_id
+        (content_dir / "test-gpx-route" / "guide.md").write_text(
+            "# 测试 GPX 路线\n\n第二版介绍。\n",
+            encoding="utf-8",
+        )
+
+        script.main(["--content-dir", str(content_dir)])
+
+        guide = db.query(RouteGuide).filter_by(name="测试 GPX 路线").one()
+        assert db.query(RouteGuide).count() == 1
+        assert db.query(RouteBook).count() == 1
+        assert db.query(RouteVersion).count() == 1
+        assert guide.route_book_id == first_book_id
+        assert guide.content_md.endswith("第二版介绍。\n")
+        book = db.query(RouteBook).filter_by(id=guide.route_book_id).one()
+        version = db.query(RouteVersion).filter_by(route_book_id=book.id).one()
+        _assert_strict_glo_product(book, version, guide)
+    finally:
+        db.close()
+
+
+def test_track_pending_guide_upgrades_in_place_on_postgis(
+    pg_engine,
+    pg_session_factory,
+    tmp_path,
+    monkeypatch,
+):
+    """先导入无轨迹介绍，补 GPX 后原 guide 原地升级且只创建一套路线。"""
+    from scripts import import_route_guides as script
+
+    _create_import_tables(pg_engine)
+    db = pg_session_factory()
+    try:
+        content_dir = _copy_fixture(tmp_path, "test-no-track")
+        monkeypatch.setattr(script, "SessionLocal", lambda: db)
+        monkeypatch.setattr(script, "query_elevations", _flat_glo_elevations)
+
+        script.main(["--content-dir", str(content_dir)])
+        pending = db.query(RouteGuide).filter_by(name="测试无轨迹路线").one()
+        pending_id = pending.id
+        assert pending.route_book_id is None
+        assert db.query(RouteBook).count() == 0
+
+        shutil.copy(
+            FIXTURE_ROUTES / "test-gpx-route" / "track.gpx",
+            content_dir / "test-no-track" / "track.gpx",
+        )
+        script.main(["--content-dir", str(content_dir)])
+
+        upgraded = db.query(RouteGuide).filter_by(name="测试无轨迹路线").one()
+        assert upgraded.id == pending_id
+        assert upgraded.route_book_id is not None
+        assert upgraded.elevation_profile is not None
+        version = db.query(RouteVersion).filter_by(route_book_id=upgraded.route_book_id).one()
+        book = db.query(RouteBook).filter_by(id=upgraded.route_book_id).one()
+        _assert_strict_glo_product(book, version, upgraded)
+        assert db.query(RouteGuide).count() == 1
+        assert db.query(RouteBook).count() == 1
+        assert db.query(RouteVersion).count() == 1
+    finally:
+        db.close()
 
 def _create_legacy_route_books(conn) -> None:
     """造一张 Batch 1 前的旧 route_books，用来验证真实 migration 回填。"""

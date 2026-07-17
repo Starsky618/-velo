@@ -13,7 +13,6 @@
 - `tests/test_route_draw_snap.py`
 - `tests/test_route_book_api.py`
 - `tests/test_route_elevation_backfill.py`
-- `docs/reviews/route-draw-v0.md`
 
 ## 验收合同
 
@@ -29,7 +28,7 @@
 
 ## 证据格式
 
-`docs/reviews/route-draw-v0.md` 至少记录：
+Task 6 完成时在最终回复或提交说明里记录即可，不默认新增长期 review 文档。至少记录：
 - 测试 route_book_id。
 - 测试城市和道路描述。
 - 手势录屏或截图路径。

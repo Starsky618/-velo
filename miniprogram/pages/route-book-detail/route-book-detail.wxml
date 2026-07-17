@@ -1,0 +1,76 @@
+<view class="route-book-detail-page">
+  <view wx:if="{{loading}}" class="state-text">加载中</view>
+  <view wx:elif="{{error}}" class="state-text">{{error}}</view>
+
+  <view wx:else class="detail-body">
+    <view class="title-band">
+      <view class="route-label">路书详情</view>
+      <view class="route-name">{{route.name}}</view>
+      <view class="route-status">{{route.export_ready ? '可导出到码表' : '暂不可导出'}}</view>
+    </view>
+
+    <view wx:if="{{routeStats.length}}" class="stat-card">
+      <view class="stat-row">
+        <view class="stat" wx:for="{{routeStats}}" wx:key="k">
+          <view class="stat-v">{{item.v}}<text class="stat-u">{{item.u}}</text></view>
+          <view class="stat-k">{{item.k}}</view>
+        </view>
+      </view>
+      <canvas wx:if="{{hasElevation}}" canvas-id="route-book-elevation-thumb" class="elevation-thumb"></canvas>
+      <view wx:else class="elevation-pending">缺少完整逐点海拔</view>
+    </view>
+
+    <view class="map-section">
+      <view class="section-title">路线预览</view>
+      <map
+        wx:if="{{routePreviewVisible}}"
+        class="route-map-preview"
+        latitude="{{routePreviewCenter.latitude}}"
+        longitude="{{routePreviewCenter.longitude}}"
+        markers="{{routePreviewMarkers}}"
+        polyline="{{routePreviewPolylines}}"
+        include-points="{{routePreviewIncludePoints}}"
+        show-location="{{false}}"
+        enable-scroll="{{false}}"
+        enable-zoom="{{false}}"
+        bindtap="onOpenRouteMapPage">
+      </map>
+      <view wx:if="{{routePreviewVisible}}" class="map-open-label" bindtap="onOpenRouteMapPage">查看大图</view>
+      <view wx:else class="route-empty">暂无路线预览</view>
+    </view>
+
+    <view wx:if="{{route.export_ready}}" class="export-card">
+      <view class="export-title">导出到码表</view>
+      <view class="export-subtitle">下载 GPX / TCX，导入 Garmin、iGPSPORT、Wahoo 等 App。</view>
+      <view class="export-actions">
+        <button
+          class="export-button"
+          data-format="gpx"
+          loading="{{exportingFormat === 'gpx'}}"
+          disabled="{{exporting}}"
+          bindtap="onDownloadRouteExport">下载 GPX</button>
+        <button
+          class="export-button secondary"
+          data-format="tcx"
+          loading="{{exportingFormat === 'tcx'}}"
+          disabled="{{exporting}}"
+          bindtap="onDownloadRouteExport">下载 TCX</button>
+      </view>
+      <button class="export-help-button" bindtap="onShowExportHelp">两步导入</button>
+      <view wx:if="{{lastExportFilename}}" class="export-result">
+        <view class="export-result-label">已下载</view>
+        <view class="export-result-name">{{lastExportFilename}}</view>
+        <view wx:if="{{canCopyExportLink}}" class="export-result-tip">下一步发送到微信，或复制公开下载链接，再去码表 App 导入。</view>
+        <view wx:else class="export-result-tip">下一步发送到微信，再从聊天文件导入码表 App。</view>
+      </view>
+      <view wx:if="{{lastExportTempPath}}" class="export-next-actions">
+        <button class="export-share-button primary" bindtap="onShareLastExport">发送到微信</button>
+        <button wx:if="{{canCopyExportLink}}" class="export-copy-button secondary" bindtap="onCopyLastExportLink">复制下载链接</button>
+      </view>
+      <view wx:if="{{exportSendFailed}}" class="export-fallback">{{exportSendError}}</view>
+    </view>
+    <view wx:else class="export-hint">{{exportHint}}</view>
+
+    <button class="start-button" bindtap="onStartMeetup">用这条路线发约骑</button>
+  </view>
+</view>

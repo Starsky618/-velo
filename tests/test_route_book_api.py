@@ -2,6 +2,9 @@
 
 from datetime import datetime, timezone
 import json
+import math
+import re
+import struct
 from typing import get_args
 
 import pytest
@@ -22,14 +25,69 @@ if not any(getattr(route, "path", "") == "/api/route-books" for route in app.rou
 _TRUSTED_ELEVATION_METADATA = json.dumps(
     {
         "elevation": {
-            "method": "shared_route_elevation_v1",
-            "source_name": "SRTM3 90m DEM",
-            "license_id": "CGIAR-CSI SRTM public DEM",
-            "accuracy_m": 16.0,
+            "method": "glo30_meaningful_ascent_v1",
+            "source_name": "Copernicus DEM GLO-30 Public",
+            "license_id": "Copernicus DEM Licence",
+            "accuracy_m": 4.0,
             "point_count": 2,
+            "horizontal_resolution_m": 30.0,
+            "processing_grid_m": 20.0,
+            "median_filter_points": 3,
+            "smoothing_sigma_m": 100.0,
+            "ascent_prominence_m": 3.0,
+            "ascent_minimum_span_m": 100.0,
+            "maximum_processing_distance_m": 1000000.0,
+            "calibration_role": "ALOS+FIT+authorized_Strava_offline_evidence",
+            "dataset_id": "COP-DEM_GLO-30-DGED",
+            "vertical_datum": "EGM2008 (EPSG:3855)",
+            "grid_registration": "RasterPixelIsPoint",
         }
     }
 )
+
+
+def _linear_elevations(coords, *, start=700.0, end=725.0):
+    """固定网格 fake：返回数量必须和生产采样点一一对应。"""
+    if len(coords) == 1:
+        return [float(start)]
+    return [
+        float(start + (end - start) * index / (len(coords) - 1))
+        for index, _coord in enumerate(coords)
+    ]
+
+
+def _piecewise_elevations(coords, controls):
+    """按经度构造可复现坡形，避免把三点旧查询假装成固定 20m 网格。"""
+    controls = sorted((float(lon), float(ele)) for lon, ele in controls)
+    result = []
+    for _lat, lon in coords:
+        if lon <= controls[0][0]:
+            result.append(controls[0][1])
+            continue
+        if lon >= controls[-1][0]:
+            result.append(controls[-1][1])
+            continue
+        for (left_lon, left_ele), (right_lon, right_ele) in zip(controls, controls[1:]):
+            if left_lon <= lon <= right_lon:
+                ratio = (lon - left_lon) / (right_lon - left_lon)
+                result.append(left_ele + (right_ele - left_ele) * ratio)
+                break
+    return result
+
+
+def _assert_version_uses_strict_glo_contract(version, expected_elevation):
+    """通用创建入口也必须保存和手画路线相同的唯一 GLO 成品。"""
+    assert version.climb == pytest.approx(expected_elevation.climb)
+    assert json.loads(version.elevation_profile) == expected_elevation.profile
+    assert json.loads(version.elevation_points_snapshot) == expected_elevation.snapshot
+    assert version.point_count == expected_elevation.point_count
+
+    elevation_metadata = json.loads(version.navigation_metadata_json)["elevation"]
+    generated_at = elevation_metadata.pop("generated_at")
+    datetime.fromisoformat(generated_at)
+    expected_metadata = json.loads(_TRUSTED_ELEVATION_METADATA)["elevation"]
+    expected_metadata["point_count"] = expected_elevation.point_count
+    assert elevation_metadata == expected_metadata
 
 
 @pytest.fixture(autouse=True)
@@ -75,6 +133,8 @@ def _activity(db, user_id: int, **overrides):
 def _route_with_current_version(db, creator_id: int | None, **overrides):
     from app.route_book.models import RouteBook, RouteVersion
 
+    # 这些测试要验证导出坐标真来自 reference_line；SQLite 默认假 EWKB 会掩盖错配。
+    _install_dynamic_linestring_ewkb_stub(db)
     line = "SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)"
     data = {
         "creator_id": creator_id,
@@ -137,6 +197,30 @@ class _FakeExportStorage:
         return self.files[file_id]
 
 
+def _install_dynamic_linestring_ewkb_stub(db):
+    def ewkb_from_ewkt(value):
+        text = str(value or "")
+        match = re.search(r"LINESTRING\s*\((.+)\)", text, re.IGNORECASE)
+        if not match:
+            return "0102000020E610000000000000"
+        points = []
+        for pair in match.group(1).split(","):
+            parts = pair.strip().split()
+            if len(parts) < 2:
+                continue
+            points.append((float(parts[0]), float(parts[1])))
+        data = struct.pack("<BII", 1, 0x20000000 | 2, 4326)
+        data += struct.pack("<I", len(points))
+        for lon, lat in points:
+            data += struct.pack("<dd", lon, lat)
+        return data.hex()
+
+    raw_connection = db.connection().connection
+    driver_connection = getattr(raw_connection, "driver_connection", raw_connection)
+    driver_connection.create_function("AsEWKB", 1, ewkb_from_ewkt)
+    driver_connection.create_function("ST_AsEWKB", 1, ewkb_from_ewkt)
+
+
 def test_public_route_export_creates_downloadable_gpx_without_leaking_file_id(client, db, admin_user, monkeypatch):
     route, version = _route_with_current_version(db, admin_user.id)
     fake_storage = _FakeExportStorage()
@@ -197,6 +281,32 @@ def test_route_export_rejects_route_without_complete_elevation_snapshot(client, 
 def test_route_export_rejects_complete_but_untrusted_elevation_snapshot(client, db, admin_user):
     route, version = _route_with_current_version(db, admin_user.id)
     version.navigation_metadata_json = None
+    db.add(version)
+    db.commit()
+
+    res = client.post(f"/api/route-books/{route.id}/exports", json={"format": "gpx"})
+
+    assert res.status_code == 422
+    assert "统一海拔源" in res.json()["detail"]
+
+
+def test_route_export_rejects_glo_method_label_without_full_algorithm_contract(
+    client,
+    db,
+    admin_user,
+):
+    route, version = _route_with_current_version(db, admin_user.id)
+    version.navigation_metadata_json = json.dumps(
+        {
+            "elevation": {
+                "method": "glo30_meaningful_ascent_v1",
+                "source_name": "Copernicus DEM GLO-30 Public",
+                "license_id": "Copernicus DEM Licence",
+                "accuracy_m": 4.0,
+                "point_count": 2,
+            }
+        }
+    )
     db.add(version)
     db.commit()
 
@@ -324,6 +434,27 @@ def test_route_export_download_returns_404_when_storage_file_is_missing(client, 
     assert "not found" in res.json()["detail"]
 
 
+def test_route_export_download_rejects_artifact_after_elevation_snapshot_changes(
+    client,
+    db,
+    admin_user,
+    monkeypatch,
+):
+    route, version = _route_with_current_version(db, admin_user.id)
+    monkeypatch.setattr("app.route_book.export_workflow._storage", _FakeExportStorage())
+    created = client.post(f"/api/route-books/{route.id}/exports", json={"format": "gpx"}).json()
+
+    # 模拟同一 RouteVersion 被新版底座回填；旧文件仍在存储中，但不能继续下载。
+    version.elevation_points_snapshot = "[[112.5,37.8,710.0],[112.6,37.9,744.0]]"
+    db.add(version)
+    db.commit()
+
+    res = client.get(created["download_url"])
+
+    assert res.status_code == 404
+    assert "stale" in res.json()["detail"]
+
+
 def test_activity_derived_requires_source_activity_id(client, auth_header):
     res = client.post(
         "/api/route-books",
@@ -346,13 +477,23 @@ def test_activity_derived_rejects_other_user_activity(client, db, auth_header, a
     assert res.status_code == 403
 
 
-def test_activity_derived_creates_route_book(client, db, auth_header, test_user):
+def test_activity_derived_creates_route_book(client, db, auth_header, test_user, monkeypatch):
+    from app.elevation.route_elevation import build_route_elevation_result
     from app.route_book.models import RouteBook, RouteVersion
 
-    activity = _activity(db, test_user.id, city="taiyuan")
-    db.query(Trackpoint).filter(Trackpoint.activity_id == activity.id, Trackpoint.seq == 0).update({"elevation": 701.2})
-    db.query(Trackpoint).filter(Trackpoint.activity_id == activity.id, Trackpoint.seq == 1).update({"elevation": 735.8})
+    # Activity/FIT 的海拔只用于离线拟合，不能直接成为公共路线的产品海拔。
+    activity = _activity(db, test_user.id, city="taiyuan", elevation_gain=9876.0)
+    db.query(Trackpoint).filter(Trackpoint.activity_id == activity.id, Trackpoint.seq == 0).update({"elevation": 111.0})
+    db.query(Trackpoint).filter(Trackpoint.activity_id == activity.id, Trackpoint.seq == 1).update({"elevation": 222.0})
     db.commit()
+
+    queried = []
+
+    def fake_query(coords):
+        queried.append(coords)
+        return _linear_elevations(coords, start=800.0, end=850.0)
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
 
     res = client.post(
         "/api/route-books",
@@ -372,6 +513,17 @@ def test_activity_derived_creates_route_book(client, db, auth_header, test_user)
     assert body["publish_status"] == "draft"
     assert body["current_version_id"] is not None
 
+    expected_elevation = build_route_elevation_result(
+        [[112.5, 37.8], [112.6, 37.9]],
+        query_func=lambda coords: _linear_elevations(coords, start=800.0, end=850.0),
+    )
+    assert len(queried) == 1
+    assert len(queried[0]) > 2  # 证明不是只给原始两点补高度，而是走统一约 20m 物理网格。
+    assert body["climb"] == pytest.approx(expected_elevation.climb)
+    assert body["climb"] != pytest.approx(activity.elevation_gain)
+    assert body["elevation_ready"] is True
+    assert body["elevation_profile"] == expected_elevation.profile
+
     route = db.query(RouteBook).filter(RouteBook.id == body["id"]).one()
     version = db.query(RouteVersion).filter(RouteVersion.route_book_id == route.id).one()
     assert route.current_version_id == version.id
@@ -380,10 +532,18 @@ def test_activity_derived_creates_route_book(client, db, auth_header, test_user)
     assert version.status == "current"
     assert version.navigation_status == "ready"
     assert version.geometry_source == "activity_derived"
-    assert json.loads(version.elevation_points_snapshot) == [[112.5, 37.8, 701.2], [112.6, 37.9, 735.8]]
+    assert route.climb == pytest.approx(expected_elevation.climb)
+    assert json.loads(route.elevation_profile) == expected_elevation.profile
+    _assert_version_uses_strict_glo_contract(version, expected_elevation)
+    assert json.loads(version.elevation_points_snapshot) != [
+        [112.5, 37.8, 111.0],
+        [112.6, 37.9, 222.0],
+    ]
 
 
 def test_file_upload_supports_gpx_and_preserves_file_id(client, db, auth_header, monkeypatch):
+    from app.elevation.route_elevation import build_route_elevation_result
+
     class FakeStorage:
         def upload(self, file_bytes, filename):
             assert filename == "route.gpx"
@@ -392,11 +552,16 @@ def test_file_upload_supports_gpx_and_preserves_file_id(client, db, auth_header,
     monkeypatch.setattr("app.route_book.service._storage", FakeStorage())
     monkeypatch.setattr("app.route_book.service._parse_route_file", lambda filename, b: {
         "distance": 1234.0,
-        "climb": 50.0,
+        "climb": 9876.0,
         "city": "taiyuan",
         "wkt": "SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
-        "elevation_points_snapshot": "[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
+        "elevation_points_snapshot": "[[112.5,37.8,111.0],[112.6,37.9,222.0]]",
     })
+    monkeypatch.setattr(
+        "app.route_book.service.query_elevations",
+        lambda coords: _linear_elevations(coords, start=900.0, end=960.0),
+        raising=False,
+    )
 
     res = client.post(
         "/api/route-books",
@@ -411,11 +576,26 @@ def test_file_upload_supports_gpx_and_preserves_file_id(client, db, auth_header,
     assert body["file_type"] == "gpx"
     from app.route_book.models import RouteVersion
 
+    expected_elevation = build_route_elevation_result(
+        [[112.5, 37.8], [112.6, 37.9]],
+        query_func=lambda coords: _linear_elevations(coords, start=900.0, end=960.0),
+    )
+    assert body["climb"] == pytest.approx(expected_elevation.climb)
+    assert body["climb"] != pytest.approx(9876.0)
+    assert body["elevation_ready"] is True
+    assert body["elevation_profile"] == expected_elevation.profile
     version = db.query(RouteVersion).filter(RouteVersion.route_book_id == body["id"]).one()
-    assert json.loads(version.elevation_points_snapshot)[0] == [112.5, 37.8, 701.2]
+    _assert_version_uses_strict_glo_contract(version, expected_elevation)
+    assert json.loads(version.elevation_points_snapshot) != [
+        [112.5, 37.8, 111.0],
+        [112.6, 37.9, 222.0],
+    ]
 
 
-def test_file_upload_supports_fit_and_preserves_file_id(client, auth_header, monkeypatch):
+def test_file_upload_supports_fit_and_preserves_file_id(client, db, auth_header, monkeypatch):
+    from app.elevation.route_elevation import build_route_elevation_result
+    from app.route_book.models import RouteVersion
+
     class FakeStorage:
         def upload(self, file_bytes, filename):
             assert filename == "route.fit"
@@ -428,6 +608,11 @@ def test_file_upload_supports_fit_and_preserves_file_id(client, auth_header, mon
         "city": "taiyuan",
         "wkt": "SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
     })
+    monkeypatch.setattr(
+        "app.route_book.service.query_elevations",
+        lambda coords: _linear_elevations(coords, start=700.0, end=735.0),
+        raising=False,
+    )
 
     res = client.post(
         "/api/route-books",
@@ -440,6 +625,80 @@ def test_file_upload_supports_fit_and_preserves_file_id(client, auth_header, mon
     body = res.json()
     assert body["file_id"] == "202605/route.fit"
     assert body["file_type"] == "fit"
+    expected_elevation = build_route_elevation_result(
+        [[112.5, 37.8], [112.6, 37.9]],
+        query_func=lambda coords: _linear_elevations(coords, start=700.0, end=735.0),
+    )
+    version = db.query(RouteVersion).filter(RouteVersion.route_book_id == body["id"]).one()
+    _assert_version_uses_strict_glo_contract(version, expected_elevation)
+
+
+def test_activity_derived_maps_glo_failure_to_503(client, db, auth_header, test_user, monkeypatch):
+    from app.elevation.dem_client import DEMServiceError
+    from app.route_book.models import RouteBook
+
+    activity = _activity(db, test_user.id)
+
+    def fail_query(_coords):
+        raise DEMServiceError("测试 GLO 瓦片不可用")
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fail_query, raising=False)
+
+    res = client.post(
+        "/api/route-books",
+        data={"name": "活动海拔失败", "source": "activity_derived", "source_activity_id": str(activity.id)},
+        headers=auth_header,
+    )
+
+    assert res.status_code == 503
+    assert "路线海拔查询失败" in res.text
+    assert "测试 GLO 瓦片不可用" in res.text
+    assert db.query(RouteBook).filter(RouteBook.name == "活动海拔失败").first() is None
+
+
+def test_file_upload_glo_failure_deletes_uploaded_file(client, db, auth_header, monkeypatch):
+    from app.elevation.dem_client import DEMServiceError
+    from app.route_book.models import RouteBook
+
+    class FakeStorage:
+        def __init__(self):
+            self.uploaded = []
+            self.deleted = []
+
+        def upload(self, file_bytes, filename):
+            self.uploaded.append((file_bytes, filename))
+            return "202605/glo-failure.gpx"
+
+        def delete(self, file_id):
+            self.deleted.append(file_id)
+
+    storage = FakeStorage()
+    monkeypatch.setattr("app.route_book.service._storage", storage)
+    monkeypatch.setattr("app.route_book.service._parse_route_file", lambda filename, b: {
+        "distance": 1234.0,
+        "climb": 50.0,
+        "city": "taiyuan",
+        "wkt": "SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        "elevation_points_snapshot": "[[112.5,37.8,111.0],[112.6,37.9,222.0]]",
+    })
+
+    def fail_query(_coords):
+        raise DEMServiceError("测试 GLO 瓦片不可用")
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fail_query, raising=False)
+
+    res = client.post(
+        "/api/route-books",
+        data={"name": "上传海拔失败", "source": "file_upload"},
+        files={"file": ("route.gpx", b"<gpx></gpx>", "application/gpx+xml")},
+        headers=auth_header,
+    )
+
+    assert res.status_code == 503
+    assert "路线海拔查询失败" in res.text
+    assert storage.uploaded == [(b"<gpx></gpx>", "route.gpx")]
+    assert storage.deleted == ["202605/glo-failure.gpx"]
+    assert db.query(RouteBook).filter(RouteBook.name == "上传海拔失败").first() is None
 
 
 def test_tencent_direction_requires_server_key(client, auth_header, monkeypatch):
@@ -465,7 +724,8 @@ def test_tencent_direction_requires_server_key(client, auth_header, monkeypatch)
 
 
 def test_tencent_direction_creates_route_book(client, db, auth_header, monkeypatch):
-    from app.route_book.models import RouteBook
+    from app.elevation.route_elevation import build_route_elevation_result
+    from app.route_book.models import RouteBook, RouteVersion
 
     def fake_plan(start, end):
         assert start == (37.8001, 112.5001)
@@ -481,6 +741,11 @@ def test_tencent_direction_creates_route_book(client, db, auth_header, monkeypat
         }
 
     monkeypatch.setattr("app.route_book.service.plan_tencent_bicycling_route", fake_plan)
+    monkeypatch.setattr(
+        "app.route_book.service.query_elevations",
+        _linear_elevations,
+        raising=False,
+    )
 
     res = client.post(
         "/api/route-books/tencent-direction",
@@ -509,10 +774,74 @@ def test_tencent_direction_creates_route_book(client, db, auth_header, monkeypat
     assert len(body["preview_points"]) == len(expected_preview_points)
     for actual, expected in zip(body["preview_points"], expected_preview_points):
         assert actual == pytest.approx(expected)
+    expected_elevation = build_route_elevation_result(
+        expected_preview_points,
+        query_func=_linear_elevations,
+    )
+    assert body["elevation_ready"] is True
+    assert body["climb"] == pytest.approx(expected_elevation.climb)
+    assert len(body["elevation_profile"]) == len(expected_elevation.profile)
+    for actual, expected in zip(body["elevation_profile"], expected_elevation.profile):
+        assert actual == pytest.approx(expected)
+
     route = db.query(RouteBook).filter(RouteBook.id == body["id"]).first()
     assert route is not None
     assert route.distance == 6800.0
     assert route.source == "tencent_direction"
+    assert route.climb == pytest.approx(expected_elevation.climb)
+    assert json.loads(route.elevation_profile) == expected_elevation.profile
+
+    version = db.query(RouteVersion).filter(RouteVersion.id == route.current_version_id).one()
+    assert version.climb == pytest.approx(expected_elevation.climb)
+    assert json.loads(version.elevation_profile) == expected_elevation.profile
+    assert json.loads(version.elevation_points_snapshot) == expected_elevation.snapshot
+    assert version.point_count == expected_elevation.point_count
+
+    elevation_metadata = json.loads(version.navigation_metadata_json)["elevation"]
+    generated_at = elevation_metadata.pop("generated_at")
+    datetime.fromisoformat(generated_at)
+    expected_metadata = json.loads(_TRUSTED_ELEVATION_METADATA)["elevation"]
+    expected_metadata["point_count"] = expected_elevation.point_count
+    assert elevation_metadata == expected_metadata
+
+
+def test_tencent_direction_maps_glo_failure_to_503(client, db, auth_header, monkeypatch):
+    from app.elevation.dem_client import DEMServiceError
+    from app.route_book.models import RouteBook
+
+    monkeypatch.setattr(
+        "app.route_book.service.plan_tencent_bicycling_route",
+        lambda _start, _end: {
+            "distance": 6800.0,
+            "duration": 28,
+            "points": [
+                {"lat": 37.8001, "lon": 112.5001},
+                {"lat": 37.8601, "lon": 112.5601},
+            ],
+        },
+    )
+
+    def fail_query(_coords):
+        raise DEMServiceError("测试瓦片不可用")
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fail_query, raising=False)
+
+    res = client.post(
+        "/api/route-books/tencent-direction",
+        json={
+            "name": "海拔失败路线",
+            "from_lat": 37.8001,
+            "from_lon": 112.5001,
+            "to_lat": 37.8601,
+            "to_lon": 112.5601,
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 503
+    assert "路线海拔查询失败" in res.text
+    assert "测试瓦片不可用" in res.text
+    assert db.query(RouteBook).filter(RouteBook.name == "海拔失败路线").first() is None
 
 
 def test_manual_drawn_route_creates_route_with_elevation_profile(client, db, auth_header, monkeypatch):
@@ -522,7 +851,10 @@ def test_manual_drawn_route_creates_route_with_elevation_profile(client, db, aut
 
     def fake_query(coords):
         calls.append(coords)
-        return [700.0, 725.0, 720.0]
+        return _piecewise_elevations(
+            coords,
+            [(112.5, 700.0), (112.55, 725.0), (112.6, 720.0)],
+        )
 
     monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
 
@@ -530,6 +862,7 @@ def test_manual_drawn_route_creates_route_with_elevation_profile(client, db, aut
         "/api/route-books/manual-drawn",
         json={
             "name": "手画山地绕圈",
+            "client_request_id": "test-manual-drawn-mountain-loop",
             "points": [
                 [112.5, 37.8],
                 [112.55, 37.85],
@@ -548,10 +881,14 @@ def test_manual_drawn_route_creates_route_with_elevation_profile(client, db, aut
     assert body["source_activity_id"] is None
     assert body["preview_points"] == [[112.5, 37.8], [112.55, 37.85], [112.6, 37.9]]
     assert body["elevation_ready"] is True
-    assert body["elevation_profile"][0] == [0.0, 700.0]
-    assert body["elevation_profile"][-1][1] == 720.0
-    assert body["climb"] == 25.0
-    assert calls == [[(37.8, 112.5), (37.85, 112.55), (37.9, 112.6)]]
+    assert body["elevation_profile"][0][0] == 0.0
+    assert body["elevation_profile"][0][1] == pytest.approx(700.1)
+    assert body["elevation_profile"][-1][1] == pytest.approx(720.0)
+    assert body["climb"] == pytest.approx(24.8)
+    assert len(calls) == 1
+    assert len(calls[0]) == math.ceil(body["distance"] / 20.0) + 1
+    assert calls[0][0] == pytest.approx((37.8, 112.5))
+    assert calls[0][-1] == pytest.approx((37.9, 112.6))
 
     route = db.query(RouteBook).filter(RouteBook.id == body["id"]).one()
     version = db.query(RouteVersion).filter(RouteVersion.id == body["current_version_id"]).one()
@@ -559,17 +896,538 @@ def test_manual_drawn_route_creates_route_with_elevation_profile(client, db, aut
     assert route.source == "manual_drawn"
     assert route.current_version_id == version.id
     assert json.loads(version.elevation_points_snapshot) == [
-        [112.5, 37.8, 700.0],
-        [112.55, 37.85, 725.0],
+        [112.5, 37.8, 700.1],
+        [112.55, 37.85, 724.8],
         [112.6, 37.9, 720.0],
     ]
-    assert metadata["elevation"]["method"] == "shared_route_elevation_v1"
+    assert metadata["elevation"]["method"] == "glo30_meaningful_ascent_v1"
+    assert metadata["elevation"]["processing_grid_m"] == 20.0
     assert metadata["elevation"]["point_count"] == 3
 
 
-def test_route_book_detail_returns_elevation_profile_for_owner(client, auth_header, monkeypatch):
+def test_manual_drawn_route_reuses_same_client_request_without_duplicate(
+    client, db, auth_header, monkeypatch
+):
+    from app.route_book.models import RouteBook, RouteBookSaveRequest, RouteVersion
+
+    query_calls = []
+
+    def fake_query(coords):
+        query_calls.append(coords)
+        return _linear_elevations(coords, start=700.0, end=710.0)
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+    payload = {
+        "name": "响应丢失恢复路线",
+        "client_request_id": "test-manual-response-loss-recovery",
+        "points": [[112.5, 37.8], [112.6, 37.9]],
+    }
+
+    first = client.post("/api/route-books/manual-drawn", json=payload, headers=auth_header)
+    retried = client.post("/api/route-books/manual-drawn", json=payload, headers=auth_header)
+
+    assert first.status_code == 200
+    assert retried.status_code == 200
+    assert retried.json()["id"] == first.json()["id"]
+    assert len(query_calls) == 1
+    assert query_calls[0][0] == pytest.approx((37.8, 112.5))
+    assert query_calls[0][-1] == pytest.approx((37.9, 112.6))
+    assert (
+        db.query(RouteBookSaveRequest)
+        .filter(RouteBookSaveRequest.client_request_id == payload["client_request_id"])
+        .count()
+        == 1
+    )
+    assert db.query(RouteVersion).filter(RouteVersion.route_book_id == first.json()["id"]).count() == 1
+
+
+def test_manual_drawn_route_rejects_same_client_request_for_different_payload(
+    client, auth_header, monkeypatch
+):
+    request_id = "test-manual-idempotency-conflict"
+    monkeypatch.setattr(
+        "app.route_book.service.query_elevations",
+        lambda coords: [700.0 for _coord in coords],
+        raising=False,
+    )
+    first = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "原路线",
+            "client_request_id": request_id,
+            "points": [[112.5, 37.8], [112.6, 37.9]],
+        },
+        headers=auth_header,
+    )
+    conflict = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "另一条路线",
+            "client_request_id": request_id,
+            "points": [[112.5, 37.8], [112.7, 37.9]],
+        },
+        headers=auth_header,
+    )
+
+    assert first.status_code == 200
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "保存记录冲突，请重新确认路线"
+    assert request_id not in conflict.text
+
+
+def test_deleted_manual_route_cannot_be_recreated_by_late_request(
+    client, db, auth_header, monkeypatch
+):
+    from app.route_book.models import RouteBook, RouteBookSaveRequest
+
+    monkeypatch.setattr(
+        "app.route_book.service.query_elevations",
+        lambda coords: [700.0 for _coord in coords],
+        raising=False,
+    )
+    payload = {
+        "name": "删除后不得复活",
+        "client_request_id": "test-manual-deleted-route-tombstone",
+        "points": [[112.5, 37.8], [112.6, 37.9]],
+    }
+    created = client.post("/api/route-books/manual-drawn", json=payload, headers=auth_header)
+    assert created.status_code == 200
+    route_id = created.json()["id"]
+
+    deleted = client.delete(f"/api/route-books/{route_id}", headers=auth_header)
+    replayed = client.post("/api/route-books/manual-drawn", json=payload, headers=auth_header)
+
+    assert deleted.status_code == 204
+    assert replayed.status_code == 410
+    assert replayed.json()["detail"] == "上次保存的路线已删除，请重新保存"
+    assert db.query(RouteBook).filter(RouteBook.id == route_id).count() == 0
+    save_request = (
+        db.query(RouteBookSaveRequest)
+        .filter(RouteBookSaveRequest.client_request_id == payload["client_request_id"])
+        .one()
+    )
+    assert save_request.route_book_id is None
+
+
+def test_deleted_user_token_cannot_create_manual_route(
+    client, db, auth_header, test_user, monkeypatch
+):
+    from app.route_book.models import RouteBook, RouteBookSaveRequest
+
+    elevation_called = False
+
     def fake_query(_coords):
-        return [700.0, 725.0]
+        nonlocal elevation_called
+        elevation_called = True
+        return [700.0, 710.0]
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+    db.delete(test_user)
+    db.commit()
+
+    response = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "注销后的幽灵路线",
+            "client_request_id": "test-deleted-user-token-manual-draw",
+            "points": [[112.5, 37.8], [112.6, 37.9]],
+        },
+        headers=auth_header,
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "用户不存在或已注销"
+    assert elevation_called is False
+    assert db.query(RouteBook).count() == 0
+    assert db.query(RouteBookSaveRequest).count() == 0
+
+
+def test_manual_draw_does_not_hide_unrelated_integrity_error(
+    db, test_user, monkeypatch
+):
+    from sqlalchemy.exc import IntegrityError
+
+    from app.route_book import service
+
+    class OtherConstraintError(Exception):
+        class Diag:
+            constraint_name = "uq_some_other_business_rule"
+
+        diag = Diag()
+
+    monkeypatch.setattr(service, "query_elevations", lambda coords: [700.0 for _coord in coords])
+
+    def fail_flush():
+        raise IntegrityError("INSERT", {}, OtherConstraintError())
+
+    monkeypatch.setattr(db, "flush", fail_flush)
+
+    with pytest.raises(IntegrityError):
+        service.create_route_book_from_manual_drawn(
+            db=db,
+            current_user_id=test_user.id,
+            name="不应吞掉约束错误",
+            client_request_id="test-unrelated-integrity-error",
+            points=[(112.5, 37.8), (112.6, 37.9)],
+        )
+
+
+def test_manual_drawn_route_accepts_gcj02_and_stores_draw_metadata(client, db, auth_header, monkeypatch):
+    from app.route_book.models import RouteBook, RouteVersion
+
+    convert_calls = []
+    elevation_calls = []
+
+    def fake_convert(points, coordinate_system):
+        convert_calls.append((points, coordinate_system))
+        return [
+            {"lon": 112.4936, "lat": 37.7994},
+            {"lon": 112.5437, "lat": 37.8495},
+            {"lon": 112.5938, "lat": 37.8996},
+        ]
+
+    def fake_query(coords):
+        elevation_calls.append(coords)
+        return _piecewise_elevations(
+            coords,
+            [(112.4936, 700.0), (112.5437, 725.0), (112.5938, 720.0)],
+        )
+
+    monkeypatch.setattr("app.route_book.service.convert_points_to_wgs84", fake_convert)
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    res = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "贴路后保存",
+            "client_request_id": "test-manual-drawn-snapped-save",
+            "coordinate_system": "gcj02",
+            "points": [
+                [112.5, 37.8],
+                [112.55, 37.85],
+                [112.6, 37.9],
+            ],
+            "draw_metadata": {
+                "tool": "route_draw_v0",
+                "snap_provider": "tencent_bicycling",
+                "segment_count": 2,
+                "freehand_segment_count": 1,
+                "warnings": ["第一段贴路偏移较大"],
+                "raw_points_summary": {
+                    "total_raw_points": 6,
+                    "sample": [[112.5, 37.8], [112.6, 37.9]],
+                },
+            },
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["source"] == "manual_drawn"
+    assert body["preview_points"] == [
+        [112.4936, 37.7994],
+        [112.5437, 37.8495],
+        [112.5938, 37.8996],
+    ]
+    assert convert_calls == [(
+        [
+            {"lon": 112.5, "lat": 37.8},
+            {"lon": 112.55, "lat": 37.85},
+            {"lon": 112.6, "lat": 37.9},
+        ],
+        "gcj02",
+    )]
+    assert len(elevation_calls) == 1
+    assert elevation_calls[0][0] == pytest.approx((37.7994, 112.4936))
+    assert elevation_calls[0][-1] == pytest.approx((37.8996, 112.5938))
+
+    route = db.query(RouteBook).filter(RouteBook.id == body["id"]).one()
+    version = db.query(RouteVersion).filter(RouteVersion.id == body["current_version_id"]).one()
+    metadata = json.loads(version.navigation_metadata_json)
+    assert route.source == "manual_drawn"
+    assert version.geometry_source == "manual_drawn"
+    assert json.loads(version.elevation_points_snapshot) == [
+        [112.4936, 37.7994, 700.1],
+        [112.5437, 37.8495, 724.8],
+        [112.5938, 37.8996, 720.0],
+    ]
+    assert metadata["draw"] == {
+        "tool": "route_draw_v0",
+        "snap_provider": "tencent_bicycling",
+        "segment_count": 2,
+        "freehand_segment_count": 1,
+        "warnings": ["第一段贴路偏移较大"],
+        "raw_points_summary": {
+            "total_raw_points": 6,
+            "sample": [[112.5, 37.8], [112.6, 37.9]],
+        },
+    }
+    assert metadata["elevation"]["method"] == "glo30_meaningful_ascent_v1"
+    assert metadata["elevation"]["processing_grid_m"] == 20.0
+
+
+def test_route_draw_v0_mock_verification_runs_100_snap_save_elevation_detail_flows(
+    client,
+    auth_header,
+    monkeypatch,
+):
+    snap_calls = []
+    convert_calls = []
+    elevation_calls = []
+    route_ids = []
+
+    def fake_plan(start, end, timeout_sec=None):
+        snap_calls.append((start, end, timeout_sec))
+        return {
+            "distance": 180.0,
+            "duration": 1,
+            "points": [
+                {"lat": start[0], "lon": start[1]},
+                {"lat": round((start[0] + end[0]) / 2, 6), "lon": round((start[1] + end[1]) / 2, 6)},
+                {"lat": end[0], "lon": end[1]},
+            ],
+        }
+
+    def fake_convert(points, coordinate_system):
+        convert_calls.append((points, coordinate_system))
+        return [
+            {"lon": round(point["lon"] - 0.0064, 6), "lat": round(point["lat"] - 0.0006, 6)}
+            for point in points
+        ]
+
+    def fake_query(coords):
+        elevation_calls.append(coords)
+        return [round(700.0 + index * 3.5, 1) for index, _coord in enumerate(coords)]
+
+    monkeypatch.setattr("app.route_book.draw_snap_service.plan_tencent_bicycling_route", fake_plan)
+    monkeypatch.setattr("app.route_book.service.convert_points_to_wgs84", fake_convert)
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    for index in range(100):
+        base_lon = 112.5000 + (index % 10) * 0.002
+        base_lat = 37.8000 + (index // 10) * 0.002
+        raw_points = [
+            [round(base_lon, 6), round(base_lat, 6)],
+            [round(base_lon + 0.001, 6), round(base_lat + 0.0006, 6)],
+            [round(base_lon + 0.002, 6), round(base_lat + 0.0012, 6)],
+        ]
+
+        snap = client.post(
+            "/api/route-books/manual-drawn/snap-preview",
+            json={
+                "coordinate_system": "gcj02",
+                "mode": "snap",
+                "points": raw_points,
+            },
+            headers=auth_header,
+        )
+        assert snap.status_code == 200
+        snap_body = snap.json()
+        assert snap_body["snapped_points"]
+        assert snap_body["segment_count"] >= 1
+
+        saved = client.post(
+            "/api/route-books/manual-drawn",
+            json={
+                "name": f"Task6 虚拟手画路线 {index + 1}",
+                "client_request_id": f"test-task6-virtual-route-{index + 1:03d}",
+                "coordinate_system": "gcj02",
+                "points": snap_body["snapped_points"],
+                "draw_metadata": {
+                    "tool": "route_draw_v0",
+                    "snap_provider": "tencent_bicycling",
+                    "segment_count": snap_body["segment_count"],
+                    "freehand_segment_count": 0,
+                    "warnings": snap_body["warnings"],
+                    "raw_points_summary": {
+                        "total_raw_points": len(raw_points),
+                        "sample": raw_points[:2],
+                    },
+                },
+            },
+            headers=auth_header,
+        )
+        assert saved.status_code == 200
+        saved_body = saved.json()
+        assert saved_body["source"] == "manual_drawn"
+        assert saved_body["current_version_id"] is not None
+        assert saved_body["elevation_ready"] is True
+        assert len(saved_body["preview_points"]) == len(snap_body["snapped_points"])
+        expected_profile_count = min(100, math.ceil(saved_body["distance"] / 20.0) + 1)
+        assert len(saved_body["elevation_profile"]) == expected_profile_count
+
+        detail = client.get(f"/api/route-books/{saved_body['id']}/detail", headers=auth_header)
+        assert detail.status_code == 200
+        detail_body = detail.json()
+        assert detail_body["id"] == saved_body["id"]
+        assert detail_body["export_ready"] is True
+        assert detail_body["export_formats"] == ["gpx", "tcx"]
+        route_ids.append(saved_body["id"])
+
+    assert len(route_ids) == 100
+    assert len(set(route_ids)) == 100
+    assert len(snap_calls) >= 100
+    assert len(convert_calls) == 100
+    assert len(elevation_calls) == 100
+
+
+def test_route_draw_v0_manual_drawn_export_gpx_tcx_include_three_elevation_points(
+    client,
+    db,
+    auth_header,
+    monkeypatch,
+):
+    fake_storage = _FakeExportStorage()
+    _install_dynamic_linestring_ewkb_stub(db)
+
+    def fake_convert(points, coordinate_system):
+        assert coordinate_system == "gcj02"
+        return [{"lon": point["lon"], "lat": point["lat"]} for point in points]
+
+    def fake_query(coords):
+        return _piecewise_elevations(
+            coords,
+            [(112.5, 701.2), (112.55, 735.8), (112.6, 742.4)],
+        )
+
+    monkeypatch.setattr("app.route_book.service.convert_points_to_wgs84", fake_convert)
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+    monkeypatch.setattr("app.route_book.export_workflow._storage", fake_storage)
+
+    freehand = client.post(
+        "/api/route-books/manual-drawn/snap-preview",
+        json={
+            "coordinate_system": "gcj02",
+            "mode": "freehand",
+            "points": [
+                [112.5, 37.8],
+                [112.55, 37.85],
+                [112.6, 37.9],
+            ],
+        },
+        headers=auth_header,
+    )
+    assert freehand.status_code == 200
+    assert freehand.json()["mode"] == "freehand"
+
+    created = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "Task6 三点自由画线导出",
+            "client_request_id": "test-task6-freehand-export-route",
+            "coordinate_system": "gcj02",
+            "points": freehand.json()["snapped_points"],
+            "draw_metadata": {
+                "tool": "route_draw_v0",
+                "snap_provider": "freehand",
+                "segment_count": freehand.json()["segment_count"],
+                "freehand_segment_count": freehand.json()["segment_count"],
+            },
+        },
+        headers=auth_header,
+    )
+    assert created.status_code == 200
+    route_id = created.json()["id"]
+    assert created.json()["elevation_ready"] is True
+
+    detail = client.get(f"/api/route-books/{route_id}/detail", headers=auth_header)
+    assert detail.status_code == 200
+    assert detail.json()["export_ready"] is True
+
+    gpx = client.post(f"/api/route-books/{route_id}/exports", json={"format": "gpx"}, headers=auth_header)
+    tcx = client.post(f"/api/route-books/{route_id}/exports", json={"format": "tcx"}, headers=auth_header)
+    assert gpx.status_code == 200, gpx.text
+    assert tcx.status_code == 200, tcx.text
+
+    gpx_download = client.get(gpx.json()["download_url"], headers=auth_header)
+    tcx_download = client.get(tcx.json()["download_url"], headers=auth_header)
+    assert gpx_download.status_code == 200
+    assert tcx_download.status_code == 200
+    from app.route_book.models import RouteVersion
+
+    version = db.query(RouteVersion).filter(RouteVersion.id == created.json()["current_version_id"]).one()
+    exported_elevations = [point[2] for point in json.loads(version.elevation_points_snapshot)]
+    assert gpx_download.content.count(b"<ele>") == 3
+    assert tcx_download.content.count(b"<AltitudeMeters>") == 3
+    for elevation in exported_elevations:
+        encoded = str(elevation).encode()
+        assert b"<ele>" + encoded + b"</ele>" in gpx_download.content
+        assert b"<AltitudeMeters>" + encoded + b"</AltitudeMeters>" in tcx_download.content
+
+
+def test_manual_drawn_route_rejects_bad_gcj02_conversion_before_insert(client, db, auth_header, monkeypatch):
+    from app.route_book.models import RouteBook
+
+    convert_calls = []
+    elevation_calls = []
+
+    def fake_convert(points, coordinate_system):
+        convert_calls.append((points, coordinate_system))
+        return [
+            {"lon": 37.8, "lat": 112.5},
+            {"lon": 37.9, "lat": 112.6},
+        ]
+
+    def fake_query(coords):
+        elevation_calls.append(coords)
+        return [700.0 for _ in coords]
+
+    monkeypatch.setattr("app.route_book.service.convert_points_to_wgs84", fake_convert)
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    res = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "转换后坏坐标",
+            "client_request_id": "test-manual-bad-converted-coordinate",
+            "coordinate_system": "gcj02",
+            "points": [[112.5, 37.8], [112.6, 37.9]],
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 422
+    assert "超出经纬度范围" in res.text
+    assert convert_calls
+    assert elevation_calls == []
+    assert db.query(RouteBook).filter(RouteBook.name == "转换后坏坐标").first() is None
+
+
+def test_manual_drawn_route_rejects_oversized_draw_metadata_before_insert(client, db, auth_header, monkeypatch):
+    from app.route_book.models import RouteBook
+
+    elevation_calls = []
+
+    def fake_query(coords):
+        elevation_calls.append(coords)
+        return [700.0 for _ in coords]
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    res = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "元数据太大",
+            "client_request_id": "test-manual-oversized-metadata",
+            "points": [[112.5, 37.8], [112.6, 37.9]],
+            "draw_metadata": {
+                "tool": "route_draw_v0",
+                "warnings": ["x" * 9000],
+            },
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 422
+    assert "draw_metadata" in res.text
+    assert elevation_calls == []
+    assert db.query(RouteBook).filter(RouteBook.name == "元数据太大").first() is None
+
+
+def test_route_book_detail_returns_elevation_profile_for_owner(client, auth_header, monkeypatch):
+    def fake_query(coords):
+        return _linear_elevations(coords, start=700.0, end=725.0)
 
     monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
 
@@ -577,6 +1435,7 @@ def test_route_book_detail_returns_elevation_profile_for_owner(client, auth_head
         "/api/route-books/manual-drawn",
         json={
             "name": "详情有海拔",
+            "client_request_id": "test-manual-detail-with-elevation",
             "points": [[112.5, 37.8], [112.6, 37.9]],
         },
         headers=auth_header,
@@ -590,9 +1449,108 @@ def test_route_book_detail_returns_elevation_profile_for_owner(client, auth_head
     assert detail.json()["elevation_profile"] == created.json()["elevation_profile"]
 
 
+def test_route_book_detail_endpoint_exposes_export_state_for_private_owner(client, db, auth_header, test_user):
+    route, _version = _route_with_current_version(
+        db,
+        test_user.id,
+        name="我的可导出私密路线",
+        visibility="private",
+        publish_status="draft",
+    )
+
+    detail = client.get(f"/api/route-books/{route.id}/detail", headers=auth_header)
+
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["id"] == route.id
+    assert body["name"] == "我的可导出私密路线"
+    assert "file_id" not in body
+    assert "source" not in body
+    assert "source_activity_id" not in body
+    assert "current_version_id" not in body
+    assert "visibility" not in body
+    assert "publish_status" not in body
+    assert body["preview_points"] == [[112.5, 37.8], [112.6, 37.9]]
+    assert body["export_ready"] is True
+    assert body["export_formats"] == ["gpx", "tcx"]
+    assert body["export_block_reason"] is None
+    assert body["anonymous_export_download_allowed"] is False
+
+
+def test_route_book_detail_endpoint_exposes_export_state_for_public_anonymous(client, db, admin_user):
+    route, _version = _route_with_current_version(
+        db,
+        admin_user.id,
+        name="公开游客可导出路线",
+        visibility="public",
+        publish_status="published",
+    )
+
+    detail = client.get(f"/api/route-books/{route.id}/detail")
+
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["id"] == route.id
+    assert "file_id" not in body
+    assert "source_activity_id" not in body
+    assert body["export_ready"] is True
+    assert body["export_formats"] == ["gpx", "tcx"]
+    assert body["export_block_reason"] is None
+    assert body["anonymous_export_download_allowed"] is True
+
+
+def test_route_book_detail_endpoint_marks_no_elevation_for_owner(client, db, auth_header, test_user):
+    route, version = _route_with_current_version(
+        db,
+        test_user.id,
+        name="还没海拔的私密路线",
+        visibility="private",
+        publish_status="draft",
+    )
+    version.elevation_points_snapshot = None
+    db.add(version)
+    db.commit()
+
+    detail = client.get(f"/api/route-books/{route.id}/detail", headers=auth_header)
+
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["export_ready"] is False
+    assert body["export_formats"] == []
+    assert body["export_block_reason"] == "no_elevation"
+
+
+def test_route_book_detail_endpoint_marks_no_current_version_before_elevation(client, db, auth_header, test_user):
+    from app.route_book.models import RouteBook
+
+    route = RouteBook(
+        creator_id=test_user.id,
+        name="只有路线壳",
+        distance=42000.0,
+        reference_line="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+        source="manual_drawn",
+        source_activity_id=None,
+        city="taiyuan",
+        visibility="private",
+        publish_status="draft",
+        current_version_id=None,
+    )
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+
+    detail = client.get(f"/api/route-books/{route.id}/detail", headers=auth_header)
+
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["export_ready"] is False
+    assert body["export_formats"] == []
+    assert body["export_block_reason"] == "no_current_version"
+
+
 def test_route_book_list_marks_elevation_ready_without_sending_profile(client, auth_header, monkeypatch):
-    def fake_query(_coords):
-        return [700.0, 725.0]
+    def fake_query(coords):
+        return _linear_elevations(coords, start=700.0, end=725.0)
 
     monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
 
@@ -600,6 +1558,7 @@ def test_route_book_list_marks_elevation_ready_without_sending_profile(client, a
         "/api/route-books/manual-drawn",
         json={
             "name": "列表只亮状态",
+            "client_request_id": "test-manual-list-elevation-status",
             "points": [[112.5, 37.8], [112.6, 37.9]],
         },
         headers=auth_header,
@@ -621,6 +1580,7 @@ def test_manual_drawn_route_rejects_invalid_coordinates(client, db, auth_header)
         "/api/route-books/manual-drawn",
         json={
             "name": "坏坐标路线",
+            "client_request_id": "test-manual-invalid-coordinates",
             "points": [[181.0, 37.8], [112.6, 37.9]],
         },
         headers=auth_header,
@@ -643,6 +1603,7 @@ def test_manual_drawn_route_returns_503_when_elevation_source_fails(client, db, 
         "/api/route-books/manual-drawn",
         json={
             "name": "海拔源失败",
+            "client_request_id": "test-manual-elevation-source-failure",
             "points": [[112.5, 37.8], [112.6, 37.9]],
         },
         headers=auth_header,
@@ -666,12 +1627,41 @@ def test_manual_drawn_route_rejects_too_many_points_before_elevation_query(clien
         "/api/route-books/manual-drawn",
         json={
             "name": "点太多",
+            "client_request_id": "test-manual-too-many-points",
             "points": [[112.5 + index * 0.0001, 37.8] for index in range(501)],
         },
         headers=auth_header,
     )
 
     assert res.status_code == 422
+    assert calls == []
+
+
+def test_manual_drawn_route_rejects_over_1000km_before_elevation_query(
+    client,
+    auth_header,
+    monkeypatch,
+):
+    calls = []
+
+    def fake_query(coords):
+        calls.append(coords)
+        return [700.0 for _ in coords]
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    res = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "跨越同步处理上限",
+            "client_request_id": "test-manual-over-1000km",
+            "points": [[112.0, 30.0], [112.0, 40.0]],
+        },
+        headers=auth_header,
+    )
+
+    assert res.status_code == 422
+    assert "1000 公里" in res.text
     assert calls == []
 
 
@@ -720,6 +1710,11 @@ def test_tencent_direction_applies_user_rate_limit(client, auth_header, test_use
             {"lat": 37.8601, "lon": 112.5601},
         ],
     })
+    monkeypatch.setattr(
+        "app.route_book.service.query_elevations",
+        _linear_elevations,
+        raising=False,
+    )
 
     res = client.post(
         "/api/route-books/tencent-direction",

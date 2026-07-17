@@ -55,6 +55,7 @@ services:
       STRAVA_WEBHOOK_SUBSCRIPTION_ID: ${STRAVA_WEBHOOK_SUBSCRIPTION_ID}
       TENCENT_MAP_KEY: ${TENCENT_MAP_KEY}
       TENCENT_MAP_SK: ${TENCENT_MAP_SK}
+      GLO30_BASE_URL: ${GLO30_BASE_URL:-https://copernicus-dem-30m.s3.amazonaws.com}
     expose:
       - "8000"  # 只对 Caddy 可见，不暴露到公网
     depends_on:
@@ -62,7 +63,7 @@ services:
       - redis
     volumes:
       - uploads:/app/uploads
-      - srtm_cache:/root/.cache/srtm   # DEM 海拔数据本地缓存（CGIAR-CSI SRTM 90m / 懒下载持久化）
+      - glo30_cache:/var/cache/velo/glo30   # Copernicus GLO-30 COG 瓦片懒下载缓存
       # 路线百科内容目录（2026-06-11）：内容是数据不是代码，只读挂载让"改介绍"走数据通道——
       # git pull 后直接 exec 灌库脚本即生效，不 rebuild 镜像、不碰迁移、不动其他容器。
       - ./content:/app/content:ro
@@ -85,12 +86,13 @@ services:
       # 不配 worker 容器内 _client = None / 所有 AI 草稿静默不生成
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      GLO30_BASE_URL: ${GLO30_BASE_URL:-https://copernicus-dem-30m.s3.amazonaws.com}
     depends_on:
       - db
       - redis
     volumes:
       - uploads:/app/uploads
-      - srtm_cache:/root/.cache/srtm   # worker 跑回填脚本时也需要 DEM 缓存
+      - glo30_cache:/var/cache/velo/glo30   # worker 跑回填脚本时复用同一 GLO-30 缓存
 
   # ===== Cleanup：定时僵尸回收 =====
   # 每 5 分钟运行一次清理脚本，回收孤儿 activity + 孤儿文件
@@ -225,4 +227,4 @@ volumes:
   uploads:     # GPX 文件存储
   caddy_data:  # SSL 证书存储
   caddy_config:
-  srtm_cache:  # DEM 海拔数据缓存（CGIAR-CSI SRTM 90m 懒下载 tile）
+  glo30_cache:  # Copernicus GLO-30 COG 瓦片持久缓存

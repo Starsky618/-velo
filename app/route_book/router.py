@@ -18,8 +18,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user, get_optional_user
 from app.middleware.rate_limit import check_rate_limit_by_ip, check_rate_limit_by_user
-from app.route_book import export_workflow, schemas, service
-from app.route_book.tencent_direction import TencentMapConfigError, TencentMapError
+from app.route_book import draw_snap_service, export_workflow, schemas, service
+from app.route_book.tencent_direction import (
+    TencentMapConfigError,
+    TencentMapError,
+    TencentMapServiceUnavailableError,
+)
 
 
 router = APIRouter(prefix="/api/route-books", tags=["route_book"])
@@ -68,6 +72,8 @@ def create_route_book(
         raise HTTPException(status_code=404, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -93,7 +99,9 @@ def create_route_book_from_tencent_direction(
             end=(payload.to_lat, payload.to_lon),
         )
         return schemas.route_book_response(route, current_user_id, include_elevation_profile=True)
-    except TencentMapConfigError as e:
+    except (TencentMapConfigError, TencentMapServiceUnavailableError) as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except (TencentMapError, ValueError) as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -116,11 +124,58 @@ def create_route_book_from_manual_drawn(
             db=db,
             current_user_id=current_user_id,
             name=payload.name,
+            client_request_id=payload.client_request_id,
             points=payload.points,
+            coordinate_system=payload.coordinate_system,
+            draw_metadata=(
+                payload.draw_metadata.model_dump(mode="json", exclude_none=True)
+                if payload.draw_metadata is not None
+                else None
+            ),
         )
         return schemas.route_book_response(route, current_user_id, include_elevation_profile=True)
+    except service.ManualDrawIdempotencyGoneError as e:
+        raise HTTPException(status_code=410, detail=str(e))
+    except service.ManualDrawIdempotencyConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=401, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/manual-drawn/snap-preview", response_model=schemas.ManualDrawnSnapPreviewResponse)
+def preview_manual_drawn_snap(
+    payload: schemas.ManualDrawnSnapPreviewRequest,
+    current_user_id: int = Depends(get_current_user),
+):
+    check_rate_limit_by_user(
+        current_user_id,
+        "route-book-draw-snap-preview",
+        limit=20,
+        window_sec=300,
+    )
+    try:
+        return draw_snap_service.build_snap_preview(
+            mode=payload.mode,
+            coordinate_system=payload.coordinate_system,
+            points=payload.points,
+        )
+    except (TencentMapConfigError, TencentMapServiceUnavailableError) as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except draw_snap_service.DrawSnapSegmentError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": str(e),
+                "failed_segment": e.segment_index,
+                "reason": e.reason,
+            },
+        )
+    except TencentMapError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -190,6 +245,29 @@ def download_route_export(
         media_type=download.content_type,
         headers={"Content-Disposition": disposition},
     )
+
+
+@router.get("/{route_book_id}/detail", response_model=schemas.RouteBookDetailResponse)
+def get_route_book_detail(
+    route_book_id: int,
+    current_user_id: int | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        route, export_ready, export_formats, export_block_reason = service.get_route_book_detail(
+            db,
+            route_book_id,
+            current_user_id,
+        )
+        return schemas.route_book_detail_response(
+            route,
+            current_user_id,
+            export_ready=export_ready,
+            export_formats=export_formats,
+            export_block_reason=export_block_reason,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/{route_book_id}", response_model=schemas.RouteBookResponse)

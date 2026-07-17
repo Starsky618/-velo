@@ -3,6 +3,7 @@
 import hashlib
 import json
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,58 @@ from sqlalchemy import CheckConstraint, ForeignKeyConstraint, text
 
 
 FIXTURE_ROUTES = Path(__file__).parent / "fixtures" / "routes"
+FAKE_GLO_ELEVATION_M = 1234.5
+
+
+def _flat_glo_elevations(coords):
+    """返回和 fixture GPX 原始 800/830/820m 明显不同的 GLO 成品输入。"""
+    assert coords[0] == pytest.approx((37.8, 112.5))
+    assert coords[-1] == pytest.approx((37.82, 112.52))
+    return [FAKE_GLO_ELEVATION_M for _coord in coords]
+
+
+def _assert_strict_glo_product(book, version, guide) -> None:
+    from app.elevation.dem_client import (
+        GLO30_HORIZONTAL_RESOLUTION_M,
+        GLO30_LICENSE_ID,
+        GLO30_SOURCE_NAME,
+        GLO30_VERTICAL_ACCURACY_M,
+    )
+    from app.elevation.route_elevation import ROUTE_ELEVATION_METHOD, route_elevation_metadata
+    from app.route_book.elevation_quality import has_trusted_route_elevation
+
+    snapshot = json.loads(version.elevation_points_snapshot)
+    assert snapshot == [
+        [112.5, 37.8, FAKE_GLO_ELEVATION_M],
+        [112.51, 37.81, FAKE_GLO_ELEVATION_M],
+        [112.52, 37.82, FAKE_GLO_ELEVATION_M],
+    ]
+    assert [point[2] for point in snapshot] != [800.0, 830.0, 820.0]
+    assert version.point_count == 3
+    assert version.climb == book.climb == 0.0
+    assert version.elevation_profile == book.elevation_profile == guide.elevation_profile
+    assert all(point[1] == FAKE_GLO_ELEVATION_M for point in json.loads(version.elevation_profile))
+
+    navigation_metadata = json.loads(version.navigation_metadata_json)
+    elevation_metadata = navigation_metadata["elevation"]
+    generated_at = elevation_metadata.get("generated_at")
+    assert generated_at is not None
+    assert datetime.fromisoformat(generated_at).tzinfo is not None
+    assert elevation_metadata == {
+        "source_name": GLO30_SOURCE_NAME,
+        "license_id": GLO30_LICENSE_ID,
+        "accuracy_m": GLO30_VERTICAL_ACCURACY_M,
+        "point_count": 3,
+        "method": ROUTE_ELEVATION_METHOD,
+        "horizontal_resolution_m": GLO30_HORIZONTAL_RESOLUTION_M,
+        **route_elevation_metadata(),
+        "generated_at": generated_at,
+    }
+    assert has_trusted_route_elevation(
+        version.elevation_points_snapshot,
+        metadata_json=version.navigation_metadata_json,
+        expected_count=version.point_count,
+    )
 
 
 def test_route_guide_model_declares_batch2_provenance_columns():
@@ -258,6 +311,29 @@ def test_parse_track_without_elevation_uses_climb_override_but_keeps_profile_nul
     assert parsed.climb == 314
     assert parsed.elevation_profile is None
     assert parsed.elevation_points_snapshot is None
+
+
+def test_imported_gpx_route_uses_strict_glo_product_not_file_elevation(
+    db,
+    route_guide_tables,
+    tmp_path,
+    monkeypatch,
+):
+    """官方 GPX 只提供二维几何；800/830/820m 不得成为产品路线海拔。"""
+    RouteBook, RouteGuide = route_guide_tables
+    from app.route_book.models import RouteVersion
+
+    script = _load_script()
+    content_dir = _copy_fixture(tmp_path, "test-gpx-route")
+    monkeypatch.setattr(script, "SessionLocal", lambda: db)
+    monkeypatch.setattr(script, "query_elevations", _flat_glo_elevations)
+
+    script.main(["--content-dir", str(content_dir)])
+
+    guide = db.query(RouteGuide).filter_by(name="测试 GPX 路线").one()
+    book = db.query(RouteBook).filter_by(id=guide.route_book_id).one()
+    version = db.query(RouteVersion).filter_by(route_book_id=book.id).one()
+    _assert_strict_glo_product(book, version, guide)
 
 
 def test_imports_route_without_gpx_as_track_pending(db, route_guide_tables, tmp_path, monkeypatch):

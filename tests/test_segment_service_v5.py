@@ -5,29 +5,38 @@ v5 task-1.A.2：赛段 service 扩展的单元测试。
 只验证过滤条件、排序意图、异常分支和返回结构，不依赖真 PostgreSQL。
 """
 
+import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
+from app.elevation.route_elevation import build_route_elevation_result
 from app.segment import service
+from app.segment._geo_utils import _sample_elevation_profile
 from app.segment.exceptions import InvalidSegmentRangeError, SegmentOverlapError
 
 
 @pytest.fixture(autouse=True)
 def mock_dem(monkeypatch):
-    """单测不真发 HTTP / mock query_elevations 直接返 None（让 service 走 fallback 用原 GPS 海拔）。
-
-    生产环境 DEM 真行为由 dev stack 集成测试覆盖。
-    单测只验 service 逻辑（distance / elevation_gain 计算 / Hausdorff 等），
-    DEM 失败时 fallback 到 GPS 海拔的行为也顺带覆盖。
-    """
+    """不下载瓦片，但按固定 20m 查询网格返回确定的 GLO 测试剖面。"""
     def _fake_query(points, dem_url=None):
-        # 返 None 列表 → service 走"DEM 查不到该位置则保留原 GPS 海拔"分支
-        return [None for _ in points]
+        if not points:
+            return []
+        denominator = max(len(points) - 1, 1)
+        elevations = []
+        for index in range(len(points)):
+            ratio = index / denominator
+            if ratio <= 0.65:
+                elevation = 100.0 + 80.0 * ratio / 0.65
+            else:
+                elevation = 180.0 - 35.0 * (ratio - 0.65) / 0.35
+            elevations.append(elevation)
+        return elevations
 
     monkeypatch.setattr("app.segment.service_create.query_elevations", _fake_query)
+    return _fake_query
 
 
 class _FakeQuery:
@@ -254,7 +263,7 @@ def test_create_segment_overlap():
         service.create_segment_from_activity(db, 1, "重复赛段", 0, 1)
 
 
-def test_create_segment_success():
+def test_create_segment_success(mock_dem):
     """轨迹合法且不重叠时，应创建赛段并写入派生字段。"""
     db = MagicMock()
     activity_query = _FakeQuery(first_value=SimpleNamespace(id=1))
@@ -286,22 +295,29 @@ def test_create_segment_success():
     rendered_filters = " ".join(str(f) for f in tp_query.filters)
     assert "trackpoints.seq" in rendered_filters
     assert segment is not None
-    assert segment.elevation_gain == 15.0
-    assert segment.elevation_loss == 14.0
-    assert segment.avg_gradient == pytest.approx((15.0 - 14.0) / segment.distance * 100)
-    # 2026-05-14 加：from-activity 路径必须写 elevation_profile（codex 集成审 I3）
-    # 30 个 tp 都有 elevation → 应生成 JSON 字符串数组，前端拿来画曲线
+    expected = build_route_elevation_result(
+        [[tp.longitude, tp.latitude] for tp in trackpoints],
+        query_func=mock_dem,
+    )
+    assert segment.elevation_gain == expected.climb
+    assert segment.elevation_loss == expected.descent
+    assert segment.avg_gradient == pytest.approx(
+        (expected.snapshot[-1][2] - expected.snapshot[0][2])
+        / segment.distance
+        * 100
+    )
     assert segment.elevation_profile is not None
-    import json
     profile = json.loads(segment.elevation_profile)
-    assert isinstance(profile, list)
-    assert len(profile) == 30  # ≤ 80 时 _sample_elevation_profile 原样返回
+    assert profile == _sample_elevation_profile(
+        [{"ele": point[1]} for point in expected.profile],
+        target_count=80,
+    )
     db.add.assert_called_once_with(segment)
     db.flush.assert_called_once()
 
 
-def test_create_segment_from_activity_all_elevation_none_skips_profile():
-    """所有 tp.elevation=None（GPX 无海拔数据）→ elevation_profile 应为 None。"""
+def test_create_segment_from_activity_without_uploaded_elevation_uses_glo(mock_dem):
+    """FIT/GPX 没有海拔也不留空：统一 GLO 成品链仍生成全部派生字段。"""
     db = MagicMock()
     activity_query = _FakeQuery(first_value=SimpleNamespace(id=1))
     # 全部 elevation=None
@@ -330,5 +346,21 @@ def test_create_segment_from_activity_all_elevation_none_skips_profile():
         difficulty="easy",
     )
 
+    expected = build_route_elevation_result(
+        [[tp.longitude, tp.latitude] for tp in trackpoints],
+        query_func=mock_dem,
+    )
     assert segment is not None
-    assert segment.elevation_profile is None  # 全 None 不生成 profile（跟 from-gpx 同语义）
+    assert segment.elevation_gain == expected.climb
+    assert segment.elevation_loss == expected.descent
+    assert segment.avg_gradient == pytest.approx(
+        (expected.snapshot[-1][2] - expected.snapshot[0][2])
+        / segment.distance
+        * 100
+    )
+    assert json.loads(segment.elevation_profile) == _sample_elevation_profile(
+        [{"ele": point[1]} for point in expected.profile],
+        target_count=80,
+    )
+    db.add.assert_called_once_with(segment)
+    db.flush.assert_called_once()

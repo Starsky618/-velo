@@ -29,6 +29,54 @@
   font-size: 27rpx;
 }
 
+.create-route-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  margin-bottom: 28rpx;
+  padding: 28rpx 30rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
+}
+
+.create-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.section-title,
+.encyclopedia-title {
+  color: #1c1c1e;
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.section-subtitle {
+  margin-top: 6rpx;
+  color: #8a8a8e;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.draw-route-button {
+  flex: 0 0 188rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0;
+  border-radius: 18rpx;
+  background: #ff9500;
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.encyclopedia-title {
+  margin: 4rpx 4rpx 18rpx;
+}
+
 .state-text {
   padding: 100rpx 0;
   color: #8a8a8e;

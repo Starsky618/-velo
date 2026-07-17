@@ -1,0 +1,140 @@
+<view class="route-draw-page">
+  <view class="route-draw-map-wrap">
+    <map
+      id="route-draw-map"
+      class="route-draw-map"
+      latitude="{{latitude}}"
+      longitude="{{longitude}}"
+      scale="14"
+      polyline="{{drawPolylines}}"
+      markers="{{markers}}"
+      show-location="{{false}}"
+      enable-traffic="{{false}}"
+      enable-3D="{{false}}"
+      enable-rotate="{{false}}"
+      enable-scroll="{{mapScrollEnabled}}"
+      enable-zoom="{{mapScrollEnabled}}"
+      bindtap="onMapTap"
+      bindregionchange="onMapRegionChange">
+    </map>
+
+    <cover-view wx:if="{{!showSketchLayer}}" class="route-draw-crosshair">
+      <cover-view class="crosshair-ring"></cover-view>
+      <cover-view class="crosshair-dot"></cover-view>
+    </cover-view>
+
+    <cover-view class="route-draw-topbar">
+      <cover-view class="map-tool" bindtap="onTapClose">关闭</cover-view>
+      <cover-view class="map-tool" bindtap="onTapLocate">定位</cover-view>
+    </cover-view>
+
+    <cover-view wx:if="{{!showSketchLayer}}" class="center-add-wrap">
+      <cover-view class="center-add-button {{centerAddBusy ? 'is-busy' : ''}}" bindtap="onTapAddCenterPoint">
+        {{centerAddBusy ? '读取中' : '+ 添加点'}}
+      </cover-view>
+    </cover-view>
+
+    <cover-view class="route-draw-toolbox">
+      <cover-view class="mode-tool {{builderMode === 'manual' ? 'is-active' : ''}}" bindtap="onTapToggleManualMode">Manual Mode</cover-view>
+      <cover-view class="mode-tool {{builderMode === 'sketch' ? 'is-active' : ''}}" bindtap="onTapStartSketch">铅笔</cover-view>
+      <cover-view class="mode-tool" bindtap="onTapUndoAction">撤回</cover-view>
+    </cover-view>
+
+    <cover-view
+      wx:if="{{showSketchLayer}}"
+      class="route-draw-touch-layer"
+      catchtouchstart="onDrawTouchStart"
+      catchtouchmove="onDrawTouchMove"
+      catchtouchend="onDrawTouchEnd"
+      catchtouchcancel="onDrawTouchEnd">
+      <cover-view class="sketch-layer-hint">松手完成手绘</cover-view>
+    </cover-view>
+  </view>
+
+  <view class="route-draw-panel">
+    <view wx:if="{{notLoggedIn}}" class="login-card">
+      <view class="panel-title">登录后画路线</view>
+      <view class="panel-subtitle">登录后才能保存和贴路。</view>
+      <button class="primary-button" bindtap="onTapGoLogin">去登录</button>
+    </view>
+
+    <block wx:else>
+      <view class="status-row">
+        <view class="status-copy">
+          <view class="panel-title">{{modeTitle}}</view>
+          <view class="panel-subtitle">{{modeHelp}}</view>
+          <view class="status-text">{{statusText}}</view>
+        </view>
+        <view class="point-pill">{{routeStats.pointCount}} 点</view>
+      </view>
+
+      <view class="stats-row">
+        <view class="stat-box">
+          <view class="stat-value">{{routeStats.distanceText}}</view>
+          <view class="stat-label">距离</view>
+        </view>
+        <view class="stat-box">
+          <view class="stat-value">{{routeStats.climbText}}</view>
+          <view class="stat-label">爬升</view>
+        </view>
+        <view class="stat-box">
+          <view class="stat-value">{{routeStats.etaText}}</view>
+          <view class="stat-label">预计时间</view>
+        </view>
+      </view>
+
+      <view class="route-meta-row">
+        <view class="route-meta-item">
+          <view class="route-meta-label">运动类型</view>
+          <view class="route-meta-value">骑行</view>
+        </view>
+        <view class="route-meta-item">
+          <view class="route-meta-label">海拔图</view>
+          <view class="route-meta-value muted">保存后生成海拔图</view>
+        </view>
+      </view>
+
+      <view class="legend-row">
+        <view class="legend-item"><text class="legend-dot confirmed"></text>橙色路线已进草稿</view>
+        <view class="legend-item"><text class="legend-dot raw"></text>灰线是当前手绘</view>
+        <view class="legend-item"><text class="legend-dot preview"></text>蓝线是等待贴路</view>
+      </view>
+
+      <view wx:if="{{errorMessage}}" class="error-text">{{errorMessage}}</view>
+      <view wx:if="{{warnings.length}}" class="warning-text">{{warnings[0]}}</view>
+
+      <view class="save-card">
+        <input
+          class="route-name-input"
+          value="{{routeName}}"
+          maxlength="40"
+          disabled="{{pendingSaveLocked}}"
+          placeholder="路线名，例如：晋祠晨骑"
+          bindinput="onRouteNameInput" />
+        <button
+          wx:if="{{savedRouteBookId}}"
+          class="primary-button"
+          bindtap="onTapOpenSavedRoute">打开已保存路线</button>
+        <button
+          wx:elif="{{requestStatus === 'unknown'}}"
+          class="primary-button"
+          loading="{{saving}}"
+          disabled="{{saving}}"
+          bindtap="onTapConfirmPendingSave">确认上次保存</button>
+        <button
+          wx:else
+          class="primary-button {{!canSaveRoute ? 'is-disabled' : ''}}"
+          loading="{{saving}}"
+          disabled="{{!canSaveRoute}}"
+          bindtap="onTapSave">保存路线</button>
+      </view>
+
+      <button
+        wx:if="{{requestStatus === 'unknown' && pendingSaveLocked}}"
+        class="pending-abandon-button"
+        bindtap="onTapAbandonPendingSave">放弃确认并继续编辑</button>
+
+      <view wx:if="{{confirmedPoints.length < 2}}" class="save-hint">少于 2 个点时保存不可用</view>
+    </block>
+  </view>
+</view>

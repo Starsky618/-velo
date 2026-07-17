@@ -55,6 +55,7 @@ def generate_route_export(
         expected_count=len(points),
     ):
         raise ValueError("这条路线还没有用 VELO 统一海拔源生成可导出的逐点海拔")
+    export_points = _elevation_on_reference_line(points, export_points)
     elevation_point_count = sum(1 for _lon, _lat, ele in export_points if ele is not None)
 
     if export_format == "gpx":
@@ -100,6 +101,22 @@ def _finite_coord(value: object) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _elevation_on_reference_line(
+    reference_points: list[list[float]],
+    elevation_points: list[list[float]],
+) -> list[list[float]]:
+    """经纬度只认参考线；海拔快照只能补第三列，不能替换路线。"""
+    merged: list[list[float]] = []
+    for reference, elevation in zip(reference_points, elevation_points):
+        if not (
+            math.isclose(reference[0], elevation[0], rel_tol=0.0, abs_tol=1e-7)
+            and math.isclose(reference[1], elevation[1], rel_tol=0.0, abs_tol=1e-7)
+        ):
+            raise ValueError("逐点海拔快照坐标与路线参考线不一致，拒绝导出")
+        merged.append([reference[0], reference[1], elevation[2]])
+    return merged
 
 
 def _build_gpx(route_name: str, points: list[list[float | None]]) -> bytes:

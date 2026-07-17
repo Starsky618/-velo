@@ -30,6 +30,7 @@ from app.database import get_db
 from app.dependencies import get_current_user, get_optional_user
 from app.meetup.models import Meetup, MeetupParticipant
 from app.segment import schemas, service
+from app.segment.dem_client import DEMServiceError
 from app.segment.exceptions import SegmentOverlapError
 from app.segment.models import Segment
 
@@ -79,6 +80,8 @@ def create_segment(
         raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except DEMServiceError as e:
+        raise HTTPException(status_code=503, detail=f"DEM 服务暂时不可用，请稍后重试：{e}")
     except SegmentOverlapError as e:
         # task-3.A.6 修补副作用：service 加 Hausdorff 查重后老 endpoint 也要翻译 409
         # 否则 segment-creator.html 用户上传重复赛段会得 500（产品保护硬约束）

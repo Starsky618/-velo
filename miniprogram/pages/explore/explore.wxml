@@ -1,8 +1,18 @@
 <view class="route-list-page">
   <view class="page-head">
-    <view class="page-title">路线百科</view>
-    <view class="page-subtitle">太原骑友常用路线手册</view>
+    <view class="page-title">探索</view>
+    <view class="page-subtitle">发现路线，也创造自己的路线</view>
   </view>
+
+  <view class="create-route-section">
+    <view class="create-copy">
+      <view class="section-title">创建路线</view>
+      <view class="section-subtitle">手指沿着地图描一段，确认后保存成我的路书。</view>
+    </view>
+    <button class="draw-route-button" bindtap="onTapDrawRoute">画一条路线</button>
+  </view>
+
+  <view class="encyclopedia-title">路线百科</view>
 
   <!-- 加载态：骨架屏（iOS 做法）——用和真路线卡同样外形的灰块占位 + 呼吸动画，
        数据来了无缝换成真卡。比干巴巴一行"加载中"文字更像原生 App、白屏焦虑更低。

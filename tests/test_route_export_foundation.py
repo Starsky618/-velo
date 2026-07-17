@@ -8,10 +8,20 @@ from sqlalchemy import CheckConstraint, ForeignKeyConstraint
 
 
 _TRUSTED_ELEVATION_METADATA = (
-    "{\"elevation\":{\"method\":\"shared_route_elevation_v1\","
-    "\"source_name\":\"SRTM3 90m DEM\","
-    "\"license_id\":\"CGIAR-CSI SRTM public DEM\","
-    "\"accuracy_m\":16.0,"
+    "{\"elevation\":{\"method\":\"glo30_meaningful_ascent_v1\","
+    "\"source_name\":\"Copernicus DEM GLO-30 Public\","
+    "\"license_id\":\"Copernicus DEM Licence\","
+    "\"accuracy_m\":4.0,"
+    "\"horizontal_resolution_m\":30.0,"
+    "\"processing_grid_m\":20.0,"
+    "\"median_filter_points\":3,"
+    "\"smoothing_sigma_m\":100.0,"
+    "\"ascent_prominence_m\":3.0,"
+    "\"ascent_minimum_span_m\":100.0,"
+    "\"maximum_processing_distance_m\":1000000.0,"
+    "\"dataset_id\":\"COP-DEM_GLO-30-DGED\","
+    "\"vertical_datum\":\"EGM2008 (EPSG:3855)\","
+    "\"grid_registration\":\"RasterPixelIsPoint\","
     "\"point_count\":2}}"
 )
 
@@ -159,6 +169,23 @@ def test_export_generator_builds_gpx_with_required_elevation_snapshot():
     assert "<ele>701.2</ele>" in text
     assert "<ele>735.8</ele>" in text
     assert "<TrainingCenterDatabase" not in text
+
+
+def test_export_generator_rejects_elevation_coordinates_that_do_not_match_route():
+    from app.route_book.export_generator import generate_route_export
+
+    try:
+        generate_route_export(
+            route_name="坐标错配探针",
+            reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.6 37.9)",
+            elevation_points_snapshot="[[120,30,701.2],[121,31,735.8]]",
+            elevation_metadata_json=_TRUSTED_ELEVATION_METADATA,
+            export_format="gpx",
+        )
+    except ValueError as exc:
+        assert "坐标" in str(exc)
+    else:
+        raise AssertionError("海拔快照不属于参考线时必须拒绝导出，不能改写路线坐标")
 
 
 def test_export_generator_rejects_gpx_without_complete_elevation_snapshot():

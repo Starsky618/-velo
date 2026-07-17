@@ -124,6 +124,32 @@ class RouteBook(Base):
             return []
 
 
+class RouteBookSaveRequest(Base):
+    """手画路线保存凭据；路线删除后保留 tombstone，阻止迟到请求把它复活。"""
+
+    __tablename__ = "route_book_save_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    creator_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    client_request_id = Column(String(64), nullable=False)
+    request_hash = Column(String(64), nullable=False)
+    route_book_id = Column(
+        Integer,
+        ForeignKey("route_books.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "creator_id",
+            "client_request_id",
+            name="uq_route_save_req_creator_key",
+        ),
+        UniqueConstraint("route_book_id", name="uq_route_save_req_route"),
+    )
+
+
 class RouteVersion(Base):
     """路线版本表——给每张路线图纸拍下不可变的"第几版底片"。"""
 
