@@ -645,12 +645,22 @@ def test_create_route_preview_card_uses_canvas_but_detail_opens_dedicated_map_pa
     assert "routeMapNav.openRouteMapPage" in js
 
 
-def test_meetup_detail_draws_the_access_controlled_frozen_route_snapshot():
+def test_meetup_detail_prefers_frozen_snapshot_and_keeps_legacy_route_fallback():
     js = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.js")
 
-    assert "that.loadRoutePreview(res.snapshot_route_points)" in js
-    preview_block = js.split("loadRoutePreview: function", 1)[1].split("drawRoutePreviewThumb", 1)[0]
-    assert "api.getRouteBookDetail" not in preview_block
+    assert "that.loadRoutePreview(res.snapshot_route_points, res.route_book_id)" in js
+    preview_block = js.split("loadRoutePreview: function", 1)[1].split("onOpenRouteMapPage", 1)[0]
+    assert "if (preview.routePreviewVisible || !routeBookId" in preview_block
+    assert "api.getRouteBookDetail(routeBookId)" in preview_block
+
+
+def test_meetup_list_prefers_low_point_snapshot_and_only_fetches_legacy_routes():
+    js = _read(MINI / "pages" / "meetups-list" / "meetups-list.js")
+    load_block = js.split("loadTracks: function", 1)[1].split("markTrack: function", 1)[0]
+
+    snapshot_check = "Array.isArray(item.snapshot_route_points)"
+    assert snapshot_check in load_block
+    assert load_block.index(snapshot_check) < load_block.index("api.getRouteBookDetail(item.route_book_id)")
 
 
 def test_create_page_avoids_object_spread_for_wechat_runtime():

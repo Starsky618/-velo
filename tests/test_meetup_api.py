@@ -131,7 +131,8 @@ def test_meetup_detail_uses_frozen_route_points_without_leaking_draft_geometry(
 
     listed = client.get("/api/meetups?status=OPEN").json()["items"]
     item = next(row for row in listed if row["id"] == meetup_id)
-    assert item["snapshot_route_points"] is None
+    assert item["snapshot_route_points"] == frozen_points
+    assert len(item["snapshot_route_points"]) <= 48
 
 
 def test_meetup_favorite_places_are_user_scoped_and_sort_by_recent_use(client, db, auth_header, monkeypatch):
@@ -530,6 +531,9 @@ def test_invite_only_requires_token_for_detail_join_and_participants(client, db,
     create_res = client.post("/api/meetups", json=payload, headers=auth_header)
     meetup_id = create_res.json()["id"]
     token = create_res.json()["share_token"]
+    draft_with_token = client.get(f"/api/meetups/{meetup_id}?token={token}")
+    assert draft_with_token.status_code == 200
+    assert draft_with_token.json()["snapshot_route_points"] is None
     client.post(f"/api/meetups/{meetup_id}/publish", headers=auth_header)
     outsider = _auth_header_for(db, "invite-only-outsider")
 
@@ -537,7 +541,9 @@ def test_invite_only_requires_token_for_detail_join_and_participants(client, db,
     assert client.post(f"/api/meetups/{meetup_id}/join", headers=outsider).status_code == 404
     assert client.get(f"/api/meetups/{meetup_id}/participants", headers=outsider).status_code == 404
 
-    assert client.get(f"/api/meetups/{meetup_id}?token={token}", headers=outsider).status_code == 200
+    invited_detail = client.get(f"/api/meetups/{meetup_id}?token={token}", headers=outsider)
+    assert invited_detail.status_code == 200
+    assert len(invited_detail.json()["snapshot_route_points"]) >= 2
     assert client.post(f"/api/meetups/{meetup_id}/join?token={token}", headers=outsider).status_code == 200
     assert client.get(f"/api/meetups/{meetup_id}/participants", headers=outsider).status_code == 200
     assert client.get(f"/api/meetups/{meetup_id}", headers=outsider).status_code == 200

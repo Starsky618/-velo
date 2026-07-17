@@ -3,8 +3,7 @@ const api = require('../../utils/api')
 const { formatDistance, formatClimb, formatTime, paceText } = require('../../utils/meetup-format')
 const routeThumb = require('../../utils/route-thumb')
 
-// 轨迹点缓存（模块级）：同一条路书的 preview_points 只拉一次，
-// 切 tab 回来 / 下拉刷新 / 翻页都直接复用，不重复请求
+// 只给升级前没有冻结快照的旧约骑兜底；新约骑直接使用列表响应里的低点数快照。
 var trackCache = {}
 
 Page({
@@ -69,13 +68,17 @@ Page({
       })
   },
 
-  // 给每张有路书的卡补轨迹缩略线：列表接口只带 route_book_id，
-  // 轨迹点按需异步拉（getRouteBookDetail → preview_points），拉到才显示轨迹区，
-  // 没有路书 / 拉失败的卡整块隐藏（不显示占位）。
+  // 新记录直接画约骑自己的冻结快照，避免私有路书权限让公开约骑丢图，
+  // 也避免列表为每张卡再发一次请求。旧记录没有快照时才走原路书兜底。
   loadTracks: function () {
     var that = this
     this.data.meetups.forEach(function (item) {
-      if (!item.route_book_id || item.hasTrack || !api.getRouteBookDetail) return
+      if (item.hasTrack) return
+      if (Array.isArray(item.snapshot_route_points) && item.snapshot_route_points.length >= 2) {
+        that.markTrack(item.id, item.snapshot_route_points)
+        return
+      }
+      if (!item.route_book_id || !api.getRouteBookDetail) return
       if (trackCache[item.route_book_id]) {
         that.markTrack(item.id, trackCache[item.route_book_id])
         return

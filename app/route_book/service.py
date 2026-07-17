@@ -818,7 +818,14 @@ def _route_book_export_state(
 
 
 def delete_route_book(db: Session, route_book_id: int, current_user_id: int) -> None:
-    route = db.query(RouteBook).filter(RouteBook.id == route_book_id).first()
+    # 与 create_route_export 的 SELECT FOR UPDATE 成对，避免删除扫描完 artifact 后
+    # 另一个请求又为同一路线提交新的导出文件。
+    route = (
+        db.query(RouteBook)
+        .filter(RouteBook.id == route_book_id)
+        .with_for_update()
+        .first()
+    )
     if route is None:
         raise LookupError("route_book not found")
     if route.creator_id != current_user_id:

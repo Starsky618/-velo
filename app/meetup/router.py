@@ -29,6 +29,7 @@ def _response(
     current_user_id=None,
     db=None,
     include_route_points=False,
+    route_points_limit=500,
 ) -> schemas.MeetupResponse:
     """把 ORM 行翻译成 API 卡片，像把后台单据整理成前台可读票面。
 
@@ -50,7 +51,10 @@ def _response(
         snapshot_climb=meetup.snapshot_climb,
         snapshot_city=meetup.snapshot_city,
         snapshot_route_points=(
-            meetup.snapshot_route_points
+            service.snapshot_route_points_for_response(
+                meetup.snapshot_route_points,
+                limit=route_points_limit,
+            )
             if include_route_points and (meetup.status != "DRAFT" or is_creator)
             else None
         ),
@@ -123,6 +127,8 @@ def list_meetups(
             meetup,
             participants_count=result["participants_count"].get(meetup.id, 0),
             first_media_file_id=result["first_media"].get(meetup.id),
+            include_route_points=True,
+            route_points_limit=48,
         )
         for meetup in result["items"]
     ]
@@ -263,10 +269,10 @@ def get_meetup(
     else:
         viewer = "participant" if service.is_participant(db, meetup_id, current_user_id) else "guest"
     logger.info(
-        "SENSOR view meetup_id=%s viewer=%s token=%s source=%s",
+        "SENSOR view meetup_id=%s viewer=%s token_present=%s source=%s",
         meetup_id,
         viewer,
-        token,
+        bool(token),
         source,
     )
     return _live_response(

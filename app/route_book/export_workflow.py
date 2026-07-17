@@ -60,7 +60,9 @@ def create_route_export(
     target_platform: RouteExportTargetPlatform | None,
     current_user_id: int | None,
 ) -> RouteExportCreated:
-    route = _get_route(db, route_book_id)
+    # 与删除路线共用行锁：导出先锁时，删除会等 artifact 落库后再收集文件；
+    # 删除先锁时，导出醒来后看不到路线，不会在清单查询之后新造孤儿文件。
+    route = _get_route(db, route_book_id, for_update=True)
     is_admin = _is_admin(db, current_user_id)
     assert_can_export_route(route, current_user_id=current_user_id, is_admin=is_admin)
 
@@ -217,8 +219,11 @@ def safe_export_filename(route_name: str, route_book_id: int, route_version_id: 
     return f"{cleaned}-{route_book_id}-v{route_version_id}.{export_format}"
 
 
-def _get_route(db: Session, route_book_id: int) -> RouteBook:
-    route = db.query(RouteBook).filter(RouteBook.id == route_book_id).first()
+def _get_route(db: Session, route_book_id: int, *, for_update: bool = False) -> RouteBook:
+    query = db.query(RouteBook).filter(RouteBook.id == route_book_id)
+    if for_update:
+        query = query.with_for_update()
+    route = query.first()
     if route is None:
         raise LookupError("route book not found")
     return route

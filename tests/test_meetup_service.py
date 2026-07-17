@@ -73,6 +73,16 @@ def test_create_meetup_from_segment_writes_snapshot(db, test_user):
     assert meetup.snapshot_city == "taiyuan"
 
 
+def test_snapshot_route_points_for_response_keeps_ends_and_caps_payload():
+    points = [[112.0 + index / 1000, 37.0 + index / 1000] for index in range(200)]
+
+    sampled = service.snapshot_route_points_for_response(json.dumps(points), limit=48)
+
+    assert len(sampled) == 48
+    assert sampled[0] == points[0]
+    assert sampled[-1] == points[-1]
+
+
 def test_create_meetup_returns_existing_draft_id_when_draft_exists(db, test_user):
     segment = _segment(db)
     existing = service.create_meetup(

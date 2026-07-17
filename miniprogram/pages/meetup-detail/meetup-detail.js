@@ -126,7 +126,7 @@ Page({
         that.updateReportEntrance()
         that.loadMedia()
         that.loadParticipants()
-        that.loadRoutePreview(res.snapshot_route_points)
+        that.loadRoutePreview(res.snapshot_route_points, res.route_book_id)
       })
       .catch(function (err) {
         wx.showToast({ title: err.message || '加载失败', icon: 'none' })
@@ -137,11 +137,27 @@ Page({
       })
   },
 
-  loadRoutePreview: function (routePoints) {
+  loadRoutePreview: function (routePoints, routeBookId) {
     var that = this
-    this.setData(buildRoutePreview(routePoints), function () {
-      if (that.data.routePreviewVisible) that.drawRoutePreviewThumb()
-    })
+    var preview = buildRoutePreview(routePoints)
+    if (preview.routePreviewVisible || !routeBookId || !api.getRouteBookDetail) {
+      this.setData(preview, function () {
+        if (that.data.routePreviewVisible) that.drawRoutePreviewThumb()
+      })
+      return
+    }
+
+    // 兼容升级前的约骑：旧记录没有冻结快照，只在新字段为空时沿用原路书预览。
+    // 新记录始终走受约骑权限保护的快照；私有旧路书读不到时仍保持隐藏。
+    api.getRouteBookDetail(routeBookId)
+      .then(function (routeBook) {
+        that.setData(buildRoutePreview(routeBook.preview_points), function () {
+          if (that.data.routePreviewVisible) that.drawRoutePreviewThumb()
+        })
+      })
+      .catch(function () {
+        that.setData(buildRoutePreview([]))
+      })
   },
 
   // 约骑详情页顶部地图只是让人先看路线形状，不承担拖动选点。

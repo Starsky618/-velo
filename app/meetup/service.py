@@ -115,6 +115,31 @@ def _bounded_route_points(points: list[list[float]], limit: int = 500) -> list[l
     return [points[index] for index in indexes]
 
 
+def snapshot_route_points_for_response(value: object, limit: int = 500) -> list[list[float]]:
+    """把数据库快照解成前端可画的点，并按使用场景限制响应体积。"""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(value, list):
+        return []
+    points = []
+    for point in value:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        try:
+            lon = float(point[0])
+            lat = float(point[1])
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(lon) and math.isfinite(lat) and -180 <= lon <= 180 and -90 <= lat <= 90:
+            points.append([lon, lat])
+    return _bounded_route_points(points, limit=max(2, limit))
+
+
 def _encoded_route_points(points: list[list[float]]) -> str | None:
     bounded = _bounded_route_points(points)
     if len(bounded) < 2:

@@ -73,7 +73,7 @@ def test_public_detail_logs_anon_view_with_direct_source(client, db, test_user, 
 
     assert res.status_code == 200
     assert _sensor_lines(caplog) == [
-        f"SENSOR view meetup_id={meetup.id} viewer=anon token=None source=direct"
+        f"SENSOR view meetup_id={meetup.id} viewer=anon token_present=False source=direct"
     ]
 
 
@@ -85,7 +85,7 @@ def test_participant_share_card_view_logs_participant_source(client, db, test_us
 
     assert res.status_code == 200
     assert _sensor_lines(caplog) == [
-        f"SENSOR view meetup_id={meetup.id} viewer=participant token=None source=share_card"
+        f"SENSOR view meetup_id={meetup.id} viewer=participant token_present=False source=share_card"
     ]
 
 
@@ -98,7 +98,7 @@ def test_logged_in_non_participant_logs_guest_view(client, db, test_user, caplog
 
     assert res.status_code == 200
     assert _sensor_lines(caplog) == [
-        f"SENSOR view meetup_id={meetup.id} viewer=guest token=None source=share_card"
+        f"SENSOR view meetup_id={meetup.id} viewer=guest token_present=False source=share_card"
     ]
 
 
@@ -112,6 +112,19 @@ def test_invite_only_without_token_returns_404_and_logs_no_sensor(client, db, te
     assert _sensor_lines(caplog) == []
 
 
+def test_invite_token_is_never_written_to_sensor_log(client, db, test_user, caplog):
+    meetup = _open_meetup(db, test_user.id, visibility="invite_only")
+    caplog.set_level(logging.INFO, logger="app.meetup.router")
+
+    res = client.get(f"/api/meetups/{meetup.id}?token={meetup.share_token}&source=share_card")
+
+    assert res.status_code == 200
+    assert meetup.share_token not in "\n".join(_sensor_lines(caplog))
+    assert _sensor_lines(caplog) == [
+        f"SENSOR view meetup_id={meetup.id} viewer=anon token_present=True source=share_card"
+    ]
+
+
 def test_detail_without_source_keeps_direct_default(client, db, test_user, caplog):
     meetup = _open_meetup(db, test_user.id)
     _, guest_header = _auth_header_for(db, "meetup-sensor-default")
@@ -121,5 +134,5 @@ def test_detail_without_source_keeps_direct_default(client, db, test_user, caplo
 
     assert res.status_code == 200
     assert _sensor_lines(caplog) == [
-        f"SENSOR view meetup_id={meetup.id} viewer=guest token=None source=direct"
+        f"SENSOR view meetup_id={meetup.id} viewer=guest token_present=False source=direct"
     ]
