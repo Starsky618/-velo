@@ -3,7 +3,9 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
+import pytest
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint
 
 
@@ -24,6 +26,37 @@ _TRUSTED_ELEVATION_METADATA = (
     "\"grid_registration\":\"RasterPixelIsPoint\","
     "\"point_count\":2}}"
 )
+
+
+def test_export_route_lock_allows_peer_exports_but_blocks_delete():
+    from app.route_book import export_workflow
+
+    db = MagicMock()
+    filtered = db.query.return_value.filter.return_value
+    locked = filtered.with_for_update.return_value
+    populated = locked.populate_existing.return_value
+    route = SimpleNamespace(id=42)
+    populated.first.return_value = route
+
+    assert export_workflow._get_route(db, 42, for_update=True) is route
+    filtered.with_for_update.assert_called_once_with(read=True, key_share=True)
+    locked.populate_existing.assert_called_once_with()
+
+
+def test_route_delete_uses_fresh_exclusive_row_lock():
+    from app.route_book import service
+
+    db = MagicMock()
+    filtered = db.query.return_value.filter.return_value
+    locked = filtered.with_for_update.return_value
+    populated = locked.populate_existing.return_value
+    populated.first.return_value = None
+
+    with pytest.raises(LookupError, match="route_book not found"):
+        service.delete_route_book(db, 42, 7)
+
+    filtered.with_for_update.assert_called_once_with()
+    locked.populate_existing.assert_called_once_with()
 
 
 def _check_sql(table, name: str) -> str:

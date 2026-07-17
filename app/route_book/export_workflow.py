@@ -222,7 +222,8 @@ def safe_export_filename(route_name: str, route_book_id: int, route_version_id: 
 def _get_route(db: Session, route_book_id: int, *, for_update: bool = False) -> RouteBook:
     query = db.query(RouteBook).filter(RouteBook.id == route_book_id)
     if for_update:
-        query = query.with_for_update()
+        # FOR KEY SHARE 允许同一路线并发导出，但仍与删除端的 FOR UPDATE 冲突。
+        query = query.with_for_update(read=True, key_share=True).populate_existing()
     route = query.first()
     if route is None:
         raise LookupError("route book not found")

@@ -824,6 +824,7 @@ def delete_route_book(db: Session, route_book_id: int, current_user_id: int) -> 
         db.query(RouteBook)
         .filter(RouteBook.id == route_book_id)
         .with_for_update()
+        .populate_existing()
         .first()
     )
     if route is None:
