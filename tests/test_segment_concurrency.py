@@ -123,8 +123,14 @@ def _make_activity_with_trackpoints(db, user: User, suffix: str) -> Activity:
     return activity
 
 
-def test_advisory_lock_serializes_concurrent_creates(pg_session_factory):
+def test_advisory_lock_serializes_concurrent_creates(pg_session_factory, monkeypatch):
     """两个线程同时从同一段轨迹建赛段，第二个应在锁后被 Hausdorff 查重挡住。"""
+    # 本测试只裁决 PostgreSQL advisory lock + Hausdorff 并发语义；GLO 下载有独立测试。
+    # 固定高程输入可避免把外部瓦片网络波动误判成行锁失效。
+    monkeypatch.setattr(
+        "app.segment.service_create.query_elevations",
+        lambda coords: [100.0 + index for index, _coord in enumerate(coords)],
+    )
     setup_db = pg_session_factory()
     try:
         _cleanup(setup_db)
@@ -167,7 +173,7 @@ def test_advisory_lock_serializes_concurrent_creates(pg_session_factory):
         thread.join(timeout=20)
 
     seen = [results.get(timeout=1) for _ in range(2)]
-    assert sorted(kind for kind, _ in seen) == ["ok", "overlap"]
+    assert sorted(kind for kind, _ in seen) == ["ok", "overlap"], seen
 
     cleanup_db = pg_session_factory()
     try:
