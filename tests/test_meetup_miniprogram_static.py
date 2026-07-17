@@ -645,6 +645,19 @@ def test_create_route_preview_card_uses_canvas_but_detail_opens_dedicated_map_pa
     assert "routeMapNav.openRouteMapPage" in js
 
 
+def test_all_route_map_markers_have_required_dimensions():
+    for page in ("route-detail", "meetup-detail", "meetup-create"):
+        js = _read(MINI / "pages" / page / f"{page}.js")
+        for title in ("起点", "终点"):
+            marker = re.search(
+                r"\{[^{}]*width:\s*18[^{}]*height:\s*18[^{}]*title:\s*'"
+                + title
+                + r"'[^{}]*\}",
+                js,
+            )
+            assert marker, f"{page} 的{title} marker 缺少微信地图要求的 18x18 尺寸"
+
+
 def test_meetup_detail_prefers_frozen_snapshot_and_keeps_legacy_route_fallback():
     js = _read(MINI / "pages" / "meetup-detail" / "meetup-detail.js")
 

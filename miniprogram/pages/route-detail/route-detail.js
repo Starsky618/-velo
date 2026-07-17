@@ -38,8 +38,8 @@ function buildRoutePreview(points) {
     routePreviewCenter: first,
     routePreviewIncludePoints: mapPoints,
     routePreviewMarkers: [
-      { id: 1, latitude: first.latitude, longitude: first.longitude, title: '起点' },
-      { id: 2, latitude: last.latitude, longitude: last.longitude, title: '终点' },
+      { id: 1, latitude: first.latitude, longitude: first.longitude, width: 18, height: 18, title: '起点' },
+      { id: 2, latitude: last.latitude, longitude: last.longitude, width: 18, height: 18, title: '终点' },
     ],
     routePreviewPolylines: mapTheme.buildRoutePreviewPolylines(mapPoints),
   }

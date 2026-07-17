@@ -157,6 +157,35 @@ def test_route_book_detail_build_stats_uses_meter_units_and_zero_climb():
     assert rows["badDistance"] == [{"v": "120", "u": "m", "k": "爬升"}]
 
 
+def test_route_book_detail_map_markers_have_required_dimensions():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                global.Page = function () {}
+                global.wx = {}
+                const detail = require('./miniprogram/pages/route-book-detail/route-book-detail.js')
+                const preview = detail.buildRoutePreview([
+                  [112.5489, 37.8706],
+                  [112.5589, 37.8756],
+                ])
+                process.stdout.write(JSON.stringify(preview.routePreviewMarkers))
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    markers = json.loads(result.stdout)
+
+    assert len(markers) == 2
+    assert all(marker["width"] == 18 and marker["height"] == 18 for marker in markers)
+
+
 def test_route_book_detail_js_syntax():
     subprocess.run(
         ["node", "--check", str(PAGE_DIR / "route-book-detail.js")],
