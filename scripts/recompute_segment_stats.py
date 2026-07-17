@@ -1,9 +1,9 @@
-"""赛段坡度数据回填脚本——用 DEM 查表替换历史 GPS 海拔（v3 / 2026-05-14）。
+"""赛段坡度数据回填脚本——用统一 GLO-30 成品链替换历史海拔。
 
 为什么写这个：
 原算法用 GPS 海拔，精度 ±10-15m，造成 11km 平路赛段被算成 26.1% 假坡度
 （生产 segment id=24 "夜骑清徐" 实证）。GPS 噪声系统偏差无法通过平滑消除，
-业界共识必须换数据源——从统一 DEM 入口查 SRTM3 90m 地形海拔替换。
+当前从统一入口读取 Copernicus GLO-30，并复用路书的固定物理网格和有效爬升算法。
 
 实测验证（DEM 地形源）：
 - 夜骑清徐起点 768m / 终点 766m → 11km 平路真实坡度 0.018% ✓
@@ -28,7 +28,7 @@
 
 数据源：
 - 等距采样 lat/lon：PostGIS ST_LineInterpolatePoint
-- DEM 海拔：app.elevation.dem_client（SRTM.py + CGIAR-CSI SRTM3 90m，本地缓存）
+- 规划海拔：app.elevation.dem_client（Copernicus GLO-30 COG，本地持久缓存）
 """
 
 from __future__ import annotations
@@ -39,11 +39,12 @@ import logging
 import sys
 from types import SimpleNamespace
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from app.database import SessionLocal
-from app.segment._geo_utils import _haversine
-from app.segment.algorithms import _smooth_elevations, calculate_difficulty, calculate_max_gradient
+from app.elevation.route_elevation import build_route_elevation_result
+from app.meetup.models import Meetup
+from app.segment.algorithms import calculate_difficulty, calculate_max_gradient
 from app.segment.dem_client import DEMServiceError, query_elevations
 from app.segment.models import Segment
 
@@ -51,11 +52,10 @@ from app.segment.models import Segment
 logger = logging.getLogger(__name__)
 
 # 沿赛段参考线等距采样点数。
-# 算 max_gradient 用 400 点密采样（10km 赛段 = 25m 间距，100m 滑窗跨 4 点 / 平滑窗口跨 375m 重叠率 71% / 能压住 DEM 山区噪声 ±20m）
-# 存 elevation_profile 仍用 80 点（前端画曲线够 / 每 5 取 1）
+# 400 个坐标只负责把 PostGIS 参考线还原成足够细的折线；真正的海拔查询仍会在
+# route_elevation 中按约 20m 的固定物理网格重采样。存储曲线压到 80 点供前端绘图。
 DENSE_SAMPLE_COUNT = 400
 PROFILE_SAMPLE_COUNT = 80
-PROFILE_STRIDE = DENSE_SAMPLE_COUNT // PROFILE_SAMPLE_COUNT  # = 5
 
 
 def sample_reference_line_coords(
@@ -102,67 +102,44 @@ def recompute_one_segment(db, seg: Segment, skip_dem: bool = False) -> dict | No
         return {"_dry_run_would_query": len(coords)}
 
     try:
-        dem_elevations = query_elevations(coords)
-    except DEMServiceError as exc:
+        elevation_result = build_route_elevation_result(
+            [[lon, lat] for lat, lon in coords],
+            query_func=query_elevations,
+        )
+    except (DEMServiceError, ValueError) as exc:
         logger.warning("segment id=%s DEM 查询失败：%s", seg.id, exc)
         return None
 
-    # DEM 山区像素 ±20m 噪声 + 30m 分辨率不能精确测窄带状公路 → 视觉锯齿 + max 虚高。
-    # 对 400 点 DEM 数据做中位数平滑（window=21 / 跨 ~525m），让单调上坡 / 下坡赛段
-    # 看起来真单调；max_gradient + elevation_profile 都用平滑后数据保持一致。
-    # 真陡坡（连续上升 ≥ 500m）的中段海拔差稳定 → 中位数趋势不变 / 不会被平掉。
-    smoothed_elevations = _smooth_elevations(dem_elevations, window=21)
+    shaped_elevations = [point[2] for point in elevation_result.snapshot]
+    elevation_gain = elevation_result.climb
+    elevation_loss = elevation_result.descent
 
-    # 用平滑后 DEM 海拔 + 实际坐标距离重算所有字段
-    total_dist = 0.0
-    elevation_gain = 0.0
-    elevation_loss = 0.0
-    for i in range(1, len(coords)):
-        total_dist += _haversine(
-            coords[i - 1][0], coords[i - 1][1],
-            coords[i][0], coords[i][1],
-        )
-        prev_ele = smoothed_elevations[i - 1]
-        curr_ele = smoothed_elevations[i]
-        if prev_ele is not None and curr_ele is not None:
-            diff = curr_ele - prev_ele
-            if diff > 0:
-                elevation_gain += diff
-            else:
-                elevation_loss += abs(diff)
-
-    # avg_gradient 用 seg.distance（reference_line 真实长度）算，不用 total_dist。
-    # total_dist 是 400 点直线累计 < reference_line 折线真长度，两者用不同距离会让
-    # 用户拿 DB 显示的 gain/loss/dist 自己算 avg 算不回 DB 的 avg（不自洽 bug / Tim 2026-05-15 抓）
+    # 平均坡度按成品剖面的起终点净高差计算；有效爬升/下降会过滤微起伏，不能
+    # 再拿二者相减冒充净高差。
     avg_gradient = (
-        round((elevation_gain - elevation_loss) / seg.distance * 100, 1)
+        round((shaped_elevations[-1] - shaped_elevations[0]) / seg.distance * 100, 1)
         if seg.distance and seg.distance > 0
         else 0.0
     )
 
-    # max_gradient：用平滑后数据 + 500m 窗口
-    # 双层防御（平滑 + 大窗口）压住 DEM 像素噪声与采样到山势而非公路的位置漂移
+    # max_gradient 保留赛段原有 500m 窗口，但输入改为统一成品剖面。
     points = [
-        SimpleNamespace(latitude=coords[i][0], longitude=coords[i][1], elevation=smoothed_elevations[i])
+        SimpleNamespace(latitude=coords[i][0], longitude=coords[i][1], elevation=shaped_elevations[i])
         for i in range(len(coords))
     ]
     new_max_grad = calculate_max_gradient(points, window_m=500.0)
 
     new_difficulty = calculate_difficulty(seg.distance, elevation_gain, new_max_grad)
 
-    # elevation_profile：从平滑后 400 点每 5 个取 1 → 80 点存 DB（前端画曲线够用）
-    # 用平滑后数据，前端看到的曲线视觉更接近真实路型（单调上坡看起来真单调，无锯齿）
-    sparse_elevations = smoothed_elevations[::PROFILE_STRIDE][:PROFILE_SAMPLE_COUNT]
-    filled_profile: list[float] = []
-    last_valid: float | None = None
-    for ele in sparse_elevations:
-        if ele is not None:
-            filled_profile.append(round(ele, 1))
-            last_valid = ele
-        elif last_valid is not None:
-            filled_profile.append(round(last_valid, 1))
-        else:
-            filled_profile.append(0.0)
+    profile_values = [point[1] for point in elevation_result.profile]
+    if len(profile_values) <= PROFILE_SAMPLE_COUNT:
+        filled_profile = [round(value, 1) for value in profile_values]
+    else:
+        indexes = [
+            round(index * (len(profile_values) - 1) / (PROFILE_SAMPLE_COUNT - 1))
+            for index in range(PROFILE_SAMPLE_COUNT)
+        ]
+        filled_profile = [round(profile_values[index], 1) for index in indexes]
 
     return {
         "elevation_profile": filled_profile,
@@ -172,6 +149,22 @@ def recompute_one_segment(db, seg: Segment, skip_dem: bool = False) -> dict | No
         "max_gradient": new_max_grad,
         "difficulty": new_difficulty,
     }
+
+
+def _refresh_linked_segment_meetup_snapshots(
+    db,
+    segment_id: int,
+    climb: float | None,
+) -> int:
+    """同步所有仍可被产品 API 读取的约骑，彻底移除旧海拔结果。"""
+    if not inspect(db.connection()).has_table("meetups"):
+        return 0
+
+    return (
+        db.query(Meetup)
+        .filter(Meetup.segment_id == segment_id)
+        .update({Meetup.snapshot_climb: climb}, synchronize_session=False)
+    )
 
 
 def recompute_all(db, apply_changes: bool) -> dict:
@@ -213,12 +206,21 @@ def recompute_all(db, apply_changes: bool) -> dict:
             new_diff = new_values["difficulty"]
             new_avg = new_values["avg_gradient"]
 
+            try:
+                old_profile = json.loads(seg.elevation_profile) if seg.elevation_profile else None
+            except (TypeError, json.JSONDecodeError):
+                old_profile = None
             changed = (
                 old_grad is None
                 or abs(new_grad - (old_grad or 0)) > 0.1
                 or new_diff != old_diff
                 or old_avg is None
                 or abs(new_avg - (old_avg or 0)) > 0.05
+                or seg.elevation_gain is None
+                or abs(new_values["elevation_gain"] - (seg.elevation_gain or 0)) > 0.05
+                or seg.elevation_loss is None
+                or abs(new_values["elevation_loss"] - (seg.elevation_loss or 0)) > 0.05
+                or old_profile != new_values["elevation_profile"]
             )
             tag = " [变化]" if changed else ""
             logger.info(
@@ -230,22 +232,32 @@ def recompute_all(db, apply_changes: bool) -> dict:
                 tag,
             )
 
-            if changed:
-                if apply_changes:
-                    # SAVEPOINT 隔离：flush 把 ORM 改动推到嵌套点（防一条失败带翻整批）
-                    with db.begin_nested():
+            if apply_changes:
+                # 即使赛段值已经一致，也要修复仍持有旧爬升的约骑快照。
+                # SAVEPOINT 把赛段与引用它的约骑作为同一个原子更新单元。
+                with db.begin_nested():
+                    if changed:
                         seg.elevation_profile = json.dumps(new_values["elevation_profile"])
                         seg.elevation_gain = new_values["elevation_gain"]
                         seg.elevation_loss = new_values["elevation_loss"]
                         seg.avg_gradient = new_values["avg_gradient"]
                         seg.max_gradient = new_grad
                         seg.difficulty = new_diff
-                        db.flush()
+                    _refresh_linked_segment_meetup_snapshots(
+                        db,
+                        seg.id,
+                        new_values["elevation_gain"],
+                    )
+                    db.flush()
+                if changed:
                     stats["updated"] += 1
                 else:
-                    stats["would_update"] += 1
+                    stats["unchanged"] += 1
             else:
-                stats["unchanged"] += 1
+                if changed:
+                    stats["would_update"] += 1
+                else:
+                    stats["unchanged"] += 1
 
         except Exception:
             logger.exception("recompute segment id=%s failed", seg.id)

@@ -51,6 +51,7 @@ services:
       # DeepSeek：v5 task 1.B.1 起用，本地占位符即可
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-dev-placeholder}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      GLO30_BASE_URL: ${GLO30_BASE_URL:-https://copernicus-dem-30m.s3.amazonaws.com}
     ports:
       - "127.0.0.1:8001:8000"  # 现有生产 stack 已占 8000，dev 用 8001
     depends_on:
@@ -58,6 +59,7 @@ services:
       - redis
     volumes:
       - uploads_dev:/app/uploads
+      - glo30_cache_dev:/var/cache/velo/glo30
       # dev 专用：源码 + 测试 + 脚本目录挂宿主，--reload 修改即时生效；
       # tests/ 被 .dockerignore 排除（生产镜像不含），靠挂载补回
       - ./app:/app/app
@@ -77,11 +79,13 @@ services:
       RQ_QUEUES: "velo,ai_drafts"
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-dev-placeholder}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      GLO30_BASE_URL: ${GLO30_BASE_URL:-https://copernicus-dem-30m.s3.amazonaws.com}
     depends_on:
       - db
       - redis
     volumes:
       - uploads_dev:/app/uploads
+      - glo30_cache_dev:/var/cache/velo/glo30
 
   scheduler:
     build: .
@@ -123,3 +127,4 @@ services:
 volumes:
   pgdata_dev:    # dev 独立卷，不和生产共享
   uploads_dev:
+  glo30_cache_dev:

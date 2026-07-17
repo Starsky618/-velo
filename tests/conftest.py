@@ -21,8 +21,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import (
-    Boolean, Column, DateTime, Float, Integer, JSON, MetaData, String, Table,
-    Text, UniqueConstraint, create_engine,
+    Boolean, CheckConstraint, Column, DateTime, Float, Integer, JSON, MetaData,
+    String, Table, Text, UniqueConstraint, create_engine,
 )
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -268,6 +268,23 @@ _route_books_table = Table(
     Column("line_hash", String(64)),
     Column("elevation_profile", Text),
     Column("current_version_id", Integer),
+)
+
+_route_book_save_requests_table = Table(
+    "route_book_save_requests",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("creator_id", Integer, nullable=False),
+    Column("client_request_id", String(64), nullable=False),
+    Column("request_hash", String(64), nullable=False),
+    Column("route_book_id", Integer),
+    Column("created_at", DateTime(timezone=True)),
+    UniqueConstraint(
+        "creator_id",
+        "client_request_id",
+        name="uq_route_save_req_creator_key",
+    ),
+    UniqueConstraint("route_book_id", name="uq_route_save_req_route"),
 )
 
 _route_versions_table = Table(

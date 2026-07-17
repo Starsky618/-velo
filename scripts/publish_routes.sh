@@ -63,8 +63,9 @@ fi
 rm -rf "$staging"
 
 # ── 4-5/5 服务器侧一口气完成：拉内容 → 图进容器 → 灌库（单次 SSH 连接）
-ssh "${SSH_OPTS[@]}" "$SERVER" '
-  set -e
+# 明确用 bash 执行远端块并开启 pipefail：灌库命令后接 tail 只为缩短输出，
+# importer/GLO 非零必须原样传回本机，不能被成功的 tail 吞掉后假报“发布完成”。
+ssh "${SSH_OPTS[@]}" "$SERVER" 'bash -seuo pipefail' <<'REMOTE_PUBLISH'
   cd ~/velo
   git pull --no-rebase --no-edit 2>&1 | tail -1
   if [ -d /tmp/velo_covers_in ]; then
@@ -79,7 +80,7 @@ ssh "${SSH_OPTS[@]}" "$SERVER" '
     rm -rf /tmp/velo_covers_in
   fi
   sudo docker compose exec -T api python3 scripts/import_route_guides.py 2>&1 | tail -2
-'
+REMOTE_PUBLISH
 echo "── 4-5/5 服务器同步 + 数据库更新 ✓"
 
 echo ""

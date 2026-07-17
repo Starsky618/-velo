@@ -15,8 +15,14 @@ import json
 
 from sqlalchemy import func, inspect
 
-from app.elevation.dem_client import SRTM_HORIZONTAL_RESOLUTION_M
-from app.elevation.route_elevation import ElevationQuery, RouteElevationResult, build_route_elevation_result
+from app.elevation.dem_client import GLO30_HORIZONTAL_RESOLUTION_M
+from app.elevation.route_elevation import (
+    ROUTE_ELEVATION_METHOD,
+    ElevationQuery,
+    RouteElevationResult,
+    build_route_elevation_result,
+    route_elevation_metadata,
+)
 from app.route_book.models import RouteBook, RouteGuide, RouteVersion, _preview_points_from_wkt
 
 
@@ -30,6 +36,8 @@ def backfill_route_version_elevation(
     accuracy_m: float,
     dry_run: bool,
     commit: bool = True,
+    method: str = ROUTE_ELEVATION_METHOD,
+    extra_metadata: dict | None = None,
 ) -> bool:
     """
     给一版路书路线补齐逐点海拔。
@@ -60,9 +68,13 @@ def backfill_route_version_elevation(
         source_name=source_name,
         license_id=license_id,
         accuracy_m=accuracy_m,
-        method="shared_route_elevation_v1",
+        method=method,
         timestamp_field="generated_at",
-        extra_metadata={"horizontal_resolution_m": SRTM_HORIZONTAL_RESOLUTION_M},
+        extra_metadata={
+            "horizontal_resolution_m": GLO30_HORIZONTAL_RESOLUTION_M,
+            **route_elevation_metadata(),
+            **(extra_metadata or {}),
+        },
     )
 
     if commit:

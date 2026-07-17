@@ -19,6 +19,8 @@
     "pages/meetups-mine/meetups-mine",
     "pages/route-list/route-list",
     "pages/route-detail/route-detail",
+    "pages/route-book-detail/route-book-detail",
+    "pages/route-draw/route-draw",
     "pages/meetups-list/meetups-list",
     "pages/meetup-detail/meetup-detail",
     "pages/meetup-create/meetup-create"

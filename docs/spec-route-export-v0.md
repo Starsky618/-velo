@@ -43,7 +43,7 @@
 - iGPSPORT / 迈金 / Wahoo 私有接口。
 - 自动拉起目标 App。
 - 转弯提示、实时导航。
-- 没有原始海拔时自动猜海拔。
+- 缺少可信路线版本时让目标 App 自行猜海拔。
 - RQ 队列和 worker 配置变更。
 
 ## 后端合同
@@ -106,26 +106,15 @@
 - 不生成 Course Points。
 - 文件名格式为 `{route_name}-{route_book_id}-v{route_version_id}.{gpx|tcx}`，路线名要清理路径字符和超长文本。
 
-## 海拔数据优先级
+## 海拔生成合同
 
-1. **VELO 统一地形源逐点海拔**：当前实现为 `shared_route_elevation_v1`，统一走公共海拔模块补齐每个路线点，并记录 source / license / accuracy / point_count。用户上传 GPX/FIT 或已有活动里的原始海拔只能作为历史输入，不再直接视为可导出可信源。
-2. **VELO 授权高程补全**：国内合规授权供应商返回的逐点海拔可通过 CSV 导入，方法标记为 `authorized_point_elevation_csv_v1`，必须记录 source / license / accuracy / point_count。
-3. **没有可信逐点海拔**：不导出。iGPSPORT 真机 A/B 已验证：无 `<ele>` 的 GPX 会触发目标 App 自行补算，可能得到显著偏高的爬升。
+1. **线上统一底座**：当前可信方法为 `glo30_meaningful_ascent_v1`。后端从 GLO-30 查询中心线高度，沿路线约每 20m 重采样，依次执行 3 点中值去毛刺和 100m Gaussian 平滑；总爬升只累计抬升至少 3m、水平跨度至少 100m 的完整上升事件。页面海拔图、预计总爬升和导出逐点海拔必须来自同一条成品剖面。
+2. **可审计元数据**：路线版本必须记录 GLO-30 的 source / license / accuracy / point_count、`dataset_id=COP-DEM_GLO-30-DGED`、`vertical_datum=EGM2008 (EPSG:3855)`、`grid_registration=RasterPixelIsPoint`，以及 `processing_grid_m=20`、`median_filter_points=3`、`smoothing_sigma_m=100`、`ascent_prominence_m=3`、`ascent_minimum_span_m=100`、`maximum_processing_distance_m=1000000`。旧方法快照不能继续被视为当前可信结果，必须重新生成。
+3. **离线校准证据**：ALOS、用户 FIT 与已获授权的 Strava 赛段数据用于拟合参数、发现桥梁/高架/山体侧坡等系统偏差和回归验证；它们不在用户请求时按固定权重混入 GLO-30，也不靠单条路线特调线上结果。
+4. **授权逐点导入**：确有独立授权来源的逐点高度仍可通过 `authorized_point_elevation_csv_v1` 导入，但必须记录 source / license / accuracy / point_count；它不改变默认 GLO-30 链路。
+5. **没有可信逐点海拔**：不导出。iGPSPORT 真机 A/B 已验证：无 `<ele>` 的 GPX 会触发目标 App 自行补算，可能得到显著偏高的爬升。
 
-### 合规高程源调研闸门
-
-| 候选 | 当前判断 | 下一步 |
-| --- | --- | --- |
-| 高德 / 腾讯 / 百度公开 WebService | 官方公开 WebService 文档能确认路线规划、地理编码等能力；本轮未找到可直接商用的逐点高程接口。 | 继续只作为地图/路线规划候选，不默认当高程源。 |
-| 天地图 / 国家基础地理信息中心体系 | 合规来源优先级最高，但需要确认 API、授权、使用范围、成果展示/分发规则。 | 作为第二优先级首选调研对象，先走授权确认，再写代码。 |
-| SRTM3 公共 DEM | Tim 已拍当前阶段优先用统一 SRTM3 地形源覆盖原始 GPS 海拔；实现必须自托管/缓存、记录 source/license/accuracy/point_count，且不调用境外实时地图 API。 | 当前作为 `shared_route_elevation_v1` 进入默认可信方法；上线前保留合规复核，若授权判断否定则从 trusted methods 撤出。 |
-| Mapbox / Google 等境外商业地图高程源 | 技术上可补海拔，但中国境内地图/测绘合规、服务稳定性、商用授权都不适合作为默认生产源。 | 不进默认链路。 |
-
-参考入口：
-- 高德 WebService API：https://lbs.amap.com/api/webservice/summary
-- 腾讯位置服务 WebService API：https://lbs.qq.com/webservice_v1/index.html
-- 百度地图开放平台常见问题：https://lbsyun.baidu.com/index.php?title=open/question
-- 国家基础地理信息中心：https://www.ngcc.cn/
+这里的“可信”表示同一路线版本可复现、来源与算法可追踪，并达到骑前规划的参考标准；不表示测绘真值，也不承诺每个点达到测量级绝对精度。
 
 ## 路线详情合同
 
@@ -166,7 +155,7 @@ V1：调研并申请 Garmin Courses API 官方同步。只有拿到官方授权�
 
 V2：确认 iGPSPORT / 迈金 / Wahoo 是否有开放接口或官方导入协议。没有公开接口时，继续保持“标准文件下载 + 用户手动导入”。
 
-FIT、转弯点、官方品牌同步都不进 V0。合规高程数据源采购/授权确认必须先于生产回填。
+FIT 文件生成、转弯点、官方品牌同步都不进 V0。用户 FIT 仅作为后台离线校准证据，不作为默认导出源。
 
 ## 验收命令
 

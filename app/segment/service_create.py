@@ -13,6 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.activity.models import Activity, Trackpoint
 from app.common.geo import infer_city_from_coords
+from app.elevation.route_elevation import (
+    RouteElevationInputError,
+    RouteElevationResult,
+    build_route_elevation_result,
+)
 from app.segment._geo_utils import _haversine, _sample_elevation_profile
 from app.segment.algorithms import (
     _haversine_distance,
@@ -104,46 +109,37 @@ def create_segment(
     if total_distance < 1.0:
         raise ValueError("赛段距离过短，请检查坐标点")
 
-    # DEM 海拔替换（v3 / 2026-05-14）：GPS 海拔精度 ±10-15m 物理限制，
-    # 任何平滑算法都洗不掉系统偏差（夜骑清徐 GPS 测得 26% 假坡度，DEM 实测 0.018%）。
-    # 当前统一走 app.elevation 的 SRTM3 90m DEM 查表路径，避免赛段和路书各接一套海拔源。
-    # 失败时抛 DEMServiceError，让 admin 知道服务挂了不要默默用 GPS 假数据。
-    dem_coords = [(p["lat"], p["lon"]) for p in reference_points]
-    dem_elevations = query_elevations(dem_coords)
+    # 路书与赛段共用同一条 GLO-30 成品链：20m 物理网格、median(3)、sigma=100m，
+    # 再用 3m prominence / 100m span 累计有效爬升。缺点位就整体失败，不能悄悄
+    # 混入上传轨迹的海拔，否则同一条路会因入口不同而得到两套结果。
+    elevation_result = _build_segment_elevation_result(reference_points)
+    for point, snapshot_point in zip(reference_points, elevation_result.snapshot):
+        point["ele"] = float(snapshot_point[2])
 
-    # 把 DEM 海拔覆盖回 reference_points 的 ele 字段（保留原 list 结构供后续使用）
-    # 个别点 DEM 查不到（海上 / 数据空洞）时返 None，保持原值兜底
-    for i, dem_ele in enumerate(dem_elevations):
-        if dem_ele is not None:
-            reference_points[i]["ele"] = float(dem_ele)
-
-    # 计算累计爬升、累计下降、平均坡度、海拔缩略图
-    # DEM 替换后基本所有点都有 ele；若 DEM 整批查不到（极少数情况），降级为 None
+    # 计算累计爬升、累计下降、平均坡度、海拔缩略图。统一链要求点位完整，
+    # 所以走到这里不会再出现上传 GPS 值和公共底图混算的半成品。
     elevation_gain = None
     elevation_loss = None
     avg_gradient = None
     elevation_profile = None
     if all(p.get("ele") is not None for p in reference_points):
-        elevation_gain = 0.0
-        elevation_loss = 0.0
-        for i in range(1, len(reference_points)):
-            diff = reference_points[i]["ele"] - reference_points[i - 1]["ele"]
-            if diff > 0:
-                # 上坡：累计爬升
-                elevation_gain += diff
-            elif diff < 0:
-                # 下坡：累计下降（abs 转为正数，好比"下了多少层楼"）
-                elevation_loss += abs(diff)
+        elevation_gain = elevation_result.climb
+        elevation_loss = elevation_result.descent
 
-        # 平均坡度（%）= **净高差**（爬升 - 下降）÷ 水平距离 × 100
-        # 下坡赛段 loss > gain → 负数（如 -2.9% 表示整段平均下降 2.9%）
-        # 跟 from-activity 路径 + 回填脚本统一公式（codex 旧 review I1 + Tim 2026-05-15 反馈）
+        # 平均坡度是起终点净高差，不由“有效爬升 - 有效下降”倒推；后者会有意过滤
+        # 微起伏，两种定义混用会让平均坡度失真。
         avg_gradient = round(
-            (elevation_gain - elevation_loss) / total_distance * 100, 1
+            (reference_points[-1]["ele"] - reference_points[0]["ele"])
+            / total_distance
+            * 100,
+            1,
         ) if total_distance > 0 else 0.0
 
         # 海拔缩略图：等距采样约 80 个点，前端用来画海拔曲线
-        elevation_profile = _sample_elevation_profile(reference_points, target_count=80)
+        elevation_profile = _sample_elevation_profile(
+            [{"ele": point[1]} for point in elevation_result.profile],
+            target_count=80,
+        )
 
     # 提取首尾坐标（赛段的"起跑线"和"终点线"）
     first = reference_points[0]
@@ -247,33 +243,27 @@ def create_segment_from_activity(
     if distance < 1000:
         raise InvalidSegmentRangeError("赛段太短，至少 1 公里")
 
-    # 3.5 DEM 海拔替换（v3 / 2026-05-14）：用统一 SRTM3 90m DEM 查表替换 GPS 海拔。
-    # 详 service_create.create_segment 同步说明 / from-gpx 路径同款逻辑。
-    # 用 SimpleNamespace wrapper 不动 ORM 实例，避免 SQLAlchemy 误以为要 update Trackpoint。
-    dem_coords = [(tp.latitude, tp.longitude) for tp in tps]
-    dem_elevations = query_elevations(dem_coords)
+    # 3.5 与手画路书、其他赛段入口共用同一套 GLO-30 成品算法。FIT 是离线拟合
+    # 和回归证据，不能在这里静默覆盖公共路线底座。
+    elevation_result = _build_segment_elevation_result(
+        [{"lon": tp.longitude, "lat": tp.latitude} for tp in tps]
+    )
     tps_with_dem = [
         SimpleNamespace(
             latitude=tp.latitude,
             longitude=tp.longitude,
-            elevation=(float(dem_elevations[i]) if dem_elevations[i] is not None else tp.elevation),
+            elevation=float(elevation_result.snapshot[i][2]),
         )
         for i, tp in enumerate(tps)
     ]
 
-    # 用 DEM 替换后的海拔算累计爬升 / 下降
-    elevation_gain = 0.0
-    elevation_loss = 0.0
-    for i in range(1, len(tps_with_dem)):
-        prev = tps_with_dem[i - 1]
-        curr = tps_with_dem[i]
-        if prev.elevation is not None and curr.elevation is not None:
-            diff = curr.elevation - prev.elevation
-            if diff > 0:
-                elevation_gain += diff
-            else:
-                elevation_loss += abs(diff)
-    avg_gradient = (elevation_gain - elevation_loss) / distance * 100 if distance > 0 else 0.0
+    elevation_gain = elevation_result.climb
+    elevation_loss = elevation_result.descent
+    avg_gradient = (
+        (tps_with_dem[-1].elevation - tps_with_dem[0].elevation) / distance * 100
+        if distance > 0
+        else 0.0
+    )
 
     # 4. 现在拿 advisory lock（推迟到 DEM 调用之后 / 写 DB 之前的"准备进入串行区"时机）
     # 类比：剪绳子前先拿唯一号码牌，同一时刻只有一个人能裁剪 → 避免并发重复创建。
@@ -300,11 +290,11 @@ def create_segment_from_activity(
     if inferred_difficulty is None:
         inferred_difficulty = calculate_difficulty(distance, elevation_gain, max_gradient)
 
-    # 5.5 海拔曲线：DEM 替换后基本所有点都有 ele；极少数 DEM 查不到时降级。
+    # 5.5 海拔曲线：统一链已保证点位完整；这里与累计值复用同一条成品剖面。
     elevation_profile = None
     if all(tp.elevation is not None for tp in tps_with_dem):
         elevation_profile = _sample_elevation_profile(
-            [{"ele": tp.elevation} for tp in tps_with_dem],
+            [{"ele": point[1]} for point in elevation_result.profile],
             target_count=80,
         )
 
@@ -332,3 +322,16 @@ def create_segment_from_activity(
     db.add(segment)
     db.flush()
     return segment
+
+
+def _build_segment_elevation_result(reference_points: list[dict]) -> RouteElevationResult:
+    """统一翻译底图缺点错误，API 应返回可重试的 503，不能误报成参数 400/404。"""
+    try:
+        return build_route_elevation_result(
+            [[point["lon"], point["lat"]] for point in reference_points],
+            query_func=query_elevations,
+        )
+    except RouteElevationInputError:
+        raise
+    except ValueError as exc:
+        raise DEMServiceError(f"GLO-30 路线海拔不完整：{exc}") from exc

@@ -23,10 +23,28 @@ from geoalchemy2 import WKTElement
 
 from app.activity.models import Activity  # noqa: F401
 from app.database import SessionLocal
+from app.elevation.dem_client import (
+    GLO30_HORIZONTAL_RESOLUTION_M,
+    GLO30_LICENSE_ID,
+    GLO30_SOURCE_NAME,
+    GLO30_VERTICAL_ACCURACY_M,
+    query_elevations,
+)
+from app.elevation.route_elevation import (
+    ROUTE_ELEVATION_METHOD,
+    build_route_elevation_result,
+    route_elevation_metadata,
+)
 from app.parsing.geo_math import haversine
 from app.parsing.gpx_parser import GPXParser
 from app.parsing.types import Trackpoint
-from app.route_book.models import RouteBook, RouteGuide, RouteVersion  # noqa: F401
+from app.route_book.elevation_workflow import write_route_elevation_result
+from app.route_book.models import (
+    RouteBook,
+    RouteGuide,
+    RouteVersion,
+    _preview_points_from_wkt,
+)  # noqa: F401
 from app.route_book.service import (
     _elevation_points_snapshot_from_points,
     _line_hash,
@@ -55,7 +73,7 @@ class RouteInput:
 
 @dataclass(frozen=True)
 class ParsedTrack:
-    """GPX 解析结果——route_book 和 guide 海拔曲线共用这一袋数据。"""
+    """GPX 解析结果；原文件海拔只供校验，产品路线会重新生成统一 GLO 结果。"""
 
     distance: float
     climb: float | None
@@ -203,6 +221,10 @@ def upsert_route(db, route: RouteInput) -> None:
             distance_override_m=route.distance_override_m,
             climb_override_m=route.climb_override_m,
         )
+        elevation_result = build_route_elevation_result(
+            _preview_points_from_wkt(parsed.reference_line),
+            query_func=query_elevations,
+        )
         if guide is not None and guide.route_book_id is not None:
             route_book = db.query(RouteBook).filter(RouteBook.id == guide.route_book_id).first()
         if route_book is None:
@@ -214,19 +236,32 @@ def upsert_route(db, route: RouteInput) -> None:
         apply_route_book(route_book, route, parsed)
         db.flush()
         if route_book.current_version_id is None:
-            create_initial_route_version(
+            version = create_initial_route_version(
                 db,
                 route_book,
                 reference_line_wkt=parsed.reference_line,
                 geometry_source="file_upload",
                 created_by=None,
-                elevation_profile=parsed.elevation_profile,
-                elevation_points_snapshot=parsed.elevation_points_snapshot,
             )
         else:
-            refresh_current_route_version(db, route_book, parsed)
+            version = refresh_current_route_version(db, route_book, parsed)
+        write_route_elevation_result(
+            db,
+            route=route_book,
+            version=version,
+            result=elevation_result,
+            source_name=GLO30_SOURCE_NAME,
+            license_id=GLO30_LICENSE_ID,
+            accuracy_m=GLO30_VERTICAL_ACCURACY_M,
+            method=ROUTE_ELEVATION_METHOD,
+            timestamp_field="generated_at",
+            extra_metadata={
+                "horizontal_resolution_m": GLO30_HORIZONTAL_RESOLUTION_M,
+                **route_elevation_metadata(),
+            },
+        )
         route_book_id = route_book.id
-        elevation_profile = parsed.elevation_profile
+        elevation_profile = route_book.elevation_profile
 
     if guide is None:
         guide = RouteGuide(name=route.name)
@@ -296,15 +331,15 @@ def refresh_current_route_version(db, route_book: RouteBook, parsed: ParsedTrack
 
     line_hash = _line_hash(parsed.reference_line)
     route_book.line_hash = line_hash
-    route_book.elevation_profile = parsed.elevation_profile
+    route_book.elevation_profile = None
     version.geometry_source = "file_upload"
     version.navigation_status = "ready"
     version.reference_line_snapshot = WKTElement(parsed.reference_line, srid=4326)
     version.line_hash = line_hash
     version.distance = parsed.distance
-    version.climb = parsed.climb
-    version.elevation_profile = parsed.elevation_profile
-    version.elevation_points_snapshot = parsed.elevation_points_snapshot
+    version.climb = None
+    version.elevation_profile = None
+    version.elevation_points_snapshot = None
     version.point_count = _point_count_from_wkt(parsed.reference_line)
     return version
 
@@ -313,7 +348,7 @@ def apply_route_book(route_book: RouteBook, route: RouteInput, parsed: ParsedTra
     route_book.creator_id = None
     route_book.name = route.name
     route_book.distance = parsed.distance
-    route_book.climb = parsed.climb
+    route_book.climb = None
     # WKTElement 是项目既有惯例（route_book/service.py 三处同写法）——
     # 裸 EWKT 字符串靠 geoalchemy2 的隐式识别，非推荐路径且与惯例漂移（高危双审 I2）
     route_book.reference_line = WKTElement(parsed.reference_line, srid=4326)

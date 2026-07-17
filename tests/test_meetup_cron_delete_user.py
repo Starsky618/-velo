@@ -176,6 +176,32 @@ def test_delete_user_purges_all_personal_data(db, test_user, monkeypatch):
     assert db.query(BreakthroughEvent).filter(BreakthroughEvent.id == dirty_bt_id).first() is None
 
 
+def test_delete_user_removes_manual_route_save_tombstones(db, test_user, monkeypatch):
+    from app.route_book.models import RouteBookSaveRequest
+    from app.user.service import delete_user
+
+    user_id = test_user.id
+    db.add(
+        RouteBookSaveRequest(
+            creator_id=user_id,
+            client_request_id="deleted-user-route-save-request",
+            request_hash="a" * 64,
+            route_book_id=None,
+        )
+    )
+    db.commit()
+    monkeypatch.setattr("app.meetup.service._storage.delete", lambda _file_id: None)
+
+    delete_user(db, user_id)
+
+    assert (
+        db.query(RouteBookSaveRequest)
+        .filter(RouteBookSaveRequest.creator_id == user_id)
+        .count()
+        == 0
+    )
+
+
 def test_delete_account_endpoint_requires_auth_and_deletes_self(client, db, auth_header, test_user):
     """DELETE /api/user/me：无 token → 401；本人调用 → 204 且 user 被删。"""
     from app.user.models import User

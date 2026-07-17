@@ -6,6 +6,7 @@
 """
 
 import hashlib
+import hmac
 import json
 import re
 import unicodedata
@@ -115,6 +116,9 @@ def create_route_export(
                     "content_type": generated.content_type,
                     "elevation_included": generated.elevation_point_count > 0,
                     "elevation_point_count": generated.elevation_point_count,
+                    "elevation_snapshot_sha256": _elevation_snapshot_sha256(
+                        version.elevation_points_snapshot
+                    ),
                 },
                 ensure_ascii=False,
             ),
@@ -161,6 +165,29 @@ def get_route_export_download(
     )
 
     metadata = _artifact_metadata(artifact)
+    version = (
+        db.query(RouteVersion)
+        .filter(
+            RouteVersion.id == artifact.route_version_id,
+            RouteVersion.route_book_id == artifact.route_book_id,
+        )
+        .first()
+    )
+    if version is None or not has_trusted_route_elevation(
+        version.elevation_points_snapshot,
+        metadata_json=version.navigation_metadata_json,
+        expected_count=version.point_count or 0,
+    ):
+        raise LookupError("route export artifact elevation is no longer trusted")
+    artifact_snapshot_hash = metadata.get("elevation_snapshot_sha256")
+    current_snapshot_hash = _elevation_snapshot_sha256(version.elevation_points_snapshot)
+    if not isinstance(artifact_snapshot_hash, str) or not hmac.compare_digest(
+        artifact_snapshot_hash,
+        current_snapshot_hash,
+    ):
+        # 回填会原地更新 RouteVersion；没有这道指纹门，旧底图生成的 GPX/TCX
+        # 仍可在新版海拔写入后继续下载。
+        raise LookupError("route export artifact elevation is stale")
     filename = metadata.get("filename") or safe_export_filename(
         route.name,
         route.id,
@@ -236,6 +263,10 @@ def _content_type_for_format(export_format: str) -> str:
     if export_format == "tcx":
         return "application/vnd.garmin.tcx+xml"
     return "application/gpx+xml"
+
+
+def _elevation_snapshot_sha256(value: str | None) -> str:
+    return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
 
 
 def _delete_quietly(file_id: str) -> None:

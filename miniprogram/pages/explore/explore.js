@@ -1,5 +1,10 @@
 const api = require('../../utils/api')
 
+function isLoggedIn() {
+  var app = getApp()
+  return !!(app && app.globalData && app.globalData.token)
+}
+
 function formatDistance(value) {
   if (value === undefined || value === null) return ''
   var n = Number(value)
@@ -64,6 +69,17 @@ Page({
       .catch(function () {
         that.setData({ loading: false, error: '路线暂时加载失败' })
       })
+  },
+
+  onTapDrawRoute: function () {
+    if (!isLoggedIn()) {
+      wx.showToast({ title: '登录后才能画路线', icon: 'none' })
+      setTimeout(function () {
+        wx.switchTab({ url: '/pages/profile/profile' })
+      }, 500)
+      return
+    }
+    wx.navigateTo({ url: '/pages/route-draw/route-draw' })
   },
 
   openGuide: function (event) {

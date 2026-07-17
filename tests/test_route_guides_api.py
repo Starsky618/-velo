@@ -52,10 +52,20 @@ def _attach_current_version(db, route, **overrides):
         "climb": route.climb,
         "elevation_points_snapshot": "[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
         "navigation_metadata_json": (
-            "{\"elevation\":{\"method\":\"shared_route_elevation_v1\","
-            "\"source_name\":\"SRTM3 90m DEM\","
-            "\"license_id\":\"CGIAR-CSI SRTM public DEM\","
-            "\"accuracy_m\":16.0,"
+            "{\"elevation\":{\"method\":\"glo30_meaningful_ascent_v1\","
+            "\"source_name\":\"Copernicus DEM GLO-30 Public\","
+            "\"license_id\":\"Copernicus DEM Licence\","
+            "\"accuracy_m\":4.0,"
+            "\"horizontal_resolution_m\":30.0,"
+            "\"processing_grid_m\":20.0,"
+            "\"median_filter_points\":3,"
+            "\"smoothing_sigma_m\":100.0,"
+            "\"ascent_prominence_m\":3.0,"
+            "\"ascent_minimum_span_m\":100.0,"
+            "\"maximum_processing_distance_m\":1000000.0,"
+            "\"dataset_id\":\"COP-DEM_GLO-30-DGED\","
+            "\"vertical_datum\":\"EGM2008 (EPSG:3855)\","
+            "\"grid_registration\":\"RasterPixelIsPoint\","
             "\"point_count\":2}}"
         ),
         "point_count": 2,

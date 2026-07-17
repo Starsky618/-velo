@@ -71,6 +71,7 @@ def delete_user(db, user_id: int) -> None:
     from app.activity.models import Activity, BreakthroughEvent
     from app.meetup.models import Meetup, MeetupActivity
     from app.meetup.service import _cleanup_meetup_storage, _delete_meetup_row_and_collect_files
+    from app.route_book.models import RouteBookSaveRequest
     from app.segment.models import SegmentEffort
     from app.strava.models import StravaImport
     from app.user.models import User
@@ -106,6 +107,11 @@ def delete_user(db, user_id: int) -> None:
         bt_filter = or_(bt_filter, BreakthroughEvent.activity_id.in_(activity_ids))
     db.query(BreakthroughEvent).filter(bt_filter).delete(synchronize_session=False)
     db.query(StravaImport).filter(StravaImport.user_id == user_id).delete(synchronize_session=False)
+    # 手画路线保存账本含用户幂等凭据；路书本身保留为无主定义，但个人账本随账号注销清除。
+    # PG 的 ON DELETE CASCADE 是兜底，这里显式删让 SQLite 测试与生产语义一致。
+    db.query(RouteBookSaveRequest).filter(
+        RouteBookSaveRequest.creator_id == user_id
+    ).delete(synchronize_session=False)
     # meetup_activities（约骑交卷格子）在 PG 由 user_id/activity_id 双 CASCADE 自动清，这里仍显式删：
     # 注销是隐私关键路径，显式删让 PG/SQLite 两方言行为一致、测试可断言（Sprint 13 T1 双审 I2）。
     db.query(MeetupActivity).filter(MeetupActivity.user_id == user_id).delete(synchronize_session=False)

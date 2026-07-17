@@ -1,7 +1,8 @@
 """虚拟路书海拔实验——用假 GPX 批量验一遍“导入、补海拔、导出”是否连得上。
 
 操作注意事项：这个脚本不碰生产数据库，也不读真实用户文件。它像一间实验室：随机造
-100 条路线，走真实解析器和真实导出器，中间海拔查询默认走项目统一 SRTM3 入口。
+100 条路线，走真实解析器和真实导出器，中间海拔查询默认走项目统一 GLO-30 入口和
+VELO ``glo30_meaningful_ascent_v1`` 成品剖面算法。
 
 输入输出：输入实验数量和随机种子，输出 JSON 报告；每条路线必须能导出同点数的 GPX
 <ele> 和 TCX AltitudeMeters，才算通过。
@@ -28,8 +29,17 @@ from sqlalchemy import Column, DateTime, Float, Integer, MetaData, String, Table
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.elevation.dem_client import query_elevations
-from app.elevation.route_elevation import ElevationQuery
+from app.elevation.dem_client import (
+    GLO30_LICENSE_ID,
+    GLO30_SOURCE_NAME,
+    GLO30_VERTICAL_ACCURACY_M,
+    query_elevations,
+)
+from app.elevation.route_elevation import (
+    ROUTE_ELEVATION_METHOD,
+    ElevationQuery,
+    route_elevation_metadata,
+)
 from app.parsing.geo_math import haversine
 from app.parsing.gpx_parser import GPXParser
 from app.route_book.export_generator import generate_route_export
@@ -47,7 +57,9 @@ TCX_NS = {"t": "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"}
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Run virtual GPX -> SRTM3 elevation -> route export experiment")
+    parser = argparse.ArgumentParser(
+        description="Run virtual GPX -> GLO-30 + VELO elevation -> route export experiment"
+    )
     parser.add_argument("--count", type=int, default=DEFAULT_COUNT)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--points-per-route", type=int, default=DEFAULT_POINTS_PER_ROUTE)
@@ -124,9 +136,11 @@ def _run_experiment_with_db(
                 db,
                 version.id,
                 query_func=query_func,
-                source_name="SRTM3 90m DEM",
-                license_id="CGIAR-CSI SRTM public DEM",
-                accuracy_m=16.0,
+                source_name=GLO30_SOURCE_NAME,
+                license_id=GLO30_LICENSE_ID,
+                accuracy_m=GLO30_VERTICAL_ACCURACY_M,
+                method=ROUTE_ELEVATION_METHOD,
+                extra_metadata=route_elevation_metadata(),
                 dry_run=False,
             )
             db.refresh(version)
@@ -188,6 +202,11 @@ def _run_experiment_with_db(
         "failed": failed,
         "seed": seed,
         "points_per_route": points_per_route,
+        "elevation_contract": {
+            "source": GLO30_SOURCE_NAME,
+            "method": ROUTE_ELEVATION_METHOD,
+            **route_elevation_metadata(),
+        },
         "items": items,
     }
 

@@ -885,7 +885,7 @@ Page({
   createOrUpdateDraft: function (payload) {
     return api.createMeetup(payload)
       .catch(function (err) {
-        var detail = err && err.message
+        var detail = err && (err.detail || err.message)
         if (err && err.code === 409 && detail && detail.code === 'draft_exists' && detail.existing_draft_id) {
           return api.updateMeetup(detail.existing_draft_id, payload)
         }

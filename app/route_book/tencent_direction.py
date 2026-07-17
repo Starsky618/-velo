@@ -29,6 +29,10 @@ class TencentMapConfigError(RuntimeError):
     """服务端还没配置腾讯地图密钥时抛出，让 router 翻译成 503。"""
 
 
+class TencentMapServiceUnavailableError(RuntimeError):
+    """腾讯地图服务暂时不可用时抛出，让 router 翻译成 503。"""
+
+
 def _ensure_finite_lat_lon(lat: float, lon: float) -> None:
     if not math.isfinite(lat) or not math.isfinite(lon):
         raise TencentMapError("腾讯路线坐标包含非有限数字")
@@ -74,6 +78,7 @@ def _decode_polyline(polyline: list[int | float]) -> list[dict[str, float]]:
 def plan_tencent_bicycling_route(
     start: tuple[float, float],
     end: tuple[float, float],
+    timeout_sec: float = 8.0,
 ) -> dict[str, Any]:
     """
     调腾讯骑行路线规划。
@@ -87,6 +92,9 @@ def plan_tencent_bicycling_route(
     end_lat, end_lon = end
     _ensure_finite_lat_lon(start_lat, start_lon)
     _ensure_finite_lat_lon(end_lat, end_lon)
+    timeout_sec = float(timeout_sec)
+    if not math.isfinite(timeout_sec) or timeout_sec <= 0:
+        raise TencentMapError("腾讯地图 timeout 配置异常")
 
     params = {
         "from": f"{start_lat},{start_lon}",
@@ -97,11 +105,12 @@ def plan_tencent_bicycling_route(
     params["sig"] = _build_sig(_TENCENT_DIRECTION_PATH, params, settings.TENCENT_MAP_SK)
 
     try:
-        response = httpx.get(_TENCENT_DIRECTION_URL, params=params, timeout=8.0)
+        response = httpx.get(_TENCENT_DIRECTION_URL, params=params, timeout=timeout_sec)
         response.raise_for_status()
         data = response.json()
-    except httpx.HTTPError as exc:
-        raise TencentMapError(f"腾讯地图请求失败：{exc}") from exc
+    except httpx.HTTPError:
+        # HTTPStatusError 的文本包含完整请求 URL，而 URL 里有 key 和 sig；不能透传给 API 响应或日志。
+        raise TencentMapServiceUnavailableError("腾讯地图请求失败，请稍后重试") from None
     except ValueError as exc:
         raise TencentMapError("腾讯地图返回了无法解析的 JSON") from exc
 

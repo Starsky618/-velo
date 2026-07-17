@@ -3,7 +3,7 @@
 三种使用：
 1. --export-missing 导出缺海拔的路线点，交给国内合规授权的高程数据源处理。
 2. --import-csv 导入供应商返回的逐点海拔，并强制记录 source/license。
-3. --backfill-srtm 用项目统一的 SRTM3 公共地形源直接补齐缺海拔路书。
+3. --backfill-glo 用项目统一的 Copernicus GLO-30 底座补齐或替换旧海拔路书。
 
 码表导出会信任 `<ele>`，所以数据来源必须可审计：每次写库都要留下
 source_name / license_id / accuracy_m。
@@ -15,6 +15,7 @@ import argparse
 import csv
 from dataclasses import dataclass
 import json
+import logging
 from pathlib import Path
 import sys
 
@@ -22,21 +23,23 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from sqlalchemy import func
+from sqlalchemy import func, inspect
 
 from app.database import SessionLocal
 from app.elevation.dem_client import (
-    SRTM_LICENSE_ID,
-    SRTM_SOURCE_NAME,
-    SRTM_VERTICAL_ACCURACY_M,
+    GLO30_LICENSE_ID,
+    GLO30_SOURCE_NAME,
+    GLO30_VERTICAL_ACCURACY_M,
     query_elevations,
 )
 from app.elevation.route_elevation import build_route_elevation_result_from_values
+from app.meetup.models import Meetup
 from app.route_book.elevation_workflow import backfill_route_version_elevation, write_route_elevation_result
 from app.route_book.elevation_quality import has_trusted_route_elevation, parse_complete_elevation_snapshot
 from app.route_book.models import RouteBook, RouteVersion, _preview_points_from_wkt
 
 COORD_TOLERANCE_DEG = 0.00001
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -53,7 +56,11 @@ def main(argv: list[str] | None = None) -> None:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--export-missing", type=Path, help="write missing route points CSV")
     group.add_argument("--import-csv", type=Path, help="read authorized elevation CSV")
-    group.add_argument("--backfill-srtm", action="store_true", help="fill missing route elevations from shared SRTM3 DEM")
+    group.add_argument(
+        "--backfill-glo",
+        action="store_true",
+        help="fill missing or legacy route elevations from Copernicus GLO-30",
+    )
     parser.add_argument("--source-name", help="authorized domestic elevation source name")
     parser.add_argument("--license-id", help="license/contract/order id proving legal use")
     parser.add_argument("--accuracy-m", type=float, help="declared vertical accuracy in meters")
@@ -68,16 +75,24 @@ def main(argv: list[str] | None = None) -> None:
             print(f"exported {count} point(s) to {args.export_missing}")
             return
 
-        if args.backfill_srtm:
-            count = backfill_missing_with_srtm(
+        if args.backfill_glo:
+            if any(
+                value is not None
+                for value in (args.source_name, args.license_id, args.accuracy_m)
+            ):
+                parser.error(
+                    "--backfill-glo 使用固定 GLO-30 来源元数据；"
+                    "--source-name/--license-id/--accuracy-m 仅用于 --import-csv"
+                )
+            count = backfill_missing_with_glo(
                 db,
-                source_name=args.source_name or SRTM_SOURCE_NAME,
-                license_id=args.license_id or SRTM_LICENSE_ID,
-                accuracy_m=args.accuracy_m if args.accuracy_m is not None else SRTM_VERTICAL_ACCURACY_M,
                 dry_run=args.dry_run,
                 route_book_ids=args.route_book_id,
             )
-            print(f"{'validated' if args.dry_run else 'updated'} {count} route version(s) from SRTM3")
+            print(
+                f"{'validated' if args.dry_run else 'updated'} "
+                f"{count} route version(s) from GLO-30"
+            )
             return
 
         if not args.source_name or not args.license_id or args.accuracy_m is None:
@@ -124,20 +139,26 @@ def export_missing_points(db, output_path: Path) -> int:
     return count
 
 
-def backfill_missing_with_srtm(
+def backfill_missing_with_glo(
     db,
     *,
     query_func=query_elevations,
-    source_name: str = SRTM_SOURCE_NAME,
-    license_id: str = SRTM_LICENSE_ID,
-    accuracy_m: float = SRTM_VERTICAL_ACCURACY_M,
+    source_name: str = GLO30_SOURCE_NAME,
+    license_id: str = GLO30_LICENSE_ID,
+    accuracy_m: float = GLO30_VERTICAL_ACCURACY_M,
     dry_run: bool,
     route_book_ids: list[int] | None = None,
 ) -> int:
-    if accuracy_m <= 0:
-        raise ValueError("accuracy_m must be positive")
+    if (
+        source_name != GLO30_SOURCE_NAME
+        or license_id != GLO30_LICENSE_ID
+        or accuracy_m != GLO30_VERTICAL_ACCURACY_M
+    ):
+        raise ValueError("GLO-30 回填不允许覆盖固定 source/license/accuracy 元数据")
 
     selected_route_ids = set(route_book_ids or [])
+    refreshed_route_climbs: dict[int, float | None] = {}
+    failed_route_ids: list[int] = []
     updated = 0
     for route, version, reference_line_wkt in _current_route_versions(db):
         if selected_route_ids and route.id not in selected_route_ids:
@@ -148,23 +169,73 @@ def backfill_missing_with_srtm(
             metadata_json=version.navigation_metadata_json,
             expected_count=len(points),
         ):
+            # 路线已经是可信 GLO 结果时也要修复可能遗留的旧约骑快照；
+            # 这不会计入本次 route version 的 updated 数量。
+            refreshed_route_climbs[route.id] = route.climb
             continue
-        backfill_route_version_elevation(
-            db,
-            version.id,
-            query_func=query_func,
-            source_name=source_name,
-            license_id=license_id,
-            accuracy_m=accuracy_m,
-            dry_run=dry_run,
-            commit=False,
-        )
+        try:
+            def fill_current_route() -> None:
+                backfill_route_version_elevation(
+                    db,
+                    version.id,
+                    query_func=query_func,
+                    source_name=source_name,
+                    license_id=license_id,
+                    accuracy_m=accuracy_m,
+                    dry_run=dry_run,
+                    commit=False,
+                )
+                db.flush()
+
+            if dry_run:
+                # SQLite 的 SAVEPOINT 释放在部分驱动模式下会逃逸外层 rollback；
+                # 干跑本来就不保留任何成功项，因此直接留在整批事务中。
+                fill_current_route()
+            else:
+                # 单条路线用 SAVEPOINT 隔离；一张坏瓦片或一条坏几何不能把此前
+                # 已成功的全国批次全部回滚。失败仍在批次末尾以非零退出显式暴露。
+                with db.begin_nested():
+                    fill_current_route()
+        except Exception:
+            logger.exception(
+                "GLO-30 路书回填失败 route_book_id=%s route_version_id=%s",
+                route.id,
+                version.id,
+            )
+            failed_route_ids.append(route.id)
+            continue
+        refreshed_route_climbs[route.id] = route.climb
         updated += 1
     if dry_run:
         db.rollback()
     else:
+        _refresh_linked_route_meetup_snapshots(db, refreshed_route_climbs)
         db.commit()
+    if failed_route_ids:
+        outcome = "干跑已整体回滚" if dry_run else "成功项已保留"
+        raise RuntimeError(
+            f"GLO-30 路书回填存在失败，{outcome}；失败 route_book_id="
+            + ",".join(str(route_id) for route_id in failed_route_ids)
+        )
     return updated
+
+
+def _refresh_linked_route_meetup_snapshots(
+    db,
+    route_climbs: dict[int, float | None],
+) -> int:
+    """同步所有仍可被产品 API 读取的约骑，彻底移除旧海拔结果。"""
+    if not route_climbs or not inspect(db.connection()).has_table("meetups"):
+        return 0
+
+    refreshed = 0
+    for route_book_id, climb in route_climbs.items():
+        refreshed += (
+            db.query(Meetup)
+            .filter(Meetup.route_book_id == route_book_id)
+            .update({Meetup.snapshot_climb: climb}, synchronize_session=False)
+        )
+    return refreshed
 
 
 def import_elevation_csv(

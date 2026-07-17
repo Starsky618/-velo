@@ -52,10 +52,8 @@ function buildElevationData(profile, totalDistanceKm) {
   if (!profile || profile.length < 2 || !totalDistanceKm || totalDistanceKm <= 0) {
     return []
   }
-  // 前端二次平滑（2026-05-15 Tim 反馈锯齿太多）：
-  // 后端 SRTM 90m 数据本身在山区窄带公路上有像素噪声（采到山势不是路面），
-  // 后端已做 window=21 中位数平滑，前端再做一次 window=7 滑动平均圆滑收尾。
-  // 两阶段平滑：中位数压尖刺 + 滑动平均出曲线 → 单调上升 / 下降赛段视觉接近真实。
+  // 后端已在固定物理网格上生成 GLO-30 成品剖面；前端只做轻度视觉圆滑，
+  // 不再参与总爬升计算，也不改变保存的路线海拔快照。
   const smoothed = movingAverage(profile, 7)
   const n = smoothed.length
   const result = []

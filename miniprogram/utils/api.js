@@ -29,6 +29,25 @@ function getAppSafe() {
   return getApp()
 }
 
+function buildRequestError(statusCode, data, defaultMsg) {
+  var detail = data && data.detail
+  var message = defaultMsg
+  if (typeof detail === 'string' && detail) {
+    message = detail
+  } else if (detail && typeof detail.message === 'string' && detail.message) {
+    message = detail.message
+  }
+
+  var error = {
+    code: statusCode,
+    message: message,
+  }
+  if (detail !== undefined) {
+    error.detail = detail
+  }
+  return error
+}
+
 /**
  * 封装 wx.request，统一处理 token、错误、loading
  *
@@ -63,8 +82,7 @@ function request(url, method, data) {
             app.globalData.token = null
           }
           wx.removeStorageSync('token')
-          var detail = (res.data && res.data.detail) || '登录已过期，请重新登录'
-          reject({ code: 401, message: detail })
+          reject(buildRequestError(401, res.data, '登录已过期，请重新登录'))
           return
         }
         if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -73,10 +91,7 @@ function request(url, method, data) {
           // 5xx 用通用兜底 / 4xx 透传后端 detail（按状态码分流 / 防 catch-all 误导）
           var defaultMsg = '请求失败'
           if (res.statusCode >= 500) defaultMsg = '服务器开小差了，请稍后重试'
-          reject({
-            code: res.statusCode,
-            message: (res.data && res.data.detail) || defaultMsg,
-          })
+          reject(buildRequestError(res.statusCode, res.data, defaultMsg))
         }
       },
       fail: function () {
@@ -115,18 +130,14 @@ function requestForm(url, method, data) {
             app.globalData.token = null
           }
           wx.removeStorageSync('token')
-          var detail = (res.data && res.data.detail) || '登录已过期，请重新登录'
-          reject({ code: 401, message: detail })
+          reject(buildRequestError(401, res.data, '登录已过期，请重新登录'))
           return
         }
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(res.data)
         } else {
           var defaultMsg = res.statusCode >= 500 ? '服务器开小差了，请稍后重试' : '请求失败'
-          reject({
-            code: res.statusCode,
-            message: (res.data && res.data.detail) || defaultMsg,
-          })
+          reject(buildRequestError(res.statusCode, res.data, defaultMsg))
         }
       },
       fail: function () {
@@ -559,9 +570,9 @@ module.exports = {
     return request('/api/route-books' + buildQuery(params || {}), 'GET')
   },
 
-  // 单条路书详情（草稿恢复时按 route_book_id 重画地图预览）
+  // 单条路书展示详情（草稿恢复、我的路书详情页都按 route_book_id 重画地图预览）
   getRouteBookDetail: function (routeBookId) {
-    return request('/api/route-books/' + routeBookId, 'GET')
+    return request('/api/route-books/' + routeBookId + '/detail', 'GET')
   },
 
   getRouteBookActivityCandidates: function () {
@@ -582,6 +593,10 @@ module.exports = {
 
   createRouteBookFromManualDrawn: function (payload) {
     return request('/api/route-books/manual-drawn', 'POST', payload)
+  },
+
+  snapManualDrawnRoute: function (payload) {
+    return request('/api/route-books/manual-drawn/snap-preview', 'POST', payload)
   },
 
   createRouteExport: function (routeBookId, format, targetPlatform) {
