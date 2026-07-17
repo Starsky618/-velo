@@ -19,6 +19,12 @@ from fastapi.middleware.cors import CORSMiddleware
 # 请求 200 但 SENSOR view 行永不出现（喇叭没插电第 4 例）。root 已有 handler 时本行是 no-op。
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [api] %(levelname)s %(message)s")
 
+# httpx 的 INFO 请求日志会包含完整 URL；腾讯地图、微信登录等接口会把 key、sig、secret
+# 放在查询参数里，若跟随根 logger 输出就会把凭据写进容器日志。业务异常由各调用方记录，
+# HTTP 客户端本身只保留 WARNING 以上，避免生产日志成为第二份凭据仓库。
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 from app.activity.router import router as activity_router
 from app.admin.router import router as admin_router
 from app.meetup.router import router as meetup_router
