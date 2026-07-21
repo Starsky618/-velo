@@ -157,6 +157,93 @@ def test_route_book_detail_build_stats_uses_meter_units_and_zero_climb():
     assert rows["badDistance"] == [{"v": "120", "u": "m", "k": "爬升"}]
 
 
+def test_route_requests_have_watchdogs_when_wechat_callbacks_are_lost():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                ;(async function () {
+                  let timers = []
+                  let requestAborts = 0
+                  let downloadAborts = 0
+                  global.getApp = function () {
+                    return { globalData: { baseUrl: 'https://example.test', token: 'token' } }
+                  }
+                  global.setTimeout = function (callback, ms) {
+                    timers.push({ callback, ms })
+                    return timers.length
+                  }
+                  global.clearTimeout = function () {}
+                  global.wx = {
+                    request: function () {
+                      return { abort: function () { requestAborts += 1 } }
+                    },
+                    downloadFile: function () {
+                      return { abort: function () { downloadAborts += 1 } }
+                    },
+                  }
+
+                  const api = require('./miniprogram/utils/api.js')
+                  const createPromise = api.createRouteExport(42, 'gpx', 'generic')
+                  const createTimer = timers.shift()
+                  createTimer.callback()
+                  const createError = await createPromise.catch(function (err) { return err })
+
+                  const savePromise = api.createRouteBookFromManualDrawn({ points: [] })
+                  const saveTimer = timers.shift()
+                  saveTimer.callback()
+                  const saveError = await savePromise.catch(function (err) { return err })
+
+                  const directionPromise = api.createRouteBookFromTencentDirection({ name: 'test' })
+                  const directionTimer = timers.shift()
+                  directionTimer.callback()
+                  const directionError = await directionPromise.catch(function (err) { return err })
+
+                  const downloadPromise = api.downloadRouteExport('/download/42', 'route.gpx')
+                  const downloadTimer = timers.shift()
+                  downloadTimer.callback()
+                  const downloadError = await downloadPromise.catch(function (err) { return err })
+
+                  process.stdout.write(JSON.stringify({
+                    createError,
+                    saveError,
+                    directionError,
+                    downloadError,
+                    requestAborts,
+                    downloadAborts,
+                    createWatchdogMs: createTimer.ms,
+                    saveWatchdogMs: saveTimer.ms,
+                    directionWatchdogMs: directionTimer.ms,
+                    downloadWatchdogMs: downloadTimer.ms,
+                  }))
+                })().catch(function (err) {
+                  console.error(err && err.stack ? err.stack : err)
+                  process.exit(1)
+                })
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    rows = json.loads(result.stdout)
+
+    assert rows["createError"]["code"] == -2
+    assert rows["saveError"]["code"] == -2
+    assert rows["directionError"]["code"] == -2
+    assert rows["downloadError"]["code"] == -2
+    assert rows["requestAborts"] == 3
+    assert rows["downloadAborts"] == 1
+    assert rows["createWatchdogMs"] == 31_000
+    assert rows["saveWatchdogMs"] == 151_000
+    assert rows["directionWatchdogMs"] == 151_000
+    assert rows["downloadWatchdogMs"] == 61_000
+
+
 def test_route_book_detail_map_markers_have_required_dimensions():
     result = subprocess.run(
         [

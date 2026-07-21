@@ -21,6 +21,10 @@
 // 2026-06-12 切回 https 域名（与 app.js baseUrl 同步，两处一起改）；
 // 前置 = 腾讯云安全组放行 443（详 app.js 同位置注释）
 var BASE_URL = 'https://api.weiluai.top'
+var DEFAULT_REQUEST_TIMEOUT_MS = 30000
+var ROUTE_SAVE_REQUEST_TIMEOUT_MS = 150000
+var FILE_DOWNLOAD_TIMEOUT_MS = 60000
+var NETWORK_WATCHDOG_GRACE_MS = 1000
 
 /**
  * 获取全局 App 实例（延迟获取，避免初始化时序问题）
@@ -56,7 +60,7 @@ function buildRequestError(statusCode, data, defaultMsg) {
  * @param {object} data - 请求体数据
  * @returns {Promise} 后端返回的 JSON 数据
  */
-function request(url, method, data) {
+function request(url, method, data, timeoutMs) {
   // 每次请求时获取 app 实例（此时 App 一定已经初始化完成）
   var app = getAppSafe()
   var baseUrl = (app && app.globalData.baseUrl) || BASE_URL
@@ -64,40 +68,76 @@ function request(url, method, data) {
 
   if (method === undefined) method = 'GET'
   if (data === undefined) data = {}
+  if (!timeoutMs || timeoutMs <= 0) timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
 
   return new Promise(function (resolve, reject) {
-    wx.request({
-      url: baseUrl + url,
-      method: method,
-      data: data,
-      header: {
-        'Content-Type': 'application/json',
-        // 如果有 token，自动带上（证明"我是谁"）
-        'Authorization': token ? 'Bearer ' + token : '',
-      },
-      success: function (res) {
-        if (res.statusCode === 401) {
-          // 清除本地 token（可能已过期）
-          if (app) {
-            app.globalData.token = null
+    var settled = false
+    var requestTask = null
+    var watchdog = setTimeout(function () {
+      if (settled) return
+      settled = true
+      if (requestTask && typeof requestTask.abort === 'function') requestTask.abort()
+      reject({ code: -2, message: '请求超时，请检查网络后重试' })
+    }, timeoutMs + NETWORK_WATCHDOG_GRACE_MS)
+
+    function resolveOnce(value) {
+      if (settled) return
+      settled = true
+      clearTimeout(watchdog)
+      resolve(value)
+    }
+
+    function rejectOnce(error) {
+      if (settled) return
+      settled = true
+      clearTimeout(watchdog)
+      reject(error)
+    }
+
+    try {
+      requestTask = wx.request({
+        url: baseUrl + url,
+        method: method,
+        data: data,
+        timeout: timeoutMs,
+        header: {
+          'Content-Type': 'application/json',
+          // 如果有 token，自动带上（证明"我是谁"）
+          'Authorization': token ? 'Bearer ' + token : '',
+        },
+        success: function (res) {
+          if (res.statusCode === 401) {
+            // 清除本地 token（可能已过期）
+            if (app) {
+              app.globalData.token = null
+            }
+            wx.removeStorageSync('token')
+            rejectOnce(buildRequestError(401, res.data, '登录已过期，请重新登录'))
+            return
           }
-          wx.removeStorageSync('token')
-          reject(buildRequestError(401, res.data, '登录已过期，请重新登录'))
-          return
-        }
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(res.data)
-        } else {
-          // 5xx 用通用兜底 / 4xx 透传后端 detail（按状态码分流 / 防 catch-all 误导）
-          var defaultMsg = '请求失败'
-          if (res.statusCode >= 500) defaultMsg = '服务器开小差了，请稍后重试'
-          reject(buildRequestError(res.statusCode, res.data, defaultMsg))
-        }
-      },
-      fail: function () {
-        reject({ code: -1, message: '网络连接失败，请检查网络' })
-      },
-    })
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolveOnce(res.data)
+          } else {
+            // 5xx 用通用兜底 / 4xx 透传后端 detail（按状态码分流 / 防 catch-all 误导）
+            var defaultMsg = '请求失败'
+            if (res.statusCode >= 500) defaultMsg = '服务器开小差了，请稍后重试'
+            rejectOnce(buildRequestError(res.statusCode, res.data, defaultMsg))
+          }
+        },
+        fail: function (err) {
+          var rawMessage = err && err.errMsg
+          rejectOnce({
+            code: rawMessage && rawMessage.indexOf('timeout') >= 0 ? -2 : -1,
+            message: rawMessage && rawMessage.indexOf('timeout') >= 0
+              ? '请求超时，请检查网络后重试'
+              : '网络连接失败，请检查网络',
+            rawMessage: rawMessage,
+          })
+        },
+      })
+    } catch (err) {
+      rejectOnce({ code: -1, message: '网络请求启动失败', rawMessage: err && err.message })
+    }
   })
 }
 
@@ -213,16 +253,42 @@ function downloadFile(url, fileName) {
   var app = getAppSafe()
   var token = app && app.globalData.token
   return new Promise(function (resolve, reject) {
+    var settled = false
+    var downloadTask = null
+    var watchdog = setTimeout(function () {
+      if (settled) return
+      settled = true
+      if (downloadTask && typeof downloadTask.abort === 'function') downloadTask.abort()
+      reject({ code: -2, message: '路线文件下载超时，请检查网络后重试' })
+    }, FILE_DOWNLOAD_TIMEOUT_MS + NETWORK_WATCHDOG_GRACE_MS)
+
+    function resolveOnce(value) {
+      if (settled) return
+      settled = true
+      clearTimeout(watchdog)
+      resolve(value)
+    }
+
+    function rejectOnce(error) {
+      if (settled) return
+      settled = true
+      clearTimeout(watchdog)
+      reject(error)
+    }
+
     var options = {
       url: absoluteUrl(url),
+      timeout: FILE_DOWNLOAD_TIMEOUT_MS,
       header: {
         'Authorization': token ? 'Bearer ' + token : '',
       },
       success: function (res) {
         if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
+          // 网络已经成功，后续只是在本机保存文件；不能让网络 watchdog 在保存中误报。
+          clearTimeout(watchdog)
           var tempFilePath = res.tempFilePath
           saveDownloadedFile(tempFilePath, fileName).then(function (savedFilePath) {
-            resolve({
+            resolveOnce({
               tempFilePath: tempFilePath,
               savedFilePath: savedFilePath,
               filePath: savedFilePath || tempFilePath,
@@ -234,17 +300,24 @@ function downloadFile(url, fileName) {
         if (res.statusCode === 403) message = '你没有权限下载这条路线'
         if (res.statusCode === 404) message = '下载文件不存在'
         if (res.statusCode >= 500) message = '服务器开小差了，请稍后重试'
-        reject({ code: res.statusCode || -1, message: message })
+        rejectOnce({ code: res.statusCode || -1, message: message })
       },
       fail: function (err) {
-        reject({
-          code: -1,
-          message: '网络连接失败，请检查网络',
-          rawMessage: err && err.errMsg,
+        var rawMessage = err && err.errMsg
+        rejectOnce({
+          code: rawMessage && rawMessage.indexOf('timeout') >= 0 ? -2 : -1,
+          message: rawMessage && rawMessage.indexOf('timeout') >= 0
+            ? '路线文件下载超时，请检查网络后重试'
+            : '网络连接失败，请检查网络',
+          rawMessage: rawMessage,
         })
       },
     }
-    wx.downloadFile(options)
+    try {
+      downloadTask = wx.downloadFile(options)
+    } catch (err) {
+      rejectOnce({ code: -1, message: '文件下载启动失败', rawMessage: err && err.message })
+    }
   })
 }
 
@@ -588,11 +661,11 @@ module.exports = {
   },
 
   createRouteBookFromTencentDirection: function (payload) {
-    return request('/api/route-books/tencent-direction', 'POST', payload)
+    return request('/api/route-books/tencent-direction', 'POST', payload, ROUTE_SAVE_REQUEST_TIMEOUT_MS)
   },
 
   createRouteBookFromManualDrawn: function (payload) {
-    return request('/api/route-books/manual-drawn', 'POST', payload)
+    return request('/api/route-books/manual-drawn', 'POST', payload, ROUTE_SAVE_REQUEST_TIMEOUT_MS)
   },
 
   snapManualDrawnRoute: function (payload) {
