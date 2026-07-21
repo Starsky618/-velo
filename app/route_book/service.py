@@ -609,6 +609,10 @@ def create_route_book_from_manual_drawn(
     if existing is not None:
         return existing
 
+    # 上面的用户/幂等查询会隐式开启数据库事务。GLO 冷瓦片属于外部网络 I/O，
+    # 不能让这段不可控等待占着连接和事务；下载完成后再重新核验用户和幂等键。
+    db.rollback()
+
     points_wgs84 = _manual_points_for_storage(points, coordinate_system)
     payload = _manual_route_payload_from_points(points_wgs84)
     navigation_metadata_json = _navigation_metadata_json_from_draw_metadata(draw_metadata)
@@ -621,6 +625,17 @@ def create_route_book_from_manual_drawn(
         raise RuntimeError(f"路线海拔查询失败：{e}") from e
     except ValueError as e:
         raise RuntimeError(f"路线海拔查询失败：{e}") from e
+
+    if not _manual_draw_user_exists(db, current_user_id):
+        raise PermissionError("用户不存在或已注销")
+    existing = _existing_manual_draw_request(
+        db,
+        current_user_id=current_user_id,
+        client_request_id=client_request_id,
+        request_hash=request_hash,
+    )
+    if existing is not None:
+        return existing
 
     route = RouteBook(
         creator_id=current_user_id,

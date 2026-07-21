@@ -11,12 +11,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextvars import ContextVar
 from functools import lru_cache
 import fcntl
 import logging
 import math
 import os
 from pathlib import Path
+import time
 from typing import Iterable
 
 import httpx
@@ -37,11 +39,22 @@ GLO30_VERTICAL_DATUM = "EGM2008 (EPSG:3855)"
 GLO30_GRID_REGISTRATION = "RasterPixelIsPoint"
 GLO30_BASE_URL = "https://copernicus-dem-30m.s3.amazonaws.com"
 GLO30_DEFAULT_CACHE_DIR = "/var/cache/velo/glo30"
+# 总下载时限不是 httpx 的单次 read timeout。只要上游持续零星返回字节，单次
+# read timeout 会不断重新计时；必须另设墙钟时限，避免一个冷瓦片占住线程数小时。
 GLO30_DOWNLOAD_TIMEOUT_SECONDS = 120.0
+GLO30_DOWNLOAD_READ_TIMEOUT_SECONDS = 15.0
+GLO30_LOCK_WAIT_TIMEOUT_SECONDS = 5.0
+GLO30_QUERY_TIMEOUT_SECONDS = 120.0
+
+_query_deadline: ContextVar[float | None] = ContextVar("glo30_query_deadline", default=None)
 
 
 class DEMServiceError(Exception):
     """GLO-30 瓦片缺失、下载失败或文件损坏。"""
+
+
+class _RestartPartialDownload(Exception):
+    """旧断点与远端对象失配，需要在同一把锁内清零重试一次。"""
 
 
 def query_elevations(
@@ -69,21 +82,30 @@ def query_elevations(
 
     base_url = (dem_url or os.environ.get("GLO30_BASE_URL") or GLO30_BASE_URL).rstrip("/")
     cache_dir = Path(os.environ.get("GLO30_CACHE_DIR", GLO30_DEFAULT_CACHE_DIR))
-    for (south, west), items in grouped.items():
-        try:
-            tile = _load_tile(south, west, str(cache_dir), base_url)
-        except Exception as exc:
-            if isinstance(exc, DEMServiceError):
-                raise
-            raise DEMServiceError(
-                f"GLO-30 瓦片加载失败 {_tile_id(south, west)}：{exc}"
-            ) from exc
-        for index, lat, lon in items:
+    deadline = time.monotonic() + GLO30_QUERY_TIMEOUT_SECONDS
+    deadline_token = _query_deadline.set(deadline)
+    try:
+        for (south, west), items in grouped.items():
+            if time.monotonic() >= deadline:
+                raise DEMServiceError(
+                    f"GLO-30 路线海拔查询超过 {GLO30_QUERY_TIMEOUT_SECONDS:.0f} 秒总时限"
+                )
             try:
-                value = _sample_tile(tile, south=south, west=west, lat=lat, lon=lon)
-                results[index] = value if math.isfinite(value) else None
-            except Exception:
-                logger.exception("GLO-30 单点查询失败 lat=%s lon=%s", lat, lon)
+                tile = _load_tile(south, west, str(cache_dir), base_url)
+            except Exception as exc:
+                if isinstance(exc, DEMServiceError):
+                    raise
+                raise DEMServiceError(
+                    f"GLO-30 瓦片加载失败 {_tile_id(south, west)}：{exc}"
+                ) from exc
+            for index, lat, lon in items:
+                try:
+                    value = _sample_tile(tile, south=south, west=west, lat=lat, lon=lon)
+                    results[index] = value if math.isfinite(value) else None
+                except Exception:
+                    logger.exception("GLO-30 单点查询失败 lat=%s lon=%s", lat, lon)
+    finally:
+        _query_deadline.reset(deadline_token)
     return results
 
 
@@ -112,7 +134,7 @@ def _load_tile(south: int, west: int, cache_dir_value: str, base_url: str) -> np
     lock_path = cache_dir / f"{tile_id}.lock"
 
     with lock_path.open("a+b") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        _acquire_tile_lock(lock_file, tile_id)
         if not path.exists():
             _download_tile(_tile_url(base_url, south, west), path)
         try:
@@ -133,6 +155,20 @@ def _load_tile(south: int, west: int, cache_dir_value: str, base_url: str) -> np
                 ) from recovery_error
 
 
+def _acquire_tile_lock(lock_file, tile_id: str) -> None:
+    """同瓦片只允许一个下载者；后来者快速失败，不能占满 API 线程。"""
+    deadline = time.monotonic() + GLO30_LOCK_WAIT_TIMEOUT_SECONDS
+    while True:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise DEMServiceError(f"GLO-30 瓦片正在下载 {tile_id}，请稍后重试")
+            time.sleep(min(0.05, remaining))
+
+
 def _read_tile(path: Path) -> np.ndarray:
     """读取并验证一个已缓存的 GLO-30 TIFF。"""
     try:
@@ -145,27 +181,108 @@ def _read_tile(path: Path) -> np.ndarray:
     return values
 
 
-def _download_tile(url: str, destination: Path) -> None:
-    temporary = destination.with_suffix(f".part-{os.getpid()}")
+def _download_tile(url: str, destination: Path, *, _allow_partial_restart: bool = True) -> None:
+    temporary = destination.with_suffix(".part")
+    if not temporary.exists():
+        # 兼容部署前旧代码留下的 .part-<pid>；选最大的一份继续下载，避免冷瓦片
+        # 已经走了几十分钟却在重启后从零开始。
+        legacy_parts = list(destination.parent.glob(f"{destination.stem}.part-*"))
+        if legacy_parts:
+            max(legacy_parts, key=lambda path: path.stat().st_size).replace(temporary)
+
+    offset = temporary.stat().st_size if temporary.exists() else 0
+    request_headers = {"Range": f"bytes={offset}-"} if offset else {}
+    now = time.monotonic()
+    deadline = now + GLO30_DOWNLOAD_TIMEOUT_SECONDS
+    query_deadline = _query_deadline.get()
+    if query_deadline is not None:
+        deadline = min(deadline, query_deadline)
+    if deadline <= now:
+        raise DEMServiceError(
+            f"GLO-30 路线海拔查询超过 {GLO30_QUERY_TIMEOUT_SECONDS:.0f} 秒总时限"
+        )
     try:
         with httpx.stream(
             "GET",
             url,
+            headers=request_headers,
             follow_redirects=True,
-            timeout=GLO30_DOWNLOAD_TIMEOUT_SECONDS,
+            timeout=httpx.Timeout(
+                connect=10.0,
+                read=GLO30_DOWNLOAD_READ_TIMEOUT_SECONDS,
+                write=GLO30_DOWNLOAD_READ_TIMEOUT_SECONDS,
+                pool=10.0,
+            ),
         ) as response:
+            status_code = getattr(response, "status_code", 200)
+            response_headers = getattr(response, "headers", {})
+            expected_size = None
+            write_mode = "wb"
+            if offset and status_code == 206:
+                content_range = response_headers.get("Content-Range", "")
+                try:
+                    byte_range, total_text = content_range.removeprefix("bytes ").split("/", 1)
+                    range_start = int(byte_range.split("-", 1)[0])
+                    expected_size = int(total_text)
+                except (AttributeError, TypeError, ValueError):
+                    raise DEMServiceError(f"GLO-30 断点续传响应异常：{content_range or 'missing'}")
+                if range_start != offset:
+                    raise DEMServiceError(
+                        f"GLO-30 断点续传位置不一致：期望 {offset}，收到 {range_start}"
+                    )
+                write_mode = "ab"
+            elif offset and status_code == 416:
+                content_range = response_headers.get("Content-Range", "")
+                try:
+                    expected_size = int(content_range.rsplit("/", 1)[1])
+                except (IndexError, TypeError, ValueError):
+                    raise DEMServiceError("GLO-30 断点续传范围无效")
+                if offset == expected_size:
+                    temporary.replace(destination)
+                    return
+                raise _RestartPartialDownload(
+                    f"GLO-30 临时文件大小异常：本地 {offset}，远端 {expected_size}"
+                )
+            else:
+                # 上游若忽略 Range 返回 200，必须覆盖临时文件，不能把完整文件追加两次。
+                response.raise_for_status()
+                content_length = response_headers.get("Content-Length")
+                if content_length is not None:
+                    expected_size = int(content_length)
+
             response.raise_for_status()
-            with temporary.open("wb") as output:
+            with temporary.open(write_mode) as output:
                 for chunk in response.iter_bytes():
+                    if time.monotonic() >= deadline:
+                        raise DEMServiceError(
+                            f"GLO-30 瓦片下载超过 {GLO30_DOWNLOAD_TIMEOUT_SECONDS:.0f} 秒总时限"
+                        )
                     output.write(chunk)
-        if temporary.stat().st_size == 0:
+        downloaded_size = temporary.stat().st_size
+        if downloaded_size == 0:
             raise DEMServiceError(f"GLO-30 下载得到空文件：{url}")
+        if expected_size is not None and downloaded_size != expected_size:
+            raise DEMServiceError(
+                f"GLO-30 下载未完成：已缓存 {downloaded_size}/{expected_size} 字节，可稍后续传"
+            )
         temporary.replace(destination)
-    except Exception as exc:
+    except _RestartPartialDownload as exc:
+        # 416 且本地大小不等于远端对象，说明旧 partial 已失配。只允许清零重试一次，
+        # 否则同一坏 offset 会永久毒化共享缓存，让每次请求都重复 503。
         temporary.unlink(missing_ok=True)
+        if _allow_partial_restart:
+            _download_tile(url, destination, _allow_partial_restart=False)
+            return
+        raise DEMServiceError(str(exc)) from exc
+    except Exception as exc:
+        # 非空临时文件保留用于下一次 Range 续传；空文件没有复用价值。
+        if temporary.exists() and temporary.stat().st_size == 0:
+            temporary.unlink(missing_ok=True)
         if isinstance(exc, DEMServiceError):
             raise
-        raise DEMServiceError(f"GLO-30 瓦片下载失败 {url}：{exc}") from exc
+        cached_size = temporary.stat().st_size if temporary.exists() else 0
+        progress = f"（已缓存 {cached_size} 字节，可稍后续传）" if cached_size else ""
+        raise DEMServiceError(f"GLO-30 瓦片下载失败 {url}：{exc}{progress}") from exc
 
 
 def _sample_tile(

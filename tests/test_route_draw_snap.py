@@ -101,7 +101,7 @@ def test_snap_preview_applies_user_rate_limit_before_tencent_call(client, auth_h
     res = client.post("/api/route-books/manual-drawn/snap-preview", json=_snap_payload(), headers=auth_header)
 
     assert res.status_code == 429
-    assert calls == [(test_user.id, "route-book-draw-snap-preview", 20, 300)]
+    assert calls == [(test_user.id, "route-book-draw-snap-preview", 60, 300)]
 
 
 @pytest.mark.parametrize("coordinate_system", ["wgs84", "unknown", None])

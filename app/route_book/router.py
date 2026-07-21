@@ -154,7 +154,9 @@ def preview_manual_drawn_snap(
     check_rate_limit_by_user(
         current_user_id,
         "route-book-draw-snap-preview",
-        limit=20,
+        # 一次正常长路线会连续新增二三十个锚点；20/5min 会误伤真实画线。
+        # 60 仍能挡住持续脚本刷接口。
+        limit=60,
         window_sec=300,
     )
     try:

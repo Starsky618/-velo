@@ -75,7 +75,201 @@ def test_glo30_download_is_atomic(tmp_path, monkeypatch):
     dem_client._download_tile("https://example.test/tile.tif", destination)
 
     assert destination.read_bytes() == b"tile-bytes"
+    assert list(tmp_path.glob("*.part*")) == []
+
+
+def test_glo30_download_resumes_legacy_partial_file(tmp_path, monkeypatch):
+    from app.elevation import dem_client
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 206
+        headers = {"Content-Range": "bytes 5-9/10"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_bytes(self):
+            return iter((b"bytes",))
+
+    def fake_stream(*_args, **kwargs):
+        captured["headers"] = kwargs["headers"]
+        return FakeResponse()
+
+    monkeypatch.setattr(dem_client.httpx, "stream", fake_stream)
+    destination = tmp_path / "tile.tif"
+    (tmp_path / "tile.part-1").write_bytes(b"tile-")
+
+    dem_client._download_tile("https://example.test/tile.tif", destination)
+
+    assert captured["headers"] == {"Range": "bytes=5-"}
+    assert destination.read_bytes() == b"tile-bytes"
+    assert list(tmp_path.glob("*.part*")) == []
+
+
+def test_glo30_download_stops_at_total_wall_clock_deadline(tmp_path, monkeypatch):
+    from app.elevation import dem_client
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_bytes(self):
+            return iter((b"still-trickling",))
+
+    clock = iter((100.0, 221.0))
+    monkeypatch.setattr(dem_client.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(dem_client.httpx, "stream", lambda *_args, **_kwargs: FakeResponse())
+    destination = tmp_path / "tile.tif"
+
+    with pytest.raises(dem_client.DEMServiceError, match="120 秒总时限"):
+        dem_client._download_tile("https://example.test/tile.tif", destination)
+
+    assert not destination.exists()
     assert list(tmp_path.glob("*.part-*")) == []
+
+
+def test_glo30_query_shares_one_deadline_across_multiple_tiles(monkeypatch):
+    from app.elevation import dem_client
+
+    loaded_tiles = []
+    clock = iter((0.0, 1.0, 121.0))
+
+    def fake_load(south, west, _cache_dir, _base_url):
+        loaded_tiles.append((south, west))
+        return np.zeros((2, 2), dtype=np.float32)
+
+    monkeypatch.setattr(dem_client.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(dem_client, "_load_tile", fake_load)
+
+    with pytest.raises(dem_client.DEMServiceError, match="路线海拔查询超过 120 秒总时限"):
+        dem_client.query_elevations([(37.5, 112.5), (38.5, 113.5)])
+
+    assert loaded_tiles == [(37, 112)]
+    assert dem_client._query_deadline.get() is None
+
+
+def test_glo30_416_accepts_partial_that_already_matches_remote_size(tmp_path, monkeypatch):
+    from app.elevation import dem_client
+
+    class RangeCompleteResponse:
+        status_code = 416
+        headers = {"Content-Range": "bytes */5"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_bytes(self):
+            return iter(())
+
+    monkeypatch.setattr(
+        dem_client.httpx,
+        "stream",
+        lambda *_args, **_kwargs: RangeCompleteResponse(),
+    )
+    destination = tmp_path / "tile.tif"
+    destination.with_suffix(".part").write_bytes(b"12345")
+
+    dem_client._download_tile("https://example.test/tile.tif", destination)
+
+    assert destination.read_bytes() == b"12345"
+    assert not destination.with_suffix(".part").exists()
+
+
+@pytest.mark.parametrize("partial", [b"1234", b"123456"])
+def test_glo30_416_mismatched_partial_restarts_once_from_zero(
+    tmp_path,
+    monkeypatch,
+    partial,
+):
+    from app.elevation import dem_client
+
+    requests = []
+
+    class RangeMismatchResponse:
+        status_code = 416
+        headers = {"Content-Range": "bytes */5"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_bytes(self):
+            return iter(())
+
+    class FreshResponse:
+        status_code = 200
+        headers = {"Content-Length": "5"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_bytes(self):
+            return iter((b"fresh",))
+
+    def fake_stream(*_args, **kwargs):
+        requests.append(kwargs["headers"])
+        return RangeMismatchResponse() if len(requests) == 1 else FreshResponse()
+
+    monkeypatch.setattr(dem_client.httpx, "stream", fake_stream)
+    destination = tmp_path / "tile.tif"
+    destination.with_suffix(".part").write_bytes(partial)
+
+    dem_client._download_tile("https://example.test/tile.tif", destination)
+
+    assert requests == [{"Range": f"bytes={len(partial)}-"}, {}]
+    assert destination.read_bytes() == b"fresh"
+    assert not destination.with_suffix(".part").exists()
+
+
+def test_glo30_second_request_does_not_wait_behind_cold_tile(tmp_path, monkeypatch):
+    import fcntl
+
+    from app.elevation import dem_client
+
+    tile_id = dem_client._tile_id(37, 112)
+    lock_path = tmp_path / f"{tile_id}.lock"
+    lock_path.touch()
+    monkeypatch.setenv("GLO30_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(dem_client, "GLO30_LOCK_WAIT_TIMEOUT_SECONDS", 0.0)
+    dem_client._load_tile.cache_clear()
+
+    with lock_path.open("a+b") as held_lock:
+        fcntl.flock(held_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(dem_client.DEMServiceError, match="正在下载"):
+            dem_client.query_elevations([(37.5, 112.5)])
+
+    dem_client._load_tile.cache_clear()
 
 
 def test_glo30_corrupt_cache_is_replaced_and_revalidated_once(tmp_path, monkeypatch):

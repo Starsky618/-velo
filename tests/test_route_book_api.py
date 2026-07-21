@@ -1170,6 +1170,34 @@ def test_manual_drawn_route_accepts_gcj02_and_stores_draw_metadata(client, db, a
     assert metadata["elevation"]["processing_grid_m"] == 20.0
 
 
+def test_manual_draw_releases_database_transaction_while_glo_fetches(
+    client,
+    db,
+    auth_header,
+    monkeypatch,
+):
+    transaction_states = []
+
+    def fake_query(coords):
+        transaction_states.append(db.in_transaction())
+        return [700.0 for _coord in coords]
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    response = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "GLO 下载不占数据库事务",
+            "client_request_id": "test-manual-draw-no-db-transaction-during-glo",
+            "points": [[112.5, 37.8], [112.6, 37.9]],
+        },
+        headers=auth_header,
+    )
+
+    assert response.status_code == 200
+    assert transaction_states == [False]
+
+
 def test_route_draw_v0_mock_verification_runs_100_snap_save_elevation_detail_flows(
     client,
     auth_header,
