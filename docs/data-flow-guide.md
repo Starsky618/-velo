@@ -30,7 +30,7 @@
 18. [未实现链路(易踩坑)](#未实现链路易踩坑)
 20. [链路 20: 约骑核心链路（创建→发布→加入/退出→自动完成）](#链路-20约骑核心链路)
 21. [链路 21: 赛段页 upcoming-meetups 反向读](#链路-21赛段页-upcoming-meetups-反向读)
-22. [链路 22: 路线认知 DB foundation → 内部 writer → 审核发布（尚未运营化）](#链路-22路线认知-db-foundation--内部-writer--审核发布尚未运营化)
+22. [链路 22: 路线认知内部 writer → First Visible Slice demo（内部可读，未公开）](#链路-22路线认知内部-writer--first-visible-slice-demo内部可读未公开)
 
 ---
 
@@ -59,7 +59,7 @@
 ### 0.4 读文档前提
 
 读者应已读过:
-- `architecture-guide.md`(7 容器、6 模块、7 表)
+- `architecture-guide.md`(系统静态全景：模块 / 容器 / 表 / route cognition 边界)
 - `CLAUDE.md`(命名/铁律/陷阱)
 
 ---
@@ -1527,7 +1527,7 @@ strava:   与 notification 同层 —— 依赖 user + activity + segment + pars
 
 ### 10.9 route cognition hard gates
 
-route cognition v1.1 已完成 DB foundation，但还没有用户可见链路。任何后续 writer / reviewer 流程必须遵守：
+route cognition v1.1 已完成 DB foundation、内部 writer slice 和 First Visible Slice dry-run，但还没有用户可见链路。任何后续 writer / reviewer 流程必须遵守：
 
 - `route_versions.reference_line_snapshot` 是路线几何真相源；`route_books.reference_line` 是当前版本投影。
 - `route_segments` 是组成/解释层，不得改 `route_versions.reference_line_snapshot` 或 `route_books.reference_line`。
@@ -1535,7 +1535,7 @@ route cognition v1.1 已完成 DB foundation，但还没有用户可见链路。
 - `evidence_items` 只记录被 `judgment_run` 实际使用的证据，不是通用研究仓库，也没有 public API。
 - formal concept links / formal memberships 必须带 `accepted_judgment_run_id`，且对应 judgment 必须是 `human_review`。
 - AI / agent 不得直接写 formal links 或 formal membership rows。
-- 后续所有 formal writer 必须共享内部写入守卫；计划文件是 `app/route_cognition/services/write_guard.py`，当前尚未实现。
+- 所有内部 writer 必须共享 `app/route_cognition/services/write_guard.py`；writer 只 flush / add，不自己 `db.commit()`。
 
 ---
 
@@ -1625,16 +1625,16 @@ route cognition v1.1 已完成 DB foundation，但还没有用户可见链路。
 
 ### 11.7 route cognition public/admin surface ❌
 
-- route cognition v1.1 只完成 DB foundation。
+- route cognition v1.1 已完成 DB foundation、内部 writer slice、dry-run validation 和内部只读 demo snapshot。
 - **实际:未实现**：public API / admin UI / evidence public API / segment_submissions / membership candidates / external search worker / bulk backfill。
 - 不要假设存在 `/api/route-cognition/*`、后台候选审核页、公开 concept 页面或自动 seed 脚本。
-- 下一步应从内部 writer + reviewer/admin workflow 开始，见 `docs/research/route_cognition_v1_1_operationalization_plan.md`。
+- 下一步应先从真实 Taiyuan/Xishan 内部 seed 计划和 reviewer workflow 规划开始；public API / admin UI 需要用户明确批准。
 
-## 链路 22：路线认知 DB foundation → 内部 writer → 审核发布（尚未运营化）
+## 链路 22：路线认知内部 writer → First Visible Slice demo（内部可读，未公开）
 
-**这条链路是未来链路，不是当前用户流程。** 当前只有 DB/ORM foundation 和 `segment_eligibility` 内部 writer；还没有 public API、admin UI、seed 数据、外部搜索 worker。
+**这条链路是内部链路，不是当前用户流程。** 当前已完成 DB/ORM foundation、内部 writer、dry-run validation 和 First Visible Slice 只读 snapshot；仍没有 public API、admin UI、真实 seed、真实 backfill 或 external search worker。
 
-### 22.1 当前已存在的地基
+### 22.1 当前已存在的地基与内部服务
 
 ```
 route_books / route_versions
@@ -1654,38 +1654,57 @@ formal concept links
 route_segments + collection_routes + collection_segments
 ```
 
-最终 Alembic head：`20260618_membership_formal`。
+route cognition v1.1 foundation head：`20260618_membership_formal`。仓库当前 Alembic head 可能因后续非 route cognition 迁移继续前进。
 
-### 22.2 未来安全写入顺序
+已完成的内部服务：
 
 ```
-[内部人员/脚本]
+write_guard
+  ├── concept_writer
+  ├── route_collection_writer
+  ├── concept_candidate_writer
+  ├── concept_formal_link_writer
+  ├── collection_membership_writer
+  ├── route_segment_writer
+  └── demo_snapshot (read-only)
+```
+
+### 22.2 内部安全写入顺序
+
+```
+[内部测试 / internal seed 环境 / 未来 reviewer workflow]
   │
-  │ 创建或选择 human_review judgment_run
+  │ 创建 private/draft 本体，或创建/选择 judgment_run
   ▼
-[internal write guard]  app/route_cognition/services/write_guard.py  (尚未实现)
+[internal write guard]  app/route_cognition/services/write_guard.py
   │
-  ├── P1 concept node writer
-  ├── P2 route collection writer
-  ├── P3 concept candidate writer
-  ├── P4 concept formal link promotion writer
-  ├── P5 route segment manual writer
-  └── P6 collection membership manual writer
+  ├── concept / collection 本体 writer
+  ├── concept candidate writer（只允许 proposed / needs_review）
+  ├── human_review promotion → formal concept links
+  ├── human_review → collection membership
+  └── human_review → route_segments composition overlay
+        │
+        ▼
+  demo_snapshot read-only query
 ```
 
 ### 22.3 事务与发布规则
 
 - 候选接受和 formal link 创建必须在同一个 DB transaction。
 - formal writer 不允许绕过 human_review judgment。
-- seed objects 和 formal links 默认 private/draft 或 internal-only，单独批准后才能发布。
+- concept / collection 本体默认 private/draft/manual，单独批准后才能发布。
+- relationship / membership 没有 private/draft 概念，必须靠 candidate + human_review 或 manual_curated/legacy_import gate 控制。
 - 任何 writer 都不能修改 `content/routes/**`、`guide.md`、`route_guides.content_md`。
 - `route_segment` writer 不能改 route geometry truth，只能写 composition overlay。
+- `route_versions.reference_line_snapshot` 仍是路线几何真相源；`route_books.reference_line` 仍只是当前版本投影。
 
 ### 22.4 当前验收口径
 
 - 看到 DB 表存在 ≠ 产品可用。
-- 看到 `route_cognition_v1_1_completion_report.md` 写 complete，只表示数据库地基完成。
-- 看到 `route_cognition_v1_1_operationalization_plan.md` 才是下一阶段工作入口。
+- 看到 internal writer / dry-run 通过 ≠ public API 或 admin UI 已经完成。
+- `docs/research/route_cognition_v1_1_operationalization_slice_completion_report.md` 是内部 writer slice 完成态。
+- `docs/research/route_cognition_v1_1_first_visible_slice_plan.md` 和 `tests/test_route_cognition_first_visible_slice_dry_run.py` 是内部可读 demo 的最小样本。
+- `docs/research/route_cognition_xishan_seed_plan.md` 是真实 Taiyuan/Xishan seed 前的规划边界，不是 seed 脚本。
 
 ---
 
@@ -1700,7 +1719,7 @@ route_segments + collection_routes + collection_segments
 | strava | R/W | R/W | W | - | W | W | R/W |
 | parsing ✨ | - | - | - | - | - | - | - |
 
-route cognition 读写矩阵（v1.1 DB foundation）：
+route cognition 读写矩阵（v1.1 DB foundation + internal writer slice）：
 
 | 模块 \ 表组 | route_books / route_versions | segments | route_cognition_segments | judgment/evidence/research | collections/concepts | candidates | formal links/memberships |
 |---|---|---|---|---|---|---|---|
@@ -1708,7 +1727,8 @@ route cognition 读写矩阵（v1.1 DB foundation）：
 | segment | - | R/W | - | - | - | - | - |
 | route_cognition models | R | R | R/W | R/W | R/W | R/W | R/W |
 | route_cognition segment_eligibility writer | R | R | W | R | - | - | - |
-| future writer services | R | R | R | R/W | R/W | R/W | R/W |
+| route_cognition internal writers | R | R | R | R/W | R/W | R/W | R/W |
+| route_cognition demo_snapshot | R | R | R | - | R | - | R |
 | public API | - | - | - | - | - | - | - |
 
 ✨ parsing 是纯函数模块,不碰 DB。

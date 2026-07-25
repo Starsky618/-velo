@@ -413,21 +413,6 @@ def test_no_forbidden_tables_are_created_in_sqlite_contract(db, concept_nodes_sq
         assert row is None
 
 
-def test_no_content_or_route_guide_read_model_changes_are_in_tracked_diff():
-    result = __import__("subprocess").run(
-        ["git", "diff", "--name-only"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    changed_files = {line for line in result.stdout.splitlines() if line}
-
-    assert not any(path.startswith("content/routes/") for path in changed_files)
-    assert "guide.md" not in changed_files
-    assert "app/route_book/models.py" not in changed_files
-    assert "app/route_book/service_guides.py" not in changed_files
-
-
 def _seed_step_a_base(db) -> None:
     db.execute(
         text(

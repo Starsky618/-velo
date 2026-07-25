@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import importlib.util
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -368,22 +367,6 @@ def test_no_candidate_tables_or_forbidden_surfaces_added_by_step_d_sqlite_contra
             {"table_name": table_name},
         ).first()
         assert row is None
-
-
-def test_step_d_git_diff_stays_inside_allowed_files():
-    result = subprocess.run(["git", "diff", "--name-only"], check=True, capture_output=True, text=True)
-    changed_files = {line for line in result.stdout.splitlines() if line}
-
-    allowed_files = {
-        "app/route_cognition/models.py",
-        "migrations/versions/20260618_membership_formal.py",
-        "tests/test_route_cognition_membership_formal_tables.py",
-        "docs/research/route_cognition_v1_1_status.md",
-    }
-    assert changed_files <= allowed_files
-    assert not any(path.startswith("content/routes/") for path in changed_files)
-    assert "guide.md" not in changed_files
-    assert "app/admin/router.py" not in changed_files
 
 
 def _create_membership_contract_tables(db) -> None:

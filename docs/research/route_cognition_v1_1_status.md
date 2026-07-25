@@ -2,23 +2,25 @@
 
 ## Active work
 
-Completed:
-v1.1 remaining step D: route and collection membership formal tables
+Current state:
+v1.1 DB foundation is complete, the internal writer slice is complete, and First Visible Slice has been validated as a test/internal dry-run.
 
-- Current alembic head: `20260618_membership_formal`.
-- New migration: `migrations/versions/20260618_membership_formal.py`.
+- Route cognition v1.1 foundation head: `20260618_membership_formal`.
+- Final foundation migration: `migrations/versions/20260618_membership_formal.py`.
+- Internal writers implemented: `write_guard`, `concept_writer`, `route_collection_writer`, `concept_candidate_writer`, `concept_formal_link_writer`, `collection_membership_writer`, `route_segment_writer`.
+- Internal read/demo helper implemented: `app/route_cognition/services/demo_snapshot.py`.
+- First Visible Slice dry-run proves concept nodes, route collections, candidates, human_review formal links, collection memberships, route_segments composition overlay, and demo snapshot can be read together in a test/internal DB.
 - No public API.
 - No admin UI.
 - No automatic backfill.
-- Concept formal links are implemented for route, segment, and collection targets.
-- Route and collection membership formal tables are implemented for `route_segments`, `collection_routes`, and `collection_segments`.
-- Step D membership tables only support `source_kind IN ('manual_curated', 'legacy_import')`.
+- No real production seed yet.
+- No segment_submissions.
+- No external search worker.
 - Membership candidate tables are not implemented.
-- Other candidate tables are not implemented.
-- segment_submissions are not implemented.
-- external search worker is not implemented.
+- `manual_curated` / `legacy_import` concept formal writer is not implemented.
 - `route_segments` is a composition overlay; it is not route geometry truth.
 - `route_versions.reference_line_snapshot` remains route geometry truth.
+- `route_books.reference_line` remains current version projection.
 - metadata_json is not relationship truth.
 - evidence_items are not a public content source.
 

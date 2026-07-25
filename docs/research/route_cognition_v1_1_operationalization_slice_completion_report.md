@@ -4,7 +4,7 @@
 
 - DB foundation complete.
 - Operationalization internal writer slice complete.
-- Current Alembic head: `20260618_membership_formal`.
+- Alembic head at slice completion: `20260618_membership_formal`.
 - Recent related commits:
   - `5f4277d8` route cognition route segment seed dry run test
   - `c152e287` route cognition operationalization route segment writer

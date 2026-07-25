@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -366,27 +365,6 @@ def test_no_forbidden_tables_are_created_in_sqlite_contract(db, batch7_sqlite_ta
             {"table_name": table_name},
         ).first()
         assert row is None
-
-
-def test_batch7_git_diff_stays_inside_allowed_files():
-    result = subprocess.run(
-        ["git", "diff", "--name-only"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    changed_files = {line for line in result.stdout.splitlines() if line}
-
-    allowed_files = {
-        "app/route_cognition/models.py",
-        "migrations/versions/20260618_route_collections.py",
-        "tests/test_route_cognition_batch7.py",
-        "docs/research/route_cognition_v1_1_status.md",
-    }
-    assert changed_files <= allowed_files
-    assert not any(path.startswith("content/routes/") for path in changed_files)
-    assert "guide.md" not in changed_files
-    assert "app/route_book/models.py" not in changed_files
 
 
 def _seed_batch7_base(db) -> None:

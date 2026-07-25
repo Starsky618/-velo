@@ -1,5 +1,10 @@
 # Route Cognition v1.1 Scope Reset
 
+> 2026-07-20 产品恢复说明：本文保留为数据库与内部流程的历史范围证据，不再充当公共
+> Route UX 的当前入口。当前路线认知目标、两场会话合并裁决和下一实验见
+> [`route_cognition_first_principles.md`](route_cognition_first_principles.md)。DB 地基完成
+> 不授权继续扩 concept、candidate、relationship 或治理实体。
+
 本文用于暂停继续扩张后的范围复位：重新说明 VELO route cognition v1.1 原本要建成什么、当时已经完成什么、当时还缺什么，以及后续为什么不再沿用混乱的 Batch 8 叫法。
 
 2026-06-19 状态更新：

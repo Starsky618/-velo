@@ -3,7 +3,7 @@
 > **Primary audience: AI coding agents.** Humans may reference but will find it terse.
 > Structured for query, not narrative. Every field/path/port/env-var is precise.
 >
-> Mental model primer (human-friendly one-paragraph): velo 是一台 "骑行成绩加工厂"。用户上传骑行数据,工厂拆解为成绩单、排行榜、通知,用户拿走结果。2026-06-19 起,工厂旁边新增一间"路线认知审稿室":它记录路线版本、证据、概念、候选、正式关系和成员关系,但不直接改用户文案和主骑行成绩链路。— 往下不再使用此类比喻。
+> Mental model primer (human-friendly one-paragraph): velo 是一台 "骑行成绩加工厂"。用户上传骑行数据,工厂拆解为成绩单、排行榜、通知,用户拿走结果。2026-06 起,工厂旁边新增一间"路线认知审稿室":它记录路线版本、证据、概念、候选、正式关系、集合成员和路线组成说明；内部 writer 与 First Visible Slice dry-run 已验证，但它仍不直接改用户文案、不开放 public API、不进入主骑行成绩链路。— 往下不再使用此类比喻。
 
 ---
 
@@ -12,7 +12,7 @@
 1. [系统边界](#1-系统边界)
 2. [业务模块(12+1)](#2-业务模块121)
 3. [运行时容器(7)](#3-运行时容器7)
-4. [数据表(15 + route cognition v1.1 DB foundation)](#4-数据表15--route-cognition-v11-db-foundation--sprint-13-3--persona-3-张-stage-3-待-drop)
+4. [数据表(15 + route cognition v1.1 DB foundation + internal writer slice)](#4-数据表15--route-cognition-v11-db-foundation--sprint-13-3--persona-3-张-stage-3-待-drop)
 5. [API 汇总](#5-api-汇总)
 6. [前端结构](#6-前端结构)
 7. [依赖方向规则](#7-依赖方向规则)
@@ -79,7 +79,7 @@
 | **admin** | `app/admin/` | **885 行** | **v5** | **管理后台 12 endpoint（whoami / curation-pool / ai/segment-drafts / segments admin CRUD / from-activity / from-gpx / activities/{id}/trackpoints）/ 编排其他模块 service / require_admin 依赖把关** |
 | **training** | `app/training/` | **~700 行** | **Sprint 10-11** | **PMC 训练负荷（training_load.py CTL τ=42/ATL τ=7/TSB/4 档 + daily_training_load 表 + GET /load + 3 写入通道 hook）+ Sprint 11 训练分布（distribution.py 纯函数五类型 Polarized/Pyramidal/SweetSpot/Threshold/Mixed + GET /distribution + 默认不计滑行 0W / `exclude_zero=false` 仅兼容旧口径 + conic-gradient 圆饼图 + 全类型动态百分比文案）/ 防火墙独立模块 / Sprint 12 coach 复用公式与分布** |
 | **meetup** | `app/meetup/` | **~900 行** | **Sprint 13 + 发起约骑新原型（2026-06）** | **约骑主表 + 报名表 + 媒体表 + 常用集合点表 / 状态机 DRAFT→OPEN→COMPLETED/CANCELLED / 20 个 endpoint（创建/发布/加入/退出/取消/删除 + 照片墙 + GET /{id}/participants 骑友列表 + GET /{id}/report 完成报告 + 常用集合点 + 地点搜索）/ meetups 加 8 列（supply_point / audience_tags(sa.JSON) / visibility / eligibility_note / safety_note / share_token / recommended_power_label / average_speed_range）/ **invite_only 私圈靠 share_token 口令门禁**（详情/join/participants/media 凭口令，否则 404，防猜连号 id）/ publish 出发前 30min 截止校验 / 小程序发起 3 步流：选路线 → 图二就地编辑 → 图一总览确认（逐像素还原原型 + lucide SVG 图标 assets/icons/meetup/）** |
-| **route_cognition** | `app/route_cognition/` | **~1600 行模型 + 内部服务** | **route cognition v1.1 / 2026-06-19 DB foundation complete** | **路线认知审稿室：route_versions / route_guides provenance / route export / judgment + evidence + research / segment whitelist / route_collections / concept_nodes / typed candidates / formal concept links / route+collection membership formal tables。当前只有内部模型和 segment eligibility writer；无 public API、无 admin UI、无自动 backfill。详 `docs/research/route_cognition_v1_1_completion_report.md` + ADR-012** |
+| **route_cognition** | `app/route_cognition/` | **~1600 行模型 + 内部服务** | **route cognition v1.1 / DB foundation + internal writer slice complete** | **路线认知审稿室：route_versions / route_guides provenance / route export / judgment + evidence + research / segment whitelist / route_collections / concept_nodes / typed candidates / formal concept links / route+collection membership formal tables。当前已有内部 writer、dry-run validation 和 First Visible Slice 内部只读 demo；仍无 public API、无 admin UI、无 external search worker、无真实 seed、无真实 backfill。详 `docs/research/route_cognition_v1_1_operationalization_slice_completion_report.md` + ADR-012** |
 
 ### 2.2 模块内部结构(统一约定)
 
@@ -112,8 +112,15 @@ app/<模块名>/
 - **`app/route_cognition/`** (route cognition v1.1 / 2026-06-19):
   - `models.py`: judgment / evidence / research / segment whitelist / route collections / concept nodes / typed concept candidates / formal concept links / formal membership tables 的 ORM 模型。
   - `geometry_hash.py`: canonical line hash helper。
-  - `services/segment_eligibility.py`: 当前唯一已实现的内部 writer，用于把已审核 segment 写入 `route_cognition_segments`。
-  - `services/write_guard.py`: **尚未实现**，但 operationalization plan 要求未来所有 formal writer 共享这个内部写入守卫。
+  - `services/write_guard.py`: 内部写入门禁，负责 human_review judgment、发布状态、source、metadata_json 关系真相检查。
+  - `services/concept_writer.py`: 只创建 `concept_nodes`，不写关系。
+  - `services/route_collection_writer.py`: 只创建 `route_collections`，不写成员。
+  - `services/concept_candidate_writer.py`: 只提出 route / segment / collection 到 concept 的候选，不接受候选。
+  - `services/concept_formal_link_writer.py`: 把已人审 candidate 转成 formal concept links。
+  - `services/collection_membership_writer.py`: 写已人审 collection route / segment 成员。
+  - `services/route_segment_writer.py`: 写 route composition overlay，不改路线几何真相。
+  - `services/demo_snapshot.py`: 内部只读 demo snapshot，不写库、不开放 API。
+  - `services/segment_eligibility.py`: 把已审核 segment 写入 `route_cognition_segments` 白名单。
 
 ⚠️ agent 注意:
 - 新增模块必须遵守此结构,不得自创
@@ -156,7 +163,7 @@ app/<模块名>/
 - `monitor` (v5): 只读 `activity.models.Activity`（processing_health）+ 调外部 webhook + admin H5 反代探活 / **不写任何业务表**
 - `admin` (v5): 直 import `segment.service` + `activity.models`；通过 RQ 字符串 `"app.agent.tasks.generate_segment_draft_task"` 运行时绑定 `agent.tasks`（admin/service.py:18 / 不直接 import agent / 避免循环）。admin 是用户路径之上的"上层应用" / 只 require_admin 用户才能访问
 - `meetup` (Sprint 13): 依赖 `segment.models.Segment`（路线快照）+ `route_book.models.RouteBook`（另一种路线来源）+ `storage.local.LocalStorage`（媒体文件）/ 正向依赖链末端 / **2 处 spec 批准的反向 hook（已登记技术债，新增反向依赖仍禁止）**：① `app/user/service.py:delete_user`（line 57-58）延迟 import meetup.models + meetup.service（删号时级联 OPEN→CANCELLED / DRAFT 硬删）；② `app/segment/router.py`（line 31）顶层 import meetup.models（赛段详情页拉 upcoming-meetups）
-- `route_cognition` (v1.1): 防火墙式新增模块；依赖 `route_book.models.RouteBook/RouteVersion/RouteGuide`、`segment.models.Segment`、`user.models.User` 以及本模块 judgment/evidence/research 模型。当前只提供 ORM 和内部 segment eligibility writer；不得反向改 `content/routes/**`、`guide.md`、`route_guides.content_md`，也不得让 agent 直接写 formal links / membership rows。
+- `route_cognition` (v1.1): 防火墙式新增模块；依赖 `route_book.models.RouteBook/RouteVersion/RouteGuide`、`segment.models.Segment`、`user.models.User` 以及本模块 judgment/evidence/research 模型。当前提供 ORM、内部 writer、dry-run validation 和内部只读 demo snapshot；不得反向改 `content/routes/**`、`guide.md`、`route_guides.content_md`，也不得让 agent 直接写 formal links / membership rows。
 
 ⚠️ agent 注意:
 - strava **不是**"独立只出不入"——它反向消费 activity/segment 的 model 和 worker 函数,这是当前写入 Strava 导入活动的必经之路
@@ -326,7 +333,7 @@ app/<模块名>/
 
 > **`progress_records` 没建独立表**：spec 早期版本提过，task-2.A.1 实施时改用 `notifications.payload` JSONB + 部分唯一索引 `uniq_progress_notification_per_activity` 实现幂等推送（spec §2 修订补遗 5.5/5.6 / commit `91a3691`）。如果未来文档误引用 `progress_records`，按本表为准。
 
-> **route cognition v1.1 DB foundation 已完成**：最终 Alembic head 是 `20260618_membership_formal`。这只表示数据库地基完成，不表示产品已经有 public API、admin UI、seed 数据、外部搜索 worker 或用户投稿入口。详 `docs/research/route_cognition_v1_1_completion_report.md` 与 `docs/research/route_cognition_v1_1_operationalization_plan.md`。
+> **route cognition v1.1 DB foundation + internal writer slice 已完成**：route cognition v1.1 foundation head 是 `20260618_membership_formal`；仓库后续 Alembic head 可能继续前进。测试库已验证 concept、collection、candidate、formal link、collection membership、route_segments composition overlay 和 First Visible Slice 内部只读 snapshot。仍不表示产品已经有 public API、admin UI、真实 seed、真实 backfill、外部搜索 worker 或用户投稿入口。详 `docs/research/route_cognition_v1_1_operationalization_slice_completion_report.md`、`docs/research/route_cognition_v1_1_first_visible_slice_plan.md` 与 `docs/research/route_cognition_xishan_seed_plan.md`。
 
 ### 4.2 表字段规格
 
@@ -876,15 +883,15 @@ v7+ 的 agent 模块与主 SaaS 通过**薄接口**连接,不共享 session / �
 
 ### 7.4 route cognition 防火墙
 
-route cognition v1.1 是 DB foundation，不是新的用户流程入口：
+route cognition v1.1 已完成 DB foundation、内部 writer slice 和 First Visible Slice dry-run，但仍不是新的用户流程入口：
 
 - 不注册 public API router。
 - 不改 `content/routes/**`、`guide.md`、`route_guides.content_md`。
 - 不自动 backfill 旧 routes / segments / concepts / memberships。
 - AI / agent 只能写候选或研究材料，不能直接写正式关系。
-- 后续 formal writer 必须经过共享内部写入守卫（计划文件：`app/route_cognition/services/write_guard.py`，当前尚未实现）。
+- 已实现的内部 writer 必须经过共享写入守卫；事务边界由调用方控制，writer 不自己 `db.commit()`。
 
-详见 ADR-012 + `docs/research/route_cognition_v1_1_operationalization_plan.md`。
+详见 ADR-012 + `docs/research/route_cognition_v1_1_operationalization_slice_completion_report.md` + `docs/research/route_cognition_xishan_seed_plan.md`。
 
 ---
 
@@ -933,9 +940,12 @@ route cognition v1.1 是 DB foundation，不是新的用户流程入口：
 | `miniprogram/pages/meetup-detail/*` | 约骑详情页 | 照片墙 / 角色按钮（加入/退出/取消/发布） | 小程序 |
 | `miniprogram/pages/meetups-mine/*` | 我的约骑列表 | created/joined 两 tab | 小程序 |
 | `app/route_cognition/models.py` | 路线认知全部 DB 模型 | **必须 Alembic 迁移 + PostGIS 验证**；不要顺手开放 API | api + 迁移 |
+| `app/route_cognition/services/write_guard.py` | 路线认知内部 writer 共享门禁 | human_review gate / metadata_json 不得藏关系真相 / 不要写 commit | api / 内部脚本 |
+| `app/route_cognition/services/*_writer.py` | 路线认知内部写入服务 | 只写对应本体或关系表；不得改 content、route geometry truth、public API | api / 内部脚本 |
+| `app/route_cognition/services/demo_snapshot.py` | First Visible Slice 内部只读快照 | 只能读库，不能变成 public API 或 admin UI | api / 内部测试 |
 | `app/route_cognition/services/segment_eligibility.py` | segment 白名单内部写入 | geometry hash 一致性 / `route_cognition_segments` 不是待审池 | api / 内部脚本 |
 | `app/route_cognition/geometry_hash.py` | canonical geometry hash helper | normalization_version 后续要绑定 helper 版本 | api / 内部脚本 |
-| `migrations/versions/20260618_membership_formal.py` | route cognition v1.1 最终 membership formal migration | 最终 head `20260618_membership_formal`；不再默认继续加 schema | 需 alembic upgrade |
+| `migrations/versions/20260618_membership_formal.py` | route cognition v1.1 最终 membership formal migration | route cognition v1.1 foundation head `20260618_membership_formal`；不再默认继续加 route cognition schema | 需 alembic upgrade |
 
 ---
 
@@ -999,9 +1009,9 @@ route cognition v1.1 是 DB foundation，不是新的用户流程入口：
 
 | 深入方向 | 参考文档 |
 |---|---|
-| 数据流链路、状态转换时序 | `docs/data-flow-guide.md`(占位,待建) |
+| 数据流链路、状态转换时序 | `docs/data-flow-guide.md` |
 | 技术决策背后的原因 | `docs/adr/*.md` |
-| route cognition v1.1 完成态与后续运营化 | `docs/research/route_cognition_v1_1_completion_report.md` + `docs/research/route_cognition_v1_1_operationalization_plan.md` |
+| route cognition v1.1 完成态与后续产品化 | `docs/research/route_cognition_v1_1_operationalization_slice_completion_report.md` + `docs/research/route_cognition_v1_1_first_visible_slice_plan.md` + `docs/research/route_cognition_xishan_seed_plan.md` |
 | route cognition 为什么用防火墙式 DB foundation | `docs/adr/012-为什么路线认知用防火墙式-db-foundation.md` |
 | 跨模块契约精确规格 | `docs/contracts/*.md`(占位,待建) |
 | 当前期任务清单 | `docs/spec-v{current}.md` |

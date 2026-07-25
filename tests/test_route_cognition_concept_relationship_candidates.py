@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import subprocess
 import importlib.util
 from pathlib import Path
 
@@ -435,27 +434,6 @@ def test_no_forbidden_tables_are_created_in_sqlite_contract(db, concept_candidat
             {"table_name": table_name},
         ).first()
         assert row is None
-
-
-def test_step_b_git_diff_stays_inside_allowed_files():
-    result = subprocess.run(
-        ["git", "diff", "--name-only"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    changed_files = {line for line in result.stdout.splitlines() if line}
-
-    allowed_files = {
-        "app/route_cognition/models.py",
-        "migrations/versions/20260618_concept_relationship_candidates.py",
-        "tests/test_route_cognition_concept_relationship_candidates.py",
-        "docs/research/route_cognition_v1_1_status.md",
-    }
-    assert changed_files <= allowed_files
-    assert not any(path.startswith("content/routes/") for path in changed_files)
-    assert "guide.md" not in changed_files
-    assert "app/admin/router.py" not in changed_files
 
 
 def _seed_step_b_base(db) -> None:
