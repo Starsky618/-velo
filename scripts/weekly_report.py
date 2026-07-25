@@ -3,7 +3,7 @@
 velo 周报生成器——给 agent 自己看的协作复盘。
 
 干啥用：
-    手动运行，不再由 session_start.py 自动触发。
+    仅手动运行，不在会话启动时触发。
     扫上周对话历史 jsonl，找 Tim 否定我的瞬间（"看不懂"/"我说了"/"别"/"等等"等），
     默认只在 stdout 输出摘要；加 --write 才写到 .claude/agent-weekly/YYYY-WNN.md。
 

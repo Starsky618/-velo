@@ -9,10 +9,10 @@
 
 违反任一 → 停下来与 Tim 讨论,不要自行推进。
 
-产品层完整决策规则: `docs/agent-rules/product-decisions.md`（常驻）
+产品层完整决策规则: `docs/agent-rules/product-decisions.md`（涉及产品方向时按需读取）
 产品复杂决策走: `docs/agent-rules/velo-mental-model.md` § 10 问框架（按需加载）
 技术层完整规则: 本文档后续内容
-📖 **开新任务前先读 `docs/README.md` § 2** —— 9 阶段工作流 × 文档 × skill 全景
+📖 **根 `AGENTS.md` 是唯一常驻入口**。本文只保留按需检索的技术陷阱和历史说明；`workflow-kernel.md` 仅在 Tim 明确点名工作流实验时使用。
 
 ## 🔴 commit 前 4 问（每次会话开头必看）
 
@@ -136,7 +136,7 @@ MVP 目标（2026-06-11 按 D-006 同步）：码表文件上传解析 → 开�
 
 ## 权威文档
 
-> 📖 **文档全地图**：`docs/README.md`（开新任务前必读）——含 9 阶段工作流 × 文档 × skill 全景、场景速查、5 分类目录。
+> 📖 **文档全地图**：`docs/README.md`——含产品全景、文档索引、场景速查和旧九阶段历史参考。新任务先服从根 `AGENTS.md`，再按任务需要检索这里列出的专项文档。
 
 **执行与技术（agent 线）**
 - **技术规格**：`docs/spec-v5.md`（v5 期 / 当前现行）/ 历史 `docs/archive/spec-v1.md` ~ `spec-v4.md`（v1-v4 已 ship 归档）
@@ -151,8 +151,8 @@ MVP 目标（2026-06-11 按 D-006 同步）：码表文件上传解析 → 开�
 - **专题战略**：`docs/prd/velo-route-flywheel-strategy.md`（路线百科与数据飞轮战略 / 2026-06-09 立 / ⚠ 部分判断待重审：数据获取是物理约束非架构锅、变现/市场规模未深算）
 - **竞品深度分析**：`docs/competitive-analysis/`（5 份 / 见 `docs/competitive-analysis/README.md` 索引）
 
-**运行规则（agent 常驻）**
-- **agent 产品规则**：`docs/agent-rules/product-decisions.md`（常驻，规则层）
+**运行规则（按任务路由）**
+- **agent 产品规则**：`docs/agent-rules/product-decisions.md`（新功能、商业化或用户范围决策时读取）
 - **agent 思考框架**：`docs/agent-rules/velo-mental-model.md`（按需，mental model 层）
 - **Persona 宪法**：`docs/agent-rules/persona-constitution.md`（**2026-05-20 模块已砍 / 文档保留作教训**）
 
@@ -207,7 +207,7 @@ MVP 目标（2026-06-11 按 D-006 同步）：码表文件上传解析 → 开�
 11. **审核工具分层使用（2026-04-28 沉淀，三者不可互替）**：
     - **写代码过程中**（在编辑器随手扫一段）→ `/simplify` 做局部漂亮度检查（单 LLM 调用，10 秒级）
     - **commit 前**（硬性，详见原则 8）→ 风险分层审查（常规批次 1 道集成审；高危批次双审 + Codex 异源，2026-06-11 起）
-    - **任务完工 / claim 完成前** → `superpowers:verification-before-completion`（强制跑验证命令读完整输出，防"嘴上说测过了实际没跑"）
+    - **任务完工 / claim 完成前** → 重新运行本任务的真实验收命令，读完整输出并核对真实 diff；没有本轮新鲜证据，不得声称完成
     - 关键：simplify ≠ 三审的轻量替代——砍三审 = 失 spec 字段对照（v4 已踩 `fk_xxx` vs `_fkey` 命名坑）+ 异源盲区扫（v4 task-7.10 实证 Codex 一轮抓到 Claude 双审漏的反馈环级 Important）。三者各管一段时间窗，不互斥
 
 ## 代码健康度自动巡检
@@ -331,7 +331,7 @@ Worker 和 service 关键步骤必须 `logging` 输出，含实体 ID：
 
 📖 **完整部署 SOP（单一真相源）→ `docs/agent-rules/deploy-sop.md`**
 
-6 步 SOP（push → pull → 清 Redis → rebuild → alembic → curl verify → grep 前端入口）+ Pre-deploy checklist + 部署后真用回归 6 类盲区 + 故障排查因果链 + 运维脚本纪律 + SSH 脱敏，全在该文件。含"部署"keyword 的 prompt 由 `scripts/user_prompt_mental_check.py` 的 SOP_MAP 自动注入该文件摘要到双端视野（Claude + Codex）。
+6 步 SOP（push → pull → 清 Redis → rebuild → alembic → curl verify → grep 前端入口）+ Pre-deploy checklist + 部署后真用回归 6 类盲区 + 故障排查因果链 + 运维脚本纪律 + SSH 脱敏，全在该文件。部署前必须主动读全文；不再用关键词 hook 把摘要塞进每轮上下文。
 
 > ⚠ 历史的 4 步 SOP / checklist 已迁入 deploy-sop.md 并升级为 6 步——CLAUDE.md 不再保留正文，避免两处漂移。
 

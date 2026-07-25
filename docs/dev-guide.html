@@ -950,48 +950,48 @@
       </div>
     </div>
 
-    <!-- 段 3 · 4 通道 hook -->
-    <h3 style="font-size: 18px; margin-top: 36px;">4 通道 hook 流程（你看不见的后台）</h3>
-    <p class="h2-sub" style="margin-bottom: 20px;">你自然输入 prompt / hook 在你看不见的地方按内容动态加载相关上下文</p>
+    <!-- 段 3 · 新 Harness -->
+    <h3 style="font-size: 18px; margin-top: 36px;">三层护栏（平时安静，出危险才说话）</h3>
+    <p class="h2-sub" style="margin-bottom: 20px;">不再按关键词塞文档；模型自己判断做法，机器只限制越界和事故</p>
     <div class="hook-flow">
       <div class="hook-node entry">
         <div class="hook-title">你输入 prompt</div>
-        <div class="hook-desc">例：&quot;派 codex 改 strava 然后部署&quot;</div>
+        <div class="hook-desc">例：&quot;修好路线保存失败，并证明用户真能保存&quot;</div>
       </div>
       <div style="text-align: center; font-size: 24px; color: var(--text-3); margin: 8px 0;">↓</div>
       <div class="hook-node trigger-node">
-        <div class="hook-title">hook 4 通道并行扫描（总注入 ≤ 200 行 cap）</div>
+        <div class="hook-title">模型读取真实代码，自己选择路径；成功时所有护栏保持静默</div>
       </div>
       <div class="hook-channels">
         <div class="channel-card c1">
-          <div class="ch-num">通道 1</div>
-          <div class="ch-title">派工 keyword</div>
-          <div class="ch-trigger">派 codex · 实施 · 动手 · review · commit ...</div>
-          <div class="ch-output">→ agent-collab §10.Y 整段（70 行）</div>
+          <div class="ch-num">第 1 层</div>
+          <div class="ch-title">自动安全审查</div>
+          <div class="ch-trigger">普通读写、测试、调查自动继续</div>
+          <div class="ch-output">→ 只有越出任务范围才升级审查</div>
         </div>
         <div class="channel-card c2">
-          <div class="ch-num">通道 2</div>
-          <div class="ch-title">模块名（自适应扫 app/）</div>
-          <div class="ch-trigger">strava · activity · parsing · segment · user ...</div>
-          <div class="ch-output">→ app/*/__init__.py docstring</div>
+          <div class="ch-num">第 2 层</div>
+          <div class="ch-title">操作系统沙箱</div>
+          <div class="ch-trigger">默认只允许修改当前项目普通文件</div>
+          <div class="ch-output">→ 全局配置、.git、.codex 和项目外写入被拒绝</div>
         </div>
         <div class="channel-card c3">
-          <div class="ch-num">通道 3</div>
-          <div class="ch-title">sprint / PRD 名（含别名）</div>
-          <div class="ch-trigger">PMC · FTP · sprint 9 · coach engine · 训练负荷 ...</div>
-          <div class="ch-output">→ docs/prd/ + docs/superpowers/specs/ 顶部摘要</div>
+          <div class="ch-num">第 3 层</div>
+          <div class="ch-title">各用原生门卫</div>
+          <div class="ch-trigger">Codex 用沙箱原生规则；Claude 用 Bash Hook 识别常见高风险写法</div>
+          <div class="ch-output">→ 高损失动作执行前拒绝；两边不再强行共用一套不可靠机制</div>
         </div>
         <div class="channel-card c4">
-          <div class="ch-num">通道 4</div>
-          <div class="ch-title">SOP keyword</div>
-          <div class="ch-trigger">部署 · 调试 · 排查 · commit 前 ...</div>
-          <div class="ch-output">→ CLAUDE.md 对应 SOP 章节</div>
+          <div class="ch-num">项目层</div>
+          <div class="ch-title">真实结果验收</div>
+          <div class="ch-trigger">测试、迁移、真机、部署后真用</div>
+          <div class="ch-output">→ 每个项目只保留自己真正需要的检查</div>
         </div>
       </div>
       <div style="text-align: center; font-size: 24px; color: var(--text-3); margin: 8px 0;">↓</div>
       <div class="hook-node output">
-        <div class="hook-title">Claude / Codex 拿到 prompt + 注入内容</div>
-        <div class="hook-desc">双端对称 · 同一 user_prompt_mental_check.py 脚本</div>
+        <div class="hook-title">绝大多数正常工作不中断；高置信风险才出现提示</div>
+        <div class="hook-desc">判断力留给产品、品味、架构和维护成本</div>
       </div>
     </div>
 
@@ -1209,8 +1209,8 @@
   </section>
 
   <footer>
-    v4 · 2026-05-25 · 补完 Tab 6 反馈环（7 节点 + 脆弱点表）+ Tab 7 物理拓扑（11 容器 + 部署 SOP）· 7 tab 全启用<br>
-    实证来源：app/* 模块边界 · scripts/user_prompt_mental_check.py · .codex/hooks.json · CLAUDE.md 部署 SOP · 历史 sprint 踩坑（Persona / Strava 同步 / 部署翻车）
+    v5 · 2026-07-12 · 把关键词上下文注入替换为自动审查 + 沙箱 + 确定性门卫 · 7 tab 全启用<br>
+    实证来源：app/* 模块边界 · 全局 action_guard.py · Codex/Claude 当前权限配置 · CLAUDE.md 部署 SOP · 历史 sprint 踩坑（Persona / Strava 同步 / 部署翻车）
   </footer>
 </div>
 

@@ -1,3 +1,6 @@
 [mcp_servers.codex]
 command = "codex"
 args = ["mcp-server"]
+
+[sandbox_workspace_write]
+network_access = true

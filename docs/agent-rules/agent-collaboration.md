@@ -5,6 +5,8 @@
 > **本文前身**：`codex-division-of-labor.md`（v1.0-v1.3 / 2026-04-23 起）。2026-04-29 升级为中性双主驾视角 v2.0。
 >
 > **读者**：本文给 agent 读（规则 + 判断框架 + prompt 模板），人类也能扫清档位和场景。
+>
+> **当前边界**：根 `AGENTS.md` 是唯一常驻入口。本文只在多 agent 协作或正式交接时读取；`workflow-kernel.md` 仅在 Tim 明确点名的工作流实验中生效。下文旧九阶段和旧默认审查次数只用于理解历史任务。
 
 ---
 
@@ -17,7 +19,7 @@ Tim ↔ Claude ↔ Codex 协作时，遇分歧或漂移按下面顺序裁决：
 | 层 | 内容 | 谁能改 |
 |---|---|---|
 | **1** | 用户当轮指令（Tim 本轮明确说什么）| Tim |
-| **2** | 项目宪法（CLAUDE.md / 当前 spec / 当前 task 卡）| Tim 拍板 + agent 提议 |
+| **2** | 项目常驻边界（AGENTS.md）+ 当前合同（spec / task 卡）| Tim 拍板 + agent 提议 |
 | **3** | 协作协议（本文）| Tim 拍板 + agent 提议 |
 | **4** | 工具适配（Claude Read/Edit/Task / Codex rg/apply_patch）| 各 agent 自己写 |
 
@@ -25,7 +27,7 @@ Tim ↔ Claude ↔ Codex 协作时，遇分歧或漂移按下面顺序裁决：
 
 ### 用户点名 skill / workflow = 执行前硬门禁
 
-无论当前 agent 是否有自动 skill 触发机制（如 superpowers），只要 Tim 点名 workflow skill、审查 cadence、或"按某手册走"，主开发必须先加载并复述本轮门禁，再动代码。先写代码、后补流程 = 协议违规；若已漂移，立刻停下重来，不把流程债继续滚下去。
+无论当前 agent 是否有自动 skill 触发机制，只要 Tim 点名 workflow skill、审查 cadence、或"按某手册走"，主开发必须先加载并复述本轮门禁，再动代码。先写代码、后补流程 = 协议违规；若已漂移，立刻停下重来，不把流程债继续滚下去。
 
 ### 共识在 git，不在私有 memory
 
@@ -64,7 +66,7 @@ agent 私有 memory（Claude `~/.claude/.../memory/` / Codex session history）*
 
 **① 双重独立性（写≠审 + TDD 红绿）——抓幻觉的命根**
 - **写≠审**：写代码的 agent 不审自己（Codex 写 → Claude 异源审 / 反之）。2026-05-25 Sprint 10 实证：Codex 自跑 6 reviewer 全漏 / Claude 异源审才抓 2 Critical（canvas 陷阱 #17 / 参数名偏离合同）。
-- **TDD 红→绿先行**（A 档新业务逻辑强制 / 走 `superpowers:test-driven-development` skill）：先写失败测试（红 / 测试定义"对"是什么）→ 再写实现（绿）。**测试者 ≠ 实现者**（Claude 写测试定规格 / Codex 写实现 / 或反之 = 第二重独立性 / 测试不被实现俘获）。
+- **TDD 红→绿先行**（A 档新业务逻辑强制）：先写失败测试（红 / 测试定义"对"是什么）→ 再写实现（绿）。**测试者 ≠ 实现者**（Claude 写测试定规格 / Codex 写实现 / 或反之 = 第二重独立性 / 测试不被实现俘获）。
 - 反例（Sprint 10 翻车点）：Codex 写实现 + 自己写测试 + 自己跑过（测试后置 + 同源）→ 测试配合实现 / 不抓幻觉。**最后跑 pytest ≠ TDD**——这是 Sprint 10 幻觉率高的根因之一（Tim 2026-05-25 识别）。
 
 **② 每个 Critical 触发"制度化 + 砍冗"双动作——自迭代 + 反熵**
@@ -132,7 +134,9 @@ CLAUDE.md 标注的纯函数（不碰 DB / 不碰文件系统）：
 
 接口固定 + 测试可孤立 → A 档。
 
-### §2.2 9 阶段工作流 × Codex 可代劳
+### §2.2 旧九阶段 × Codex 分工（历史参考）
+
+> 新任务不再固定走满九阶段。下面只用于理解旧任务卡和旧文档中的角色标记。
 
 | 阶段 | Codex 可代劳的动作 |
 |---|---|
@@ -239,7 +243,7 @@ grep -A 1 "单向依赖\|依赖方向\|防火墙" CLAUDE.md docs/agent-rules/*.m
 
 > **关键升级（2026-05-25 Tim 拍）**：测试**先于实现**写（红→绿），且**测试者 ≠ 实现者**（双重独立性 / 测试不被实现俘获）。Sprint 10 翻车点：Codex 写实现 + 自写测试 + 自跑过（后置 + 同源）→ 测试配合实现不抓幻觉。**最后跑 pytest ≠ TDD**。
 
-**调用**：`Agent(subagent_type: "codex:codex-rescue", prompt: ...)` 或走 `superpowers:test-driven-development` skill
+**调用**：`Agent(subagent_type: "codex:codex-rescue", prompt: ...)`；主 agent 也可直接按下列三步执行，不依赖外部 TDD skill
 
 **TDD 流程**：
 1. **红**：测试者（如 Claude）从 spec/PRD 抽契约 → 写失败测试（定义"对"是什么 / 此时实现还没写 / 测试必红）
@@ -741,7 +745,7 @@ Tim 可随时叫"现在 Codex 接手 / Claude 接手"——agent 不能反驳。
 ### §10.Y 双主驾分工原则表（单次派工 / 2026-05-24 Tim 拍 v2 / 借鉴外部 AI Coding 文档）
 
 > §10 是"要不要双主驾切换主开发" / §10.Y 是"单次任务派谁干"。两者维度不同。
-> 由 `scripts/user_prompt_mental_check.py` hook 在 prompt 含派工 keyword 时自动注入到 **Claude 和 Codex 双端视野**（双端对称 hook / 2026-05-24 实现 / 见 `.claude/settings.json` + `.codex/hooks.json`）。
+> 本节只在任务确实涉及派工时按需读取；Claude 和 Codex 都不再通过关键词 hook 自动注入。
 
 **读者**：Tim + Claude + Codex **三方对等**。
 - **Tim 看**：判断派工方向 / 命中反指标时主动覆盖默认
@@ -777,14 +781,14 @@ Tim 可随时叫"现在 Codex 接手 / Claude 接手"——agent 不能反驳。
 
 | 任务类型 | 默认派谁 | 为啥 |
 |---|---|---|
-| 产品 brainstorm / 战略 / 中文 push back | Claude 主对话 | 中文 + brainstorming + superpowers 生态 |
-| 写长 spec / 战术 PRD / 战略文档 | Claude 主 agent 自做 | 中文 + brainstorming + 战略上下文 |
+| 产品 brainstorm / 战略 / 中文 push back | Claude 主对话 | 中文 + 战略上下文 + 人类拍板 |
+| 写长 spec / 战术 PRD / 战略文档 | Claude 主 agent 自做 | 中文 + 真实产品上下文 |
 | **写 plans / spec 实施细节 / 工程视角执行手册** | **Codex Desktop 原生写 + Claude 异源审**（2026-05-25 B 对照实验拍）| Codex 抓实施细节比 Claude 更准 / 详 §5 大文档通道行 + memory `feedback_main_agent_as_middle_manager` §2.1 通道 B |
 | 仿现有模式批量代码（如新模块复刻） | 派 Codex（异源） | 代码训练偏好 + 异源思考碰撞 |
 | 跨 3+ 模块 / 500+ 行实施 | 派 Codex | 复杂度 + 三审分工 |
 | 单文件 < 200 行实施 | Claude 主 agent 自做 | subagent overhead 不值 |
 | Code review（commit 前） | 异源（Claude 写派 Codex 审 / 反之）| 多样性保险 / 见 §4 场景 B |
-| HTML mockup / demo / 可视化 | Claude 主对话 | 中文 sprint context + brainstorming |
+| HTML mockup / demo / 可视化 | Claude 主对话 | 中文 sprint context + 原型优先 |
 | Migration / Alembic 迁移脚本 | 派 Codex 写 + 三审 | DDL 严谨度 |
 | 测试 fixture / 单元测试 | 派 Codex 写 | 代码训练偏好 |
 | 紧急 hotfix | Claude 主 agent 自做 | 速度优先 |

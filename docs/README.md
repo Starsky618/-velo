@@ -21,7 +21,7 @@
 骑车 → 上传 / Strava 同步 → 解析 → 匹配赛段 → 排行榜 → 看到排名被激励 → 继续骑
 ```
 
-**系统现在长什么样**：一个主引擎，挂着三组扩展——新功能默认开新房间，不拆主引擎的墙（防火墙式扩展）。
+**系统现在长什么样**：一个主引擎，挂着四组扩展——新功能默认开新房间，不拆主引擎的墙（防火墙式扩展）。
 
 ```
                       用户（严肃公路车骑手）
@@ -33,7 +33,7 @@
       → 通知（破纪录 / 抢 KOM）→ 个人主页（你的赛段身份图谱）
       模块：user · activity · parsing · segment · notification · strava
   ══════════════════════════════════════════════════════════
-                            │ 骑行数据沉淀下来，长出三组新能力
+                            │ 骑行数据沉淀下来，长出四组新能力
                             ▼
    📊 训练大脑 · 看懂自己的身体
       · 训练负荷（累不累）· 训练分布（练对没）
@@ -43,6 +43,11 @@
       · 约骑 meetup · 路书 route_book
       模块：meetup · route_book
    ──────────────────────────────────────────────────────
+   🧭 路线认知审稿室 · 把路线/赛段/概念变成可审关系　🧪 内部可读
+      · concept · collection · candidate · human_review formal link
+      · route_segments composition overlay（不是路线几何真相）
+      模块：route_cognition
+   ──────────────────────────────────────────────────────
    🔧 后勤 · 看不见但撑着主引擎运转
       · AI 赛段写手 agent · 监控告警 monitor · 管理后台 admin
       · 存储 / 工具 storage · common
@@ -51,6 +56,7 @@
 **做到哪了**：
 
 - ✅ **已上线**：MVP（上传 → 赛段 → 排行）· Strava 接入 · 训练分析三件套（FTP 估算 / 训练负荷 PMC / 训练分布）· 约骑 + 路书（创建配图 / 照片墙 / 账号注销 / 2026-06-02 全 ship 合 main + 部署）
+- 🧪 **内部已验证**：route cognition v1.1 DB foundation + internal writer slice + First Visible Slice dry-run；还没有 public API、admin UI、真实 seed、真实 backfill、external search worker。
 - 📋 **待开**：LLM 骑后教练总结（Sprint 12 / 设计稿见 `docs/superpowers/specs/2026-05-26-coach-architecture.md`）
 
 ---
@@ -85,25 +91,27 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
 
 **核心原则**：人类读的（PRD / 竞品 / 品牌气质）和 agent 读的（规则 / spec / 任务卡）**物理分开**——合一份会既长又抽象，两头不讨好。
 
-**agent 索引纪律**：agent 每次进入仓库先扫本文 §5 目录地图建索引，不默认全量加载子目录。
+**agent 索引纪律**：需要寻找专项文档时再扫本文 §5 目录地图；普通任务不默认加载本文或全部子目录。
 
 ---
 
-## §2 开新任务完整工作流（9 阶段）⭐ 核心章
+## §2 旧九阶段工作流（历史参考）
 
-每开一期新功能 / 每个新模块都按这 9 步走。每步**谁主导 / 读什么 / 用哪个 skill / 产出什么文件**都固定下来。
+> 根 `AGENTS.md` 是唯一常驻入口。`workflow-kernel.md` 目前只用于 Tim 明确点名的工作流实验；本节保留给旧任务迁移和历史追溯。
+
+旧制要求每期新功能 / 新模块固定走完下面 9 步；现仅用于理解历史任务的文档结构与迁移来源。
 
 ### §2.1 全景表
 
 | # | 阶段 | 主导 | 输入文档 | Skill | 产出 | 时长 |
 |---|---|---|---|---|---|---|
-| ① | 脑暴探索 | 你 | `prd/velo-vision.md` + `prd/velo-strategy.md` | `superpowers:brainstorming` | 对话记录（无文件） | 0.5-1 天 |
+| ① | 脑暴探索 | 你 | `prd/velo-vision.md` + `prd/velo-strategy.md` | 已退役：旧 Superpowers 脑暴 | 对话记录（无文件） | 0.5-1 天 |
 | ② | PRD 撰写 | 你 | `prd/velo-vision.md` + `prd/velo-product-spec.md` + `competitive-analysis/` | 无 | `prd/phase-N-prd.md` ⚠️ | 1-2 天 |
 | ③ | 需求塑形 | agent | phase PRD + `agent-rules/` + `competitive-analysis/` | `architect` Step 1-3 | 技术方向 3 选 1 锁定 | 0.5-1 天 |
 | ④ | Spec 撰写 | **主 agent 自己写**（chunk by chunk，⭐ 2026-04-28 起禁派 codex 写正文）| 上一步方向 + `architecture-guide.md` + `data-flow-guide.md` + `adr/` | `architect` Step 4-8 | `spec-vN.md`（Critical=0） | 1-2 天 |
-| ⑤ | 实施计划 | **主 agent 自己写**（chunk by chunk，⭐ 2026-04-28 起禁派 codex 写正文）| `spec-vN.md` | `architect` Step 9 + `superpowers:writing-plans` | `plans/phaseN/README.md` + `task-N.X.md` | 0.5-1 天 |
-| ⑥ | 并行执行 | agent 群 | `plans/phaseN/` | `subagent-driven-development` + `using-git-worktrees` + `test-driven-development` | 代码 + 单测 + commits | 3-10 天 |
-| ⑦ | 验证审查 | agent + 你 | 代码 + spec | `verification-before-completion` + `requesting-code-review` + `receiving-code-review` | 双审报告 | 1-2 天 |
+| ⑤ | 实施计划 | **主 agent 自己写**（chunk by chunk，⭐ 2026-04-28 起禁派 codex 写正文）| `spec-vN.md` | 已退役：旧 Superpowers 写计划 | `plans/phaseN/README.md` + `task-N.X.md` | 0.5-1 天 |
+| ⑥ | 并行执行 | agent 群 | `plans/phaseN/` | 已退役：旧 Superpowers 多 agent 流程 | 代码 + 单测 + commits | 3-10 天 |
+| ⑦ | 验证审查 | agent + 你 | 代码 + spec | 已退役：旧 Superpowers 验证与审查流程 | 双审报告 | 1-2 天 |
 | ⑧ | 部署上线 | agent + 你 | `CLAUDE.md §部署前强制检查清单` + `deployment-diary.md` | `deploy` | 生产上线 | 0.5 天 |
 | ⑨ | 复盘归档 | agent + 你 | 本期所有产出 | 无（CLAUDE.md 防黑盒化三问） | 刷新 `architecture-guide.md` / `data-flow-guide.md` / `changelog.md` / `tech-debt.md`；必要时新增 `adr/0XX.md` | 0.5 天 |
 
@@ -145,7 +153,7 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
 **像**：建筑师出施工图，每面墙承重、每根管道走向都标清楚。
 
 - **关键动作**：分段设计（模块 → 数据模型 → 数据流 → API）→ 故障分析五维（崩溃 / 并发 / 批量 / 边界 / 级联）→ **双重审判**（内部一致性 + 代码兼容性并行）→ 翻译成 yes/no 清单让你过审
-- **必看**：`architecture-guide.md`（现有系统静态视图）+ `data-flow-guide.md`（现有 9 条链路）+ `adr/`（相关决策）+ `CLAUDE.md § 技术栈陷阱清单`
+- **必看**：`architecture-guide.md`（现有系统静态视图）+ `data-flow-guide.md`（现有链路，含 route cognition 内部 writer / demo 链路）+ `adr/`（相关决策）+ `CLAUDE.md § 技术栈陷阱清单`
 - **硬规则**：
   - 预读清单（信条 14）：spec 里**任何字段 / 函数 / 状态值**引用必须先 grep 核对
   - 双审判 Agent A + Agent B 并行，prompt 互补，**Critical = 0 才能进下一步**
@@ -167,14 +175,14 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
 
 **像**：每个工人在自己的独立工棚干活，互不踩脚。
 
-- **关键动作**：`using-git-worktrees` 建隔离工作目录 → `dispatching-parallel-agents` 派多个 subagent → 每个 agent 启动时**只读 README + 自己那份 task 卡**
+- **关键动作**：按当前平台原生方式建隔离工作目录并派多个 subagent → 每个 agent 启动时**只读 README + 自己那份 task 卡**
 - **🟨 Codex 可代劳**（按 `docs/agent-rules/agent-collaboration.md §4` 场景模板）：
   - A 档：纯函数实现（parser/matcher/simplify）/ 写单元测试 / 补覆盖率（场景 A）
   - B 档：浅 bug 修复（场景 D）——Claude 定位，Codex 执行修复
 - **必看**：每个 subagent 进到自己 worktree 后读 `CLAUDE.md` + 对应 `task-N.X.md` + 分工宪章
 - **硬规则**：
   - subagent 一次只加载一个 task 文件（防注意力稀释）
-  - TDD 纪律：先写测试再实现（`test-driven-development`）
+  - TDD 纪律：高风险新业务逻辑先写失败测试，再写实现；低风险改动按任务风险决定
   - 每任务单独 commit，格式 `feat(模块): 任务X.X 简要描述`
 - **踩坑**：多 subagent 跨任务传数据走共享状态 → 应该走 task 的"输入输出契约"章节显式声明
 
@@ -217,25 +225,11 @@ velo 的文档**不是一个大通用文档**，是**两套为不同读者服务
 
 ---
 
-## §3 两个核心 skill 的分工（左右脑）
+## §3 旧双工作流已退役
 
-velo 工作流由两套大脑支撑：
+2026-07-12 起，Superpowers 插件及全部 skills 已卸载，不再作为 VELO 的执行层。模型负责通用的分析、计划、调试和验证；项目只提供它不可能凭空知道的目标、产品合同、权限边界和真实验收方法。
 
-| | 🟦 `architect` | 🟨 `superpowers` |
-|---|---|---|
-| **定位** | 建筑师大脑（规划 + 审查） | 工程队大脑（执行 + 运行时） |
-| **装载内容** | 14 条 velo 私人信条 + 9 步流水线 | 业界通用方法（brainstorm / TDD / worktree / code-review） |
-| **用在阶段** | ③④⑤（塑形→spec→计划） | ①⑤后半⑥⑦（脑暴→细化→执行→验证） |
-| **特色** | 实战踩坑沉淀，反模式速查 | 不用重造轮子 |
-
-### 重叠点取舍
-
-| 重叠 | architect | superpowers | 用法 |
-|---|---|---|---|
-| 需求探索 | —— | `brainstorming` | **先发散** |
-| 需求塑形 | Step 2 一问一答 | —— | **再收敛** |
-| 实施计划 | Step 9 架构骨架 | `writing-plans` 细化 | **串联两个** |
-| 代码审查 | 双审判（spec 级）| `requesting-code-review`（代码级）| **两层都用** |
+`docs/superpowers/` 只是历史目录名，里面仍有已落地功能的产品合同和设计证据，**不代表 Superpowers 仍在运行**。新任务由根 `AGENTS.md` 给出常驻边界；是否写计划、先写测试、派 subagent 或做异源审，按任务风险决定，不再固定走一套仪式。
 
 ---
 
@@ -282,11 +276,14 @@ velo 工作流由两套大脑支撑：
 | 路径 | 定位 | 何时读 |
 |---|---|---|
 | `docs/spec-v5.md` | v5 期技术规格（当前现行） | 写代码前 |
+| `docs/spec-route-export-v0.md` | 路书导出到码表的 V0 合同 | 改 GPX/TCX 导出前 |
+| `docs/spec-route-draw-v0.md` | 探索页手画路线 + 腾讯贴路 V0 合同 | 改画路线 / 路线吸附前 |
+| `docs/plans/route-draw-v0/` | Route Draw V0 任务卡 | 执行画路线功能前 |
 | `docs/archive/spec-v1.md` ~ `spec-v4.md` | v1-v4 期已 ship 归档（含 sunset 注释防陷阱） | 历史参考 |
 | `docs/archive/plans-phaseN-README.md` | 历史已 ship 总调度（phase3-5 + sprint-*） | 历史参考 |
 | `docs/archive/plans-phaseN-task-N.X.md` | 历史已 ship 任务卡 | 历史参考 |
 | `docs/architecture-guide.md` | 系统静态全景（模块 / 容器 / 表 / 依赖图）| 新人入职 / 加新模块 |
-| `docs/data-flow-guide.md` | 9 条数据流动态链路 | 修跨模块 bug |
+| `docs/data-flow-guide.md` | 数据流动态链路（含主干、约骑、训练、route cognition 内部链路） | 修跨模块 bug |
 | `docs/adr/README.md` | 10 份 ADR 总表 + 按场景索引 | 有人提议改决策时 |
 | `docs/adr/001-010-*.md` | 单条决策的完整论证 | 需要权威先例时 |
 | `docs/dev-guide.html` | Tim 专属 mental model 速查（7 tab 可交互 / 浏览器打开）| Tim 自己用 / 架构 + 协作机制全景速查 |
@@ -296,15 +293,16 @@ velo 工作流由两套大脑支撑：
 | `docs/superpowers/specs/2026-05-28-meetup-module-design.md` | 约骑 + 路书模块设计（✅ 已 ship 合 main）| 改约骑 / 路书前 |
 | `docs/superpowers/plans/2026-05-28-meetup-module/` | 约骑 + 路书任务卡（02 路书 / 03 约骑 service / 04 约骑 API / 08 赛段约骑入口）| 执行约骑 / 路书时 |
 
-> `architecture-guide.md` + `data-flow-guide.md` 已收录约骑 / 路书模块（2026-06-02 补章：约骑 3 表 + 14 端点 + 2 处反向 hook + 核心链路）。
+> `architecture-guide.md` + `data-flow-guide.md` 已收录约骑 / 路书模块，也已同步 route cognition v1.1 DB foundation、内部 writer slice、First Visible Slice dry-run 的边界。
 
 ### C. 运行规则（硬约束）
 
 | 路径 | 定位 | 加载时机 |
 |---|---|---|
-| `/CLAUDE.md`（项目根） | 技术 + 产品硬约束 + 部署清单 + 技术栈陷阱 + 已知风险 | **每次会话常驻** |
-| `docs/agent-rules/README.md` | agent 规则体系索引 + ID 命名规范 | 首次加载 |
-| `docs/agent-rules/product-decisions.md` | 378 行规则化结论（INV-P01~P06 / D-P01~P10 / 活人感 / 禁止词） | **agent 常驻加载** |
+| `/AGENTS.md`（项目根） | 唯一常驻入口：产品边界、风险动作和验收入口 | 每次会话常驻 |
+| `/CLAUDE.md`（项目根） | 技术陷阱、部署历史和旧规则说明 | 命中对应技术或事故时检索 |
+| `docs/agent-rules/README.md` | agent 规则体系索引 + ID 命名规范 | 需要寻找专项规则时 |
+| `docs/agent-rules/product-decisions.md` | 378 行规则化结论（INV-P01~P06 / D-P01~P10 / 活人感 / 禁止词） | 产品方向、用户范围或商业化决策时 |
 | `docs/agent-rules/velo-mental-model.md` | 756 行思考框架（公司定位 / 画像深描 / 10 问框架） | 复杂决策按需加载 |
 | `docs/agent-rules/agent-collaboration.md` | Claude ↔ Codex 分工宪章：3 档 / 5 判断法则 / 4 场景 prompt 模板 | 调用 Codex 前按需加载 |
 
@@ -405,3 +403,4 @@ velo 工作流由两套大脑支撑：
 - **2026-04-28 v2.1**：撤回"派 codex 写 spec/plans"——§2.1 全景表 ④⑤ 行主导改回主 agent / §2.2 ④⑤ 卡加硬规则行禁派 codex 写正文（chunk by chunk 自己写 → 写完 codex review-only）。理由：codex CLI 长任务卡死 bug 链（#13738/#14048/#18723），实证 spec-v5 卡死 30+ 分钟
 - **2026-05-25**（git 有改动、当时漏留记录，今日补注）：neat-freak 同步 2026-05-23~25 双主驾协作机制 session 沉淀
 - **2026-05-30 v2.2**：新增 **§0 velo 全景章**（一句话本质 + 核心引擎反馈环 + "1 主引擎 / 3 组扩展"架构图 + 进度三态）——补上"产品本质 + 架构全貌"的人话入口；§5B 目录补约骑 / 路书 / 训练分析指针 + architecture-guide 行去掉写死的过时数字（原"7 容器 / 6 模块 / 7 表"）；§8 新人清单首读 §0
+- **2026-06-29 v2.3**：neat 同步 route cognition v1.1 post-foundation 状态——§0 从 3 组扩展改为 4 组扩展，新增“路线认知审稿室”；修正 data-flow-guide 不再是“9 条链路”的旧说法，明确 route cognition 目前是内部可读，不是 public API / admin UI。
