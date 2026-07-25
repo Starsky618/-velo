@@ -43,3 +43,19 @@ docker-compose.override.yml
 .claude/worktrees/
 .claude/agent-weekly/
 docs/agent-weekly/
+
+# 本机采集 / 导出 / 调研产物（2026-07-25 盘点补：合计 ~300MB，无一个已跟踪文件）
+# 这些目录从 2026-06 起一直挂在 git status 里，把真实代码改动埋在噪音底下。
+# 确有某个文件要入库时用 git add -f 单独指定。
+/outputs/
+/output/
+/exports/
+/prototypes/
+/tmp_doc_work/
+/design-qa.md
+
+# playwright-cli 本机调试快照与 console 日志
+.playwright-cli/
+
+# 原型工程依赖（route-atlas 自带 .gitignore，这条兜住其他原型）
+docs/prototypes/**/node_modules/
