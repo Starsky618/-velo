@@ -17,7 +17,10 @@ FastAPI 的依赖注入机制就像机场安检：
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import InvalidTokenError as JWTError, ExpiredSignatureError
+from sqlalchemy.orm import Session
 
+from app.database import get_db
+from app.user.models import User
 from app.user.service import decode_token
 
 # auto_error=False：请求头没有 token 时不让 FastAPI 自动返回 403，
@@ -27,6 +30,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+    db: Session = Depends(get_db),
 ) -> int:
     """
     从请求头中提取并验证 JWT，返回当前用户的 user_id。
@@ -48,11 +52,14 @@ def get_current_user(
         # ValueError：token 里的 user_id 不是合法整数（防御性）
         raise HTTPException(status_code=401, detail="无效凭证")
 
+    if db.query(User.id).filter(User.id == user_id).first() is None:
+        raise HTTPException(status_code=401, detail="用户不存在或已注销")
     return user_id
 
 
 def get_optional_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+    db: Session = Depends(get_db),
 ) -> int | None:
     """
     从请求头中提取并验证 JWT，返回 user_id；无 token 或 token 无效时返回 None。
@@ -67,6 +74,9 @@ def get_optional_user(
     if credentials is None:
         return None
     try:
-        return decode_token(credentials.credentials)
+        user_id = decode_token(credentials.credentials)
     except (ExpiredSignatureError, JWTError, ValueError):
         return None
+    if db.query(User.id).filter(User.id == user_id).first() is None:
+        return None
+    return user_id

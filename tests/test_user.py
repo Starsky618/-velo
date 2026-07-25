@@ -81,6 +81,31 @@ def test_04_profile_no_token(client):
     assert resp.json()["detail"] == "未登录"
 
 
+def test_04_deleted_user_token_is_rejected_by_shared_auth(client, db, auth_header, test_user):
+    user_id = test_user.id
+    db.delete(test_user)
+    db.commit()
+
+    resp = client.get("/api/user/profile", headers=auth_header)
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "用户不存在或已注销"
+    assert db.query(type(test_user)).filter(type(test_user).id == user_id).first() is None
+
+
+def test_04_optional_auth_treats_deleted_user_as_anonymous(db, auth_header, test_user):
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from app.dependencies import get_optional_user
+
+    token = auth_header["Authorization"].split(" ", 1)[1]
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    db.delete(test_user)
+    db.commit()
+
+    assert get_optional_user(credentials=credentials, db=db) is None
+
+
 # ==================== 5-8：用户资料 ====================
 
 def test_05_get_profile(client, auth_header):
