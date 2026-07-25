@@ -6,12 +6,16 @@ admin H5 端到端探针单测（task-monitor-admin-h5）。
 - 不真调飞书 / 用 mock 验证调用次数 + 文本内容
 """
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 
 from app.monitor import admin_h5_health
+
+
+WEBHOOK_SECRET_MARKER = "must-not-enter-admin-monitor-log"
 
 
 @pytest.fixture(autouse=True)
@@ -41,7 +45,7 @@ def configured_webhook(monkeypatch):
     monkeypatch.setattr(
         admin_h5_health.settings,
         "FEISHU_BOT_WEBHOOK",
-        "https://example.com/feishu/test",
+        f"https://example.com/feishu/test?secret={WEBHOOK_SECRET_MARKER}",
     )
 
 
@@ -121,22 +125,31 @@ def test_network_error_treated_as_failure(configured_webhook):
     assert "ConnectError" in posted_text
 
 
-def test_feishu_webhook_failure_does_not_block(configured_webhook):
+def test_feishu_webhook_failure_does_not_block(configured_webhook, caplog):
     """飞书 webhook 5xx / 网络异常 → catch 后仍返失败列表（业务不阻断）。"""
 
     def fake_get(url, **kwargs):
         return _make_response(502)  # 触发告警
 
     def fake_post(*args, **kwargs):
-        raise httpx.ConnectError("feishu down")
+        request = httpx.Request(
+            "POST",
+            f"https://example.com/feishu/test?secret={WEBHOOK_SECRET_MARKER}",
+        )
+        response = httpx.Response(502, request=request)
+        raise httpx.HTTPStatusError("feishu down", request=request, response=response)
 
-    with patch.object(httpx, "get", side_effect=fake_get), \
-         patch.object(httpx, "post", side_effect=fake_post):
-        result = admin_h5_health.scan_admin_h5_health()
+    with caplog.at_level(logging.ERROR, logger=admin_h5_health.logger.name):
+        with patch.object(httpx, "get", side_effect=fake_get), \
+             patch.object(httpx, "post", side_effect=fake_post):
+            result = admin_h5_health.scan_admin_h5_health()
 
     # 即便飞书挂，仍返失败项让 main() 退码 1
     assert "static_site" in result
     assert "api_proxy" in result
+    assert WEBHOOK_SECRET_MARKER not in caplog.text
+    assert "error_type=HTTPStatusError" in caplog.text
+    assert "status_code=502" in caplog.text
 
 
 def test_unconfigured_webhook_skips_post_but_returns_failures(monkeypatch):

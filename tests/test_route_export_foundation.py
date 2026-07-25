@@ -26,6 +26,17 @@ _TRUSTED_ELEVATION_METADATA = (
 )
 
 
+def _trusted_elevation_metadata_with_grid(*, point_count: int, grid_point_count: int) -> str:
+    import json
+
+    metadata = json.loads(_TRUSTED_ELEVATION_METADATA)
+    elevation = metadata["elevation"]
+    elevation["point_count"] = point_count
+    elevation["elevation_grid_schema"] = "distance_elevation_v1"
+    elevation["elevation_grid_point_count"] = grid_point_count
+    return json.dumps(metadata)
+
+
 def _check_sql(table, name: str) -> str:
     checks = [
         constraint
@@ -169,6 +180,288 @@ def test_export_generator_builds_gpx_with_required_elevation_snapshot():
     assert "<ele>701.2</ele>" in text
     assert "<ele>735.8</ele>" in text
     assert "<TrainingCenterDatabase" not in text
+
+
+def test_gpx_export_preserves_route_result_climb():
+    import json
+    import math
+    from xml.etree import ElementTree
+
+    import numpy as np
+
+    from app.elevation.dem_client import (
+        GLO30_HORIZONTAL_RESOLUTION_M,
+        GLO30_LICENSE_ID,
+        GLO30_SOURCE_NAME,
+        GLO30_VERTICAL_ACCURACY_M,
+    )
+    from app.elevation.route_elevation import (
+        ROUTE_ELEVATION_METHOD,
+        _cumulative_distances,
+        _meaningful_ascent,
+        build_route_elevation_result,
+        route_elevation_metadata,
+    )
+    from app.route_book.export_generator import generate_route_export
+
+    points = [[112.5, 37.8], [112.55, 37.8]]
+
+    def fake_query(coords):
+        # 约 4.4km 的宽缓单峰；山峰位于稀疏参考线两端之间。
+        return [
+            800.0 + 100.0 * math.sin(math.pi * ((lon - 112.5) / 0.05)) ** 2
+            for _lat, lon in coords
+        ]
+
+    route_result = build_route_elevation_result(points, query_func=fake_query)
+    metadata = {
+        "elevation": {
+            "method": ROUTE_ELEVATION_METHOD,
+            "source_name": GLO30_SOURCE_NAME,
+            "license_id": GLO30_LICENSE_ID,
+            "accuracy_m": GLO30_VERTICAL_ACCURACY_M,
+            "horizontal_resolution_m": GLO30_HORIZONTAL_RESOLUTION_M,
+            "point_count": route_result.point_count,
+            "elevation_grid_schema": "distance_elevation_v1",
+            "elevation_grid_point_count": len(route_result.elevation_grid),
+            **route_elevation_metadata(),
+        }
+    }
+    generated = generate_route_export(
+        route_name="合成单峰路线",
+        reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.55 37.8)",
+        elevation_points_snapshot=json.dumps(route_result.snapshot),
+        elevation_grid_snapshot=json.dumps(
+            {
+                "schema": "distance_elevation_v1",
+                "line_hash": "synthetic-line",
+                "points": route_result.elevation_grid,
+            }
+        ),
+        reference_line_hash="synthetic-line",
+        elevation_metadata_json=json.dumps(metadata),
+        export_format="gpx",
+    )
+
+    root = ElementTree.fromstring(generated.content)
+    namespace = {"gpx": "http://www.topografix.com/GPX/1/1"}
+    exported_points = [
+        [
+            float(node.attrib["lon"]),
+            float(node.attrib["lat"]),
+            float(node.find("gpx:ele", namespace).text),
+        ]
+        for node in root.findall(".//gpx:trkpt", namespace)
+    ]
+    assert len(exported_points) == len(route_result.elevation_grid)
+    assert exported_points[0][:2] == points[0]
+    assert exported_points[-1][:2] == points[-1]
+    assert all(point[1] == 37.8 for point in exported_points)
+    exported_distances = np.asarray(
+        _cumulative_distances([(point[0], point[1]) for point in exported_points]),
+        dtype=float,
+    )
+    exported_climb = _meaningful_ascent(
+        np.asarray([point[2] for point in exported_points], dtype=float),
+        exported_distances,
+    )
+
+    assert route_result.climb > 90.0
+    tolerance_m = max(5.0, route_result.climb * 0.005)
+    assert abs(route_result.climb - exported_climb) <= tolerance_m, (
+        f"页面爬升 {route_result.climb}m，导出 GPX 复算 {exported_climb}m，"
+        f"差值超过 {tolerance_m}m"
+    )
+
+
+def test_export_generator_rejects_canonical_grid_not_bound_to_reference_line():
+    import json
+
+    import pytest
+
+    from app.elevation.route_elevation import build_route_elevation_result, route_distance_m
+    from app.route_book.export_generator import generate_route_export
+
+    points = [[112.5, 37.8], [112.55, 37.8]]
+    distance = route_distance_m(points)
+    result = build_route_elevation_result(
+        points,
+        query_func=lambda coords: [
+            800.0 + 50.0 * index / (len(coords) - 1)
+            for index, _coord in enumerate(coords)
+        ],
+    )
+    metadata = _trusted_elevation_metadata_with_grid(
+        point_count=2,
+        grid_point_count=len(result.elevation_grid),
+    )
+    base = {
+        "schema": "distance_elevation_v1",
+        "line_hash": "wrong-line",
+        "points": result.elevation_grid,
+    }
+    with pytest.raises(ValueError, match="canonical"):
+        generate_route_export(
+            route_name="错绑网格",
+            reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.55 37.8)",
+            elevation_points_snapshot="[[112.5,37.8,800.0],[112.55,37.8,850.0]]",
+            elevation_grid_snapshot=json.dumps(base),
+            reference_line_hash="expected-line",
+            elevation_metadata_json=metadata,
+            export_format="gpx",
+        )
+
+    base["line_hash"] = "expected-line"
+    base["points"][-1][0] = round(distance + 100.0, 3)
+    with pytest.raises(ValueError, match="canonical"):
+        generate_route_export(
+            route_name="越界网格",
+            reference_line_snapshot="SRID=4326;LINESTRING(112.5 37.8, 112.55 37.8)",
+            elevation_points_snapshot="[[112.5,37.8,800.0],[112.55,37.8,850.0]]",
+            elevation_grid_snapshot=json.dumps(base),
+            reference_line_hash="expected-line",
+            elevation_metadata_json=metadata,
+            export_format="gpx",
+        )
+
+
+def test_canonical_grid_parser_rejects_incomplete_or_unphysical_values():
+    import copy
+    import json
+    import math
+
+    from app.elevation.route_elevation import build_route_elevation_result, route_distance_m
+    from app.route_book.elevation_quality import parse_complete_elevation_grid
+
+    route_points = [[112.5, 37.8], [112.55, 37.8]]
+    distance = route_distance_m(route_points)
+    result = build_route_elevation_result(
+        route_points,
+        query_func=lambda coords: [800.0 + index * 0.1 for index, _coord in enumerate(coords)],
+    )
+    valid = result.elevation_grid
+    metadata = _trusted_elevation_metadata_with_grid(
+        point_count=2,
+        grid_point_count=len(valid),
+    )
+    valid_payload = json.dumps(
+        {
+            "schema": "distance_elevation_v1",
+            "line_hash": "expected-line",
+            "points": valid,
+        }
+    )
+    assert parse_complete_elevation_grid(
+        valid_payload,
+        expected_line_hash="expected-line",
+        expected_distance_m=distance,
+        metadata_json=metadata,
+    ) is not None
+
+    wrong_start = copy.deepcopy(valid)
+    wrong_start[0][0] = 1.0
+    duplicate_chainage = copy.deepcopy(valid)
+    duplicate_chainage[1][0] = duplicate_chainage[0][0]
+    nan_elevation = copy.deepcopy(valid)
+    nan_elevation[-1][1] = math.nan
+    impossible_elevation = copy.deepcopy(valid)
+    impossible_elevation[-1][1] = 9001.0
+    wrong_spacing = copy.deepcopy(valid)
+    wrong_spacing[len(wrong_spacing) // 2][0] += 1.0
+    extra_coordinate_columns = copy.deepcopy(valid)
+    extra_coordinate_columns[1].extend([112.5, 37.8])
+    invalid_grids = [
+        wrong_start,
+        duplicate_chainage,
+        nan_elevation,
+        impossible_elevation,
+        valid[:-1],
+        wrong_spacing,
+        extra_coordinate_columns,
+    ]
+    for points in invalid_grids:
+        payload = json.dumps(
+            {
+                "schema": "distance_elevation_v1",
+                "line_hash": "expected-line",
+                "points": points,
+            }
+        )
+        assert parse_complete_elevation_grid(
+            payload,
+            expected_line_hash="expected-line",
+            expected_distance_m=distance,
+            metadata_json=metadata,
+        ) is None
+
+    bad_metadata = json.loads(metadata)
+    bad_metadata["elevation"]["elevation_grid_point_count"] -= 1
+    assert parse_complete_elevation_grid(
+        valid_payload,
+        expected_line_hash="expected-line",
+        expected_distance_m=distance,
+        metadata_json=json.dumps(bad_metadata),
+    ) is None
+
+
+def test_canonical_export_preserves_sharp_turn_and_out_and_back_vertices():
+    import json
+    from xml.etree import ElementTree
+
+    from app.elevation.route_elevation import build_route_elevation_result
+    from app.route_book.export_generator import generate_route_export
+
+    routes = [
+        [[112.5, 37.8], [112.5001, 37.8], [112.5001, 37.8002]],
+        [[112.5, 37.8], [112.5002, 37.8], [112.5, 37.8]],
+    ]
+    namespace = {"gpx": "http://www.topografix.com/GPX/1/1"}
+    for route_points in routes:
+        result = build_route_elevation_result(
+            route_points,
+            query_func=lambda coords: [800.0 for _coord in coords],
+        )
+        line_hash = "sharp-turn-line"
+        reference_line = "SRID=4326;LINESTRING(" + ", ".join(
+            f"{lon} {lat}" for lon, lat in route_points
+        ) + ")"
+        generated = generate_route_export(
+            route_name="急弯保真探针",
+            reference_line_snapshot=reference_line,
+            elevation_points_snapshot=json.dumps(result.snapshot),
+            elevation_grid_snapshot=json.dumps(
+                {
+                    "schema": "distance_elevation_v1",
+                    "line_hash": line_hash,
+                    "points": result.elevation_grid,
+                }
+            ),
+            reference_line_hash=line_hash,
+            elevation_metadata_json=_trusted_elevation_metadata_with_grid(
+                point_count=len(route_points),
+                grid_point_count=len(result.elevation_grid),
+            ),
+            export_format="gpx",
+        )
+        root = ElementTree.fromstring(generated.content)
+        exported = [
+            [float(node.attrib["lon"]), float(node.attrib["lat"])]
+            for node in root.findall(".//gpx:trkpt", namespace)
+        ]
+
+        cursor = 0
+        for expected in route_points:
+            matching_index = next(
+                (
+                    index
+                    for index in range(cursor, len(exported))
+                    if abs(exported[index][0] - expected[0]) <= 1e-8
+                    and abs(exported[index][1] - expected[1]) <= 1e-8
+                ),
+                None,
+            )
+            assert matching_index is not None
+            cursor = matching_index + 1
 
 
 def test_export_generator_rejects_elevation_coordinates_that_do_not_match_route():

@@ -157,6 +157,75 @@ def test_route_book_detail_build_stats_uses_meter_units_and_zero_climb():
     assert rows["badDistance"] == [{"v": "120", "u": "m", "k": "爬升"}]
 
 
+def test_route_export_requests_have_watchdogs_when_wechat_callbacks_are_lost():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                ;(async function () {
+                  let timers = []
+                  let requestAborts = 0
+                  let downloadAborts = 0
+                  global.getApp = function () {
+                    return { globalData: { baseUrl: 'https://example.test', token: 'token' } }
+                  }
+                  global.setTimeout = function (callback, ms) {
+                    timers.push({ callback, ms })
+                    return timers.length
+                  }
+                  global.clearTimeout = function () {}
+                  global.wx = {
+                    request: function () {
+                      return { abort: function () { requestAborts += 1 } }
+                    },
+                    downloadFile: function () {
+                      return { abort: function () { downloadAborts += 1 } }
+                    },
+                  }
+
+                  const api = require('./miniprogram/utils/api.js')
+                  const createPromise = api.createRouteExport(42, 'gpx', 'generic')
+                  const requestTimer = timers.shift()
+                  requestTimer.callback()
+                  const createError = await createPromise.catch(function (err) { return err })
+
+                  const downloadPromise = api.downloadRouteExport('/download/42', 'route.gpx')
+                  const downloadTimer = timers.shift()
+                  downloadTimer.callback()
+                  const downloadError = await downloadPromise.catch(function (err) { return err })
+
+                  process.stdout.write(JSON.stringify({
+                    createError,
+                    downloadError,
+                    requestAborts,
+                    downloadAborts,
+                    requestWatchdogMs: requestTimer.ms,
+                    downloadWatchdogMs: downloadTimer.ms,
+                  }))
+                })().catch(function (err) {
+                  console.error(err && err.stack ? err.stack : err)
+                  process.exit(1)
+                })
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    rows = json.loads(result.stdout)
+
+    assert rows["createError"]["code"] == -2
+    assert rows["downloadError"]["code"] == -2
+    assert rows["requestAborts"] == 1
+    assert rows["downloadAborts"] == 1
+    assert rows["requestWatchdogMs"] == 31_000
+    assert rows["downloadWatchdogMs"] == 61_000
+
+
 def test_route_book_detail_js_syntax():
     subprocess.run(
         ["node", "--check", str(PAGE_DIR / "route-book-detail.js")],

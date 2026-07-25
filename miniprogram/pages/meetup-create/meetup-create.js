@@ -22,6 +22,29 @@ function limitTencentRouteName(value) {
   return limitText(value, TENCENT_ROUTE_NAME_MAX_LENGTH)
 }
 
+function buildTencentPoiContext(point) {
+  if (!point || !point.provider_poi_id) return undefined
+  var context = {
+    provider_poi_id: String(point.provider_poi_id),
+    title: point.name || undefined,
+    address: point.address || undefined,
+    category: point.category || undefined,
+    category_code: point.category_code || undefined,
+    type: point.type || undefined,
+    adcode: point.adcode || undefined,
+    province: point.province || undefined,
+    city: point.city || undefined,
+    district: point.district || undefined,
+  }
+  var gcjLat = point.gcj_lat === null || point.gcj_lat === undefined ? NaN : Number(point.gcj_lat)
+  var gcjLon = point.gcj_lon === null || point.gcj_lon === undefined ? NaN : Number(point.gcj_lon)
+  if (!Number.isFinite(gcjLat) && point.coordinate_system === 'gcj02') gcjLat = Number(point.latitude)
+  if (!Number.isFinite(gcjLon) && point.coordinate_system === 'gcj02') gcjLon = Number(point.longitude)
+  if (Number.isFinite(gcjLat)) context.gcj_lat = gcjLat
+  if (Number.isFinite(gcjLon)) context.gcj_lon = gcjLon
+  return context
+}
+
 function formatTencentRouteError(err) {
   if (err && err.code === 503) return '路线服务暂不可用'
   if (err && err.code === 422) return '生成失败，请检查路线名称和起终点'
@@ -547,6 +570,12 @@ Page({
       url += '&longitude=' + encodeURIComponent(this.data.selectedMeetingPoint.longitude)
       url += '&coordinate_system=' + encodeURIComponent(this.data.selectedMeetingPoint.coordinate_system || 'wgs84')
       url += '&address=' + encodeURIComponent(this.data.selectedMeetingPoint.address || '')
+      ;['provider_poi_id', 'category', 'category_code', 'type', 'adcode', 'province', 'city', 'district', 'gcj_lat', 'gcj_lon'].forEach(function (field) {
+        var value = this.data.selectedMeetingPoint[field]
+        if (value !== undefined && value !== null && value !== '') {
+          url += '&' + field + '=' + encodeURIComponent(value)
+        }
+      }, this)
     }
     wx.navigateTo({ url: url })
   },
@@ -590,6 +619,18 @@ Page({
       url += '&latitude=' + encodeURIComponent(current.latitude)
       url += '&longitude=' + encodeURIComponent(current.longitude)
       url += '&name=' + encodeURIComponent(current.name || '')
+      url += '&address=' + encodeURIComponent(current.address || '')
+      url += '&coordinate_system=' + encodeURIComponent(current.coordinate_system || 'gcj02')
+      if (current.provider_poi_id) {
+        url += '&provider_poi_id=' + encodeURIComponent(current.provider_poi_id)
+      }
+      if (current.category) url += '&category=' + encodeURIComponent(current.category)
+      if (current.category_code) url += '&category_code=' + encodeURIComponent(current.category_code)
+      ;['type', 'adcode', 'province', 'city', 'district', 'gcj_lat', 'gcj_lon'].forEach(function (field) {
+        if (current[field] !== undefined && current[field] !== null && current[field] !== '') {
+          url += '&' + field + '=' + encodeURIComponent(current[field])
+        }
+      })
     }
     wx.navigateTo({ url: url })
   },
@@ -611,6 +652,16 @@ Page({
       latitude: lat,
       longitude: lon,
       coordinate_system: point.coordinate_system || 'gcj02',
+      provider_poi_id: point.provider_poi_id || null,
+      category: point.category || null,
+      category_code: point.category_code || null,
+      type: point.type || null,
+      adcode: point.adcode || null,
+      province: point.province || null,
+      city: point.city || null,
+      district: point.district || null,
+      gcj_lat: point.gcj_lat === undefined ? null : point.gcj_lat,
+      gcj_lon: point.gcj_lon === undefined ? null : point.gcj_lon,
     }
     if (point.kind === 'meeting') {
       this.setData({
@@ -675,10 +726,15 @@ Page({
     wx.showLoading({ title: '生成中', mask: true })
     api.createRouteBookFromTencentDirection({
       name: routeName,
+      coordinate_system: 'gcj02',
       from_lat: start.latitude,
       from_lon: start.longitude,
       to_lat: end.latitude,
       to_lon: end.longitude,
+      from_poi: start.provider_poi_id || undefined,
+      to_poi: end.provider_poi_id || undefined,
+      from_poi_context: buildTencentPoiContext(start),
+      to_poi_context: buildTencentPoiContext(end),
     }).then(function (routeBook) {
       var decorated = that.decorateItems([routeBook], 'route_book')[0]
       that.setData(Object.assign({
@@ -1236,3 +1292,9 @@ Page({
     }
   },
 })
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    buildTencentPoiContext: buildTencentPoiContext,
+  }
+}

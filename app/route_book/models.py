@@ -168,6 +168,7 @@ class RouteVersion(Base):
     climb = Column(Float, nullable=True)
     elevation_profile = Column(Text, nullable=True)
     elevation_points_snapshot = Column(Text, nullable=True)
+    elevation_grid_snapshot = Column(Text, nullable=True)
     point_count = Column(Integer, nullable=True)
     component_snapshot_hash = Column(String(64), nullable=True)
     validation_warnings_json = Column(Text, nullable=True)

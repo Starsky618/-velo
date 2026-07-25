@@ -98,8 +98,9 @@
 
 ## 文件生成规则
 
-- 文件从 `route_versions.reference_line_snapshot` 生成线路。
-- `route_versions.elevation_points_snapshot` 必须存在、点数必须和 `reference_line_snapshot` 一致、每个点必须有合法海拔；否则拒绝导出。
+- 文件坐标只从 `route_versions.reference_line_snapshot` 生成；海拔数据不得携带或覆盖第二套线路几何。
+- `route_versions.elevation_points_snapshot` 仍必须存在、点数必须和 `reference_line_snapshot` 一致、每个点必须有合法海拔；它负责版本可信门禁、兼容旧路线和授权逐点导入。
+- 默认 GLO-30 路线从绑定当前 `line_hash` 的 `route_versions.elevation_grid_snapshot` 导出。该快照只保存严格递增的 `chainage_m + elevation_m`；导出点集取 canonical chainage 与全部参考线顶点 chainage 的并集，坐标始终沿唯一参考线派生，避免急弯和折返被切角。网格损坏、越界或属于其他参考线时拒绝导出。
 - 不从 `RouteBook.file_id` 原始上传文件直出，避免绕过版本门禁和权限门禁。
 - GPX 输出 `gpx > trk > trkseg > trkpt(lat/lon) > ele`；每个点都必须有 `<ele>`。
 - TCX 输出 `TrainingCenterDatabase > Courses > Course > Track > Trackpoint > Position + AltitudeMeters`；每个点都必须有 `AltitudeMeters`。
@@ -108,13 +109,24 @@
 
 ## 海拔生成合同
 
-1. **线上统一底座**：当前可信方法为 `glo30_meaningful_ascent_v1`。后端从 GLO-30 查询中心线高度，沿路线约每 20m 重采样，依次执行 3 点中值去毛刺和 100m Gaussian 平滑；总爬升只累计抬升至少 3m、水平跨度至少 100m 的完整上升事件。页面海拔图、预计总爬升和导出逐点海拔必须来自同一条成品剖面。
-2. **可审计元数据**：路线版本必须记录 GLO-30 的 source / license / accuracy / point_count、`dataset_id=COP-DEM_GLO-30-DGED`、`vertical_datum=EGM2008 (EPSG:3855)`、`grid_registration=RasterPixelIsPoint`，以及 `processing_grid_m=20`、`median_filter_points=3`、`smoothing_sigma_m=100`、`ascent_prominence_m=3`、`ascent_minimum_span_m=100`、`maximum_processing_distance_m=1000000`。旧方法快照不能继续被视为当前可信结果，必须重新生成。
+1. **线上统一底座**：当前运行基线为 `glo30_meaningful_ascent_v1`，其总爬升准确性尚未通过验收。后端从 GLO-30 查询中心线高度，沿路线约每 20m 重采样，依次执行 3 点中值去毛刺和 100m Gaussian 平滑；总爬升只累计抬升至少 3m、水平跨度至少 100m 的完整上升事件。页面海拔图、预计总爬升和 GLO-30 导出逐点海拔必须由同一份持久化后的距离-海拔成品网格计算，不能分别从稀疏线路顶点二次插值。运行与导出合同不等于准确性证明；替换资格由 `docs/research/elevation-lab-20260716-17/ASCENT_ACCEPTANCE_CONTRACT.md` 裁决。
+2. **可审计元数据**：路线版本必须记录 GLO-30 的 source / license / accuracy / point_count、`dataset_id=COP-DEM_GLO-30-DGED`、`vertical_datum=EGM2008 (EPSG:3855)`、`grid_registration=RasterPixelIsPoint`，以及 `processing_grid_m=20`、`median_filter_points=3`、`smoothing_sigma_m=100`、`ascent_prominence_m=3`、`ascent_minimum_span_m=100`、`maximum_processing_distance_m=1000000`。canonical 网格另记录 `schema=distance_elevation_v1`、网格点数和绑定的 `line_hash`。旧方法快照不能继续被视为当前可信结果，必须重新生成；已是旧版可信 GLO-30、但缺少 canonical 网格的路线在回填前暂时按原稀疏快照兼容导出，回填脚本必须重新查询并补齐网格。
 3. **离线校准证据**：ALOS、用户 FIT 与已获授权的 Strava 赛段数据用于拟合参数、发现桥梁/高架/山体侧坡等系统偏差和回归验证；它们不在用户请求时按固定权重混入 GLO-30，也不靠单条路线特调线上结果。
 4. **授权逐点导入**：确有独立授权来源的逐点高度仍可通过 `authorized_point_elevation_csv_v1` 导入，但必须记录 source / license / accuracy / point_count；它不改变默认 GLO-30 链路。
 5. **没有可信逐点海拔**：不导出。iGPSPORT 真机 A/B 已验证：无 `<ele>` 的 GPX 会触发目标 App 自行补算，可能得到显著偏高的爬升。
 
-这里的“可信”表示同一路线版本可复现、来源与算法可追踪，并达到骑前规划的参考标准；不表示测绘真值，也不承诺每个点达到测量级绝对精度。
+这里的“可信”只表示同一路线版本可复现、来源与算法可追踪；当前材料不能证明总爬升达到骑前规划误差标准，也不承诺每个点达到测量级绝对精度。
+
+### canonical 网格上线激活门
+
+新增可空列只保证旧版本代码兼容，不会自动修复存量导出。部署时先用含新迁移的镜像完成数据库迁移，再让新版 API 承接请求，随后按顺序执行：
+
+1. `python3 scripts/backfill_route_elevation.py --backfill-glo --dry-run`，确认失败路线为 0 并记录待更新数量；
+2. 先对一条已知路线执行 `--backfill-glo --route-book-id <id>`，验证页面与新 GPX/TCX；
+3. 再执行全量 `--backfill-glo`；完成后重跑 dry-run，必须显示 `validated 0 route version(s)`；
+4. 真机导入至少一条长山区路线；在这一步通过前，只能说页面/导出已共享同一成品剖面，不能宣称目标 App 显示的总爬升已经一致。
+
+本激活门只验 canonical 网格与导出链，不授予总爬升“准确”状态。准确性仍必须通过独立盲测实验合同。
 
 ## 路线详情合同
 

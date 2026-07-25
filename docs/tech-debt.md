@@ -273,49 +273,21 @@ Tim 拍永久 UX 规则："前端永远不显示 '-' 或'暂无 XX' 占位符 / 
 
 ---
 
-## 🟡 P2：赛段 max_gradient 前端砍掉 / 等数据源升级恢复（2026-05-15 Step 2-DEM Tim 拍）
+## ✅ 已收口：旧赛段 DEM 与坡度链退出产品（2026-07-18）
 
-velo 用 SRTM 公开 DEM（30m / 90m 像素）测窄带状公路（5-10m 宽）坡度 6 次算法迭代仍达不到 Tim 体感真值（天龙山 5% 缓坡 vs 算出 9.8-13.9% / 太山-蒙山下坡单调下坡 vs 曲线有锯齿）。根因：DEM 像素采到的可能是路边山势不是路面，算法平滑洗不掉数据源采错对象。
+2026-05 的两条 P2 记录描述的是旧实现，现已被统一路线海拔链取代：
 
-**当前状态**：
-- 前端 segment.wxml 4 数字 grid 砍掉"最大坡度"（commit `b2ae57c`）/ 改 3 列 grid（距离 / 米爬升 / 平均坡度）
-- 后端 `Segment.max_gradient` 字段保留 / API 仍返 / 回填脚本仍算（给未来恢复留路）
-- `calculate_difficulty` 仍用 max_gradient 内部判断（不显示数字但 difficulty 评级仍用）
+- 路书、腾讯规划、手绘路线与赛段都读取 Copernicus GLO-30；
+- 同一份 VELO 成品剖面经过约 20m 物理网格、三点中值、100m Gaussian 平滑和
+  显著上升事件累计，同时服务页面、总爬升、赛段统计和码表导出；
+- ALOS、FIT 与获授权 Strava 赛段数据作为离线校准、拟合与回归证据，不在请求时
+  以固定权重拼接；
+- 回填脚本会重算 RouteBook、RouteVersion、Segment 及所有仍可由产品 API 读取的
+  Meetup 爬升快照；旧导出快照会失效。
 
-**升级 trigger（任一满足即可恢复 max_gradient 显示）**：
-1. **Step 3 群体融合**：用户量起来后同段路 ≥5-10 个用户骑过 → 多用户 GPS 数据中位数校正 DEM（Strava 模式 / elevation basemap）
-2. **气压计数据接入**：用户用佳明 / Wahoo 码表导入活动 → 拉气压计字段（±0.1m / 比 GPS 高 100 倍）
-3. 中国境内 12m 商业 DEM 数据集开放（短期不可能 / TanDEM-X 中国授权复杂）
-
-**为什么不彻底删字段**：DB 字段保留 + API 保留 = 数据层不动 / 未来恢复零工程量（前端 wxml 加回一格 + difficulty 算法可继续用）。详 memory `feedback_dem_precision_physical_limit.md`。
-
----
-
-## 🟡 P2：赛段创建用 SRTM 替换气压计高程是降级（2026-05-28 Tim 怼"全部用户都是码表"识别 / 2026-05-15 决策的盲区）
-
-`app/segment/service_create.py:250` from-gpx 路径**无脑用 SRTM 90m DEM 替换 GPS 海拔**，2026-05-15 当时归因是"GPS 海拔 ±15m 噪声物理限制"。**但这归因把 GPX 海拔统一当手机 GPS 处理，没区分气压计源**。
-
-**事实**：velo 目标严肃公路车骑手 / 用户基本 100% 气压计码表（佳明 / Wahoo / iGPSPort）/ 上传的 GPX 海拔自带 ±0.1-1m 气压计精度。
-
-**当前代码效果**：
-- 用 ±3-5m 精度的 SRTM 90m 数据**替换** ±0.5m 精度的气压计数据 = **精度降级 6-10×**
-- 整条赛段总爬升仍合理（SRTM 平均误差小），但**单点海拔曲线**比用户码表自己显示的更糙
-- 用户在 Strava / 佳明 App 看曲线很精细，到 velo 看同样赛段反而粗糙 = 显眼劣势
-
-**为啥当年 SRTM 替换还"看起来对"**：
-- 短窗口 max_gradient 算法本身脆弱（气压计也会有 1-2m 瞬时抖动 → 100m 窗口算出虚高）
-- SRTM 90m 是空间平均（每像素 90m × 90m 平均海拔）→ 数据本身就被平滑过
-- **碰巧用"数据更平滑"压住了算法脆弱性** —— 但代价是精度降级
-
-**应该做的修法**（Step 3 海拔升级时一并）：
-1. 检测 GPX 是否含气压计源标识（GPX 1.1 `<extensions>` 含 `<ns3:atemp>` 或 `<gpxtpx:atemp>` / FIT 文件含 `enhanced_altitude` 字段 / Strava API 返 `device_watts=true` 含气压计）
-2. 气压计源：`elevation_profile` 信任 GPX 原数据 / **SRTM 只在严重异常点（如某点比邻点高 50m）做兜底**
-3. 手机 GPS 源：保留当前 SRTM 替换策略
-4. max_gradient 算法层独立优化（长窗口 + 异常剔除 + 群体融合）
-
-**与上一条关系**：max_gradient 是"算法+数据源"双重失真问题。改了这条（信任气压计）max_gradient 可能不需要等群体融合就能恢复显示。
-
-**为什么 P2 不 P1**：当前 max_gradient 已被砍前端（用户看不到坡度具体数字），avg_gradient 和总爬升数据用 SRTM 算仍在合理范围；用户体验上"曲线更糙"是隐性损失不是显性 bug。但**等 Sprint 12 教练引擎想用精确海拔曲线时（如"识别这次爬坡有几个发力段"）必须先修这条**。
+历史失败、反例和参数实验没有删除，冻结在
+`docs/research/elevation-lab-20260716-17/`。当前尚未恢复前端最大坡度展示；是否恢复应
+另以真实路线回归与骑手体验决定，不能再引用本段旧实现作为现状。
 
 velo 升级 OAuth scope `activity:read` → `activity:read_all` 后（commit TBD），老用户的 token 还在 DB 里挂着但 scope 不足：
 - `app/strava/service.py:412` `get_strava_status` 只看 `strava_athlete_id IS NOT NULL` → 老用户显示 connected ✅

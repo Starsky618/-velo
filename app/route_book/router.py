@@ -19,6 +19,11 @@ from app.database import get_db
 from app.dependencies import get_current_user, get_optional_user
 from app.middleware.rate_limit import check_rate_limit_by_ip, check_rate_limit_by_user
 from app.route_book import draw_snap_service, export_workflow, schemas, service
+from app.route_book.routing_evidence import (
+    RoutingEvidenceError,
+    RoutingEvidenceQuotaError,
+    RoutingEvidenceUnavailableError,
+)
 from app.route_book.tencent_direction import (
     TencentMapConfigError,
     TencentMapError,
@@ -97,9 +102,21 @@ def create_route_book_from_tencent_direction(
             name=payload.name,
             start=(payload.from_lat, payload.from_lon),
             end=(payload.to_lat, payload.to_lon),
+            from_poi=payload.from_poi,
+            to_poi=payload.to_poi,
+            from_poi_context=(
+                payload.from_poi_context.model_dump(mode="json", exclude_none=True)
+                if payload.from_poi_context is not None
+                else None
+            ),
+            to_poi_context=(
+                payload.to_poi_context.model_dump(mode="json", exclude_none=True)
+                if payload.to_poi_context is not None
+                else None
+            ),
         )
         return schemas.route_book_response(route, current_user_id, include_elevation_profile=True)
-    except (TencentMapConfigError, TencentMapServiceUnavailableError) as e:
+    except (TencentMapConfigError, TencentMapServiceUnavailableError, RoutingEvidenceUnavailableError) as e:
         raise HTTPException(status_code=503, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -132,12 +149,22 @@ def create_route_book_from_manual_drawn(
                 if payload.draw_metadata is not None
                 else None
             ),
+            route_parts=(
+                [part.model_dump(mode="json", exclude_none=True) for part in payload.route_parts]
+                if payload.route_parts is not None
+                else None
+            ),
         )
         return schemas.route_book_response(route, current_user_id, include_elevation_profile=True)
     except service.ManualDrawIdempotencyGoneError as e:
         raise HTTPException(status_code=410, detail=str(e))
     except service.ManualDrawIdempotencyConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except RoutingEvidenceError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "routing_receipt_invalid", "message": str(e)},
+        )
     except PermissionError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except RuntimeError as e:
@@ -154,16 +181,24 @@ def preview_manual_drawn_snap(
     check_rate_limit_by_user(
         current_user_id,
         "route-book-draw-snap-preview",
-        limit=20,
+        # 一次正常长路线会连续新增二三十个锚点；20/5min 会误伤真实画线。
+        # 60 仍能挡住持续脚本刷接口，单个窗口也远低于 24h 贴路凭据硬配额。
+        limit=60,
         window_sec=300,
     )
     try:
         return draw_snap_service.build_snap_preview(
+            current_user_id=current_user_id,
             mode=payload.mode,
             coordinate_system=payload.coordinate_system,
             points=payload.points,
         )
-    except (TencentMapConfigError, TencentMapServiceUnavailableError) as e:
+    except RoutingEvidenceQuotaError as e:
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "routing_receipt_quota", "message": str(e)},
+        )
+    except (TencentMapConfigError, TencentMapServiceUnavailableError, RoutingEvidenceUnavailableError) as e:
         raise HTTPException(status_code=503, detail=str(e))
     except draw_snap_service.DrawSnapSegmentError as e:
         raise HTTPException(

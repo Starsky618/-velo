@@ -32,10 +32,19 @@ from app.elevation.dem_client import (
     GLO30_VERTICAL_ACCURACY_M,
     query_elevations,
 )
-from app.elevation.route_elevation import build_route_elevation_result_from_values
+from app.elevation.route_elevation import (
+    ROUTE_ELEVATION_METHOD,
+    build_route_elevation_result_from_values,
+    route_distance_m,
+)
 from app.meetup.models import Meetup
 from app.route_book.elevation_workflow import backfill_route_version_elevation, write_route_elevation_result
-from app.route_book.elevation_quality import has_trusted_route_elevation, parse_complete_elevation_snapshot
+from app.route_book.elevation_quality import (
+    has_elevation_metadata_method,
+    has_trusted_route_elevation,
+    parse_complete_elevation_grid,
+    parse_complete_elevation_snapshot,
+)
 from app.route_book.models import RouteBook, RouteVersion, _preview_points_from_wkt
 
 COORD_TOLERANCE_DEG = 0.00001
@@ -163,17 +172,30 @@ def backfill_missing_with_glo(
     for route, version, reference_line_wkt in _current_route_versions(db):
         if selected_route_ids and route.id not in selected_route_ids:
             continue
-        points = _points_from_wkt(reference_line_wkt)
-        if has_trusted_route_elevation(
-            version.elevation_points_snapshot,
-            metadata_json=version.navigation_metadata_json,
-            expected_count=len(points),
-        ):
-            # 路线已经是可信 GLO 结果时也要修复可能遗留的旧约骑快照；
-            # 这不会计入本次 route version 的 updated 数量。
-            refreshed_route_climbs[route.id] = route.climb
-            continue
         try:
+            points = _points_from_wkt(reference_line_wkt)
+            trusted_elevation = has_trusted_route_elevation(
+                version.elevation_points_snapshot,
+                metadata_json=version.navigation_metadata_json,
+                expected_count=len(points),
+            )
+            trusted_glo = has_elevation_metadata_method(
+                version.navigation_metadata_json,
+                methods=frozenset({ROUTE_ELEVATION_METHOD}),
+                expected_count=len(points),
+            )
+            complete_grid = parse_complete_elevation_grid(
+                version.elevation_grid_snapshot,
+                expected_line_hash=version.line_hash,
+                expected_distance_m=route_distance_m(points),
+                metadata_json=version.navigation_metadata_json,
+            )
+            if trusted_elevation and (not trusted_glo or complete_grid is not None):
+                # 路线已经是可信 GLO 结果时也要修复可能遗留的旧约骑快照；
+                # 这不会计入本次 route version 的 updated 数量。
+                refreshed_route_climbs[route.id] = route.climb
+                continue
+
             def fill_current_route() -> None:
                 backfill_route_version_elevation(
                     db,

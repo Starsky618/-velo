@@ -422,8 +422,21 @@ def suggest_meetup_places(keyword: str, region: str = "太原") -> list[dict]:
     边输边出一列候选，不是一锤子一个结果）。
     """
     results = tencent_place.suggest_places(keyword.strip(), region.strip())
-    return [
-        {
+    passthrough_fields = (
+        "provider_poi_id",
+        "category",
+        "category_code",
+        "type",
+        "adcode",
+        "province",
+        "city",
+        "district",
+        "gcj_lat",
+        "gcj_lon",
+    )
+    response = []
+    for item in results:
+        place = {
             "keyword": item["keyword"],
             "title": item["title"],
             "address": item.get("address"),
@@ -431,8 +444,9 @@ def suggest_meetup_places(keyword: str, region: str = "太原") -> list[dict]:
             "longitude": item["lon"],
             "source": item["source"],
         }
-        for item in results
-    ]
+        place.update({field: item.get(field) for field in passthrough_fields})
+        response.append(place)
+    return response
 
 
 def _assemble_list_result(db: Session, base, page: int, page_size: int) -> dict:

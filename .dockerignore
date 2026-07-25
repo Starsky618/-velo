@@ -1,5 +1,6 @@
 # 不需要进入 Docker 镜像的文件
 .env
+.env.*
 .env.example
 .git
 .gitignore
@@ -9,6 +10,8 @@ __pycache__
 tests/
 docs/
 uploads/
+backup/
+backups/
 venv/
 .venv/
 .DS_Store

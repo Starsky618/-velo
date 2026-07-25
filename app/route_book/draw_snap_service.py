@@ -3,7 +3,8 @@
 
 干啥用：route-draw 页面松手后调用本模块，先返回一条可预览的贴路线；用户确认保存前绝不写数据库。
 操作注意事项：输入点是小程序地图的 GCJ-02 `[lon, lat]`；这里只返回 GCJ-02 给地图展示，正式入库由保存接口转 WGS-84。
-输入输出：输入一小段手画点 → 校验、抽稀、分段调用腾讯骑行路线 → 输出 raw/snapped/anchor 三组点和距离。
+输入输出：输入一小段手画点 → 校验、抽稀、分段调用腾讯骑行路线 → 输出预览点与短 receipt；
+完整腾讯几何和 steps 只留在服务端 Redis，正式保存时再按 receipt 重建。
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import math
 from typing import Any
 
 from app.parsing.geo_math import haversine
+from app.route_book.routing_evidence import build_tencent_evidence, store_snap_receipt
 from app.route_book.tencent_direction import TencentMapError, plan_tencent_bicycling_route
 
 
@@ -22,6 +24,7 @@ SNAP_PREVIEW_TOTAL_TIMEOUT_SEC = 12.0
 SNAP_PREVIEW_MAX_SINGLE_TIMEOUT_SEC = 3.0
 SIMPLIFY_TOLERANCE_M = 30.0
 MIN_PREVIEW_DISTANCE_M = 5.0
+MAX_PROVIDER_JOIN_GAP_M = 20.0
 
 
 class DrawSnapSegmentError(ValueError):
@@ -35,6 +38,7 @@ class DrawSnapSegmentError(ValueError):
 
 def build_snap_preview(
     *,
+    current_user_id: int,
     mode: str,
     coordinate_system: str,
     points: list[tuple[float, float]],
@@ -59,6 +63,7 @@ def build_snap_preview(
             "segment_count": len(raw_points) - 1,
             "warnings": [],
             "failed_segment": None,
+            "routing_receipt": None,
         }
     if mode != "snap":
         raise ValueError("mode 只支持 snap 或 freehand")
@@ -71,6 +76,12 @@ def build_snap_preview(
     timeout_sec = _timeout_per_segment(segment_count)
     snapped_points: list[list[float]] = []
     distance_m = 0.0
+    durations: list[float] = []
+    ferry_counts: list[int] = []
+    routing_steps: list[dict[str, Any]] = []
+    provider_calls: list[dict[str, Any]] = []
+    unverified_join_gaps: list[dict[str, Any]] = []
+    request_ids: list[str] = []
     for index, (start, end) in enumerate(zip(anchor_points, anchor_points[1:])):
         try:
             planned = plan_tencent_bicycling_route(
@@ -82,7 +93,60 @@ def build_snap_preview(
         except TencentMapError as exc:
             raise DrawSnapSegmentError(index, str(exc)) from exc
 
-        if snapped_points and segment_points and _same_point(snapped_points[-1], segment_points[0]):
+        join_gap_m = (
+            haversine(
+                snapped_points[-1][1],
+                snapped_points[-1][0],
+                segment_points[0][1],
+                segment_points[0][0],
+            )
+            if snapped_points
+            else 0.0
+        )
+        if snapped_points and join_gap_m > MAX_PROVIDER_JOIN_GAP_M:
+            raise DrawSnapSegmentError(index, "相邻腾讯子路线没有接上")
+        joins_previous = bool(snapped_points and _same_point(snapped_points[-1], segment_points[0]))
+        global_point_offset = len(snapped_points) - 1 if joins_previous else len(snapped_points)
+        if snapped_points and not joins_previous:
+            unverified_join_gaps.append(
+                {
+                    "after_provider_call_index": index - 1,
+                    "before_provider_call_index": index,
+                    "provider_point_start": len(snapped_points) - 1,
+                    "provider_point_end": len(snapped_points),
+                    "distance_m": round(join_gap_m, 3),
+                }
+            )
+        for step in planned.get("steps") or []:
+            normalized_step = dict(step)
+            normalized_step["point_start"] = int(step["point_start"]) + global_point_offset
+            normalized_step["point_end"] = int(step["point_end"]) + global_point_offset
+            normalized_step["provider_call_index"] = index
+            routing_steps.append(normalized_step)
+
+        request_id = planned.get("request_id")
+        if isinstance(request_id, str) and request_id:
+            request_ids.append(request_id)
+        call_duration = _finite_float(planned.get("duration"))
+        if call_duration is not None and call_duration >= 0:
+            durations.append(call_duration)
+        call_ferry_count = planned.get("ferry_count")
+        if isinstance(call_ferry_count, int) and call_ferry_count >= 0:
+            ferry_counts.append(call_ferry_count)
+        provider_calls.append(
+            {
+                "call_index": index,
+                "request_id": request_id,
+                "distance_m": _finite_float(planned.get("distance")),
+                "duration_min": call_duration,
+                "ferry_count": call_ferry_count,
+                "mode": planned.get("mode"),
+                "direction": planned.get("direction"),
+                "provider_point_start": global_point_offset,
+                "provider_point_end": global_point_offset + len(segment_points) - 1,
+            }
+        )
+        if joins_previous:
             segment_points = segment_points[1:]
         snapped_points.extend(segment_points)
         distance_m += _finite_float(planned.get("distance")) or _distance_m(segment_points)
@@ -91,8 +155,28 @@ def build_snap_preview(
         raise TencentMapError("腾讯地图没有返回可用路线")
 
     warnings: list[str] = []
+    if unverified_join_gaps:
+        warnings.append("相邻贴路线之间有未验证连接，请放大检查后再保存。")
     if raw_distance_m > 0 and distance_m > max(raw_distance_m * 1.8, raw_distance_m + 1000):
         warnings.append("系统贴出的路线可能偏离你的手画线，请检查后再保存。")
+
+    routing_receipt = store_snap_receipt(
+        build_tencent_evidence(
+            {
+                "distance": distance_m,
+                "duration": sum(durations) if len(durations) == segment_count else None,
+                "mode": "BICYCLING",
+                "direction": None,
+                "ferry_count": sum(ferry_counts) if len(ferry_counts) == segment_count else None,
+                "request_ids": request_ids,
+                "provider_calls": provider_calls,
+                "unverified_join_gaps": unverified_join_gaps,
+                "steps": routing_steps,
+            },
+            snapped_points,
+        ),
+        current_user_id=current_user_id,
+    )
 
     return {
         "mode": mode,
@@ -105,6 +189,7 @@ def build_snap_preview(
         "segment_count": segment_count,
         "warnings": warnings,
         "failed_segment": None,
+        "routing_receipt": routing_receipt,
     }
 
 

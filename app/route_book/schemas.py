@@ -229,21 +229,49 @@ class ActivityCandidateResponse(BaseModel):
     items: list[ActivityCandidateItem]
 
 
+class TencentDirectionEndpointContext(BaseModel):
+    """用户从腾讯地点候选中选择的端点身份；不参与坐标换算，只随路线版本留证。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider_poi_id: str = Field(..., min_length=1, max_length=256)
+    title: str | None = Field(None, max_length=256)
+    address: str | None = Field(None, max_length=512)
+    category: str | None = Field(None, max_length=256)
+    category_code: str | None = Field(None, max_length=128)
+    type: str | None = Field(None, max_length=128)
+    adcode: str | None = Field(None, max_length=32)
+    province: str | None = Field(None, max_length=128)
+    city: str | None = Field(None, max_length=128)
+    district: str | None = Field(None, max_length=128)
+    gcj_lat: float | None = Field(None, ge=-90, le=90)
+    gcj_lon: float | None = Field(None, ge=-180, le=180)
+
+
 class TencentDirectionRouteBookRequest(BaseModel):
     """腾讯地图生成路书的请求体。"""
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(..., min_length=1, max_length=128)
+    coordinate_system: Literal["gcj02"] = "gcj02"
     from_lat: float = Field(..., ge=-90, le=90)
     from_lon: float = Field(..., ge=-180, le=180)
     to_lat: float = Field(..., ge=-90, le=90)
     to_lon: float = Field(..., ge=-180, le=180)
+    from_poi: str | None = Field(None, min_length=1, max_length=256)
+    to_poi: str | None = Field(None, min_length=1, max_length=256)
+    from_poi_context: TencentDirectionEndpointContext | None = None
+    to_poi_context: TencentDirectionEndpointContext | None = None
 
     @model_validator(mode="after")
     def reject_same_point(self):
         if self.from_lat == self.to_lat and self.from_lon == self.to_lon:
             raise ValueError("起点和终点不能相同")
+        if self.from_poi_context is not None and self.from_poi_context.provider_poi_id != self.from_poi:
+            raise ValueError("from_poi 与 from_poi_context 不一致")
+        if self.to_poi_context is not None and self.to_poi_context.provider_poi_id != self.to_poi:
+            raise ValueError("to_poi 与 to_poi_context 不一致")
         return self
 
 
@@ -282,6 +310,7 @@ class ManualDrawnSnapPreviewResponse(BaseModel):
     segment_count: int
     warnings: list[str] = Field(default_factory=list)
     failed_segment: int | None = None
+    routing_receipt: str | None = None
 
 
 class ManualDrawnRawPointsSummary(BaseModel):
@@ -316,6 +345,35 @@ class ManualDrawnDrawMetadata(BaseModel):
     raw_points_summary: ManualDrawnRawPointsSummary | None = None
 
 
+class ManualDrawnRoutePart(BaseModel):
+    """一段正式草稿：贴路段由短 receipt 指向服务端腾讯原线，自由画段才提交点串。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: RouteDrawMode
+    routing_receipt: str | None = Field(None, max_length=512)
+    points: list[tuple[float, float]] = Field(default_factory=list, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_part(self):
+        if self.mode == "snap":
+            if not self.routing_receipt:
+                raise ValueError("贴路片段必须提供 routing_receipt")
+            if self.points:
+                raise ValueError("贴路片段不能提交客户端中间点")
+            return self
+        if self.routing_receipt is not None:
+            raise ValueError("自由画片段不能携带 routing_receipt")
+        if len(self.points) < 2:
+            raise ValueError("自由画片段至少需要 2 个点")
+        for index, (lon, lat) in enumerate(self.points):
+            if not math.isfinite(lon) or not math.isfinite(lat):
+                raise ValueError(f"自由画片段第 {index + 1} 个点不是有效数字")
+            if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
+                raise ValueError(f"自由画片段第 {index + 1} 个点超出经纬度范围")
+        return self
+
+
 class ManualDrawnRouteBookRequest(BaseModel):
     """手画路线请求——前端只交线条，海拔由后端统一补齐。"""
 
@@ -331,6 +389,7 @@ class ManualDrawnRouteBookRequest(BaseModel):
     coordinate_system: ManualDrawnCoordinateSystem = "wgs84"
     points: list[tuple[float, float]] = Field(..., min_length=2, max_length=500)
     draw_metadata: ManualDrawnDrawMetadata | None = None
+    route_parts: list[ManualDrawnRoutePart] | None = Field(None, min_length=1, max_length=500)
 
     @field_validator("points")
     @classmethod
@@ -341,3 +400,21 @@ class ManualDrawnRouteBookRequest(BaseModel):
             if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
                 raise ValueError(f"第 {index + 1} 个路线点超出经纬度范围")
         return points
+
+    @model_validator(mode="after")
+    def validate_route_parts_coordinate_system(self):
+        if self.route_parts is not None and self.coordinate_system != "gcj02":
+            raise ValueError("route_parts 只支持 gcj02")
+        if self.route_parts is not None and self.draw_metadata is not None:
+            if (
+                self.draw_metadata.segment_count is not None
+                and self.draw_metadata.segment_count != len(self.route_parts)
+            ):
+                raise ValueError("draw_metadata.segment_count 与 route_parts 不一致")
+            freehand_count = sum(part.mode == "freehand" for part in self.route_parts)
+            if (
+                self.draw_metadata.freehand_segment_count is not None
+                and self.draw_metadata.freehand_segment_count != freehand_count
+            ):
+                raise ValueError("draw_metadata.freehand_segment_count 与 route_parts 不一致")
+        return self

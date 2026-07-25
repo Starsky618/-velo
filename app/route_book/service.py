@@ -39,8 +39,8 @@ from app.elevation.route_elevation import (
 from app.parsing.fit_parser import FITParser, FITParseError
 from app.parsing.geo_math import haversine
 from app.parsing.gpx_parser import GPXParser, GPXParseError
-from app.route_book.elevation_quality import has_trusted_route_elevation
 from app.route_book.elevation_workflow import write_route_elevation_result
+from app.route_book.export_generator import has_exportable_route_elevation
 from app.route_book.export_service import can_export_route
 from app.route_book.models import (
     RouteBook,
@@ -48,6 +48,12 @@ from app.route_book.models import (
     RouteVersion,
     _preview_points_from_wkb,
     _preview_points_from_wkt,
+)
+from app.route_book.routing_evidence import (
+    MAX_RECONSTRUCTED_ROUTE_POINTS,
+    reconstruct_route_from_segments,
+    routing_metadata_for_direct_route,
+    routing_metadata_for_reconstructed_route,
 )
 from app.route_book.tencent_direction import plan_tencent_bicycling_route
 from app.segment.coord_convert import convert_points_to_wgs84
@@ -63,6 +69,7 @@ MANUAL_ROUTE_MAX_POINTS = 500
 MAX_DRAW_METADATA_BYTES = 8 * 1024
 MAX_DRAW_METADATA_WARNINGS = 20
 MAX_DRAW_METADATA_SAMPLE_POINTS = 20
+MAX_NAVIGATION_METADATA_BYTES = 512 * 1024
 MANUAL_DRAW_IDEMPOTENCY_CONSTRAINT = "uq_route_save_req_creator_key"
 _storage = LocalStorage()
 
@@ -117,9 +124,13 @@ def _route_payload_from_points(points: list[dict], distance: float | None, climb
     }
 
 
-def _manual_route_payload_from_points(points: list[tuple[float, float]]) -> dict:
-    if len(points) > MANUAL_ROUTE_MAX_POINTS:
-        raise ValueError(f"手画路线最多支持 {MANUAL_ROUTE_MAX_POINTS} 个点，请先简化路线")
+def _manual_route_payload_from_points(
+    points: list[tuple[float, float]],
+    *,
+    max_points: int = MANUAL_ROUTE_MAX_POINTS,
+) -> dict:
+    if len(points) > max_points:
+        raise ValueError(f"手画路线最多支持 {max_points} 个点，请拆分路线")
     route_points: list[dict] = []
     for index, (lon, lat) in enumerate(points):
         lon = float(lon)
@@ -227,18 +238,34 @@ def _point_count_from_wkt(reference_line_wkt: str) -> int:
 
 
 def _navigation_metadata_json_from_draw_metadata(draw_metadata: dict | None) -> str | None:
-    if draw_metadata is None:
-        return None
-    if not isinstance(draw_metadata, dict):
-        raise ValueError("draw_metadata 必须是对象")
+    return _navigation_metadata_json(draw_metadata=draw_metadata, routing_metadata=None)
 
-    cleaned = _drop_empty_metadata_values(draw_metadata)
-    if not cleaned:
+
+def _navigation_metadata_json(
+    *,
+    draw_metadata: dict | None,
+    routing_metadata: dict | None,
+) -> str | None:
+    envelope = {}
+    if draw_metadata is not None:
+        if not isinstance(draw_metadata, dict):
+            raise ValueError("draw_metadata 必须是对象")
+        cleaned = _drop_empty_metadata_values(draw_metadata)
+        if cleaned:
+            _validate_draw_metadata_limits(cleaned)
+            draw_encoded = json.dumps(cleaned, ensure_ascii=False, separators=(",", ":"))
+            if len(draw_encoded.encode("utf-8")) > MAX_DRAW_METADATA_BYTES:
+                raise ValueError("draw_metadata 序列化后不能超过 8KB")
+            envelope["draw"] = cleaned
+    if routing_metadata is not None:
+        if not isinstance(routing_metadata, dict):
+            raise ValueError("routing_metadata 必须是对象")
+        envelope["routing"] = routing_metadata
+    if not envelope:
         return None
-    _validate_draw_metadata_limits(cleaned)
-    encoded = json.dumps({"draw": cleaned}, ensure_ascii=False, separators=(",", ":"))
-    if len(encoded.encode("utf-8")) > MAX_DRAW_METADATA_BYTES:
-        raise ValueError("draw_metadata 序列化后不能超过 8KB")
+    encoded = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded.encode("utf-8")) > MAX_NAVIGATION_METADATA_BYTES:
+        raise ValueError("路线导航证据过大，请拆分路线")
     return encoded
 
 
@@ -248,15 +275,21 @@ def _manual_draw_request_hash(
     coordinate_system: str,
     points: list[tuple[float, float]],
     draw_metadata: dict | None,
+    route_parts: list[dict] | None,
 ) -> str:
+    payload = {
+        "schema_version": 1,
+        "name": name,
+        "coordinate_system": coordinate_system,
+        "points": [[float(lon), float(lat)] for lon, lat in points],
+        "draw_metadata": draw_metadata,
+    }
+    if route_parts is not None:
+        # v1 已经写入过线上幂等记录；旧客户端重试时必须得到逐字相同的旧 hash。
+        payload["schema_version"] = 2
+        payload["route_parts"] = route_parts
     canonical = json.dumps(
-        {
-            "schema_version": 1,
-            "name": name,
-            "coordinate_system": coordinate_system,
-            "points": [[float(lon), float(lat)] for lon, lat in points],
-            "draw_metadata": draw_metadata,
-        },
+        payload,
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,
@@ -507,6 +540,10 @@ def create_route_book_from_tencent_direction(
     name: str,
     start: tuple[float, float],
     end: tuple[float, float],
+    from_poi: str | None = None,
+    to_poi: str | None = None,
+    from_poi_context: dict | None = None,
+    to_poi_context: dict | None = None,
 ) -> RouteBook:
     """
     用腾讯地图骑行路线规划生成路书。
@@ -514,12 +551,29 @@ def create_route_book_from_tencent_direction(
     腾讯返回的是 GCJ-02（适合地图展示），Velo 入库必须是 WGS-84（适合 PostGIS 和赛段匹配）。
     所以这里先让腾讯画路线，再把点串翻译成 Velo 的内部坐标语言后保存。
     """
-    planned = plan_tencent_bicycling_route(start, end)
+    poi_kwargs = {}
+    if from_poi is not None:
+        poi_kwargs["from_poi"] = from_poi
+    if to_poi is not None:
+        poi_kwargs["to_poi"] = to_poi
+    planned = plan_tencent_bicycling_route(start, end, **poi_kwargs)
     if planned["distance"] < MIN_TENCENT_ROUTE_DISTANCE_METERS:
         raise ValueError("路线太短，换一个终点再试")
     points_wgs84 = convert_points_to_wgs84(planned["points"], "gcj02")
     payload = _route_payload_from_points(points_wgs84, planned.get("distance"), None)
     preview_points = [[float(point["lon"]), float(point["lat"])] for point in points_wgs84]
+    provider_points = [[float(point["lon"]), float(point["lat"])] for point in planned["points"]]
+    line_hash = _line_hash(payload["wkt"])
+    routing_metadata = routing_metadata_for_direct_route(
+        planned,
+        provider_points_lonlat=provider_points,
+        route_points_lonlat=preview_points,
+        line_hash=line_hash,
+        from_poi=from_poi,
+        to_poi=to_poi,
+        from_poi_context=from_poi_context,
+        to_poi_context=to_poi_context,
+    )
     try:
         elevation_result = build_route_elevation_result(
             preview_points,
@@ -551,6 +605,10 @@ def create_route_book_from_tencent_direction(
             geometry_source="tencent_direction",
             created_by=current_user_id,
             elevation_points_snapshot=payload.get("elevation_points_snapshot"),
+            navigation_metadata_json=_navigation_metadata_json(
+                draw_metadata=None,
+                routing_metadata=routing_metadata,
+            ),
         )
         write_route_elevation_result(
             db,
@@ -584,6 +642,7 @@ def create_route_book_from_manual_drawn(
     points: list[tuple[float, float]],
     coordinate_system: str = "wgs84",
     draw_metadata: dict | None = None,
+    route_parts: list[dict] | None = None,
 ) -> RouteBook:
     """
     保存用户在地图上手画的路书，并立刻补齐同一版路线的逐点海拔。
@@ -598,6 +657,7 @@ def create_route_book_from_manual_drawn(
         coordinate_system=coordinate_system,
         points=points,
         draw_metadata=draw_metadata,
+        route_parts=route_parts,
     )
     existing = _existing_manual_draw_request(
         db,
@@ -608,10 +668,36 @@ def create_route_book_from_manual_drawn(
     if existing is not None:
         return existing
 
-    points_wgs84 = _manual_points_for_storage(points, coordinate_system)
-    payload = _manual_route_payload_from_points(points_wgs84)
-    navigation_metadata_json = _navigation_metadata_json_from_draw_metadata(draw_metadata)
+    # 上面的用户/幂等查询会隐式开启数据库事务。GLO 冷瓦片属于外部网络 I/O，
+    # 不能让这段不可控等待占着连接和事务；下载完成后再重新核验用户和幂等键。
+    db.rollback()
+
+    routing_bindings: list[dict] = []
+    effective_points = points
+    effective_coordinate_system = coordinate_system
+    if route_parts is not None:
+        reconstructed, routing_bindings = reconstruct_route_from_segments(
+            route_parts,
+            current_user_id=current_user_id,
+        )
+        effective_points = [tuple(point) for point in reconstructed]
+        effective_coordinate_system = "gcj02"
+
+    points_wgs84 = _manual_points_for_storage(effective_points, effective_coordinate_system)
+    payload = _manual_route_payload_from_points(
+        points_wgs84,
+        max_points=MAX_RECONSTRUCTED_ROUTE_POINTS if route_parts is not None else MANUAL_ROUTE_MAX_POINTS,
+    )
     preview_points = [[float(lon), float(lat)] for lon, lat in points_wgs84]
+    routing_metadata = routing_metadata_for_reconstructed_route(
+        routing_bindings,
+        route_points_lonlat=preview_points,
+        line_hash=_line_hash(payload["wkt"]),
+    )
+    navigation_metadata_json = _navigation_metadata_json(
+        draw_metadata=draw_metadata,
+        routing_metadata=routing_metadata,
+    )
     try:
         elevation_result = build_route_elevation_result(preview_points, query_func=query_elevations)
     except RouteElevationInputError:
@@ -620,6 +706,17 @@ def create_route_book_from_manual_drawn(
         raise RuntimeError(f"路线海拔查询失败：{e}") from e
     except ValueError as e:
         raise RuntimeError(f"路线海拔查询失败：{e}") from e
+
+    if not _manual_draw_user_exists(db, current_user_id):
+        raise PermissionError("用户不存在或已注销")
+    existing = _existing_manual_draw_request(
+        db,
+        current_user_id=current_user_id,
+        client_request_id=client_request_id,
+        request_hash=request_hash,
+    )
+    if existing is not None:
+        return existing
 
     route = RouteBook(
         creator_id=current_user_id,
@@ -807,10 +904,12 @@ def _route_book_export_state(
     )
     if version is None or version.navigation_status != "ready":
         return False, [], "no_current_version"
-    if not has_trusted_route_elevation(
-        version.elevation_points_snapshot,
-        metadata_json=version.navigation_metadata_json,
-        expected_count=version.point_count or 0,
+    if not has_exportable_route_elevation(
+        reference_line_snapshot=version.reference_line_snapshot,
+        elevation_points_snapshot=version.elevation_points_snapshot,
+        elevation_grid_snapshot=version.elevation_grid_snapshot,
+        reference_line_hash=version.line_hash,
+        elevation_metadata_json=version.navigation_metadata_json,
     ):
         return False, [], "no_elevation"
     return True, ["gpx", "tcx"], None

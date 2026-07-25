@@ -231,6 +231,113 @@ function mergeSegments(segments) {
   return merged
 }
 
+function normalizeRouteParts(parts) {
+  if (!Array.isArray(parts) || !parts.length || parts.length > 500) return null
+  var normalized = []
+  for (var i = 0; i < parts.length; i += 1) {
+    var part = parts[i]
+    if (!part || typeof part !== 'object') return null
+    if (part.mode === 'snap') {
+      var receipt = String(part.routing_receipt || '')
+      if (!receipt || receipt.length > 512) return null
+      var rawPoints = part.raw_points === undefined
+        ? []
+        : normalizeLonLatPoints(part.raw_points)
+      if (part.raw_points !== undefined && (rawPoints.length < 2 || rawPoints.length > MAX_SNAP_POINTS)) return null
+      normalized.push({ mode: 'snap', routing_receipt: receipt, points: [], raw_points: rawPoints })
+      continue
+    }
+    if (part.mode !== 'freehand') return null
+    var points = normalizeLonLatPoints(part.points)
+    if (points.length < 2 || points.length > 120) return null
+    normalized.push({ mode: 'freehand', points: points })
+  }
+  return normalized
+}
+
+function buildRouteParts(actions) {
+  var parts = []
+  var invalid = false
+  cloneActions(actions).forEach(function (action) {
+    if (action.kind !== 'segment') return
+    if (action.mode === 'snap') {
+      if (!action.routingReceipt) {
+        invalid = true
+        return
+      }
+      parts.push({
+        mode: 'snap',
+        routing_receipt: action.routingReceipt,
+        points: [],
+        raw_points: simplifyForSnap(action.rawPoints),
+      })
+      return
+    }
+    parts.push({ mode: 'freehand', points: simplifyForSnap(action.points) })
+  })
+  if (invalid) return null
+  return normalizeRouteParts(parts)
+}
+
+function routePartsForRequest(parts) {
+  var normalized = normalizeRouteParts(parts)
+  if (!normalized) return null
+  return normalized.map(function (part) {
+    if (part.mode === 'snap') {
+      return { mode: 'snap', routing_receipt: part.routing_receipt, points: [] }
+    }
+    return { mode: 'freehand', points: cloneLonLatPoints(part.points) }
+  })
+}
+
+function isRoutingReceiptError(err) {
+  return Boolean(
+    err &&
+    Number(err.code) === 422 &&
+    err.detail &&
+    err.detail.code === 'routing_receipt_invalid'
+  )
+}
+
+function refreshActionsFromRouteParts(parts, snapper) {
+  var normalized = normalizeRouteParts(parts)
+  if (!normalized) return Promise.reject(new Error('路线片段已损坏'))
+  return normalized.reduce(function (chain, part) {
+    return chain.then(function (actions) {
+      if (part.mode === 'freehand') {
+        actions.push({
+          kind: 'segment',
+          mode: 'freehand',
+          rawPoints: cloneLonLatPoints(part.points),
+          points: cloneLonLatPoints(part.points),
+          warnings: [],
+          routingReceipt: '',
+        })
+        return actions
+      }
+      if (part.raw_points.length < 2) throw new Error('旧贴路片段缺少重算点')
+      return snapper({
+        coordinate_system: 'gcj02',
+        mode: 'snap',
+        points: cloneLonLatPoints(part.raw_points),
+      }).then(function (result) {
+        var preview = normalizeLonLatPoints(result && result.snapped_points)
+        var receipt = String(result && result.routing_receipt || '')
+        if (preview.length < 2 || !receipt) throw new Error('智能贴路刷新失败')
+        actions.push({
+          kind: 'segment',
+          mode: 'snap',
+          rawPoints: cloneLonLatPoints(part.raw_points),
+          points: preview,
+          warnings: result && Array.isArray(result.warnings) ? result.warnings : [],
+          routingReceipt: receipt,
+        })
+        return actions
+      })
+    })
+  }, Promise.resolve([]))
+}
+
 function samplePoints(points, limit) {
   var normalized = normalizeLonLatPoints(points)
   if (normalized.length <= limit) return normalized
@@ -338,6 +445,9 @@ function mapContextFromScreenLocation(context, screenPoint) {
 function snapErrorMessage(err) {
   if (err && err.code === -1) return '网络断了，这段没有贴上路，可以切 Manual Mode 直连。'
   if (err && err.code === 404) return '贴路服务还没上线，可以切 Manual Mode 继续画。'
+  if (err && err.code === 429 && err.detail && err.detail.code === 'routing_receipt_quota') {
+    return '智能贴路草稿已达当前上限，可以切 Manual Mode 继续画。'
+  }
   if (err && err.code === 429) return '贴路操作太快，稍等再试，或切 Manual Mode 继续画。'
   if (err && err.code === 503) return '贴路服务暂时不可用，可以先用 Manual Mode 保存。'
   if (err && err.code === 422) return '这段附近没有找到合适的路，缩短一点或切 Manual Mode。'
@@ -392,7 +502,11 @@ function normalizePendingSavePayload(value) {
   if (value.coordinate_system !== 'gcj02' && value.coordinate_system !== 'wgs84') return null
   var points = normalizeLonLatPoints(value.points)
   if (points.length < 2 || points.length > MAX_SAVE_POINTS) return null
-  return {
+  var routeParts = value.route_parts === undefined || value.route_parts === null
+    ? null
+    : normalizeRouteParts(value.route_parts)
+  if (value.route_parts !== undefined && value.route_parts !== null && !routeParts) return null
+  var normalized = {
     name: name,
     client_request_id: clientRequestId,
     coordinate_system: value.coordinate_system,
@@ -401,6 +515,9 @@ function normalizePendingSavePayload(value) {
       ? value.draw_metadata
       : null,
   }
+  // 线上旧版保存接口还不认识 route_parts；没有 receipt 时必须完全省略字段，不能发送 null。
+  if (routeParts) normalized.route_parts = routeParts
+  return normalized
 }
 
 function pendingSaveStorageKey() {
@@ -477,6 +594,7 @@ function cloneAction(action) {
       rawPoints: cloneLonLatPoints(action.rawPoints),
       points: cloneLonLatPoints(action.points),
       warnings: Array.isArray(action.warnings) ? action.warnings.slice(0, 20) : [],
+      routingReceipt: typeof action.routingReceipt === 'string' ? action.routingReceipt.slice(0, 512) : '',
     }
   }
   return null
@@ -782,6 +900,7 @@ Page({
       rawPoints: cloneLonLatPoints(segment.rawPoints || points),
       points: points,
       warnings: Array.isArray(segment.warnings) ? segment.warnings.slice(0, 20) : [],
+      routingReceipt: typeof segment.routingReceipt === 'string' ? segment.routingReceipt.slice(0, 512) : '',
     })
     this.applyDraftState(actions, null, {
       requestStatus: 'idle',
@@ -940,6 +1059,7 @@ Page({
         rawPoints: raw,
         points: preview,
         warnings: warnings,
+        routingReceipt: result && result.routing_receipt,
       })
       that.applyDraftState(that.data.routeDraft.actions, null, {
         requestStatus: 'idle',
@@ -1318,6 +1438,15 @@ Page({
       this.data.confirmedRawSegments,
       this.data.confirmedSegmentWarnings
     )
+    var actions = cloneActions(this.data.routeDraft.actions)
+    var routeParts = buildRouteParts(actions)
+    var hasLegacySnapSegment = actions.some(function (action) {
+      return action.kind === 'segment' && action.mode === 'snap' && !action.routingReceipt
+    })
+    if (!routeParts && !hasLegacySnapSegment) {
+      wx.showToast({ title: '路线片段已失效，请重新贴路', icon: 'none' })
+      return
+    }
     var payload = {
       name: name,
       client_request_id: newClientRequestId(),
@@ -1325,6 +1454,8 @@ Page({
       points: points,
       draw_metadata: drawMetadata,
     }
+    // 新后端返回 receipt 时走服务端重建；旧线上协议则继续用已确认的 points 保存。
+    if (routeParts) payload.route_parts = routeParts
     if (!persistPendingSave(payload)) {
       wx.showToast({ title: '无法安全保存草稿，请重新登录或清理存储空间', icon: 'none' })
       return
@@ -1377,6 +1508,42 @@ Page({
     })
   },
 
+  refreshExpiredRouteParts: function (payload) {
+    var that = this
+    clearPendingSave()
+    this.applyDraftState(this.data.routeDraft.actions, null, {
+      saving: false,
+      pendingSaveLocked: true,
+      requestStatus: 'previewing',
+      saveError: '',
+      statusText: '智能贴路信息已过期，正在重新贴路',
+      errorMessage: '',
+      canSaveRoute: false,
+    })
+    refreshActionsFromRouteParts(payload.route_parts, api.snapManualDrawnRoute).then(function (actions) {
+      that.applyDraftState(actions, null, {
+        routeName: payload.name,
+        saving: false,
+        pendingSaveLocked: false,
+        requestStatus: 'idle',
+        saveError: '',
+        statusText: '智能贴路已刷新，请检查路线后重新保存',
+        errorMessage: '',
+      })
+      wx.showToast({ title: '贴路已刷新，请重新保存', icon: 'none' })
+    }).catch(function () {
+      that.applyDraftState(that.data.routeDraft.actions, null, {
+        saving: false,
+        pendingSaveLocked: false,
+        requestStatus: 'error',
+        saveError: '旧贴路信息已失效',
+        statusText: '旧贴路信息已失效，请重新画这段路线',
+        errorMessage: '路线没有保存；请撤回失效的贴路段后重新贴路。',
+      })
+      wx.showToast({ title: '请重新贴路后保存', icon: 'none' })
+    })
+  },
+
   submitPendingSave: function (payload) {
     var normalizedPayload = normalizePendingSavePayload(payload)
     if (!normalizedPayload) {
@@ -1403,7 +1570,13 @@ Page({
       statusText: '正在保存路线',
       canSaveRoute: false,
     })
-    api.createRouteBookFromManualDrawn(normalizedPayload).then(function (route) {
+    var requestPayload = normalizedPayload
+    if (normalizedPayload.route_parts) {
+      requestPayload = Object.assign({}, normalizedPayload, {
+        route_parts: routePartsForRequest(normalizedPayload.route_parts),
+      })
+    }
+    api.createRouteBookFromManualDrawn(requestPayload).then(function (route) {
       var routeBookId = route && (route.route_book_id || route.id)
       if (!routeBookId) {
         that.applyDraftState(that.data.routeDraft.actions, null, {
@@ -1430,6 +1603,10 @@ Page({
       that.openSavedRouteDetail(routeBookId)
     }, function (err) {
       var code = Number(err && err.code)
+      if (isRoutingReceiptError(err)) {
+        that.refreshExpiredRouteParts(normalizedPayload)
+        return
+      }
       if (code === -1 || code >= 500 || (confirmingUnknown && code !== 409 && code !== 410)) {
         that.applyDraftState(that.data.routeDraft.actions, null, {
           saving: false,
@@ -1502,6 +1679,10 @@ if (typeof module !== 'undefined') {
     simplifyForSave: simplifyForSave,
     simplifyForSnap: simplifyForSnap,
     buildDrawMetadata: buildDrawMetadata,
+    buildRouteParts: buildRouteParts,
+    routePartsForRequest: routePartsForRequest,
+    refreshActionsFromRouteParts: refreshActionsFromRouteParts,
+    isRoutingReceiptError: isRoutingReceiptError,
     mergeSegments: mergeSegments,
     newClientRequestId: newClientRequestId,
     normalizePendingSavePayload: normalizePendingSavePayload,

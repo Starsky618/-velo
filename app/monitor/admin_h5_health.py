@@ -174,7 +174,13 @@ def scan_admin_h5_health() -> list[str]:
         response.raise_for_status()
     except Exception as exc:
         # 飞书挂了不阻断 —— 业务正常跑，告警这条路断就断
-        logger.error(f"feishu webhook failed: {exc}")
+        # HTTPStatusError 文本会包含带签名的 webhook URL，只记异常类型和状态码。
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        logger.error(
+            "feishu webhook failed error_type=%s status_code=%s",
+            type(exc).__name__,
+            status_code,
+        )
 
     return failed_names
 

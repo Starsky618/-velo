@@ -100,9 +100,29 @@ def write_route_elevation_result(
 ) -> None:
     profile_json = json.dumps(result.profile, ensure_ascii=False)
     version.elevation_points_snapshot = json.dumps(result.snapshot, ensure_ascii=False)
+    version.elevation_grid_snapshot = (
+        json.dumps(
+            {
+                "schema": "distance_elevation_v1",
+                "line_hash": version.line_hash,
+                "points": result.elevation_grid,
+            },
+            ensure_ascii=False,
+        )
+        if result.elevation_grid is not None
+        else None
+    )
     version.elevation_profile = profile_json
     version.climb = result.climb
     version.point_count = result.point_count
+    metadata_extra = dict(extra_metadata or {})
+    if result.elevation_grid is not None:
+        metadata_extra.update(
+            {
+                "elevation_grid_schema": "distance_elevation_v1",
+                "elevation_grid_point_count": len(result.elevation_grid),
+            }
+        )
     version.navigation_metadata_json = json.dumps(
         _merged_navigation_metadata(
             version.navigation_metadata_json,
@@ -112,7 +132,7 @@ def write_route_elevation_result(
             point_count=result.point_count,
             method=method,
             timestamp_field=timestamp_field,
-            extra_metadata=extra_metadata,
+            extra_metadata=metadata_extra,
         ),
         ensure_ascii=False,
     )

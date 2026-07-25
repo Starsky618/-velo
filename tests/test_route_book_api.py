@@ -80,6 +80,12 @@ def _assert_version_uses_strict_glo_contract(version, expected_elevation):
     assert version.climb == pytest.approx(expected_elevation.climb)
     assert json.loads(version.elevation_profile) == expected_elevation.profile
     assert json.loads(version.elevation_points_snapshot) == expected_elevation.snapshot
+    elevation_grid = json.loads(version.elevation_grid_snapshot)
+    assert elevation_grid == {
+        "schema": "distance_elevation_v1",
+        "line_hash": version.line_hash,
+        "points": expected_elevation.elevation_grid,
+    }
     assert version.point_count == expected_elevation.point_count
 
     elevation_metadata = json.loads(version.navigation_metadata_json)["elevation"]
@@ -87,6 +93,8 @@ def _assert_version_uses_strict_glo_contract(version, expected_elevation):
     datetime.fromisoformat(generated_at)
     expected_metadata = json.loads(_TRUSTED_ELEVATION_METADATA)["elevation"]
     expected_metadata["point_count"] = expected_elevation.point_count
+    expected_metadata["elevation_grid_schema"] = "distance_elevation_v1"
+    expected_metadata["elevation_grid_point_count"] = len(expected_elevation.elevation_grid)
     assert elevation_metadata == expected_metadata
 
 
@@ -96,6 +104,11 @@ def _disable_tencent_direction_rate_limit(monkeypatch):
     # 专门的限流测试会在测试函数内再次 monkeypatch，单独验证 router 是否按正确参数调用限流门卫。
     monkeypatch.setattr("app.route_book.router.check_rate_limit_by_user", lambda *args, **kwargs: None)
     monkeypatch.setattr("app.route_book.router.check_rate_limit_by_ip", lambda *args, **kwargs: None)
+    # 这里的 100 次批量回归只验路线保存和高程装配；receipt 的真 Redis 生命周期另有独立测试。
+    monkeypatch.setattr(
+        "app.route_book.draw_snap_service.store_snap_receipt",
+        lambda evidence, *, current_user_id: "r1.test-receipt.test-signature",
+    )
 
 
 def test_generic_create_source_excludes_tencent_direction():
@@ -455,6 +468,56 @@ def test_route_export_download_rejects_artifact_after_elevation_snapshot_changes
     assert "stale" in res.json()["detail"]
 
 
+@pytest.mark.parametrize("grid_mutation", ["change", "remove"])
+def test_route_export_download_rejects_artifact_after_canonical_grid_changes_or_removal(
+    client,
+    db,
+    admin_user,
+    monkeypatch,
+    grid_mutation,
+):
+    from app.elevation.route_elevation import build_route_elevation_result
+
+    route, version = _route_with_current_version(db, admin_user.id)
+    result = build_route_elevation_result(
+        [[112.5, 37.8], [112.6, 37.9]],
+        query_func=lambda coords: _linear_elevations(coords, start=701.2, end=735.8),
+    )
+    version.elevation_points_snapshot = json.dumps(result.snapshot)
+    version.elevation_grid_snapshot = json.dumps(
+        {
+            "schema": "distance_elevation_v1",
+            "line_hash": version.line_hash,
+            "points": result.elevation_grid,
+        }
+    )
+    metadata = json.loads(version.navigation_metadata_json)
+    metadata["elevation"]["elevation_grid_schema"] = "distance_elevation_v1"
+    metadata["elevation"]["elevation_grid_point_count"] = len(result.elevation_grid)
+    version.navigation_metadata_json = json.dumps(metadata)
+    db.add(version)
+    db.commit()
+    monkeypatch.setattr("app.route_book.export_workflow._storage", _FakeExportStorage())
+    created = client.post(f"/api/route-books/{route.id}/exports", json={"format": "gpx"}).json()
+
+    if grid_mutation == "change":
+        payload = json.loads(version.elevation_grid_snapshot)
+        payload["points"][-1][1] = 744.0
+        version.elevation_grid_snapshot = json.dumps(payload)
+    else:
+        version.elevation_grid_snapshot = None
+    db.add(version)
+    db.commit()
+
+    res = client.get(created["download_url"])
+
+    assert res.status_code == 404
+    if grid_mutation == "change":
+        assert "stale" in res.json()["detail"]
+    else:
+        assert "no longer trusted" in res.json()["detail"]
+
+
 def test_activity_derived_requires_source_activity_id(client, auth_header):
     res = client.post(
         "/api/route-books",
@@ -792,17 +855,7 @@ def test_tencent_direction_creates_route_book(client, db, auth_header, monkeypat
     assert json.loads(route.elevation_profile) == expected_elevation.profile
 
     version = db.query(RouteVersion).filter(RouteVersion.id == route.current_version_id).one()
-    assert version.climb == pytest.approx(expected_elevation.climb)
-    assert json.loads(version.elevation_profile) == expected_elevation.profile
-    assert json.loads(version.elevation_points_snapshot) == expected_elevation.snapshot
-    assert version.point_count == expected_elevation.point_count
-
-    elevation_metadata = json.loads(version.navigation_metadata_json)["elevation"]
-    generated_at = elevation_metadata.pop("generated_at")
-    datetime.fromisoformat(generated_at)
-    expected_metadata = json.loads(_TRUSTED_ELEVATION_METADATA)["elevation"]
-    expected_metadata["point_count"] = expected_elevation.point_count
-    assert elevation_metadata == expected_metadata
+    _assert_version_uses_strict_glo_contract(version, expected_elevation)
 
 
 def test_tencent_direction_maps_glo_failure_to_503(client, db, auth_header, monkeypatch):
@@ -1167,11 +1220,42 @@ def test_manual_drawn_route_accepts_gcj02_and_stores_draw_metadata(client, db, a
     assert metadata["elevation"]["processing_grid_m"] == 20.0
 
 
-def test_route_draw_v0_mock_verification_runs_100_snap_save_elevation_detail_flows(
+def test_manual_draw_releases_database_transaction_while_glo_fetches(
     client,
+    db,
     auth_header,
     monkeypatch,
 ):
+    transaction_states = []
+
+    def fake_query(coords):
+        transaction_states.append(db.in_transaction())
+        return [700.0 for _coord in coords]
+
+    monkeypatch.setattr("app.route_book.service.query_elevations", fake_query, raising=False)
+
+    response = client.post(
+        "/api/route-books/manual-drawn",
+        json={
+            "name": "GLO 下载不占数据库事务",
+            "client_request_id": "test-manual-draw-no-db-transaction-during-glo",
+            "points": [[112.5, 37.8], [112.6, 37.9]],
+        },
+        headers=auth_header,
+    )
+
+    assert response.status_code == 200
+    assert transaction_states == [False]
+
+
+def test_route_draw_v0_mock_verification_runs_100_snap_save_elevation_detail_flows(
+    client,
+    db,
+    auth_header,
+    monkeypatch,
+):
+    # 详情/导出门会从版本几何重新验 canonical 网格；SQLite 必须返回真实 EWKB 才不假失败。
+    _install_dynamic_linestring_ewkb_stub(db)
     snap_calls = []
     convert_calls = []
     elevation_calls = []
@@ -1261,7 +1345,7 @@ def test_route_draw_v0_mock_verification_runs_100_snap_save_elevation_detail_flo
         assert detail.status_code == 200
         detail_body = detail.json()
         assert detail_body["id"] == saved_body["id"]
-        assert detail_body["export_ready"] is True
+        assert detail_body["export_ready"] is True, detail_body["export_block_reason"]
         assert detail_body["export_formats"] == ["gpx", "tcx"]
         route_ids.append(saved_body["id"])
 
@@ -1272,7 +1356,7 @@ def test_route_draw_v0_mock_verification_runs_100_snap_save_elevation_detail_flo
     assert len(elevation_calls) == 100
 
 
-def test_route_draw_v0_manual_drawn_export_gpx_tcx_include_three_elevation_points(
+def test_route_draw_v0_manual_drawn_export_preserves_canonical_elevation_profile(
     client,
     db,
     auth_header,
@@ -1347,13 +1431,39 @@ def test_route_draw_v0_manual_drawn_export_gpx_tcx_include_three_elevation_point
     from app.route_book.models import RouteVersion
 
     version = db.query(RouteVersion).filter(RouteVersion.id == created.json()["current_version_id"]).one()
-    exported_elevations = [point[2] for point in json.loads(version.elevation_points_snapshot)]
-    assert gpx_download.content.count(b"<ele>") == 3
-    assert tcx_download.content.count(b"<AltitudeMeters>") == 3
-    for elevation in exported_elevations:
-        encoded = str(elevation).encode()
-        assert b"<ele>" + encoded + b"</ele>" in gpx_download.content
-        assert b"<AltitudeMeters>" + encoded + b"</AltitudeMeters>" in tcx_download.content
+    canonical_points = json.loads(version.elevation_grid_snapshot)["points"]
+    assert len(canonical_points) > version.point_count
+    gpx_point_count = gpx_download.content.count(b"<ele>")
+    tcx_point_count = tcx_download.content.count(b"<AltitudeMeters>")
+    assert gpx_point_count == tcx_point_count
+    assert len(canonical_points) <= gpx_point_count <= len(canonical_points) + version.point_count
+
+    from xml.etree import ElementTree
+
+    import numpy as np
+
+    from app.elevation.route_elevation import _cumulative_distances, _meaningful_ascent
+
+    root = ElementTree.fromstring(gpx_download.content)
+    namespace = {"gpx": "http://www.topografix.com/GPX/1/1"}
+    exported_points = [
+        [
+            float(node.attrib["lon"]),
+            float(node.attrib["lat"]),
+            float(node.find("gpx:ele", namespace).text),
+        ]
+        for node in root.findall(".//gpx:trkpt", namespace)
+    ]
+    distances = np.asarray(
+        _cumulative_distances([(point[0], point[1]) for point in exported_points]),
+        dtype=float,
+    )
+    exported_climb = _meaningful_ascent(
+        np.asarray([point[2] for point in exported_points], dtype=float),
+        distances,
+    )
+    tolerance_m = max(5.0, version.climb * 0.005)
+    assert abs(version.climb - exported_climb) <= tolerance_m
 
 
 def test_manual_drawn_route_rejects_bad_gcj02_conversion_before_insert(client, db, auth_header, monkeypatch):
@@ -1518,6 +1628,79 @@ def test_route_book_detail_endpoint_marks_no_elevation_for_owner(client, db, aut
     assert body["export_ready"] is False
     assert body["export_formats"] == []
     assert body["export_block_reason"] == "no_elevation"
+
+
+def test_route_book_detail_marks_corrupt_canonical_grid_not_exportable(
+    client,
+    db,
+    auth_header,
+    test_user,
+):
+    route, version = _route_with_current_version(
+        db,
+        test_user.id,
+        name="canonical 网格损坏路线",
+        visibility="private",
+        publish_status="draft",
+    )
+    version.elevation_grid_snapshot = json.dumps(
+        {
+            "schema": "distance_elevation_v1",
+            "line_hash": version.line_hash,
+            "points": [[0.0, 701.2], [1.0, 735.8]],
+        }
+    )
+    metadata = json.loads(version.navigation_metadata_json)
+    metadata["elevation"]["elevation_grid_schema"] = "distance_elevation_v1"
+    metadata["elevation"]["elevation_grid_point_count"] = 2
+    version.navigation_metadata_json = json.dumps(metadata)
+    db.add(version)
+    db.commit()
+
+    detail = client.get(f"/api/route-books/{route.id}/detail", headers=auth_header)
+
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["export_ready"] is False
+    assert body["export_formats"] == []
+    assert body["export_block_reason"] == "no_elevation"
+
+
+def test_route_book_detail_and_export_reject_declared_but_missing_canonical_grid(
+    client,
+    db,
+    auth_header,
+    test_user,
+):
+    from app.elevation.route_elevation import route_distance_m
+
+    route, version = _route_with_current_version(
+        db,
+        test_user.id,
+        name="canonical 网格丢失路线",
+        visibility="private",
+        publish_status="draft",
+    )
+    distance = route_distance_m([[112.5, 37.8], [112.6, 37.9]])
+    metadata = json.loads(version.navigation_metadata_json)
+    metadata["elevation"]["elevation_grid_schema"] = "distance_elevation_v1"
+    metadata["elevation"]["elevation_grid_point_count"] = math.ceil(distance / 20.0) + 1
+    version.navigation_metadata_json = json.dumps(metadata)
+    version.elevation_grid_snapshot = None
+    db.add(version)
+    db.commit()
+
+    detail = client.get(f"/api/route-books/{route.id}/detail", headers=auth_header)
+    exported = client.post(
+        f"/api/route-books/{route.id}/exports",
+        json={"format": "gpx"},
+        headers=auth_header,
+    )
+
+    assert detail.status_code == 200
+    assert detail.json()["export_ready"] is False
+    assert detail.json()["export_block_reason"] == "no_elevation"
+    assert exported.status_code == 422
 
 
 def test_route_book_detail_endpoint_marks_no_current_version_before_elevation(client, db, auth_header, test_user):

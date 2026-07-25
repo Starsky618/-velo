@@ -197,6 +197,9 @@ def test_route_draw_save_contract_and_error_copy():
 
     assert "coordinate_system: 'gcj02'" in js
     assert "draw_metadata" in js
+    assert "route_parts" in js
+    assert "routing_receipt" in js
+    assert "routingReceipt" in js
     assert "tool: 'route_draw_v0'" in js
     assert "snap_provider: freehandCount === modes.length ? 'freehand' : 'tencent_bicycling'" in js
     assert "route_book_id" in js
@@ -207,6 +210,7 @@ def test_route_draw_save_contract_and_error_copy():
     assert "路线保存服务还没上线，先更新服务后再试。" in js
     assert "贴路服务还没上线，可以切 Manual Mode 继续画。" in js
     assert "贴路操作太快，稍等再试，或切 Manual Mode 继续画。" in js
+    assert "智能贴路草稿已达当前上限，可以切 Manual Mode 继续画。" in js
     assert "路线没有保存成功，请稍后再试" in js
     assert "路线太长，分几段保存更稳" in js
     assert "腾讯" not in js
@@ -635,6 +639,23 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
                 const confirmed = [[112.5, 37.8], [112.51, 37.81]]
                 const raw = [[112.52, 37.82], [112.53, 37.83]]
                 const preview = [[112.54, 37.84], [112.55, 37.85]]
+                const routeParts = draw.buildRouteParts([
+                  {
+                    kind: 'segment',
+                    mode: 'snap',
+                    routingReceipt: 'r1.receipt.signature',
+                    points: [[112.5, 37.8], [112.51, 37.8]],
+                    rawPoints: [[112.5, 37.8], [112.51, 37.8]],
+                    warnings: [],
+                  },
+                  {
+                    kind: 'segment',
+                    mode: 'freehand',
+                    points: [[112.51, 37.8], [112.52, 37.81]],
+                    rawPoints: [[112.51, 37.8], [112.52, 37.81]],
+                    warnings: [],
+                  },
+                ])
                 process.stdout.write(JSON.stringify({
                   straightLength: draw.simplifyForSave(straight).length,
                   noisyLength: draw.simplifyForSave(noisy).length,
@@ -645,6 +666,10 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
                     [[[112.5, 37.8], [112.51, 37.8]]],
                     [['系统贴出的路线可能偏离你的手画线，请检查后再保存。']]
                   ),
+                  routeParts: routeParts,
+                  requestRouteParts: draw.routePartsForRequest(routeParts),
+                  missingReceipt: draw.buildRouteParts([{kind: 'segment', mode: 'snap', points: confirmed, rawPoints: raw, warnings: []}]),
+                  longFreehand: draw.buildRouteParts([{kind: 'segment', mode: 'freehand', points: noisy, rawPoints: noisy, warnings: []}]),
                 }))
                 """
             ),
@@ -667,6 +692,77 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
     assert rows["metadata"]["freehand_segment_count"] == 0
     assert rows["metadata"]["raw_points_summary"]["total_raw_points"] == 2
     assert rows["metadata"]["warnings"] == ["系统贴出的路线可能偏离你的手画线，请检查后再保存。"]
+    assert rows["routeParts"] == [
+        {
+            "mode": "snap",
+            "routing_receipt": "r1.receipt.signature",
+            "points": [],
+            "raw_points": [[112.5, 37.8], [112.51, 37.8]],
+        },
+        {"mode": "freehand", "points": [[112.51, 37.8], [112.52, 37.81]]},
+    ]
+    assert rows["requestRouteParts"] == [
+        {"mode": "snap", "routing_receipt": "r1.receipt.signature", "points": []},
+        {"mode": "freehand", "points": [[112.51, 37.8], [112.52, 37.81]]},
+    ]
+    assert rows["missingReceipt"] is None
+    assert 2 <= len(rows["longFreehand"][0]["points"]) <= 120
+
+
+def test_expired_routing_receipt_can_refresh_from_persisted_raw_points():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                ;(async function () {
+                  global.Page = function () {}
+                  global.wx = {}
+                  const draw = require('./miniprogram/pages/route-draw/route-draw.js')
+                  let calls = []
+                  const parts = [{
+                    mode: 'snap',
+                    routing_receipt: 'r1.old.signature',
+                    points: [],
+                    raw_points: [[112.5, 37.8], [112.6, 37.9]],
+                  }]
+                  const actions = await draw.refreshActionsFromRouteParts(parts, function (payload) {
+                    calls.push(payload)
+                    return Promise.resolve({
+                      snapped_points: [[112.5, 37.8], [112.55, 37.86], [112.6, 37.9]],
+                      routing_receipt: 'r1.new.signature',
+                      warnings: [],
+                    })
+                  })
+                  process.stdout.write(JSON.stringify({
+                    actions,
+                    calls,
+                    recognized: draw.isRoutingReceiptError({
+                      code: 422,
+                      detail: { code: 'routing_receipt_invalid' },
+                    }),
+                  }))
+                })().catch(function (err) {
+                  console.error(err && err.stack ? err.stack : err)
+                  process.exit(1)
+                })
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    rows = json.loads(result.stdout)
+
+    assert rows["recognized"] is True
+    assert rows["calls"] == [
+        {"coordinate_system": "gcj02", "mode": "snap", "points": [[112.5, 37.8], [112.6, 37.9]]}
+    ]
+    assert rows["actions"][0]["routingReceipt"] == "r1.new.signature"
+    assert rows["actions"][0]["points"][1] == [112.55, 37.86]
 
 
 def test_route_draw_center_add_flow_sets_anchor_then_snaps_second_point():
@@ -755,6 +851,78 @@ def test_route_draw_center_add_flow_sets_anchor_then_snaps_second_point():
     assert rows["second"]["pointCount"] == 2
     assert rows["second"]["canSaveRoute"] is True
     assert rows["second"]["segmentMode"] == "snap"
+
+
+def test_old_live_snap_response_without_receipt_still_saves_legacy_payload():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                ;(async function () {
+                  let pageConfig
+                  let savedPayload = null
+                  let toasts = []
+                  global.getApp = function () {
+                    return { globalData: { token: 'token-for-test', baseUrl: 'https://api.weiluai.top' } }
+                  }
+                  global.wx = {
+                    showToast: function (options) { toasts.push(options.title) },
+                    redirectTo: function () {},
+                    navigateTo: function () {},
+                  }
+                  const api = require('./miniprogram/utils/api.js')
+                  api.snapManualDrawnRoute = function (payload) {
+                    return Promise.resolve({
+                      snapped_points: payload.points,
+                      warnings: [],
+                    })
+                  }
+                  api.createRouteBookFromManualDrawn = function (payload) {
+                    savedPayload = JSON.parse(JSON.stringify(payload))
+                    return Promise.resolve({ id: 42 })
+                  }
+                  global.Page = function (config) { pageConfig = config }
+                  require('./miniprogram/pages/route-draw/route-draw.js')
+                  const page = Object.assign({}, pageConfig, {
+                    data: JSON.parse(JSON.stringify(pageConfig.data)),
+                    setData: function (patch) {
+                      this.data = Object.assign({}, this.data, patch)
+                    },
+                  })
+
+                  page.commitAnchorAction([112.5, 37.8])
+                  page.startSnapPreview([[112.5, 37.8], [112.51, 37.81]])
+                  await new Promise(function (resolve) { setTimeout(resolve, 0) })
+                  page.setData({ routeName: '旧线上协议兼容路线' })
+                  page.onTapSave()
+                  await new Promise(function (resolve) { setTimeout(resolve, 0) })
+
+                  process.stdout.write(JSON.stringify({
+                    savedPayload,
+                    toasts,
+                    requestStatus: page.data.requestStatus,
+                  }))
+                })().catch(function (err) {
+                  console.error(err && err.stack ? err.stack : err)
+                  process.exit(1)
+                })
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    rows = json.loads(result.stdout)
+
+    assert rows["savedPayload"] is not None
+    assert "route_parts" not in rows["savedPayload"]
+    assert rows["savedPayload"]["points"] == [[112.5, 37.8], [112.51, 37.81]]
+    assert "路线片段已失效，请重新贴路" not in rows["toasts"]
+    assert rows["requestStatus"] == "saved"
 
 
 def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():

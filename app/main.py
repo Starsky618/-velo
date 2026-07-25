@@ -18,6 +18,10 @@ from fastapi.middleware.cors import CORSMiddleware
 # worker / scheduler 各自入口有 basicConfig，唯独 api 没有——2026-06-11 T6 真用回归实证：
 # 请求 200 但 SENSOR view 行永不出现（喇叭没插电第 4 例）。root 已有 handler 时本行是 no-op。
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [api] %(levelname)s %(message)s")
+# httpx 的默认 INFO 记录会打印完整请求 URL；腾讯/飞书等服务会把 key、sig 或 webhook
+# 放在 query/path 里。业务日志可以自己记脱敏后的结果，第三方请求 URL 不能进入容器日志。
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 from app.activity.router import router as activity_router
 from app.admin.router import router as admin_router

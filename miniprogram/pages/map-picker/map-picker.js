@@ -26,7 +26,15 @@ function mapPointFromSearchPlace(place, fallbackLat, fallbackLon) {
   // 否则用户会看到集合点偏到旁边街区。
   var sourceLat = finiteNumber(place.latitude, fallbackLat)
   var sourceLon = finiteNumber(place.longitude, fallbackLon)
-  var gcj = wgs84ToGcj02(sourceLat, sourceLon)
+  var nativeGcjLat = place.gcj_lat === null || place.gcj_lat === undefined
+    ? NaN
+    : finiteNumber(place.gcj_lat, NaN)
+  var nativeGcjLon = place.gcj_lon === null || place.gcj_lon === undefined
+    ? NaN
+    : finiteNumber(place.gcj_lon, NaN)
+  var gcj = Number.isFinite(nativeGcjLat) && Number.isFinite(nativeGcjLon)
+    ? [nativeGcjLat, nativeGcjLon]
+    : wgs84ToGcj02(sourceLat, sourceLon)
   return Object.assign({}, place, {
     latitude: gcj[0],
     longitude: gcj[1],
@@ -57,14 +65,22 @@ Page({
     var rawLon = finiteNumber(options && options.longitude, DEFAULT_CENTER.longitude)
     var coordinateSystem = options && options.coordinate_system === 'wgs84' ? 'wgs84' : 'gcj02'
     var display = kind === 'meeting' && coordinateSystem === 'wgs84' ? wgs84ToGcj02(rawLat, rawLon) : [rawLat, rawLon]
-    this.setData({
-      kind: kind,
-      title: title,
-      confirmText: confirmText,
-      name: safeDecode(options && options.name),
-      // 回显已选地点时搜索框同步显示名字（输入框是页面上唯一的文字位）
-      searchKeyword: safeDecode(options && options.name),
-      selectedSearchPlace: kind === 'meeting' && coordinateSystem === 'wgs84' ? {
+    var providerPoiId = safeDecode(options && options.provider_poi_id)
+    var restoredPoiFields = {
+      provider_poi_id: providerPoiId || null,
+      category: safeDecode(options && options.category) || null,
+      category_code: safeDecode(options && options.category_code) || null,
+      type: safeDecode(options && options.type) || null,
+      adcode: safeDecode(options && options.adcode) || null,
+      province: safeDecode(options && options.province) || null,
+      city: safeDecode(options && options.city) || null,
+      district: safeDecode(options && options.district) || null,
+      gcj_lat: finiteNumber(options && options.gcj_lat, display[0]),
+      gcj_lon: finiteNumber(options && options.gcj_lon, display[1]),
+    }
+    var restoredSearchPlace = null
+    if (kind === 'meeting' && coordinateSystem === 'wgs84') {
+      restoredSearchPlace = Object.assign({
         title: safeDecode(options && options.name),
         address: safeDecode(options && options.address),
         latitude: display[0],
@@ -72,7 +88,24 @@ Page({
         sourceLatitude: rawLat,
         sourceLongitude: rawLon,
         coordinate_system: 'wgs84',
-      } : null,
+      }, restoredPoiFields)
+    } else if (providerPoiId) {
+      restoredSearchPlace = Object.assign({
+        title: safeDecode(options && options.name),
+        address: safeDecode(options && options.address),
+        latitude: display[0],
+        longitude: display[1],
+        coordinate_system: 'gcj02',
+      }, restoredPoiFields)
+    }
+    this.setData({
+      kind: kind,
+      title: title,
+      confirmText: confirmText,
+      name: safeDecode(options && options.name),
+      // 回显已选地点时搜索框同步显示名字（输入框是页面上唯一的文字位）
+      searchKeyword: safeDecode(options && options.name),
+      selectedSearchPlace: restoredSearchPlace,
       latitude: display[0],
       longitude: display[1],
     })
@@ -182,6 +215,16 @@ Page({
           longitude: finiteNumber(searchPlace.sourceLongitude, center.longitude),
           address: searchPlace.address || '',
           coordinate_system: 'wgs84',
+          provider_poi_id: searchPlace.provider_poi_id || null,
+          category: searchPlace.category || null,
+          category_code: searchPlace.category_code || null,
+          type: searchPlace.type || null,
+          adcode: searchPlace.adcode || null,
+          province: searchPlace.province || null,
+          city: searchPlace.city || null,
+          district: searchPlace.district || null,
+          gcj_lat: finiteNumber(searchPlace.gcj_lat, searchPlace.latitude),
+          gcj_lon: finiteNumber(searchPlace.gcj_lon, searchPlace.longitude),
         }
       } else if (searchPlace) {
         // ⚠ 起点/终点喂给腾讯路线规划，它只吃 GCJ-02——必须用展示坐标，
@@ -191,6 +234,16 @@ Page({
           longitude: finiteNumber(searchPlace.longitude, center.longitude),
           address: searchPlace.address || '',
           coordinate_system: 'gcj02',
+          provider_poi_id: searchPlace.provider_poi_id || null,
+          category: searchPlace.category || null,
+          category_code: searchPlace.category_code || null,
+          type: searchPlace.type || null,
+          adcode: searchPlace.adcode || null,
+          province: searchPlace.province || null,
+          city: searchPlace.city || null,
+          district: searchPlace.district || null,
+          gcj_lat: finiteNumber(searchPlace.gcj_lat, searchPlace.latitude),
+          gcj_lon: finiteNumber(searchPlace.gcj_lon, searchPlace.longitude),
         }
       } else {
         picked = {
@@ -208,6 +261,16 @@ Page({
           longitude: picked.longitude,
           address: picked.address,
           coordinate_system: picked.coordinate_system,
+          provider_poi_id: picked.provider_poi_id || null,
+          category: picked.category || null,
+          category_code: picked.category_code || null,
+          type: picked.type || null,
+          adcode: picked.adcode || null,
+          province: picked.province || null,
+          city: picked.city || null,
+          district: picked.district || null,
+          gcj_lat: picked.gcj_lat === undefined ? null : picked.gcj_lat,
+          gcj_lon: picked.gcj_lon === undefined ? null : picked.gcj_lon,
           name: that.data.name || (that.data.kind === 'meeting' ? '集合点' : (that.data.kind === 'start' ? '路线起点' : '路线终点')),
         }
       }
@@ -219,3 +282,9 @@ Page({
     wx.navigateBack()
   },
 })
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    mapPointFromSearchPlace: mapPointFromSearchPlace,
+  }
+}

@@ -138,7 +138,7 @@ def test_export_missing_points_includes_complete_but_untrusted_elevation(db, tmp
 
 def test_import_elevation_csv_requires_license_metadata_and_updates_route_version(db, tmp_path):
     from app.route_book.models import RouteBook, RouteVersion
-    from scripts.backfill_route_elevation import import_elevation_csv
+    from scripts.backfill_route_elevation import backfill_missing_with_glo, import_elevation_csv
 
     route, version = _route_with_current_version(db)
     input_path = tmp_path / "authorized-elevation.csv"
@@ -175,6 +175,17 @@ def test_import_elevation_csv_requires_license_metadata_and_updates_route_versio
     assert metadata["elevation"]["license_id"] == "contract-2026-001"
     assert metadata["elevation"]["accuracy_m"] == 5.0
 
+    def unexpected_glo_query(_coords):
+        raise AssertionError("已授权逐点海拔不能被 canonical GLO 回填覆盖")
+
+    assert backfill_missing_with_glo(
+        db,
+        query_func=unexpected_glo_query,
+        dry_run=False,
+    ) == 0
+    db.refresh(stored_version)
+    assert stored_version.elevation_grid_snapshot is None
+
 
 def test_build_route_elevation_result_uses_fixed_grid_and_keeps_full_route_points():
     from app.elevation.route_elevation import build_route_elevation_result
@@ -203,6 +214,9 @@ def test_build_route_elevation_result_uses_fixed_grid_and_keeps_full_route_point
     assert result.profile[-1][1] == 721.0
     assert result.climb == 25.3
     assert result.point_count == 3
+    assert result.elevation_grid is not None
+    assert len(result.elevation_grid) == len(calls[0])
+    assert result.elevation_grid[0][0] == 0.0
 
 
 def test_build_route_elevation_result_rejects_invalid_elevation_values():
@@ -480,6 +494,38 @@ def test_backfill_missing_with_glo_repairs_meetup_for_already_trusted_route(db):
     assert stored_meetup.snapshot_climb == 34.4
 
 
+def test_backfill_missing_with_glo_repairs_legacy_glo_route_without_canonical_grid(db):
+    from app.route_book.models import RouteVersion
+    from scripts.backfill_route_elevation import backfill_missing_with_glo
+
+    _route, version = _route_with_current_version(db)
+    assert backfill_missing_with_glo(
+        db,
+        query_func=_linear_elevations,
+        dry_run=False,
+    ) == 1
+    version.elevation_grid_snapshot = None
+    db.add(version)
+    db.commit()
+
+    calls = []
+
+    def recording_query(coords):
+        calls.append(coords)
+        return _linear_elevations(coords)
+
+    updated = backfill_missing_with_glo(
+        db,
+        query_func=recording_query,
+        dry_run=False,
+    )
+
+    stored = db.query(RouteVersion).filter(RouteVersion.id == version.id).one()
+    assert updated == 1
+    assert len(calls) == 1
+    assert stored.elevation_grid_snapshot is not None
+
+
 def test_backfill_missing_with_glo_tolerates_database_without_meetups_table(db):
     from scripts.backfill_route_elevation import backfill_missing_with_glo
 
@@ -524,6 +570,40 @@ def test_backfill_missing_with_glo_keeps_successful_routes_when_one_route_fails(
     assert first_route.id != second_route.id
     assert stored_first.elevation_points_snapshot is not None
     assert stored_second.elevation_points_snapshot is None
+
+
+def test_backfill_missing_with_glo_isolates_reference_line_precheck_failure(db, monkeypatch):
+    from app.route_book.models import RouteVersion
+    from scripts import backfill_route_elevation as script
+
+    first_route, first_version = _route_with_current_version(db)
+    second_route, second_version = _route_with_current_version(db)
+    original_parser = script._points_from_wkt
+    parse_calls = 0
+
+    def one_valid_one_invalid_reference_line(value):
+        nonlocal parse_calls
+        parse_calls += 1
+        # 实际写入由 elevation_workflow 的解析器负责；这里第二次就是下一条的预检查。
+        if parse_calls == 2:
+            raise ValueError("simulated invalid reference line")
+        return original_parser(value)
+
+    monkeypatch.setattr(script, "_points_from_wkt", one_valid_one_invalid_reference_line)
+
+    with pytest.raises(RuntimeError, match=str(second_route.id)):
+        script.backfill_missing_with_glo(
+            db,
+            query_func=_linear_elevations,
+            dry_run=False,
+        )
+
+    db.expire_all()
+    stored_first = db.query(RouteVersion).filter(RouteVersion.id == first_version.id).one()
+    stored_second = db.query(RouteVersion).filter(RouteVersion.id == second_version.id).one()
+    assert first_route.id != second_route.id
+    assert stored_first.elevation_grid_snapshot is not None
+    assert stored_second.elevation_grid_snapshot is None
 
 
 def test_backfill_missing_with_glo_overwrites_complete_untrusted_snapshot(db):
@@ -576,6 +656,7 @@ def test_backfill_missing_with_glo_dry_run_rolls_back(db):
     stored_version = db.query(RouteVersion).filter(RouteVersion.id == version.id).one()
     assert updated == 1
     assert stored_version.elevation_points_snapshot is None
+    assert stored_version.elevation_grid_snapshot is None
     assert stored_version.navigation_metadata_json is None
 
 
@@ -595,5 +676,5 @@ def test_virtual_gpx_experiment_runs_import_glo_fill_export_loop():
     assert report["total"] == 3
     assert report["succeeded"] == 3
     assert report["failed"] == 0
-    assert all(item["gpx_ele_count"] == item["point_count"] for item in report["items"])
-    assert all(item["tcx_altitude_count"] == item["point_count"] for item in report["items"])
+    assert all(item["gpx_ele_count"] == item["export_point_count"] for item in report["items"])
+    assert all(item["tcx_altitude_count"] == item["export_point_count"] for item in report["items"])

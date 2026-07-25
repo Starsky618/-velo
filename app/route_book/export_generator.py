@@ -11,7 +11,21 @@ import math
 from typing import Literal
 from xml.sax.saxutils import escape
 
-from app.route_book.elevation_quality import has_trusted_route_elevation, parse_complete_elevation_snapshot
+import numpy as np
+
+from app.elevation.route_elevation import (
+    ROUTE_ELEVATION_METHOD,
+    interpolate_route_points,
+    route_distance_m,
+    route_vertex_chainages_m,
+)
+from app.route_book.elevation_quality import (
+    declares_elevation_grid,
+    has_elevation_metadata_method,
+    has_trusted_route_elevation,
+    parse_complete_elevation_grid,
+    parse_complete_elevation_snapshot,
+)
 from app.route_book.models import _preview_points_from_wkb, _preview_points_from_wkt
 
 
@@ -34,6 +48,8 @@ def generate_route_export(
     route_name: str,
     reference_line_snapshot: object,
     elevation_points_snapshot: str | None = None,
+    elevation_grid_snapshot: str | None = None,
+    reference_line_hash: str | None = None,
     elevation_metadata_json: str | None = None,
     export_format: ExportFormat,
 ) -> GeneratedRouteExport:
@@ -43,19 +59,25 @@ def generate_route_export(
     码表导入会信任 GPX/TCX 中的海拔。缺逐点海拔时不能导出二维线，
     避免让目标 App 自行补算出偏差很大的爬升。
     """
-    points = _points_from_reference_line(reference_line_snapshot)
-    if len(points) < 2:
-        raise ValueError("导出至少需要 2 个坐标点")
-    export_points = parse_complete_elevation_snapshot(elevation_points_snapshot, expected_count=len(points))
-    if export_points is None:
-        raise ValueError("这条路线还没有可用海拔数据")
-    if not has_trusted_route_elevation(
-        elevation_points_snapshot,
-        metadata_json=elevation_metadata_json,
-        expected_count=len(points),
-    ):
-        raise ValueError("这条路线还没有用 VELO 统一海拔源生成可导出的逐点海拔")
-    export_points = _elevation_on_reference_line(points, export_points)
+    points, sparse_elevation_points, elevation_grid = _validated_route_elevation(
+        reference_line_snapshot=reference_line_snapshot,
+        elevation_points_snapshot=elevation_points_snapshot,
+        elevation_grid_snapshot=elevation_grid_snapshot,
+        reference_line_hash=reference_line_hash,
+        elevation_metadata_json=elevation_metadata_json,
+    )
+    if elevation_grid is None:
+        export_points = _elevation_on_reference_line(points, sparse_elevation_points)
+    else:
+        export_grid = _grid_with_reference_vertices(points, elevation_grid)
+        coordinates = interpolate_route_points(
+            points,
+            [item[0] for item in export_grid],
+        )
+        export_points = [
+            [lon, lat, item[1]]
+            for (lon, lat), item in zip(coordinates, export_grid)
+        ]
     elevation_point_count = sum(1 for _lon, _lat, ele in export_points if ele is not None)
 
     if export_format == "gpx":
@@ -77,6 +99,105 @@ def generate_route_export(
             extension="tcx",
         )
     raise ValueError("只支持导出 gpx 或 tcx")
+
+
+def has_exportable_route_elevation(
+    *,
+    reference_line_snapshot: object,
+    elevation_points_snapshot: str | None,
+    elevation_grid_snapshot: str | None,
+    reference_line_hash: str | None,
+    elevation_metadata_json: str | None,
+) -> bool:
+    """详情页和真实导出共用同一道完整性门，避免按钮可点但创建时才失败。"""
+    try:
+        _validated_route_elevation(
+            reference_line_snapshot=reference_line_snapshot,
+            elevation_points_snapshot=elevation_points_snapshot,
+            elevation_grid_snapshot=elevation_grid_snapshot,
+            reference_line_hash=reference_line_hash,
+            elevation_metadata_json=elevation_metadata_json,
+        )
+    except ValueError:
+        return False
+    return True
+
+
+def _validated_route_elevation(
+    *,
+    reference_line_snapshot: object,
+    elevation_points_snapshot: str | None,
+    elevation_grid_snapshot: str | None,
+    reference_line_hash: str | None,
+    elevation_metadata_json: str | None,
+) -> tuple[list[list[float]], list[list[float]], list[list[float]] | None]:
+    points = _points_from_reference_line(reference_line_snapshot)
+    if len(points) < 2:
+        raise ValueError("导出至少需要 2 个坐标点")
+    sparse_elevation_points = parse_complete_elevation_snapshot(
+        elevation_points_snapshot,
+        expected_count=len(points),
+    )
+    if sparse_elevation_points is None:
+        raise ValueError("这条路线还没有可用海拔数据")
+    if not has_trusted_route_elevation(
+        elevation_points_snapshot,
+        metadata_json=elevation_metadata_json,
+        expected_count=len(points),
+    ):
+        raise ValueError("这条路线还没有用 VELO 统一海拔源生成可导出的逐点海拔")
+    is_glo = has_elevation_metadata_method(
+        elevation_metadata_json,
+        methods=frozenset({ROUTE_ELEVATION_METHOD}),
+        expected_count=len(points),
+    )
+    if not is_glo:
+        return points, sparse_elevation_points, None
+    if elevation_grid_snapshot is None:
+        if declares_elevation_grid(elevation_metadata_json):
+            raise ValueError("路线声明了 canonical 海拔网格但数据缺失")
+        return points, sparse_elevation_points, None
+
+    elevation_grid = parse_complete_elevation_grid(
+        elevation_grid_snapshot,
+        expected_line_hash=reference_line_hash or "",
+        expected_distance_m=route_distance_m(points),
+        metadata_json=elevation_metadata_json,
+    )
+    if elevation_grid is None:
+        raise ValueError("路线 canonical 海拔网格损坏或不属于当前参考线")
+    return points, sparse_elevation_points, elevation_grid
+
+
+def _grid_with_reference_vertices(
+    points: list[list[float]],
+    elevation_grid: list[list[float]],
+) -> list[list[float]]:
+    """合并成品网格与原参考线顶点；密集点不能把急弯、发卡弯直接切掉。"""
+    candidates = [(float(item[0]), False) for item in elevation_grid]
+    candidates.extend((chainage, True) for chainage in route_vertex_chainages_m(points))
+    candidates.sort(key=lambda item: item[0])
+
+    merged: list[tuple[float, bool]] = []
+    for chainage, is_vertex in candidates:
+        if merged and abs(chainage - merged[-1][0]) <= 0.001:
+            if is_vertex:
+                merged[-1] = (chainage, True)
+            continue
+        merged.append((chainage, is_vertex))
+
+    canonical_distances = np.asarray([item[0] for item in elevation_grid], dtype=float)
+    canonical_elevations = np.asarray([item[1] for item in elevation_grid], dtype=float)
+    merged_distances = np.asarray([item[0] for item in merged], dtype=float)
+    merged_elevations = np.interp(
+        merged_distances,
+        canonical_distances,
+        canonical_elevations,
+    )
+    return [
+        [float(distance), round(float(elevation), 1)]
+        for distance, elevation in zip(merged_distances, merged_elevations)
+    ]
 
 
 def _points_from_reference_line(value: object) -> list[list[float]]:

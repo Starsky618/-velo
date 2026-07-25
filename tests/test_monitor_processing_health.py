@@ -18,6 +18,7 @@ v5 task-1.C.1：app/monitor/processing_health.py 真 PG 集成测试。
 
 import os
 from datetime import datetime, timedelta, timezone
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -172,7 +173,11 @@ def test_scan_feishu_network_error_swallowed_returns_stuck_list(pg_session, fake
     mock_httpx.post.assert_called_once()
 
 
-def test_scan_feishu_5xx_response_swallowed_returns_stuck_list(pg_session, fake_webhook):
+def test_scan_feishu_5xx_response_swallowed_returns_stuck_list(
+    pg_session,
+    fake_webhook,
+    caplog,
+):
     """
     飞书 502 响应 → raise_for_status() 抛 HTTPStatusError → catch 后仍返 stuck list
     （codex 异源审 2026-04-30 抓 Important：httpx.post 默认遇 5xx 不抛 / 必须 raise_for_status）。
@@ -185,18 +190,25 @@ def test_scan_feishu_5xx_response_swallowed_returns_stuck_list(pg_session, fake_
     # 构造一个真假 Response 对象 / status_code=502，调 raise_for_status() 会抛 HTTPStatusError
     fake_response = real_httpx.Response(
         status_code=502,
-        request=real_httpx.Request("POST", "https://fake-feishu.local/webhook"),
+        request=real_httpx.Request(
+            "POST",
+            "https://fake-feishu.local/webhook?secret=must-not-enter-monitor-log",
+        ),
     )
 
-    with patch.object(processing_health, "httpx") as mock_httpx:
-        mock_httpx.post.return_value = fake_response
-        # 把 patch 的 httpx 模块的异常类指回真 httpx，让 raise_for_status 能正常抛
-        mock_httpx.HTTPStatusError = real_httpx.HTTPStatusError
-        # 不该抛异常给 caller
-        result = processing_health.scan_processing_health(pg_session)
+    with caplog.at_level(logging.ERROR, logger=processing_health.logger.name):
+        with patch.object(processing_health, "httpx") as mock_httpx:
+            mock_httpx.post.return_value = fake_response
+            # 把 patch 的 httpx 模块的异常类指回真 httpx，让 raise_for_status 能正常抛
+            mock_httpx.HTTPStatusError = real_httpx.HTTPStatusError
+            # 不该抛异常给 caller
+            result = processing_health.scan_processing_health(pg_session)
 
     assert a.id in result
     mock_httpx.post.assert_called_once()
+    assert "must-not-enter-monitor-log" not in caplog.text
+    assert "error_type=HTTPStatusError" in caplog.text
+    assert "status_code=502" in caplog.text
 
 
 def test_scan_no_webhook_skips_post_keeps_stuck_list(pg_session, monkeypatch):

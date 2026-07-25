@@ -183,7 +183,7 @@ class MeetupFavoritePlaceOut(BaseModel):
 
 
 class MeetupPlaceSearchOut(BaseModel):
-    """腾讯地点搜索结果，坐标已经转成 WGS-84。"""
+    """腾讯地点搜索结果，同时保留通用 WGS-84 与腾讯原生地点身份。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -193,6 +193,16 @@ class MeetupPlaceSearchOut(BaseModel):
     latitude: float
     longitude: float
     source: str
+    provider_poi_id: str | None = None
+    category: str | None = None
+    category_code: str | None = None
+    type: str | None = None
+    adcode: str | None = None
+    province: str | None = None
+    city: str | None = None
+    district: str | None = None
+    gcj_lat: float | None = Field(None, ge=-90, le=90)
+    gcj_lon: float | None = Field(None, ge=-180, le=180)
 
 
 class InviteeSummary(BaseModel):

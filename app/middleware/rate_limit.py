@@ -168,4 +168,11 @@ def _alert_feishu_throttled(
         response.raise_for_status()
     except Exception as exc:
         # 飞书挂了不阻断限流本身（429 仍正常返）
-        logger.error("rate limit feishu alert failed for key=%s: %s", key, exc)
+        # HTTPStatusError 文本会包含带签名的 webhook URL，只记异常类型和状态码。
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        logger.error(
+            "rate limit feishu alert failed key=%s error_type=%s status_code=%s",
+            key,
+            type(exc).__name__,
+            status_code,
+        )

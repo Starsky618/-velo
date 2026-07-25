@@ -218,6 +218,16 @@ def test_meetup_place_suggestions_wraps_tencent_list_without_secret(client, auth
                 "lat": 37.708,
                 "lon": 112.438,
                 "source": "tencent_suggestion",
+                "provider_poi_id": "poi-jinci-east",
+                "category": "旅游景点:公园",
+                "category_code": "110101",
+                "type": "0",
+                "adcode": "140110",
+                "province": "山西省",
+                "city": "太原市",
+                "district": "晋源区",
+                "gcj_lat": 37.7086,
+                "gcj_lon": 112.4444,
             },
             {
                 "keyword": keyword,
@@ -244,6 +254,11 @@ def test_meetup_place_suggestions_wraps_tencent_list_without_secret(client, auth
     assert [item["title"] for item in body] == ["晋祠公园东门", "晋祠博物馆"]
     assert body[0]["latitude"] == 37.708
     assert body[0]["longitude"] == 112.438
+    assert body[0]["provider_poi_id"] == "poi-jinci-east"
+    assert body[0]["category_code"] == "110101"
+    assert body[0]["district"] == "晋源区"
+    assert body[0]["gcj_lat"] == 37.7086
+    assert body[0]["gcj_lon"] == 112.4444
     assert "secret-sk" not in res.text
 
 

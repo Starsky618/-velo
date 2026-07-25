@@ -60,6 +60,11 @@ def _assert_strict_glo_product(book, version, guide) -> None:
     ]
     assert [point[2] for point in snapshot] != [800.0, 830.0, 820.0]
     assert version.point_count == 3
+    elevation_grid = json.loads(version.elevation_grid_snapshot)
+    assert elevation_grid["schema"] == "distance_elevation_v1"
+    assert elevation_grid["line_hash"] == version.line_hash
+    assert len(elevation_grid["points"]) > version.point_count
+    assert all(point[1] == FAKE_GLO_ELEVATION_M for point in elevation_grid["points"])
     assert version.climb == book.climb == 0.0
     assert version.elevation_profile == book.elevation_profile == guide.elevation_profile
     assert all(point[1] == FAKE_GLO_ELEVATION_M for point in json.loads(version.elevation_profile))
@@ -75,6 +80,8 @@ def _assert_strict_glo_product(book, version, guide) -> None:
         "point_count": 3,
         "method": ROUTE_ELEVATION_METHOD,
         "horizontal_resolution_m": GLO30_HORIZONTAL_RESOLUTION_M,
+        "elevation_grid_schema": "distance_elevation_v1",
+        "elevation_grid_point_count": len(elevation_grid["points"]),
         **route_elevation_metadata(),
         "generated_at": generated_at,
     }

@@ -3,6 +3,7 @@
 import json
 import re
 import subprocess
+import textwrap
 from pathlib import Path
 
 
@@ -161,6 +162,11 @@ def test_create_page_is_three_step_flow_and_uses_backend_state():
     assert "tencentStartText" in js
     assert "tencentEndText" in js
     assert "onTapCreateTencentRoute" in js
+    assert "coordinate_system: 'gcj02'" in js
+    assert "from_poi: start.provider_poi_id" in js
+    assert "to_poi: end.provider_poi_id" in js
+    assert "from_poi_context: buildTencentPoiContext(start)" in js
+    assert "to_poi_context: buildTencentPoiContext(end)" in js
     assert "currentStep" in wxml
     assert "路线" in wxml and "时间" in wxml and "发布" in wxml
     assert "腾讯地图生成" in wxml
@@ -179,6 +185,8 @@ def test_create_page_uses_map_picker_instead_of_native_location_popup():
     assert "onTapChooseTencentStart" in js
     assert "onTapChooseTencentEnd" in js
     assert "consumePendingMapPoint" in js
+    assert "provider_poi_id" in js
+    assert "gcj_lat" in _read(MINI / "pages" / "map-picker" / "map-picker.js")
     assert "pendingMapPoint" in app_js
     assert "chooseLocation" not in json.dumps(app_json, ensure_ascii=False)
     assert "scope.userLocation" not in json.dumps(app_json, ensure_ascii=False)
@@ -371,6 +379,98 @@ def test_map_picker_supports_realtime_place_suggestions():
     assert "picker-search-btn" not in wxml
     # 搜索框对起点/终点/集合点全开放（不再 wx:if kind 限定）
     assert 'wx:if="{{kind === \'meeting\'}}"' not in wxml
+
+
+def test_map_picker_prefers_tencent_native_gcj_and_null_falls_back_to_conversion():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                global.Page = function () {}
+                global.wx = {}
+                const picker = require('./miniprogram/pages/map-picker/map-picker.js')
+                const nativePoint = picker.mapPointFromSearchPlace({
+                  latitude: 37.7,
+                  longitude: 112.4,
+                  gcj_lat: 37.706,
+                  gcj_lon: 112.406,
+                  provider_poi_id: 'poi-1',
+                }, 37.8, 112.5)
+                const fallbackPoint = picker.mapPointFromSearchPlace({
+                  latitude: 37.7,
+                  longitude: 112.4,
+                  gcj_lat: null,
+                  gcj_lon: null,
+                }, 37.8, 112.5)
+                process.stdout.write(JSON.stringify({ nativePoint, fallbackPoint }))
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    rows = json.loads(result.stdout)
+
+    assert rows["nativePoint"]["latitude"] == 37.706
+    assert rows["nativePoint"]["longitude"] == 112.406
+    assert rows["nativePoint"]["provider_poi_id"] == "poi-1"
+    assert rows["fallbackPoint"]["latitude"] != 0
+    assert rows["fallbackPoint"]["longitude"] != 0
+
+
+def test_tencent_poi_context_preserves_admin_fields_without_null_to_zero():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                global.Page = function () {}
+                global.wx = {}
+                const create = require('./miniprogram/pages/meetup-create/meetup-create.js')
+                const full = create.buildTencentPoiContext({
+                  provider_poi_id: 'poi-1',
+                  name: '万亩生态园',
+                  category: '旅游景点',
+                  type: '景点',
+                  adcode: '140110',
+                  province: '山西省',
+                  city: '太原市',
+                  district: '晋源区',
+                  gcj_lat: 37.706,
+                  gcj_lon: 112.406,
+                  coordinate_system: 'gcj02',
+                  latitude: 37.706,
+                  longitude: 112.406,
+                })
+                const nullNative = create.buildTencentPoiContext({
+                  provider_poi_id: 'poi-2',
+                  gcj_lat: null,
+                  gcj_lon: null,
+                  coordinate_system: 'wgs84',
+                  latitude: 37.7,
+                  longitude: 112.4,
+                })
+                process.stdout.write(JSON.stringify({ full, nullNative }))
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    rows = json.loads(result.stdout)
+
+    assert rows["full"]["provider_poi_id"] == "poi-1"
+    assert rows["full"]["district"] == "晋源区"
+    assert rows["full"]["gcj_lat"] == 37.706
+    assert "gcj_lat" not in rows["nullNative"]
+    assert "gcj_lon" not in rows["nullNative"]
 
 
 def test_confirm_publish_blocks_cutoff_window_before_backend_raw_error():

@@ -4,8 +4,9 @@
 100 条路线，走真实解析器和真实导出器，中间海拔查询默认走项目统一 GLO-30 入口和
 VELO ``glo30_meaningful_ascent_v1`` 成品剖面算法。
 
-输入输出：输入实验数量和随机种子，输出 JSON 报告；每条路线必须能导出同点数的 GPX
-<ele> 和 TCX AltitudeMeters，才算通过。
+输入输出：输入实验数量和随机种子，输出 JSON 报告；每条路线必须能从唯一参考线
+派生 canonical 网格，并把网格与全部原始转弯顶点合并后等量导出 GPX <ele> 和
+TCX AltitudeMeters，才算通过。
 """
 
 from __future__ import annotations
@@ -54,6 +55,8 @@ DEFAULT_POINTS_PER_ROUTE = 48
 DEFAULT_SEED = 20260630
 GPX_NS = {"g": "http://www.topografix.com/GPX/1/1"}
 TCX_NS = {"t": "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"}
+_EXPERIMENT_SESSION_MARKER_KEY = "velo_owned_experiment_session"
+_EXPERIMENT_SESSION_MARKER = object()
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -85,29 +88,20 @@ def run_experiment(
     seed: int = DEFAULT_SEED,
     points_per_route: int = DEFAULT_POINTS_PER_ROUTE,
     query_func: ElevationQuery = query_elevations,
-    db=None,
 ) -> dict:
     if count <= 0:
         raise ValueError("count must be positive")
     if points_per_route < 2:
         raise ValueError("points_per_route must be at least 2")
 
-    if db is None:
-        with _experiment_db_session() as session:
-            return _run_experiment_with_db(
-                session,
-                count=count,
-                seed=seed,
-                points_per_route=points_per_route,
-                query_func=query_func,
-            )
-    return _run_experiment_with_db(
-        db,
-        count=count,
-        seed=seed,
-        points_per_route=points_per_route,
-        query_func=query_func,
-    )
+    with _experiment_db_session() as session:
+        return _run_experiment_with_db(
+            session,
+            count=count,
+            seed=seed,
+            points_per_route=points_per_route,
+            query_func=query_func,
+        )
 
 
 def _run_experiment_with_db(
@@ -118,6 +112,7 @@ def _run_experiment_with_db(
     points_per_route: int,
     query_func: ElevationQuery,
 ) -> dict:
+    _assert_owned_experiment_session(db)
     rng = random.Random(seed)
     items = []
     succeeded = 0
@@ -150,10 +145,13 @@ def _run_experiment_with_db(
                 .scalar()
             )
             snapshot_points = json.loads(version.elevation_points_snapshot)
+            grid_points = json.loads(version.elevation_grid_snapshot)["points"]
             exported_gpx = generate_route_export(
                 route_name=route.name,
                 reference_line_snapshot=reference_line_wkt,
                 elevation_points_snapshot=version.elevation_points_snapshot,
+                elevation_grid_snapshot=version.elevation_grid_snapshot,
+                reference_line_hash=version.line_hash,
                 elevation_metadata_json=version.navigation_metadata_json,
                 export_format="gpx",
             )
@@ -161,6 +159,8 @@ def _run_experiment_with_db(
                 route_name=route.name,
                 reference_line_snapshot=reference_line_wkt,
                 elevation_points_snapshot=version.elevation_points_snapshot,
+                elevation_grid_snapshot=version.elevation_grid_snapshot,
+                reference_line_hash=version.line_hash,
                 elevation_metadata_json=version.navigation_metadata_json,
                 export_format="tcx",
             )
@@ -169,8 +169,10 @@ def _run_experiment_with_db(
             ok = (
                 len(points) == len(expected_points)
                 and len(snapshot_points) == len(points)
-                and gpx_ele_count == len(points)
-                and tcx_altitude_count == len(points)
+                and gpx_ele_count == exported_gpx.point_count
+                and tcx_altitude_count == exported_tcx.point_count
+                and gpx_ele_count == tcx_altitude_count
+                and len(grid_points) <= gpx_ele_count <= len(grid_points) + len(points)
             )
             items.append(
                 {
@@ -180,6 +182,8 @@ def _run_experiment_with_db(
                     "climb_m": version.climb,
                     "gpx_ele_count": gpx_ele_count,
                     "tcx_altitude_count": tcx_altitude_count,
+                    "canonical_point_count": len(grid_points),
+                    "export_point_count": exported_gpx.point_count,
                     "ok": ok,
                 }
             )
@@ -317,6 +321,19 @@ def _distance(points: list[list[float]]) -> float:
     return total
 
 
+def _assert_owned_experiment_session(db) -> None:
+    if getattr(db, "info", {}).get(_EXPERIMENT_SESSION_MARKER_KEY) is not _EXPERIMENT_SESSION_MARKER:
+        raise RuntimeError("experiment runner only accepts its script-owned SQLite in-memory session")
+
+    bind = db.get_bind()
+    if (
+        bind.dialect.name != "sqlite"
+        or bind.url.database != ":memory:"
+        or not isinstance(bind.pool, StaticPool)
+    ):
+        raise RuntimeError("experiment runner only accepts its script-owned SQLite in-memory session")
+
+
 @contextmanager
 def _experiment_db_session():
     engine = create_engine(
@@ -374,6 +391,7 @@ def _experiment_db_session():
         Column("climb", Float),
         Column("elevation_profile", Text),
         Column("elevation_points_snapshot", Text),
+        Column("elevation_grid_snapshot", Text),
         Column("point_count", Integer),
         Column("component_snapshot_hash", String(64)),
         Column("validation_warnings_json", Text),
@@ -383,6 +401,7 @@ def _experiment_db_session():
     metadata.create_all(bind=engine)
     Session = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
     session = Session()
+    session.info[_EXPERIMENT_SESSION_MARKER_KEY] = _EXPERIMENT_SESSION_MARKER
     try:
         yield session
     finally:

@@ -54,6 +54,7 @@ class RouteElevationResult:
     climb: float
     point_count: int
     descent: float = 0.0
+    elevation_grid: list[list[float]] | None = None
 
 
 def route_elevation_metadata() -> dict[str, float | str]:
@@ -88,6 +89,10 @@ def build_route_elevation_result(
 
     raw = np.asarray(_require_complete_elevations(elevations), dtype=float)
     shaped = _shape_profile(raw, grid)
+    canonical_distances, canonical_values, elevation_grid = _persistable_elevation_grid(
+        grid,
+        shaped,
+    )
     snapshot_values = np.interp(original_distances, grid, shaped)
     snapshot = [
         [round(lon, 7), round(lat, 7), round(float(ele), 1)]
@@ -95,10 +100,11 @@ def build_route_elevation_result(
     ]
     return RouteElevationResult(
         snapshot=snapshot,
-        profile=_downsample_profile(grid, shaped),
-        climb=round(_meaningful_ascent(shaped, grid), 1),
+        profile=_downsample_profile(canonical_distances, canonical_values),
+        climb=round(_meaningful_ascent(canonical_values, canonical_distances), 1),
         point_count=len(snapshot),
-        descent=round(_meaningful_ascent(-shaped, grid), 1),
+        descent=round(_meaningful_ascent(-canonical_values, canonical_distances), 1),
+        elevation_grid=elevation_grid,
     )
 
 
@@ -272,6 +278,61 @@ def _downsample_profile(distances: np.ndarray, elevations: np.ndarray) -> list[l
         [round(float(distance) / 1000.0, 3), round(float(ele), 1)]
         for distance, ele in zip(targets, values)
     ]
+
+
+def _persistable_elevation_grid(
+    distances: np.ndarray,
+    elevations: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, list[list[float]]]:
+    """冻结页面统计和导出共同使用的距离-海拔成品网格。"""
+    stored_distances = np.round(np.asarray(distances, dtype=float), 3)
+    stored_elevations = np.round(np.asarray(elevations, dtype=float), 1)
+    return (
+        stored_distances,
+        stored_elevations,
+        [
+            [float(distance), float(elevation)]
+            for distance, elevation in zip(stored_distances, stored_elevations)
+        ],
+    )
+
+
+def interpolate_route_points(
+    points: Sequence[Sequence[float]],
+    distances: Sequence[float],
+) -> list[tuple[float, float]]:
+    """只从参考线按 chainage 派生坐标，避免密集海拔网格成为第二套几何真值。"""
+    normalized = _normalize_points(points)
+    original_distances = np.asarray(_cumulative_distances(normalized), dtype=float)
+    source_distances, source_indexes = _strictly_increasing_indexes(original_distances)
+    targets = np.asarray([float(value) for value in distances], dtype=float)
+    if not np.isfinite(targets).all():
+        raise ValueError("路线采样距离必须是有限数字")
+    if len(targets) < 2 or np.any(np.diff(targets) <= 0):
+        raise ValueError("路线采样距离必须严格递增")
+    tolerance = max(1.0, float(source_distances[-1]) * 1e-5)
+    if targets[0] < -tolerance or targets[-1] > float(source_distances[-1]) + tolerance:
+        raise ValueError("路线采样距离超出参考线范围")
+    targets = np.clip(targets, 0.0, float(source_distances[-1]))
+    source_lon = np.asarray([normalized[index][0] for index in source_indexes], dtype=float)
+    source_lat = np.asarray([normalized[index][1] for index in source_indexes], dtype=float)
+    sampled_lon = np.interp(targets, source_distances, source_lon)
+    sampled_lat = np.interp(targets, source_distances, source_lat)
+    return list(zip(sampled_lon.tolist(), sampled_lat.tolist()))
+
+
+def route_distance_m(points: Sequence[Sequence[float]]) -> float:
+    """按海拔工厂的同一距离轴计算参考线总长。"""
+    normalized = _normalize_points(points)
+    return float(_cumulative_distances(normalized)[-1])
+
+
+def route_vertex_chainages_m(points: Sequence[Sequence[float]]) -> list[float]:
+    """返回参考线有效顶点的里程；导出必须保留这些点，不能在急弯处切角。"""
+    normalized = _normalize_points(points)
+    distances = np.asarray(_cumulative_distances(normalized), dtype=float)
+    chainages, _indexes = _strictly_increasing_indexes(distances)
+    return chainages.tolist()
 
 
 def _cumulative_distances(points: Sequence[tuple[float, float]]) -> list[float]:

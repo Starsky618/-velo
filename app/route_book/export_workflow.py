@@ -15,8 +15,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.route_book.export_generator import generate_route_export
-from app.route_book.elevation_quality import has_trusted_route_elevation
+from app.route_book.export_generator import generate_route_export, has_exportable_route_elevation
 from app.route_book.export_service import (
     assert_can_download_export_artifact,
     assert_can_export_route,
@@ -65,16 +64,20 @@ def create_route_export(
     assert_can_export_route(route, current_user_id=current_user_id, is_admin=is_admin)
 
     version = _get_current_version(db, route)
-    if not has_trusted_route_elevation(
-        version.elevation_points_snapshot,
-        metadata_json=version.navigation_metadata_json,
-        expected_count=version.point_count or 0,
+    if not has_exportable_route_elevation(
+        reference_line_snapshot=version.reference_line_snapshot,
+        elevation_points_snapshot=version.elevation_points_snapshot,
+        elevation_grid_snapshot=version.elevation_grid_snapshot,
+        reference_line_hash=version.line_hash,
+        elevation_metadata_json=version.navigation_metadata_json,
     ):
         raise ValueError("这条路线还没有用 VELO 统一海拔源生成可导出的逐点海拔")
     generated = generate_route_export(
         route_name=route.name,
         reference_line_snapshot=version.reference_line_snapshot,
         elevation_points_snapshot=version.elevation_points_snapshot,
+        elevation_grid_snapshot=version.elevation_grid_snapshot,
+        reference_line_hash=version.line_hash,
         elevation_metadata_json=version.navigation_metadata_json,
         export_format=export_format,
     )
@@ -107,7 +110,7 @@ def create_route_export(
             file_id=file_id,
             file_size=len(generated.content),
             content_hash=content_hash,
-            input_point_count=generated.point_count,
+            input_point_count=version.point_count or 0,
             output_point_count=generated.point_count,
             generated_at=now,
             metadata_json=json.dumps(
@@ -118,6 +121,11 @@ def create_route_export(
                     "elevation_point_count": generated.elevation_point_count,
                     "elevation_snapshot_sha256": _elevation_snapshot_sha256(
                         version.elevation_points_snapshot
+                    ),
+                    "elevation_export_source_sha256": _elevation_export_source_sha256(
+                        version.elevation_points_snapshot,
+                        version.elevation_grid_snapshot,
+                        version.line_hash,
                     ),
                 },
                 ensure_ascii=False,
@@ -173,10 +181,12 @@ def get_route_export_download(
         )
         .first()
     )
-    if version is None or not has_trusted_route_elevation(
-        version.elevation_points_snapshot,
-        metadata_json=version.navigation_metadata_json,
-        expected_count=version.point_count or 0,
+    if version is None or not has_exportable_route_elevation(
+        reference_line_snapshot=version.reference_line_snapshot,
+        elevation_points_snapshot=version.elevation_points_snapshot,
+        elevation_grid_snapshot=version.elevation_grid_snapshot,
+        reference_line_hash=version.line_hash,
+        elevation_metadata_json=version.navigation_metadata_json,
     ):
         raise LookupError("route export artifact elevation is no longer trusted")
     artifact_snapshot_hash = metadata.get("elevation_snapshot_sha256")
@@ -188,6 +198,18 @@ def get_route_export_download(
         # 回填会原地更新 RouteVersion；没有这道指纹门，旧底图生成的 GPX/TCX
         # 仍可在新版海拔写入后继续下载。
         raise LookupError("route export artifact elevation is stale")
+    artifact_export_source_hash = metadata.get("elevation_export_source_sha256")
+    if version.elevation_grid_snapshot is not None or isinstance(artifact_export_source_hash, str):
+        current_export_source_hash = _elevation_export_source_sha256(
+            version.elevation_points_snapshot,
+            version.elevation_grid_snapshot,
+            version.line_hash,
+        )
+        if not isinstance(artifact_export_source_hash, str) or not hmac.compare_digest(
+            artifact_export_source_hash,
+            current_export_source_hash,
+        ):
+            raise LookupError("route export artifact canonical elevation is stale")
     filename = metadata.get("filename") or safe_export_filename(
         route.name,
         route.id,
@@ -267,6 +289,21 @@ def _content_type_for_format(export_format: str) -> str:
 
 def _elevation_snapshot_sha256(value: str | None) -> str:
     return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
+
+
+def _elevation_export_source_sha256(
+    elevation_points_snapshot: str | None,
+    elevation_grid_snapshot: str | None,
+    line_hash: str | None,
+) -> str:
+    payload = "\n".join(
+        [
+            line_hash or "",
+            elevation_points_snapshot or "",
+            elevation_grid_snapshot or "",
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _delete_quietly(file_id: str) -> None:
