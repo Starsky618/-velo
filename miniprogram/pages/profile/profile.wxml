@@ -55,7 +55,7 @@
              picker 内置全国行政区数据 / 不用自己维护 / 选完 bindchange 传 [省 市 区] 数组 -->
         <picker mode="region" bindchange="onRegionChange" value="{{regionArr}}">
           <view class="hero-city">
-            <image class="hero-city-icon" src="/assets/icons/meetup/map-pin.svg" mode="aspectFit" />
+            <image class="hero-city-icon" src="/assets/icons/map-pin.svg" mode="aspectFit" />
             <text class="hero-city-text" wx:if="{{profile.city}}">{{profile.city}}</text>
             <text class="hero-city-text" wx:else>选择家乡</text>
           </view>
@@ -130,17 +130,8 @@
        组件 self-contained / 自己调 GET /api/user/me/heatmap + 用 canvas 渲染轨迹 / 不需要 profile 传数据 -->
   <heatmap-card />
 
-  <!-- 功能入口：iOS inset-grouped 语言——整组一张大圆角白卡、行间 hairline
-       （旧版 4 张分散小卡合并，对齐路线详情页手风琴的列表语言）-->
+  <!-- 功能入口：iOS inset-grouped 语言——整组一张大圆角白卡、行间 hairline -->
   <view class="action-group">
-    <view class="action-row tappable" bindtap="onTapMyMeetups">
-      <view class="action-main">
-        <text class="action-title">我的约骑</text>
-        <text class="action-subtitle">我发起的和我加入的骑行</text>
-      </view>
-      <text class="action-arrow">›</text>
-    </view>
-
     <view class="action-row tappable" bindtap="onTapHonor">
       <view class="action-main">
         <text class="action-title">我的荣誉</text>

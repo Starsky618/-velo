@@ -11,8 +11,7 @@ Page({
   onLoad: function () {
     var app = getApp()
     var payload = app && app.globalData && app.globalData.pendingRouteMap
-    // 寄存柜约定"取即清空"（与 pendingMapPoint 同规矩）：防止本页被非正常路径
-    // 再次打开时，展示上一条路线的陈旧数据
+    // 寄存柜约定"取即清空"：防止本页被非正常路径再次打开时展示陈旧数据。
     if (app && app.globalData) {
       app.globalData.pendingRouteMap = null
     }

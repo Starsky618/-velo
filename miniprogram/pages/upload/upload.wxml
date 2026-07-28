@@ -8,14 +8,6 @@
   <text class="title">上传骑行</text>
 </view>
 
-<view class="meetup-banner" wx:if="{{meetupBannerVisible}}">
-  <view>
-    <text class="meetup-title">{{meetupTitle}}</text>
-    <text class="meetup-sub">{{meetupRiderCount}} 人报名 · {{meetupSubmittedCount}} 人交卷</text>
-  </view>
-  <view class="meetup-pill">约骑交卷</view>
-</view>
-
 <view wx:if="{{step === 'idle'}}">
   <view class="upload-zone" bindtap="chooseFile">
     <view class="upload-icon-wrap">
@@ -39,7 +31,7 @@
   <view class="confirm-card card">
     <view class="file-info">
       <view class="file-icon-wrap">
-        <image class="file-icon" src="/assets/icons/meetup/file-text.svg" mode="aspectFit" />
+        <image class="file-icon" src="/assets/icons/file-text.svg" mode="aspectFit" />
       </view>
       <view class="file-detail">
         <text class="file-name">{{fileName}}</text>
@@ -128,19 +120,10 @@
       </view>
     </view>
 
-    <view class="first-banner" wx:if="{{scoreCard.firstText}}">
-      <text class="first-title">{{scoreCard.firstText}}</text>
-      <text class="first-hint" wx:if="{{scoreCard.firstHint}}">{{scoreCard.firstHint}}</text>
-    </view>
   </view>
 
   <view class="result-actions">
-    <button wx:if="{{meetupBannerVisible}}" class="btn-share" open-type="share">发到群里，催他们交卷</button>
-    <view wx:if="{{meetupBannerVisible}}" class="btn-report" bindtap="viewReport">
-      <text>看本场战报</text>
-    </view>
-    <!-- 约骑场景下"发到群里"才是主操作，详情按钮降级为描边，避免两个橙实底打架 -->
-    <view class="btn-detail {{meetupBannerVisible ? 'btn-detail-secondary' : ''}}" bindtap="viewDetail">
+    <view class="btn-detail" bindtap="viewDetail">
       <text>查看骑行详情</text>
     </view>
     <view class="btn-again" bindtap="reset">

@@ -362,10 +362,6 @@ Page({
     wx.navigateTo({ url: '/pages/settings/settings' });
   },
 
-  onTapMyMeetups() {
-    wx.navigateTo({ url: '/pages/meetups-mine/meetups-mine' });
-  },
-
   onTapHonor() {
     wx.navigateTo({ url: '/pages/honor/honor' });
   },

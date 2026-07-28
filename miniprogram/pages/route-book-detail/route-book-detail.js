@@ -3,11 +3,6 @@ const { wgs84ToGcj02 } = require('../../utils/coords')
 const mapTheme = require('../../utils/map-theme')
 const routeMapNav = require('../../utils/route-map-nav')
 
-function isLoggedIn() {
-  var app = getApp()
-  return !!(app && app.globalData && app.globalData.token)
-}
-
 function buildRoutePreview(points) {
   if (!Array.isArray(points) || points.length < 2) {
     return {
@@ -329,22 +324,6 @@ Page({
       showCancel: false,
       confirmText: '知道了',
     })
-  },
-
-  onStartMeetup: function () {
-    if (!isLoggedIn()) {
-      wx.showToast({ title: '登录后才能发约骑', icon: 'none' })
-      setTimeout(function () {
-        wx.switchTab({ url: '/pages/profile/profile' })
-      }, 500)
-      return
-    }
-    var routeBookId = this.data.route && this.data.route.id
-    var url = '/pages/meetup-create/meetup-create'
-    if (routeBookId) {
-      url = '/pages/meetup-create/meetup-create?route_book_id=' + encodeURIComponent(routeBookId)
-    }
-    wx.navigateTo({ url: url })
   },
 })
 

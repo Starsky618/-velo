@@ -13,7 +13,7 @@
  *
  * 现行架构（替代方案，免费且已验证）：
  * 1. 装饰性展示（路线缩略图 / 热力图卡）→ utils/route-thumb.js canvas 自绘纸面 + 橙色轨迹；
- * 2. 交互性地图（map-picker 选点 / route-map 全屏查看）→ 不带 subkey 的默认底图（免费）；
+ * 2. 交互性地图（route-map 全屏查看）→ 不带 subkey 的默认底图（免费）；
  * 3. 全工程任何 <map> 禁止再传 subkey / layer-style（有静态测试守卫这条红线）。
  * 未来真要复活纸面底图：先在微信公众平台-付费管理购买个性化地图，再从腾讯控制台
  * weilu-mini key 取回 subkey 填上——顺序不能反。

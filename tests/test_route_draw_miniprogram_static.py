@@ -643,15 +643,6 @@ def test_logout_clears_only_the_current_users_pending_route_save():
     assert "route_draw_pending_save_v1" not in unauthorized_block
 
 
-def test_meetup_create_draft_conflict_still_reads_object_detail_errors():
-    js = _read(MINI / "pages" / "meetup-create" / "meetup-create.js")
-    block = js.split("createOrUpdateDraft: function", 1)[1].split("updatePreviewDerived", 1)[0]
-
-    assert "err && (err.detail || err.message)" in block
-    assert "detail.code === 'draft_exists'" in block
-    assert "detail.existing_draft_id" in block
-
-
 def test_route_draw_helpers_are_executable_and_keep_save_limit():
     result = subprocess.run(
         [
