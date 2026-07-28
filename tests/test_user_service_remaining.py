@@ -92,7 +92,7 @@ def _cleanup_db(db):
 def _cleanup_redis(redis_client, user_id: int):
     redis_client.delete(f"heatmap:generation:user_{user_id}")
     for prefix in (
-        "heatmap:v4:user_", "heatmap:v3:user_", "heatmap:v2:user_",
+        "heatmap:v5:user_", "heatmap:v4:user_", "heatmap:v3:user_", "heatmap:v2:user_",
         "heatmap:user_", "power_curve:user_",
     ):
         redis_client.delete(f"{prefix}{user_id}")
@@ -318,15 +318,15 @@ class TestGetUserHeatmap:
                 self.keys = list(keys)
 
             def scan_iter(self, match):
-                assert match == "heatmap:v4:user_7:detail_viewport:*"
+                assert match == "heatmap:v5:user_7:detail_viewport:*"
                 return iter(self.keys)
 
             def delete(self, *keys):
                 self.keys = [key for key in self.keys if key not in keys]
 
-        current = "heatmap:v4:user_7:detail_viewport:current"
+        current = "heatmap:v5:user_7:detail_viewport:current"
         redis = FakeRedis([
-            f"heatmap:v4:user_7:detail_viewport:{index}".encode()
+            f"heatmap:v5:user_7:detail_viewport:{index}".encode()
             for index in range(15)
         ] + [current.encode()])
 
@@ -492,7 +492,7 @@ class TestGetUserHeatmap:
 
             first = get_user_heatmap(db, user_id, "beijing")
             cached_raw = real_redis.get(
-                f"heatmap:v4:user_{user_id}:detail_full:city_beijing:year_all"
+                f"heatmap:v5:user_{user_id}:detail_full:city_beijing:year_all"
             )
             assert cached_raw is not None
 
@@ -534,7 +534,7 @@ class TestGetUserHeatmap:
             db.close()
 
     def test_cache_key_separates_detail_year_and_city(self, pg_session_factory, real_redis):
-        """v4 cache key 必须隔离卡片/全屏、年份和城市。"""
+        """v5 cache key 必须隔离卡片/全屏、年份和城市。"""
         db = pg_session_factory()
         user_id = None
         try:
@@ -548,14 +548,14 @@ class TestGetUserHeatmap:
             # 走无 city / 全年份 / full 路径
             get_user_heatmap(db, user_id, None)
 
-            no_city_key = f"heatmap:v4:user_{user_id}:detail_full:year_all"
+            no_city_key = f"heatmap:v5:user_{user_id}:detail_full:year_all"
             assert real_redis.get(no_city_key) is not None, (
                 f"期望 cache key {no_city_key} 存在"
             )
 
             get_user_heatmap(db, user_id, None, _this_month_utc().astimezone(_BJ_TZ).year, "card")
             card_year_key = (
-                f"heatmap:v4:user_{user_id}:detail_card:"
+                f"heatmap:v5:user_{user_id}:detail_card:"
                 f"year_{_this_month_utc().astimezone(_BJ_TZ).year}"
             )
             assert real_redis.get(card_year_key) is not None
@@ -594,10 +594,10 @@ class TestGetUserHeatmap:
             assert first["activity_count"] == 1
             assert len(first["tracks"]) == 1
             assert 116 < first["tracks"][0][0][0] < 117
-            cached_keys = list(real_redis.scan_iter(match=f"heatmap:v4:user_{user_id}:detail_viewport:*"))
+            cached_keys = list(real_redis.scan_iter(match=f"heatmap:v5:user_{user_id}:detail_viewport:*"))
             assert len(cached_keys) == 1
 
-            source_key = f"heatmap:v4:user_{user_id}:detail_viewport_source:year_all"
+            source_key = f"heatmap:v5:user_{user_id}:detail_viewport_source:year_all"
             assert real_redis.get(source_key).startswith(b"z1:")
 
             with patch.object(db, "query", side_effect=AssertionError("source cache should avoid PostgreSQL")):
@@ -614,7 +614,7 @@ class TestGetUserHeatmap:
                     zoom=10,
                 )
             assert second["activity_count"] == 1
-            assert len(list(real_redis.scan_iter(match=f"heatmap:v4:user_{user_id}:detail_viewport:*"))) == 2
+            assert len(list(real_redis.scan_iter(match=f"heatmap:v5:user_{user_id}:detail_viewport:*"))) == 2
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -732,10 +732,11 @@ class TestUpdateUserCity:
             generation_key = f"heatmap:generation:user_{user_id}"
             generation_before = int(real_redis.get(generation_key) or 0)
             keys = [
+                f"heatmap:v5:user_{user_id}:detail_full:year_all",
+                f"heatmap:v5:user_{user_id}:detail_card:year_2026",
+                f"heatmap:v5:user_{user_id}:detail_viewport_source:year_all",
+                f"heatmap:v5:user_{user_id}:detail_viewport:year_all:viewport_1",
                 f"heatmap:v4:user_{user_id}:detail_full:year_all",
-                f"heatmap:v4:user_{user_id}:detail_card:year_2026",
-                f"heatmap:v4:user_{user_id}:detail_viewport_source:year_all",
-                f"heatmap:v4:user_{user_id}:detail_viewport:year_all:viewport_1",
                 f"heatmap:v3:user_{user_id}:detail_full:year_all",
                 f"heatmap:v2:user_{user_id}",
                 f"heatmap:v2:user_{user_id}:city_beijing",
@@ -770,7 +771,7 @@ class TestUpdateUserCity:
             assert card["activity_count"] == 1
             assert full["activity_count"] == 1
             assert viewport["activity_count"] == 1
-            new_keys = list(real_redis.scan_iter(match=f"heatmap:v4:user_{user_id}:*"))
+            new_keys = list(real_redis.scan_iter(match=f"heatmap:v5:user_{user_id}:*"))
             assert new_keys
             assert all(f"generation_{generation_after}".encode() in key for key in new_keys)
         finally:

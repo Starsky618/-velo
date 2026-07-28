@@ -230,7 +230,7 @@ class HeatmapResponse(BaseModel):
     新版（v2）用 tracks 保留边界 + polyline 渲染。
     v3 polish：city 改可选——不传时返回所有 activity 轨迹（不按城市筛 / response.city = None）；
     传时保留旧行为按起点城市筛。前端"全部"视图直接不传 city。
-    v4：viewport 按当前地图视野提供高精度 LOD，避免恢复 6 MB 全量响应；一条骑行可因
+    v5：viewport 按当前地图视野提供高精度 LOD，避免恢复 6 MB 全量响应；一条骑行可因
     进出视野被裁成多条 track，activity_count 统计实际保留的骑行数而不是折线段数。
     """
     city: Optional[str] = None

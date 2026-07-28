@@ -19,7 +19,7 @@
     - **看他人严格白名单**（_PROFILE_RESPONSE_KEYS / spec R3-I3）：拦截 efforts / activities /
       heatmap / strava_* / openid / mute_notifications / 任何 token；机制不是自觉 / dict 推导式
       生效 / 未来误加敏感字段也不会泄漏；防回退测试用 _filter_profile_keys helper 反向构造
-    - **分层 cache key**：无 city 与按 city 路径分别缓存；v4 再按 card/full/viewport 隔离，
+    - **分层 cache key**：无 city 与按 city 路径分别缓存；v5 再按 card/full/viewport 隔离，
       invalidate_heatmap_cache 同时清新旧 key，避免历史大对象残留
     - **GCJ-02 坐标转换在前端**：后端返 WGS-84 原始坐标 [lon, lat]；前端拿到后转 GCJ-02 给腾讯地图
       （陷阱 #31 / D31 决策）；不要在后端转 / 否则坐标双重转换
@@ -63,8 +63,9 @@ BEIJING_TZ = timezone(timedelta(hours=8))
 
 _HEATMAP_CACHE_TTL_SEC = 3600
 _HEATMAP_VIEWPORT_CACHE_TTL_SEC = 900
-_HEATMAP_CACHE_PREFIX = "heatmap:v4:user_"
+_HEATMAP_CACHE_PREFIX = "heatmap:v5:user_"
 _HEATMAP_GENERATION_PREFIX = "heatmap:generation:user_"
+_HEATMAP_PREVIOUS_V4_CACHE_PREFIX = "heatmap:v4:user_"
 _HEATMAP_PREVIOUS_V3_CACHE_PREFIX = "heatmap:v3:user_"
 _HEATMAP_PREVIOUS_CACHE_PREFIX = "heatmap:v2:user_"
 _HEATMAP_LEGACY_CACHE_PREFIX = "heatmap:user_"
@@ -122,7 +123,7 @@ def _decode_heatmap_cache(cached: object, *, expected_generation: int | None = N
         if expected_generation is not None and decoded["_heatmap_generation"] != expected_generation:
             return None
         return decoded["value"]
-    # 兼容部署前的 v4 缓存；一旦 generation 递增，旧格式就不能再复活。
+    # 兼容未包 generation 的同代缓存；一旦 generation 递增，旧格式就不能再复活。
     if expected_generation not in (None, 0):
         return None
     return decoded
@@ -789,7 +790,7 @@ def get_user_heatmap(
     year 可选：不传返回全部年份，传入后只返回对应自然年活动；响应始终带
     available_years，供全屏地图的年份图层控制使用。
 
-    v4 cache 同时区分 city / year / detail；viewport 先生成 7.2 万点以内的压缩源层，
+    v5 cache 同时区分 city / year / detail；viewport 先生成 7.2 万点以内的压缩源层，
     后续拖图不再读全量 JSONB。视野结果按边界和 zoom 分桶、TTL 15 分钟且每用户最多 12 份；
     源层和总览 TTL 1 小时。
 
@@ -1098,7 +1099,7 @@ def invalidate_heatmap_cache(user_id: int) -> None:
     """
     清掉用户全部 heatmap 缓存——"通知账房先生热图重算"。
 
-    覆盖 v4 视野缓存、v3 地图缓存、v2 静态卡片缓存和旧版全量缓存的全部形态。
+    覆盖 v5 视野缓存、v4/v3 地图缓存、v2 静态卡片缓存和旧版全量缓存的全部形态。
 
     场景：
     - 用户上传新 activity completed → worker hook 调本函数 → 下次刷个人页拿最新轨迹
@@ -1115,6 +1116,7 @@ def invalidate_heatmap_cache(user_id: int) -> None:
     # 双删保证上传新活动时不会留下历史大对象。
     for prefix in (
         _HEATMAP_CACHE_PREFIX,
+        _HEATMAP_PREVIOUS_V4_CACHE_PREFIX,
         _HEATMAP_PREVIOUS_V3_CACHE_PREFIX,
         _HEATMAP_PREVIOUS_CACHE_PREFIX,
         _HEATMAP_LEGACY_CACHE_PREFIX,
