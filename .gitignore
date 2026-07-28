@@ -43,3 +43,29 @@ docker-compose.override.yml
 .claude/worktrees/
 .claude/agent-weekly/
 docs/agent-weekly/
+
+# 本机采集 / 导出 / 调研产物：需要入库时用 git add -f 精确指定。
+/outputs/
+/output/
+/exports/
+/prototypes/
+/tmp_doc_work/
+/design-qa.md
+
+# playwright-cli 本机调试快照与 console 日志
+.playwright-cli/
+
+# 原型工程依赖与包管理缓存
+docs/prototypes/**/node_modules/
+docs/prototypes/**/.npm-cache/
+prototypes/**/.npm-cache/
+
+# agent skill 工具链：本机安装，不跟代码库发布。
+/.agents/
+/skills-lock.json
+
+# 下划线前缀的一次性工单、待审稿和完整对话原稿。
+# 例外：_RAW_tim_utterances_* 是不可重建的一手判断证据，仍可正常入库。
+docs/research/_CODEX_TASK_*.md
+docs/research/_REVIEW_*.md
+docs/superpowers/specs/_RAW_full_dialog_*.txt
