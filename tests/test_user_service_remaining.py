@@ -26,8 +26,10 @@ from app.user.service import (
     update_user_city,
 )
 from app.user.service_social import (
+    _build_heatmap_viewport_tracks,
     _build_heatmap_preview_track,
     _heatmap_points_per_activity,
+    _normalize_heatmap_viewport,
     _select_heatmap_preview_activities,
 )
 
@@ -82,7 +84,10 @@ def _cleanup_db(db):
 
 
 def _cleanup_redis(redis_client, user_id: int):
-    for prefix in ("heatmap:v3:user_", "heatmap:v2:user_", "heatmap:user_", "power_curve:user_"):
+    for prefix in (
+        "heatmap:v4:user_", "heatmap:v3:user_", "heatmap:v2:user_",
+        "heatmap:user_", "power_curve:user_",
+    ):
         redis_client.delete(f"{prefix}{user_id}")
         for key in redis_client.scan_iter(match=f"{prefix}{user_id}:*"):
             redis_client.delete(key)
@@ -225,6 +230,48 @@ class TestGetUserHeatmap:
         ) == 13
         assert _heatmap_points_per_activity(293) == 30
 
+    def test_viewport_detail_keeps_city_overview_crisp_without_large_payload(self):
+        """293 条城市轨迹使用约 2.4 万点，不回退到 6 MB，也不再只有每条 30 点。"""
+        activities = []
+        for track_index in range(293):
+            track = [
+                {
+                    "lon": 112.45 + track_index * 0.00005 + point_index * 0.0002,
+                    "lat": 37.70 + ((point_index % 41) - 20) * 0.0003,
+                }
+                for point_index in range(300)
+            ]
+            activities.append(SimpleNamespace(simplified_track=track))
+
+        viewport = _normalize_heatmap_viewport(112.3, 37.5, 112.8, 38.1, 10)
+        tracks, visible_count = _build_heatmap_viewport_tracks(activities, viewport)
+        point_count = sum(len(track) for track in tracks)
+        payload = json.dumps({"tracks": tracks}, separators=(",", ":")).encode()
+
+        assert visible_count == 293
+        assert len(tracks) == 293
+        assert 20_000 <= point_count <= 24_000
+        assert len(payload) < 700_000
+
+    def test_viewport_clips_to_visible_area_and_rejects_unbounded_queries(self):
+        viewport = _normalize_heatmap_viewport(112.4, 37.6, 112.7, 37.9, 13)
+        activity = SimpleNamespace(simplified_track=[
+            {"lon": 112.35, "lat": 37.55},
+            {"lon": 112.45, "lat": 37.65},
+            {"lon": 112.55, "lat": 37.75},
+            {"lon": 112.65, "lat": 37.85},
+            {"lon": 112.75, "lat": 37.95},
+        ])
+
+        tracks, visible_count = _build_heatmap_viewport_tracks([activity], viewport)
+
+        assert visible_count == 1
+        assert len(tracks) == 1
+        assert tracks[0][0] == [112.35, 37.55]
+        assert tracks[0][-1] == [112.75, 37.95]
+        with pytest.raises(ValueError, match="too large"):
+            _normalize_heatmap_viewport(70, 10, 120, 40, 8)
+
     def test_invalid_tracks_do_not_consume_global_preview_budget(self):
         invalid = [
             SimpleNamespace(simplified_track=[{"lon": float(i % 180), "lat": 20.0}])
@@ -341,7 +388,7 @@ class TestGetUserHeatmap:
 
             first = get_user_heatmap(db, user_id, "beijing")
             cached_raw = real_redis.get(
-                f"heatmap:v3:user_{user_id}:detail_full:city_beijing:year_all"
+                f"heatmap:v4:user_{user_id}:detail_full:city_beijing:year_all"
             )
             assert cached_raw is not None
 
@@ -383,7 +430,7 @@ class TestGetUserHeatmap:
             db.close()
 
     def test_cache_key_separates_detail_year_and_city(self, pg_session_factory, real_redis):
-        """v3 cache key 必须隔离卡片/全屏、年份和城市。"""
+        """v4 cache key 必须隔离卡片/全屏、年份和城市。"""
         db = pg_session_factory()
         user_id = None
         try:
@@ -397,18 +444,69 @@ class TestGetUserHeatmap:
             # 走无 city / 全年份 / full 路径
             get_user_heatmap(db, user_id, None)
 
-            no_city_key = f"heatmap:v3:user_{user_id}:detail_full:year_all"
+            no_city_key = f"heatmap:v4:user_{user_id}:detail_full:year_all"
             assert real_redis.get(no_city_key) is not None, (
                 f"期望 cache key {no_city_key} 存在"
             )
 
             get_user_heatmap(db, user_id, None, _this_month_utc().astimezone(_BJ_TZ).year, "card")
             card_year_key = (
-                f"heatmap:v3:user_{user_id}:detail_card:"
+                f"heatmap:v4:user_{user_id}:detail_card:"
                 f"year_{_this_month_utc().astimezone(_BJ_TZ).year}"
             )
             assert real_redis.get(card_year_key) is not None
             assert card_year_key != no_city_key
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
+            _cleanup_db(db)
+            db.close()
+
+    def test_viewport_detail_filters_tracks_and_uses_bucketed_cache(self, pg_session_factory, real_redis):
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "viewport_cache")
+            _make_activity_in_beijing(db, user, "bj", _this_month_utc())
+            _make_activity_in_shanghai(db, user, "sh", _this_month_utc())
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            first = get_user_heatmap(
+                db,
+                user_id,
+                None,
+                None,
+                "viewport",
+                west=116.22,
+                south=39.72,
+                east=116.58,
+                north=40.08,
+                zoom=10,
+            )
+
+            assert first["activity_count"] == 1
+            assert len(first["tracks"]) == 1
+            assert 116 < first["tracks"][0][0][0] < 117
+            cached_keys = list(real_redis.scan_iter(match=f"heatmap:v4:user_{user_id}:detail_viewport:*"))
+            assert len(cached_keys) == 1
+
+            second = get_user_heatmap(
+                db,
+                user_id,
+                None,
+                None,
+                "viewport",
+                west=116.23,
+                south=39.73,
+                east=116.57,
+                north=40.07,
+                zoom=10,
+            )
+            assert second == first
+            assert len(list(real_redis.scan_iter(match=f"heatmap:v4:user_{user_id}:detail_viewport:*"))) == 1
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -524,8 +622,9 @@ class TestUpdateUserCity:
             _cleanup_redis(real_redis, user_id)
 
             keys = [
+                f"heatmap:v4:user_{user_id}:detail_full:year_all",
+                f"heatmap:v4:user_{user_id}:detail_card:year_2026",
                 f"heatmap:v3:user_{user_id}:detail_full:year_all",
-                f"heatmap:v3:user_{user_id}:detail_card:year_2026",
                 f"heatmap:v2:user_{user_id}",
                 f"heatmap:v2:user_{user_id}:city_beijing",
                 f"heatmap:user_{user_id}",

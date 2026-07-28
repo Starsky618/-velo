@@ -91,4 +91,16 @@ function wgs84ToGcj02(wgsLat, wgsLng) {
   return [wgsLat + dLat, wgsLng + dLng]
 }
 
-module.exports = { wgs84ToGcj02 }
+/**
+ * GCJ-02 → WGS-84 近似逆变换。
+ *
+ * 地图视野边界来自腾讯地图（GCJ-02），后端轨迹真相源是 WGS-84。先把边界转回
+ * WGS-84 再请求当前视野，避免高精度图层在屏幕边缘因数百米坐标偏移被裁掉。
+ */
+function gcj02ToWgs84(gcjLat, gcjLng) {
+  if (_outOfChina(gcjLat, gcjLng)) return [gcjLat, gcjLng]
+  const converted = wgs84ToGcj02(gcjLat, gcjLng)
+  return [gcjLat * 2 - converted[0], gcjLng * 2 - converted[1]]
+}
+
+module.exports = { wgs84ToGcj02, gcj02ToWgs84 }

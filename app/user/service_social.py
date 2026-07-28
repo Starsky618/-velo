@@ -19,9 +19,9 @@
     - **看他人严格白名单**（_PROFILE_RESPONSE_KEYS / spec R3-I3）：拦截 efforts / activities /
       heatmap / strava_* / openid / mute_notifications / 任何 token；机制不是自觉 / dict 推导式
       生效 / 未来误加敏感字段也不会泄漏；防回退测试用 _filter_profile_keys helper 反向构造
-    - **双 cache key 形态**：无 city 与按 city 路径分别缓存；v2 前缀隔离旧全量响应，
+    - **分层 cache key**：无 city 与按 city 路径分别缓存；v4 再按 card/full/viewport 隔离，
       invalidate_heatmap_cache 同时清新旧 key，避免历史大对象残留
-    - **GCJ-02 坐标转换在前端**：后端返 WGS-84 原始坐标 [lon, lat]；前端拿到后转 GCJ-02 给高德地图
+    - **GCJ-02 坐标转换在前端**：后端返 WGS-84 原始坐标 [lon, lat]；前端拿到后转 GCJ-02 给腾讯地图
       （陷阱 #31 / D31 决策）；不要在后端转 / 否则坐标双重转换
     - **simplified_track polyline 起点定 city**：infer_city_from_coords 是 common.geo 纯函数
       （spec §1.3）；纯函数不依赖 DB / 可独立测
@@ -60,13 +60,16 @@ from app.user.models import User
 BEIJING_TZ = timezone(timedelta(hours=8))
 
 _HEATMAP_CACHE_TTL_SEC = 3600
-_HEATMAP_CACHE_PREFIX = "heatmap:v3:user_"
+_HEATMAP_CACHE_PREFIX = "heatmap:v4:user_"
+_HEATMAP_PREVIOUS_V3_CACHE_PREFIX = "heatmap:v3:user_"
 _HEATMAP_PREVIOUS_CACHE_PREFIX = "heatmap:v2:user_"
 _HEATMAP_LEGACY_CACHE_PREFIX = "heatmap:user_"
 _HEATMAP_POINTS_PER_ACTIVITY = 64
 _HEATMAP_TOTAL_POINT_BUDGET = 9_000
 _HEATMAP_CARD_POINTS_PER_ACTIVITY = 24
 _HEATMAP_CARD_TOTAL_POINT_BUDGET = 4_000
+_HEATMAP_VIEWPORT_MAX_SPAN_LON = 20.0
+_HEATMAP_VIEWPORT_MAX_SPAN_LAT = 15.0
 # _VALID_USER_CITIES 已废弃（Tim 2026-05-17 真用拍放宽 user.city 到任意中文）
 # 历史 6 城枚举只剩 activity.city（worker 推断起点 / ck_activities_city CHECK 仍生效）
 # update_user_city 现仅校验长度 + strip / 不再卡 6 城
@@ -293,6 +296,172 @@ def _heatmap_points_per_activity(
     return max(2, min(per_activity_limit, total_point_budget // activity_count))
 
 
+def _heatmap_viewport_budget(zoom: int) -> tuple[int, int]:
+    """当前视野越小，允许的轨迹精度越高，但单次响应始终低于 6 MB 旧方案。"""
+    if zoom <= 10:
+        return 24_000, 128
+    if zoom <= 12:
+        return 30_000, 192
+    return 36_000, 320
+
+
+def _normalize_heatmap_viewport(
+    west: float | None,
+    south: float | None,
+    east: float | None,
+    north: float | None,
+    zoom: int | None,
+) -> tuple[float, float, float, float, int]:
+    """校验并向外吸附视野边界，让小幅拖动能命中同一份 Redis 缓存。"""
+    values = (west, south, east, north)
+    if zoom is None or any(value is None for value in values):
+        raise ValueError("viewport detail requires west/south/east/north/zoom")
+    if not all(_math.isfinite(float(value)) for value in values):
+        raise ValueError("invalid heatmap viewport")
+
+    west_value = float(west)
+    south_value = float(south)
+    east_value = float(east)
+    north_value = float(north)
+    zoom_value = int(zoom)
+    if not (3 <= zoom_value <= 20):
+        raise ValueError("invalid heatmap zoom")
+    if not (-180 <= west_value < east_value <= 180 and -90 <= south_value < north_value <= 90):
+        raise ValueError("invalid heatmap viewport")
+    if (
+        east_value - west_value > _HEATMAP_VIEWPORT_MAX_SPAN_LON
+        or north_value - south_value > _HEATMAP_VIEWPORT_MAX_SPAN_LAT
+    ):
+        raise ValueError("heatmap viewport is too large")
+
+    if zoom_value <= 10:
+        cell = 0.1
+    elif zoom_value <= 12:
+        cell = 0.05
+    elif zoom_value <= 14:
+        cell = 0.01
+    else:
+        cell = 0.005
+
+    bucket_west = max(-180.0, _math.floor(west_value / cell) * cell - cell)
+    bucket_south = max(-90.0, _math.floor(south_value / cell) * cell - cell)
+    bucket_east = min(180.0, _math.ceil(east_value / cell) * cell + cell)
+    bucket_north = min(90.0, _math.ceil(north_value / cell) * cell + cell)
+    return (
+        round(bucket_west, 5),
+        round(bucket_south, 5),
+        round(bucket_east, 5),
+        round(bucket_north, 5),
+        zoom_value,
+    )
+
+
+def _point_in_heatmap_viewport(point: dict, viewport: tuple[float, float, float, float, int]) -> bool:
+    west, south, east, north, _ = viewport
+    return west <= float(point["lon"]) <= east and south <= float(point["lat"]) <= north
+
+
+def _clip_heatmap_track_to_viewport(
+    track: object,
+    viewport: tuple[float, float, float, float, int],
+) -> list[list[dict]]:
+    """保留视野内连续轨迹，并带上进出边界相邻点，避免屏幕边缘突然断线。"""
+    if not isinstance(track, list):
+        return []
+    clean = []
+    for raw_point in track:
+        point = _normalize_heatmap_source_point(raw_point)
+        if point is not None:
+            clean.append(point)
+    if len(clean) < 2:
+        return []
+
+    segments: list[list[dict]] = []
+    current: list[dict] = []
+    previous: dict | None = None
+    previous_inside = False
+    for point in clean:
+        inside = _point_in_heatmap_viewport(point, viewport)
+        if inside:
+            if not previous_inside and previous is not None:
+                current = [previous]
+            current.append(point)
+        elif previous_inside and current:
+            current.append(point)
+            if len(current) >= 2:
+                segments.append(current)
+            current = []
+        previous = point
+        previous_inside = inside
+    if len(current) >= 2:
+        segments.append(current)
+
+    # GPS 漂点或跨城活动不能在当前视野里画出一条横穿地图的假直线。
+    drawable: list[list[dict]] = []
+    for segment in segments:
+        split: list[dict] = []
+        for point in segment:
+            if split:
+                a = {"longitude": float(split[-1]["lon"]), "latitude": float(split[-1]["lat"])}
+                b = {"longitude": float(point["lon"]), "latitude": float(point["lat"])}
+                if _heatmap_distance_km(a, b) > 40:
+                    if len(split) >= 2:
+                        drawable.append(split)
+                    split = []
+            split.append(point)
+        if len(split) >= 2:
+            drawable.append(split)
+    return drawable
+
+
+def _heatmap_distance_km(a: dict, b: dict) -> float:
+    """服务端热图切段使用的球面距离，字段格式与前端 prepared point 一致。"""
+    to_rad = _math.pi / 180
+    lat1 = float(a["latitude"]) * to_rad
+    lat2 = float(b["latitude"]) * to_rad
+    d_lat = (float(b["latitude"]) - float(a["latitude"])) * to_rad
+    d_lon = (float(b["longitude"]) - float(a["longitude"])) * to_rad
+    sin_lat = _math.sin(d_lat / 2)
+    sin_lon = _math.sin(d_lon / 2)
+    h = sin_lat * sin_lat + _math.cos(lat1) * _math.cos(lat2) * sin_lon * sin_lon
+    return 6371 * 2 * _math.atan2(_math.sqrt(h), _math.sqrt(max(0, 1 - h)))
+
+
+def _build_heatmap_viewport_tracks(
+    activities: list,
+    viewport: tuple[float, float, float, float, int],
+) -> tuple[list[list[list[float]]], int]:
+    """只生成当前视野需要的折线；总览清晰度约为旧 9000 点方案的 2.7 倍。"""
+    segments: list[list[dict]] = []
+    visible_activity_count = 0
+    for activity in activities:
+        activity_segments = _clip_heatmap_track_to_viewport(activity.simplified_track, viewport)
+        if activity_segments:
+            visible_activity_count += 1
+            segments.extend(activity_segments)
+    if not segments:
+        return [], 0
+
+    total_budget, per_segment_limit = _heatmap_viewport_budget(viewport[4])
+    if len(segments) * 2 > total_budget:
+        segments = sorted(segments, key=len, reverse=True)[: total_budget // 2]
+    point_limit = _heatmap_points_per_activity(
+        len(segments),
+        per_activity_limit=per_segment_limit,
+        total_point_budget=total_budget,
+    )
+
+    result = []
+    for segment in segments:
+        reduced = _select_heatmap_key_points(segment, point_limit)
+        if len(reduced) >= 2:
+            result.append([
+                [round(float(point["lon"]), 5), round(float(point["lat"]), 5)]
+                for point in reduced
+            ])
+    return result, visible_activity_count
+
+
 def _heatmap_activity_year(activity: object) -> int | None:
     """按北京时间返回活动年份；旧数据缺 started_at 时不进入年份筛选。"""
     started_at = getattr(activity, "started_at", None)
@@ -309,6 +478,12 @@ def get_user_heatmap(
     city: str | None = None,
     year: int | None = None,
     detail: str = "full",
+    *,
+    west: float | None = None,
+    south: float | None = None,
+    east: float | None = None,
+    north: float | None = None,
+    zoom: int | None = None,
 ) -> dict:
     """
     用户骑行热图——"我去过哪些地方"。
@@ -316,12 +491,13 @@ def get_user_heatmap(
     把用户的骑行轨迹生成**地图显示精度数据**并保留 activity 边界，前端交给
     原生地图 polyline 图层；真实道路底图、拖动和缩放由地图组件负责。
 
-    detail 两档：
+    detail 三档：
     - card：个人页交互预览，最多 4000 点 / 每活动最多 24 点
-    - full：全屏探索，最多 9000 点 / 每活动最多 64 点
+    - full：全屏首屏总览，最多 9000 点 / 每活动最多 64 点
+    - viewport：按当前视野和缩放级别裁切，最多 2.4 万到 3.6 万点
 
     这对应 Strava 的层级细节思想：小视图不下载全屏精度，避免历史数据再次
-    阻塞小程序；两档都通过地理分桶保留稀有旅行区域，而不是只截常骑城市。
+    阻塞小程序；总览两档通过地理分桶保留稀有旅行区域，而不是只截常骑城市。
 
     city 参数（v3 polish / Sprint 4 task-4.2 v3）：
     - city is None → 返回该用户**所有** completed activities 的轨迹（不按城市筛 /
@@ -336,7 +512,8 @@ def get_user_heatmap(
     year 可选：不传返回全部年份，传入后只返回对应自然年活动；响应始终带
     available_years，供全屏地图的年份图层控制使用。
 
-    Redis 缓存 TTL 1h，v3 key 同时区分 city / year / detail，隔离旧版静态卡片响应。
+    Redis 缓存 TTL 1h，v4 key 同时区分 city / year / detail；viewport 还按向外吸附后的
+    视野和 zoom 分桶，让轻微拖动复用缓存且不会漏掉屏幕边缘轨迹。
 
     陷阱守卫：
     - 陷阱 #5（redis-py 7+ 默认返 bytes）→ json.loads 前 decode
@@ -355,13 +532,20 @@ def get_user_heatmap(
           "selected_year": 2026 | None
         }
     """
-    if detail not in {"card", "full"}:
+    if detail not in {"card", "full", "viewport"}:
         raise ValueError(f"invalid heatmap detail: {detail}")
+
+    viewport = None
+    if detail == "viewport":
+        viewport = _normalize_heatmap_viewport(west, south, east, north, zoom)
 
     cache_parts = [f"{_HEATMAP_CACHE_PREFIX}{user_id}", f"detail_{detail}"]
     if city is not None:
         cache_parts.append(f"city_{city}")
     cache_parts.append(f"year_{year}" if year is not None else "year_all")
+    if viewport is not None:
+        viewport_key = ":".join(str(value).replace("-", "m").replace(".", "p") for value in viewport)
+        cache_parts.append(f"viewport_{viewport_key}")
     cache_key = ":".join(cache_parts)
     redis_client = _get_redis_client()
     cached = redis_client.get(cache_key)
@@ -371,7 +555,7 @@ def get_user_heatmap(
     # 查该用户所有 completed activities + 有 simplified_track 的
     # Sprint 5 task-2 dedupe：跳过 duplicate 防 heatmap 同轨迹双显
     activities = (
-        db.query(_Activity)
+        db.query(_Activity.simplified_track, _Activity.started_at)
         .filter(
             _Activity.user_id == user_id,
             _Activity.status == "completed",
@@ -405,6 +589,18 @@ def get_user_heatmap(
     )
     if year is not None:
         filtered = [a for a in filtered if _heatmap_activity_year(a) == year]
+
+    if detail == "viewport":
+        tracks, visible_activity_count = _build_heatmap_viewport_tracks(filtered, viewport)
+        result = {
+            "city": city,
+            "tracks": tracks,
+            "activity_count": visible_activity_count,
+            "available_years": available_years,
+            "selected_year": year,
+        }
+        redis_client.setex(cache_key, _HEATMAP_CACHE_TTL_SEC, _json.dumps(result))
+        return result
 
     if detail == "card":
         per_activity_limit = _HEATMAP_CARD_POINTS_PER_ACTIVITY
@@ -486,7 +682,7 @@ def invalidate_heatmap_cache(user_id: int) -> None:
     """
     清掉用户全部 heatmap 缓存——"通知账房先生热图重算"。
 
-    覆盖 v3 地图缓存、v2 静态卡片缓存和旧版全量缓存的全部形态。
+    覆盖 v4 视野缓存、v3 地图缓存、v2 静态卡片缓存和旧版全量缓存的全部形态。
 
     场景：
     - 用户上传新 activity completed → worker hook 调本函数 → 下次刷个人页拿最新轨迹
@@ -501,6 +697,7 @@ def invalidate_heatmap_cache(user_id: int) -> None:
     # 双删保证上传新活动时不会留下历史大对象。
     for prefix in (
         _HEATMAP_CACHE_PREFIX,
+        _HEATMAP_PREVIOUS_V3_CACHE_PREFIX,
         _HEATMAP_PREVIOUS_CACHE_PREFIX,
         _HEATMAP_LEGACY_CACHE_PREFIX,
     ):

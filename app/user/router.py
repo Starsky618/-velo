@@ -224,6 +224,11 @@ def get_my_heatmap(
     city: schemas.UserCity | None = None,
     year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
     detail: schemas.HeatmapDetail = schemas.HeatmapDetail.full,
+    west: float | None = Query(default=None, ge=-180, le=180),
+    south: float | None = Query(default=None, ge=-90, le=90),
+    east: float | None = Query(default=None, ge=-180, le=180),
+    north: float | None = Query(default=None, ge=-90, le=90),
+    zoom: int | None = Query(default=None, ge=3, le=20),
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -238,16 +243,27 @@ def get_my_heatmap(
     返回 tracks: list[list[[lon, lat]]]（保留 activity 边界 / 每个 activity 一条独立轨迹 / 前端画 polyline）
     + activity_count（与 tracks 长度一致 / 单点 activity 自动跳过不计数）。
 
-    year 可选，按北京时间自然年筛；detail=card/full 控制个人页与全屏地图的数据预算。
+    year 可选，按北京时间自然年筛；detail=card/full 控制个人页与全屏总览的数据预算。
+    detail=viewport 时必须同时传 west/south/east/north/zoom，只返回当前地图视野的高精度轨迹。
     Redis 缓存 1h，city/year/detail 互相隔离。
     """
-    return service.get_user_heatmap(
-        db,
-        user_id,
-        city.value if city else None,
-        year,
-        detail.value,
-    )
+    if detail == schemas.HeatmapDetail.viewport and None in (west, south, east, north, zoom):
+        raise HTTPException(status_code=422, detail="viewport detail requires west/south/east/north/zoom")
+    try:
+        return service.get_user_heatmap(
+            db,
+            user_id,
+            city.value if city else None,
+            year,
+            detail.value,
+            west=west,
+            south=south,
+            east=east,
+            north=north,
+            zoom=zoom,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/me/city-medals", response_model=schemas.CityMedalsResponse)
@@ -533,6 +549,11 @@ def get_user_heatmap_for_others(
     city: schemas.UserCity | None = None,
     year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
     detail: schemas.HeatmapDetail = schemas.HeatmapDetail.full,
+    west: float | None = Query(default=None, ge=-180, le=180),
+    south: float | None = Query(default=None, ge=-90, le=90),
+    east: float | None = Query(default=None, ge=-180, le=180),
+    north: float | None = Query(default=None, ge=-90, le=90),
+    zoom: int | None = Query(default=None, ge=3, le=20),
     requester_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -551,13 +572,23 @@ def get_user_heatmap_for_others(
         service.get_user_by_id(db, user_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="用户不存在")
-    return service.get_user_heatmap(
-        db,
-        user_id,
-        city.value if city else None,
-        year,
-        detail.value,
-    )
+    if detail == schemas.HeatmapDetail.viewport and None in (west, south, east, north, zoom):
+        raise HTTPException(status_code=422, detail="viewport detail requires west/south/east/north/zoom")
+    try:
+        return service.get_user_heatmap(
+            db,
+            user_id,
+            city.value if city else None,
+            year,
+            detail.value,
+            west=west,
+            south=south,
+            east=east,
+            north=north,
+            zoom=zoom,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/{user_id}/city-medals", response_model=schemas.CityMedalsResponse)

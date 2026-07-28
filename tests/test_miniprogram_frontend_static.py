@@ -292,7 +292,7 @@ def test_heatmap_card_uses_one_interactive_native_map_and_opens_fullscreen():
     assert "require('../../utils/heatmap-map')" in js
     assert "detail: 'card'" in js
     assert "buildHeatmapMapModel" in js
-    assert ", 4000)" in js
+    assert "'orange', 2, 4000, '52'" in js
     assert "wx.navigateTo" in js
     assert "/pages/heatmap/heatmap" in js
     assert wxml.count("<map") == 1
@@ -315,10 +315,18 @@ def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     assert "detail: 'full'" in js
     assert "available_years" in js
     assert "wx.createMapContext('personal-heatmap-map'" in js
+    assert "detail: 'viewport'" in js
+    assert "getRegion" in js
+    assert "getScale" in js
+    assert "_viewportRequestSeq" in js
+    assert "this._showOverviewLayer()" in js
+    assert "this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1" in js
     assert "includePoints" in js
     assert "buildPolylines" in js
-    assert ", 9000)" in js
+    assert "OVERVIEW_MAX_POINTS = 9000" in js
+    assert "VIEWPORT_MAX_POINTS = 36000" in js
     assert 'polyline="{{polylines}}"' in wxml
+    assert 'bindregionchange="onMapRegionChange"' in wxml
     assert 'enable-scroll="{{true}}"' in wxml
     assert 'enable-zoom="{{true}}"' in wxml
     assert "常骑区域" in wxml
@@ -347,7 +355,9 @@ assert.ok(model.allPoints[1].latitude - model.allPoints[0].latitude > 10)
 // 中国境内 WGS-84 已转 GCJ-02，避免真实道路底图上偏移数百米。
 assert.notStrictEqual(model.polylines[0].points[0].longitude, 116.30)
 assert.notStrictEqual(model.polylines[0].points[0].latitude, 39.90)
-assert.strictEqual(model.polylines[0].color, '#FF950080')
+assert.strictEqual(model.polylines[0].color, '#FF6B0052')
+assert.strictEqual(model.polylines[0].width, 3)
+assert.strictEqual(model.polylines[0].level, 'abovebuildings')
 assert.strictEqual(model.focusPoints.length, 2)
 """
 
@@ -396,4 +406,5 @@ def test_route_preview_coordinate_helper_exports_converter():
     coords = _read(MINI / "utils" / "coords.js")
 
     assert "function wgs84ToGcj02" in coords
-    assert "module.exports = { wgs84ToGcj02 }" in coords
+    assert "function gcj02ToWgs84" in coords
+    assert "module.exports = { wgs84ToGcj02, gcj02ToWgs84 }" in coords
