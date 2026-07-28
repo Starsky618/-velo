@@ -294,6 +294,56 @@ def test_heatmap_card_uses_canvas2d_for_full_tracks_no_whiteout():
     assert "drawHeatmap2d" in thumb
     assert "comp.createSelectorQuery()" in thumb
     assert "getContext('2d')" in thumb
+    # 293 条活动不能在 selector 回调里同步画完，否则微信 SDK 会报 timeout。
+    assert "canvas.requestAnimationFrame" in thumb
+    assert "tracksPerFrame" in thumb
+    assert "scheduleFrame(drawTrackBatch)" in thumb
+
+
+def test_heatmap_canvas2d_draws_tracks_in_animation_frame_batches():
+    script = """
+const assert = require('assert')
+global.wx = { getSystemInfoSync: () => ({ pixelRatio: 2 }) }
+const rt = require('./miniprogram/utils/route-thumb')
+
+const scheduled = []
+let strokeCount = 0
+const ctx = {
+  clearRect() {}, fillRect() {}, strokeRect() {}, scale() {},
+  beginPath() {}, moveTo() {}, lineTo() {},
+  stroke() { strokeCount += 1 },
+}
+const canvas = {
+  getContext() { return ctx },
+  requestAnimationFrame(callback) { scheduled.push(callback) },
+}
+const comp = {
+  createSelectorQuery() {
+    return {
+      select() { return this },
+      fields() { return this },
+      exec(callback) { callback([{ node: canvas, width: 327, height: 240 }]) },
+    }
+  },
+}
+const tracks = Array.from({ length: 40 }, (_, index) => [
+  [116.2 + index * 0.0001, 39.8],
+  [116.21 + index * 0.0001, 39.81],
+])
+
+rt.drawHeatmap2d(comp, '#heatmap-canvas', tracks, { tracksPerFrame: 16 })
+const backgroundStrokes = strokeCount
+assert.strictEqual(scheduled.length, 1)
+assert.strictEqual(strokeCount, backgroundStrokes)
+
+scheduled.shift()()
+assert.strictEqual(strokeCount, backgroundStrokes + 16)
+assert.strictEqual(scheduled.length, 1)
+
+while (scheduled.length) scheduled.shift()()
+assert.strictEqual(strokeCount, backgroundStrokes + 40)
+"""
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
 def test_heatmap_keeps_large_track_payload_out_of_set_data():
