@@ -292,7 +292,7 @@ def test_heatmap_card_uses_one_interactive_native_map_and_opens_fullscreen():
     assert "require('../../utils/heatmap-map')" in js
     assert "detail: 'card'" in js
     assert "buildHeatmapMapModel" in js
-    assert "'orange', 2, 4000, '52'" in js
+    assert "'orange', 2, 4000, '99'" in js
     assert "wx.navigateTo" in js
     assert "/pages/heatmap/heatmap" in js
     assert wxml.count("<map") == 1
@@ -324,7 +324,8 @@ def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     assert "includePoints" in js
     assert "buildPolylines" in js
     assert "OVERVIEW_MAX_POINTS = 9000" in js
-    assert "VIEWPORT_MAX_POINTS = 36000" in js
+    assert "VIEWPORT_MAX_POINTS = 18000" in js
+    assert "HEATMAP_LINE_OPACITY = '99'" in js
     assert 'polyline="{{polylines}}"' in wxml
     assert 'bindregionchange="onMapRegionChange"' in wxml
     assert 'enable-scroll="{{true}}"' in wxml
@@ -359,6 +360,123 @@ assert.strictEqual(model.polylines[0].color, '#FF6B0052')
 assert.strictEqual(model.polylines[0].width, 3)
 assert.strictEqual(model.polylines[0].level, 'abovebuildings')
 assert.strictEqual(model.focusPoints.length, 2)
+
+const strongerModel = heatmap.buildHeatmapMapModel([
+  [[116.30, 39.90], [116.40, 39.95]],
+], 'orange', 2, 100, '99')
+assert.strictEqual(strongerModel.polylines[0].color, '#FF6B0099')
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_client_lod_preserves_sharp_turns_instead_of_only_even_spacing():
+    script = """
+const assert = require('assert')
+const heatmap = require('./miniprogram/utils/heatmap-map')
+
+const track = [
+  { longitude: 0, latitude: 0 },
+  { longitude: 1, latitude: 0 },
+  { longitude: 2, latitude: 0 },
+  { longitude: 2, latitude: 3 },
+  { longitude: 3, latitude: 3 },
+  { longitude: 4, latitude: 3 },
+]
+const reduced = heatmap.limitTrackPoints([track], 4)[0]
+
+assert.strictEqual(reduced.length, 4)
+assert.deepStrictEqual(reduced[0], track[0])
+assert.deepStrictEqual(reduced[reduced.length - 1], track[track.length - 1])
+assert.ok(reduced.some((point) => point.longitude === 2 && point.latitude === 3))
+
+for (let pointCount = 3; pointCount <= 80; pointCount++) {
+  const indexedTrack = Array.from({ length: pointCount }, (_, index) => ({
+    longitude: index + Math.sin(index) * 0.2,
+    latitude: Math.cos(index * 0.7),
+    originalIndex: index,
+  }))
+  for (let limit = 2; limit < pointCount; limit++) {
+    const indexedReduced = heatmap.limitTrackPoints([indexedTrack], limit)[0]
+    const indexes = indexedReduced.map((point) => point.originalIndex)
+    assert.strictEqual(indexedReduced.length, limit)
+    assert.strictEqual(indexedReduced[0], indexedTrack[0])
+    assert.strictEqual(indexedReduced[indexedReduced.length - 1], indexedTrack[pointCount - 1])
+    assert.strictEqual(new Set(indexes).size, indexes.length)
+    indexes.forEach((index, position) => {
+      assert.ok(index >= 0 && index < pointCount)
+      if (position > 0) assert.ok(index > indexes[position - 1])
+    })
+  }
+}
+
+const continuousTurns = Array.from({ length: 100 }, (_, index) => ({
+  longitude: 112 + index * 0.0001,
+  latitude: 37 + (index % 2 ? 0.0001 : 0),
+  originalIndex: index,
+}))
+const continuousIndexes = heatmap.limitTrackPoints([continuousTurns], 10)[0]
+  .map((point) => point.originalIndex)
+const largestGap = Math.max(...continuousIndexes.slice(1).map((index, position) => (
+  index - continuousIndexes[position]
+)))
+assert.ok(largestGap <= 14)
+
+const shortTurn = Array.from({ length: 100 }, (_, index) => ({
+  longitude: 112 + index * 0.0001,
+  latitude: 37 + (index === 50 ? 0.001 : 0),
+  originalIndex: index,
+}))
+assert.ok(heatmap.limitTrackPoints([shortTurn], 10)[0]
+  .some((point) => point.originalIndex === 50))
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_does_not_infer_gps_gaps_from_dp_point_density():
+    script = """
+const assert = require('assert')
+const heatmap = require('./miniprogram/utils/heatmap-map')
+
+const mixedDensity = heatmap.prepareTracks([[
+  [116.000, 39], [116.001, 39], [116.002, 39],
+  [116.042, 39], [116.043, 39], [116.044, 39],
+]])
+assert.strictEqual(mixedDensity.length, 1)
+assert.strictEqual(mixedDensity[0].length, 6)
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_final_wechat_polyline_payload_stays_under_one_megabyte():
+    script = """
+const assert = require('assert')
+const heatmap = require('./miniprogram/utils/heatmap-map')
+
+const tracks = Array.from({ length: 1000 }, (_, trackIndex) =>
+  Array.from({ length: 18 }, (_, pointIndex) => [
+    112.45 + trackIndex * 0.00001 + pointIndex * 0.00002,
+    37.70 + Math.sin(pointIndex / 5) * 0.001,
+  ])
+)
+const model = heatmap.buildHeatmapMapModel(tracks, 'orange', 2, 18000, '99')
+const payloadBytes = Buffer.byteLength(JSON.stringify(model.polylines))
+const pointCount = model.polylines.reduce((sum, line) => sum + line.points.length, 0)
+
+assert.strictEqual(model.polylines.length, 1000)
+assert.ok(pointCount <= 18000)
+assert.ok(payloadBytes < 1024 * 1024, `polyline payload too large: ${payloadBytes}`)
+
+const oldCachedTracks = Array.from({ length: 9000 }, (_, trackIndex) => [
+  [112.45 + trackIndex * 0.00001, 37.70],
+  [112.45001 + trackIndex * 0.00001, 37.70001],
+])
+const oldCachedModel = heatmap.buildHeatmapMapModel(oldCachedTracks, 'orange', 2, 18000, '99')
+const oldCachedBytes = Buffer.byteLength(JSON.stringify(oldCachedModel.polylines))
+assert.strictEqual(oldCachedModel.polylines.length, 1000)
+assert.ok(oldCachedBytes < 1024 * 1024, `old cache payload too large: ${oldCachedBytes}`)
 """
 
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)

@@ -13,6 +13,7 @@ const HEATMAP_COLORS = [
   { key: 'blue', label: '蓝色', color: '#1677FF' },
   { key: 'purple', label: '紫色', color: '#8E44FF' },
 ]
+const MAX_HEATMAP_POLYLINES = 1000
 
 function colorValue(colorKey, opacityHex) {
   var selected = HEATMAP_COLORS.find(function (item) { return item.key === colorKey })
@@ -97,7 +98,11 @@ function splitTrack(points) {
 function toGcj02(points) {
   return points.map(function (point) {
     var converted = wgs84ToGcj02(point.latitude, point.longitude)
-    return { latitude: converted[0], longitude: converted[1] }
+    // setData 会序列化完整键名；5 位小数仍约 1 米，却能砍掉坐标转换产生的冗余尾数。
+    return {
+      latitude: Math.round(converted[0] * 100000) / 100000,
+      longitude: Math.round(converted[1] * 100000) / 100000,
+    }
   })
 }
 
@@ -113,16 +118,75 @@ function prepareTracks(rawTracks) {
 }
 
 /**
+ * 在固定点数内保留轨迹形状变化最大的点。
+ *
+ * 旧客户端兜底按数组下标等间隔抽点；长弯道的顶点若刚好落在采样间隔之间，
+ * 地图就会把弯道两端直接连成直线。这里分桶保证整条路线都有覆盖，并在每桶
+ * 选偏离相邻连线最远的点。复杂度 O(n)，旧后端意外返回大对象时也不会重新卡住。
+ */
+function selectShapePoints(points, limit) {
+  if (points.length <= limit) return points
+  if (limit < 3) return [points[0], points[points.length - 1]].slice(0, limit)
+
+  function localDeviation(index) {
+    var left = points[index - 1]
+    var point = points[index]
+    var right = points[index + 1]
+    var cosLatitude = Math.cos(point.latitude * Math.PI / 180)
+    var leftX = left.longitude * cosLatitude
+    var leftY = left.latitude
+    var pointX = point.longitude * cosLatitude
+    var pointY = point.latitude
+    var rightX = right.longitude * cosLatitude
+    var rightY = right.latitude
+    var chordX = rightX - leftX
+    var chordY = rightY - leftY
+    var chordLength = Math.sqrt(chordX * chordX + chordY * chordY)
+    if (chordLength <= 1e-12) {
+      var loopX = pointX - leftX
+      var loopY = pointY - leftY
+      return Math.sqrt(loopX * loopX + loopY * loopY)
+    }
+    return Math.abs(chordX * (pointY - leftY) - chordY * (pointX - leftX)) / chordLength
+  }
+
+  var sampled = [points[0]]
+  var bucketSize = (points.length - 2) / (limit - 2)
+
+  for (var bucket = 0; bucket < limit - 2; bucket++) {
+    var rangeStart = Math.floor(bucket * bucketSize) + 1
+    var rangeEnd = Math.min(Math.floor((bucket + 1) * bucketSize) + 1, points.length - 1)
+    var bestDeviation = -1
+    var bestIndex = rangeStart
+    for (var index = rangeStart; index < Math.max(rangeStart + 1, rangeEnd); index++) {
+      var deviation = localDeviation(index)
+      if (deviation > bestDeviation) {
+        bestDeviation = deviation
+        bestIndex = index
+      }
+    }
+    sampled.push(points[bestIndex])
+  }
+
+  sampled.push(points[points.length - 1])
+  return sampled
+}
+
+/**
  * 原生 map 的 polyline 会把全部点复制进渲染层；旧接口返回大对象时，直接 setData
  * 会再次卡住小程序。这里做最后一道客户端 LOD 保险：每条活动至少保留首尾点，
- * 其余预算按原轨迹点数分配，既锁住总传输量，也不会把稀有旅行路线整条丢掉。
+ * 其余预算按原轨迹点数分配，并把折线数锁在 1000 条以内，避免旧缓存仍把
+ * 上万条两点折线一次性送入 setData。
  */
 function limitTrackPoints(tracks, maxPoints) {
   if (!Number.isFinite(maxPoints) || maxPoints < 2 || tracks.length === 0) return tracks
-  var total = tracks.reduce(function (sum, track) { return sum + track.length }, 0)
-  if (total <= maxPoints) return tracks
-
   var drawable = tracks.filter(function (track) { return track.length >= 2 })
+  if (drawable.length > MAX_HEATMAP_POLYLINES) {
+    drawable = drawable.slice(0, MAX_HEATMAP_POLYLINES)
+  }
+  var total = drawable.reduce(function (sum, track) { return sum + track.length }, 0)
+  if (total <= maxPoints) return drawable
+
   if (drawable.length * 2 > maxPoints) {
     drawable = drawable.slice(0, Math.floor(maxPoints / 2))
   }
@@ -159,12 +223,7 @@ function limitTrackPoints(tracks, maxPoints) {
   return drawable.map(function (track, index) {
     var limit = allocations[index].limit
     if (limit >= track.length) return track
-    var sampled = []
-    for (var pointIndex = 0; pointIndex < limit; pointIndex++) {
-      var sourceIndex = Math.round(pointIndex * (track.length - 1) / (limit - 1))
-      sampled.push(track[sourceIndex])
-    }
-    return sampled
+    return selectShapePoints(track, limit)
   })
 }
 

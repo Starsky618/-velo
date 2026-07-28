@@ -52,7 +52,7 @@ Component({
           var tracks = data && Array.isArray(data.tracks) ? data.tracks : []
           var activityCount = Number(data && data.activity_count) || 0
           // 兼容尚未升级的旧后端：客户端也把卡片渲染层锁在 4000 点以内。
-          var model = heatmapMap.buildHeatmapMapModel(tracks, 'orange', 2, 4000, '52')
+          var model = heatmapMap.buildHeatmapMapModel(tracks, 'orange', 2, 4000, '99')
           if (!model || activityCount === 0) {
             this.setData({
               loading: false,

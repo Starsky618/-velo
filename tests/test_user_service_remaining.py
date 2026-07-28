@@ -8,6 +8,7 @@ v5 task-2.C.2 余下 3 函数测试：heatmap / update_user_city / profile_for_o
 """
 
 import json
+import math
 import os
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -35,7 +36,9 @@ from app.user.service_social import (
     _build_heatmap_viewport_tracks,
     _build_heatmap_preview_track,
     _heatmap_points_per_activity,
+    _heatmap_viewport_budget,
     _normalize_heatmap_viewport,
+    _select_heatmap_key_points,
     _select_heatmap_preview_activities,
     _trim_heatmap_viewport_cache,
 )
@@ -238,8 +241,22 @@ class TestGetUserHeatmap:
         ) == 13
         assert _heatmap_points_per_activity(293) == 30
 
+    @pytest.mark.parametrize(
+        ("zoom", "per_segment_limit"),
+        [(10, 128), (11, 192), (12, 192), (13, 320)],
+    )
+    def test_viewport_zoom_levels_share_the_same_render_budget(
+        self,
+        zoom,
+        per_segment_limit,
+    ):
+        total_budget, actual_per_segment_limit = _heatmap_viewport_budget(zoom)
+
+        assert total_budget == 18_000
+        assert actual_per_segment_limit == per_segment_limit
+
     def test_viewport_detail_keeps_city_overview_crisp_without_large_payload(self):
-        """293 条城市轨迹使用约 2.4 万点，不回退到 6 MB，也不再只有每条 30 点。"""
+        """293 条城市轨迹约 1.8 万点，兼顾弯道形状与微信渲染层上限。"""
         activities = []
         for track_index in range(293):
             track = [
@@ -260,8 +277,8 @@ class TestGetUserHeatmap:
         assert sum(len(track) for track in source_tracks) <= 72_000
         assert visible_count == 293
         assert len(tracks) == 293
-        assert 20_000 <= point_count <= 24_000
-        assert len(payload) < 700_000
+        assert 16_000 <= point_count <= 18_000
+        assert len(payload) < 600_000
 
     def test_viewport_clips_to_visible_area_and_rejects_unbounded_queries(self):
         viewport = _normalize_heatmap_viewport(112.4, 37.6, 112.7, 37.9, 13)
@@ -296,13 +313,95 @@ class TestGetUserHeatmap:
         assert visible_count == 1
         assert tracks == [[[116.3, 39.95], [116.6, 39.95]]]
 
+    def test_viewport_does_not_infer_gps_gaps_from_dp_point_density(self):
+        mixed_density = SimpleNamespace(simplified_track=[
+            {"lon": 116.000, "lat": 39.0},
+            {"lon": 116.001, "lat": 39.0},
+            {"lon": 116.002, "lat": 39.0},
+            {"lon": 116.042, "lat": 39.0},
+            {"lon": 116.043, "lat": 39.0},
+            {"lon": 116.044, "lat": 39.0},
+        ])
+        viewport = (115.9, 38.9, 116.3, 39.2, 10)
+
+        tracks, visible_count = _build_heatmap_viewport_tracks([mixed_density], viewport)
+
+        assert visible_count == 1
+        assert len(tracks) == 1
+        assert len(tracks[0]) == 6
+
+    def test_shape_selector_keeps_local_turns_and_strict_track_order(self):
+        points = [
+            {"lon": 0, "lat": 0},
+            {"lon": 1, "lat": 0},
+            {"lon": 2, "lat": 0},
+            {"lon": 2, "lat": 3},
+            {"lon": 3, "lat": 3},
+            {"lon": 4, "lat": 3},
+        ]
+
+        reduced = _select_heatmap_key_points(points, 4)
+
+        assert len(reduced) == 4
+        assert reduced[0] is points[0]
+        assert reduced[-1] is points[-1]
+        assert points[3] in reduced
+        assert [points.index(point) for point in reduced] == sorted(
+            points.index(point) for point in reduced
+        )
+
+        for point_count in range(3, 50):
+            indexed_points = [
+                {
+                    "lon": index + math.sin(index) * 0.2,
+                    "lat": math.cos(index * 0.7),
+                    "original_index": index,
+                }
+                for index in range(point_count)
+            ]
+            for limit in range(2, point_count):
+                indexed_reduced = _select_heatmap_key_points(indexed_points, limit)
+                indexes = [point["original_index"] for point in indexed_reduced]
+                assert len(indexed_reduced) == limit
+                assert indexed_reduced[0] is indexed_points[0]
+                assert indexed_reduced[-1] is indexed_points[-1]
+                assert indexes == sorted(set(indexes))
+
+        continuous_turns = [
+            {
+                "lon": 112 + index * 0.0001,
+                "lat": 37 + (0.0001 if index % 2 else 0),
+                "original_index": index,
+            }
+            for index in range(100)
+        ]
+        continuous_reduced = _select_heatmap_key_points(continuous_turns, 10)
+        continuous_indexes = [point["original_index"] for point in continuous_reduced]
+        assert max(
+            right - left
+            for left, right in zip(continuous_indexes, continuous_indexes[1:])
+        ) <= 14
+
+        short_turn = [
+            {
+                "lon": 112 + index * 0.0001,
+                "lat": 37 + (0.001 if index == 50 else 0),
+                "original_index": index,
+            }
+            for index in range(100)
+        ]
+        assert 50 in {
+            point["original_index"]
+            for point in _select_heatmap_key_points(short_turn, 10)
+        }
+
     def test_viewport_activity_count_matches_rendered_activities_after_budget_cutoff(self):
         activities = [
             SimpleNamespace(simplified_track=[
                 {"lon": 116.41, "lat": 39.91},
                 {"lon": 116.42, "lat": 39.92},
             ])
-            for _ in range(12_001)
+            for _ in range(1_001)
         ]
 
         tracks, visible_count = _build_heatmap_viewport_tracks(
@@ -310,8 +409,8 @@ class TestGetUserHeatmap:
             (116.30, 39.80, 116.60, 40.10, 10),
         )
 
-        assert len(tracks) == 12_000
-        assert visible_count == 12_000
+        assert len(tracks) == 1_000
+        assert visible_count == 1_000
 
     def test_viewport_cache_is_capped_per_user_and_keeps_current_key(self):
         class FakeRedis:

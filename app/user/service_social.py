@@ -77,6 +77,8 @@ _HEATMAP_VIEWPORT_MAX_SPAN_LON = 20.0
 _HEATMAP_VIEWPORT_MAX_SPAN_LAT = 15.0
 _HEATMAP_VIEWPORT_SOURCE_POINT_BUDGET = 72_000
 _HEATMAP_VIEWPORT_SOURCE_POINTS_PER_ACTIVITY = 320
+_HEATMAP_VIEWPORT_RENDER_POINT_BUDGET = 18_000
+_HEATMAP_VIEWPORT_MAX_SEGMENTS = 1_000
 _HEATMAP_VIEWPORT_MAX_CACHE_KEYS = 12
 _HEATMAP_COMPRESSED_CACHE_PREFIX = b"z1:"
 _HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC = 10
@@ -374,56 +376,48 @@ def _has_heatmap_line(track: object) -> bool:
 
 
 def _select_heatmap_key_points(points: list[dict], limit: int) -> list[dict]:
-    """用 LTTB 面积法一次遍历选关键拐点，O(n) 且严格不超过 limit。
+    """分桶保覆盖，并在每桶保留偏离相邻连线最远的真实弯道。
 
     simplified_track 本身已是活动详情级 DP 轨迹；热图卡只需从中挑出最能代表
-    形状变化的点。相比再次跑多轮 DP 二分，293 条长轨迹的冷缓存生成从几十秒
-    降到亚秒级，同时比固定步长更不容易漏掉短促急弯。
+    形状变化的点。固定分桶保证整条路线均匀覆盖，局部垂距又会优先保留桶内
+    急弯和折返点；一次遍历 O(n)，不会出现等面积点从路线前端开始成片淘汰。
     """
     if len(points) <= limit:
         return points
     if limit < 3:
         return [points[0], points[-1]][:limit]
 
+    def local_deviation(index: int) -> float:
+        left = points[index - 1]
+        point = points[index]
+        right = points[index + 1]
+        cos_lat = _math.cos(float(point["lat"]) * _math.pi / 180)
+        left_x = float(left["lon"]) * cos_lat
+        left_y = float(left["lat"])
+        point_x = float(point["lon"]) * cos_lat
+        point_y = float(point["lat"])
+        right_x = float(right["lon"]) * cos_lat
+        right_y = float(right["lat"])
+        chord_x = right_x - left_x
+        chord_y = right_y - left_y
+        chord_length = _math.hypot(chord_x, chord_y)
+        if chord_length <= 1e-12:
+            return _math.hypot(point_x - left_x, point_y - left_y)
+        return abs(chord_x * (point_y - left_y) - chord_y * (point_x - left_x)) / chord_length
+
     sampled = [points[0]]
     bucket_size = (len(points) - 2) / (limit - 2)
-    selected_index = 0
-
     for bucket in range(limit - 2):
-        next_start = int((bucket + 1) * bucket_size) + 1
-        next_end = min(int((bucket + 2) * bucket_size) + 1, len(points))
-        if next_start >= len(points) - 1:
-            avg_lon = float(points[-1]["lon"])
-            avg_lat = float(points[-1]["lat"])
-        else:
-            next_points = points[next_start:next_end] or [points[-1]]
-            avg_lon = sum(float(p["lon"]) for p in next_points) / len(next_points)
-            avg_lat = sum(float(p["lat"]) for p in next_points) / len(next_points)
-
         range_start = int(bucket * bucket_size) + 1
         range_end = min(int((bucket + 1) * bucket_size) + 1, len(points) - 1)
-        anchor = points[selected_index]
-        anchor_lon = float(anchor["lon"])
-        anchor_lat = float(anchor["lat"])
-        cos_lat = _math.cos(anchor_lat * _math.pi / 180)
-        best_area = -1.0
         best_index = range_start
-
+        best_deviation = -1.0
         for index in range(range_start, max(range_start + 1, range_end)):
-            point = points[index]
-            lon = float(point["lon"])
-            lat = float(point["lat"])
-            area = abs(
-                (anchor_lon - avg_lon) * cos_lat * (lat - anchor_lat)
-                - (anchor_lon - lon) * cos_lat * (avg_lat - anchor_lat)
-            )
-            if area > best_area:
-                best_area = area
+            deviation = local_deviation(index)
+            if deviation > best_deviation:
+                best_deviation = deviation
                 best_index = index
-
         sampled.append(points[best_index])
-        selected_index = best_index
-
     sampled.append(points[-1])
     return sampled
 
@@ -494,12 +488,12 @@ def _heatmap_points_per_activity(
 
 
 def _heatmap_viewport_budget(zoom: int) -> tuple[int, int]:
-    """当前视野越小，允许的轨迹精度越高，但单次响应始终低于 6 MB 旧方案。"""
+    """按缩放提高单轨精度，同时把微信渲染层锁在 1.8 万点以内。"""
     if zoom <= 10:
-        return 24_000, 128
+        return _HEATMAP_VIEWPORT_RENDER_POINT_BUDGET, 128
     if zoom <= 12:
-        return 30_000, 192
-    return 36_000, 320
+        return _HEATMAP_VIEWPORT_RENDER_POINT_BUDGET, 192
+    return _HEATMAP_VIEWPORT_RENDER_POINT_BUDGET, 320
 
 
 def _normalize_heatmap_viewport(
@@ -668,7 +662,7 @@ def _build_heatmap_viewport_tracks(
     activities: list,
     viewport: tuple[float, float, float, float, int],
 ) -> tuple[list[list[list[float]]], int]:
-    """只生成当前视野需要的折线；总览清晰度约为旧 9000 点方案的 2.7 倍。"""
+    """只生成当前视野需要的折线；渲染点和折线数均受微信安全预算约束。"""
     segments: list[tuple[int, list[dict]]] = []
     for activity_index, activity in enumerate(activities):
         source_track = getattr(activity, "simplified_track", activity)
@@ -678,8 +672,9 @@ def _build_heatmap_viewport_tracks(
         return [], 0
 
     total_budget, per_segment_limit = _heatmap_viewport_budget(viewport[4])
-    if len(segments) * 2 > total_budget:
-        segments = sorted(segments, key=lambda item: len(item[1]), reverse=True)[: total_budget // 2]
+    max_segments = min(_HEATMAP_VIEWPORT_MAX_SEGMENTS, total_budget // 2)
+    if len(segments) > max_segments:
+        segments = sorted(segments, key=lambda item: len(item[1]), reverse=True)[:max_segments]
     point_limit = _heatmap_points_per_activity(
         len(segments),
         per_activity_limit=per_segment_limit,
@@ -772,7 +767,7 @@ def get_user_heatmap(
     detail 三档：
     - card：个人页交互预览，最多 4000 点 / 每活动最多 24 点
     - full：全屏首屏总览，最多 9000 点 / 每活动最多 64 点
-    - viewport：按当前视野和缩放级别裁切，最多 2.4 万到 3.6 万点
+    - viewport：按当前视野和缩放级别裁切，最多 1.8 万点 / 1000 条折线
 
     这对应 Strava 的层级细节思想：小视图不下载全屏精度，避免历史数据再次
     阻塞小程序；总览两档通过地理分桶保留稀有旅行区域，而不是只截常骑城市。

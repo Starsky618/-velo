@@ -3,9 +3,11 @@ const heatmapMap = require('../../utils/heatmap-map')
 const { gcj02ToWgs84 } = require('../../utils/coords')
 
 const OVERVIEW_MAX_POINTS = 9000
-const VIEWPORT_MAX_POINTS = 36000
+const VIEWPORT_MAX_POINTS = 18000
 const HEATMAP_LINE_WIDTH = 2
-const HEATMAP_LINE_OPACITY = '52'
+// 60% 不透明度：保持 2px 细线，但在城市总览仍能看清单条足迹。
+// 重叠路段会自然加深，接近 Strava 的“常骑路线更醒目”效果。
+const HEATMAP_LINE_OPACITY = '99'
 
 function colorOptions(selectedKey) {
   return heatmapMap.HEATMAP_COLORS.map(function (item) {
