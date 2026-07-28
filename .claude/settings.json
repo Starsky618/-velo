@@ -3,17 +3,6 @@
     "codex@openai-codex": true
   },
   "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 scripts/session_start.py 2>&1 || true"
-          }
-        ]
-      }
-    ],
     "UserPromptSubmit": [
       {
         "matcher": "",

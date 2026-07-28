@@ -103,10 +103,10 @@ docs/                产品、规格、架构、运行规则和历史档案
 
 | 文档 | 用途 |
 |---|---|
-| [AGENTS.md](../AGENTS.md) | Codex 与通用协作规则；进入仓库先读 |
-| [CLAUDE.md](../CLAUDE.md) | VELO 技术红线、调试顺序、审查分层和技术栈陷阱 |
-| [agent-rules/product-decisions.md](agent-rules/product-decisions.md) | 产品不变式和已登记决策；新提案需同时接受当前用户证据复核 |
-| [agent-rules/agent-collaboration.md](agent-rules/agent-collaboration.md) | 双主驾分工、审查和交接 |
+| [AGENTS.md](../AGENTS.md) | VELO 当前项目不变量；Claude 与 Codex 都以此为准 |
+| [CLAUDE.md](../CLAUDE.md) | Claude 兼容入口，只指向 `AGENTS.md` |
+| [agent-rules/product-decisions.md](agent-rules/product-decisions.md) | 新功能、商业化或用户范围变化时按需核对的产品决策记录 |
+| [agent-rules/agent-collaboration.md](agent-rules/agent-collaboration.md) | 历史协作手册；只有当前任务明确引用时才加载 |
 | [agent-rules/deploy-sop.md](agent-rules/deploy-sop.md) | 部署唯一执行入口；`commit ≠ ship` |
 
 ### B. 当前路线工作
