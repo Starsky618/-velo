@@ -11,17 +11,18 @@
 | 公网 IP | 114.132.190.245 |
 | SSH 用户 | ubuntu（已配免密登录） |
 | 代码位置 | 服务器 ~/velo |
-| API 地址 | http://114.132.190.245 |
-| API 文档 | http://114.132.190.245/docs |
+| 官网 | https://weiluai.top |
+| API 地址 | https://api.weiluai.top |
+| API 文档 | https://api.weiluai.top/docs |
 | GitHub | Starsky618/-velo（私有） |
 
 ## 部署流程（最终确定版）
 
 ```
-本地跑测试 → tar 打包 → scp 传到服务器 → 解压 → 清理 macOS 垃圾 → docker compose up --build → alembic 迁移 → curl 验证
+本地验证 → 任务分支/PR → GitHub pytest → 合并 main → 服务器 git pull --ff-only → 配置预检 → 按需 docker compose up --build → alembic upgrade head → 公网真用验证
 ```
 
-详见 `/deploy` skill（`.claude/skills/deploy/SKILL.md`），以下只记**为什么这样做**和**踩过什么坑**。
+详见 `docs/agent-rules/deploy-sop.md`，以下只记**为什么这样做**和**踩过什么坑**。早期 GitHub 不稳定时使用过 tar/scp；当前服务器已有 deploy key，正常路径以 `git pull --ff-only` 为准，失败时才回退到打包传输。
 
 ---
 
@@ -508,3 +509,16 @@ Ubuntu 22.04 默认 sshd jail 已 enabled / maxretry=5 / bantime=10min。Tim 用
 - **关键认知：证书签发成功 ≠ HTTPS 可用**——Let's Encrypt ACME HTTP-01 challenge 走 80 端口，80 通就能签证书；443 被防火墙挡着证书照样续期、HTTPS 照样全不通。看到"证书在管"别推断"https 没问题"。
 - **操作记录**：① CDP 浏览器复用 Tim 登录态进腾讯云轻量控制台（实例 lhins-66ggox65 / 广州），防火墙规则表实证只有 9000/22/80/ICMP，添加 TCP 443 允许 ✅ ② 服务器自测 https://api.weiluai.top 从超时变 401（业务正常）✅ ③ 微信小程序服务器域名昨天已配好（request/uploadFile/downloadFile 三栏 = api.weiluai.top，无需动）④ 前端 baseUrl 两处切 https 域名（`80cceab9`）⑤ Strava 后台 Authorization Callback Domain：114.132.190.245 → api.weiluai.top（先改后台再改 .env，顺序反了授权流程会断）⑥ 服务器 .env STRAVA_REDIRECT_URI 切 https 域名 + `up -d --force-recreate api`（**restart 不重读 env_file，必须 recreate**）。
 - **⚠ 待真用激活回归**：① Tim 真机重新编译走 https 域名跑全功能 ② Strava 解绑重绑一次验证新回调（回调域改了，老 authorize 链接缓存可能失效）③ **业务域名缺口挂账**：web-view 打开 Strava 授权页需要"业务域名"配置（与"服务器域名"是两个配置项），IP 时代本来就没配过（IP 配不进业务域名），正式版 Strava 绑定流程依赖它——需在 mp 后台业务域名加 strava.com + api.weiluai.top（要下载校验文件放服务器，下轮做）。
+
+## 2026-07-29：VELO 企业官网上线（Garmin 申请前置材料）
+
+- **目标**：为 Garmin 国际版/中国大陆版开发者申请提供可公开核验的企业官网、中英文隐私政策和 Garmin 专项数据说明。页面明确 Garmin 同步仍在申请和开发阶段，不宣称已获批或已向用户开放。
+- **公开边界**：公开公司全称和业务邮箱 `chengyuxiang@synexissoftware.cn`；不公开联系人手机号、统一社会信用代码，不索取 Garmin 用户名/密码。官网无表单、无脚本，不读取用户 FIT/GPX 或活动轨迹。
+- **DNS（DNSPod，TTL 600）**：`@ A 114.132.190.245`、`www CNAME weiluai.top`；原有 `api A 114.132.190.245` 保持不变。权威 DNS 查询三条均已读回。
+- **IPv6 决策**：本次不加 AAAA。IPv6 不会替代 HTTPS，也不会天然更安全；在固定公网 IPv6、IPv6 防火墙和全链路监控尚未验证前，增加 AAAA 只会新增一条未验收入口。未来如需双栈，应保留现有 A，再增加并单独验收 AAAA。
+- **HTTPS**：Caddy 在 DNS 生效后通过 Let's Encrypt `tls-alpn-01` 为 `weiluai.top` 和 `www.weiluai.top` 自动签发证书，日志确认两张证书 `obtained successfully`；`caddy_data` 卷负责续期与重建持久化。
+- **代码与门禁**：官网 PR #11（merge `a384fa56`）经本地 `1810 passed, 79 skipped`、GitHub 空白 PostGIS 迁移和 `pytest` 通过后合并；移动浏览器视口检查抓到 favicon 404 和不足 44px 的触控区，PR #13（merge `30139ef0`）修复后再次通过完整 CI。
+- **生产验证**：中文/英文首页、公司页、通用隐私政策、Garmin 专项政策和 CSS 均为 HTTPS 200；未知路径返回带品牌内容的 404；HTTP 308 到 HTTPS；`www` 301 到根域名并保留路径和查询参数。390×780 与 320×640 均无横向溢出、可见触控入口均至少 44px、控制台 0 错误。`/uploads/`、`/uploads/meetup_media/`、`/uploads/route_covers/` 在官网域名均为 404，文件系统穿越探测为 404。
+- **既有服务回归**：`https://api.weiluai.top/docs` 为 200；API 容器启动完成，部署后真实用户的 profile、activity、heatmap、segment 等请求持续返回 200。Alembic `upgrade head` 成功，本轮无新迁移。
+- **为什么以前没有官网**：之前只配置了 `api.weiluai.top` 和 API Caddy 站点，根域名/`www` 没有 DNS 记录，也没有静态站点目录；不是漏买 HTTPS 证书。Caddy 只有在域名解析和站点配置同时存在后才会自动申请证书。
+- **小程序边界**：账号注销说明已随 PR #11 改为准确披露路书和已开放约骑的去标识保留，但本次没有上传或发布新小程序包。微信开发者工具 CLI 服务端口仍关闭，未擅自修改该安全设置；后续小程序发布前需在最新 `main` 上重新编译并点开注销弹窗验文案。
