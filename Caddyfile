@@ -1,10 +1,12 @@
 # VELO 反向代理配置
 #
-# 双站点结构（2026-06-11 域名 weiluai.top 备案通过后启用）：
+# 三站点结构（2026-07-29 增加 VELO 官网）：
 # - api.weiluai.top：正式入口，Caddy 自动向 Let's Encrypt 申请并续期 HTTPS 证书
 #  （微信小程序合法域名硬性要求 https + 备案域名）。证书存 caddy_data 卷，重建容器不丢。
+# - weiluai.top：www.weiluai.top 跳转到这里；仅服务 website/ 静态官网，不反代 API，
+#  也不挂载 /srv/uploads，防官网配置误公开用户 FIT/GPX 和轨迹文件。
 # - :80 兜底：保留 IP 直连（开发者工具调试 / 证书异常时的逃生通道）。
-# 两个站点的路由规则完全相同，都从 (velo_site) 代码片段导入——改规则只改一处，防两份漂移。
+# API 两个入口的路由规则都从 (velo_site) 代码片段导入——改规则只改一处，防两份漂移。
 # 前置条件（已满足）：A 记录 api → 114.132.190.245，安全组放行 80/443。
 
 (velo_site) {
@@ -45,6 +47,32 @@
 
 api.weiluai.top {
     import velo_site
+}
+
+# VELO 官网：纯静态、无表单、无脚本、无用户数据读取。
+# 上线前 DNS 还需要：
+#   @   A      114.132.190.245
+#   www CNAME  weiluai.top
+(velo_website) {
+	root * /srv/website
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; script-src 'none'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+	}
+
+	file_server
+}
+
+weiluai.top {
+	import velo_website
+}
+
+www.weiluai.top {
+	redir https://weiluai.top{uri} permanent
 }
 
 :80 {

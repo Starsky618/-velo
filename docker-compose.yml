@@ -216,6 +216,7 @@ services:
       - "443:443"  # HTTPS
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./website:/srv/website:ro  # VELO 官网静态文件；与 /srv/uploads 隔离
       - caddy_data:/data
       - caddy_config:/config
       - uploads:/srv/uploads:ro    # 只读挂 uploads；caddy 只静态服务 /uploads/meetup_media/* 子目录（绝不开整个 /uploads/*——根里混着私密 GPX 轨迹）

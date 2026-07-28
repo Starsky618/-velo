@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="VELO 是面向中国城市公路车骑手的微信小程序，提供骑行记录、赛段表现、路线浏览与路书导出。"
+    />
+    <title>VELO｜认真骑，也认真留下</title>
+    <link rel="stylesheet" href="/assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="主导航">
+        <a class="brand" href="/">
+          <span class="brand-dot" aria-hidden="true"></span>
+          <span>VELO</span>
+        </a>
+        <div class="nav-links">
+          <a href="#product">产品</a>
+          <a href="#sync">数据同步</a>
+          <a href="/privacy/">隐私</a>
+          <a href="/company/">关于公司</a>
+          <a class="language-link" href="/en/" lang="en">EN</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div>
+          <div class="status-chip">产品内测中</div>
+          <h1>认真骑，也认真留下。</h1>
+          <p class="hero-copy">
+            VELO 是给中国城市公路车骑手用的骑行记录工具。把码表和平台里的骑行带回来，看清自己的赛段表现，也把常骑的路线留在一个地方。
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#product">了解 VELO</a>
+            <a class="button button-secondary" href="/privacy/garmin/"
+              >Garmin 数据说明</a
+            >
+          </div>
+        </div>
+
+        <div class="route-card" aria-label="骑行轨迹与数据示意">
+          <div class="route-grid" aria-hidden="true"></div>
+          <span class="route-segment s1" aria-hidden="true"></span>
+          <span class="route-segment s2" aria-hidden="true"></span>
+          <span class="route-segment s3" aria-hidden="true"></span>
+          <span class="route-point start" aria-hidden="true"></span>
+          <span class="route-point end" aria-hidden="true"></span>
+          <div class="ride-summary">
+            <div class="ride-summary-title">一次真实的户外骑行</div>
+            <div class="ride-stats">
+              <div class="ride-stat">
+                <strong>82.4</strong>
+                <span>公里</span>
+              </div>
+              <div class="ride-stat">
+                <strong>1,260</strong>
+                <span>爬升米</span>
+              </div>
+              <div class="ride-stat">
+                <strong>3:18</strong>
+                <span>移动时间</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="product">
+        <div class="section-heading">
+          <span class="eyebrow">VELO 现在做什么</span>
+          <h2>不是综合运动平台，只把公路骑行这件事做实。</h2>
+          <p>
+            产品聚焦真实户外骑行。数据用于形成你的骑行记录、赛段表现和路线资料，不做硬件、电商或室内虚拟骑行。
+          </p>
+        </div>
+        <div class="card-grid">
+          <article class="feature-card">
+            <span class="feature-number">01</span>
+            <h3>骑行记录</h3>
+            <p>
+              支持上传 FIT、GPX，并已接入 Strava。距离、时间、爬升、心率、踏频和功率按文件实际字段展示。
+            </p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-number">02</span>
+            <h3>赛段表现</h3>
+            <p>
+              在真实道路的固定赛段上回看成绩与个人变化。缺失的数据不会用占位数或推测结果补齐。
+            </p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-number">03</span>
+            <h3>路线与路书</h3>
+            <p>
+              浏览路线资料，手动画线或贴路，保存并导出 GPX、TCX，交给自己的码表或码表 App 使用。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="sync">
+        <div class="sync-panel">
+          <div class="section-heading">
+            <span class="eyebrow">数据同步</span>
+            <h2>授权一次，骑完自动回来。</h2>
+            <p>
+              Garmin Connect 同步仍在申请和开发阶段，当前尚未向用户开放。正式上线前会完成真实授权、历史回溯、通知、解绑和删除验证。
+            </p>
+          </div>
+          <div class="sync-list">
+            <div class="sync-row">
+              <span class="sync-check" aria-hidden="true">1</span>
+              <div>
+                <strong>只走官方授权</strong>
+                <span>不会索取或保存你的 Garmin 账号密码。</span>
+              </div>
+            </div>
+            <div class="sync-row">
+              <span class="sync-check" aria-hidden="true">2</span>
+              <div>
+                <strong>只申请骑行活动</strong>
+                <span>首版不申请睡眠、健康或女性健康数据。</span>
+              </div>
+            </div>
+            <div class="sync-row">
+              <span class="sync-check" aria-hidden="true">3</span>
+              <div>
+                <strong>你决定是否公开</strong>
+                <span>Garmin 导入活动计划默认私密，由你主动发布摘要。</span>
+              </div>
+            </div>
+            <div class="sync-row">
+              <span class="sync-check" aria-hidden="true">4</span>
+              <div>
+                <strong>随时解绑和删除</strong>
+                <span>解绑停止新同步并删除授权令牌，活动可由你自行删除。</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <span class="eyebrow">隐私边界</span>
+          <h2>骑行轨迹不是随便可以公开的内容。</h2>
+          <p>
+            VELO 提供活动仅自己可见、隐藏功率和隐藏心率等设置。第三方同步的数据不出售，也不用于外部 AI 或大模型训练。
+          </p>
+        </div>
+        <div class="hero-actions">
+          <a class="button button-primary" href="/privacy/">阅读隐私政策</a>
+          <a class="button button-secondary" href="/privacy/garmin/"
+            >阅读 Garmin 专项说明</a
+          >
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div>
+          <div class="footer-title">VELO</div>
+          <p class="footer-legal">
+            由湖南湘江新区共演纪软件开发有限责任公司运营。VELO
+            是独立骑行产品，不代表任何码表或第三方运动平台。
+          </p>
+        </div>
+        <div class="footer-links">
+          <a href="/company/">关于公司</a>
+          <a href="/privacy/">隐私政策</a>
+          <a href="/privacy/garmin/">Garmin 数据政策</a>
+          <a href="/en/" lang="en">English</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
