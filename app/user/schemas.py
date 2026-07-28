@@ -221,7 +221,8 @@ class HeatmapResponse(BaseModel):
     """
     个人热图响应——"我在某城市去过的所有轨迹"（D27 v2 polish / Sprint 4 task-4.2 v2 / v3 polish city 可选）。
 
-    tracks 是 list of list of [lon, lat]：保留 activity 边界 / 每个 activity 一条
+    tracks 是 list of list of [lon, lat]：保留 activity 边界；card/full 每个 activity 一条，
+    viewport 允许同一 activity 因进出视野裁成多段。
     服务端按 card/full/viewport 三档生成显示精度轨迹。前端完整绘制响应中的点，多条
     opacity 叠加形成热力效果；不下发数据库中的全量 simplified_track。
 
@@ -229,7 +230,8 @@ class HeatmapResponse(BaseModel):
     新版（v2）用 tracks 保留边界 + polyline 渲染。
     v3 polish：city 改可选——不传时返回所有 activity 轨迹（不按城市筛 / response.city = None）；
     传时保留旧行为按起点城市筛。前端"全部"视图直接不传 city。
-    v4：viewport 按当前地图视野提供高精度 LOD，避免恢复 6 MB 全量响应。
+    v4：viewport 按当前地图视野提供高精度 LOD，避免恢复 6 MB 全量响应；一条骑行可因
+    进出视野被裁成多条 track，activity_count 统计实际保留的骑行数而不是折线段数。
     """
     city: Optional[str] = None
     tracks: list[list[list[float]]]

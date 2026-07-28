@@ -45,6 +45,8 @@ v5 task-user-split-001：从 service.py 834 行拆出（commit TBD）。
 
 import json as _json
 import math as _math
+import time as _time
+import zlib as _zlib
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import desc
@@ -60,7 +62,9 @@ from app.user.models import User
 BEIJING_TZ = timezone(timedelta(hours=8))
 
 _HEATMAP_CACHE_TTL_SEC = 3600
+_HEATMAP_VIEWPORT_CACHE_TTL_SEC = 900
 _HEATMAP_CACHE_PREFIX = "heatmap:v4:user_"
+_HEATMAP_GENERATION_PREFIX = "heatmap:generation:user_"
 _HEATMAP_PREVIOUS_V3_CACHE_PREFIX = "heatmap:v3:user_"
 _HEATMAP_PREVIOUS_CACHE_PREFIX = "heatmap:v2:user_"
 _HEATMAP_LEGACY_CACHE_PREFIX = "heatmap:user_"
@@ -70,6 +74,12 @@ _HEATMAP_CARD_POINTS_PER_ACTIVITY = 24
 _HEATMAP_CARD_TOTAL_POINT_BUDGET = 4_000
 _HEATMAP_VIEWPORT_MAX_SPAN_LON = 20.0
 _HEATMAP_VIEWPORT_MAX_SPAN_LAT = 15.0
+_HEATMAP_VIEWPORT_SOURCE_POINT_BUDGET = 72_000
+_HEATMAP_VIEWPORT_SOURCE_POINTS_PER_ACTIVITY = 320
+_HEATMAP_VIEWPORT_MAX_CACHE_KEYS = 12
+_HEATMAP_COMPRESSED_CACHE_PREFIX = b"z1:"
+_HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC = 10
+_HEATMAP_SOURCE_BUILD_POLL_SEC = 0.05
 # _VALID_USER_CITIES 已废弃（Tim 2026-05-17 真用拍放宽 user.city 到任意中文）
 # 历史 6 城枚举只剩 activity.city（worker 推断起点 / ck_activities_city CHECK 仍生效）
 # update_user_city 现仅校验长度 + strip / 不再卡 6 城
@@ -93,10 +103,188 @@ _PROFILE_RESPONSE_KEYS |= {"bio"}
 _PROFILE_RESPONSE_KEYS |= {"badges"}
 
 
+class InvalidHeatmapViewport(ValueError):
+    """热图视野参数非法；router 只把这类可预期输入错误映射为 422。"""
+
+
 def _get_redis_client():
     """延迟导入 redis_conn—— 让纯单元测试不依赖 Redis 启动（task-0.8 单一连接源 / Q1 a 独立复制 / 与 service_stats 一致）。"""
     from app.queue import redis_conn
     return redis_conn
+
+
+def _decode_heatmap_cache(cached: object, *, expected_generation: int | None = None) -> dict | None:
+    raw = cached if isinstance(cached, bytes) else str(cached).encode()
+    if raw.startswith(_HEATMAP_COMPRESSED_CACHE_PREFIX):
+        raw = _zlib.decompress(raw[len(_HEATMAP_COMPRESSED_CACHE_PREFIX):])
+    decoded = _json.loads(raw.decode())
+    if isinstance(decoded, dict) and "_heatmap_generation" in decoded and "value" in decoded:
+        if expected_generation is not None and decoded["_heatmap_generation"] != expected_generation:
+            return None
+        return decoded["value"]
+    # 兼容部署前的 v4 缓存；一旦 generation 递增，旧格式就不能再复活。
+    if expected_generation not in (None, 0):
+        return None
+    return decoded
+
+
+def _encode_heatmap_cache(
+    value: dict,
+    *,
+    compress: bool = False,
+    generation: int | None = None,
+) -> bytes:
+    payload = (
+        {"_heatmap_generation": generation, "value": value}
+        if generation is not None
+        else value
+    )
+    raw = _json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    if compress:
+        return _HEATMAP_COMPRESSED_CACHE_PREFIX + _zlib.compress(raw, level=6)
+    return raw
+
+
+def _store_heatmap_cache(
+    redis_client,
+    key: str,
+    value: dict,
+    ttl: int,
+    *,
+    compress: bool = False,
+    generation: int | None = None,
+) -> None:
+    redis_client.setex(
+        key,
+        ttl,
+        _encode_heatmap_cache(value, compress=compress, generation=generation),
+    )
+
+
+def _heatmap_cache_generation(redis_client, user_id: int) -> int:
+    raw = redis_client.get(f"{_HEATMAP_GENERATION_PREFIX}{user_id}")
+    if raw is None:
+        return 0
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _claim_heatmap_source_build(
+    redis_client,
+    source_cache_key: str,
+    generation: int,
+) -> tuple[bool, dict | None]:
+    """同一用户同一图层冷启动只让一个请求扫描 PostgreSQL，其他请求短暂等源层。"""
+    lock_key = f"{source_cache_key}:build:generation_{generation}"
+    if redis_client.set(
+        lock_key,
+        "1",
+        nx=True,
+        ex=_HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC,
+    ):
+        return True, None
+    max_polls = int(
+        (_HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC * 2)
+        / _HEATMAP_SOURCE_BUILD_POLL_SEC
+    )
+    for _ in range(max_polls):
+        cached_source = redis_client.get(source_cache_key)
+        if cached_source is not None:
+            source = _decode_heatmap_cache(
+                cached_source,
+                expected_generation=generation,
+            )
+            if source is not None:
+                return False, source
+        # 首个 builder 崩溃时，租约到期后也只允许一个等待者接棒，避免并发惊群扫 PG。
+        if redis_client.set(
+            lock_key,
+            "1",
+            nx=True,
+            ex=_HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC,
+        ):
+            return True, None
+        _time.sleep(_HEATMAP_SOURCE_BUILD_POLL_SEC)
+    # 两个完整租约都没有产出源层时才故障降级，避免地图永久卡住。
+    return True, None
+
+
+def _trim_heatmap_viewport_cache(redis_client, user_id: int, current_key: str) -> None:
+    """每个用户最多保留少量视野格，防连续拖图把 Redis 堆满大对象。"""
+    pattern = f"{_HEATMAP_CACHE_PREFIX}{user_id}:detail_viewport:*"
+    keys = list(redis_client.scan_iter(match=pattern))
+    if len(keys) <= _HEATMAP_VIEWPORT_MAX_CACHE_KEYS:
+        return
+    current_bytes = current_key.encode()
+    victims = [key for key in keys if key != current_key and key != current_bytes]
+    overflow = len(keys) - _HEATMAP_VIEWPORT_MAX_CACHE_KEYS
+    if overflow > 0 and victims:
+        redis_client.delete(*victims[:overflow])
+
+
+def _heatmap_viewport_source_cache_key(
+    user_id: int,
+    city: str | None,
+    year: int | None,
+    generation: int = 0,
+) -> str:
+    parts = [f"{_HEATMAP_CACHE_PREFIX}{user_id}", "detail_viewport_source"]
+    if city is not None:
+        parts.append(f"city_{city}")
+    parts.append(f"year_{year}" if year is not None else "year_all")
+    if generation > 0:
+        parts.append(f"generation_{generation}")
+    return ":".join(parts)
+
+
+def _heatmap_result_from_source(
+    source: dict,
+    *,
+    detail: str,
+    city: str | None,
+    year: int | None,
+    viewport: tuple | None,
+) -> dict:
+    source_tracks = source.get("tracks") or []
+    if detail == "full":
+        tracks = _build_heatmap_tracks_from_source(
+            source_tracks,
+            per_activity_limit=_HEATMAP_POINTS_PER_ACTIVITY,
+            total_point_budget=_HEATMAP_TOTAL_POINT_BUDGET,
+        )
+        activity_count = len(tracks)
+    else:
+        tracks, activity_count = _build_heatmap_viewport_tracks(source_tracks, viewport)
+    return {
+        "city": city,
+        "tracks": tracks,
+        "activity_count": activity_count,
+        "available_years": source.get("available_years") or [],
+        "selected_year": year,
+    }
+
+
+def _store_heatmap_result_cache(
+    redis_client,
+    user_id: int,
+    cache_key: str,
+    detail: str,
+    result: dict,
+    generation: int,
+) -> None:
+    is_viewport = detail == "viewport"
+    _store_heatmap_cache(
+        redis_client,
+        cache_key,
+        result,
+        _HEATMAP_VIEWPORT_CACHE_TTL_SEC if is_viewport else _HEATMAP_CACHE_TTL_SEC,
+        compress=is_viewport,
+        generation=generation,
+    )
+    if is_viewport:
+        _trim_heatmap_viewport_cache(redis_client, user_id, cache_key)
 
 
 def _filter_profile_keys(raw_response: dict) -> dict:
@@ -151,18 +339,24 @@ def _build_heatmap_preview_track(
 
 def _normalize_heatmap_source_point(point: object) -> dict | None:
     """校验数据库轨迹点并统一为有限、合法的 WGS-84 坐标。"""
-    if not isinstance(point, dict):
-        return None
     try:
-        lat = float(point.get("lat"))
-        lon = float(point.get("lon"))
+        if isinstance(point, dict):
+            lat = float(point.get("lat"))
+            lon = float(point.get("lon"))
+            ele = point.get("ele")
+        elif isinstance(point, (list, tuple)) and len(point) >= 2:
+            lon = float(point[0])
+            lat = float(point[1])
+            ele = None
+        else:
+            return None
     except (TypeError, ValueError):
         return None
     if not (_math.isfinite(lat) and _math.isfinite(lon)):
         return None
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         return None
-    return {"lat": lat, "lon": lon, "ele": point.get("ele")}
+    return {"lat": lat, "lon": lon, "ele": ele}
 
 
 def _has_heatmap_line(track: object) -> bool:
@@ -235,7 +429,7 @@ def _select_heatmap_key_points(points: list[dict], limit: int) -> list[dict]:
 
 def _heatmap_activity_buckets(activity: object) -> list[tuple[int, int]]:
     """返回轨迹实际覆盖的约 50km 网格，抽样时不只看活动起点。"""
-    track = getattr(activity, "simplified_track", None)
+    track = getattr(activity, "simplified_track", activity if isinstance(activity, list) else None)
     buckets: dict[tuple[int, int], None] = {}
     if isinstance(track, list):
         for point in track:
@@ -252,7 +446,9 @@ def _select_heatmap_preview_activities(activities: list, limit: int) -> list:
     # 1 万条抽样，坏活动也会把正常轨迹从 64 点无谓压到 2 点。
     activities = [
         activity for activity in activities
-        if _has_heatmap_line(getattr(activity, "simplified_track", None))
+        if _has_heatmap_line(
+            getattr(activity, "simplified_track", activity if isinstance(activity, list) else None)
+        )
     ]
     if len(activities) <= limit:
         return activities
@@ -315,9 +511,13 @@ def _normalize_heatmap_viewport(
     """校验并向外吸附视野边界，让小幅拖动能命中同一份 Redis 缓存。"""
     values = (west, south, east, north)
     if zoom is None or any(value is None for value in values):
-        raise ValueError("viewport detail requires west/south/east/north/zoom")
-    if not all(_math.isfinite(float(value)) for value in values):
-        raise ValueError("invalid heatmap viewport")
+        raise InvalidHeatmapViewport("viewport detail requires west/south/east/north/zoom")
+    try:
+        finite = all(_math.isfinite(float(value)) for value in values)
+    except (TypeError, ValueError):
+        finite = False
+    if not finite:
+        raise InvalidHeatmapViewport("invalid heatmap viewport")
 
     west_value = float(west)
     south_value = float(south)
@@ -325,14 +525,14 @@ def _normalize_heatmap_viewport(
     north_value = float(north)
     zoom_value = int(zoom)
     if not (3 <= zoom_value <= 20):
-        raise ValueError("invalid heatmap zoom")
+        raise InvalidHeatmapViewport("invalid heatmap zoom")
     if not (-180 <= west_value < east_value <= 180 and -90 <= south_value < north_value <= 90):
-        raise ValueError("invalid heatmap viewport")
+        raise InvalidHeatmapViewport("invalid heatmap viewport")
     if (
         east_value - west_value > _HEATMAP_VIEWPORT_MAX_SPAN_LON
         or north_value - south_value > _HEATMAP_VIEWPORT_MAX_SPAN_LAT
     ):
-        raise ValueError("heatmap viewport is too large")
+        raise InvalidHeatmapViewport("heatmap viewport is too large")
 
     if zoom_value <= 10:
         cell = 0.1
@@ -361,6 +561,43 @@ def _point_in_heatmap_viewport(point: dict, viewport: tuple[float, float, float,
     return west <= float(point["lon"]) <= east and south <= float(point["lat"]) <= north
 
 
+def _heatmap_segment_intersects_viewport(
+    start: dict,
+    end: dict,
+    viewport: tuple[float, float, float, float, int],
+) -> bool:
+    """Liang-Barsky 线段裁剪判断；两个端点都在屏幕外时也不能漏掉穿屏轨迹。"""
+    if _point_in_heatmap_viewport(start, viewport) or _point_in_heatmap_viewport(end, viewport):
+        return True
+    west, south, east, north, _ = viewport
+    x1 = float(start["lon"])
+    y1 = float(start["lat"])
+    dx = float(end["lon"]) - x1
+    dy = float(end["lat"]) - y1
+    t_min = 0.0
+    t_max = 1.0
+    for p, q in (
+        (-dx, x1 - west),
+        (dx, east - x1),
+        (-dy, y1 - south),
+        (dy, north - y1),
+    ):
+        if abs(p) < 1e-12:
+            if q < 0:
+                return False
+            continue
+        ratio = q / p
+        if p < 0:
+            if ratio > t_max:
+                return False
+            t_min = max(t_min, ratio)
+        else:
+            if ratio < t_min:
+                return False
+            t_max = min(t_max, ratio)
+    return True
+
+
 def _clip_heatmap_track_to_viewport(
     track: object,
     viewport: tuple[float, float, float, float, int],
@@ -378,21 +615,20 @@ def _clip_heatmap_track_to_viewport(
 
     segments: list[list[dict]] = []
     current: list[dict] = []
-    previous: dict | None = None
-    previous_inside = False
-    for point in clean:
-        inside = _point_in_heatmap_viewport(point, viewport)
-        if inside:
-            if not previous_inside and previous is not None:
-                current = [previous]
-            current.append(point)
-        elif previous_inside and current:
-            current.append(point)
+    for start, end in zip(clean, clean[1:]):
+        if _heatmap_segment_intersects_viewport(start, end, viewport):
+            if not current:
+                current = [start]
+            elif current[-1] != start:
+                if len(current) >= 2:
+                    segments.append(current)
+                current = [start]
+            if current[-1] != end:
+                current.append(end)
+        elif current:
             if len(current) >= 2:
                 segments.append(current)
             current = []
-        previous = point
-        previous_inside = inside
     if len(current) >= 2:
         segments.append(current)
 
@@ -432,19 +668,17 @@ def _build_heatmap_viewport_tracks(
     viewport: tuple[float, float, float, float, int],
 ) -> tuple[list[list[list[float]]], int]:
     """只生成当前视野需要的折线；总览清晰度约为旧 9000 点方案的 2.7 倍。"""
-    segments: list[list[dict]] = []
-    visible_activity_count = 0
-    for activity in activities:
-        activity_segments = _clip_heatmap_track_to_viewport(activity.simplified_track, viewport)
-        if activity_segments:
-            visible_activity_count += 1
-            segments.extend(activity_segments)
+    segments: list[tuple[int, list[dict]]] = []
+    for activity_index, activity in enumerate(activities):
+        source_track = getattr(activity, "simplified_track", activity)
+        activity_segments = _clip_heatmap_track_to_viewport(source_track, viewport)
+        segments.extend((activity_index, segment) for segment in activity_segments)
     if not segments:
         return [], 0
 
     total_budget, per_segment_limit = _heatmap_viewport_budget(viewport[4])
     if len(segments) * 2 > total_budget:
-        segments = sorted(segments, key=len, reverse=True)[: total_budget // 2]
+        segments = sorted(segments, key=lambda item: len(item[1]), reverse=True)[: total_budget // 2]
     point_limit = _heatmap_points_per_activity(
         len(segments),
         per_activity_limit=per_segment_limit,
@@ -452,14 +686,57 @@ def _build_heatmap_viewport_tracks(
     )
 
     result = []
-    for segment in segments:
+    rendered_activity_ids = set()
+    for activity_index, segment in segments:
         reduced = _select_heatmap_key_points(segment, point_limit)
         if len(reduced) >= 2:
             result.append([
                 [round(float(point["lon"]), 5), round(float(point["lat"]), 5)]
                 for point in reduced
             ])
-    return result, visible_activity_count
+            rendered_activity_ids.add(activity_index)
+    return result, len(rendered_activity_ids)
+
+
+def _build_heatmap_viewport_source(activities: list) -> list[list[list[float]]]:
+    """一次生成可复用的高精度源层；后续拖图不再反复读取 6 MB JSONB。"""
+    max_tracks = _HEATMAP_VIEWPORT_SOURCE_POINT_BUDGET // 2
+    selected = _select_heatmap_preview_activities(activities, max_tracks)
+    point_limit = _heatmap_points_per_activity(
+        len(selected),
+        per_activity_limit=_HEATMAP_VIEWPORT_SOURCE_POINTS_PER_ACTIVITY,
+        total_point_budget=_HEATMAP_VIEWPORT_SOURCE_POINT_BUDGET,
+    )
+    tracks = []
+    for activity in selected:
+        track = _build_heatmap_preview_track(activity.simplified_track, point_limit)
+        if track:
+            tracks.append(track)
+    return tracks
+
+
+def _build_heatmap_tracks_from_source(
+    source_tracks: list,
+    *,
+    per_activity_limit: int,
+    total_point_budget: int,
+) -> list[list[list[float]]]:
+    """从已缓存的高精度源层派生 card/full，避免同一次打开又读一遍 PostgreSQL。"""
+    drawable = _select_heatmap_preview_activities(
+        source_tracks,
+        total_point_budget // 2,
+    )
+    point_limit = _heatmap_points_per_activity(
+        len(drawable),
+        per_activity_limit=per_activity_limit,
+        total_point_budget=total_point_budget,
+    )
+    tracks = []
+    for track in drawable:
+        preview = _build_heatmap_preview_track(track, point_limit)
+        if preview:
+            tracks.append(preview)
+    return tracks
 
 
 def _heatmap_activity_year(activity: object) -> int | None:
@@ -512,8 +789,9 @@ def get_user_heatmap(
     year 可选：不传返回全部年份，传入后只返回对应自然年活动；响应始终带
     available_years，供全屏地图的年份图层控制使用。
 
-    Redis 缓存 TTL 1h，v4 key 同时区分 city / year / detail；viewport 还按向外吸附后的
-    视野和 zoom 分桶，让轻微拖动复用缓存且不会漏掉屏幕边缘轨迹。
+    v4 cache 同时区分 city / year / detail；viewport 先生成 7.2 万点以内的压缩源层，
+    后续拖图不再读全量 JSONB。视野结果按边界和 zoom 分桶、TTL 15 分钟且每用户最多 12 份；
+    源层和总览 TTL 1 小时。
 
     陷阱守卫：
     - 陷阱 #5（redis-py 7+ 默认返 bytes）→ json.loads 前 decode
@@ -533,12 +811,14 @@ def get_user_heatmap(
         }
     """
     if detail not in {"card", "full", "viewport"}:
-        raise ValueError(f"invalid heatmap detail: {detail}")
+        raise InvalidHeatmapViewport(f"invalid heatmap detail: {detail}")
 
     viewport = None
     if detail == "viewport":
         viewport = _normalize_heatmap_viewport(west, south, east, north, zoom)
 
+    redis_client = _get_redis_client()
+    cache_generation = _heatmap_cache_generation(redis_client, user_id)
     cache_parts = [f"{_HEATMAP_CACHE_PREFIX}{user_id}", f"detail_{detail}"]
     if city is not None:
         cache_parts.append(f"city_{city}")
@@ -546,25 +826,101 @@ def get_user_heatmap(
     if viewport is not None:
         viewport_key = ":".join(str(value).replace("-", "m").replace(".", "p") for value in viewport)
         cache_parts.append(f"viewport_{viewport_key}")
+    if cache_generation > 0:
+        cache_parts.append(f"generation_{cache_generation}")
     cache_key = ":".join(cache_parts)
-    redis_client = _get_redis_client()
     cached = redis_client.get(cache_key)
     if cached is not None:
-        return _json.loads(cached.decode() if isinstance(cached, bytes) else cached)
+        decoded_cache = _decode_heatmap_cache(cached, expected_generation=cache_generation)
+        if decoded_cache is not None:
+            return decoded_cache
+
+    source_cache_key = None
+    if detail in {"full", "viewport"}:
+        source_cache_key = _heatmap_viewport_source_cache_key(
+            user_id,
+            city,
+            year,
+            cache_generation,
+        )
+        cached_source = redis_client.get(source_cache_key)
+        if cached_source is not None:
+            source = _decode_heatmap_cache(
+                cached_source,
+                expected_generation=cache_generation,
+            )
+        else:
+            source = None
+        if source is not None:
+            result = _heatmap_result_from_source(
+                source,
+                detail=detail,
+                city=city,
+                year=year,
+                viewport=viewport,
+            )
+            _store_heatmap_result_cache(
+                redis_client,
+                user_id,
+                cache_key,
+                detail,
+                result,
+                cache_generation,
+            )
+            return result
+
+        _, waited_source = _claim_heatmap_source_build(
+            redis_client,
+            source_cache_key,
+            cache_generation,
+        )
+        if waited_source is not None:
+            result = _heatmap_result_from_source(
+                waited_source,
+                detail=detail,
+                city=city,
+                year=year,
+                viewport=viewport,
+            )
+            _store_heatmap_result_cache(
+                redis_client,
+                user_id,
+                cache_key,
+                detail,
+                result,
+                cache_generation,
+            )
+            return result
 
     # 查该用户所有 completed activities + 有 simplified_track 的
     # Sprint 5 task-2 dedupe：跳过 duplicate 防 heatmap 同轨迹双显
-    activities = (
-        db.query(_Activity.simplified_track, _Activity.started_at)
-        .filter(
-            _Activity.user_id == user_id,
-            _Activity.status == "completed",
-            _Activity.duplicate_of.is_(None),
-            _Activity.activity_type == "cycling",  # Sprint 7 Fix 7：防非骑行污染热力图
-            _Activity.simplified_track.isnot(None),
-        )
-        .all()
+    activity_filters = (
+        _Activity.user_id == user_id,
+        _Activity.status == "completed",
+        _Activity.duplicate_of.is_(None),
+        _Activity.activity_type == "cycling",  # Sprint 7 Fix 7：防非骑行污染热力图
+        _Activity.simplified_track.isnot(None),
     )
+    activities_query = db.query(_Activity.simplified_track, _Activity.started_at).filter(*activity_filters)
+    prefetched_available_years = None
+    if detail in {"full", "viewport"} and year is not None and city is None:
+        # 年份全屏首帧与视野共用源层；先轻量读取年份列表，再把大 JSONB 查询下推到所选年。
+        year_rows = db.query(_Activity.started_at).filter(*activity_filters).all()
+        prefetched_available_years = sorted(
+            {
+                activity_year
+                for row in year_rows
+                if (activity_year := _heatmap_activity_year(row)) is not None
+            },
+            reverse=True,
+        )
+        start_bj = datetime(year, 1, 1, tzinfo=BEIJING_TZ)
+        end_bj = datetime(year + 1, 1, 1, tzinfo=BEIJING_TZ)
+        activities_query = activities_query.filter(
+            _Activity.started_at >= start_bj.astimezone(timezone.utc),
+            _Activity.started_at < end_bj.astimezone(timezone.utc),
+        )
+    activities = activities_query.all()
 
     # 城市筛分支：
     # - city is None → 不筛 / 全部 completed activities（含 simplified_track）都算
@@ -583,15 +939,38 @@ def get_user_heatmap(
         if _infer_city_from_coords(lat, lon) == city:
             filtered.append(a)
 
-    available_years = sorted(
-        {activity_year for a in filtered if (activity_year := _heatmap_activity_year(a)) is not None},
-        reverse=True,
+    available_years = (
+        prefetched_available_years
+        if prefetched_available_years is not None
+        else sorted(
+            {activity_year for a in filtered if (activity_year := _heatmap_activity_year(a)) is not None},
+            reverse=True,
+        )
     )
     if year is not None:
         filtered = [a for a in filtered if _heatmap_activity_year(a) == year]
 
+    source_tracks = None
+    if detail in {"full", "viewport"}:
+        source_tracks = _build_heatmap_viewport_source(filtered)
+        source = {"tracks": source_tracks, "available_years": available_years}
+        source_cache_key = source_cache_key or _heatmap_viewport_source_cache_key(
+            user_id,
+            city,
+            year,
+            cache_generation,
+        )
+        _store_heatmap_cache(
+            redis_client,
+            source_cache_key,
+            source,
+            _HEATMAP_CACHE_TTL_SEC,
+            compress=True,
+            generation=cache_generation,
+        )
+
     if detail == "viewport":
-        tracks, visible_activity_count = _build_heatmap_viewport_tracks(filtered, viewport)
+        tracks, visible_activity_count = _build_heatmap_viewport_tracks(source_tracks, viewport)
         result = {
             "city": city,
             "tracks": tracks,
@@ -599,7 +978,14 @@ def get_user_heatmap(
             "available_years": available_years,
             "selected_year": year,
         }
-        redis_client.setex(cache_key, _HEATMAP_CACHE_TTL_SEC, _json.dumps(result))
+        _store_heatmap_result_cache(
+            redis_client,
+            user_id,
+            cache_key,
+            detail,
+            result,
+            cache_generation,
+        )
         return result
 
     if detail == "card":
@@ -608,6 +994,29 @@ def get_user_heatmap(
     else:
         per_activity_limit = _HEATMAP_POINTS_PER_ACTIVITY
         total_point_budget = _HEATMAP_TOTAL_POINT_BUDGET
+
+    if detail == "full" and source_tracks is not None:
+        tracks = _build_heatmap_tracks_from_source(
+            source_tracks,
+            per_activity_limit=per_activity_limit,
+            total_point_budget=total_point_budget,
+        )
+        result = {
+            "city": city,
+            "tracks": tracks,
+            "activity_count": len(tracks),
+            "available_years": available_years,
+            "selected_year": year,
+        }
+        _store_heatmap_result_cache(
+            redis_client,
+            user_id,
+            cache_key,
+            detail,
+            result,
+            cache_generation,
+        )
+        return result
 
     max_tracks = total_point_budget // 2
     preview_activities = _select_heatmap_preview_activities(filtered, max_tracks)
@@ -632,7 +1041,14 @@ def get_user_heatmap(
         "selected_year": year,
     }
 
-    redis_client.setex(cache_key, _HEATMAP_CACHE_TTL_SEC, _json.dumps(result))
+    _store_heatmap_result_cache(
+        redis_client,
+        user_id,
+        cache_key,
+        detail,
+        result,
+        cache_generation,
+    )
     return result
 
 
@@ -693,6 +1109,8 @@ def invalidate_heatmap_cache(user_id: int) -> None:
     ⚠ 调用方：app/activity/worker.py:198 + 本文件 update_user_city / 拆分时通过 service.py 转导出 0 改动
     """
     redis_client = _get_redis_client()
+    # 先推进 generation：即使旧请求在扫描删除后才写回，它的缓存包也不会再被新请求接受。
+    redis_client.incr(f"{_HEATMAP_GENERATION_PREFIX}{user_id}")
     # 新 v3 地图缓存 + v2 静态卡片缓存 + 旧全量缓存一起失效；旧 key 会在自然 TTL 后消失，
     # 双删保证上传新活动时不会留下历史大对象。
     for prefix in (

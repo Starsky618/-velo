@@ -53,6 +53,7 @@ Page({
   },
 
   onLoad(options) {
+    this._pageAlive = true
     var requestedUserId = Number(options && options.userId)
     this._userId = Number.isInteger(requestedUserId) && requestedUserId > 0 ? requestedUserId : 0
     var savedColor = wx.getStorageSync('heatmapColor')
@@ -66,15 +67,22 @@ Page({
   },
 
   onReady() {
-    if (typeof wx.createMapContext === 'function') {
-      this._mapContext = wx.createMapContext('personal-heatmap-map', this)
+    this._pageReady = true
+    if (this._overviewLoaded) {
+      this._ensureMapContext()
+      this._scheduleViewportRefresh(220)
     }
-    if (this._overviewLoaded) this._scheduleViewportRefresh(220)
   },
 
   onUnload() {
+    this._pageAlive = false
     if (this._viewportTimer) clearTimeout(this._viewportTimer)
+    this._viewportTimer = null
+    this._overviewRequestSeq = (this._overviewRequestSeq || 0) + 1
     this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1
+    this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
+    this._pendingViewport = null
+    this._viewportReadRetries = 0
   },
 
   _endpoint() {
@@ -89,11 +97,17 @@ Page({
     if (this._viewportTimer) clearTimeout(this._viewportTimer)
     this._viewportTimer = null
     this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1
+    this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
+    this._pendingViewport = null
+    this._viewportReadRetries = 0
     this._lastViewportKey = ''
+    var overviewRequestSeq = (this._overviewRequestSeq || 0) + 1
+    this._overviewRequestSeq = overviewRequestSeq
     this.setData(initial ? { loading: true, error: '' } : { updating: true })
 
     api.get(this._endpoint(), params)
       .then((data) => {
+        if (this._pageAlive === false || overviewRequestSeq !== this._overviewRequestSeq) return
         var tracks = data && Array.isArray(data.tracks) ? data.tracks : []
         // 全屏比个人页精细，但仍控制渲染层体积；缩放探索不需要原始 GPS 采样率。
         var model = heatmapMap.buildHeatmapMapModel(
@@ -142,9 +156,13 @@ Page({
           selectedYearLabel: year === null ? '全部年份' : String(year) + ' 年',
           yearOptions: yearOptions(availableYears, year),
           focusMode: 'local',
-        }, () => this._scheduleViewportRefresh(260))
+        }, () => {
+          this._ensureMapContext()
+          this._scheduleViewportRefresh(260)
+        })
       })
       .catch(() => {
+        if (this._pageAlive === false || overviewRequestSeq !== this._overviewRequestSeq) return
         if (initial) {
           this.setData({ loading: false, updating: false, error: '热图暂时加载失败' })
           return
@@ -152,6 +170,14 @@ Page({
         this.setData({ updating: false })
         wx.showToast({ title: '切换失败，请重试', icon: 'none' })
       })
+  },
+
+  _ensureMapContext() {
+    if (!this._pageReady || this._mapContext || typeof wx.createMapContext !== 'function') {
+      return this._mapContext || null
+    }
+    this._mapContext = wx.createMapContext('personal-heatmap-map', this)
+    return this._mapContext
   },
 
   onRetry() {
@@ -197,14 +223,27 @@ Page({
   },
 
   _scheduleViewportRefresh(delay) {
-    if (!this._mapContext || !this._overviewLoaded) return
+    if (this._pageAlive === false || !this._ensureMapContext() || !this._overviewLoaded) return
     if (this._viewportTimer) clearTimeout(this._viewportTimer)
+    var readSeq = (this._viewportReadSeq || 0) + 1
+    this._viewportReadSeq = readSeq
     this._viewportTimer = setTimeout(() => {
       this._viewportTimer = null
       this._readViewport().then((viewport) => {
-        if (viewport) this._fetchViewport(viewport)
+        this._handleViewportRead(readSeq, viewport)
       })
     }, Math.max(0, Number(delay) || 0))
+  },
+
+  _handleViewportRead(readSeq, viewport) {
+    if (this._pageAlive === false || readSeq !== this._viewportReadSeq) return
+    if (viewport) {
+      this._viewportReadRetries = 0
+      this._fetchViewport(viewport)
+      return
+    }
+    this._viewportReadRetries = (this._viewportReadRetries || 0) + 1
+    if (this._viewportReadRetries <= 2) this._scheduleViewportRefresh(350)
   },
 
   _readViewport() {
@@ -255,6 +294,7 @@ Page({
   },
 
   _fetchViewport(viewport) {
+    if (this._pageAlive === false) return
     // 跨省/全国视角继续使用首屏总览；城市及街区视角才请求高精度视野数据。
     if (viewport.zoom < 8 || viewport.east - viewport.west > 20 || viewport.north - viewport.south > 15) {
       this._showOverviewLayer()
@@ -268,8 +308,15 @@ Page({
       viewport.north.toFixed(4),
       this.data.selectedYear === null ? 'all' : this.data.selectedYear,
     ].join(':')
+    if (this._viewportFetchInFlight) {
+      this._pendingViewport = viewport
+      this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1
+      this._lastViewportKey = ''
+      return
+    }
     if (key === this._lastViewportKey) return
     this._lastViewportKey = key
+    this._viewportFetchInFlight = true
     var requestSeq = (this._viewportRequestSeq || 0) + 1
     this._viewportRequestSeq = requestSeq
     var params = {
@@ -284,7 +331,10 @@ Page({
 
     api.get(this._endpoint(), params)
       .then((data) => {
-        if (requestSeq !== this._viewportRequestSeq) return
+        if (this._pageAlive === false || requestSeq !== this._viewportRequestSeq) {
+          this._finishViewportRequest()
+          return
+        }
         var tracks = data && Array.isArray(data.tracks) ? data.tracks : []
         var model = heatmapMap.buildHeatmapMapModel(
           tracks,
@@ -295,18 +345,33 @@ Page({
         )
         this._renderedTracks = model ? model.preparedTracks : []
         this.setData({ polylines: model ? model.polylines : [] })
+        this._finishViewportRequest()
       })
       .catch(() => {
+        if (this._pageAlive === false) {
+          this._finishViewportRequest()
+          return
+        }
         if (requestSeq === this._viewportRequestSeq) this._lastViewportKey = ''
         // 保留上一帧图层：移动地图时网络抖动不闪白，也不打断用户继续探索。
+        this._finishViewportRequest()
       })
+  },
+
+  _finishViewportRequest() {
+    this._viewportFetchInFlight = false
+    var pending = this._pendingViewport
+    this._pendingViewport = null
+    if (this._pageAlive !== false && pending) this._fetchViewport(pending)
   },
 
   _showOverviewLayer() {
     var tracks = this._overviewPreparedTracks || []
-    if (!tracks.length || this._renderedTracks === tracks) return
     this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1
+    this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
+    this._pendingViewport = null
     this._lastViewportKey = ''
+    if (!tracks.length || this._renderedTracks === tracks) return
     this._renderedTracks = tracks
     this.setData({
       polylines: heatmapMap.buildPolylines(

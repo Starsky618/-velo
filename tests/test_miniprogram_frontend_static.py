@@ -386,6 +386,258 @@ model.polylines.forEach((line) => assert.ok(line.points.length >= 2))
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
+def test_heatmap_zooming_out_invalidates_inflight_viewport_even_when_overview_is_visible():
+    script = """
+const assert = require('assert')
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const overview = [[{ longitude: 116.4, latitude: 39.9 }, { longitude: 116.5, latitude: 40.0 }]]
+const page = Object.assign({}, pageDefinition, {
+  data: { selectedColor: 'orange' },
+  _overviewPreparedTracks: overview,
+  _renderedTracks: overview,
+  _viewportRequestSeq: 7,
+  _lastViewportKey: 'inflight',
+  setData: function () { throw new Error('same overview should not redraw') },
+})
+
+page._showOverviewLayer()
+
+assert.strictEqual(page._viewportRequestSeq, 8)
+assert.strictEqual(page._lastViewportKey, '')
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_last_year_request_wins_and_map_context_waits_for_rendered_map():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const requests = []
+require.cache[apiPath] = { exports: {
+  get: function () { return new Promise((resolve) => requests.push(resolve)) },
+} }
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+let mapContextCreates = 0
+global.wx = {
+  createMapContext: function () { mapContextCreates += 1; return { id: 'map' } },
+}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const page = Object.assign({}, pageDefinition, {
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'orange' }),
+  _endpoint: function () { return '/api/user/me/heatmap' },
+  _scheduleViewportRefresh: function () {},
+  setData: function (update, callback) {
+    Object.assign(this.data, update)
+    if (callback) callback()
+  },
+})
+
+// loading 时 map 尚未挂载，不能提前创建 MapContext。
+assert.strictEqual(page._ensureMapContext(), null)
+assert.strictEqual(mapContextCreates, 0)
+page._pageReady = true
+
+page._fetchHeatmap(2025, false)
+page._fetchHeatmap(2024, false)
+const response = (year) => ({
+  tracks: [[[116.4, 39.9], [116.5, 40.0]]],
+  activity_count: 1,
+  available_years: [2025, 2024],
+  selected_year: year,
+})
+
+;(async function () {
+  requests[1](response(2024))
+  await new Promise(setImmediate)
+  requests[0](response(2025))
+  await new Promise(setImmediate)
+  assert.strictEqual(page.data.selectedYear, 2024)
+  assert.strictEqual(mapContextCreates, 1)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_viewport_requests_are_single_flight_and_keep_latest_pending_view():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const requests = []
+let active = 0
+let maxActive = 0
+require.cache[apiPath] = { exports: {
+  get: function () {
+    active += 1
+    maxActive = Math.max(maxActive, active)
+    return new Promise((resolve) => requests.push(function (value) { active -= 1; resolve(value) }))
+  },
+} }
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const page = Object.assign({}, pageDefinition, {
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'orange', selectedYear: null }),
+  _endpoint: function () { return '/api/user/me/heatmap' },
+  setData: function (update) { Object.assign(this.data, update) },
+})
+const first = { west: 116.2, south: 39.7, east: 116.6, north: 40.1, zoom: 10 }
+const latest = { west: 116.3, south: 39.7, east: 116.7, north: 40.1, zoom: 10 }
+const response = { tracks: [[[116.4, 39.9], [116.5, 40.0]]] }
+
+;(async function () {
+  page._fetchViewport(first)
+  page._fetchViewport(latest)
+  assert.strictEqual(requests.length, 1)
+  requests[0](response)
+  await new Promise(setImmediate)
+  assert.strictEqual(requests.length, 2)
+  requests[1](response)
+  await new Promise(setImmediate)
+  assert.strictEqual(maxActive, 1)
+  assert.strictEqual(page._pendingViewport, null)
+  assert.strictEqual(page.data.polylines.length, 1)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_viewport_read_generation_keeps_newest_async_map_region():
+    script = """
+const assert = require('assert')
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const reads = []
+const fetched = []
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  _overviewLoaded: true,
+  _ensureMapContext: function () { return {} },
+  _readViewport: function () {
+    return new Promise((resolve) => reads.push(resolve))
+  },
+  _fetchViewport: function (viewport) { fetched.push(viewport) },
+})
+const older = { west: 116.1, south: 39.7, east: 116.5, north: 40.1, zoom: 10 }
+const newest = { west: 116.3, south: 39.7, east: 116.7, north: 40.1, zoom: 10 }
+
+;(async function () {
+  page._scheduleViewportRefresh(0)
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  page._scheduleViewportRefresh(0)
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  reads[1](newest)
+  await new Promise(setImmediate)
+  reads[0](older)
+  await new Promise(setImmediate)
+  assert.deepStrictEqual(fetched, [newest])
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_unload_does_not_resurrect_viewport_retry_timer():
+    script = """
+const assert = require('assert')
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+let resolveRead = null
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  _overviewLoaded: true,
+  _ensureMapContext: function () { return {} },
+  _readViewport: function () {
+    return new Promise((resolve) => { resolveRead = resolve })
+  },
+})
+
+;(async function () {
+  page._scheduleViewportRefresh(0)
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  page.onUnload()
+  resolveRead(null)
+  await new Promise(setImmediate)
+  assert.strictEqual(page._pageAlive, false)
+  assert.strictEqual(page._viewportTimer, null)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_unload_ignores_late_overview_and_viewport_network_responses():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const requests = []
+require.cache[apiPath] = { exports: {
+  get: function () { return new Promise((resolve) => requests.push(resolve)) },
+} }
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const page = Object.assign({}, pageDefinition, {
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'orange', selectedYear: null }),
+  _pageAlive: true,
+  _endpoint: function () { return '/api/user/me/heatmap' },
+  setDataCalls: 0,
+  setData: function (update) {
+    this.setDataCalls += 1
+    Object.assign(this.data, update)
+  },
+})
+const overviewResponse = {
+  tracks: [[[116.4, 39.9], [116.5, 40.0]]],
+  activity_count: 1,
+  available_years: [2026],
+}
+
+;(async function () {
+  page._fetchHeatmap(null, true)
+  const callsBeforeUnload = page.setDataCalls
+  page.onUnload()
+  requests[0](overviewResponse)
+  await new Promise(setImmediate)
+  assert.strictEqual(page.setDataCalls, callsBeforeUnload)
+
+  const viewportPage = Object.assign({}, pageDefinition, {
+    data: Object.assign({}, pageDefinition.data, { selectedColor: 'orange', selectedYear: null }),
+    _pageAlive: true,
+    _endpoint: function () { return '/api/user/me/heatmap' },
+    setDataCalls: 0,
+    setData: function () { this.setDataCalls += 1 },
+  })
+  viewportPage._fetchViewport({ west: 116.2, south: 39.7, east: 116.7, north: 40.2, zoom: 10 })
+  viewportPage.onUnload()
+  requests[1](overviewResponse)
+  await new Promise(setImmediate)
+  assert.strictEqual(viewportPage.setDataCalls, 0)
+  assert.strictEqual(viewportPage._viewportFetchInFlight, false)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
 def test_route_map_page_is_registered_and_uses_native_map_without_custom_subkey():
     app_json = json.loads(_read(MINI / "app.json"))
     js = _read(MINI / "pages" / "route-map" / "route-map.js")

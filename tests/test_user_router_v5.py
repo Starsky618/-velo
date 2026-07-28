@@ -14,6 +14,8 @@ from unittest.mock import patch
 
 import pytest
 
+from app.user import service
+
 
 # ───────────────────────────────────────────────────────────────────────
 # GET /api/user/me/power-curve
@@ -198,6 +200,22 @@ def test_heatmap_viewport_requires_bounds_and_passes_visible_region(client, auth
         "/api/user/me/heatmap?detail=tile",
         headers=auth_header,
     ).status_code == 422
+
+
+def test_heatmap_only_translates_expected_viewport_errors_to_422(client, auth_header):
+    url = (
+        "/api/user/me/heatmap?detail=viewport&west=112.3&south=37.5"
+        "&east=112.8&north=38.1&zoom=10"
+    )
+    with patch(
+        "app.user.router.service.get_user_heatmap",
+        side_effect=service.InvalidHeatmapViewport("invalid heatmap viewport"),
+    ):
+        assert client.get(url, headers=auth_header).status_code == 422
+
+    with patch("app.user.router.service.get_user_heatmap", side_effect=ValueError("corrupt cache")):
+        with pytest.raises(ValueError, match="corrupt cache"):
+            client.get(url, headers=auth_header)
 
 
 # ───────────────────────────────────────────────────────────────────────

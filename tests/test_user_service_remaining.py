@@ -26,11 +26,17 @@ from app.user.service import (
     update_user_city,
 )
 from app.user.service_social import (
+    _claim_heatmap_source_build,
+    _heatmap_cache_generation,
+    _decode_heatmap_cache,
+    _encode_heatmap_cache,
+    _build_heatmap_viewport_source,
     _build_heatmap_viewport_tracks,
     _build_heatmap_preview_track,
     _heatmap_points_per_activity,
     _normalize_heatmap_viewport,
     _select_heatmap_preview_activities,
+    _trim_heatmap_viewport_cache,
 )
 
 
@@ -84,6 +90,7 @@ def _cleanup_db(db):
 
 
 def _cleanup_redis(redis_client, user_id: int):
+    redis_client.delete(f"heatmap:generation:user_{user_id}")
     for prefix in (
         "heatmap:v4:user_", "heatmap:v3:user_", "heatmap:v2:user_",
         "heatmap:user_", "power_curve:user_",
@@ -243,11 +250,13 @@ class TestGetUserHeatmap:
             ]
             activities.append(SimpleNamespace(simplified_track=track))
 
+        source_tracks = _build_heatmap_viewport_source(activities)
         viewport = _normalize_heatmap_viewport(112.3, 37.5, 112.8, 38.1, 10)
-        tracks, visible_count = _build_heatmap_viewport_tracks(activities, viewport)
+        tracks, visible_count = _build_heatmap_viewport_tracks(source_tracks, viewport)
         point_count = sum(len(track) for track in tracks)
         payload = json.dumps({"tracks": tracks}, separators=(",", ":")).encode()
 
+        assert sum(len(track) for track in source_tracks) <= 72_000
         assert visible_count == 293
         assert len(tracks) == 293
         assert 20_000 <= point_count <= 24_000
@@ -271,6 +280,101 @@ class TestGetUserHeatmap:
         assert tracks[0][-1] == [112.75, 37.95]
         with pytest.raises(ValueError, match="too large"):
             _normalize_heatmap_viewport(70, 10, 120, 40, 8)
+
+    def test_viewport_keeps_segment_that_crosses_screen_with_both_endpoints_outside(self):
+        activity = SimpleNamespace(simplified_track=[
+            {"lon": 116.30, "lat": 39.95},
+            {"lon": 116.60, "lat": 39.95},
+        ])
+
+        tracks, visible_count = _build_heatmap_viewport_tracks(
+            [activity],
+            (116.40, 39.90, 116.50, 40.00, 10),
+        )
+
+        assert visible_count == 1
+        assert tracks == [[[116.3, 39.95], [116.6, 39.95]]]
+
+    def test_viewport_activity_count_matches_rendered_activities_after_budget_cutoff(self):
+        activities = [
+            SimpleNamespace(simplified_track=[
+                {"lon": 116.41, "lat": 39.91},
+                {"lon": 116.42, "lat": 39.92},
+            ])
+            for _ in range(12_001)
+        ]
+
+        tracks, visible_count = _build_heatmap_viewport_tracks(
+            activities,
+            (116.30, 39.80, 116.60, 40.10, 10),
+        )
+
+        assert len(tracks) == 12_000
+        assert visible_count == 12_000
+
+    def test_viewport_cache_is_capped_per_user_and_keeps_current_key(self):
+        class FakeRedis:
+            def __init__(self, keys):
+                self.keys = list(keys)
+
+            def scan_iter(self, match):
+                assert match == "heatmap:v4:user_7:detail_viewport:*"
+                return iter(self.keys)
+
+            def delete(self, *keys):
+                self.keys = [key for key in self.keys if key not in keys]
+
+        current = "heatmap:v4:user_7:detail_viewport:current"
+        redis = FakeRedis([
+            f"heatmap:v4:user_7:detail_viewport:{index}".encode()
+            for index in range(15)
+        ] + [current.encode()])
+
+        _trim_heatmap_viewport_cache(redis, 7, current)
+
+        assert len(redis.keys) == 12
+        assert current.encode() in redis.keys
+
+    def test_stale_request_cache_envelope_is_rejected_after_invalidation_generation_changes(self):
+        stale = _encode_heatmap_cache(
+            {"tracks": [[[116.4, 39.9], [116.5, 40.0]]]},
+            generation=4,
+        )
+
+        assert _decode_heatmap_cache(stale, expected_generation=4) is not None
+        assert _decode_heatmap_cache(stale, expected_generation=5) is None
+
+    def test_heatmap_cache_generation_decodes_redis_bytes(self):
+        redis = SimpleNamespace(get=lambda _key: b"7")
+
+        assert _heatmap_cache_generation(redis, 42) == 7
+
+    def test_source_build_lock_makes_parallel_cold_request_reuse_finished_source(self):
+        source = {"tracks": [[[116.4, 39.9], [116.5, 40.0]]], "available_years": [2026]}
+
+        class FakeRedis:
+            def __init__(self):
+                self.claimed = False
+                self.cached = None
+
+            def set(self, _key, _value, **_kwargs):
+                if not self.claimed:
+                    self.claimed = True
+                    return True
+                return False
+
+            def get(self, _key):
+                return self.cached
+
+        redis = FakeRedis()
+        is_builder, waited = _claim_heatmap_source_build(redis, "source", 3)
+        assert is_builder is True
+        assert waited is None
+
+        redis.cached = _encode_heatmap_cache(source, generation=3)
+        is_builder, waited = _claim_heatmap_source_build(redis, "source", 3)
+        assert is_builder is False
+        assert waited == source
 
     def test_invalid_tracks_do_not_consume_global_preview_budget(self):
         invalid = [
@@ -493,20 +597,24 @@ class TestGetUserHeatmap:
             cached_keys = list(real_redis.scan_iter(match=f"heatmap:v4:user_{user_id}:detail_viewport:*"))
             assert len(cached_keys) == 1
 
-            second = get_user_heatmap(
-                db,
-                user_id,
-                None,
-                None,
-                "viewport",
-                west=116.23,
-                south=39.73,
-                east=116.57,
-                north=40.07,
-                zoom=10,
-            )
-            assert second == first
-            assert len(list(real_redis.scan_iter(match=f"heatmap:v4:user_{user_id}:detail_viewport:*"))) == 1
+            source_key = f"heatmap:v4:user_{user_id}:detail_viewport_source:year_all"
+            assert real_redis.get(source_key).startswith(b"z1:")
+
+            with patch.object(db, "query", side_effect=AssertionError("source cache should avoid PostgreSQL")):
+                second = get_user_heatmap(
+                    db,
+                    user_id,
+                    None,
+                    None,
+                    "viewport",
+                    west=116.32,
+                    south=39.72,
+                    east=116.68,
+                    north=40.08,
+                    zoom=10,
+                )
+            assert second["activity_count"] == 1
+            assert len(list(real_redis.scan_iter(match=f"heatmap:v4:user_{user_id}:detail_viewport:*"))) == 2
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -621,9 +729,13 @@ class TestUpdateUserCity:
             user_id = user.id
             _cleanup_redis(real_redis, user_id)
 
+            generation_key = f"heatmap:generation:user_{user_id}"
+            generation_before = int(real_redis.get(generation_key) or 0)
             keys = [
                 f"heatmap:v4:user_{user_id}:detail_full:year_all",
                 f"heatmap:v4:user_{user_id}:detail_card:year_2026",
+                f"heatmap:v4:user_{user_id}:detail_viewport_source:year_all",
+                f"heatmap:v4:user_{user_id}:detail_viewport:year_all:viewport_1",
                 f"heatmap:v3:user_{user_id}:detail_full:year_all",
                 f"heatmap:v2:user_{user_id}",
                 f"heatmap:v2:user_{user_id}:city_beijing",
@@ -637,6 +749,30 @@ class TestUpdateUserCity:
             # 改 city → 应清缓存
             update_user_city(db, user_id, "shanghai")
             assert all(real_redis.get(key) is None for key in keys)
+            generation_after = generation_before + 1
+            assert int(real_redis.get(generation_key)) == generation_after
+
+            # generation 非零后 card/full/viewport 三条真实路径都能重建，且使用新代 key。
+            card = get_user_heatmap(db, user_id, None, None, "card")
+            full = get_user_heatmap(db, user_id, None, None, "full")
+            viewport = get_user_heatmap(
+                db,
+                user_id,
+                None,
+                None,
+                "viewport",
+                west=116.2,
+                south=39.7,
+                east=116.7,
+                north=40.2,
+                zoom=10,
+            )
+            assert card["activity_count"] == 1
+            assert full["activity_count"] == 1
+            assert viewport["activity_count"] == 1
+            new_keys = list(real_redis.scan_iter(match=f"heatmap:v4:user_{user_id}:*"))
+            assert new_keys
+            assert all(f"generation_{generation_after}".encode() in key for key in new_keys)
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
