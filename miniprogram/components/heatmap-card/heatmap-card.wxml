@@ -29,7 +29,7 @@
   <text class="subtitle">你骑过的全部区域</text>
 
   <view class="heatmap-map-shell">
-    <!-- canvas 永久在 DOM（不被状态切换销毁）：新版 Canvas 2D，全量轨迹完整渲染无点数上限 -->
+    <!-- canvas 永久在 DOM（不被状态切换销毁）：新版 Canvas 2D，完整绘制服务端显示精度轨迹 -->
     <canvas type="2d" id="heatmap-canvas" class="heatmap-canvas"></canvas>
     <!-- loading/error/empty 文案叠在 canvas 上层（cover），渲染态时全部隐藏露出轨迹 -->
     <view wx:if="{{loading}}" class="heatmap-state loading-mini">加载中...</view>

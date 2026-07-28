@@ -35,7 +35,8 @@ def simplify_track(trackpoints: list[dict], target_count: int = 1500) -> list[di
         target_count: 目标点数，默认 1500（v3 polish hotfix v5 / 800 → 1500）
             提高动机：山区 track 跳点频率是城市 10x+（curl 实测 user 2 山区 >500m segment=76）
             提高到 1500 后山区跳点频率 ~减半 / 实线比例 87% → 93% / 视觉更"贴道"
-            数据量代价：simplified_track JSON 增 ~80% / setData 5MB → 9MB（仍 < 微信软上限）
+            数据量代价：simplified_track 存储 JSON 增 ~80%。这是活动详情的保形数据源，
+            禁止列表/热图直接全量下发；固定尺寸视图必须再生成显示精度预览。
 
     返回：
         [{lat, lon, ele}, ...] 精简列表，点数接近 target_count（±20%）

@@ -592,6 +592,15 @@ def _run_tier2(
         db.commit()
         return
 
+    # 历史导入此前漏清 heatmap；必须在 completed 提交后失效，下一次打开个人页
+    # 才会立即包含刚导入的轨迹，同时避免 commit 前清理产生旧值回填 race。
+    if not is_duplicate:
+        try:
+            from app.user.service_social import invalidate_heatmap_cache
+            invalidate_heatmap_cache(activity.user_id)
+        except Exception:
+            logger.exception("heatmap cache invalidation failed activity_id=%s", activity.id)
+
     # ---- 赛段匹配（尽力而为 / Sprint 5 task-2 守卫：duplicate 跳过防 effort 重复）----
     if not is_duplicate:
         try:

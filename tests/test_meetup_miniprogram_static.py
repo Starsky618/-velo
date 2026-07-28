@@ -564,8 +564,8 @@ def test_create_page_uses_shared_paper_map_theme_for_route_preview():
 
 
 def test_heatmap_card_uses_canvas2d_for_full_tracks_no_whiteout():
-    # 2026-06-13 修白屏：全量轨迹（几十万点）塞旧 ctx.draw() 渲染超时白屏，
-    # 改用新版 Canvas 2D（type="2d" + this.createSelectorQuery）完整画不抽稀。
+    # 2026-06-13 修白屏：全量轨迹（几十万点）塞旧 ctx.draw() 渲染超时白屏；
+    # 新版 Canvas 2D 完整绘制服务端按显示预算返回的预览点。
     js = _read(MINI / "components" / "heatmap-card" / "heatmap-card.js")
     wxml = _read(MINI / "components" / "heatmap-card" / "heatmap-card.wxml")
     wxss = _read(MINI / "components" / "heatmap-card" / "heatmap-card.wxss")
@@ -585,6 +585,212 @@ def test_heatmap_card_uses_canvas2d_for_full_tracks_no_whiteout():
     assert "drawHeatmap2d" in thumb
     assert "comp.createSelectorQuery()" in thumb
     assert "getContext('2d')" in thumb
+
+
+def test_heatmap_keeps_large_track_payload_out_of_set_data():
+    # 真实账号 293 条活动时 tracks 约 6.7 MB；WXML 不读坐标，塞进 setData 只会
+    # 把同一份大数组复制到视图层并阻塞重启后的首屏渲染。
+    js = _read(MINI / "components" / "heatmap-card" / "heatmap-card.js")
+
+    assert "this._tracks = tracks" in js
+    assert "this.data.tracks" not in js
+    assert "tracks: tracks" not in js
+
+
+def test_heatmap_projects_distant_cities_into_readable_regions():
+    # 回归锚：北京 + 深圳若共用一个全国比例尺，城市内 20~50km 的路线只剩几个像素点。
+    # 热力图必须保留全部活动，同时给常骑区域独立可读的绘制空间。
+    script = """
+const assert = require('assert')
+const rt = require('./miniprogram/utils/route-thumb')
+
+function route(lon, lat, dx, dy) {
+  const points = []
+  for (let i = 0; i < 30; i++) {
+    points.push([lon + dx * i / 29, lat + Math.sin(i / 4) * dy])
+  }
+  return points
+}
+
+const beijing = [
+  route(116.25, 39.85, 0.35, 0.08),
+  route(116.30, 39.92, 0.28, 0.06),
+  route(116.18, 39.78, 0.42, 0.10),
+]
+const shenzhen = route(113.90, 22.50, 0.30, 0.05)
+const result = rt.projectHeatmapTracks(beijing.concat([shenzhen]), 327, 240, 12)
+
+assert.ok(result)
+assert.strictEqual(result.regions.length, 2)
+assert.strictEqual(result.tracks.length, 4)
+// 常骑区域占主画面；首条北京路线不再被全国跨度压成小点。
+const main = result.tracks[0]
+const xs = main.map(p => p.x)
+assert.ok(Math.max(...xs) - Math.min(...xs) > 100)
+// 深圳仍在右侧独立区域中，不被静默过滤。
+const remote = result.tracks[3]
+assert.ok(remote.every(p => p.x > 210 && p.x < 327))
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_keeps_five_distant_regions_independently_readable():
+    # 第 5 个城市不能和第 4 个城市重新合并共用全国比例尺；5+ 区域改用独立网格。
+    script = """
+const assert = require('assert')
+const rt = require('./miniprogram/utils/route-thumb')
+
+function route(lon, lat) {
+  const points = []
+  for (let i = 0; i < 30; i++) points.push([lon + i * 0.008, lat + Math.sin(i / 4) * 0.05])
+  return points
+}
+
+const tracks = [
+  route(116.3, 39.9),  // 北京
+  route(121.4, 31.2),  // 上海
+  route(104.0, 30.6),  // 成都
+  route(114.0, 22.5),  // 深圳
+  route(87.5, 43.8),   // 乌鲁木齐
+]
+const result = rt.projectHeatmapTracks(tracks, 327, 240, 12)
+
+assert.ok(result)
+assert.strictEqual(result.regions.length, 5)
+assert.strictEqual(result.tracks.length, 5)
+result.tracks.forEach(track => {
+  const xs = track.map(p => p.x)
+  const ys = track.map(p => p.y)
+  assert.ok(Math.max(...xs) - Math.min(...xs) > 40)
+  assert.ok(Math.max(...ys) - Math.min(...ys) > 10)
+})
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_drops_isolated_gps_teleport_without_losing_real_segments():
+    script = """
+const assert = require('assert')
+const rt = require('./miniprogram/utils/route-thumb')
+
+const track = [
+  [116.30, 39.90], [116.32, 39.91],
+  [0, 0],
+  [116.34, 39.92], [116.36, 39.93],
+]
+const result = rt.projectHeatmapTracks([track], 327, 240, 12)
+
+assert.ok(result)
+assert.strictEqual(result.regions.length, 1)
+assert.strictEqual(result.tracks.length, 2)
+assert.ok(result.tracks.every(segment => segment.length === 2))
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_drops_realistic_spike_and_short_bad_segment():
+    script = """
+const assert = require('assert')
+const rt = require('./miniprogram/utils/route-thumb')
+
+// 约 68km 单点漂移 + 两个相邻坏点都不应成为独立区域。
+const tracks = [
+  [[116.30, 39.90], [116.32, 39.91], [117.10, 39.91], [116.34, 39.92], [116.36, 39.93]],
+  [[116.30, 39.90], [116.32, 39.91], [117.10, 39.91], [117.105, 39.912], [116.34, 39.92], [116.36, 39.93]],
+]
+tracks.forEach(track => {
+  const result = rt.projectHeatmapTracks([track], 327, 240, 12)
+  assert.ok(result)
+  assert.strictEqual(result.regions.length, 1)
+  result.tracks.forEach(segment => {
+    assert.ok(segment.every(point => point.x < 327))
+    const xs = segment.map(point => point.x)
+    assert.ok(Math.max(...xs) - Math.min(...xs) > 100)
+  })
+})
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_keeps_sparse_three_point_long_ride():
+    script = """
+const assert = require('assert')
+const rt = require('./miniprogram/utils/route-thumb')
+
+const result = rt.projectHeatmapTracks([
+  [[116.3, 39.9], [116.9, 40.1], [117.5, 40.3]],
+], 327, 240, 12)
+
+assert.ok(result)
+assert.strictEqual(result.tracks.length, 1)
+assert.strictEqual(result.tracks[0].length, 3)
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_keeps_sparse_four_point_long_ride_and_two_real_regions():
+    script = """
+const assert = require('assert')
+const rt = require('./miniprogram/utils/route-thumb')
+
+const sparse = rt.projectHeatmapTracks([
+  [[116.0, 39.9], [116.6, 39.9], [117.2, 39.9], [117.8, 39.9]],
+], 327, 240, 12)
+assert.ok(sparse)
+assert.strictEqual(sparse.tracks.length, 1)
+assert.strictEqual(sparse.tracks[0].length, 4)
+
+// 一个连续双点段 + 稀疏远端点没有“跳出后返回”证据，也必须完整保留。
+const mixedThree = rt.projectHeatmapTracks([[
+  [116.0, 39.9], [116.02, 39.91], [116.7, 40.0],
+]], 327, 240, 12)
+assert.ok(mixedThree)
+assert.strictEqual(mixedThree.tracks.length, 1)
+assert.strictEqual(mixedThree.tracks[0].length, 3)
+
+const mixedFour = rt.projectHeatmapTracks([[
+  [116.0, 39.9], [116.02, 39.91], [116.7, 40.0], [117.3, 40.1],
+]], 327, 240, 12)
+assert.ok(mixedFour)
+assert.strictEqual(mixedFour.tracks.length, 1)
+assert.strictEqual(mixedFour.tracks[0].length, 4)
+
+// 同一活动内两个各自连续的真实区域没有“跳出后返回”证据，两个都必须保留。
+const twoRegions = rt.projectHeatmapTracks([[
+  [116.30, 39.90], [116.32, 39.91],
+  [121.40, 31.20], [121.42, 31.21],
+]], 327, 240, 12)
+assert.ok(twoRegions)
+assert.strictEqual(twoRegions.regions.length, 2)
+assert.strictEqual(twoRegions.tracks.length, 2)
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_prefers_returned_real_region_over_long_bad_cluster():
+    script = """
+const assert = require('assert')
+const rt = require('./miniprogram/utils/route-thumb')
+
+const result = rt.projectHeatmapTracks([[
+  [116.30, 39.90], [116.32, 39.91],
+  [117.10, 39.91], [117.105, 39.912], [117.11, 39.914], [117.115, 39.916], [117.12, 39.918],
+  [116.34, 39.92], [116.36, 39.93],
+]], 327, 240, 12)
+
+assert.ok(result)
+assert.strictEqual(result.regions.length, 1)
+assert.strictEqual(result.tracks.length, 2)
+assert.ok(result.tracks.every(track => track.length === 2))
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
 def test_map_picker_page_is_registered_and_uses_native_map_without_custom_subkey():

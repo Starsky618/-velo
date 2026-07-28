@@ -127,6 +127,13 @@ def process_strava_webhook_update(user_id: int, strava_activity_id: int) -> None
         activity.status = "processing"
         activity.updated_at = datetime.now(timezone.utc)
         db.commit()
+        # wipe 已提交后，completed 轨迹已从 DB 消失；立刻清缓存，确保后续详情失败、
+        # 非骑行或 streams 失败的早退分支也不会继续展示旧路线 1 小时。
+        try:
+            from app.user.service_social import invalidate_heatmap_cache
+            invalidate_heatmap_cache(activity.user_id)
+        except Exception:
+            logger.exception("heatmap cache invalidation failed activity_id=%s", activity.id)
         _process_strava_main(db, user_id, strava_activity_id)
     except Exception:
         logger.exception(
@@ -265,6 +272,15 @@ def _process_strava_main(db, user_id: int, strava_activity_id: int) -> None:
 
     db.commit()
 
+    # 与 GPX worker 一致：只在 activity 提交成功后删热图缓存，避免并发请求
+    # 在 commit 前把旧 DB 结果重新写回 1h 缓存。
+    if not is_duplicate:
+        try:
+            from app.user.service_social import invalidate_heatmap_cache
+            invalidate_heatmap_cache(activity.user_id)
+        except Exception:
+            logger.exception("heatmap cache invalidation failed activity_id=%s", activity.id)
+
     # ---- 赛段匹配（commit 之后 / auto_match 内部自管事务）----
     # 严格对照 import_scheduler.py:461-470
     if not is_duplicate:
@@ -284,7 +300,7 @@ def _strava_post_parse_hooks(db, activity) -> None:
 
     顺序严格对照 GPX worker（任一失败不阻断 status='completed'）：
     1. detect_5min_power_progress（5min 功率进步通知）
-    2. invalidate caches（heatmap + power_curve Redis 缓存）
+    2. invalidate power_curve cache（heatmap 在外层 commit 成功后失效）
     3. _set_activity_city（activity.city / 起点城市）
     4. user.city 推断（仅 user.city 为 None 时）
     5. FTP Breakthrough 检测（Sprint 9 task-8 / settings 弹窗）
@@ -303,12 +319,10 @@ def _strava_post_parse_hooks(db, activity) -> None:
     except Exception:
         pass
 
-    # 2. invalidate Redis caches（spec 草稿写的 import 路径错 / 这里修正）
+    # 2. invalidate power curve cache（热图必须等外层 db.commit 成功后再清）
     try:
         from app.user.service_stats import invalidate_power_curve_cache
-        from app.user.service_social import invalidate_heatmap_cache
         invalidate_power_curve_cache(activity.user_id)
-        invalidate_heatmap_cache(activity.user_id)
     except Exception:
         pass
 

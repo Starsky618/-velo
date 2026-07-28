@@ -466,7 +466,7 @@ class TestWebhookRoutes:
         assert resp.status_code == 200  # Strava 要求始终返回 200
 
     @patch("app.strava.router.settings")
-    def test_webhook_post_activity_delete(self, mock_settings, client, db, test_user):
+    def test_webhook_post_activity_delete(self, mock_settings, client, db, test_user, monkeypatch):
         """POST /api/strava/webhook activity delete 应删除对应 Activity。"""
         from app.activity.models import Activity
 
@@ -486,6 +486,11 @@ class TestWebhookRoutes:
         db.add(activity)
         db.commit()
         activity_id = activity.id
+        invalidated = []
+        monkeypatch.setattr(
+            "app.user.service_social.invalidate_heatmap_cache",
+            lambda user_id: invalidated.append(user_id),
+        )
 
         payload = {
             "subscription_id": 12345,
@@ -500,6 +505,7 @@ class TestWebhookRoutes:
 
         # 验证活动已被删除
         assert db.query(Activity).filter_by(id=activity_id).first() is None
+        assert invalidated == [test_user.id]
 
 
 # ==================== 手动同步测试 ====================

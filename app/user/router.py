@@ -236,8 +236,8 @@ def get_my_heatmap(
     返回 tracks: list[list[[lon, lat]]]（保留 activity 边界 / 每个 activity 一条独立轨迹 / 前端画 polyline）
     + activity_count（与 tracks 长度一致 / 单点 activity 自动跳过不计数）。
 
-    Redis 缓存 1h，无 city 与按 city 走两套独立 cache key（前者 `heatmap:user_{id}`，
-    后者 `heatmap:user_{id}:city_{city}`），互不干扰。
+    Redis 缓存 1h，无 city 与按 city 走两套独立 v2 显示精度 cache key，互不干扰；
+    v2 前缀隔离旧版全量轨迹大对象。
     """
     return service.get_user_heatmap(db, user_id, city.value if city else None)
 

@@ -214,8 +214,10 @@ class HeatmapResponse(BaseModel):
     """
     个人热图响应——"我在某城市去过的所有轨迹"（D27 v2 polish / Sprint 4 task-4.2 v2 / v3 polish city 可选）。
 
-    tracks 是 list of list of [lon, lat]：保留 activity 边界 / 每个 activity 一条轨迹。
-    前端画 polyline（一条 activity 一条线）+ 多条 opacity 0.5 重叠形成热力效果。
+    tracks 是 list of list of [lon, lat]：保留 activity 边界 / 每个 activity 一条
+    服务端显示精度预览轨迹（每条最多 64 个关键点、整张卡最多 2 万点）。前端
+    完整绘制响应中的点，多条 opacity 重叠形成热力效果；不下发数据库中的
+    全量 simplified_track。
 
     旧版（v1）用 multipoint 扁平所有点 + markers 渲染 → 视觉差（粗灰圆点）。
     新版（v2）用 tracks 保留边界 + polyline 渲染 → 视觉接近 ride.fitcard.app 80%。

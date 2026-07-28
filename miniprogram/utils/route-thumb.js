@@ -31,7 +31,8 @@ function normalizePoints(points) {
       lon = Number(p.longitude)
       lat = Number(p.latitude)
     }
-    if (Number.isFinite(lon) && Number.isFinite(lat)) {
+    if (Number.isFinite(lon) && Number.isFinite(lat)
+      && lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90) {
       out.push({ x: lon, y: lat })
     }
   })
@@ -84,13 +85,10 @@ function drawPaperBackground(ctx, width, height) {
   })
 }
 
-function projectTracks(trackList, width, height, pad) {
-  var tracks = []
+function projectNormalizedTracks(tracks, frame, pad) {
+  if (!tracks.length) return null
   var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-  trackList.forEach(function (track) {
-    var pts = normalizePoints(track)
-    if (pts.length < 2) return
-    tracks.push(pts)
+  tracks.forEach(function (pts) {
     pts.forEach(function (p) {
       if (p.x < minX) minX = p.x
       if (p.x > maxX) maxX = p.x
@@ -98,7 +96,11 @@ function projectTracks(trackList, width, height, pad) {
       if (p.y > maxY) maxY = p.y
     })
   })
-  if (!tracks.length) return null
+
+  var width = frame.width
+  var height = frame.height
+  var frameX = frame.x || 0
+  var frameY = frame.y || 0
 
   // 纬度方向 1° 的实际距离恒定，经度方向要乘 cos(纬度)——
   // 不修正的话，路线形状会被横向拉胖（纬度越高越明显）。
@@ -108,17 +110,17 @@ function projectTracks(trackList, width, height, pad) {
   var spanY = maxY - minY
   if (spanX <= 0 && spanY <= 0) return null
 
-  // 等比缩放装进画布（留 pad 边距），并把形状居中
-  var innerW = width - pad * 2
-  var innerH = height - pad * 2
+  // 等比缩放装进指定区域（留 pad 边距），并把形状居中
+  var innerW = Math.max(1, width - pad * 2)
+  var innerH = Math.max(1, height - pad * 2)
   var scale = Math.min(
     spanX > 0 ? innerW / spanX : Infinity,
     spanY > 0 ? innerH / spanY : Infinity
   )
   var drawW = spanX * scale
   var drawH = spanY * scale
-  var offsetX = pad + (innerW - drawW) / 2
-  var offsetY = pad + (innerH - drawH) / 2
+  var offsetX = frameX + pad + (innerW - drawW) / 2
+  var offsetY = frameY + pad + (innerH - drawH) / 2
 
   var toCanvas = function (p) {
     return {
@@ -128,11 +130,210 @@ function projectTracks(trackList, width, height, pad) {
     }
   }
 
+  return tracks.map(function (track) {
+    return track.map(toCanvas)
+  })
+}
+
+function projectTracks(trackList, width, height, pad) {
+  var tracks = []
+  trackList.forEach(function (track) {
+    var pts = normalizePoints(track)
+    if (pts.length < 2) return
+    tracks.push(pts)
+  })
+  if (!tracks.length) return null
+  var projected = projectNormalizedTracks(tracks, { x: 0, y: 0, width: width, height: height }, pad)
+  if (!projected) return null
   return {
-    tracks: tracks.map(function (track) {
-      return track.map(toCanvas)
-    }),
+    tracks: projected,
   }
+}
+
+// 相邻点相距过远代表 GPS 漂点或暂停后跨城恢复；不允许一条橙线瞬移，
+// 更不能让一个孤立漂点把整张热力图的比例尺拉到全国范围。
+function distanceKm(a, b) {
+  var toRad = Math.PI / 180
+  var lat1 = a.y * toRad
+  var lat2 = b.y * toRad
+  var dLat = (b.y - a.y) * toRad
+  var dLon = (b.x - a.x) * toRad
+  var sinLat = Math.sin(dLat / 2)
+  var sinLon = Math.sin(dLon / 2)
+  var h = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon
+  return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(Math.max(0, 1 - h)))
+}
+
+function splitHeatmapTrack(points) {
+  if (points.length < 2) return []
+  var rawSegments = []
+  var current = []
+  points.forEach(function (point) {
+    // 40km 已远大于常规显示预览中正常相邻点的距离。这里只先切候选段；
+    // 是否丢弃必须再看“跳出后回到原区域”的证据，不能只凭距离删合法长骑。
+    if (current.length && distanceKm(current[current.length - 1], point) > 40) {
+      rawSegments.push(current)
+      current = []
+    }
+    current.push(point)
+  })
+  if (current.length) rawSegments.push(current)
+  if (rawSegments.length === 1) return [points]
+
+  var drawable = rawSegments.filter(function (segment) { return segment.length >= 2 })
+  // 稀疏长骑可能每个相邻点都超过 40km；没有任何可判断的连续段时必须回退
+  // 原轨迹，不能让 4 点/更稀疏的真实活动整条消失。
+  if (!drawable.length) return [points]
+  // 只有一个连续段、其余为稀疏远端点时，没有“跳出后返回”的证据，可能是
+  // 合法长骑的低采样尾段；必须回退原轨迹，不能武断当漂点删除。
+  if (drawable.length === 1) return [points]
+
+  // 多个连续段按区域聚类。仅当活动离开某区域后又回到同一区域时，才把中间
+  // 的远端 excursion 当漂点丢弃；若首尾属于不同真实区域，则各段都保留。
+  var groups = []
+  drawable.forEach(function (segment) {
+    var center = trackCenter(segment)
+    var group = groups.find(function (candidate) {
+      return distanceKm(center, candidate.center) <= 40
+    })
+    if (!group) {
+      group = { segments: [], center: center, pointCount: 0 }
+      groups.push(group)
+    }
+    var count = group.segments.length
+    group.center.x = (group.center.x * count + center.x) / (count + 1)
+    group.center.y = (group.center.y * count + center.y) / (count + 1)
+    group.segments.push(segment)
+    group.pointCount += segment.length
+  })
+  var firstSegment = drawable[0]
+  var lastSegment = drawable[drawable.length - 1]
+  var firstGroup = groups.find(function (group) { return group.segments.indexOf(firstSegment) >= 0 })
+  var lastGroup = groups.find(function (group) { return group.segments.indexOf(lastSegment) >= 0 })
+  if (firstGroup && firstGroup === lastGroup) return firstGroup.segments
+  return drawable
+}
+
+function trackCenter(points) {
+  var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  points.forEach(function (point) {
+    minX = Math.min(minX, point.x)
+    maxX = Math.max(maxX, point.x)
+    minY = Math.min(minY, point.y)
+    maxY = Math.max(maxY, point.y)
+  })
+  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }
+}
+
+function buildHeatmapRegions(trackList) {
+  var segments = []
+  trackList.forEach(function (track, sourceIndex) {
+    splitHeatmapTrack(normalizePoints(track)).forEach(function (points) {
+      segments.push({ points: points, center: trackCenter(points), sourceIndex: sourceIndex })
+    })
+  })
+
+  var regions = []
+  segments.forEach(function (segment) {
+    var best = null
+    var bestDistance = Infinity
+    regions.forEach(function (region) {
+      var km = distanceKm(segment.center, region.center)
+      if (km <= 240 && km < bestDistance) {
+        best = region
+        bestDistance = km
+      }
+    })
+    if (!best) {
+      best = { tracks: [], sourceIds: {}, center: { x: segment.center.x, y: segment.center.y }, pointCount: 0 }
+      regions.push(best)
+    }
+    var count = best.tracks.length
+    best.center.x = (best.center.x * count + segment.center.x) / (count + 1)
+    best.center.y = (best.center.y * count + segment.center.y) / (count + 1)
+    best.tracks.push(segment.points)
+    best.sourceIds[segment.sourceIndex] = true
+    best.pointCount += segment.points.length
+  })
+
+  regions.forEach(function (region) {
+    region.activityCount = Object.keys(region.sourceIds).length
+  })
+  regions.sort(function (a, b) {
+    return b.activityCount - a.activityCount || b.pointCount - a.pointCount
+  })
+
+  return regions
+}
+
+function buildRegionFrames(count, width, height) {
+  var frames = []
+  var gap = 6
+  if (count <= 1) return [{ x: 0, y: 0, width: width, height: height }]
+  if (count <= 4) {
+    var primaryWidth = Math.round(width * 0.67)
+    frames.push({ x: 0, y: 0, width: primaryWidth, height: height })
+    var sideX = primaryWidth + gap
+    var sideWidth = width - sideX
+    var sideHeight = (height - gap * (count - 2)) / (count - 1)
+    for (var i = 1; i < count; i++) {
+      frames.push({
+        x: sideX,
+        y: (i - 1) * (sideHeight + gap),
+        width: sideWidth,
+        height: sideHeight,
+      })
+    }
+    return frames
+  }
+
+  // 5 个以上区域改用等格网，每个城市仍有自己的比例尺。旧实现把第 4+ 城市
+  // 合并到一个小框，深圳/乌鲁木齐会再次被全国跨度压成不到 1px。
+  var best = null
+  for (var columns = 2; columns <= count; columns++) {
+    var rows = Math.ceil(count / columns)
+    // 区域很多时缝隙也随单元格缩小，避免固定 6px 把可用宽高扣成负数。
+    var gridGap = Math.min(gap, width / columns * 0.12, height / rows * 0.12)
+    var cellWidth = (width - gridGap * (columns - 1)) / columns
+    var cellHeight = (height - gridGap * (rows - 1)) / rows
+    var emptyCells = columns * rows - count
+    var score = Math.abs(Math.log(cellWidth / cellHeight)) + emptyCells * 0.15
+    if (!best || score < best.score) {
+      best = {
+        columns: columns, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight,
+        gap: gridGap, score: score,
+      }
+    }
+  }
+  for (var index = 0; index < count; index++) {
+    var column = index % best.columns
+    var row = Math.floor(index / best.columns)
+    frames.push({
+      x: column * (best.cellWidth + best.gap),
+      y: row * (best.cellHeight + best.gap),
+      width: best.cellWidth,
+      height: best.cellHeight,
+    })
+  }
+  return frames
+}
+
+function projectHeatmapTracks(trackList, width, height, pad) {
+  var regions = buildHeatmapRegions(trackList)
+  if (!regions.length) return null
+  var frames = buildRegionFrames(regions.length, width, height)
+  var projectedTracks = []
+  var projectedRegions = []
+  regions.forEach(function (region, index) {
+    var frame = frames[index]
+    var regionPad = Math.min(pad, Math.max(5, Math.min(frame.width, frame.height) * 0.1))
+    var tracks = projectNormalizedTracks(region.tracks, frame, regionPad)
+    if (!tracks) return
+    projectedTracks = projectedTracks.concat(tracks)
+    projectedRegions.push({ frame: frame, activityCount: region.activityCount })
+  })
+  if (!projectedTracks.length) return null
+  return { tracks: projectedTracks, regions: projectedRegions }
 }
 
 /**
@@ -205,7 +406,7 @@ function drawHeatmapThumb(canvasId, tracks, opts) {
   var width = opts.width || 320
   var height = opts.height || 180
   var lineWidth = opts.lineWidth || 2
-  var projected = projectTracks(tracks, width, height, opts.pad || 12)
+  var projected = projectHeatmapTracks(tracks, width, height, opts.pad || 12)
   if (!projected) return false
 
   var ctx = wx.createCanvasContext(canvasId, opts.component)
@@ -229,12 +430,11 @@ function drawHeatmapThumb(canvasId, tracks, opts) {
 }
 
 /**
- * 热力图绘制（新版 Canvas 2D / type="2d"）—— 给"全量多轨迹"用。
+ * 热力图绘制（新版 Canvas 2D / type="2d"）—— 给"多活动显示精度轨迹"用。
  *
  * 为什么单独写一个：旧版 wx.createCanvasContext + ctx.draw() 在点数过多时
- * （个人页热力图 = 用户全部骑行的完整轨迹，可达几十万点）会渲染超时直接白屏。
- * 新版 Canvas 2D（与详情页 5 张图表同款）是同步立即渲染、无点数上限，
- * 能把每一个轨迹点完整画出来不留破绽（Tim 2026-06-13 铁律：前端显示不许敷衍/抽稀）。
+ * （旧个人页热力图曾一次传几十万点）会渲染超时直接白屏。现在服务端按卡片
+ * 像素生成轻量预览；新版 Canvas 2D 完整绘制响应中的点，不在客户端二次抽稀。
  *
  * 与旧 drawHeatmapThumb 的区别：
  *   - 旧版：传 canvas-id，内部 createCanvasContext，调用方负责 setData 让 canvas 先存在
@@ -243,7 +443,7 @@ function drawHeatmapThumb(canvasId, tracks, opts) {
  *
  * @param {Object} comp     组件实例（this）——createSelectorQuery 要在组件作用域查
  * @param {string} selector canvas 的 id 选择器（如 '#heatmap-canvas'）
- * @param {Array} tracks    多条轨迹 [[[lon,lat],...], ...]，全部点都会画，不抽稀
+ * @param {Array} tracks    多条显示精度轨迹 [[[lon,lat],...], ...]，响应点全部绘制
  * @param {Object} opts     { lineWidth, color }
  */
 function drawHeatmap2d(comp, selector, tracks, opts) {
@@ -259,8 +459,9 @@ function drawHeatmap2d(comp, selector, tracks, opts) {
       var height = res[0].height
       if (!width || !height) return
 
-      // 投影：复用纯计算函数（与坐标系/API 无关），把所有轨迹等比缩进画布
-      var projected = projectTracks(tracks, width, height, opts.pad || 12)
+      // 跨城市活动按骑行区域各自投影。旧算法用一个全国比例尺，
+      // 北京 + 深圳这类真实数据会把几百条城市路线压成几个像素点。
+      var projected = projectHeatmapTracks(tracks, width, height, opts.pad || 12)
       if (!projected) return
 
       var ctx = canvas.getContext('2d')
@@ -275,6 +476,17 @@ function drawHeatmap2d(comp, selector, tracks, opts) {
 
       // 浅色纸面底（与小缩略图同一支笔，视觉统一）
       drawPaperBackground2d(ctx, width, height)
+
+      if (projected.regions.length > 1) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.36)'
+        ctx.strokeStyle = 'rgba(203, 197, 184, 0.58)'
+        ctx.lineWidth = 1
+        projected.regions.forEach(function (region) {
+          var frame = region.frame
+          ctx.fillRect(frame.x, frame.y, frame.width, frame.height)
+          ctx.strokeRect(frame.x + 0.5, frame.y + 0.5, frame.width - 1, frame.height - 1)
+        })
+      }
 
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
@@ -318,4 +530,5 @@ module.exports = {
   drawHeatmapThumb: drawHeatmapThumb,
   drawHeatmap2d: drawHeatmap2d,
   normalizePoints: normalizePoints,
+  projectHeatmapTracks: projectHeatmapTracks,
 }
