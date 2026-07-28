@@ -70,6 +70,7 @@ button:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  min-height: 44px;
   font-size: 20px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -90,6 +91,8 @@ button:focus-visible {
 }
 
 .nav-links a {
+  display: inline-flex;
+  align-items: center;
   min-height: 44px;
   padding: 10px 13px;
   border-radius: 999px;
@@ -664,6 +667,9 @@ h1 {
 }
 
 .footer-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: var(--text-secondary);
 }
 

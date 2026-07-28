@@ -60,6 +60,7 @@ def test_website_has_required_public_pages():
         "404.html",
         "robots.txt",
         "sitemap.xml",
+        "favicon.svg",
         "assets/site.css",
     }
     actual = {
@@ -80,6 +81,7 @@ def test_all_html_pages_are_mobile_ready_and_have_valid_internal_links():
         assert parser.lang in {"zh-CN", "en"}, page
         assert parser.has_title, page
         assert parser.has_viewport, page
+        assert 'href="/favicon.svg"' in source, page
         assert 'href="/assets/site.css"' in source, page
 
         for href in parser.links:
@@ -90,6 +92,14 @@ def test_all_html_pages_are_mobile_ready_and_have_valid_internal_links():
                 continue
             target = _resolve_site_path(parsed.path)
             assert target.exists(), f"{page}: missing {href} -> {target}"
+
+
+def test_mobile_navigation_and_footer_links_have_full_touch_targets():
+    css = (WEBSITE / "assets/site.css").read_text(encoding="utf-8")
+    for selector in [r"\.brand", r"\.nav-links a", r"\.footer-links a"]:
+        rule = re.search(rf"{selector}\s*\{{(?P<body>[^}}]+)\}}", css)
+        assert rule, selector
+        assert re.search(r"min-height:\s*44px", rule.group("body")), selector
 
 
 def test_public_pages_identify_the_legal_operator_without_private_identifiers():
