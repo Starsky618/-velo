@@ -218,6 +218,30 @@ def test_heatmap_only_translates_expected_viewport_errors_to_422(client, auth_he
             client.get(url, headers=auth_header)
 
 
+def test_heatmap_tile_requires_auth_and_returns_private_png(client, auth_header):
+    url = "/api/user/me/heatmap/tiles/12/3328/1582.png?color=red&year=2025"
+    assert client.get(url).status_code == 401
+
+    with patch("app.user.router.service.get_user_heatmap_tile", return_value=b"png") as mock_tile:
+        response = client.get(url, headers=auth_header)
+
+    assert response.status_code == 200
+    assert response.content == b"png"
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "private, max-age=3600"
+    assert mock_tile.call_args.args[1:] == (1, 12, 3328, 1582)
+    assert mock_tile.call_args.kwargs == {"year": 2025, "color": "red"}
+
+
+def test_heatmap_tile_only_translates_expected_tile_error(client, auth_header):
+    url = "/api/user/me/heatmap/tiles/12/3328/1582.png?color=red"
+    with patch(
+        "app.user.router.service.get_user_heatmap_tile",
+        side_effect=service.InvalidHeatmapTile("invalid heatmap tile"),
+    ):
+        assert client.get(url, headers=auth_header).status_code == 422
+
+
 # ───────────────────────────────────────────────────────────────────────
 # PATCH /api/user/me
 # ───────────────────────────────────────────────────────────────────────

@@ -589,6 +589,11 @@ module.exports = {
     return downloadFile(downloadUrl, fileName)
   },
 
+  // 地图图片图层只需要微信临时路径；不写入 USER_DATA_PATH，避免拖图后留下大量瓦片文件。
+  downloadTemporaryFile: function (downloadUrl) {
+    return downloadFile(downloadUrl)
+  },
+
   shareRouteExportFile: function (filePath, fileName) {
     return shareFile(filePath, fileName)
   },

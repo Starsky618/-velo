@@ -14,7 +14,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.activity import schemas as activity_schemas
@@ -266,6 +266,30 @@ def get_my_heatmap(
         )
     except service.InvalidHeatmapViewport as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/me/heatmap/tiles/{zoom}/{x}/{y}.png")
+def get_my_heatmap_tile(
+    zoom: int,
+    x: int,
+    y: int,
+    year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
+    color: str = Query(default="orange"),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """当前用户的透明热力图瓦片；由原生地图图片图层按当前视野加载。"""
+    try:
+        content = service.get_user_heatmap_tile(
+            db, user_id, zoom, x, y, year=year, color=color
+        )
+    except service.InvalidHeatmapTile as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 
 
 @router.get("/me/city-medals", response_model=schemas.CityMedalsResponse)
@@ -591,6 +615,35 @@ def get_user_heatmap_for_others(
         )
     except service.InvalidHeatmapViewport as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/{user_id}/heatmap/tiles/{zoom}/{x}/{y}.png")
+def get_user_heatmap_tile_for_others(
+    user_id: int,
+    zoom: int,
+    x: int,
+    y: int,
+    year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
+    color: str = Query(default="orange"),
+    requester_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """看他人热图使用同一套栅格瓦片合同。"""
+    try:
+        service.get_user_by_id(db, user_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    try:
+        content = service.get_user_heatmap_tile(
+            db, user_id, zoom, x, y, year=year, color=color
+        )
+    except service.InvalidHeatmapTile as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 
 
 @router.get("/{user_id}/city-medals", response_model=schemas.CityMedalsResponse)

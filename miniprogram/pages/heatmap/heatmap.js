@@ -3,9 +3,42 @@ const heatmapMap = require('../../utils/heatmap-map')
 const { gcj02ToWgs84 } = require('../../utils/coords')
 
 const OVERVIEW_MAX_POINTS = 9000
-const VIEWPORT_MAX_POINTS = 36000
 const HEATMAP_LINE_WIDTH = 2
 const HEATMAP_LINE_OPACITY = '52'
+const MIN_TILE_ZOOM = 8
+const MAX_TILE_ZOOM = 18
+const MAX_VISIBLE_TILES = 16
+
+function tileXForLongitude(longitude, zoom) {
+  var count = Math.pow(2, zoom)
+  return Math.floor((longitude + 180) / 360 * count)
+}
+
+function tileYForLatitude(latitude, zoom) {
+  var count = Math.pow(2, zoom)
+  var limited = Math.max(-85.05112878, Math.min(85.05112878, latitude))
+  var radians = limited * Math.PI / 180
+  return Math.floor((1 - Math.asinh(Math.tan(radians)) / Math.PI) / 2 * count)
+}
+
+function latitudeForTileY(tileY, zoom) {
+  var mercator = Math.PI * (1 - 2 * tileY / Math.pow(2, zoom))
+  return Math.atan(Math.sinh(mercator)) * 180 / Math.PI
+}
+
+function boundsForTile(zoom, x, y) {
+  var count = Math.pow(2, zoom)
+  return {
+    southwest: {
+      longitude: x / count * 360 - 180,
+      latitude: latitudeForTileY(y + 1, zoom),
+    },
+    northeast: {
+      longitude: (x + 1) / count * 360 - 180,
+      latitude: latitudeForTileY(y, zoom),
+    },
+  }
+}
 
 function colorOptions(selectedKey) {
   return heatmapMap.HEATMAP_COLORS.map(function (item) {
@@ -81,14 +114,25 @@ Page({
     this._overviewRequestSeq = (this._overviewRequestSeq || 0) + 1
     this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1
     this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
-    this._pendingViewport = null
     this._viewportReadRetries = 0
+    this._clearTileOverlays()
+    this._tileFileCache = {}
+    this._tileDownloadPromises = {}
   },
 
   _endpoint() {
     return this._userId > 0
       ? '/api/user/' + this._userId + '/heatmap'
       : '/api/user/me/heatmap'
+  },
+
+  _tileEndpoint(zoom, x, y) {
+    var base = this._userId > 0
+      ? '/api/user/' + this._userId + '/heatmap/tiles/'
+      : '/api/user/me/heatmap/tiles/'
+    var params = ['color=' + encodeURIComponent(this.data.selectedColor)]
+    if (this.data.selectedYear !== null) params.push('year=' + this.data.selectedYear)
+    return base + zoom + '/' + x + '/' + y + '.png?' + params.join('&')
   },
 
   _fetchHeatmap(year, initial) {
@@ -98,9 +142,8 @@ Page({
     this._viewportTimer = null
     this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1
     this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
-    this._pendingViewport = null
     this._viewportReadRetries = 0
-    this._lastViewportKey = ''
+    this._lastTileSetKey = ''
     var overviewRequestSeq = (this._overviewRequestSeq || 0) + 1
     this._overviewRequestSeq = overviewRequestSeq
     this.setData(initial ? { loading: true, error: '' } : { updating: true })
@@ -124,6 +167,7 @@ Page({
           this._renderedTracks = []
           this._focusPoints = []
           this._allPoints = []
+          this._clearTileOverlays()
           this.setData({
             loading: false,
             updating: false,
@@ -141,6 +185,7 @@ Page({
         this._overviewLoaded = true
         this._overviewPreparedTracks = model.preparedTracks
         this._renderedTracks = model.preparedTracks
+        this._overviewRenderedColor = this.data.selectedColor
         this._focusPoints = model.focusPoints
         this._allPoints = model.allPoints
         this.setData({
@@ -150,7 +195,7 @@ Page({
           isEmpty: false,
           center: model.center,
           includePoints: model.focusPoints,
-          polylines: model.polylines,
+          polylines: this._tileLayerVisible ? [] : model.polylines,
           activityCount: Number(data && data.activity_count) || 0,
           selectedYear: year,
           selectedYearLabel: year === null ? '全部年份' : String(year) + ' 年',
@@ -203,15 +248,23 @@ Page({
     var key = event.currentTarget.dataset.color
     if (!isKnownColor(key) || key === this.data.selectedColor) return
     wx.setStorageSync('heatmapColor', key)
+    var overviewTracks = this._overviewPreparedTracks || []
     this.setData({
       selectedColor: key,
       colorOptions: colorOptions(key),
-      polylines: heatmapMap.buildPolylines(
-        this._renderedTracks || this._overviewPreparedTracks || [],
-        key,
-        HEATMAP_LINE_WIDTH,
-        HEATMAP_LINE_OPACITY
-      ),
+      updating: true,
+      polylines: this._tileLayerVisible
+        ? this.data.polylines
+        : heatmapMap.buildPolylines(
+          overviewTracks,
+          key,
+          HEATMAP_LINE_WIDTH,
+          HEATMAP_LINE_OPACITY
+        ),
+    }, () => {
+      this._overviewRenderedColor = key
+      this._lastTileSetKey = ''
+      this._scheduleViewportRefresh(0)
     })
   },
 
@@ -268,6 +321,10 @@ Page({
               east: neWgs[1],
               north: neWgs[0],
               zoom: Math.max(3, Math.min(20, Math.round(Number(scale) || fallbackScale))),
+              mapWest: Number(southwest.longitude),
+              mapSouth: Number(southwest.latitude),
+              mapEast: Number(northeast.longitude),
+              mapNorth: Number(northeast.latitude),
             }
             if (
               !Number.isFinite(viewport.west) || !Number.isFinite(viewport.south)
@@ -295,85 +352,186 @@ Page({
 
   _fetchViewport(viewport) {
     if (this._pageAlive === false) return
-    // 跨省/全国视角继续使用首屏总览；城市及街区视角才请求高精度视野数据。
-    if (viewport.zoom < 8 || viewport.east - viewport.west > 20 || viewport.north - viewport.south > 15) {
+    // 全国视角继续用轻量总览；城市与街区改用服务端栅格瓦片，不再把 GPS 点塞进 polyline。
+    if (viewport.zoom < MIN_TILE_ZOOM || viewport.east - viewport.west > 20 || viewport.north - viewport.south > 15) {
       this._showOverviewLayer()
       return
     }
-    var key = [
-      viewport.zoom,
-      viewport.west.toFixed(4),
-      viewport.south.toFixed(4),
-      viewport.east.toFixed(4),
-      viewport.north.toFixed(4),
-      this.data.selectedYear === null ? 'all' : this.data.selectedYear,
-    ].join(':')
-    if (this._viewportFetchInFlight) {
-      this._pendingViewport = viewport
-      this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1
-      this._lastViewportKey = ''
-      return
-    }
-    if (key === this._lastViewportKey) return
-    this._lastViewportKey = key
-    this._viewportFetchInFlight = true
-    var requestSeq = (this._viewportRequestSeq || 0) + 1
-    this._viewportRequestSeq = requestSeq
-    var params = {
-      detail: 'viewport',
-      west: Number(viewport.west.toFixed(5)),
-      south: Number(viewport.south.toFixed(5)),
-      east: Number(viewport.east.toFixed(5)),
-      north: Number(viewport.north.toFixed(5)),
-      zoom: viewport.zoom,
-    }
-    if (this.data.selectedYear !== null) params.year = this.data.selectedYear
-
-    api.get(this._endpoint(), params)
-      .then((data) => {
-        if (this._pageAlive === false || requestSeq !== this._viewportRequestSeq) {
-          this._finishViewportRequest()
-          return
-        }
-        var tracks = data && Array.isArray(data.tracks) ? data.tracks : []
-        var model = heatmapMap.buildHeatmapMapModel(
-          tracks,
-          this.data.selectedColor,
-          HEATMAP_LINE_WIDTH,
-          VIEWPORT_MAX_POINTS,
-          HEATMAP_LINE_OPACITY
-        )
-        this._renderedTracks = model ? model.preparedTracks : []
-        this.setData({ polylines: model ? model.polylines : [] })
-        this._finishViewportRequest()
-      })
-      .catch(() => {
-        if (this._pageAlive === false) {
-          this._finishViewportRequest()
-          return
-        }
-        if (requestSeq === this._viewportRequestSeq) this._lastViewportKey = ''
-        // 保留上一帧图层：移动地图时网络抖动不闪白，也不打断用户继续探索。
-        this._finishViewportRequest()
-      })
+    this._refreshTileLayer(viewport)
   },
 
-  _finishViewportRequest() {
-    this._viewportFetchInFlight = false
-    var pending = this._pendingViewport
-    this._pendingViewport = null
-    if (this._pageAlive !== false && pending) this._fetchViewport(pending)
+  _visibleTiles(viewport) {
+    var zoom = Math.max(MIN_TILE_ZOOM, Math.min(MAX_TILE_ZOOM, Math.round(viewport.zoom)))
+    var count = Math.pow(2, zoom)
+    var minX = Math.max(0, tileXForLongitude(viewport.mapWest, zoom))
+    var maxX = Math.min(count - 1, tileXForLongitude(viewport.mapEast, zoom))
+    var minY = Math.max(0, tileYForLatitude(viewport.mapNorth, zoom))
+    var maxY = Math.min(count - 1, tileYForLatitude(viewport.mapSouth, zoom))
+    var tiles = []
+    for (var y = minY; y <= maxY; y++) {
+      for (var x = minX; x <= maxX; x++) {
+        tiles.push({ zoom: zoom, x: x, y: y })
+      }
+    }
+    if (tiles.length <= MAX_VISIBLE_TILES) return tiles
+    var centerX = (minX + maxX) / 2
+    var centerY = (minY + maxY) / 2
+    return tiles.sort(function (a, b) {
+      return Math.hypot(a.x - centerX, a.y - centerY) - Math.hypot(b.x - centerX, b.y - centerY)
+    }).slice(0, MAX_VISIBLE_TILES)
+  },
+
+  _tileKey(tile) {
+    return [
+      tile.zoom,
+      tile.x,
+      tile.y,
+      this.data.selectedYear === null ? 'all' : this.data.selectedYear,
+      this.data.selectedColor,
+    ].join(':')
+  },
+
+  _addGroundOverlay(tile, filePath, id) {
+    var context = this._mapContext
+    if (!context || typeof context.addGroundOverlay !== 'function') {
+      return Promise.reject(new Error('ground overlay unsupported'))
+    }
+    return new Promise(function (resolve, reject) {
+      context.addGroundOverlay({
+        id: id,
+        src: filePath,
+        bounds: boundsForTile(tile.zoom, tile.x, tile.y),
+        visible: true,
+        zIndex: 5,
+        opacity: 1,
+        success: resolve,
+        fail: reject,
+      })
+    })
+  },
+
+  _removeGroundOverlay(id) {
+    var context = this._mapContext
+    if (!context || typeof context.removeGroundOverlay !== 'function') return
+    context.removeGroundOverlay({ id: id })
+  },
+
+  _loadTileFile(tile, key) {
+    var cache = this._tileFileCache || (this._tileFileCache = {})
+    if (cache[key]) return Promise.resolve(cache[key])
+    var inflight = this._tileDownloadPromises || (this._tileDownloadPromises = {})
+    if (inflight[key]) return inflight[key]
+    var request = api.downloadTemporaryFile(this._tileEndpoint(tile.zoom, tile.x, tile.y))
+      .then(function (file) {
+        var path = file && (file.filePath || file.tempFilePath)
+        if (!path) throw new Error('heatmap tile has no local path')
+        cache[key] = path
+        delete inflight[key]
+        return path
+      }, function (error) {
+        delete inflight[key]
+        throw error
+      })
+    inflight[key] = request
+    return request
+  },
+
+  _refreshTileLayer(viewport) {
+    var tiles = this._visibleTiles(viewport)
+    var setKey = tiles.map((tile) => this._tileKey(tile)).join('|')
+    if (setKey && setKey === this._lastTileSetKey) {
+      if (this.data.updating) this.setData({ updating: false })
+      return
+    }
+    this._lastTileSetKey = setKey
+    var requestSeq = (this._viewportRequestSeq || 0) + 1
+    this._viewportRequestSeq = requestSeq
+    var active = this._activeTileOverlays || {}
+    var desired = {}
+    var downloads = []
+    tiles.forEach((tile) => {
+      var key = this._tileKey(tile)
+      desired[key] = true
+      if (active[key]) return
+      var id = (this._tileIdSeed || 1000) + 1
+      this._tileIdSeed = id
+      downloads.push(
+        this._loadTileFile(tile, key)
+          .then((filePath) => this._addGroundOverlay(tile, filePath, id))
+          .then(() => ({ key: key, id: id }))
+          .catch(() => null)
+      )
+    })
+    this.setData({ updating: downloads.length > 0 })
+    Promise.all(downloads).then((added) => {
+      if (this._pageAlive === false || requestSeq !== this._viewportRequestSeq) {
+        added.forEach((item) => { if (item) this._removeGroundOverlay(item.id) })
+        return
+      }
+      added.forEach(function (item) { if (item) active[item.key] = item })
+      var visibleCount = Object.keys(active).filter(function (key) { return desired[key] }).length
+      if (visibleCount === 0 && Object.keys(active).length > 0) {
+        // 新视野全部下载失败时保留上一帧图片，下一次 regionchange 再重试，不能闪成空地图。
+        this._lastTileSetKey = ''
+        this._activeTileOverlays = active
+        this.setData({ updating: false })
+        return
+      }
+      var desiredCount = Object.keys(desired).length
+      var hasStaleFrame = Object.keys(active).some(function (key) { return !desired[key] })
+      if (visibleCount < desiredCount && hasStaleFrame) {
+        // 只成功一部分时继续保留旧帧；等所有新瓦片齐了再原子替换，避免拖图出现棋盘缺口。
+        this._lastTileSetKey = ''
+        this._activeTileOverlays = active
+        this.setData({ updating: false })
+        return
+      }
+      visibleCount = 0
+      Object.keys(active).forEach((key) => {
+        if (desired[key]) {
+          visibleCount += 1
+          return
+        }
+        this._removeGroundOverlay(active[key].id)
+        delete active[key]
+      })
+      this._activeTileOverlays = active
+      this._tileLayerVisible = visibleCount > 0
+      // 至少一张真实瓦片成功后才撤掉旧折线，避免网络故障时整张热图闪空。
+      this.setData({
+        updating: false,
+        polylines: visibleCount > 0 ? [] : this.data.polylines,
+      })
+    })
+  },
+
+  _clearTileOverlays() {
+    var active = this._activeTileOverlays || {}
+    Object.keys(active).forEach((key) => this._removeGroundOverlay(active[key].id))
+    this._activeTileOverlays = {}
+    this._lastTileSetKey = ''
+    this._tileLayerVisible = false
   },
 
   _showOverviewLayer() {
     var tracks = this._overviewPreparedTracks || []
+    var hadTileLayer = this._tileLayerVisible
     this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1
     this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
-    this._pendingViewport = null
-    this._lastViewportKey = ''
-    if (!tracks.length || this._renderedTracks === tracks) return
+    this._clearTileOverlays()
+    if (!tracks.length) return
+    if (
+      this._renderedTracks === tracks
+      && !hadTileLayer
+      && this._overviewRenderedColor === this.data.selectedColor
+    ) {
+      if (this.data.updating) this.setData({ updating: false })
+      return
+    }
     this._renderedTracks = tracks
+    this._overviewRenderedColor = this.data.selectedColor
     this.setData({
+      updating: false,
       polylines: heatmapMap.buildPolylines(
         tracks,
         this.data.selectedColor,

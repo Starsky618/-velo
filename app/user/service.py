@@ -49,6 +49,10 @@ from app.user.service_social import (  # noqa: F401 — 转导出
     invalidate_heatmap_cache,
     update_user_city,
 )
+from app.user.service_heatmap_tiles import (  # noqa: F401 — 转导出
+    InvalidHeatmapTile,
+    get_user_heatmap_tile,
+)
 
 
 def delete_user(db, user_id: int) -> None:

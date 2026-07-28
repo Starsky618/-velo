@@ -315,16 +315,20 @@ def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     assert "detail: 'full'" in js
     assert "available_years" in js
     assert "wx.createMapContext('personal-heatmap-map'" in js
-    assert "detail: 'viewport'" in js
+    assert "detail: 'viewport'" not in js
     assert "getRegion" in js
     assert "getScale" in js
     assert "_viewportRequestSeq" in js
     assert "this._showOverviewLayer()" in js
     assert "this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1" in js
+    assert "downloadTemporaryFile" in js
+    assert "addGroundOverlay" in js
+    assert "removeGroundOverlay" in js
+    assert "boundsForTile" in js
     assert "includePoints" in js
     assert "buildPolylines" in js
     assert "OVERVIEW_MAX_POINTS = 9000" in js
-    assert "VIEWPORT_MAX_POINTS = 36000" in js
+    assert "VIEWPORT_MAX_POINTS" not in js
     assert 'polyline="{{polylines}}"' in wxml
     assert 'bindregionchange="onMapRegionChange"' in wxml
     assert 'enable-scroll="{{true}}"' in wxml
@@ -386,7 +390,7 @@ model.polylines.forEach((line) => assert.ok(line.points.length >= 2))
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
-def test_heatmap_zooming_out_invalidates_inflight_viewport_even_when_overview_is_visible():
+def test_heatmap_zooming_out_invalidates_inflight_tiles_even_when_overview_is_visible():
     script = """
 const assert = require('assert')
 let pageDefinition = null
@@ -396,18 +400,49 @@ require('./miniprogram/pages/heatmap/heatmap')
 
 const overview = [[{ longitude: 116.4, latitude: 39.9 }, { longitude: 116.5, latitude: 40.0 }]]
 const page = Object.assign({}, pageDefinition, {
-  data: { selectedColor: 'orange' },
+  data: { selectedColor: 'orange', updating: false },
   _overviewPreparedTracks: overview,
   _renderedTracks: overview,
+  _overviewRenderedColor: 'orange',
+  _tileLayerVisible: false,
   _viewportRequestSeq: 7,
-  _lastViewportKey: 'inflight',
+  _lastTileSetKey: 'inflight',
   setData: function () { throw new Error('same overview should not redraw') },
 })
 
 page._showOverviewLayer()
 
 assert.strictEqual(page._viewportRequestSeq, 8)
-assert.strictEqual(page._lastViewportKey, '')
+assert.strictEqual(page._lastTileSetKey, '')
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_zooming_out_restores_overview_after_tile_layer():
+    script = """
+const assert = require('assert')
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const overview = [[{ longitude: 116.4, latitude: 39.9 }, { longitude: 116.5, latitude: 40.0 }]]
+const page = Object.assign({}, pageDefinition, {
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'orange', polylines: [] }),
+  _overviewPreparedTracks: overview,
+  _renderedTracks: overview,
+  _overviewRenderedColor: 'orange',
+  _tileLayerVisible: true,
+  _activeTileOverlays: { tile: { id: 1001 } },
+  _removeGroundOverlay: function () {},
+  setData: function (update) { Object.assign(this.data, update) },
+})
+
+page._showOverviewLayer()
+
+assert.strictEqual(page._tileLayerVisible, false)
+assert.strictEqual(page.data.polylines.length, 1)
 """
 
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
@@ -466,19 +501,67 @@ const response = (year) => ({
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
-def test_heatmap_viewport_requests_are_single_flight_and_keep_latest_pending_view():
+def test_heatmap_tiles_double_buffer_latest_view_and_remove_stale_overlays():
     script = """
 const assert = require('assert')
 const apiPath = require.resolve('./miniprogram/utils/api')
-const requests = []
-let active = 0
-let maxActive = 0
+const downloads = []
 require.cache[apiPath] = { exports: {
-  get: function () {
-    active += 1
-    maxActive = Math.max(maxActive, active)
-    return new Promise((resolve) => requests.push(function (value) { active -= 1; resolve(value) }))
-  },
+  downloadTemporaryFile: function (url) {
+    return new Promise((resolve) => downloads.push({ url: url, resolve: resolve }))
+  }
+} }
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const removed = []
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'orange', selectedYear: null }),
+  setData: function (update) { Object.assign(this.data, update) },
+  _addGroundOverlay: function (tile, filePath, id) { return Promise.resolve({ tile, filePath, id }) },
+  _removeGroundOverlay: function (id) { removed.push(id) },
+})
+const first = {
+  west: 116.2, south: 39.7, east: 116.6, north: 40.1, zoom: 10,
+  mapWest: 116.2, mapSouth: 39.7, mapEast: 116.6, mapNorth: 40.1,
+}
+const latest = {
+  west: 121.3, south: 31.0, east: 121.7, north: 31.4, zoom: 10,
+  mapWest: 121.3, mapSouth: 31.0, mapEast: 121.7, mapNorth: 31.4,
+}
+
+;(async function () {
+  page._fetchViewport(first)
+  const firstCount = downloads.length
+  assert.ok(firstCount > 0)
+  page._fetchViewport(latest)
+  assert.ok(downloads.length > firstCount)
+  downloads.slice(0, firstCount).forEach((request) => request.resolve({ filePath: '/tmp/old.png' }))
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  // 旧请求完成得再晚也不能复活；其已创建的 overlay 会立即清理。
+  assert.ok(removed.length > 0)
+  downloads.slice(firstCount).forEach((request) => request.resolve({ filePath: '/tmp/new.png' }))
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.ok(Object.keys(page._activeTileOverlays).length > 0)
+  assert.deepStrictEqual(page.data.polylines, [])
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_tile_files_reuse_inflight_and_session_cache():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const downloads = []
+require.cache[apiPath] = { exports: {
+  downloadTemporaryFile: function (url) {
+    return new Promise((resolve) => downloads.push({ url: url, resolve: resolve }))
+  }
 } }
 let pageDefinition = null
 global.Page = function (definition) { pageDefinition = definition }
@@ -486,26 +569,20 @@ global.wx = {}
 require('./miniprogram/pages/heatmap/heatmap')
 
 const page = Object.assign({}, pageDefinition, {
-  data: Object.assign({}, pageDefinition.data, { selectedColor: 'orange', selectedYear: null }),
-  _endpoint: function () { return '/api/user/me/heatmap' },
-  setData: function (update) { Object.assign(this.data, update) },
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'red', selectedYear: 2025 }),
 })
-const first = { west: 116.2, south: 39.7, east: 116.6, north: 40.1, zoom: 10 }
-const latest = { west: 116.3, south: 39.7, east: 116.7, north: 40.1, zoom: 10 }
-const response = { tracks: [[[116.4, 39.9], [116.5, 40.0]]] }
+const tile = { zoom: 12, x: 3328, y: 1582 }
+const key = page._tileKey(tile)
 
 ;(async function () {
-  page._fetchViewport(first)
-  page._fetchViewport(latest)
-  assert.strictEqual(requests.length, 1)
-  requests[0](response)
-  await new Promise(setImmediate)
-  assert.strictEqual(requests.length, 2)
-  requests[1](response)
-  await new Promise(setImmediate)
-  assert.strictEqual(maxActive, 1)
-  assert.strictEqual(page._pendingViewport, null)
-  assert.strictEqual(page.data.polylines.length, 1)
+  const first = page._loadTileFile(tile, key)
+  const concurrent = page._loadTileFile(tile, key)
+  assert.strictEqual(downloads.length, 1)
+  downloads[0].resolve({ filePath: '/tmp/tile.png' })
+  assert.strictEqual(await first, '/tmp/tile.png')
+  assert.strictEqual(await concurrent, '/tmp/tile.png')
+  assert.strictEqual(await page._loadTileFile(tile, key), '/tmp/tile.png')
+  assert.strictEqual(downloads.length, 1)
 })().catch(function (error) { console.error(error); process.exit(1) })
 """
 
@@ -582,13 +659,14 @@ const page = Object.assign({}, pageDefinition, {
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
-def test_heatmap_unload_ignores_late_overview_and_viewport_network_responses():
+def test_heatmap_unload_ignores_late_overview_and_tile_network_responses():
     script = """
 const assert = require('assert')
 const apiPath = require.resolve('./miniprogram/utils/api')
 const requests = []
 require.cache[apiPath] = { exports: {
   get: function () { return new Promise((resolve) => requests.push(resolve)) },
+  downloadTemporaryFile: function () { return new Promise((resolve) => requests.push(resolve)) },
 } }
 let pageDefinition = null
 global.Page = function (definition) { pageDefinition = definition }
@@ -622,16 +700,22 @@ const overviewResponse = {
   const viewportPage = Object.assign({}, pageDefinition, {
     data: Object.assign({}, pageDefinition.data, { selectedColor: 'orange', selectedYear: null }),
     _pageAlive: true,
-    _endpoint: function () { return '/api/user/me/heatmap' },
+    _addGroundOverlay: function () { return Promise.resolve() },
+    _removeGroundOverlay: function () {},
     setDataCalls: 0,
     setData: function () { this.setDataCalls += 1 },
   })
-  viewportPage._fetchViewport({ west: 116.2, south: 39.7, east: 116.7, north: 40.2, zoom: 10 })
+  viewportPage._fetchViewport({
+    west: 116.2, south: 39.7, east: 116.7, north: 40.2, zoom: 10,
+    mapWest: 116.2, mapSouth: 39.7, mapEast: 116.7, mapNorth: 40.2,
+  })
+  const tileRequests = requests.slice(1)
+  const tileCallsBeforeUnload = viewportPage.setDataCalls
   viewportPage.onUnload()
-  requests[1](overviewResponse)
-  await new Promise(setImmediate)
-  assert.strictEqual(viewportPage.setDataCalls, 0)
-  assert.strictEqual(viewportPage._viewportFetchInFlight, false)
+  tileRequests.forEach((resolve) => resolve({ filePath: '/tmp/late.png' }))
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(viewportPage.setDataCalls, tileCallsBeforeUnload)
+  assert.deepStrictEqual(viewportPage._activeTileOverlays || {}, {})
 })().catch(function (error) { console.error(error); process.exit(1) })
 """
 
