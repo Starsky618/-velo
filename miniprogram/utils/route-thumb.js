@@ -493,15 +493,32 @@ function drawHeatmap2d(comp, selector, tracks, opts) {
       ctx.strokeStyle = opts.color || 'rgba(255, 149, 0, 0.42)'
       ctx.lineWidth = opts.lineWidth || 2
 
-      // 逐条轨迹完整画（每个点都画，半透明橙叠加 → 骑得越多越亮的自然热力）
-      projected.tracks.forEach(function (track) {
-        ctx.beginPath()
-        track.forEach(function (point, index) {
-          if (index === 0) ctx.moveTo(point.x, point.y)
-          else ctx.lineTo(point.x, point.y)
-        })
-        ctx.stroke()
-      })
+      // 逐条轨迹完整画（每个点都画，半透明橙叠加 → 骑得越多越亮的自然热力）。
+      // 不能在 createSelectorQuery 的一次回调里同步提交全部 Canvas 指令：
+      // 293 条活动约 1.9 万点时，即使网络只有约 400 KB，微信逻辑线程仍会
+      // 报 appServiceSDKScriptError timeout。每帧画少量轨迹，让滚动和 SDK 回调有机会执行。
+      var trackIndex = 0
+      var tracksPerFrame = Math.max(1, Number(opts.tracksPerFrame) || 16)
+      var scheduleFrame = typeof canvas.requestAnimationFrame === 'function'
+        ? function (callback) { canvas.requestAnimationFrame(callback) }
+        : function (callback) { setTimeout(callback, 0) }
+
+      function drawTrackBatch() {
+        var end = Math.min(projected.tracks.length, trackIndex + tracksPerFrame)
+        for (; trackIndex < end; trackIndex++) {
+          var track = projected.tracks[trackIndex]
+          ctx.beginPath()
+          track.forEach(function (point, index) {
+            if (index === 0) ctx.moveTo(point.x, point.y)
+            else ctx.lineTo(point.x, point.y)
+          })
+          ctx.stroke()
+        }
+        if (trackIndex < projected.tracks.length) scheduleFrame(drawTrackBatch)
+      }
+
+      // 首批也放到下一帧，让 selector 查询回调尽快返回。
+      scheduleFrame(drawTrackBatch)
     })
 }
 
