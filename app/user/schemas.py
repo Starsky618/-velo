@@ -199,6 +199,12 @@ class UserCity(str, Enum):
     unknown = "unknown"
 
 
+class HeatmapDetail(str, Enum):
+    """个人热图的数据精度：个人页轻预览 / 全屏地图。"""
+    card = "card"
+    full = "full"
+
+
 class PowerCurveResponse(BaseModel):
     """
     功率曲线响应——"7 档时长各自的最佳平均功率"（D26 v2 polish / 0s 瞬时 + 3s/30s/1min/5min/20min/1h）。
@@ -215,9 +221,8 @@ class HeatmapResponse(BaseModel):
     个人热图响应——"我在某城市去过的所有轨迹"（D27 v2 polish / Sprint 4 task-4.2 v2 / v3 polish city 可选）。
 
     tracks 是 list of list of [lon, lat]：保留 activity 边界 / 每个 activity 一条
-    服务端显示精度预览轨迹（每条最多 64 个关键点、整张卡最多 2 万点）。前端
-    完整绘制响应中的点，多条 opacity 重叠形成热力效果；不下发数据库中的
-    全量 simplified_track。
+    服务端按 card/full 两档生成显示精度轨迹。前端完整绘制响应中的点，多条
+    opacity 叠加形成热力效果；不下发数据库中的全量 simplified_track。
 
     旧版（v1）用 multipoint 扁平所有点 + markers 渲染 → 视觉差（粗灰圆点）。
     新版（v2）用 tracks 保留边界 + polyline 渲染 → 视觉接近 ride.fitcard.app 80%。
@@ -227,6 +232,8 @@ class HeatmapResponse(BaseModel):
     city: Optional[str] = None
     tracks: list[list[list[float]]]
     activity_count: int
+    available_years: list[int] = Field(default_factory=list)
+    selected_year: Optional[int] = None
 
 
 class UserPatchRequest(BaseModel):

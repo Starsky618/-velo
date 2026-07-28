@@ -1,83 +1,74 @@
-/*
- * 骑行热力图 component 样式
- *
- * 设计原则：
- * - 卡片外观沿用 profile.wxss 的 .card 系（margin / radius / 背景），
- *   保持视觉统一——用户不会觉得"这块怎么和别人长得不一样"
- * - 这里只补 component 自己独有的：标题、副标题、map 高度、3 个状态文案
- *
- * 注意：.card 类的 padding/border-radius/box-shadow 由全局 app.wxss 提供，
- *       这里不重复定义，避免和全局样式打架。
- */
-
-/* component 根容器外边距（和 profile 其他卡片对齐 24rpx） */
 .heatmap-card {
   margin: 0 24rpx 24rpx;
 }
 
-/* 卡片标题 */
 .card-title {
   display: block;
+  margin-bottom: 8rpx;
+  color: var(--color-text-1);
   font-size: 30rpx;
   font-weight: 600;
-  color: var(--color-text-1);
-  margin-bottom: 8rpx;
 }
 
-/* 卡片副标题 */
 .subtitle {
   display: block;
-  font-size: 24rpx;
-  color: var(--color-text-3);
   margin-bottom: 24rpx;
-}
-
-/*
- * loading / error / empty 文案：绝对定位叠在 canvas 上层（cover），
- * 白底遮住"还没画轨迹"的空 canvas；渲染态时三者都不渲染，露出轨迹。
- * 这样 canvas 节点永久在 DOM，createSelectorQuery 任何时候都查得到（防白屏 race）。
- */
-.heatmap-state {
-  position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 26rpx;
   color: var(--color-text-3);
-  background: #eef3ee; /* 与 shell 同底，遮住未绘制的 canvas */
+  font-size: 24rpx;
 }
 
-/* error 状态可点击重试，按压反馈对齐全局 §4.5.1（组件隔离手抄）*/
-.error-mini {
-  color: var(--color-primary);
-  transition: transform 0.32s cubic-bezier(.34, 1.56, .64, 1), opacity 0.2s ease;
-}
-
-.error-mini:active {
-  transform: scale(0.94);
-  opacity: 0.7;
-  transition: transform 0.1s ease-out, opacity 0.1s ease-out;
-}
-
-/*
- * map 容器：
- * - 高度固定 480rpx，相当于一个"中等大小的窗口"，既不抢屏也能看清区域
- * - 圆角和卡片其他部分对齐，保持视觉一致
- */
 .heatmap-map-shell {
-  position: relative;
-  overflow: hidden;
   width: 100%;
   height: 480rpx;
+  overflow: hidden;
   border-radius: var(--radius-md);
   background: #eef3ee;
 }
 
-.heatmap-canvas {
-  width: 100%;
-  height: 100%;
+.heatmap-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  color: var(--color-text-3);
+  font-size: 26rpx;
+}
+
+.error-mini {
+  color: var(--color-primary);
+}
+
+.heatmap-count {
+  position: absolute;
+  height: 64rpx;
+  padding: 0 24rpx;
+  border-radius: 20rpx;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.12);
+  color: #1c1c1e;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 64rpx;
+}
+
+.heatmap-count {
+  top: 20rpx;
+  left: 20rpx;
+}
+
+.heatmap-fullscreen {
+  position: absolute;
+  right: 20rpx;
+  bottom: 20rpx;
+  min-width: 128rpx;
+  height: 88rpx;
+  padding: 0 24rpx;
+  border-radius: 22rpx;
+  background: rgba(28, 28, 30, 0.86);
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.12);
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 88rpx;
+  text-align: center;
 }

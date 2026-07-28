@@ -82,7 +82,7 @@ def _cleanup_db(db):
 
 
 def _cleanup_redis(redis_client, user_id: int):
-    for prefix in ("heatmap:v2:user_", "heatmap:user_", "power_curve:user_"):
+    for prefix in ("heatmap:v3:user_", "heatmap:v2:user_", "heatmap:user_", "power_curve:user_"):
         redis_client.delete(f"{prefix}{user_id}")
         for key in redis_client.scan_iter(match=f"{prefix}{user_id}:*"):
             redis_client.delete(key)
@@ -208,13 +208,22 @@ class TestGetUserHeatmap:
             {"lon": 114.0, "lat": 22.5}, {"lon": 114.01, "lat": 22.51},
         ])
 
-        selected = _select_heatmap_preview_activities(beijing + [shenzhen], 10_000)
+        selected = _select_heatmap_preview_activities(beijing + [shenzhen], 4_500)
         point_limit = _heatmap_points_per_activity(len(selected))
 
-        assert len(selected) == 10_000
+        assert len(selected) == 4_500
         assert shenzhen in selected
         assert point_limit == 2
-        assert len(selected) * point_limit <= 20_000
+        assert len(selected) * point_limit <= 9_000
+
+    def test_card_detail_uses_smaller_level_of_detail_budget(self):
+        """个人页只取卡片精度，全屏仍保留更高精度，避免小视图重复卡顿。"""
+        assert _heatmap_points_per_activity(
+            293,
+            per_activity_limit=24,
+            total_point_budget=4_000,
+        ) == 13
+        assert _heatmap_points_per_activity(293) == 30
 
     def test_invalid_tracks_do_not_consume_global_preview_budget(self):
         invalid = [
@@ -331,7 +340,9 @@ class TestGetUserHeatmap:
             _cleanup_redis(real_redis, user_id)
 
             first = get_user_heatmap(db, user_id, "beijing")
-            cached_raw = real_redis.get(f"heatmap:v2:user_{user_id}:city_beijing")
+            cached_raw = real_redis.get(
+                f"heatmap:v3:user_{user_id}:detail_full:city_beijing:year_all"
+            )
             assert cached_raw is not None
 
             second = get_user_heatmap(db, user_id, "beijing")
@@ -371,10 +382,8 @@ class TestGetUserHeatmap:
             _cleanup_db(db)
             db.close()
 
-    def test_no_city_redis_key_no_city_suffix(self, pg_session_factory, real_redis):
-        """city=None 走独立 v2 cache key，隔离旧版全量轨迹缓存。
-        验证：① 无 city 路径写入的 key 是 `heatmap:v2:user_{id}`
-        ② 不会撞上按 city 筛的 `heatmap:v2:user_{id}:city_{city}` key 形态。"""
+    def test_cache_key_separates_detail_year_and_city(self, pg_session_factory, real_redis):
+        """v3 cache key 必须隔离卡片/全屏、年份和城市。"""
         db = pg_session_factory()
         user_id = None
         try:
@@ -385,24 +394,47 @@ class TestGetUserHeatmap:
             user_id = user.id
             _cleanup_redis(real_redis, user_id)
 
-            # 走无 city 路径
+            # 走无 city / 全年份 / full 路径
             get_user_heatmap(db, user_id, None)
 
-            # 期望 key（无后缀）存在
-            no_city_key = f"heatmap:v2:user_{user_id}"
+            no_city_key = f"heatmap:v3:user_{user_id}:detail_full:year_all"
             assert real_redis.get(no_city_key) is not None, (
-                f"期望 cache key {no_city_key} 存在 / 无 city 路径写入失败"
+                f"期望 cache key {no_city_key} 存在"
             )
 
-            # 期望按 city 筛的 key 不应被同时写入（独立 key）
-            city_key = f"heatmap:v2:user_{user_id}:city_beijing"
-            assert real_redis.get(city_key) is None, (
-                f"无 city 路径不应写入按 city 筛的 key {city_key}"
+            get_user_heatmap(db, user_id, None, _this_month_utc().astimezone(_BJ_TZ).year, "card")
+            card_year_key = (
+                f"heatmap:v3:user_{user_id}:detail_card:"
+                f"year_{_this_month_utc().astimezone(_BJ_TZ).year}"
             )
+            assert real_redis.get(card_year_key) is not None
+            assert card_year_key != no_city_key
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
-                real_redis.delete(f"heatmap:v2:user_{user_id}")
+            _cleanup_db(db)
+            db.close()
+
+    def test_year_filter_returns_available_years_and_selected_year(self, pg_session_factory, real_redis):
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "year_filter")
+            _make_activity_in_beijing(db, user, "current", datetime(2026, 7, 1, tzinfo=timezone.utc))
+            _make_activity_in_beijing(db, user, "older", datetime(2025, 7, 1, tzinfo=timezone.utc))
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            result = get_user_heatmap(db, user_id, None, 2025, "full")
+
+            assert result["selected_year"] == 2025
+            assert result["available_years"] == [2026, 2025]
+            assert result["activity_count"] == 1
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
             _cleanup_db(db)
             db.close()
 
@@ -480,7 +512,7 @@ class TestUpdateUserCity:
             db.close()
 
     def test_invalidates_heatmap_cache(self, pg_session_factory, real_redis):
-        """改 city 后清掉 v2/legacy × 无 city/按 city 四种热图缓存。"""
+        """改 city 后清掉 v3/v2/legacy 的全部热图缓存。"""
         db = pg_session_factory()
         user_id = None
         try:
@@ -492,6 +524,8 @@ class TestUpdateUserCity:
             _cleanup_redis(real_redis, user_id)
 
             keys = [
+                f"heatmap:v3:user_{user_id}:detail_full:year_all",
+                f"heatmap:v3:user_{user_id}:detail_card:year_2026",
                 f"heatmap:v2:user_{user_id}",
                 f"heatmap:v2:user_{user_id}:city_beijing",
                 f"heatmap:user_{user_id}",
