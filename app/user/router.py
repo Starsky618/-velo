@@ -14,7 +14,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.activity import schemas as activity_schemas
@@ -222,6 +222,8 @@ def get_my_power_curve(
 @router.get("/me/heatmap", response_model=schemas.HeatmapResponse)
 def get_my_heatmap(
     city: schemas.UserCity | None = None,
+    year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
+    detail: schemas.HeatmapDetail = schemas.HeatmapDetail.full,
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -236,10 +238,16 @@ def get_my_heatmap(
     返回 tracks: list[list[[lon, lat]]]（保留 activity 边界 / 每个 activity 一条独立轨迹 / 前端画 polyline）
     + activity_count（与 tracks 长度一致 / 单点 activity 自动跳过不计数）。
 
-    Redis 缓存 1h，无 city 与按 city 走两套独立 v2 显示精度 cache key，互不干扰；
-    v2 前缀隔离旧版全量轨迹大对象。
+    year 可选，按北京时间自然年筛；detail=card/full 控制个人页与全屏地图的数据预算。
+    Redis 缓存 1h，city/year/detail 互相隔离。
     """
-    return service.get_user_heatmap(db, user_id, city.value if city else None)
+    return service.get_user_heatmap(
+        db,
+        user_id,
+        city.value if city else None,
+        year,
+        detail.value,
+    )
 
 
 @router.get("/me/city-medals", response_model=schemas.CityMedalsResponse)
@@ -523,6 +531,8 @@ def get_user_power_curve_for_others(
 def get_user_heatmap_for_others(
     user_id: int,
     city: schemas.UserCity | None = None,
+    year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
+    detail: schemas.HeatmapDetail = schemas.HeatmapDetail.full,
     requester_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -541,7 +551,13 @@ def get_user_heatmap_for_others(
         service.get_user_by_id(db, user_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="用户不存在")
-    return service.get_user_heatmap(db, user_id, city.value if city else None)
+    return service.get_user_heatmap(
+        db,
+        user_id,
+        city.value if city else None,
+        year,
+        detail.value,
+    )
 
 
 @router.get("/{user_id}/city-medals", response_model=schemas.CityMedalsResponse)

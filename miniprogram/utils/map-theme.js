@@ -12,8 +12,8 @@
  * 改任何代码都救不回来（codex 多轮代码层修复全部无效，根因在商务层不在代码层）。
  *
  * 现行架构（替代方案，免费且已验证）：
- * 1. 装饰性展示（路线缩略图 / 热力图卡）→ utils/route-thumb.js canvas 自绘纸面 + 橙色轨迹；
- * 2. 交互性地图（route-map 全屏查看）→ 不带 subkey 的默认底图（免费）；
+ * 1. 仅路线缩略图 → utils/route-thumb.js canvas 自绘纸面 + 橙色轨迹；
+ * 2. 交互性地图（route-map / 个人热图）→ 不带 subkey 的默认底图（免费）；
  * 3. 全工程任何 <map> 禁止再传 subkey / layer-style（有静态测试守卫这条红线）。
  * 未来真要复活纸面底图：先在微信公众平台-付费管理购买个性化地图，再从腾讯控制台
  * weilu-mini key 取回 subkey 填上——顺序不能反。
@@ -26,7 +26,7 @@ const PAPER_MAP_CONFIG = {
 }
 
 // 把一串 GCJ-02 点变成 <map> polyline 数组——route-map 全屏页画橙色路线用。
-// 展示型缩略图不走这里（那是 route-thumb.js canvas 的事），所以全工程只有"真地图"页消费它。
+// 路线缩略图不走这里（那是 route-thumb.js canvas 的事）；个人热图有自己的半透明轨迹色。
 function buildRoutePreviewPolylines(points) {
   if (!Array.isArray(points) || points.length < 2) return []
   return [{

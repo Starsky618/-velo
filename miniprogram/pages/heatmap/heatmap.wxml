@@ -1,0 +1,57 @@
+<view class="heatmap-page">
+  <view wx:if="{{loading}}" class="page-state">热图加载中...</view>
+  <view wx:elif="{{error}}" class="page-state error-state" bindtap="onRetry">{{error}} · 点击重试</view>
+  <view wx:elif="{{isEmpty}}" class="page-state">这个年份还没有骑行轨迹</view>
+  <map wx:else
+       id="personal-heatmap-map"
+       class="personal-heatmap-map"
+       latitude="{{center.latitude}}"
+       longitude="{{center.longitude}}"
+       scale="10"
+       polyline="{{polylines}}"
+       include-points="{{includePoints}}"
+       enable-scroll="{{true}}"
+       enable-zoom="{{true}}"
+       enable-rotate="{{true}}"
+       enable-3D="{{false}}"
+       show-location="{{false}}"
+       show-scale="{{true}}"
+       show-compass="{{true}}">
+    <cover-view class="map-meta">{{activityCount}} 次骑行 · {{selectedYearLabel}}</cover-view>
+    <cover-view class="layer-toggle" catchtap="onToggleLayer">图层</cover-view>
+
+    <cover-view wx:if="{{updating}}" class="updating-pill">正在更新...</cover-view>
+
+    <cover-view wx:if="{{!layerOpen}}" class="fit-controls">
+      <cover-view class="fit-button {{focusMode === 'local' ? 'active' : ''}}" catchtap="onFitLocal">常骑区域</cover-view>
+      <cover-view class="fit-button {{focusMode === 'all' ? 'active' : ''}}" catchtap="onFitAll">全部足迹</cover-view>
+    </cover-view>
+
+    <cover-view wx:if="{{layerOpen}}" class="layer-panel">
+      <cover-view class="layer-head">
+        <cover-view class="layer-title">我的热图</cover-view>
+        <cover-view class="layer-close" catchtap="onCloseLayer">完成</cover-view>
+      </cover-view>
+
+      <cover-view class="setting-label">年份</cover-view>
+      <cover-view class="option-row">
+        <cover-view
+          wx:for="{{yearOptions}}"
+          wx:key="value"
+          class="option-button {{item.selected ? 'selected' : ''}}"
+          data-year="{{item.value}}"
+          catchtap="onSelectYear">{{item.label}}</cover-view>
+      </cover-view>
+
+      <cover-view class="setting-label color-label">热度颜色</cover-view>
+      <cover-view class="option-row">
+        <cover-view
+          wx:for="{{colorOptions}}"
+          wx:key="key"
+          class="option-button color-option color-{{item.key}} {{item.selected ? 'selected' : ''}}"
+          data-color="{{item.key}}"
+          catchtap="onSelectColor">{{item.label}}</cover-view>
+      </cover-view>
+    </cover-view>
+  </map>
+</view>

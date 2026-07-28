@@ -141,6 +141,36 @@ def test_heatmap_no_city_returns_all_tracks(client, auth_header):
         assert mock_svc.call_args.args[2] is None
 
 
+def test_heatmap_passes_year_and_detail_to_service(client, auth_header):
+    fake_result = {
+        "city": None,
+        "tracks": [[[116.4, 39.9], [116.41, 39.91]]],
+        "activity_count": 1,
+        "available_years": [2026, 2025],
+        "selected_year": 2025,
+    }
+    with patch("app.user.router.service.get_user_heatmap", return_value=fake_result) as mock_svc:
+        resp = client.get(
+            "/api/user/me/heatmap?year=2025&detail=card",
+            headers=auth_header,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["selected_year"] == 2025
+        assert resp.json()["available_years"] == [2026, 2025]
+        assert mock_svc.call_args.args[3:] == (2025, "card")
+
+
+def test_heatmap_rejects_invalid_year_and_detail(client, auth_header):
+    assert client.get(
+        "/api/user/me/heatmap?year=1999",
+        headers=auth_header,
+    ).status_code == 422
+    assert client.get(
+        "/api/user/me/heatmap?detail=tile",
+        headers=auth_header,
+    ).status_code == 422
+
+
 # ───────────────────────────────────────────────────────────────────────
 # PATCH /api/user/me
 # ───────────────────────────────────────────────────────────────────────
