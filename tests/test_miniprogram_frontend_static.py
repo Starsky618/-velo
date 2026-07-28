@@ -45,6 +45,18 @@ def test_meetup_frontend_is_fully_removed():
     ]
     assert all(not path.exists() for path in removed_paths)
 
+    allowed_account_deletion_disclosures = {
+        MINI / "pages" / "settings" / "settings.js": [
+            "已开放约骑会取消并解除关联后保留",
+            "需删除已开放约骑",
+        ],
+        MINI / "pages" / "settings" / "settings.wxml": [
+            "已开放约骑会取消并去关联保留",
+        ],
+        MINI / "utils" / "api.js": [
+            "已开放约骑按后端规则去标识保留",
+        ],
+    }
     runtime_suffixes = {".js", ".json", ".wxml", ".wxss"}
     for path in MINI.rglob("*"):
         if not path.is_file() or path.suffix not in runtime_suffixes:
@@ -53,7 +65,10 @@ def test_meetup_frontend_is_fully_removed():
             continue
         source = _read(path)
         assert "meetup" not in source.lower(), f"{path} 仍残留约骑运行时代码"
-        assert "约骑" not in source, f"{path} 仍残留约骑用户文案"
+        for disclosure in allowed_account_deletion_disclosures.get(path, []):
+            assert disclosure in source
+            source = source.replace(disclosure, "")
+        assert "约骑" not in source, f"{path} 仍残留约骑用户文案或超出注销披露范围"
 
 
 def test_route_and_upload_surfaces_keep_core_flows_without_meetup_links():
