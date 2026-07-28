@@ -450,6 +450,13 @@ def delete_activity(db: Session, activity_id: int, user_id: int) -> None:
     db.delete(activity)
     db.commit()
 
+    # 删除成功后立即清热图；失败只影响最多 1h 的展示缓存，不能反向让删除 API 失败。
+    try:
+        from app.user.service_social import invalidate_heatmap_cache
+        invalidate_heatmap_cache(user_id)
+    except Exception:
+        pass
+
 
 def get_activity_status(db: Session, activity_id: int, user_id: int) -> Activity:
     """

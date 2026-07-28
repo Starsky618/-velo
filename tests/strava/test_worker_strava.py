@@ -124,7 +124,7 @@ class TestProcessStravaWebhookUpdate:
     @patch("app.strava.worker_strava.SessionLocal")
     @patch("app.strava.worker_strava._process_strava_main")
     def test_update_completed_wipes_and_reprocesses(
-        self, mock_process_main, mock_session_local, mock_wipe, db, strava_imports_table
+        self, mock_process_main, mock_session_local, mock_wipe, db, strava_imports_table, monkeypatch
     ):
         """update completed 活动 → 清派生数据 + 重置 status='processing' → 主流程。"""
         from app.strava.worker_strava import process_strava_webhook_update
@@ -139,9 +139,15 @@ class TestProcessStravaWebhookUpdate:
         )
         db.add(act)
         db.commit()
+        user_id = user.id
+        invalidated = []
+        monkeypatch.setattr(
+            "app.user.service_social.invalidate_heatmap_cache",
+            lambda uid: invalidated.append(uid),
+        )
 
         mock_session_local.return_value = db
-        process_strava_webhook_update(user.id, 99004)
+        process_strava_webhook_update(user_id, 99004)
 
         # _wipe_activity_derived_data 应被调（清派生数据）
         mock_wipe.assert_called_once()
@@ -149,6 +155,7 @@ class TestProcessStravaWebhookUpdate:
         act_db = db.query(Activity).filter_by(strava_activity_id=99004).first()
         assert act_db.status == "processing", \
             f"completed 路径应清派生 + 重置为 processing / 实际 = {act_db.status}"
+        assert invalidated == [user_id]
         mock_process_main.assert_called_once()
 
     @patch("app.strava.worker_strava.SessionLocal")

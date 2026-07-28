@@ -89,9 +89,15 @@ def handle_webhook_event(db: Session, payload: dict) -> None:
             strava_activity_id=object_id, user_id=user.id
         ).first()
         if activity:
+            activity_id = activity.id
             db.delete(activity)
             db.commit()
-            logger.info("删除 Strava 活动 strava_id=%s activity_id=%d", object_id, activity.id)
+            try:
+                from app.user.service_social import invalidate_heatmap_cache
+                invalidate_heatmap_cache(user.id)
+            except Exception:
+                logger.exception("heatmap cache invalidation failed user_id=%s", user.id)
+            logger.info("删除 Strava 活动 strava_id=%s activity_id=%d", object_id, activity_id)
         return
 
     # Sprint 8 Fix 2：webhook 拆 create / update 独立路径 + RQ worker 异步处理

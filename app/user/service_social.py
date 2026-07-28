@@ -19,8 +19,8 @@
     - **看他人严格白名单**（_PROFILE_RESPONSE_KEYS / spec R3-I3）：拦截 efforts / activities /
       heatmap / strava_* / openid / mute_notifications / 任何 token；机制不是自觉 / dict 推导式
       生效 / 未来误加敏感字段也不会泄漏；防回退测试用 _filter_profile_keys helper 反向构造
-    - **双 cache key 形态**：无 city 路径 `heatmap:user_{id}` vs 按 city 路径
-      `heatmap:user_{id}:city_{city}`；invalidate_heatmap_cache 必须双删（v3 polish Critical 修）
+    - **双 cache key 形态**：无 city 与按 city 路径分别缓存；v2 前缀隔离旧全量响应，
+      invalidate_heatmap_cache 同时清新旧 key，避免历史大对象残留
     - **GCJ-02 坐标转换在前端**：后端返 WGS-84 原始坐标 [lon, lat]；前端拿到后转 GCJ-02 给高德地图
       （陷阱 #31 / D31 决策）；不要在后端转 / 否则坐标双重转换
     - **simplified_track polyline 起点定 city**：infer_city_from_coords 是 common.geo 纯函数
@@ -44,6 +44,7 @@ v5 task-user-split-001：从 service.py 834 行拆出（commit TBD）。
 """
 
 import json as _json
+import math as _math
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import desc
@@ -59,7 +60,11 @@ from app.user.models import User
 BEIJING_TZ = timezone(timedelta(hours=8))
 
 _HEATMAP_CACHE_TTL_SEC = 3600
-_HEATMAP_CACHE_PREFIX = "heatmap:user_"
+_HEATMAP_CACHE_PREFIX = "heatmap:v2:user_"
+_HEATMAP_LEGACY_CACHE_PREFIX = "heatmap:user_"
+_HEATMAP_POINTS_PER_ACTIVITY = 64
+_HEATMAP_TOTAL_POINT_BUDGET = 20_000
+_HEATMAP_MAX_PREVIEW_TRACKS = _HEATMAP_TOTAL_POINT_BUDGET // 2
 # _VALID_USER_CITIES 已废弃（Tim 2026-05-17 真用拍放宽 user.city 到任意中文）
 # 历史 6 城枚举只剩 activity.city（worker 推断起点 / ck_activities_city CHECK 仍生效）
 # update_user_city 现仅校验长度 + strip / 不再卡 6 城
@@ -108,13 +113,189 @@ def _filter_profile_keys(raw_response: dict) -> dict:
     return {k: v for k, v in raw_response.items() if k in _PROFILE_RESPONSE_KEYS}
 
 
+def _build_heatmap_preview_track(
+    track: object,
+    point_limit: int = _HEATMAP_POINTS_PER_ACTIVITY,
+) -> list[list[float]]:
+    """生成固定尺寸热图卡需要的显示精度轨迹，避免下发活动原始点集。
+
+    Strava 的个人热图先在服务端按瓦片/像素聚合，客户端只取当前视野的热图块。
+    VELO 当前只有 327x240 的静态卡片，完整瓦片服务过重；这里采用同一原则的
+    小型版本：服务端一次遍历选关键拐点 + 坐标定精度 + Redis 缓存。
+
+    每条活动最多 64 个关键点，整张卡最多 2 万点。293 条活动的上限约 1.9 万点，
+    而不是把数据库里约 44 万个 simplified_track 点（实测响应 6.7 MB）再次传到手机。
+    """
+    if not isinstance(track, list):
+        return []
+
+    clean: list[dict] = []
+    for point in track:
+        normalized = _normalize_heatmap_source_point(point)
+        if normalized is not None:
+            clean.append(normalized)
+
+    if len(clean) < 2:
+        return []
+
+    reduced = _select_heatmap_key_points(clean, max(2, min(point_limit, _HEATMAP_POINTS_PER_ACTIVITY)))
+
+    # 5 位小数约 1 米，远高于 327x240 卡片的像素分辨率；继续保留更多小数只增流量。
+    return [[round(float(p["lon"]), 5), round(float(p["lat"]), 5)] for p in reduced]
+
+
+def _normalize_heatmap_source_point(point: object) -> dict | None:
+    """校验数据库轨迹点并统一为有限、合法的 WGS-84 坐标。"""
+    if not isinstance(point, dict):
+        return None
+    try:
+        lat = float(point.get("lat"))
+        lon = float(point.get("lon"))
+    except (TypeError, ValueError):
+        return None
+    if not (_math.isfinite(lat) and _math.isfinite(lon)):
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return {"lat": lat, "lon": lon, "ele": point.get("ele")}
+
+
+def _has_heatmap_line(track: object) -> bool:
+    """快速判断活动是否至少有两个可画点，超大历史库抽样前先排除坏数据。"""
+    if not isinstance(track, list):
+        return False
+    valid_count = 0
+    for point in track:
+        if _normalize_heatmap_source_point(point) is not None:
+            valid_count += 1
+            if valid_count >= 2:
+                return True
+    return False
+
+
+def _select_heatmap_key_points(points: list[dict], limit: int) -> list[dict]:
+    """用 LTTB 面积法一次遍历选关键拐点，O(n) 且严格不超过 limit。
+
+    simplified_track 本身已是活动详情级 DP 轨迹；热图卡只需从中挑出最能代表
+    形状变化的点。相比再次跑多轮 DP 二分，293 条长轨迹的冷缓存生成从几十秒
+    降到亚秒级，同时比固定步长更不容易漏掉短促急弯。
+    """
+    if len(points) <= limit:
+        return points
+    if limit < 3:
+        return [points[0], points[-1]][:limit]
+
+    sampled = [points[0]]
+    bucket_size = (len(points) - 2) / (limit - 2)
+    selected_index = 0
+
+    for bucket in range(limit - 2):
+        next_start = int((bucket + 1) * bucket_size) + 1
+        next_end = min(int((bucket + 2) * bucket_size) + 1, len(points))
+        if next_start >= len(points) - 1:
+            avg_lon = float(points[-1]["lon"])
+            avg_lat = float(points[-1]["lat"])
+        else:
+            next_points = points[next_start:next_end] or [points[-1]]
+            avg_lon = sum(float(p["lon"]) for p in next_points) / len(next_points)
+            avg_lat = sum(float(p["lat"]) for p in next_points) / len(next_points)
+
+        range_start = int(bucket * bucket_size) + 1
+        range_end = min(int((bucket + 1) * bucket_size) + 1, len(points) - 1)
+        anchor = points[selected_index]
+        anchor_lon = float(anchor["lon"])
+        anchor_lat = float(anchor["lat"])
+        cos_lat = _math.cos(anchor_lat * _math.pi / 180)
+        best_area = -1.0
+        best_index = range_start
+
+        for index in range(range_start, max(range_start + 1, range_end)):
+            point = points[index]
+            lon = float(point["lon"])
+            lat = float(point["lat"])
+            area = abs(
+                (anchor_lon - avg_lon) * cos_lat * (lat - anchor_lat)
+                - (anchor_lon - lon) * cos_lat * (avg_lat - anchor_lat)
+            )
+            if area > best_area:
+                best_area = area
+                best_index = index
+
+        sampled.append(points[best_index])
+        selected_index = best_index
+
+    sampled.append(points[-1])
+    return sampled
+
+
+def _heatmap_activity_buckets(activity: object) -> list[tuple[int, int]]:
+    """返回轨迹实际覆盖的约 50km 网格，抽样时不只看活动起点。"""
+    track = getattr(activity, "simplified_track", None)
+    buckets: dict[tuple[int, int], None] = {}
+    if isinstance(track, list):
+        for point in track:
+            normalized = _normalize_heatmap_source_point(point)
+            if normalized is not None:
+                key = (_math.floor(normalized["lat"] * 2), _math.floor(normalized["lon"] * 2))
+                buckets[key] = None
+    return list(buckets)
+
+
+def _select_heatmap_preview_activities(activities: list, limit: int) -> list:
+    """在固定轨迹上限内做地理分桶轮询，避免只保留常骑城市而漏掉旅行足迹。"""
+    # 始终先排除单点/非法轨迹，再计算整张卡的动态点预算；否则即使没有触发
+    # 1 万条抽样，坏活动也会把正常轨迹从 64 点无谓压到 2 点。
+    activities = [
+        activity for activity in activities
+        if _has_heatmap_line(getattr(activity, "simplified_track", None))
+    ]
+    if len(activities) <= limit:
+        return activities
+
+    bucket_members: dict[tuple[int, int], list] = {}
+    for activity in activities:
+        for bucket in _heatmap_activity_buckets(activity):
+            bucket_members.setdefault(bucket, []).append(activity)
+
+    selected = []
+    selected_ids = set()
+    # 稀有覆盖桶优先：一条从北京出发、终点到远端的新路线即使排在第 10001 条，
+    # 也会因为覆盖了稀有桶而先进入代表集。
+    for _, members in sorted(bucket_members.items(), key=lambda item: len(item[1])):
+        candidate = next((activity for activity in members if id(activity) not in selected_ids), None)
+        if candidate is not None:
+            selected.append(candidate)
+            selected_ids.add(id(candidate))
+            if len(selected) == limit:
+                return selected
+
+    # 地理覆盖已保住后，用原顺序填满剩余预算，尽量保留常骑区域的叠加密度。
+    for activity in activities:
+        if id(activity) in selected_ids:
+            continue
+        selected.append(activity)
+        selected_ids.add(id(activity))
+        if len(selected) == limit:
+            break
+    return selected
+
+
+def _heatmap_points_per_activity(activity_count: int) -> int:
+    """把用户整张卡的输出锁在 2 万点内，而不是让 64×活动数无限增长。"""
+    if activity_count <= 0:
+        return _HEATMAP_POINTS_PER_ACTIVITY
+    return max(2, min(_HEATMAP_POINTS_PER_ACTIVITY, _HEATMAP_TOTAL_POINT_BUDGET // activity_count))
+
+
 def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict:
     """
     用户骑行热图——"我去过哪些地方"。
 
-    把用户的所有骑行轨迹**保留 activity 边界**返回 list of tracks，
-    前端拿来画 polyline 路径线（每条 activity 一条线）+ 多条 opacity 0.5 重叠
-    自然形成"骑过越多越亮"的热力效果。
+    把用户的骑行轨迹生成**显示精度预览**并保留 activity 边界，前端拿来画
+    polyline 路径线（每条 activity 一条线）+ 多条 opacity 叠加形成热力效果。
+    不把 simplified_track 全量下发：固定 327x240 卡片看不到亚像素细节，巨量 JSON
+    只会拖慢网络、解析和小程序逻辑层。整张响应另有 2 万点硬预算；极端超过
+    1 万条活动时按地理桶选代表轨迹，优先保留所有骑行区域的可见性。
 
     city 参数（v3 polish / Sprint 4 task-4.2 v3）：
     - city is None → 返回该用户**所有** completed activities 的轨迹（不按城市筛 /
@@ -126,9 +307,9 @@ def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict
     改为 tracks: list[list[[lon,lat]]] —— 保留 activity 边界让前端画 polyline，
     不再用 markers 点 / 视觉接近 ride.fitcard.app 80%。
 
-    Redis 缓存 TTL 1h，**两套独立 cache key**：
-    - 无 city 路径：`heatmap:user_{user_id}` （新增 / v3 polish）
-    - 有 city 路径：`heatmap:user_{user_id}:city_{city}` （保留旧 key 不变 / 兼容）
+    Redis 缓存 TTL 1h，v2 key 隔离旧版 6.7 MB 全量缓存：
+    - 无 city 路径：`heatmap:v2:user_{user_id}`
+    - 有 city 路径：`heatmap:v2:user_{user_id}:city_{city}`
     update_user_city 清缓存通过 invalidate_heatmap_cache 双清：按 city 路径 +
     无 city 路径两种形态都清（D27 v3 polish Critical 修 / 保证改主城后下次拿最新轨迹）。
 
@@ -147,9 +328,8 @@ def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict
           "activity_count": 12
         }
     """
-    # cache key 设计：city is None 走"无 city 后缀"的独立 key —— 与按 city 筛的 key 形态
-    # 不同（`heatmap:user_{id}` vs `heatmap:user_{id}:city_{city}`），
-    # 让 update_user_city 的 `heatmap:user_{id}:*` 失效 pattern 不会误命中无 city 的 key。
+    # cache key 设计：city is None 走无 city 后缀的独立 v2 key；有 city 追加 city 后缀。
+    # v2 前缀确保发布后不会命中旧版全量轨迹缓存。
     if city is None:
         cache_key = f"{_HEATMAP_CACHE_PREFIX}{user_id}"
     else:
@@ -190,20 +370,16 @@ def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict
         if _infer_city_from_coords(lat, lon) == city:
             filtered.append(a)
 
-    # 保留 activity 边界 / 每个 activity 输出一条独立轨迹（D27 v2 polish）
-    # 前端画 polyline 时一条 activity 一条 polyline / 多条重叠 opacity 0.5 自然成热力
-    # ⚠ 单点 activity 跳过：polyline 至少 2 点才能成线 / 单点会被前端 _convertToPolylines 跳过
-    # 后端同步过滤防"activity_count > 0 但 polylines 空 / 用户看到地图无线条"假象（Codex 异源审 Important）
+    # 保留 activity 边界 / 每个 activity 输出一条显示精度轨迹。
+    # 除每活动 64 点上限外，再限制整张卡最多 2 万点。超过 1 万条活动时按
+    # 地理桶轮询选代表轨迹，优先保住稀有旅行区域，而不是只截最近/常骑城市。
+    preview_activities = _select_heatmap_preview_activities(filtered, _HEATMAP_MAX_PREVIEW_TRACKS)
+    point_limit = _heatmap_points_per_activity(len(preview_activities))
     tracks = []
     valid_count = 0
-    for a in filtered:
-        track_points = []
-        for pt in a.simplified_track:
-            lat = pt.get("lat")
-            lon = pt.get("lon")
-            if lat is not None and lon is not None:
-                track_points.append([lon, lat])  # GeoJSON 顺序 [lon, lat]
-        if len(track_points) >= 2:  # 至少 2 点才能成 polyline
+    for a in preview_activities:
+        track_points = _build_heatmap_preview_track(a.simplified_track, point_limit)
+        if track_points:
             tracks.append(track_points)
             valid_count += 1
 
@@ -263,9 +439,7 @@ def invalidate_heatmap_cache(user_id: int) -> None:
     """
     清掉用户全部 heatmap 缓存——"通知账房先生热图重算"。
 
-    覆盖两种 cache key 形态（D27 v3 polish 加无 city 路径后必须双删 / Codex 异源审 Critical 修）：
-    1. `heatmap:user_{id}` —— 无 city 路径（v3 新增 / 显示用户全部 activity 轨迹）
-    2. `heatmap:user_{id}:city_{city}` —— 按 city 路径（v2 保留 / 兼容旧）
+    覆盖 v2 显示精度缓存和旧版全量缓存的无 city / 按 city 两种形态。
 
     场景：
     - 用户上传新 activity completed → worker hook 调本函数 → 下次刷个人页拿最新轨迹
@@ -276,13 +450,12 @@ def invalidate_heatmap_cache(user_id: int) -> None:
     ⚠ 调用方：app/activity/worker.py:198 + 本文件 update_user_city / 拆分时通过 service.py 转导出 0 改动
     """
     redis_client = _get_redis_client()
-    # 1. 无 city 路径直接 delete（不需 scan / key 形态固定）
-    no_city_key = f"{_HEATMAP_CACHE_PREFIX}{user_id}"
-    redis_client.delete(no_city_key)
-    # 2. 按 city 路径用 scan_iter（多个 city 各一个 key）
-    pattern = f"{_HEATMAP_CACHE_PREFIX}{user_id}:*"
-    for key in redis_client.scan_iter(match=pattern):
-        redis_client.delete(key)
+    # 新 v2 预览缓存 + 旧全量缓存一起失效；旧 key 会在自然 TTL 后消失，
+    # 双删保证上传新活动时不会留下历史大对象。
+    for prefix in (_HEATMAP_CACHE_PREFIX, _HEATMAP_LEGACY_CACHE_PREFIX):
+        redis_client.delete(f"{prefix}{user_id}")
+        for key in redis_client.scan_iter(match=f"{prefix}{user_id}:*"):
+            redis_client.delete(key)
 
 
 def get_user_profile_for_others(

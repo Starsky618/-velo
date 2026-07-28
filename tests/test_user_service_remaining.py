@@ -10,6 +10,7 @@ v5 task-2.C.2 余下 3 函数测试：heatmap / update_user_city / profile_for_o
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 from geoalchemy2 import WKTElement
@@ -23,6 +24,11 @@ from app.user.service import (
     get_user_heatmap,
     get_user_profile_for_others,
     update_user_city,
+)
+from app.user.service_social import (
+    _build_heatmap_preview_track,
+    _heatmap_points_per_activity,
+    _select_heatmap_preview_activities,
 )
 
 
@@ -76,7 +82,8 @@ def _cleanup_db(db):
 
 
 def _cleanup_redis(redis_client, user_id: int):
-    for prefix in ("heatmap:user_", "power_curve:user_"):
+    for prefix in ("heatmap:v2:user_", "heatmap:user_", "power_curve:user_"):
+        redis_client.delete(f"{prefix}{user_id}")
         for key in redis_client.scan_iter(match=f"{prefix}{user_id}:*"):
             redis_client.delete(key)
 
@@ -161,6 +168,84 @@ def _make_activity_in_shanghai(
 
 
 class TestGetUserHeatmap:
+    def test_preview_has_hard_pixel_budget_and_small_payload(self):
+        """固定尺寸卡片只收显示精度数据；293 条活动响应不能再回到 6.7 MB。"""
+        track = [
+            {
+                "lon": 116.1 + i * 0.0003,
+                "lat": 39.8 + ((i % 37) - 18) * 0.0002,
+                "ele": 50 + i % 20,
+            }
+            for i in range(1500)
+        ]
+
+        preview = _build_heatmap_preview_track(track)
+
+        assert len(preview) == 64
+        assert preview[0] == [round(track[0]["lon"], 5), round(track[0]["lat"], 5)]
+        assert preview[-1] == [round(track[-1]["lon"], 5), round(track[-1]["lat"], 5)]
+        source_indexes = [
+            next(i for i, point in enumerate(track) if preview_point == [round(point["lon"], 5), round(point["lat"], 5)])
+            for preview_point in preview
+        ]
+        assert source_indexes == sorted(set(source_indexes))
+        simulated_response = {
+            "city": None,
+            "tracks": [preview] * 293,
+            "activity_count": 293,
+        }
+        assert len(json.dumps(simulated_response).encode()) < 600_000
+
+    def test_preview_has_global_budget_and_keeps_rare_regions(self):
+        """活动数继续增长时总点数仍封顶，地理分桶不会把稀有城市截掉。"""
+        beijing = [
+            SimpleNamespace(simplified_track=[
+                {"lon": 116.4, "lat": 39.9}, {"lon": 116.41, "lat": 39.91},
+            ])
+            for _ in range(12_000)
+        ]
+        shenzhen = SimpleNamespace(simplified_track=[
+            {"lon": 114.0, "lat": 22.5}, {"lon": 114.01, "lat": 22.51},
+        ])
+
+        selected = _select_heatmap_preview_activities(beijing + [shenzhen], 10_000)
+        point_limit = _heatmap_points_per_activity(len(selected))
+
+        assert len(selected) == 10_000
+        assert shenzhen in selected
+        assert point_limit == 2
+        assert len(selected) * point_limit <= 20_000
+
+    def test_invalid_tracks_do_not_consume_global_preview_budget(self):
+        invalid = [
+            SimpleNamespace(simplified_track=[{"lon": float(i % 180), "lat": 20.0}])
+            for i in range(12_000)
+        ]
+        valid = SimpleNamespace(simplified_track=[
+            {"lon": 116.4, "lat": 39.9}, {"lon": 116.41, "lat": 39.91},
+        ])
+
+        selected = _select_heatmap_preview_activities(invalid + [valid], 10_000)
+
+        assert selected == [valid]
+
+    def test_global_budget_keeps_activity_covering_rare_destination(self):
+        local = [
+            SimpleNamespace(simplified_track=[
+                {"lon": 116.4, "lat": 39.9}, {"lon": 116.41, "lat": 39.91},
+            ])
+            for _ in range(10_000)
+        ]
+        rare_destination = SimpleNamespace(simplified_track=[
+            {"lon": 116.4, "lat": 39.9}, {"lon": 116.8, "lat": 39.9},
+            {"lon": 117.2, "lat": 39.9},
+        ])
+
+        selected = _select_heatmap_preview_activities(local + [rare_destination], 10_000)
+
+        assert len(selected) == 10_000
+        assert rare_destination in selected
+
     def test_no_activities_returns_empty_tracks(self, pg_session_factory, real_redis):
         """无 activity → 返 tracks 空列表（D27 v2 polish）。"""
         db = pg_session_factory()
@@ -246,7 +331,7 @@ class TestGetUserHeatmap:
             _cleanup_redis(real_redis, user_id)
 
             first = get_user_heatmap(db, user_id, "beijing")
-            cached_raw = real_redis.get(f"heatmap:user_{user_id}:city_beijing")
+            cached_raw = real_redis.get(f"heatmap:v2:user_{user_id}:city_beijing")
             assert cached_raw is not None
 
             second = get_user_heatmap(db, user_id, "beijing")
@@ -287,9 +372,9 @@ class TestGetUserHeatmap:
             db.close()
 
     def test_no_city_redis_key_no_city_suffix(self, pg_session_factory, real_redis):
-        """v3 polish：city=None 走独立 cache key `heatmap:user_{id}` —— 不带 city_ 后缀。
-        验证：① 无 city 路径写入的 key 是 `heatmap:user_{id}`
-        ② 不会撞上按 city 筛的 `heatmap:user_{id}:city_{city}` key 形态。"""
+        """city=None 走独立 v2 cache key，隔离旧版全量轨迹缓存。
+        验证：① 无 city 路径写入的 key 是 `heatmap:v2:user_{id}`
+        ② 不会撞上按 city 筛的 `heatmap:v2:user_{id}:city_{city}` key 形态。"""
         db = pg_session_factory()
         user_id = None
         try:
@@ -304,21 +389,20 @@ class TestGetUserHeatmap:
             get_user_heatmap(db, user_id, None)
 
             # 期望 key（无后缀）存在
-            no_city_key = f"heatmap:user_{user_id}"
+            no_city_key = f"heatmap:v2:user_{user_id}"
             assert real_redis.get(no_city_key) is not None, (
                 f"期望 cache key {no_city_key} 存在 / 无 city 路径写入失败"
             )
 
             # 期望按 city 筛的 key 不应被同时写入（独立 key）
-            city_key = f"heatmap:user_{user_id}:city_beijing"
+            city_key = f"heatmap:v2:user_{user_id}:city_beijing"
             assert real_redis.get(city_key) is None, (
                 f"无 city 路径不应写入按 city 筛的 key {city_key}"
             )
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
-                # 额外清理无后缀 key（_cleanup_redis 用 `:*` pattern 不命中）
-                real_redis.delete(f"heatmap:user_{user_id}")
+                real_redis.delete(f"heatmap:v2:user_{user_id}")
             _cleanup_db(db)
             db.close()
 
@@ -396,7 +480,7 @@ class TestUpdateUserCity:
             db.close()
 
     def test_invalidates_heatmap_cache(self, pg_session_factory, real_redis):
-        """改 city 后清掉所有 heatmap:user_{id}:* 缓存。"""
+        """改 city 后清掉 v2/legacy × 无 city/按 city 四种热图缓存。"""
         db = pg_session_factory()
         user_id = None
         try:
@@ -407,13 +491,19 @@ class TestUpdateUserCity:
             user_id = user.id
             _cleanup_redis(real_redis, user_id)
 
-            # 先建立缓存
-            get_user_heatmap(db, user_id, "beijing")
-            assert real_redis.get(f"heatmap:user_{user_id}:city_beijing") is not None
+            keys = [
+                f"heatmap:v2:user_{user_id}",
+                f"heatmap:v2:user_{user_id}:city_beijing",
+                f"heatmap:user_{user_id}",
+                f"heatmap:user_{user_id}:city_beijing",
+            ]
+            for key in keys:
+                real_redis.set(key, "cached")
+            assert all(real_redis.get(key) is not None for key in keys)
 
             # 改 city → 应清缓存
             update_user_city(db, user_id, "shanghai")
-            assert real_redis.get(f"heatmap:user_{user_id}:city_beijing") is None
+            assert all(real_redis.get(key) is None for key in keys)
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)

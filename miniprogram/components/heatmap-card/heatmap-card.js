@@ -15,7 +15,7 @@
  * ─── 2026-06-13 修白屏：旧 canvas API → 新版 Canvas 2D ───
  * 全量轨迹（几十万点）塞旧 wx.createCanvasContext + ctx.draw() 会渲染超时白屏。
  * 改用新版 Canvas 2D（type="2d" + this.createSelectorQuery，详情页图表同款）：
- * 同步立即渲染、无点数上限、每个轨迹点都完整画出来不抽稀。
+ * 同步立即渲染；服务端按卡片像素生成轻量预览，前端完整绘制响应中的点。
  *
  * props 设计（4.3 复用关键）：
  *   - userId: Number 默认 0
@@ -28,7 +28,7 @@
  *
  * 数据流：
  *   attached / props 变化 → _fetchAndRender → setData(loading)
- *   → api.get → 成功 → setData(tracks) → canvas 自绘纸面轨迹
+ *   → api.get → 成功 → 轨迹留在逻辑层实例 → canvas 自绘纸面轨迹
  *                  → 失败 → setData(error)
  *
  * 注意（坑预防）：
@@ -65,7 +65,6 @@ Component({
     loading: true,         // 初始进入就是 loading 态
     error: false,          // 网络/接口报错
     isEmpty: false,        // 数据空（无活动记录）
-    tracks: [],            // canvas 自绘用的原始轨迹（每 activity 一条）
   },
 
   /**
@@ -97,7 +96,7 @@ Component({
      * 流程：
      *   1. setData 进入 loading 态
      *   2. 根据 userId 选择 endpoint（看自己 vs 看他人）
-     *   3. 拿到响应后判空 → setData(tracks) → canvas 渲染态
+     *   3. 拿到响应后判空 → 轨迹留在逻辑层实例 → canvas 渲染态
      *   4. 任何步骤报错 → setData error 态
      */
     _fetchAndRender() {
@@ -128,11 +127,14 @@ Component({
             return
           }
 
+          // 轨迹只给逻辑层 Canvas 2D 使用，WXML 从不读取。不能塞进 data：
+          // 293 条活动会触发约 6.7 MB setData，把同一份坐标再复制到视图层，
+          // 重启/热重载后容易阻塞渲染。放组件实例上即可，状态层只传 3 个布尔值。
+          this._tracks = tracks
           this.setData({
             loading: false,
             error: false,
             isEmpty: false,
-            tracks: tracks,
           }, () => {
             this._drawHeatmap()
           })
@@ -156,15 +158,14 @@ Component({
 
     /**
      * 个人页热力图是展示卡，不需要拖动地图。
-     * 用新版 Canvas 2D 自绘纸面 + 完整轨迹线：旧版 ctx.draw() 在全量轨迹
-     * （几十万点）时渲染超时白屏，新版无点数上限、每个点都画不抽稀
-     * （Tim 2026-06-13 铁律：前端显示不许敷衍）。
+     * 用新版 Canvas 2D 自绘纸面 + 显示精度轨迹线：旧版 ctx.draw() 在巨量轨迹
+     * 时渲染超时白屏；现在服务端按卡片像素预算生成预览，前端不再二次抽稀。
      */
     _drawHeatmap() {
-      if (!this.data.tracks || this.data.tracks.length === 0) return
+      if (!this._tracks || this._tracks.length === 0) return
       // setTimeout 兜底 canvas 节点初始化（setData 翻转渲染态与节点 ready 不同帧）
       setTimeout(() => {
-        routeThumb.drawHeatmap2d(this, '#heatmap-canvas', this.data.tracks, {
+        routeThumb.drawHeatmap2d(this, '#heatmap-canvas', this._tracks, {
           lineWidth: 2,
         })
       }, 120)

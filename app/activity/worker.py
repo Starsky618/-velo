@@ -266,16 +266,12 @@ def _do_parse(db, activity_id: int) -> None:
     if not is_duplicate:
         try:
             from app.notification.progress_detector import detect_5min_power_progress
-            from app.user.service import invalidate_power_curve_cache, invalidate_heatmap_cache
+            from app.user.service import invalidate_power_curve_cache
 
             detect_5min_power_progress(db, activity.user_id, activity.id)
             # invalidate_power_curve_cache 是 task-2.A.1 stub / task-2.C.2 已替换为真实现
             # 上传新 activity 后清缓存让下次查 power_curve 走真实计算
             invalidate_power_curve_cache(activity.user_id)
-            # invalidate_heatmap_cache（D27 v3 polish 新增 / Codex 异源审 Critical 修）
-            # 新 activity completed 后必须清 heatmap 缓存（含无 city + 按 city 两种 key）
-            # 否则用户下次查"全部"路径仍是旧轨迹列表 / 新骑行最长 1h 看不到
-            invalidate_heatmap_cache(activity.user_id)
         except Exception:
             # 进步检测失败静默跳过，不影响 activity 已经 completed 的事实
             # 失败场景：power_curve / heatmap 算法异常 / DB 临时网络抖动 / Redis 不可用
@@ -389,6 +385,15 @@ def _do_parse(db, activity_id: int) -> None:
             )
 
     db.commit()
+
+    # 热图缓存必须在 activity 真正提交后失效。若在 commit 前删除，并发个人页请求
+    # 会从旧 DB 重建缓存，导致新骑行仍要等 1h；提交后再删可关闭这个 race。
+    if not is_duplicate:
+        try:
+            from app.user.service_social import invalidate_heatmap_cache
+            invalidate_heatmap_cache(activity.user_id)
+        except Exception:
+            logger.exception("heatmap cache invalidation failed activity_id=%s", activity.id)
 
     # ===== 步骤 11：触发 Segment 匹配 =====
     # 活动已标记 completed 并 commit，现在触发赛段自动匹配。

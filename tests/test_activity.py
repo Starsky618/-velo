@@ -273,6 +273,11 @@ def test_25_delete_activity(client, auth_header, db, test_user, monkeypatch):
     """用例 25：删除活动 → 204"""
     aid = _create_test_activity(db, test_user.id)
     monkeypatch.setattr("app.activity.service._storage.delete", lambda f: True)
+    invalidated = []
+    monkeypatch.setattr(
+        "app.user.service_social.invalidate_heatmap_cache",
+        lambda user_id: invalidated.append(user_id),
+    )
 
     resp = client.delete(f"/api/activities/{aid}", headers=auth_header)
     assert resp.status_code == 204
@@ -280,6 +285,7 @@ def test_25_delete_activity(client, auth_header, db, test_user, monkeypatch):
     # 确认已删除
     resp2 = client.get(f"/api/activities/{aid}", headers=auth_header)
     assert resp2.status_code == 404
+    assert invalidated == [test_user.id]
 
 
 def test_26_delete_other_user(client, auth_header, db, test_user):
