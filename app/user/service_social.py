@@ -60,11 +60,13 @@ from app.user.models import User
 BEIJING_TZ = timezone(timedelta(hours=8))
 
 _HEATMAP_CACHE_TTL_SEC = 3600
-_HEATMAP_CACHE_PREFIX = "heatmap:v2:user_"
+_HEATMAP_CACHE_PREFIX = "heatmap:v3:user_"
+_HEATMAP_PREVIOUS_CACHE_PREFIX = "heatmap:v2:user_"
 _HEATMAP_LEGACY_CACHE_PREFIX = "heatmap:user_"
 _HEATMAP_POINTS_PER_ACTIVITY = 64
-_HEATMAP_TOTAL_POINT_BUDGET = 20_000
-_HEATMAP_MAX_PREVIEW_TRACKS = _HEATMAP_TOTAL_POINT_BUDGET // 2
+_HEATMAP_TOTAL_POINT_BUDGET = 9_000
+_HEATMAP_CARD_POINTS_PER_ACTIVITY = 24
+_HEATMAP_CARD_TOTAL_POINT_BUDGET = 4_000
 # _VALID_USER_CITIES 已废弃（Tim 2026-05-17 真用拍放宽 user.city 到任意中文）
 # 历史 6 城枚举只剩 activity.city（worker 推断起点 / ck_activities_city CHECK 仍生效）
 # update_user_city 现仅校验长度 + strip / 不再卡 6 城
@@ -117,13 +119,13 @@ def _build_heatmap_preview_track(
     track: object,
     point_limit: int = _HEATMAP_POINTS_PER_ACTIVITY,
 ) -> list[list[float]]:
-    """生成固定尺寸热图卡需要的显示精度轨迹，避免下发活动原始点集。
+    """生成热图地图需要的显示精度轨迹，避免下发活动原始点集。
 
-    Strava 的个人热图先在服务端按瓦片/像素聚合，客户端只取当前视野的热图块。
-    VELO 当前只有 327x240 的静态卡片，完整瓦片服务过重；这里采用同一原则的
-    小型版本：服务端一次遍历选关键拐点 + 坐标定精度 + Redis 缓存。
+    Strava 的个人热图先在服务端按地图层级聚合，客户端只取显示所需的数据。
+    VELO 当前数据量不需要完整瓦片服务；这里采用同一原则的轻量版本：个人页
+    卡片与全屏地图各有固定点预算，服务端一次遍历选关键拐点 + Redis 缓存。
 
-    每条活动最多 64 个关键点，整张卡最多 2 万点。293 条活动的上限约 1.9 万点，
+    点数上限由调用方按 card/full 决定。293 条活动的全屏上限约 9000 点，
     而不是把数据库里约 44 万个 simplified_track 点（实测响应 6.7 MB）再次传到手机。
     """
     if not isinstance(track, list):
@@ -138,7 +140,7 @@ def _build_heatmap_preview_track(
     if len(clean) < 2:
         return []
 
-    reduced = _select_heatmap_key_points(clean, max(2, min(point_limit, _HEATMAP_POINTS_PER_ACTIVITY)))
+    reduced = _select_heatmap_key_points(clean, max(2, point_limit))
 
     # 5 位小数约 1 米，远高于 327x240 卡片的像素分辨率；继续保留更多小数只增流量。
     return [[round(float(p["lon"]), 5), round(float(p["lat"]), 5)] for p in reduced]
@@ -280,22 +282,46 @@ def _select_heatmap_preview_activities(activities: list, limit: int) -> list:
     return selected
 
 
-def _heatmap_points_per_activity(activity_count: int) -> int:
-    """把用户整张卡的输出锁在 2 万点内，而不是让 64×活动数无限增长。"""
+def _heatmap_points_per_activity(
+    activity_count: int,
+    per_activity_limit: int = _HEATMAP_POINTS_PER_ACTIVITY,
+    total_point_budget: int = _HEATMAP_TOTAL_POINT_BUDGET,
+) -> int:
+    """按展示层级限制每条活动点数，同时锁住整张地图总点数。"""
     if activity_count <= 0:
-        return _HEATMAP_POINTS_PER_ACTIVITY
-    return max(2, min(_HEATMAP_POINTS_PER_ACTIVITY, _HEATMAP_TOTAL_POINT_BUDGET // activity_count))
+        return per_activity_limit
+    return max(2, min(per_activity_limit, total_point_budget // activity_count))
 
 
-def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict:
+def _heatmap_activity_year(activity: object) -> int | None:
+    """按北京时间返回活动年份；旧数据缺 started_at 时不进入年份筛选。"""
+    started_at = getattr(activity, "started_at", None)
+    if not isinstance(started_at, datetime):
+        return None
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    return started_at.astimezone(BEIJING_TZ).year
+
+
+def get_user_heatmap(
+    db: Session,
+    user_id: int,
+    city: str | None = None,
+    year: int | None = None,
+    detail: str = "full",
+) -> dict:
     """
     用户骑行热图——"我去过哪些地方"。
 
-    把用户的骑行轨迹生成**显示精度预览**并保留 activity 边界，前端拿来画
-    polyline 路径线（每条 activity 一条线）+ 多条 opacity 叠加形成热力效果。
-    不把 simplified_track 全量下发：固定 327x240 卡片看不到亚像素细节，巨量 JSON
-    只会拖慢网络、解析和小程序逻辑层。整张响应另有 2 万点硬预算；极端超过
-    1 万条活动时按地理桶选代表轨迹，优先保留所有骑行区域的可见性。
+    把用户的骑行轨迹生成**地图显示精度数据**并保留 activity 边界，前端交给
+    原生地图 polyline 图层；真实道路底图、拖动和缩放由地图组件负责。
+
+    detail 两档：
+    - card：个人页交互预览，最多 4000 点 / 每活动最多 24 点
+    - full：全屏探索，最多 9000 点 / 每活动最多 64 点
+
+    这对应 Strava 的层级细节思想：小视图不下载全屏精度，避免历史数据再次
+    阻塞小程序；两档都通过地理分桶保留稀有旅行区域，而不是只截常骑城市。
 
     city 参数（v3 polish / Sprint 4 task-4.2 v3）：
     - city is None → 返回该用户**所有** completed activities 的轨迹（不按城市筛 /
@@ -307,11 +333,10 @@ def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict
     改为 tracks: list[list[[lon,lat]]] —— 保留 activity 边界让前端画 polyline，
     不再用 markers 点 / 视觉接近 ride.fitcard.app 80%。
 
-    Redis 缓存 TTL 1h，v2 key 隔离旧版 6.7 MB 全量缓存：
-    - 无 city 路径：`heatmap:v2:user_{user_id}`
-    - 有 city 路径：`heatmap:v2:user_{user_id}:city_{city}`
-    update_user_city 清缓存通过 invalidate_heatmap_cache 双清：按 city 路径 +
-    无 city 路径两种形态都清（D27 v3 polish Critical 修 / 保证改主城后下次拿最新轨迹）。
+    year 可选：不传返回全部年份，传入后只返回对应自然年活动；响应始终带
+    available_years，供全屏地图的年份图层控制使用。
+
+    Redis 缓存 TTL 1h，v3 key 同时区分 city / year / detail，隔离旧版静态卡片响应。
 
     陷阱守卫：
     - 陷阱 #5（redis-py 7+ 默认返 bytes）→ json.loads 前 decode
@@ -325,15 +350,19 @@ def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict
             [[lon, lat], [lon, lat], ...],  # activity 2 的轨迹
             ...
           ],
-          "activity_count": 12
+          "activity_count": 12,
+          "available_years": [2026, 2025],
+          "selected_year": 2026 | None
         }
     """
-    # cache key 设计：city is None 走无 city 后缀的独立 v2 key；有 city 追加 city 后缀。
-    # v2 前缀确保发布后不会命中旧版全量轨迹缓存。
-    if city is None:
-        cache_key = f"{_HEATMAP_CACHE_PREFIX}{user_id}"
-    else:
-        cache_key = f"{_HEATMAP_CACHE_PREFIX}{user_id}:city_{city}"
+    if detail not in {"card", "full"}:
+        raise ValueError(f"invalid heatmap detail: {detail}")
+
+    cache_parts = [f"{_HEATMAP_CACHE_PREFIX}{user_id}", f"detail_{detail}"]
+    if city is not None:
+        cache_parts.append(f"city_{city}")
+    cache_parts.append(f"year_{year}" if year is not None else "year_all")
+    cache_key = ":".join(cache_parts)
     redis_client = _get_redis_client()
     cached = redis_client.get(cache_key)
     if cached is not None:
@@ -370,11 +399,27 @@ def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict
         if _infer_city_from_coords(lat, lon) == city:
             filtered.append(a)
 
-    # 保留 activity 边界 / 每个 activity 输出一条显示精度轨迹。
-    # 除每活动 64 点上限外，再限制整张卡最多 2 万点。超过 1 万条活动时按
-    # 地理桶轮询选代表轨迹，优先保住稀有旅行区域，而不是只截最近/常骑城市。
-    preview_activities = _select_heatmap_preview_activities(filtered, _HEATMAP_MAX_PREVIEW_TRACKS)
-    point_limit = _heatmap_points_per_activity(len(preview_activities))
+    available_years = sorted(
+        {activity_year for a in filtered if (activity_year := _heatmap_activity_year(a)) is not None},
+        reverse=True,
+    )
+    if year is not None:
+        filtered = [a for a in filtered if _heatmap_activity_year(a) == year]
+
+    if detail == "card":
+        per_activity_limit = _HEATMAP_CARD_POINTS_PER_ACTIVITY
+        total_point_budget = _HEATMAP_CARD_TOTAL_POINT_BUDGET
+    else:
+        per_activity_limit = _HEATMAP_POINTS_PER_ACTIVITY
+        total_point_budget = _HEATMAP_TOTAL_POINT_BUDGET
+
+    max_tracks = total_point_budget // 2
+    preview_activities = _select_heatmap_preview_activities(filtered, max_tracks)
+    point_limit = _heatmap_points_per_activity(
+        len(preview_activities),
+        per_activity_limit=per_activity_limit,
+        total_point_budget=total_point_budget,
+    )
     tracks = []
     valid_count = 0
     for a in preview_activities:
@@ -387,6 +432,8 @@ def get_user_heatmap(db: Session, user_id: int, city: str | None = None) -> dict
         "city": city,
         "tracks": tracks,
         "activity_count": valid_count,  # 跟 tracks 长度一致 / 不数被跳过的单点 activity
+        "available_years": available_years,
+        "selected_year": year,
     }
 
     redis_client.setex(cache_key, _HEATMAP_CACHE_TTL_SEC, _json.dumps(result))
@@ -439,7 +486,7 @@ def invalidate_heatmap_cache(user_id: int) -> None:
     """
     清掉用户全部 heatmap 缓存——"通知账房先生热图重算"。
 
-    覆盖 v2 显示精度缓存和旧版全量缓存的无 city / 按 city 两种形态。
+    覆盖 v3 地图缓存、v2 静态卡片缓存和旧版全量缓存的全部形态。
 
     场景：
     - 用户上传新 activity completed → worker hook 调本函数 → 下次刷个人页拿最新轨迹
@@ -450,9 +497,13 @@ def invalidate_heatmap_cache(user_id: int) -> None:
     ⚠ 调用方：app/activity/worker.py:198 + 本文件 update_user_city / 拆分时通过 service.py 转导出 0 改动
     """
     redis_client = _get_redis_client()
-    # 新 v2 预览缓存 + 旧全量缓存一起失效；旧 key 会在自然 TTL 后消失，
+    # 新 v3 地图缓存 + v2 静态卡片缓存 + 旧全量缓存一起失效；旧 key 会在自然 TTL 后消失，
     # 双删保证上传新活动时不会留下历史大对象。
-    for prefix in (_HEATMAP_CACHE_PREFIX, _HEATMAP_LEGACY_CACHE_PREFIX):
+    for prefix in (
+        _HEATMAP_CACHE_PREFIX,
+        _HEATMAP_PREVIOUS_CACHE_PREFIX,
+        _HEATMAP_LEGACY_CACHE_PREFIX,
+    ):
         redis_client.delete(f"{prefix}{user_id}")
         for key in redis_client.scan_iter(match=f"{prefix}{user_id}:*"):
             redis_client.delete(key)

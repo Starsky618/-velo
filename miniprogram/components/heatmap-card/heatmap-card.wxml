@@ -1,39 +1,25 @@
-<!--
-  骑行热力图卡片 component（Sprint 4 task-4.2.B v2 polish / D21 模块化 / D27 polyline）
-
-  功能：调用后端 GET /api/user/{me|id}/heatmap（v3 polish 不传 city / 拉用户全部 activity 轨迹）拿到 tracks 列表（每个 activity 一条轨迹），
-  在 canvas 上铺一层浅色纸面，再把骑过的路径线画出来。
-
-  4 状态（必须全部覆盖）：
-   1. loading：加载中文案
-   2. error：加载失败 + bindtap 重试
-   3. empty：还没数据 友好提示
-   4. 渲染：浅色纸面 canvas + 轨迹线
-
-  设计说明（D27 v2 polish / 替换 v1 markers）：
-  - 用 canvas 替代原生地图，避免个人页继续露出腾讯默认导航底图
-  - 每条 activity 一条线 / 系统橙透明叠加
-  - 多条重叠 opacity 叠加 → 自然热力效果（骑得越多越亮）
-
-  ⚠ canvas 用 hidden 而非 wx:else 控制（2026-06-13 / 陷阱 #17）：
-  canvas 节点永久在 DOM，loading/error/empty 文案叠在它上层用 cover 显示。
-  这样 createSelectorQuery 任何时候都能查到 canvas 节点，彻底消除
-  "wx:else 翻转时节点还没创建 → 查不到 → 静默不画 → 白屏"的 race。
-
-  注意：未来地图 tab 上线时切到 webview + H5 SDK 暗色底图，
-  本 component 是个人页小卡片版本。
--->
-
 <view class="card heatmap-card">
   <text class="card-title">骑行热力图</text>
-  <text class="subtitle">你骑过的全部区域</text>
+  <text class="subtitle">所有骑行叠在同一张地图上</text>
 
-  <view class="heatmap-map-shell">
-    <!-- canvas 永久在 DOM（不被状态切换销毁）：新版 Canvas 2D，完整绘制服务端显示精度轨迹 -->
-    <canvas type="2d" id="heatmap-canvas" class="heatmap-canvas"></canvas>
-    <!-- loading/error/empty 文案叠在 canvas 上层（cover），渲染态时全部隐藏露出轨迹 -->
-    <view wx:if="{{loading}}" class="heatmap-state loading-mini">加载中...</view>
-    <view wx:elif="{{error}}" class="heatmap-state error-mini" bindtap="_retryFetch">加载失败 · 点击重试</view>
-    <view wx:elif="{{isEmpty}}" class="heatmap-state empty-mini">还没骑过任何路线</view>
-  </view>
+  <view wx:if="{{loading}}" class="heatmap-map-shell heatmap-state">加载中...</view>
+  <view wx:elif="{{error}}" class="heatmap-map-shell heatmap-state error-mini" bindtap="_retryFetch">加载失败 · 点击重试</view>
+  <view wx:elif="{{isEmpty}}" class="heatmap-map-shell heatmap-state">还没骑过任何路线</view>
+  <map wx:else
+       id="heatmap-card-map"
+       class="heatmap-map-shell"
+       latitude="{{center.latitude}}"
+       longitude="{{center.longitude}}"
+       scale="10"
+       polyline="{{polylines}}"
+       include-points="{{includePoints}}"
+       enable-scroll="{{true}}"
+       enable-zoom="{{true}}"
+       enable-rotate="{{false}}"
+       enable-3D="{{false}}"
+       show-location="{{false}}"
+       show-scale="{{true}}">
+    <cover-view class="heatmap-count">{{activityCount}} 次骑行</cover-view>
+    <cover-view class="heatmap-fullscreen" catchtap="_openFullScreen">全屏查看</cover-view>
+  </map>
 </view>

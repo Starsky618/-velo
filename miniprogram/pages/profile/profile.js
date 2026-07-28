@@ -177,7 +177,7 @@ Page({
   },
 
   // Tim 2026-05-16 真用拍：
-  //   - fetchHeatmap 删除 / 改用 <heatmap-card /> 组件自己 fetch + canvas 渲染
+  //   - fetchHeatmap 删除 / 改用 <heatmap-card /> 组件自己 fetch + 原生地图渲染
   //   - fetchCityMedals 删除 / 城市勋章前端砍 / 后端 endpoint 保留以备恢复
 
   // 活动列表分页
