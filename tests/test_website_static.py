@@ -93,10 +93,13 @@ def test_all_html_pages_are_mobile_ready_and_have_valid_internal_links():
 
 
 def test_public_pages_identify_the_legal_operator_without_private_identifiers():
+    public_sources = [
+        *[page.read_text(encoding="utf-8") for page in _html_files()],
+        (ROOT / "Caddyfile").read_text(encoding="utf-8"),
+        (ROOT / "docker-compose.yml").read_text(encoding="utf-8"),
+    ]
     combined = " ".join(
-        "\n".join(
-            page.read_text(encoding="utf-8") for page in _html_files()
-        ).split()
+        "\n".join(public_sources).split()
     )
     assert LEGAL_NAME in combined
     assert re.search(r"(?<!\d)1[3-9]\d{9}(?!\d)", combined) is None
@@ -106,12 +109,16 @@ def test_public_pages_identify_the_legal_operator_without_private_identifiers():
 
 
 def test_garmin_policies_are_narrow_truthful_and_bilingual():
-    zh = (WEBSITE / "privacy/garmin/index.html").read_text(encoding="utf-8")
-    en = (WEBSITE / "en/privacy/garmin/index.html").read_text(encoding="utf-8")
+    zh = " ".join(
+        (WEBSITE / "privacy/garmin/index.html").read_text(encoding="utf-8").split()
+    )
+    en = " ".join(
+        (WEBSITE / "en/privacy/garmin/index.html").read_text(encoding="utf-8").split()
+    )
 
     for required in [
         "申请和开发阶段",
-        "OAuth 2.0 / PKCE",
+        "官方 OAuth 2.0",
         "首版不提供向 Garmin 写入",
         "默认设为私密",
         "最多保留 30 天",
@@ -123,15 +130,21 @@ def test_garmin_policies_are_narrow_truthful_and_bilingual():
 
     for required in [
         "application and development stage",
-        "OAuth 2.0 / PKCE",
+        "OAuth 2.0 authorization flow",
+        "review the requested data scope",
         "private by default",
+        "cannot download a user's raw Garmin activity file",
         "no more than 30 days",
         "outside Mainland China",
         "external AI or LLM",
+        "obtain separate consent where required",
+        "question or complaint",
+        "security incident affects Garmin data",
     ]:
         assert required in en
 
     combined = zh + en
+    assert "PKCE" not in combined
     assert "Works with Garmin" not in combined
     assert "Powered by Garmin" not in combined
     assert "Garmin logo" not in combined
@@ -141,13 +154,52 @@ def test_privacy_policy_matches_current_and_planned_data_boundaries():
     zh = " ".join(
         (WEBSITE / "privacy/index.html").read_text(encoding="utf-8").split()
     )
+    en = " ".join(
+        (WEBSITE / "en/privacy/index.html").read_text(encoding="utf-8").split()
+    )
     assert "微信 OpenID" in zh
     assert "FIT/GPX" in zh
     assert "仅自己可见" in zh
     assert "分别隐藏功率和心率" in zh
-    assert "手动上传文件随活动或账号删除而删除" in zh
+    assert "可能残留，直至我们人工核查并删除" in zh
+    assert "路书以及已开放的约骑内容" in zh
+    assert "已开放约骑等没有自助入口" in zh
     assert "Garmin 原始活动文件在成功解析后最多保留 30 天" in zh
     assert "Garmin 正式接入前还会完成令牌静态加密" in zh
+    for required in [
+        "competent judicial or administrative authority",
+        "storage failure may leave a residual file until VELO manually reviews and deletes it",
+        "published meetup content",
+        "published meetups and other content without such controls",
+        "request review and deletion",
+        "security incident may affect user rights",
+        "Children",
+        "Policy changes",
+        "obtain new consent",
+    ]:
+        assert required in en
+
+
+def test_account_deletion_copy_matches_deidentified_shared_content_retention():
+    settings_js = (ROOT / "miniprogram/pages/settings/settings.js").read_text(
+        encoding="utf-8"
+    )
+    settings_wxml = (ROOT / "miniprogram/pages/settings/settings.wxml").read_text(
+        encoding="utf-8"
+    )
+    api_js = (ROOT / "miniprogram/utils/api.js").read_text(encoding="utf-8")
+    router = (ROOT / "app/user/router.py").read_text(encoding="utf-8")
+    service = (ROOT / "app/user/service.py").read_text(encoding="utf-8")
+    combined = "\n".join([settings_js, settings_wxml, api_js, router, service])
+
+    assert "彻底删除你的全部数据" not in combined
+    assert "你创建的路书都会解除关联后保留" in settings_js
+    assert "已开放约骑会取消并解除关联后保留" in settings_js
+    assert "官网隐私邮箱申请" in settings_js
+    assert "创建的全部路书和已开放约骑按后端规则去标识保留" in api_js
+    assert "创建的全部路书和已开放约骑去标识保留" in router
+    assert "所有路线定义保留为无主" in service
+    assert "已开放约骑取消后保留给参与者查看" in service
 
 
 def test_caddy_serves_website_without_exposing_private_uploads():
@@ -157,6 +209,8 @@ def test_caddy_serves_website_without_exposing_private_uploads():
     assert "weiluai.top {" in caddy
     assert "www.weiluai.top {" in caddy
     assert "root * /srv/website" in caddy
+    assert "handle_errors" in caddy
+    assert "rewrite * /404.html" in caddy
     assert "script-src 'none'" in caddy
     assert "form-action 'none'" in caddy
     assert "redir https://weiluai.top{uri} permanent" in caddy
@@ -168,6 +222,7 @@ def test_caddy_serves_website_without_exposing_private_uploads():
         "weiluai.top {", 1
     )[0]
     assert "/srv/uploads" not in website_block
+    assert not any(path.is_symlink() for path in WEBSITE.rglob("*"))
 
 
 def test_sitemap_lists_all_canonical_pages():

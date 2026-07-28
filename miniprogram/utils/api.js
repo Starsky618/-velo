@@ -395,7 +395,7 @@ module.exports = {
   getUserProfile: function (userId) { return request('/api/user/' + userId + '/profile', 'GET') },
 
   /**
-   * 注销账号：彻底删除当前用户及全部个人数据。
+   * 注销账号：删除账号及关联私有数据；创建的全部路书和已开放约骑按后端规则去标识保留。
    * 不可逆。后端 DELETE /api/user/me，鉴权用 JWT 锁定本人。成功后调用方须清 token 退出登录。
    * @returns {Promise}
    */

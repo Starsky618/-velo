@@ -318,7 +318,7 @@ def delete_my_account(
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """注销账号：彻底删除当前用户及其全部个人数据（骑行 / 赛段成绩 / 功率突破 / Strava / 约骑草稿）。
+    """注销账号：删除账号及关联私有数据；创建的全部路书和已开放约骑去标识保留。
 
     不可逆操作。鉴权用 JWT 锁定本人——user_id 来自 token，只能注销自己，不接受路径/body 指定他人。
     具体删除内容 + 外键删除顺序见 service.delete_user。前端必须二次确认 + 删后清 token 退出登录。"""
