@@ -8,15 +8,15 @@
 const { wgs84ToGcj02 } = require('./coords')
 
 const HEATMAP_COLORS = [
-  { key: 'orange', label: '橙色', color: '#FF950080' },
-  { key: 'red', label: '红色', color: '#FF2D5580' },
-  { key: 'blue', label: '蓝色', color: '#0A84FF80' },
-  { key: 'purple', label: '紫色', color: '#AF52DE80' },
+  { key: 'orange', label: '橙色', color: '#FF6B00' },
+  { key: 'red', label: '红色', color: '#FF174F' },
+  { key: 'blue', label: '蓝色', color: '#1677FF' },
+  { key: 'purple', label: '紫色', color: '#8E44FF' },
 ]
 
-function colorValue(colorKey) {
+function colorValue(colorKey, opacityHex) {
   var selected = HEATMAP_COLORS.find(function (item) { return item.key === colorKey })
-  return (selected || HEATMAP_COLORS[0]).color
+  return (selected || HEATMAP_COLORS[0]).color + (opacityHex || '52')
 }
 
 function normalizeTrack(points) {
@@ -231,20 +231,21 @@ function focusPointsForTracks(tracks) {
   return focus.length >= 2 ? focus : allPoints
 }
 
-function buildPolylines(preparedTracks, colorKey, width) {
-  var color = colorValue(colorKey)
+function buildPolylines(preparedTracks, colorKey, width, opacityHex) {
+  var color = colorValue(colorKey, opacityHex)
   return preparedTracks.map(function (points) {
     return {
       points: points,
       color: color,
-      width: width || 3,
+      width: width || 2,
       arrowLine: false,
-      level: 'abovelabels',
+      // 路线在建筑之上、道路文字之下：城市总览仍能读清地名和主干道。
+      level: 'abovebuildings',
     }
   })
 }
 
-function buildHeatmapMapModel(rawTracks, colorKey, width, maxPoints) {
+function buildHeatmapMapModel(rawTracks, colorKey, width, maxPoints, opacityHex) {
   var preparedTracks = limitTrackPoints(prepareTracks(rawTracks), maxPoints)
   var allPoints = flattenTracks(preparedTracks)
   var allBounds = boundsForPoints(allPoints)
@@ -252,7 +253,7 @@ function buildHeatmapMapModel(rawTracks, colorKey, width, maxPoints) {
   if (!allBounds || !focusBounds) return null
   return {
     preparedTracks: preparedTracks,
-    polylines: buildPolylines(preparedTracks, colorKey, width),
+    polylines: buildPolylines(preparedTracks, colorKey, width, opacityHex),
     center: focusBounds.center,
     focusPoints: focusBounds.includePoints,
     allPoints: allBounds.includePoints,

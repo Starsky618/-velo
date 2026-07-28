@@ -224,6 +224,11 @@ def get_my_heatmap(
     city: schemas.UserCity | None = None,
     year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
     detail: schemas.HeatmapDetail = schemas.HeatmapDetail.full,
+    west: float | None = Query(default=None, ge=-180, le=180),
+    south: float | None = Query(default=None, ge=-90, le=90),
+    east: float | None = Query(default=None, ge=-180, le=180),
+    north: float | None = Query(default=None, ge=-90, le=90),
+    zoom: int | None = Query(default=None, ge=3, le=20),
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -235,19 +240,32 @@ def get_my_heatmap(
       前端"全部"视图走这条路径——一次性看用户在所有城市的足迹。
     - 传枚举值（6 主城 + unknown）→ 保留旧行为：按 simplified_track 起点城市筛。
 
-    返回 tracks: list[list[[lon, lat]]]（保留 activity 边界 / 每个 activity 一条独立轨迹 / 前端画 polyline）
-    + activity_count（与 tracks 长度一致 / 单点 activity 自动跳过不计数）。
+    返回 tracks: list[list[[lon, lat]]]（保留 activity 边界；card/full 每个 activity 一条，
+    viewport 可因进出视野裁成多段；前端画 polyline）
+    + activity_count（card/full 与 tracks 长度一致；viewport 为当前视野实际渲染的骑行数，
+    一条骑行裁成多段时可小于 tracks 长度）。
 
-    year 可选，按北京时间自然年筛；detail=card/full 控制个人页与全屏地图的数据预算。
-    Redis 缓存 1h，city/year/detail 互相隔离。
+    year 可选，按北京时间自然年筛；detail=card/full 控制个人页与全屏总览的数据预算。
+    detail=viewport 时必须同时传 west/south/east/north/zoom，只返回当前地图视野的高精度轨迹。
+    总览与高精度源层缓存 1h；视野结果缓存 15min、每用户最多 12 份，city/year/detail 互相隔离。
     """
-    return service.get_user_heatmap(
-        db,
-        user_id,
-        city.value if city else None,
-        year,
-        detail.value,
-    )
+    if detail == schemas.HeatmapDetail.viewport and None in (west, south, east, north, zoom):
+        raise HTTPException(status_code=422, detail="viewport detail requires west/south/east/north/zoom")
+    try:
+        return service.get_user_heatmap(
+            db,
+            user_id,
+            city.value if city else None,
+            year,
+            detail.value,
+            west=west,
+            south=south,
+            east=east,
+            north=north,
+            zoom=zoom,
+        )
+    except service.InvalidHeatmapViewport as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/me/city-medals", response_model=schemas.CityMedalsResponse)
@@ -533,6 +551,11 @@ def get_user_heatmap_for_others(
     city: schemas.UserCity | None = None,
     year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
     detail: schemas.HeatmapDetail = schemas.HeatmapDetail.full,
+    west: float | None = Query(default=None, ge=-180, le=180),
+    south: float | None = Query(default=None, ge=-90, le=90),
+    east: float | None = Query(default=None, ge=-180, le=180),
+    north: float | None = Query(default=None, ge=-90, le=90),
+    zoom: int | None = Query(default=None, ge=3, le=20),
     requester_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -545,19 +568,29 @@ def get_user_heatmap_for_others(
 
     user 不存在 → service.get_user_by_id 抛 ValueError → 翻译为 404
     （跟 L220-223 /{user_id}/profile 同 pattern / Claude 综合审 Critical-1 验证后修）。
-    Redis 缓存 1h（同 /me/heatmap / cache key 跟 user_id 走 / 不区分 self/others）。
+    缓存策略同 /me/heatmap：总览/源层 1h，视野结果 15min 且每用户最多 12 份。
     """
     try:
         service.get_user_by_id(db, user_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="用户不存在")
-    return service.get_user_heatmap(
-        db,
-        user_id,
-        city.value if city else None,
-        year,
-        detail.value,
-    )
+    if detail == schemas.HeatmapDetail.viewport and None in (west, south, east, north, zoom):
+        raise HTTPException(status_code=422, detail="viewport detail requires west/south/east/north/zoom")
+    try:
+        return service.get_user_heatmap(
+            db,
+            user_id,
+            city.value if city else None,
+            year,
+            detail.value,
+            west=west,
+            south=south,
+            east=east,
+            north=north,
+            zoom=zoom,
+        )
+    except service.InvalidHeatmapViewport as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/{user_id}/city-medals", response_model=schemas.CityMedalsResponse)
