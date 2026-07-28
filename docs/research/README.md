@@ -17,13 +17,6 @@
 | **2026-06-15-taiyuan-18segments-data.md** | 太原西山 18 赛段 Strava 实采数据（CR校验过） | 原始数据 |
 | **2026-06-15-taiyuan-research-process-raw.md** | 第一轮开放探索 agent 的完整过程（好奇清单+对质过程，从中断 transcript 抢救） | 过程档案 |
 
-## 临时件（`_` 前缀 = 过程档案，可删或留底）
-
-| 文件 | 是什么 |
-|---|---|
-| `_REVIEW_route_db_schema_draft.md` | schema 草案（双审前的版本，已被 route_cognition_schema_FINAL.md 取代） |
-| `_CODEX_TASK_bigcity_cycling.md` | 派 Codex 调研大城市的工单（已执行完） |
-
 ## 关联
 
 - **开放探索配置方法论**（这些调研怎么产出的）→ memory `feedback_open_exploration_agent_config`
