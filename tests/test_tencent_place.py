@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import traceback
 
 import httpx
 import pytest
@@ -140,10 +141,46 @@ def test_search_place_http_status_error_does_not_expose_key_or_sig(monkeypatch):
         search_place("蒙山大佛")
 
     message = str(exc_info.value)
+    traceback_text = "".join(traceback.format_exception(exc_info.value))
     assert "腾讯地点检索请求失败" in message
+    assert "HTTP 403" in message
     assert "test-key" not in message
     assert "test-sig" not in message
     assert "test-sk" not in message
+    assert "test-key" not in traceback_text
+    assert "test-sig" not in traceback_text
+    assert "test-sk" not in traceback_text
+
+
+def test_suggest_places_http_status_error_does_not_expose_key_or_sig(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            request = httpx.Request(
+                "GET",
+                "https://apis.map.qq.com/ws/place/v1/suggestion?key=test-key&sig=test-sig",
+            )
+            response = httpx.Response(403, request=request)
+            response.raise_for_status()
+
+    monkeypatch.setattr(settings, "TENCENT_MAP_KEY", "test-key")
+    monkeypatch.setattr(settings, "TENCENT_MAP_SK", "test-sk")
+    monkeypatch.setattr("app.route_book.tencent_place.httpx.get", lambda *args, **kwargs: FakeResponse())
+
+    from app.route_book.tencent_place import suggest_places
+
+    with pytest.raises(TencentMapError) as exc_info:
+        suggest_places("蒙山", "太原")
+
+    message = str(exc_info.value)
+    traceback_text = "".join(traceback.format_exception(exc_info.value))
+    assert "腾讯地点联想请求失败" in message
+    assert "HTTP 403" in message
+    assert "test-key" not in message
+    assert "test-sig" not in message
+    assert "test-sk" not in message
+    assert "test-key" not in traceback_text
+    assert "test-sig" not in traceback_text
+    assert "test-sk" not in traceback_text
 
 
 def test_search_place_raises_tencent_error_for_bad_location(monkeypatch):

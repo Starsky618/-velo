@@ -77,7 +77,7 @@ def search_place(keyword: str, region: str = "太原") -> dict[str, Any] | None:
         data = response.json()
     except httpx.HTTPStatusError as exc:
         status_code = exc.response.status_code if exc.response is not None else "unknown"
-        raise TencentMapError(f"腾讯地点检索请求失败：HTTP {status_code}") from exc
+        raise TencentMapError(f"腾讯地点检索请求失败：HTTP {status_code}") from None
     except httpx.HTTPError as exc:
         raise TencentMapError("腾讯地点检索请求失败") from exc
     except ValueError as exc:
@@ -149,7 +149,7 @@ def suggest_places(keyword: str, region: str = "太原") -> list[dict[str, Any]]
         data = response.json()
     except httpx.HTTPStatusError as exc:
         status_code = exc.response.status_code if exc.response is not None else "unknown"
-        raise TencentMapError(f"腾讯地点联想请求失败：HTTP {status_code}") from exc
+        raise TencentMapError(f"腾讯地点联想请求失败：HTTP {status_code}") from None
     except httpx.HTTPError as exc:
         raise TencentMapError("腾讯地点联想请求失败") from exc
     except ValueError as exc:
