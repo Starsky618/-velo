@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="How VELO plans to authorize, process, store, share, retain, and delete Garmin Connect cycling activity data."
+    />
+    <title>Garmin Data Policy | VELO</title>
+    <link rel="stylesheet" href="/assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Main navigation">
+        <a class="brand" href="/en/">
+          <span class="brand-dot" aria-hidden="true"></span>
+          <span>VELO</span>
+        </a>
+        <div class="nav-links">
+          <a href="/en/">Product</a>
+          <a aria-current="page" href="/en/privacy/garmin/">Garmin data</a>
+          <a href="/en/privacy/">Privacy</a>
+          <a class="language-link" href="/privacy/garmin/" lang="zh-CN">中文</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="page">
+      <section class="page-hero">
+        <span class="eyebrow">Garmin data policy</span>
+        <h1>Authorized cycling data, used only for visible rider features.</h1>
+        <p>
+          This policy describes how VELO plans to process cycling activity data
+          through the Garmin Connect Developer Program. Garmin sync is still in
+          the application and development stage and is not available to users.
+        </p>
+        <div class="meta-row">
+          <span>Effective: 29 July 2026</span>
+          <span>Version 1.0</span>
+          <span>Region: Mainland China</span>
+        </div>
+      </section>
+
+      <div class="policy-layout">
+        <nav class="policy-toc" aria-label="Policy contents">
+          <a href="#authorization">Authorization</a>
+          <a href="#scope">Data scope</a>
+          <a href="#purpose">Purposes</a>
+          <a href="#sharing">Sharing</a>
+          <a href="#storage">Storage</a>
+          <a href="#retention">Retention</a>
+          <a href="#ai">AI boundary</a>
+          <a href="#rights">User rights</a>
+        </nav>
+
+        <article class="policy-content">
+          <section class="policy-section" id="authorization">
+            <h2>1. Authorization</h2>
+            <p>
+              VELO will connect to Garmin Connect only through Garmin's official
+              OAuth 2.0 authorization flow. VELO will not ask for or
+              store a Garmin username, password, or verification code, and will
+              not obtain data through web scraping or unofficial login methods.
+            </p>
+            <p>
+              Users can review the requested data scope on Garmin's authorization
+              page. VELO will not retrieve an activity until the user has
+              completed explicit authorization.
+            </p>
+          </section>
+
+          <section class="policy-section" id="scope">
+            <h2>2. Data scope</h2>
+            <p>
+              Version 1 requests cycling activity summaries, authorized
+              activity files, and the minimum Garmin user and activity
+              identifiers required for account linking and idempotency.
+            </p>
+            <p>
+              Version 1 does not request health, sleep, women's health, training
+              plan, or course-write access.
+            </p>
+          </section>
+
+          <section class="policy-section" id="purpose">
+            <h2>3. Purposes</h2>
+            <ul>
+              <li>create a Garmin cycling activity under the user's VELO account;</li>
+              <li>show personal ride history, tracks, and activity summaries;</li>
+              <li>match road-cycling segments and calculate personal results;</li>
+              <li>show power, heart rate, cadence, and training metrics only when present;</li>
+              <li>process authorized backfill and new-activity notifications;</li>
+              <li>handle duplicate notifications, retries, disconnect, and deletion.</li>
+            </ul>
+            <p>
+              Garmin data is not used for credit, insurance, employment,
+              advertising profiles, or purposes unrelated to the user's
+              authorization.
+            </p>
+          </section>
+
+          <section class="policy-section" id="sharing">
+            <h2>4. Publication and external sharing</h2>
+            <p>
+              Garmin-imported activities are planned to be private by default.
+              A user may choose to publish a summary inside VELO and may
+              separately hide power or heart-rate fields.
+            </p>
+            <p>
+              A user-initiated static share card may contain selected activity
+              summary fields and Garmin source attribution. VELO does not
+              provide raw FIT files, OAuth tokens, or machine-readable Garmin
+              data to WeChat or another platform.
+            </p>
+            <p>
+              VELO does not sell or rent Garmin data, and other VELO users cannot
+              download a user's raw Garmin activity file.
+            </p>
+          </section>
+
+          <section class="policy-section" id="storage">
+            <h2>5. Processing and storage location</h2>
+            <p>
+              Garmin data for the Mainland China version of VELO is processed
+              and stored in Mainland China, primarily in Tencent Cloud's
+              Guangzhou region. VELO does not send Garmin activity data to
+              third parties outside Mainland China.
+            </p>
+            <p>
+              Access and refresh tokens will be encrypted at rest before
+              production access is made available and will not appear in public
+              APIs, web pages, reports, or application logs.
+            </p>
+          </section>
+
+          <section class="policy-section" id="retention">
+            <h2>6. Retention, disconnect, and deletion</h2>
+            <ul>
+              <li>raw Garmin FIT files are retained for no more than 30 days after successful parsing;</li>
+              <li>structured activities remain while the VELO account is active, until deleted by the user;</li>
+              <li>OAuth tokens are deleted from the primary database immediately after disconnect;</li>
+              <li>disconnecting stops all new Garmin sync;</li>
+              <li>historical activities can be retained or deleted by the user;</li>
+              <li>operational backups expire within 30 days;</li>
+              <li>closing a VELO account deletes personal account, ride, track, and authorization data.</li>
+            </ul>
+          </section>
+
+          <section class="policy-section" id="ai">
+            <h2>7. AI and model-training boundary</h2>
+            <p>
+              VELO does not send Garmin activities, tracks, sensor data, or user
+              identifiers to an external AI or LLM service. Garmin data is not
+              used to train an internal or external machine-learning model.
+            </p>
+            <p>
+              If VELO later introduces automated processing involving Garmin
+              data, we will first update this policy, explain the processing
+              logic, and obtain separate consent where required.
+            </p>
+          </section>
+
+          <section class="policy-section" id="rights">
+            <h2>8. User rights</h2>
+            <p>
+              Users may view connection status, withdraw authorization,
+              disconnect Garmin, stop new sync, delete imported activities,
+              request access, correction, a copy or transfer of personal
+              information, close their VELO account, or raise a question or
+              complaint about data processing.
+            </p>
+          </section>
+
+          <section class="policy-section" id="security">
+            <h2>9. Security and incidents</h2>
+            <p>
+              VELO uses transport encryption, access control, least privilege,
+              notification idempotency, failure isolation, and expiring
+              backups. Before launch, we will validate authorization, backfill,
+              new-activity notification, duplicate delivery, token refresh,
+              disconnect, deletion, and reauthorization on a real Garmin path.
+            </p>
+            <p>
+              If a security incident affects Garmin data, VELO will take
+              remedial, notification, and cooperation measures required by
+              applicable law and the Garmin developer agreement.
+            </p>
+          </section>
+
+          <section class="policy-section" id="contact">
+            <h2>10. Contact</h2>
+            <p>
+              Controller: 湖南湘江新区共演纪软件开发有限责任公司
+            </p>
+            <p>
+              Email:
+              <a href="mailto:chengyuxiang@synexissoftware.cn"
+                ><strong>chengyuxiang@synexissoftware.cn</strong></a
+              >
+            </p>
+            <p>
+              Garmin and Garmin Connect are products or services of Garmin and
+              its affiliates. VELO is independently operated and does not claim
+              endorsement by Garmin.
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div>
+          <div class="footer-title">VELO</div>
+          <p class="footer-legal">
+            湖南湘江新区共演纪软件开发有限责任公司
+          </p>
+        </div>
+        <div class="footer-links">
+          <a href="/en/">Home</a>
+          <a href="/en/privacy/">Privacy</a>
+          <a href="/en/company/">Company</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

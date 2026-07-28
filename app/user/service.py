@@ -51,9 +51,10 @@ from app.user.service_social import (  # noqa: F401 — 转导出
 
 
 def delete_user(db, user_id: int) -> None:
-    """彻底注销用户：删光个人数据（骑行 / 赛段成绩 / 功率突破 / Strava / 约骑草稿）+ 删用户本体。
+    """注销用户：删除账号及关联私有数据，创建的全部路书和已开放约骑去标识保留。
 
-    数据策略（Tim 2026-06-01 拍）：真注销 = 物理删除全部个人数据，连骑行记录和赛段成绩一起删。
+    骑行、赛段成绩、功率突破、Strava 记录和约骑草稿物理删除；所有路线定义保留为无主，
+    已开放约骑取消后保留给参与者查看，创建者关联由外键 SET NULL 清除。
 
     删除顺序很关键：users.id 有一批"挡路"的外键引用——activities / segment_efforts /
     breakthrough_events / strava_imports 的 user_id 都是 RESTRICT（没有 ON DELETE CASCADE），

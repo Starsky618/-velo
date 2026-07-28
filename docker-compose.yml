@@ -216,6 +216,7 @@ services:
       - "443:443"  # HTTPS
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./website:/srv/website:ro  # 官网独立只读 root；Caddy 仍为既有 API 白名单路由只读挂 uploads
       - caddy_data:/data
       - caddy_config:/config
       - uploads:/srv/uploads:ro    # 只读挂 uploads；caddy 只静态服务 /uploads/meetup_media/* 子目录（绝不开整个 /uploads/*——根里混着私密 GPX 轨迹）
