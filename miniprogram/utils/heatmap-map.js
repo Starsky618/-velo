@@ -172,6 +172,44 @@ function selectShapePoints(points, limit) {
   return sampled
 }
 
+function selectRepresentativeTracks(tracks, limit) {
+  if (tracks.length <= limit) return tracks
+  var bucketMembers = {}
+  tracks.forEach(function (track, trackIndex) {
+    var covered = {}
+    track.forEach(function (point) {
+      var key = Math.floor(point.latitude * 2) + ':' + Math.floor(point.longitude * 2)
+      covered[key] = true
+    })
+    Object.keys(covered).forEach(function (key) {
+      if (!bucketMembers[key]) bucketMembers[key] = []
+      bucketMembers[key].push(trackIndex)
+    })
+  })
+
+  var selectedIndexes = []
+  var selected = {}
+  Object.keys(bucketMembers)
+    .sort(function (a, b) { return bucketMembers[a].length - bucketMembers[b].length })
+    .some(function (key) {
+      var candidate = bucketMembers[key].find(function (trackIndex) {
+        return !selected[trackIndex]
+      })
+      if (candidate === undefined) return false
+      selected[candidate] = true
+      selectedIndexes.push(candidate)
+      return selectedIndexes.length === limit
+    })
+
+  for (var index = 0; index < tracks.length && selectedIndexes.length < limit; index++) {
+    if (selected[index]) continue
+    selected[index] = true
+    selectedIndexes.push(index)
+  }
+  selectedIndexes.sort(function (a, b) { return a - b })
+  return selectedIndexes.map(function (index) { return tracks[index] })
+}
+
 /**
  * 原生 map 的 polyline 会把全部点复制进渲染层；旧接口返回大对象时，直接 setData
  * 会再次卡住小程序。这里做最后一道客户端 LOD 保险：每条活动至少保留首尾点，
@@ -182,7 +220,7 @@ function limitTrackPoints(tracks, maxPoints) {
   if (!Number.isFinite(maxPoints) || maxPoints < 2 || tracks.length === 0) return tracks
   var drawable = tracks.filter(function (track) { return track.length >= 2 })
   if (drawable.length > MAX_HEATMAP_POLYLINES) {
-    drawable = drawable.slice(0, MAX_HEATMAP_POLYLINES)
+    drawable = selectRepresentativeTracks(drawable, MAX_HEATMAP_POLYLINES)
   }
   var total = drawable.reduce(function (sum, track) { return sum + track.length }, 0)
   if (total <= maxPoints) return drawable

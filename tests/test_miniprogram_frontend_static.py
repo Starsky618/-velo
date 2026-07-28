@@ -504,6 +504,29 @@ model.polylines.forEach((line) => assert.ok(line.points.length >= 2))
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
+def test_heatmap_polyline_cap_keeps_rare_geographic_coverage():
+    script = """
+const assert = require('assert')
+const heatmap = require('./miniprogram/utils/heatmap-map')
+
+const common = Array.from({ length: 1000 }, (_, index) => [
+  { longitude: 116.40 + index * 0.000001, latitude: 39.90 },
+  { longitude: 116.41 + index * 0.000001, latitude: 39.91 },
+])
+const rareTravel = [
+  { longitude: 114.00, latitude: 22.50 },
+  { longitude: 114.10, latitude: 22.55 },
+]
+const reduced = heatmap.limitTrackPoints(common.concat([rareTravel]), 2002)
+
+assert.strictEqual(reduced.length, 1000)
+assert.ok(reduced.includes(rareTravel))
+assert.ok(common.some((track) => !reduced.includes(track)))
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
 def test_heatmap_zooming_out_invalidates_inflight_viewport_even_when_overview_is_visible():
     script = """
 const assert = require('assert')
