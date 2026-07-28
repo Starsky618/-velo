@@ -357,22 +357,6 @@
   position: relative;
 }
 
-/* 主按钮：系统橙、胶囊感大圆角（HIG 主操作语言） */
-.start-button {
-  margin: 36rpx 0 0;
-  height: 96rpx;
-  border-radius: 28rpx;
-  color: #ffffff;
-  background: #ff9500;
-  font-size: 32rpx;
-  font-weight: 600;
-  line-height: 96rpx;
-}
-
-.start-button:active {
-  background: #e07f00;
-}
-
 /* ── rich-text 正文排版（guide.md 渲染节点） ──
    分层三原则：段间留白造呼吸 / 键值表和步骤条造结构 / 600 字重粗体造锚点 */
 

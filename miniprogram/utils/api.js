@@ -395,7 +395,7 @@ module.exports = {
   getUserProfile: function (userId) { return request('/api/user/' + userId + '/profile', 'GET') },
 
   /**
-   * 注销账号：彻底删除当前用户及全部个人数据（骑行/赛段成绩/功率/Strava/约骑草稿）。
+   * 注销账号：彻底删除当前用户及全部个人数据。
    * 不可逆。后端 DELETE /api/user/me，鉴权用 JWT 锁定本人。成功后调用方须清 token 退出登录。
    * @returns {Promise}
    */
@@ -543,100 +543,6 @@ module.exports = {
    */
   updateActivityPrivacy: function (activityId, partial) {
     return request('/api/activities/' + activityId + '/privacy', 'PATCH', partial)
-  },
-
-  /**
-   * 拉取开放约骑列表。
-   *
-   * 后端已经统一返回人数和首图，这里只负责把筛选条件送过去。
-   */
-  getMeetupsList: function (params) {
-    return request('/api/meetups' + buildQuery(params || {}), 'GET')
-  },
-
-  // 个人页"我的约骑"：role='created' 我发起的 / 'joined' 我加入的
-  getMyMeetups: function (role, params) {
-    return request('/api/meetups/mine' + buildQuery(Object.assign({ role: role }, params || {})), 'GET')
-  },
-
-  // 详情：invite_only 私圈约骑需带 token（朋友从分享链接进来才拿得到）。
-  // source 是五环节埋点的来路标记（share_card/report_card）：不透传它，
-  // 后端 SENSOR 行永远记 direct，上线回看"多少人从卡进来"会恒为 0（S13 集成审 Critical）。
-  getMeetupDetail: function (meetupId, token, source) {
-    var params = {}
-    if (token) params.token = token
-    if (source) params.source = source
-    return request('/api/meetups/' + meetupId + buildQuery(params), 'GET')
-  },
-
-  // 已加入骑友列表（私圈约骑需带 token / 登录）
-  getMeetupParticipants: function (meetupId, token) {
-    return request('/api/meetups/' + meetupId + '/participants' + buildQuery(token ? { token: token } : {}), 'GET')
-  },
-
-  // 约骑照片墙：列表（public 直接看 / invite_only 需 token）/ 上传（creator multipart）/ 删除（creator 或上传者）
-  getMeetupMedia: function (meetupId, token) {
-    return request('/api/meetups/' + meetupId + '/media' + buildQuery(token ? { token: token } : {}), 'GET')
-  },
-
-  uploadMeetupMedia: function (meetupId, filePath) {
-    return this.upload('/api/meetups/' + meetupId + '/media', filePath, 'file')
-  },
-
-  deleteMeetupMedia: function (meetupId, mediaId) {
-    return request('/api/meetups/' + meetupId + '/media/' + mediaId, 'DELETE')
-  },
-
-  getMyMeetupDraft: function () {
-    return request('/api/meetups/my-draft', 'GET')
-  },
-
-  createMeetup: function (data) {
-    return request('/api/meetups', 'POST', data)
-  },
-
-  updateMeetup: function (meetupId, data) {
-    return request('/api/meetups/' + meetupId, 'PATCH', data)
-  },
-
-  publishMeetup: function (meetupId) {
-    return request('/api/meetups/' + meetupId + '/publish', 'POST', {})
-  },
-
-  cancelMeetup: function (meetupId) {
-    return request('/api/meetups/' + meetupId + '/cancel', 'POST', {})
-  },
-
-  deleteMeetup: function (meetupId) {
-    return request('/api/meetups/' + meetupId, 'DELETE')
-  },
-
-  getMeetupFavoritePlaces: function () {
-    return request('/api/meetups/favorite-places', 'GET')
-  },
-
-  saveMeetupFavoritePlace: function (data) {
-    return request('/api/meetups/favorite-places', 'POST', data)
-  },
-
-  deleteMeetupFavoritePlace: function (placeId) {
-    return request('/api/meetups/favorite-places/' + placeId, 'DELETE')
-  },
-
-  // 集合点实时联想：边输边搜返回最多 8 条候选（替代旧单结果 place-search）
-  getMeetupPlaceSuggestions: function (keyword, region) {
-    return request('/api/meetups/place-suggestions' + buildQuery({
-      keyword: keyword,
-      region: region || '太原',
-    }), 'GET')
-  },
-
-  joinMeetup: function (meetupId, token) {
-    return request('/api/meetups/' + meetupId + '/join' + buildQuery(token ? { token: token } : {}), 'POST', {})
-  },
-
-  leaveMeetup: function (meetupId) {
-    return request('/api/meetups/' + meetupId + '/leave', 'DELETE')
   },
 
   getRouteBooksList: function (params) {

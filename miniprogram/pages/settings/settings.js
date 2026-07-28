@@ -186,7 +186,7 @@ Page({
   onAbout() {
     wx.showModal({
       title: 'VELO',
-      content: '公路骑行 · 成绩与约骑\n' + (this.data.versionText || '开发版'),
+      content: '公路骑行 · 路线与成绩\n' + (this.data.versionText || '开发版'),
       showCancel: false,
       confirmText: '好',
     })

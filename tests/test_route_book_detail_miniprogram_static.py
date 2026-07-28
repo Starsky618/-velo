@@ -44,7 +44,7 @@ def test_route_book_detail_page_uses_route_book_contract_not_route_guide():
     assert "route-detail-page" not in wxml
 
 
-def test_route_book_detail_page_shows_map_elevation_export_and_meetup_actions():
+def test_route_book_detail_page_shows_map_elevation_and_export_actions():
     js = _read(PAGE_DIR / "route-book-detail.js")
     wxml = _read(PAGE_DIR / "route-book-detail.wxml")
 
@@ -65,8 +65,6 @@ def test_route_book_detail_page_shows_map_elevation_export_and_meetup_actions():
     assert "api.createRouteExport" in js
     assert "api.downloadRouteExport" in js
     assert 'wx:if="{{route.export_ready}}"' in wxml
-    assert "onStartMeetup" in js
-    assert "/pages/meetup-create/meetup-create?route_book_id=" in js
 
 
 def test_private_route_export_does_not_offer_anonymous_browser_link():
@@ -101,19 +99,6 @@ def test_private_route_export_does_not_offer_anonymous_browser_link():
         check=True,
     )
     assert json.loads(result.stdout) == {"privateDraft": False, "publicPublished": True}
-
-
-def test_route_book_detail_meetup_action_requires_login():
-    js = _read(PAGE_DIR / "route-book-detail.js")
-    wxml = _read(PAGE_DIR / "route-book-detail.wxml")
-    meetup_block = js.split("onStartMeetup: function", 1)[1].split("wx.navigateTo", 1)[0]
-
-    assert "路书详情" in wxml
-    assert "我的路书" not in wxml
-    assert "isLoggedIn" in js
-    assert "if (!isLoggedIn())" in meetup_block
-    assert "登录后才能发约骑" in meetup_block
-    assert "wx.switchTab({ url: '/pages/profile/profile' })" in meetup_block
 
 
 def test_route_book_detail_build_stats_uses_meter_units_and_zero_climb():

@@ -86,7 +86,5 @@
         </view>
       </view>
     </view>
-
-    <button class="start-button" bindtap="onStartMeetup">约骑这条路线</button>
   </view>
 </view>

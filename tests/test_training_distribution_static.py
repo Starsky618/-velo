@@ -28,7 +28,6 @@ def test_training_distribution_registered_at_app_json_tail():
     pages = app_json["pages"]
     assert "pages/training-distribution/training-distribution" in pages
     assert pages.index("pages/training-calendar/training-calendar") < pages.index("pages/training-distribution/training-distribution")
-    assert pages.index("pages/training-distribution/training-distribution") < pages.index("pages/meetups-list/meetups-list")
 
 
 def test_profile_has_training_distribution_entry():

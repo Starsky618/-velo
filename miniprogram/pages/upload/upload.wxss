@@ -11,43 +11,6 @@
   padding: 64rpx 24rpx;
 }
 
-/* 约骑交卷横幅：白卡 + 橙 tinted 药丸（旧深底黑卡退场）*/
-.meetup-banner {
-  margin: 24rpx;
-  padding: 26rpx 28rpx;
-  border-radius: 28rpx;
-  background: #fff;
-  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.meetup-title {
-  display: block;
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #1c1c1e;
-  margin-bottom: 8rpx;
-}
-
-.meetup-sub {
-  display: block;
-  font-size: 24rpx;
-  color: #8a8a8e;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum';
-}
-
-.meetup-pill {
-  padding: 8rpx 18rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 149, 0, 0.12);
-  color: #e07f00;
-  font-size: 22rpx;
-  font-weight: 600;
-}
-
 .upload-zone {
   margin: 32rpx 24rpx;
   padding: 76rpx 48rpx;
@@ -181,9 +144,7 @@
 .btn-upload,
 .btn-detail,
 .btn-again,
-.btn-report,
-.btn-retry,
-.btn-share {
+.btn-retry {
   min-height: 88rpx;
   border-radius: 24rpx;
   display: flex;
@@ -468,29 +429,6 @@
   margin-top: 6rpx;
 }
 
-.first-banner {
-  margin-top: 10rpx;
-  padding: 22rpx 24rpx;
-  border-radius: 16rpx;
-  border: 1rpx solid rgba(255, 149, 0, 0.25);
-  background: rgba(255, 149, 0, 0.08);
-}
-
-.first-title {
-  display: block;
-  color: #e07f00;
-  font-size: 26rpx;
-  font-weight: 600;
-  margin-bottom: 8rpx;
-}
-
-.first-hint {
-  display: block;
-  color: #8a8a8e;
-  font-size: 23rpx;
-  line-height: 1.6;
-}
-
 .result-actions {
   display: flex;
   flex-direction: column;
@@ -498,38 +436,9 @@
   margin-top: 28rpx;
 }
 
-/* 分享是这一屏的主操作（晒卡到群 = 核心反馈环），橙底白字 */
-.btn-share {
-  width: 100%;
-  padding: 0;
-  border: none;
-  background: #ff9500;
-  color: #fff;
-  line-height: 1;
-}
-
-.btn-share::after {
-  border: none;
-}
-
-.btn-share:active {
-  background: #e07f00;
-}
-
-.btn-report {
-  background: rgba(255, 149, 0, 0.12);
-  color: #e07f00;
-}
-
 .btn-detail {
   background: var(--color-primary);
   color: #ffffff;
-}
-
-.btn-detail-secondary {
-  background: #fff;
-  color: #1c1c1e;
-  border: 1rpx solid #d1d1d6;
 }
 
 .btn-again {

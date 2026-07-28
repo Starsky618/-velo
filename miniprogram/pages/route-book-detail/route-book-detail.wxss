@@ -248,18 +248,3 @@
   font-size: 24rpx;
   line-height: 1.45;
 }
-
-.start-button {
-  margin: 36rpx 0 0;
-  height: 96rpx;
-  border-radius: 28rpx;
-  color: #ffffff;
-  background: #ff9500;
-  font-size: 32rpx;
-  font-weight: 600;
-  line-height: 96rpx;
-}
-
-.start-button:active {
-  background: #e07f00;
-}

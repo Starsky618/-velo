@@ -70,7 +70,5 @@
       <view wx:if="{{exportSendFailed}}" class="export-fallback">{{exportSendError}}</view>
     </view>
     <view wx:else class="export-hint">{{exportHint}}</view>
-
-    <button class="start-button" bindtap="onStartMeetup">用这条路线发约骑</button>
   </view>
 </view>
