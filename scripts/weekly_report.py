@@ -197,7 +197,7 @@ def render_agent_checklist(signals: list[dict]) -> list[str]:
         "### Step 2：沉淀候选（agent 自填）",
         "",
         "- 列出本周可能要沉淀的新错误模式（≥ 1 条 或 写【无】）",
-        "- 每条含：错误模式描述 / 触发场景 / 推荐沉淀去向（memory / CLAUDE.md / vault concept）",
+        "- 每条含：错误模式描述 / 触发场景 / 推荐沉淀去向（记忆 / 现有项目文档 / 测试或门禁）",
         "- 提议给 Tim 等他拍 / 不要擅自写 memory",
         "",
         "### Step 3：高频违反规则提醒（开 session 时主动 grep）",
