@@ -15,6 +15,7 @@ class _LinkParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.links: list[str] = []
+        self.stylesheets: list[str] = []
         self.lang: str | None = None
         self.has_title = False
         self.has_viewport = False
@@ -27,6 +28,11 @@ class _LinkParser(HTMLParser):
             self.links.append(values["href"])
         if tag == "link" and values.get("href"):
             self.links.append(values["href"])
+            rel_tokens = (values.get("rel") or "").lower().split()
+            if "stylesheet" in rel_tokens:
+                self.stylesheets.append(values["href"])
+        if tag == "img" and values.get("src"):
+            self.links.append(values["src"])
         if tag == "meta" and values.get("name") == "viewport":
             self.has_viewport = True
         if tag == "title":
@@ -82,7 +88,12 @@ def test_all_html_pages_are_mobile_ready_and_have_valid_internal_links():
         assert parser.has_title, page
         assert parser.has_viewport, page
         assert 'href="/favicon.svg"' in source, page
-        assert 'href="/assets/site.css"' in source, page
+        assert any(
+            not urlsplit(href).scheme
+            and not urlsplit(href).netloc
+            and urlsplit(href).path == "/assets/site.css"
+            for href in parser.stylesheets
+        ), page
 
         for href in parser.links:
             if href.startswith(("mailto:", "tel:", "#")):

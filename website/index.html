@@ -5,165 +5,274 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="VELO 是面向中国城市公路车骑手的微信小程序，提供骑行记录、赛段表现、路线浏览与路书导出。"
+      content="VELO 是面向中国城市公路车骑手的微信小程序，记录真实户外骑行、固定赛段表现与本地路线，并支持 GPX、TCX 路书导出。"
     />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="VELO｜认真骑，也认真留下" />
+    <meta
+      property="og:description"
+      content="记录真实户外骑行，回看固定赛段，也把常骑的本地路线留在一个地方。"
+    />
+    <meta property="og:url" content="https://weiluai.top/" />
+    <meta
+      property="og:image"
+      content="https://weiluai.top/assets/home-hero-city-sprint-v2.jpg"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
     <title>VELO｜认真骑，也认真留下</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/site.css" />
+    <link
+      rel="preload"
+      href="/assets/home-hero-city-sprint-v2.jpg"
+      as="image"
+      fetchpriority="high"
+    />
+    <link rel="stylesheet" href="/assets/site.css?v=20260729f" />
   </head>
-  <body>
-    <header class="site-header">
-      <nav class="nav" aria-label="主导航">
-        <a class="brand" href="/">
-          <span class="brand-dot" aria-hidden="true"></span>
+  <body class="home-v2">
+    <header class="site-header home-header">
+      <nav class="nav home-nav" aria-label="主导航">
+        <a class="brand home-brand" href="/" aria-label="VELO 首页">
+          <img src="/favicon.svg" alt="" width="28" height="28" />
           <span>VELO</span>
         </a>
-        <div class="nav-links">
+
+        <div class="nav-links home-nav-links">
+          <a href="#routes">本地路线</a>
           <a href="#product">产品</a>
           <a href="#sync">数据同步</a>
           <a href="/privacy/">隐私</a>
           <a href="/company/">关于公司</a>
           <a class="language-link" href="/en/" lang="en">EN</a>
         </div>
+
+        <details class="home-menu">
+          <summary>
+            <img
+              src="/assets/icons/menu-2.svg"
+              alt=""
+              width="28"
+              height="28"
+              aria-hidden="true"
+            />
+            <span class="visually-hidden">打开导航</span>
+          </summary>
+          <div class="home-menu-panel">
+            <a href="#routes">本地路线</a>
+            <a href="#product">产品</a>
+            <a href="#sync">数据同步</a>
+            <a href="/privacy/">隐私政策</a>
+            <a href="/company/">关于公司</a>
+            <a href="/en/" lang="en">English</a>
+          </div>
+        </details>
       </nav>
     </header>
 
-    <main class="page">
-      <section class="hero">
-        <div>
-          <div class="status-chip">产品内测中</div>
-          <h1>认真骑，也认真留下。</h1>
-          <p class="hero-copy">
-            VELO 是给中国城市公路车骑手用的骑行记录工具。把码表和平台里的骑行带回来，看清自己的赛段表现，也把常骑的路线留在一个地方。
-          </p>
-          <div class="hero-actions">
-            <a class="button button-primary" href="#product">了解 VELO</a>
-            <a class="button button-secondary" href="/privacy/garmin/"
-              >Garmin 数据说明</a
-            >
-          </div>
-        </div>
-
-        <div class="route-card" aria-label="骑行轨迹与数据示意">
-          <div class="route-grid" aria-hidden="true"></div>
-          <span class="route-segment s1" aria-hidden="true"></span>
-          <span class="route-segment s2" aria-hidden="true"></span>
-          <span class="route-segment s3" aria-hidden="true"></span>
-          <span class="route-point start" aria-hidden="true"></span>
-          <span class="route-point end" aria-hidden="true"></span>
-          <div class="ride-summary">
-            <div class="ride-summary-title">一次真实的户外骑行</div>
-            <div class="ride-stats">
-              <div class="ride-stat">
-                <strong>82.4</strong>
-                <span>公里</span>
-              </div>
-              <div class="ride-stat">
-                <strong>1,260</strong>
-                <span>爬升米</span>
-              </div>
-              <div class="ride-stat">
-                <strong>3:18</strong>
-                <span>移动时间</span>
-              </div>
+    <main>
+      <section class="home-hero" aria-labelledby="home-title">
+        <img
+          class="home-hero-image"
+          src="/assets/home-hero-city-sprint-v2.jpg"
+          alt="城市河岸骑行场景与橙色路线视觉示意"
+          width="1200"
+          height="1500"
+          fetchpriority="high"
+        />
+        <div class="home-shell home-hero-inner">
+          <div class="home-hero-copy">
+            <p class="home-status">
+              <img
+                src="/favicon.svg"
+                alt=""
+                width="14"
+                height="14"
+                aria-hidden="true"
+              />
+              产品内测中
+            </p>
+            <h1 id="home-title">认真骑，<br />也认真留下。</h1>
+            <p>
+              VELO 是给中国城市公路车骑手用的骑行记录工具。把每一次真实的户外骑行，留在一个地方。
+            </p>
+            <div class="home-actions">
+              <a class="home-button home-button-primary" href="#routes">
+                <span>查看本地路线</span>
+                <img
+                  src="/assets/icons/arrow-right.svg"
+                  alt=""
+                  width="22"
+                  height="22"
+                  aria-hidden="true"
+                />
+              </a>
+              <a class="home-button home-button-dark" href="#product"
+                >了解产品</a
+              >
             </div>
           </div>
         </div>
       </section>
 
-      <section class="section" id="product">
-        <div class="section-heading">
-          <span class="eyebrow">VELO 现在做什么</span>
-          <h2>不是综合运动平台，只把公路骑行这件事做实。</h2>
-          <p>
-            产品聚焦真实户外骑行。数据用于形成你的骑行记录、赛段表现和路线资料，不做硬件、电商或室内虚拟骑行。
-          </p>
-        </div>
-        <div class="card-grid">
-          <article class="feature-card">
-            <span class="feature-number">01</span>
+      <section class="home-proof" id="product" aria-labelledby="product-title">
+        <h2 class="visually-hidden" id="product-title">产品能力</h2>
+        <div class="home-shell home-proof-grid">
+          <article>
+            <img
+              src="/assets/icons/route.svg"
+              alt=""
+              width="40"
+              height="40"
+              aria-hidden="true"
+            />
             <h3>骑行记录</h3>
-            <p>
-              支持上传 FIT、GPX，并已接入 Strava。距离、时间、爬升、心率、踏频和功率按文件实际字段展示。
-            </p>
+            <p>真实户外骑行，留在一个地方。</p>
           </article>
-          <article class="feature-card">
-            <span class="feature-number">02</span>
-            <h3>赛段表现</h3>
-            <p>
-              在真实道路的固定赛段上回看成绩与个人变化。缺失的数据不会用占位数或推测结果补齐。
-            </p>
+          <article>
+            <img
+              src="/assets/icons/mountain.svg"
+              alt=""
+              width="40"
+              height="40"
+              aria-hidden="true"
+            />
+            <h3>固定赛段</h3>
+            <p>同一路段反复骑，看见变化。</p>
           </article>
-          <article class="feature-card">
-            <span class="feature-number">03</span>
-            <h3>路线与路书</h3>
-            <p>
-              浏览路线资料，手动画线或贴路，保存并导出 GPX、TCX，交给自己的码表或码表 App 使用。
-            </p>
+          <article>
+            <img
+              src="/assets/icons/file-download.svg"
+              alt=""
+              width="40"
+              height="40"
+              aria-hidden="true"
+            />
+            <h3>路书导出</h3>
+            <p>GPX、TCX 路书文件导出。</p>
           </article>
         </div>
       </section>
 
-      <section class="section" id="sync">
-        <div class="sync-panel">
-          <div class="section-heading">
-            <span class="eyebrow">数据同步</span>
-            <h2>授权一次，骑完自动回来。</h2>
+      <section class="home-routes" id="routes" aria-labelledby="routes-title">
+        <img
+          class="home-contours"
+          src="/assets/home-route-contours.jpg"
+          alt=""
+          width="1000"
+          height="1000"
+          aria-hidden="true"
+          loading="lazy"
+        />
+        <div class="home-shell">
+          <div class="home-section-copy">
+            <p class="home-eyebrow">太原 · 本地路线</p>
+            <h2 id="routes-title">本地路线，<br />为城市骑行而生。</h2>
+            <hr class="home-route-rule" aria-hidden="true" />
+            <p>
+              VELO 正在整理太原及周边真正骑过的公路路线与固定赛段，用真实路况和海拔资料，服务每一次认真出发。
+            </p>
+          </div>
+
+          <article class="home-route-feature">
+            <img
+              src="/assets/home-route-huanfenhe.jpg"
+              alt="太原汾河绿道远眺太行山秋色"
+              width="1200"
+              height="900"
+              loading="lazy"
+            />
+            <div class="home-route-body">
+              <p class="home-route-label">本地路线 · 太原</p>
+              <h3>环太原汾河自行车道</h3>
+              <dl class="home-route-facts">
+                <div>
+                  <dt>距离</dt>
+                  <dd>约 75 km</dd>
+                </div>
+                <div>
+                  <dt>经过</dt>
+                  <dd>全城 5 个区</dd>
+                </div>
+                <div>
+                  <dt>路书</dt>
+                  <dd>轨迹整理中</dd>
+                </div>
+              </dl>
+              <p>
+                这条路线的实骑资料正在整理；轨迹校验完成后，再提供可导入码表或码表
+                App 的路书。
+              </p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="home-sync" id="sync" aria-labelledby="sync-title">
+        <div class="home-shell home-sync-grid">
+          <div class="home-section-copy">
+            <p class="home-eyebrow">数据同步</p>
+            <h2 id="sync-title">数据回来，<br />也要边界清楚。</h2>
             <p>
               Garmin Connect 同步仍在申请和开发阶段，当前尚未向用户开放。正式上线前会完成真实授权、历史回溯、通知、解绑和删除验证。
             </p>
           </div>
-          <div class="sync-list">
-            <div class="sync-row">
-              <span class="sync-check" aria-hidden="true">1</span>
+          <ol class="home-sync-list">
+            <li>
+              <span>01</span>
               <div>
                 <strong>只走官方授权</strong>
-                <span>不会索取或保存你的 Garmin 账号密码。</span>
+                <p>不会索取或保存你的 Garmin 账号密码。</p>
               </div>
-            </div>
-            <div class="sync-row">
-              <span class="sync-check" aria-hidden="true">2</span>
+            </li>
+            <li>
+              <span>02</span>
               <div>
                 <strong>只申请骑行活动</strong>
-                <span>首版不申请睡眠、健康或女性健康数据。</span>
+                <p>首版不申请睡眠、健康或女性健康数据。</p>
               </div>
-            </div>
-            <div class="sync-row">
-              <span class="sync-check" aria-hidden="true">3</span>
+            </li>
+            <li>
+              <span>03</span>
               <div>
                 <strong>你决定是否公开</strong>
-                <span>Garmin 导入活动计划默认私密，由你主动发布摘要。</span>
+                <p>Garmin 导入活动计划默认私密，由你主动发布摘要。</p>
               </div>
-            </div>
-            <div class="sync-row">
-              <span class="sync-check" aria-hidden="true">4</span>
+            </li>
+            <li>
+              <span>04</span>
               <div>
                 <strong>随时解绑和删除</strong>
-                <span>解绑停止新同步并删除授权令牌，活动可由你自行删除。</span>
+                <p>解绑停止新同步并删除授权令牌，活动可由你自行删除。</p>
               </div>
-            </div>
-          </div>
+            </li>
+          </ol>
         </div>
       </section>
 
-      <section class="section">
-        <div class="section-heading">
-          <span class="eyebrow">隐私边界</span>
-          <h2>骑行轨迹不是随便可以公开的内容。</h2>
-          <p>
-            VELO 提供活动仅自己可见、隐藏功率和隐藏心率等设置。第三方同步的数据不出售，也不用于外部 AI 或大模型训练。
-          </p>
-        </div>
-        <div class="hero-actions">
-          <a class="button button-primary" href="/privacy/">阅读隐私政策</a>
-          <a class="button button-secondary" href="/privacy/garmin/"
-            >阅读 Garmin 专项说明</a
-          >
+      <section class="home-privacy" aria-labelledby="privacy-title">
+        <div class="home-shell home-privacy-inner">
+          <div class="home-section-copy">
+            <p class="home-eyebrow">隐私边界</p>
+            <h2 id="privacy-title">骑行轨迹，<br />不是随便公开的内容。</h2>
+            <p>
+              VELO 提供活动仅自己可见、隐藏功率和隐藏心率等设置。第三方同步的数据不出售，也不用于外部
+              AI 或大模型训练。
+            </p>
+          </div>
+          <div class="home-actions">
+            <a class="home-button home-button-primary" href="/privacy/"
+              >阅读隐私政策</a
+            >
+            <a class="home-button home-button-outline" href="/privacy/garmin/"
+              >Garmin 数据说明</a
+            >
+          </div>
         </div>
       </section>
     </main>
 
-    <footer class="site-footer">
+    <footer class="site-footer home-footer">
       <div class="footer-inner">
         <div>
           <div class="footer-title">VELO</div>
