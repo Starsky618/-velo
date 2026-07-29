@@ -1,3 +1,27 @@
+@font-face {
+  font-family: "VELO Sans";
+  src: url("/assets/fonts/velo-sans-zh-regular-v1.woff") format("woff");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "VELO Sans";
+  src: url("/assets/fonts/velo-sans-zh-medium-v1.woff") format("woff");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "VELO Sans";
+  src: url("/assets/fonts/velo-sans-zh-bold-v1.woff") format("woff");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
   --bg: #f2f2f7;
@@ -834,6 +858,9 @@ h1 {
   --home-shell: 1160px;
   background: var(--home-paper);
   color: var(--home-ink);
+  font-family: "VELO Sans", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
 }
 
 .home-v2 main {
@@ -870,8 +897,8 @@ h1 {
   gap: 12px;
   color: var(--home-ink);
   font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .home-v2 .home-brand img {
@@ -888,7 +915,8 @@ h1 {
   padding-inline: 12px;
   color: #252527;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
 .home-v2 .home-nav-links a:hover {
@@ -943,7 +971,8 @@ h1 {
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   color: #ffffff;
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
 .home-menu-panel a:last-child {
@@ -990,8 +1019,9 @@ h1 {
   margin: 0 0 20px;
   color: var(--home-orange-deep);
   font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0.09em;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.055em;
 }
 
 .home-status {
@@ -1010,9 +1040,9 @@ h1 {
   margin: 0 0 26px;
   color: var(--home-ink);
   font-size: clamp(64px, 6.7vw, 92px);
-  font-weight: 800;
-  line-height: 0.98;
-  letter-spacing: -0.065em;
+  font-weight: 500;
+  line-height: 1.06;
+  letter-spacing: -0.01em;
   text-shadow: 0 2px 20px rgba(255, 255, 255, 0.82);
 }
 
@@ -1041,7 +1071,8 @@ h1 {
   border: 1px solid var(--home-ink);
   border-radius: 0;
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 500;
+  letter-spacing: 0;
   line-height: 1.2;
   transition: transform 160ms ease, background-color 160ms ease,
     color 160ms ease;
@@ -1128,9 +1159,9 @@ h1 {
   margin: 0 0 9px;
   color: #ffffff;
   font-size: 25px;
-  font-weight: 750;
+  font-weight: 500;
   line-height: 1.2;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .home-proof p {
@@ -1172,9 +1203,10 @@ h1 {
   margin: 0 0 24px;
   color: var(--home-ink);
   font-size: clamp(46px, 5vw, 72px);
-  font-weight: 800;
-  line-height: 1.02;
-  letter-spacing: -0.055em;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
 }
 
 .home-section-copy > p:not(.home-eyebrow) {
@@ -1228,9 +1260,9 @@ h1 {
   margin: 0 0 24px;
   color: var(--home-ink);
   font-size: 38px;
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1.1;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.005em;
 }
 
 .home-route-facts {
@@ -1264,7 +1296,8 @@ h1 {
   margin: 0;
   color: var(--home-ink);
   font-size: 15px;
-  font-weight: 750;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 .home-route-body > p {
@@ -1304,7 +1337,8 @@ h1 {
 .home-sync-list li > span {
   color: var(--home-orange-deep);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   letter-spacing: 0.08em;
 }
 
@@ -1313,6 +1347,7 @@ h1 {
   margin-bottom: 5px;
   color: var(--home-ink);
   font-size: 18px;
+  font-weight: 500;
 }
 
 .home-sync-list p {
@@ -1347,6 +1382,7 @@ h1 {
 
 .home-v2 .home-footer .footer-title {
   color: #ffffff;
+  font-weight: 700;
 }
 
 .home-v2 .home-footer .footer-legal,
@@ -1447,7 +1483,8 @@ h1 {
     max-width: 360px;
     margin-bottom: 19px;
     font-size: clamp(43px, 12vw, 48px);
-    line-height: 0.98;
+    line-height: 1.06;
+    letter-spacing: 0;
   }
 
   .home-hero-copy > p:not(.home-status) {
@@ -1507,8 +1544,8 @@ h1 {
 
   .home-proof p {
     margin-inline: auto;
-    font-size: 12px;
-    line-height: 1.45;
+    font-size: 12.5px;
+    line-height: 1.5;
   }
 
   .home-routes {
@@ -1523,12 +1560,17 @@ h1 {
 
   .home-v2 .home-section-copy h2 {
     margin-bottom: 19px;
-    font-size: clamp(38px, 11vw, 46px);
-    line-height: 1.04;
+    font-size: clamp(36px, 10.3vw, 42px);
+    line-height: 1.1;
+    letter-spacing: -0.012em;
   }
 
   .home-v2 .home-routes .home-section-copy h2 {
-    font-size: clamp(36px, 9.5vw, 40px);
+    font-size: clamp(34px, 9.5vw, 38px);
+  }
+
+  .home-privacy .home-section-copy h2 br {
+    display: none;
   }
 
   .home-route-rule {
@@ -1626,7 +1668,7 @@ h1 {
   }
 
   .home-v2 .home-hero h1 {
-    font-size: 43px;
+    font-size: 42px;
   }
 
   .home-v2 .home-route-body h3 {

@@ -1,5 +1,6 @@
 """Static contracts for the public VELO website and Garmin application pages."""
 
+import hashlib
 import re
 from html.parser import HTMLParser
 from pathlib import Path
@@ -68,6 +69,11 @@ def test_website_has_required_public_pages():
         "sitemap.xml",
         "favicon.svg",
         "assets/site.css",
+        "assets/fonts/OFL.txt",
+        "assets/fonts/README.md",
+        "assets/fonts/velo-sans-zh-regular-v1.woff",
+        "assets/fonts/velo-sans-zh-medium-v1.woff",
+        "assets/fonts/velo-sans-zh-bold-v1.woff",
     }
     actual = {
         str(path.relative_to(WEBSITE))
@@ -111,6 +117,48 @@ def test_mobile_navigation_and_footer_links_have_full_touch_targets():
         rule = re.search(rf"{selector}\s*\{{(?P<body>[^}}]+)\}}", css)
         assert rule, selector
         assert re.search(r"min-height:\s*44px", rule.group("body")), selector
+
+
+def test_homepage_uses_local_chinese_web_fonts_without_synthetic_weights():
+    homepage = (WEBSITE / "index.html").read_text(encoding="utf-8")
+    css = (WEBSITE / "assets/site.css").read_text(encoding="utf-8")
+    font_files = {
+        "regular": (
+            WEBSITE / "assets/fonts/velo-sans-zh-regular-v1.woff",
+            400,
+            "8c50d408ecef8eeaed9c5b817918719c44d5cde4177236f9da936811e70a5ff2",
+        ),
+        "medium": (
+            WEBSITE / "assets/fonts/velo-sans-zh-medium-v1.woff",
+            500,
+            "c030c28f5b997d3ea995420e000a6c38ecabd27678c87708d89d550ea9dc8ba8",
+        ),
+        "bold": (
+            WEBSITE / "assets/fonts/velo-sans-zh-bold-v1.woff",
+            700,
+            "ceeefa8801b6a9b7f20e2e920f575a676c869b82f644e4dcc7f1c92ffb85bf54",
+        ),
+    }
+
+    for font_file, weight, expected_sha256 in font_files.values():
+        payload = font_file.read_bytes()
+        assert payload[:4] == b"wOFF", font_file
+        assert 10_000 < len(payload) < 200_000, font_file
+        assert hashlib.sha256(payload).hexdigest() == expected_sha256, font_file
+        assert re.search(
+            rf'@font-face\s*\{{[^}}]*url\("/assets/fonts/{re.escape(font_file.name)}"\)'
+            rf'[^}}]*font-weight:\s*{weight}\s*;',
+            css,
+        ), font_file
+
+    assert 'font-family: "VELO Sans"' in css
+    assert "font-synthesis: none" in css
+    assert 'type="font/woff"' in homepage
+    assert "/assets/fonts/velo-sans-zh-regular-v1.woff" in homepage
+    assert "/assets/fonts/velo-sans-zh-medium-v1.woff" in homepage
+
+    home_css = css.split(".home-v2 {", 1)[1]
+    assert not re.search(r"font-weight:\s*(650|750|800)\b", home_css)
 
 
 def test_public_pages_identify_the_legal_operator_without_private_identifiers():
