@@ -8,7 +8,6 @@
        latitude="{{center.latitude}}"
        longitude="{{center.longitude}}"
        scale="10"
-       polyline="{{polylines}}"
        include-points="{{includePoints}}"
        enable-scroll="{{true}}"
        enable-zoom="{{true}}"
@@ -17,6 +16,7 @@
        show-location="{{false}}"
        show-scale="{{true}}"
        show-compass="{{true}}"
+       polyline="{{polylines}}"
        bindregionchange="onMapRegionChange">
     <cover-view class="map-meta">{{activityCount}} 次骑行 · {{selectedYearLabel}}</cover-view>
     <cover-view class="layer-toggle" catchtap="onToggleLayer">图层</cover-view>

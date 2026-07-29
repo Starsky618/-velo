@@ -1,12 +1,57 @@
 /**
- * 个人页骑行热图卡片：一张真实底图 + 半透明骑行轨迹层。
- *
- * 卡片本身支持拖动和缩放；“全屏查看”进入独立地图页继续探索、切年份和颜色。
- * userId=0 看自己，非 0 看他人，沿用现有公开主页契约。
+ * 个人页骑行热图卡片：首屏只取范围元数据，轨迹按当前视野加载透明瓦片。
+ * 原生地图只承载底图和手势，不再接收数千个 polyline 点。
  */
 
 const api = require('../../utils/api')
 const heatmapMap = require('../../utils/heatmap-map')
+const { gcj02ToWgs84 } = require('../../utils/coords')
+
+const MIN_TILE_ZOOM = 3
+const MAX_TILE_ZOOM = 18
+const MAX_VISIBLE_TILES = 12
+const HEATMAP_LINE_WIDTH = 3
+const HEATMAP_LINE_OPACITY = 'C8'
+
+function isDeveloperTools() {
+  try {
+    if (typeof wx.getDeviceInfo === 'function') {
+      return wx.getDeviceInfo().platform === 'devtools'
+    }
+    return wx.getSystemInfoSync().platform === 'devtools'
+  } catch (error) {
+    return false
+  }
+}
+
+function tileXForLongitude(longitude, zoom) {
+  return Math.floor((longitude + 180) / 360 * Math.pow(2, zoom))
+}
+
+function tileYForLatitude(latitude, zoom) {
+  var limited = Math.max(-85.05112878, Math.min(85.05112878, latitude))
+  var radians = limited * Math.PI / 180
+  return Math.floor((1 - Math.asinh(Math.tan(radians)) / Math.PI) / 2 * Math.pow(2, zoom))
+}
+
+function latitudeForTileY(tileY, zoom) {
+  var mercator = Math.PI * (1 - 2 * tileY / Math.pow(2, zoom))
+  return Math.atan(Math.sinh(mercator)) * 180 / Math.PI
+}
+
+function boundsForTile(zoom, x, y) {
+  var count = Math.pow(2, zoom)
+  return {
+    southwest: {
+      longitude: x / count * 360 - 180,
+      latitude: latitudeForTileY(y + 1, zoom),
+    },
+    northeast: {
+      longitude: (x + 1) / count * 360 - 180,
+      latitude: latitudeForTileY(y, zoom),
+    },
+  }
+}
 
 Component({
   properties: {
@@ -19,7 +64,9 @@ Component({
 
   data: {
     loading: true,
+    updating: false,
     error: false,
+    tileError: false,
     isEmpty: false,
     center: { latitude: 39.9042, longitude: 116.4074 },
     includePoints: [],
@@ -29,31 +76,70 @@ Component({
 
   lifetimes: {
     attached() {
+      this._componentAlive = true
+      this._preferVectorLayer = isDeveloperTools()
       this._fetchHeatmap()
+    },
+    ready() {
+      this._componentReady = true
+      if (this._metadataLoaded) {
+        this._ensureMapContext()
+        this._scheduleViewportRefresh(180)
+      }
+    },
+    detached() {
+      this._componentAlive = false
+      if (this._viewportTimer) clearTimeout(this._viewportTimer)
+      this._viewportTimer = null
+      this._metadataRequestSeq = (this._metadataRequestSeq || 0) + 1
+      this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1
+      this._vectorRequestSeq = (this._vectorRequestSeq || 0) + 1
+      this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
+      this._clearTileOverlays()
+      this._tileFileCache = {}
+      this._tileDownloadPromises = {}
     },
   },
 
   methods: {
     _onPropsChange() {
       if (!this._fetchedOnce) return
+      this._clearTileOverlays()
+      this._vectorPreparedTracks = []
+      this.setData({ polylines: [] })
       this._fetchHeatmap()
+    },
+
+    _endpoint() {
+      return this.data.userId === 0
+        ? '/api/user/me/heatmap'
+        : '/api/user/' + this.data.userId + '/heatmap'
+    },
+
+    _tileEndpoint(zoom, x, y) {
+      var base = this.data.userId === 0
+        ? '/api/user/me/heatmap/tiles/'
+        : '/api/user/' + this.data.userId + '/heatmap/tiles/'
+      return base + zoom + '/' + x + '/' + y + '.png?color=orange'
     },
 
     _fetchHeatmap() {
       this._fetchedOnce = true
-      this.setData({ loading: true, error: false, isEmpty: false })
+      var requestSeq = (this._metadataRequestSeq || 0) + 1
+      this._metadataRequestSeq = requestSeq
+      this.setData({ loading: true, error: false, tileError: false, isEmpty: false })
 
-      var url = this.data.userId === 0
-        ? '/api/user/me/heatmap'
-        : '/api/user/' + this.data.userId + '/heatmap'
-
-      api.get(url, { detail: 'card' })
+      api.get(this._endpoint(), { detail: 'meta' })
         .then((data) => {
-          var tracks = data && Array.isArray(data.tracks) ? data.tracks : []
+          if (this._componentAlive === false || requestSeq !== this._metadataRequestSeq) return
           var activityCount = Number(data && data.activity_count) || 0
-          // 兼容尚未升级的旧后端：客户端也把卡片渲染层锁在 4000 点以内。
-          var model = heatmapMap.buildHeatmapMapModel(tracks, 'orange', 2, 4000, '52')
+          var model = heatmapMap.buildHeatmapMetaModel(
+            data && data.focus_points,
+            data && data.all_points
+          )
           if (!model || activityCount === 0) {
+            this._metadataLoaded = false
+            this._clearTileOverlays()
             this.setData({
               loading: false,
               error: false,
@@ -64,23 +150,314 @@ Component({
             return
           }
 
+          this._metadataLoaded = true
           this.setData({
             loading: false,
             error: false,
+            tileError: false,
             isEmpty: false,
             center: model.center,
             includePoints: model.focusPoints,
-            polylines: model.polylines,
             activityCount: activityCount,
+          }, () => {
+            if (!this._componentReady) return
+            this._ensureMapContext()
+            this._scheduleViewportRefresh(180)
           })
         })
         .catch(() => {
+          if (this._componentAlive === false || requestSeq !== this._metadataRequestSeq) return
           this.setData({ loading: false, error: true, isEmpty: false })
         })
     },
 
+    _ensureMapContext() {
+      if (!this._componentReady || this._mapContext || typeof wx.createMapContext !== 'function') {
+        return this._mapContext || null
+      }
+      this._mapContext = wx.createMapContext('heatmap-card-map', this)
+      return this._mapContext
+    },
+
+    onMapRegionChange(event) {
+      if (!event) return
+      var eventScale = Number(event.detail && event.detail.scale)
+      if (Number.isFinite(eventScale)) this._lastMapScale = eventScale
+      if (event.type === 'end') this._scheduleViewportRefresh(180)
+    },
+
+    _scheduleViewportRefresh(delay) {
+      if (this._componentAlive === false || !this._metadataLoaded || !this._ensureMapContext()) return
+      if (this._viewportTimer) clearTimeout(this._viewportTimer)
+      var readSeq = (this._viewportReadSeq || 0) + 1
+      this._viewportReadSeq = readSeq
+      this._viewportTimer = setTimeout(() => {
+        this._viewportTimer = null
+        this._readViewport().then((viewport) => {
+          if (this._componentAlive === false || readSeq !== this._viewportReadSeq || !viewport) return
+          this._fetchViewport(viewport)
+        })
+      }, Math.max(0, Number(delay) || 0))
+    },
+
+    _readViewport() {
+      var context = this._mapContext
+      if (!context || typeof context.getRegion !== 'function') return Promise.resolve(null)
+      var fallbackScale = Number(this._lastMapScale) || 10
+      return new Promise(function (resolve) {
+        context.getRegion({
+          success: function (region) {
+            var southwest = region && region.southwest
+            var northeast = region && region.northeast
+            if (!southwest || !northeast) {
+              resolve(null)
+              return
+            }
+            var finish = function (scale) {
+              var swWgs = gcj02ToWgs84(Number(southwest.latitude), Number(southwest.longitude))
+              var neWgs = gcj02ToWgs84(Number(northeast.latitude), Number(northeast.longitude))
+              var viewport = {
+                zoom: Math.max(MIN_TILE_ZOOM, Math.min(MAX_TILE_ZOOM, Math.round(Number(scale) || fallbackScale))),
+                west: swWgs[1],
+                south: swWgs[0],
+                east: neWgs[1],
+                north: neWgs[0],
+                mapWest: Number(southwest.longitude),
+                mapSouth: Number(southwest.latitude),
+                mapEast: Number(northeast.longitude),
+                mapNorth: Number(northeast.latitude),
+              }
+              if (
+                !Number.isFinite(viewport.west) || !Number.isFinite(viewport.south)
+                || !Number.isFinite(viewport.east) || !Number.isFinite(viewport.north)
+                || viewport.west >= viewport.east || viewport.south >= viewport.north
+              ) {
+                resolve(null)
+                return
+              }
+              resolve(viewport)
+            }
+            if (typeof context.getScale !== 'function') {
+              finish(fallbackScale)
+              return
+            }
+            context.getScale({
+              success: function (result) { finish(result && result.scale) },
+              fail: function () { finish(fallbackScale) },
+            })
+          },
+          fail: function () { resolve(null) },
+        })
+      })
+    },
+
+    _fetchViewport(viewport) {
+      if (this._componentAlive === false) return
+      if (this._preferVectorLayer) {
+        this._refreshVectorLayer(viewport)
+        return
+      }
+      this._refreshTileLayer(viewport)
+    },
+
+    _refreshVectorLayer(viewport) {
+      if (viewport.east - viewport.west > 20 || viewport.north - viewport.south > 15) {
+        if (this.data.updating) this.setData({ updating: false })
+        return
+      }
+      var requestSeq = (this._vectorRequestSeq || 0) + 1
+      this._vectorRequestSeq = requestSeq
+      this.setData({ updating: true, tileError: false })
+      api.get(this._endpoint(), {
+        detail: 'viewport',
+        west: viewport.west,
+        south: viewport.south,
+        east: viewport.east,
+        north: viewport.north,
+        zoom: viewport.zoom,
+      })
+        .then((data) => {
+          if (this._componentAlive === false || requestSeq !== this._vectorRequestSeq) return
+          // 服务端已经按视野和缩放做曲率优先 LOD；客户端不能再等距抽点，
+          // 否则发卡弯会被二次拉成直线。
+          var prepared = heatmapMap.prepareTracks(data && data.tracks)
+          this._vectorPreparedTracks = prepared
+          this.setData({
+            updating: false,
+            tileError: false,
+            polylines: heatmapMap.buildPolylines(
+              prepared,
+              'orange',
+              HEATMAP_LINE_WIDTH,
+              HEATMAP_LINE_OPACITY
+            ),
+          })
+        })
+        .catch(() => {
+          if (this._componentAlive === false || requestSeq !== this._vectorRequestSeq) return
+          this.setData({ updating: false, tileError: true })
+        })
+    },
+
+    _visibleTiles(viewport) {
+      var zoom = viewport.zoom
+      var count = Math.pow(2, zoom)
+      var minX = Math.max(0, tileXForLongitude(viewport.mapWest, zoom))
+      var maxX = Math.min(count - 1, tileXForLongitude(viewport.mapEast, zoom))
+      var minY = Math.max(0, tileYForLatitude(viewport.mapNorth, zoom))
+      var maxY = Math.min(count - 1, tileYForLatitude(viewport.mapSouth, zoom))
+      var tiles = []
+      for (var y = minY; y <= maxY; y++) {
+        for (var x = minX; x <= maxX; x++) tiles.push({ zoom: zoom, x: x, y: y })
+      }
+      if (tiles.length <= MAX_VISIBLE_TILES) return tiles
+      var centerX = (minX + maxX) / 2
+      var centerY = (minY + maxY) / 2
+      return tiles.sort(function (a, b) {
+        return Math.hypot(a.x - centerX, a.y - centerY) - Math.hypot(b.x - centerX, b.y - centerY)
+      }).slice(0, MAX_VISIBLE_TILES)
+    },
+
+    _tileKey(tile) {
+      return [tile.zoom, tile.x, tile.y].join(':')
+    },
+
+    _addGroundOverlay(tile, filePath, id) {
+      var context = this._mapContext
+      if (!context || typeof context.addGroundOverlay !== 'function') {
+        return Promise.reject(new Error('ground overlay unsupported'))
+      }
+      return new Promise(function (resolve, reject) {
+        var settled = false
+        var timeout = setTimeout(function () {
+          rejectOnce(new Error('ground overlay timed out'))
+        }, 4000)
+        var resolveOnce = function () {
+          if (settled) return
+          settled = true
+          clearTimeout(timeout)
+          resolve()
+        }
+        var rejectOnce = function (error) {
+          if (settled) return
+          settled = true
+          clearTimeout(timeout)
+          reject(error)
+        }
+        context.addGroundOverlay({
+          id: id,
+          src: filePath,
+          bounds: boundsForTile(tile.zoom, tile.x, tile.y),
+          visible: true,
+          zIndex: 5,
+          opacity: 1,
+          success: resolveOnce,
+          fail: rejectOnce,
+          complete: function (result) {
+            if (result && /:fail/.test(result.errMsg || '')) rejectOnce(result)
+            else resolveOnce()
+          },
+        })
+      })
+    },
+
+    _removeGroundOverlay(id) {
+      if (!this._mapContext || typeof this._mapContext.removeGroundOverlay !== 'function') return
+      this._mapContext.removeGroundOverlay({ id: id })
+    },
+
+    _loadTileFile(tile, key) {
+      var cache = this._tileFileCache || (this._tileFileCache = {})
+      if (cache[key]) return Promise.resolve(cache[key])
+      var inflight = this._tileDownloadPromises || (this._tileDownloadPromises = {})
+      if (inflight[key]) return inflight[key]
+      var request = api.downloadTemporaryFile(this._tileEndpoint(tile.zoom, tile.x, tile.y))
+        .then(function (file) {
+          var path = file && (file.filePath || file.tempFilePath)
+          if (!path) throw new Error('heatmap tile has no local path')
+          cache[key] = path
+          delete inflight[key]
+          return path
+        }, function (error) {
+          delete inflight[key]
+          throw error
+        })
+      inflight[key] = request
+      return request
+    },
+
+    _refreshTileLayer(viewport) {
+      var tiles = this._visibleTiles(viewport)
+      var setKey = tiles.map((tile) => this._tileKey(tile)).join('|')
+      if (setKey && setKey === this._lastTileSetKey) return
+      this._lastTileSetKey = setKey
+      var requestSeq = (this._viewportRequestSeq || 0) + 1
+      this._viewportRequestSeq = requestSeq
+      var active = this._activeTileOverlays || {}
+      var desired = {}
+      var downloads = []
+      tiles.forEach((tile) => {
+        var key = this._tileKey(tile)
+        desired[key] = true
+        if (active[key]) return
+        var idSeed = (this._tileIdSeed || 20000) + 1
+        this._tileIdSeed = idSeed
+        var id = 'heatmap-card-' + idSeed
+        downloads.push(
+          this._loadTileFile(tile, key)
+            .then((filePath) => this._addGroundOverlay(tile, filePath, id))
+            .then(() => ({ key: key, id: id }))
+            .catch(() => null)
+        )
+      })
+      this.setData({ updating: downloads.length > 0, tileError: false })
+      Promise.all(downloads).then((added) => {
+        if (this._componentAlive === false || requestSeq !== this._viewportRequestSeq) {
+          added.forEach((item) => { if (item) this._removeGroundOverlay(item.id) })
+          return
+        }
+        added.forEach(function (item) { if (item) active[item.key] = item })
+        var complete = Object.keys(desired).every(function (key) { return Boolean(active[key]) })
+        if (!complete) {
+          added.forEach((item) => {
+            if (!item) return
+            this._removeGroundOverlay(item.id)
+            delete active[item.key]
+          })
+          this._lastTileSetKey = ''
+          this._activeTileOverlays = active
+          if (Object.keys(active).length === 0) {
+            this._preferVectorLayer = true
+            this._refreshVectorLayer(viewport)
+            return
+          }
+          this.setData({ updating: false, tileError: false })
+          return
+        }
+        Object.keys(active).forEach((key) => {
+          if (desired[key]) return
+          this._removeGroundOverlay(active[key].id)
+          delete active[key]
+        })
+        this._activeTileOverlays = active
+        this.setData({ updating: false, tileError: false })
+      })
+    },
+
+    _clearTileOverlays() {
+      var active = this._activeTileOverlays || {}
+      Object.keys(active).forEach((key) => this._removeGroundOverlay(active[key].id))
+      this._activeTileOverlays = {}
+      this._lastTileSetKey = ''
+    },
+
     _retryFetch() {
       this._fetchHeatmap()
+    },
+
+    _retryTiles() {
+      this._lastTileSetKey = ''
+      this._scheduleViewportRefresh(0)
     },
 
     _openFullScreen() {

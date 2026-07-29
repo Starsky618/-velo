@@ -4,7 +4,8 @@
 本文件在 v5 task-user-split-001 中完成物理拆分（834 行红灯 → 4 文件）：
 - 微信登录 / JWT 鉴权 / 用户 CRUD → service_auth.py
 - 骑行统计 / 功率曲线 / cache → service_stats.py
-- 热图 / 城市 / 看他人主页 / 探索骑友 → service_social.py
+- 热图 JSON / 城市 / 看他人主页 / 探索骑友 → service_social.py
+- 热图 PNG 瓦片 → service_heatmap_tiles.py
 - 本文件保留共享 doc + 转导出（re-export）所有 public API，对外契约 0 改动
 
 调用方按 `from app.user.service import xxx` 继续工作（含 app.dependencies.decode_token
@@ -15,6 +16,7 @@
 - service_auth.py = 大门口的门卫 + 户籍登记处
 - service_stats.py = 物业的"住户健康报表"（骑行 + 功率曲线）
 - service_social.py = 物业的"住户名片簿 + 邻居通讯录"
+- service_heatmap_tiles.py = 物业的"足迹瓦片印刷机"
 
 注意事项：
 - 所有数据库操作都在子文件完成，router 层不直接操作数据库
@@ -52,6 +54,7 @@ from app.user.service_social import (  # noqa: F401 — 转导出
 from app.user.service_heatmap_tiles import (  # noqa: F401 — 转导出
     InvalidHeatmapTile,
     get_user_heatmap_tile,
+    get_user_heatmap_viewport,
 )
 
 

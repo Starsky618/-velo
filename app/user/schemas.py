@@ -200,7 +200,8 @@ class UserCity(str, Enum):
 
 
 class HeatmapDetail(str, Enum):
-    """个人热图的数据精度：个人页轻预览 / 全屏总览 / 当前视野高精度。"""
+    """个人热图的数据精度：轻量地图元数据 / 兼容预览 / 当前视野高精度。"""
+    meta = "meta"
     card = "card"
     full = "full"
     viewport = "viewport"
@@ -223,8 +224,9 @@ class HeatmapResponse(BaseModel):
 
     tracks 是 list of list of [lon, lat]：保留 activity 边界；card/full 每个 activity 一条，
     viewport 允许同一 activity 因进出视野裁成多段。
-    服务端按 card/full/viewport 三档生成显示精度轨迹。前端完整绘制响应中的点，多条
-    opacity 叠加形成热力效果；不下发数据库中的全量 simplified_track。
+    meta 只返回定位范围；card/full 保留旧客户端兼容；viewport 从原始 Trackpoint
+    按当前视野生成曲率优先 LOD。前端完整绘制 viewport 响应中的点，多条 opacity
+    叠加形成热力效果；任何入口都不下发数据库中的全量轨迹对象。
 
     旧版（v1）用 multipoint 扁平所有点 + markers 渲染 → 视觉差（粗灰圆点）。
     新版（v2）用 tracks 保留边界 + polyline 渲染。
@@ -238,6 +240,9 @@ class HeatmapResponse(BaseModel):
     activity_count: int
     available_years: list[int] = Field(default_factory=list)
     selected_year: Optional[int] = None
+    # meta 只下发两个范围角点；小程序首屏不再接收数千个 polyline 点。
+    focus_points: list[list[float]] = Field(default_factory=list)
+    all_points: list[list[float]] = Field(default_factory=list)
 
 
 class UserPatchRequest(BaseModel):

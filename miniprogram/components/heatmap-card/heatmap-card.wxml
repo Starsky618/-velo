@@ -11,15 +11,18 @@
        latitude="{{center.latitude}}"
        longitude="{{center.longitude}}"
        scale="10"
-       polyline="{{polylines}}"
        include-points="{{includePoints}}"
+       polyline="{{polylines}}"
        enable-scroll="{{true}}"
        enable-zoom="{{true}}"
        enable-rotate="{{false}}"
        enable-3D="{{false}}"
        show-location="{{false}}"
-       show-scale="{{true}}">
+       show-scale="{{true}}"
+       bindregionchange="onMapRegionChange">
     <cover-view class="heatmap-count">{{activityCount}} 次骑行</cover-view>
     <cover-view class="heatmap-fullscreen" catchtap="_openFullScreen">全屏查看</cover-view>
+    <cover-view wx:if="{{updating}}" class="heatmap-updating">正在更新...</cover-view>
+    <cover-view wx:if="{{tileError}}" class="heatmap-tile-error" catchtap="_retryTiles">图层加载失败 · 点击重试</cover-view>
   </map>
 </view>

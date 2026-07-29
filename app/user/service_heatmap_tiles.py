@@ -7,18 +7,27 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from datetime import datetime, timedelta, timezone
+import heapq
 from io import BytesIO
+import json
 import math
+from threading import RLock
+from time import monotonic
+import zlib
 
 import numpy as np
 from PIL import Image, ImageDraw
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, text
 from sqlalchemy.orm import Session
 import xyconvert
 
 from app.activity.models import Activity, Trackpoint
+from app.user.service_social import (
+    _public_activity_filter,
+    _public_heatmap_privacy_fingerprint,
+)
 
 
 _TILE_SIZE = 512  # 2x retina tile；地图上仍覆盖一个标准 Web-Mercator tile
@@ -26,10 +35,24 @@ _CACHE_TTL_SEC = 3600
 _CACHE_PREFIX = "heatmap:raster:v1:user_"
 _GENERATION_PREFIX = "heatmap:generation:user_"
 _BEIJING_TZ = timezone(timedelta(hours=8))
-_MAX_RAW_SEGMENT_METERS = 500
+_RAW_POINT_QUERY_BUFFER_METERS = 1_000
+_RAW_UNTIMED_GAP_METERS = 500
+_OVERVIEW_POINTS_PER_SEGMENT = 320
+_OVERVIEW_SOURCE_CACHE_TTL_SEC = 60
+_OVERVIEW_SOURCE_CACHE_MAX_ITEMS = 8
+_OVERVIEW_REDIS_SOURCE_TTL_SEC = 3600
+_OVERVIEW_REDIS_SOURCE_PREFIX = "heatmap:raster:v1:source:user_"
+_VECTOR_CACHE_TTL_SEC = 900
+_VECTOR_CACHE_PREFIX = "heatmap:vector:v1:user_"
+_VECTOR_MAX_CACHE_KEYS = 16
+_VECTOR_TOTAL_POINT_BUDGET = 6_000
+_VECTOR_POINTS_PER_SEGMENT = 320
+_OVERVIEW_SOURCE_CACHE: OrderedDict[tuple, tuple[float, dict]] = OrderedDict()
+_OVERVIEW_SOURCE_CACHE_LOCK = RLock()
 
 _COLOR_RAMPS = {
-    "orange": ((255, 137, 32), (211, 55, 0)),
+    # 默认色从高亮橙过渡到深红，和腾讯底图的浅橙道路保持足够区分。
+    "orange": ((255, 94, 0), (187, 0, 59)),
     "red": ((255, 72, 112), (193, 17, 68)),
     "purple": ((174, 94, 255), (91, 37, 184)),
     "blue": ((55, 151, 255), (0, 74, 199)),
@@ -100,8 +123,15 @@ def _validate_tile(zoom: int, x: int, y: int, color: str) -> None:
 def _tile_query_bounds_wgs84(zoom: int, x: int, y: int) -> tuple[float, float, float, float]:
     """把 GCJ-02 地图瓦片边界转回数据库使用的 WGS-84，并加一圈绘制缓冲。"""
     west, south, east, north = _tile_bounds_gcj02(zoom, x, y)
-    lon_buffer = (east - west) * 0.08
-    lat_buffer = (north - south) * 0.08
+    middle_lat = (south + north) / 2
+    # zoom 18 的 8% 只有约 10 米，命中一个点时会把跨瓦片边界的连续线整段丢掉。
+    # 至少外扩一个“允许的原始点间距”，保证能同时拿到边界两侧的前后点。
+    min_lat_buffer = _RAW_POINT_QUERY_BUFFER_METERS / 111_320
+    min_lon_buffer = _RAW_POINT_QUERY_BUFFER_METERS / (
+        111_320 * max(0.05, abs(math.cos(math.radians(middle_lat))))
+    )
+    lon_buffer = max((east - west) * 0.08, min_lon_buffer)
+    lat_buffer = max((north - south) * 0.08, min_lat_buffer)
     corners_gcj = np.array(
         [
             [west - lon_buffer, south - lat_buffer],
@@ -130,7 +160,7 @@ def _year_window_utc(year: int | None) -> tuple[datetime, datetime] | None:
     return start, end
 
 
-def _activity_filters(user_id: int, year: int | None) -> list:
+def _activity_filters(user_id: int, year: int | None, include_private: bool) -> list:
     filters = [
         Activity.user_id == user_id,
         Activity.status == "completed",
@@ -140,6 +170,8 @@ def _activity_filters(user_id: int, year: int | None) -> list:
     window = _year_window_utc(year)
     if window is not None:
         filters.extend((Activity.started_at >= window[0], Activity.started_at < window[1]))
+    if not include_private:
+        filters.append(_public_activity_filter())
     return filters
 
 
@@ -152,15 +184,9 @@ def _append_segment(
         target[activity_id].append(points)
 
 
-def _raw_points_must_split(
-    previous: tuple[float, float] | None,
-    current: tuple[float, float],
-    previous_timestamp: datetime | None,
-    current_timestamp: datetime | None,
-) -> bool:
-    """原始记录断档或瞬移时不猜路线；宁可留小缺口，也不能画一条不存在的直线。"""
-    if previous is None:
-        return False
+def _distance_meters(
+    previous: tuple[float, float], current: tuple[float, float]
+) -> float:
     lon1, lat1 = previous
     lon2, lat2 = current
     lat1_rad = math.radians(lat1)
@@ -171,15 +197,135 @@ def _raw_points_must_split(
         math.sin(d_lat / 2) ** 2
         + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(d_lon / 2) ** 2
     )
-    distance_m = 6371000 * 2 * math.atan2(
+    return 6371000 * 2 * math.atan2(
         math.sqrt(haversine), math.sqrt(max(0.0, 1 - haversine))
     )
-    if distance_m > _MAX_RAW_SEGMENT_METERS:
-        return True
-    if previous_timestamp is None or current_timestamp is None:
+
+
+def _raw_points_must_split(
+    previous: tuple[float, float] | None,
+    current: tuple[float, float],
+    previous_timestamp: datetime | None,
+    current_timestamp: datetime | None,
+) -> bool:
+    """原始记录断档或瞬移时不猜路线；宁可留小缺口，也不能画一条不存在的直线。"""
+    if previous is None:
         return False
+    distance_m = _distance_meters(previous, current)
+    if previous_timestamp is None or current_timestamp is None:
+        return distance_m > _RAW_UNTIMED_GAP_METERS
     elapsed = (current_timestamp - previous_timestamp).total_seconds()
     return elapsed <= 0 or elapsed > 45 or (elapsed > 0 and distance_m / elapsed > 45)
+
+
+def _sample_overview_segment(
+    points: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Visvalingam 几何简化：优先删近共线点，保住发卡弯等高曲率拐点。"""
+    return _sample_segment_to_limit(points, _OVERVIEW_POINTS_PER_SEGMENT)
+
+
+def _sample_segment_to_limit(
+    points: list[tuple[float, float]],
+    limit: int,
+) -> list[tuple[float, float]]:
+    """按几何重要性压到指定点数；不能再用等距抽样把连续弯道拉直。"""
+    if len(points) <= limit:
+        return points
+
+    projected = []
+    for lon, lat in points:
+        limited_lat = max(-85.05112878, min(85.05112878, lat))
+        projected.append((
+            lon,
+            math.log(math.tan(math.pi / 4 + math.radians(limited_lat) / 2)),
+        ))
+
+    previous = [index - 1 for index in range(len(points))]
+    following = [index + 1 for index in range(len(points))]
+    following[-1] = -1
+    active = [True] * len(points)
+    heap: list[tuple[float, int, int, int]] = []
+
+    def push(index: int) -> None:
+        left = previous[index]
+        right = following[index]
+        if left < 0 or right < 0:
+            return
+        ax, ay = projected[left]
+        bx, by = projected[index]
+        cx, cy = projected[right]
+        area = abs((bx - ax) * (cy - ay) - (by - ay) * (cx - ax))
+        heapq.heappush(heap, (area, index, left, right))
+
+    for index in range(1, len(points) - 1):
+        push(index)
+
+    remaining = len(points)
+    while remaining > limit and heap:
+        _, index, left, right = heapq.heappop(heap)
+        if (
+            not active[index]
+            or previous[index] != left
+            or following[index] != right
+        ):
+            continue
+        active[index] = False
+        following[left] = right
+        previous[right] = left
+        remaining -= 1
+        push(left)
+        push(right)
+
+    return [point for index, point in enumerate(points) if active[index]]
+
+
+def _simplify_segment_for_zoom(
+    points: list[tuple[float, float]],
+    zoom: int,
+    latitude: float,
+) -> list[tuple[float, float]]:
+    """Douglas-Peucker 屏幕空间 LOD：城市总览减量，放大后恢复真实拐弯。"""
+    if len(points) <= 2:
+        return points
+    meters_per_pixel = (
+        156543.03392
+        * max(0.05, abs(math.cos(math.radians(latitude))))
+        / (1 << zoom)
+    )
+    tolerance_m = max(0.6, meters_per_pixel * 0.28)
+    origin_lon, origin_lat = points[0]
+    lon_scale = 111_320 * max(0.05, abs(math.cos(math.radians(latitude))))
+    projected = [
+        ((lon - origin_lon) * lon_scale, (lat - origin_lat) * 111_320)
+        for lon, lat in points
+    ]
+    keep = {0, len(points) - 1}
+    stack = [(0, len(points) - 1)]
+    while stack:
+        start, end = stack.pop()
+        ax, ay = projected[start]
+        bx, by = projected[end]
+        dx = bx - ax
+        dy = by - ay
+        length_sq = dx * dx + dy * dy
+        farthest_index = -1
+        farthest_distance = -1.0
+        for index in range(start + 1, end):
+            px, py = projected[index]
+            if length_sq <= 1e-12:
+                distance = math.hypot(px - ax, py - ay)
+            else:
+                ratio = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length_sq))
+                distance = math.hypot(px - (ax + ratio * dx), py - (ay + ratio * dy))
+            if distance > farthest_distance:
+                farthest_distance = distance
+                farthest_index = index
+        if farthest_index >= 0 and farthest_distance > tolerance_m:
+            keep.add(farthest_index)
+            stack.append((start, farthest_index))
+            stack.append((farthest_index, end))
+    return [points[index] for index in sorted(keep)]
 
 
 def _load_raw_segments(
@@ -189,9 +335,33 @@ def _load_raw_segments(
     zoom: int,
     x: int,
     y: int,
+    include_private: bool,
 ) -> dict[int, list[list[tuple[float, float]]]]:
     """读取瓦片附近的连续原始 GPS 点；seq 有空洞时必须切段，不能跨区连假直线。"""
     west, south, east, north = _tile_query_bounds_wgs84(zoom, x, y)
+    return _load_raw_segments_for_bounds(
+        db,
+        user_id,
+        year,
+        west,
+        south,
+        east,
+        north,
+        include_private,
+    )
+
+
+def _load_raw_segments_for_bounds(
+    db: Session,
+    user_id: int,
+    year: int | None,
+    west: float,
+    south: float,
+    east: float,
+    north: float,
+    include_private: bool,
+) -> dict[int, list[list[tuple[float, float]]]]:
+    """按 WGS-84 范围读取连续原始点；供瓦片和开发者工具矢量降级共用。"""
     envelope = func.ST_MakeEnvelope(west, south, east, north, 4326)
     spatial_filter = or_(
         Trackpoint.geom.op("&&")(envelope),
@@ -212,7 +382,7 @@ def _load_raw_segments(
             Trackpoint.timestamp,
         )
         .join(Activity, Activity.id == Trackpoint.activity_id)
-        .filter(*_activity_filters(user_id, year), spatial_filter)
+        .filter(*_activity_filters(user_id, year, include_private), spatial_filter)
         .order_by(Trackpoint.activity_id.asc(), Trackpoint.seq.asc())
         .all()
     )
@@ -254,29 +424,203 @@ def _load_overview_segments(
     db: Session,
     user_id: int,
     year: int | None,
+    include_private: bool,
 ) -> dict[int, list[list[tuple[float, float]]]]:
-    """低缩放只需城市轮廓，复用每条活动约 1500 点的保形源，避免扫全量 GPS。"""
-    rows = (
-        db.query(Activity.id, Activity.simplified_track)
-        .filter(*_activity_filters(user_id, year), Activity.simplified_track.isnot(None))
-        .order_by(Activity.id.asc())
-        .all()
-    )
+    """PostGIS 先按 seq/time/speed 切真实连续段，再简化；低缩放不再猜跳点。"""
+    year_window = _year_window_utc(year)
+    year_clause = ""
+    params: dict[str, object] = {"user_id": user_id}
+    if year_window is not None:
+        year_clause = "AND a.started_at >= :year_start AND a.started_at < :year_end"
+        params.update({"year_start": year_window[0], "year_end": year_window[1]})
+    privacy_clause = ""
+    if not include_private:
+        privacy_clause = "AND (ap.activity_id IS NULL OR ap.visibility = 'public')"
+
+    rows = db.execute(
+        text(f"""
+            WITH ordered AS (
+                SELECT
+                    tp.activity_id,
+                    tp.seq,
+                    tp.timestamp,
+                    COALESCE(
+                        tp.geom,
+                        ST_SetSRID(ST_MakePoint(tp.longitude, tp.latitude), 4326)
+                    ) AS geom,
+                    LAG(tp.seq) OVER activity_order AS previous_seq,
+                    LAG(tp.timestamp) OVER activity_order AS previous_timestamp,
+                    LAG(COALESCE(
+                        tp.geom,
+                        ST_SetSRID(ST_MakePoint(tp.longitude, tp.latitude), 4326)
+                    )) OVER activity_order AS previous_geom
+                FROM trackpoints tp
+                JOIN activities a ON a.id = tp.activity_id
+                LEFT JOIN activity_privacy ap ON ap.activity_id = a.id
+                WHERE a.user_id = :user_id
+                  AND a.status = 'completed'
+                  AND a.duplicate_of IS NULL
+                  AND a.activity_type = 'cycling'
+                  {year_clause}
+                  {privacy_clause}
+                WINDOW activity_order AS (
+                    PARTITION BY tp.activity_id ORDER BY tp.seq
+                )
+            ),
+            measured AS (
+                SELECT
+                    *,
+                    CASE
+                        WHEN previous_geom IS NULL THEN NULL
+                        ELSE ST_DistanceSphere(geom, previous_geom)
+                    END AS distance_m,
+                    CASE
+                        WHEN previous_timestamp IS NULL OR timestamp IS NULL THEN NULL
+                        ELSE EXTRACT(EPOCH FROM timestamp - previous_timestamp)
+                    END AS elapsed_s
+                FROM ordered
+            ),
+            marked AS (
+                SELECT
+                    *,
+                    CASE
+                        WHEN previous_seq IS NULL THEN 0
+                        WHEN seq <> previous_seq + 1 THEN 1
+                        WHEN elapsed_s IS NULL AND distance_m > :untimed_gap_m THEN 1
+                        WHEN elapsed_s <= 0 OR elapsed_s > :max_elapsed_s THEN 1
+                        WHEN distance_m / NULLIF(elapsed_s, 0) > :max_speed_mps THEN 1
+                        ELSE 0
+                    END AS starts_segment
+                FROM measured
+            ),
+            segmented AS (
+                SELECT
+                    *,
+                    SUM(starts_segment) OVER (
+                        PARTITION BY activity_id ORDER BY seq
+                        ROWS UNBOUNDED PRECEDING
+                    ) AS segment_id
+                FROM marked
+            ),
+            lines AS (
+                SELECT
+                    activity_id,
+                    segment_id,
+                    ST_Simplify(
+                        ST_MakeLine(geom ORDER BY seq),
+                        :simplify_tolerance
+                    ) AS line_geom
+                FROM segmented
+                GROUP BY activity_id, segment_id
+                HAVING COUNT(*) >= 2
+            )
+            SELECT
+                activity_id,
+                segment_id,
+                (dumped).path[1] AS point_order,
+                ST_X((dumped).geom) AS longitude,
+                ST_Y((dumped).geom) AS latitude
+            FROM lines
+            CROSS JOIN LATERAL ST_DumpPoints(line_geom) AS dumped
+            ORDER BY activity_id, segment_id, point_order
+        """),
+        {
+            **params,
+            "untimed_gap_m": _RAW_UNTIMED_GAP_METERS,
+            "max_elapsed_s": 45,
+            "max_speed_mps": 45,
+            "simplify_tolerance": 0.00002,
+        },
+    ).all()
+
     grouped: dict[int, list[list[tuple[float, float]]]] = defaultdict(list)
+    current_key: tuple[int, int] | None = None
+    current: list[tuple[float, float]] = []
     for row in rows:
-        track = row.simplified_track
-        if not isinstance(track, list):
-            continue
-        clean = []
-        for point in track:
-            if not isinstance(point, dict):
-                continue
-            try:
-                clean.append((float(point["lon"]), float(point["lat"])))
-            except (KeyError, TypeError, ValueError):
-                continue
-        _append_segment(grouped, int(row.id), clean)
+        key = (int(row.activity_id), int(row.segment_id))
+        if current_key is not None and key != current_key:
+            _append_segment(
+                grouped,
+                current_key[0],
+                _sample_overview_segment(current),
+            )
+            current = []
+        current_key = key
+        current.append((float(row.longitude), float(row.latitude)))
+    if current_key is not None:
+        _append_segment(grouped, current_key[0], _sample_overview_segment(current))
     return grouped
+
+
+def _get_overview_segments_cached(
+    db: Session,
+    user_id: int,
+    year: int | None,
+    include_private: bool,
+    generation: int,
+    privacy_fingerprint: str | None,
+    redis_client,
+) -> dict[int, list[list[tuple[float, float]]]]:
+    """进程缓存挡并发，Redis 源缓存挡多进程/跨 60 秒重复扫描 PostGIS。"""
+    key = (user_id, year, include_private, generation, privacy_fingerprint)
+    redis_key = (
+        f"{_OVERVIEW_REDIS_SOURCE_PREFIX}{user_id}:g{generation}:"
+        f"year_{year or 'all'}:audience_{'owner' if include_private else 'public'}"
+    )
+    if privacy_fingerprint is not None:
+        redis_key += f":privacy_{privacy_fingerprint}"
+    now = monotonic()
+    with _OVERVIEW_SOURCE_CACHE_LOCK:
+        cached = _OVERVIEW_SOURCE_CACHE.get(key)
+        if cached is not None and now - cached[0] <= _OVERVIEW_SOURCE_CACHE_TTL_SEC:
+            _OVERVIEW_SOURCE_CACHE.move_to_end(key)
+            return cached[1]
+        if cached is not None:
+            del _OVERVIEW_SOURCE_CACHE[key]
+
+        try:
+            encoded = redis_client.get(redis_key)
+            if isinstance(encoded, bytes):
+                payload = json.loads(zlib.decompress(encoded).decode())
+                restored: dict[int, list[list[tuple[float, float]]]] = defaultdict(list)
+                for activity_id, activity_segments in payload:
+                    for segment in activity_segments:
+                        clean = [
+                            (float(point[0]), float(point[1]))
+                            for point in segment
+                            if isinstance(point, list) and len(point) == 2
+                        ]
+                        _append_segment(restored, int(activity_id), clean)
+                _OVERVIEW_SOURCE_CACHE[key] = (now, restored)
+                return restored
+        except Exception:
+            # 损坏或旧格式缓存直接重建；不能让一张坏 source 卡死全部低缩放瓦片。
+            pass
+
+        # 坐标转换也只做一次；同一首屏的 16 张瓦片复用 GCJ-02 源层。
+        segments = _segments_to_gcj02(
+            _load_overview_segments(db, user_id, year, include_private)
+        )
+        try:
+            payload = [
+                [activity_id, activity_segments]
+                for activity_id, activity_segments in segments.items()
+            ]
+            redis_client.setex(
+                redis_key,
+                _OVERVIEW_REDIS_SOURCE_TTL_SEC,
+                zlib.compress(
+                    json.dumps(payload, separators=(",", ":")).encode(),
+                    level=6,
+                ),
+            )
+        except Exception:
+            # Redis 只是加速层；PostGIS 真值仍可生成当前请求。
+            pass
+        _OVERVIEW_SOURCE_CACHE[key] = (now, segments)
+        while len(_OVERVIEW_SOURCE_CACHE) > _OVERVIEW_SOURCE_CACHE_MAX_ITEMS:
+            _OVERVIEW_SOURCE_CACHE.popitem(last=False)
+        return segments
 
 
 def _global_pixel(lon: float, lat: float, zoom: int) -> tuple[float, float]:
@@ -310,6 +654,8 @@ def _render_tile_png(
     x: int,
     y: int,
     color: str,
+    *,
+    coordinates_are_map: bool = False,
 ) -> bytes:
     """每条活动每个像素最多计一次，再用对数归一化增强稀疏路线与常骑路线的反差。"""
     heat = np.zeros((_TILE_SIZE, _TILE_SIZE), dtype=np.uint16)
@@ -317,22 +663,50 @@ def _render_tile_png(
     origin_y = y * _TILE_SIZE
     line_width = 3 if zoom >= 14 else 2
 
-    for activity_segments in _segments_to_gcj02(segments).values():
+    map_segments = segments if coordinates_are_map else _segments_to_gcj02(segments)
+    west, south, east, north = _tile_bounds_gcj02(zoom, x, y)
+    lon_margin = (east - west) * 0.02
+    lat_margin = (north - south) * 0.02
+
+    for activity_segments in map_segments.values():
         mask = Image.new("L", (_TILE_SIZE, _TILE_SIZE), 0)
         draw = ImageDraw.Draw(mask)
         for segment in activity_segments:
-            points = []
-            previous = None
+            longitudes = [point[0] for point in segment]
+            latitudes = [point[1] for point in segment]
+            if (
+                max(longitudes) < west - lon_margin
+                or min(longitudes) > east + lon_margin
+                or max(latitudes) < south - lat_margin
+                or min(latitudes) > north + lat_margin
+            ):
+                continue
+
+            pixel_points = []
             for lon, lat in segment:
                 global_x, global_y = _global_pixel(lon, lat, zoom)
-                point = (global_x - origin_x, global_y - origin_y)
-                # 原始 GPS 极端漂点也不能在热图上生成跨城直线。
-                if previous is not None and math.hypot(point[0] - previous[0], point[1] - previous[1]) > _TILE_SIZE:
+                pixel_points.append((global_x - origin_x, global_y - origin_y))
+
+            points = []
+            for start, end in zip(pixel_points, pixel_points[1:]):
+                intersects = not (
+                    max(start[0], end[0]) < -line_width
+                    or min(start[0], end[0]) > _TILE_SIZE + line_width
+                    or max(start[1], end[1]) < -line_width
+                    or min(start[1], end[1]) > _TILE_SIZE + line_width
+                )
+                if intersects:
+                    if not points:
+                        points.append(start)
+                    elif points[-1] != start:
+                        if len(points) >= 2:
+                            draw.line(points, fill=255, width=line_width, joint="curve")
+                        points = [start]
+                    points.append(end)
+                elif points:
                     if len(points) >= 2:
                         draw.line(points, fill=255, width=line_width, joint="curve")
                     points = []
-                points.append(point)
-                previous = point
             if len(points) >= 2:
                 draw.line(points, fill=255, width=line_width, joint="curve")
         heat += np.asarray(mask, dtype=np.uint16) > 0
@@ -349,11 +723,186 @@ def _render_tile_png(
             rgba[:, :, channel][positive] = np.rint(
                 low[channel] + (high[channel] - low[channel]) * strength
             ).astype(np.uint8)
-        rgba[:, :, 3][positive] = np.rint(175 + 80 * strength).astype(np.uint8)
+        rgba[:, :, 3][positive] = np.rint(210 + 45 * strength).astype(np.uint8)
 
     output = BytesIO()
     Image.fromarray(rgba, mode="RGBA").save(output, format="PNG", optimize=True)
     return output.getvalue()
+
+
+def _limit_vector_segments(
+    segments: dict[int, list[list[tuple[float, float]]]],
+    zoom: int,
+    latitude: float,
+) -> list[tuple[int, list[tuple[float, float]]]]:
+    """把当前视野压到小程序可流畅渲染的预算，同时按曲率保留弯道。"""
+    prepared: list[tuple[int, list[tuple[float, float]]]] = []
+    for activity_id, activity_segments in segments.items():
+        for segment in activity_segments:
+            reduced = _simplify_segment_for_zoom(segment, zoom, latitude)
+            reduced = _sample_segment_to_limit(reduced, _VECTOR_POINTS_PER_SEGMENT)
+            if len(reduced) >= 2:
+                prepared.append((activity_id, reduced))
+    if not prepared:
+        return []
+
+    if len(prepared) * 2 > _VECTOR_TOTAL_POINT_BUDGET:
+        # 极端碎片数据先保每个 activity 最长的一段，再按长度补齐，避免少数脏活动霸屏。
+        longest_by_activity: dict[int, tuple[int, list[tuple[float, float]]]] = {}
+        for item in prepared:
+            previous = longest_by_activity.get(item[0])
+            if previous is None or len(item[1]) > len(previous[1]):
+                longest_by_activity[item[0]] = item
+        selected = list(longest_by_activity.values())
+        selected_ids = {id(item[1]) for item in selected}
+        remaining = sorted(
+            (item for item in prepared if id(item[1]) not in selected_ids),
+            key=lambda item: len(item[1]),
+            reverse=True,
+        )
+        prepared = (selected + remaining)[: _VECTOR_TOTAL_POINT_BUDGET // 2]
+
+    total = sum(len(points) for _, points in prepared)
+    if total <= _VECTOR_TOTAL_POINT_BUDGET:
+        return prepared
+
+    base = len(prepared) * 2
+    extra_budget = max(0, _VECTOR_TOTAL_POINT_BUDGET - base)
+    total_weight = sum(max(0, len(points) - 2) for _, points in prepared)
+    limits = []
+    remainders = []
+    for _, points in prepared:
+        weight = max(0, len(points) - 2)
+        exact = extra_budget * weight / total_weight if total_weight else 0.0
+        limits.append(min(len(points), 2 + int(math.floor(exact))))
+        remainders.append(exact - math.floor(exact))
+    used = sum(limits)
+    for index in sorted(range(len(prepared)), key=lambda item: remainders[item], reverse=True):
+        if used >= _VECTOR_TOTAL_POINT_BUDGET:
+            break
+        if limits[index] < len(prepared[index][1]):
+            limits[index] += 1
+            used += 1
+
+    return [
+        (activity_id, _sample_segment_to_limit(points, limits[index]))
+        for index, (activity_id, points) in enumerate(prepared)
+    ]
+
+
+def _trim_vector_cache(redis_client, user_id: int, current_key: str) -> None:
+    """连续拖图时每个用户最多保留少量视野帧，防降级数据在 Redis 中无限堆积。"""
+    try:
+        keys = list(redis_client.scan_iter(match=f"{_VECTOR_CACHE_PREFIX}{user_id}:*"))
+        if len(keys) <= _VECTOR_MAX_CACHE_KEYS:
+            return
+        current_bytes = current_key.encode()
+        overflow = len(keys) - _VECTOR_MAX_CACHE_KEYS
+        victims = [
+            key
+            for key in keys
+            if key != current_key and key != current_bytes
+        ][:overflow]
+        if victims:
+            redis_client.delete(*victims)
+    except Exception:
+        pass
+
+
+def get_user_heatmap_viewport(
+    db: Session,
+    user_id: int,
+    viewport: tuple[float, float, float, float, int],
+    *,
+    year: int | None = None,
+    include_private: bool = True,
+) -> dict:
+    """返回当前视野的原始连续轨迹 LOD；主要作为开发者工具/图片图层失败时的降级。"""
+    west, south, east, north, zoom = viewport
+    _year_window_utc(year)
+    if not (
+        -180 <= west < east <= 180
+        and -90 <= south < north <= 90
+        and 3 <= zoom <= 20
+    ):
+        raise InvalidHeatmapTile("invalid heatmap viewport")
+
+    redis_client = _get_redis_client()
+    try:
+        raw_generation = redis_client.get(f"{_GENERATION_PREFIX}{user_id}")
+        generation = int(raw_generation or 0)
+    except Exception:
+        generation = 0
+    privacy_fingerprint = (
+        None
+        if include_private
+        else _public_heatmap_privacy_fingerprint(db, user_id)
+    )
+    bounds_key = ":".join(
+        str(value).replace("-", "m").replace(".", "p")
+        for value in (west, south, east, north, zoom)
+    )
+    cache_key = (
+        f"{_VECTOR_CACHE_PREFIX}{user_id}:g{generation}:year_{year or 'all'}:"
+        f"audience_{'owner' if include_private else 'public'}:{bounds_key}"
+    )
+    if privacy_fingerprint is not None:
+        cache_key += f":privacy_{privacy_fingerprint}"
+    try:
+        cached = redis_client.get(cache_key)
+        if isinstance(cached, bytes):
+            return json.loads(zlib.decompress(cached).decode())
+    except Exception:
+        pass
+
+    segments = _load_raw_segments_for_bounds(
+        db,
+        user_id,
+        year,
+        west,
+        south,
+        east,
+        north,
+        include_private,
+    )
+    prepared = _limit_vector_segments(segments, zoom, (south + north) / 2)
+    available_year_rows = (
+        db.query(Activity.started_at)
+        .join(Trackpoint, Trackpoint.activity_id == Activity.id)
+        .filter(*_activity_filters(user_id, None, include_private))
+        .distinct()
+        .all()
+    )
+    available_years = sorted(
+        {
+            started_at.astimezone(_BEIJING_TZ).year
+            for (started_at,) in available_year_rows
+            if isinstance(started_at, datetime)
+        },
+        reverse=True,
+    )
+    result = {
+        "city": None,
+        "tracks": [
+            [[round(lon, 6), round(lat, 6)] for lon, lat in points]
+            for _, points in prepared
+        ],
+        "activity_count": len({activity_id for activity_id, _ in prepared}),
+        "available_years": available_years,
+        "selected_year": year,
+        "focus_points": [],
+        "all_points": [],
+    }
+    try:
+        redis_client.setex(
+            cache_key,
+            _VECTOR_CACHE_TTL_SEC,
+            zlib.compress(json.dumps(result, separators=(",", ":")).encode(), level=6),
+        )
+        _trim_vector_cache(redis_client, user_id, cache_key)
+    except Exception:
+        pass
+    return result
 
 
 def get_user_heatmap_tile(
@@ -365,6 +914,7 @@ def get_user_heatmap_tile(
     *,
     year: int | None = None,
     color: str = "orange",
+    include_private: bool = True,
 ) -> bytes:
     """返回一个用户、年份、配色和地图瓦片唯一对应的透明 PNG。"""
     _validate_tile(zoom, x, y, color)
@@ -375,10 +925,18 @@ def get_user_heatmap_tile(
         generation = int(raw_generation or 0)
     except Exception:
         generation = 0
+    privacy_fingerprint = (
+        None
+        if include_private
+        else _public_heatmap_privacy_fingerprint(db, user_id)
+    )
     cache_key = (
         f"{_CACHE_PREFIX}{user_id}:g{generation}:year_{year or 'all'}:"
+        f"audience_{'owner' if include_private else 'public'}:"
         f"color_{color}:z{zoom}:{x}:{y}"
     )
+    if privacy_fingerprint is not None:
+        cache_key += f":privacy_{privacy_fingerprint}"
     try:
         cached = redis_client.get(cache_key)
         if isinstance(cached, bytes):
@@ -386,12 +944,28 @@ def get_user_heatmap_tile(
     except Exception:
         pass
 
+    overview = zoom <= 9
     segments = (
-        _load_overview_segments(db, user_id, year)
-        if zoom <= 9
-        else _load_raw_segments(db, user_id, year, zoom, x, y)
+        _get_overview_segments_cached(
+            db,
+            user_id,
+            year,
+            include_private,
+            generation,
+            privacy_fingerprint,
+            redis_client,
+        )
+        if overview
+        else _load_raw_segments(db, user_id, year, zoom, x, y, include_private)
     )
-    rendered = _render_tile_png(segments, zoom, x, y, color)
+    rendered = _render_tile_png(
+        segments,
+        zoom,
+        x,
+        y,
+        color,
+        coordinates_are_map=overview,
+    )
     try:
         redis_client.setex(cache_key, _CACHE_TTL_SEC, rendered)
     except Exception:

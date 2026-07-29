@@ -72,3 +72,21 @@
   line-height: 88rpx;
   text-align: center;
 }
+
+.heatmap-updating,
+.heatmap-tile-error {
+  position: absolute;
+  top: 96rpx;
+  left: 20rpx;
+  height: 56rpx;
+  padding: 0 20rpx;
+  border-radius: 28rpx;
+  background: rgba(28, 28, 30, 0.82);
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 56rpx;
+}
+
+.heatmap-tile-error {
+  background: rgba(196, 111, 0, 0.9);
+}

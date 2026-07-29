@@ -258,6 +258,7 @@ def get_my_heatmap(
             city.value if city else None,
             year,
             detail.value,
+            include_private=True,
             west=west,
             south=south,
             east=east,
@@ -281,14 +282,14 @@ def get_my_heatmap_tile(
     """当前用户的透明热力图瓦片；由原生地图图片图层按当前视野加载。"""
     try:
         content = service.get_user_heatmap_tile(
-            db, user_id, zoom, x, y, year=year, color=color
+            db, user_id, zoom, x, y, year=year, color=color, include_private=True
         )
     except service.InvalidHeatmapTile as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return Response(
         content=content,
         media_type="image/png",
-        headers={"Cache-Control": "private, max-age=3600"},
+        headers={"Cache-Control": "private, no-store"},
     )
 
 
@@ -607,6 +608,7 @@ def get_user_heatmap_for_others(
             city.value if city else None,
             year,
             detail.value,
+            include_private=requester_user_id == user_id,
             west=west,
             south=south,
             east=east,
@@ -635,14 +637,21 @@ def get_user_heatmap_tile_for_others(
         raise HTTPException(status_code=404, detail="用户不存在")
     try:
         content = service.get_user_heatmap_tile(
-            db, user_id, zoom, x, y, year=year, color=color
+            db,
+            user_id,
+            zoom,
+            x,
+            y,
+            year=year,
+            color=color,
+            include_private=requester_user_id == user_id,
         )
     except service.InvalidHeatmapTile as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return Response(
         content=content,
         media_type="image/png",
-        headers={"Cache-Control": "private, max-age=3600"},
+        headers={"Cache-Control": "private, no-store"},
     )
 
 

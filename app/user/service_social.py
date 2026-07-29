@@ -49,11 +49,12 @@ import time as _time
 import zlib as _zlib
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import desc
+from sqlalchemy import case, desc, or_
 from sqlalchemy import func as _func
 from sqlalchemy.orm import Session
 
 from app.activity.models import Activity as _Activity
+from app.activity.models import ActivityPrivacy as _ActivityPrivacy
 from app.common.geo import infer_city_from_coords as _infer_city_from_coords
 from app.user.models import User
 
@@ -106,6 +107,32 @@ _PROFILE_RESPONSE_KEYS |= {"badges"}
 
 class InvalidHeatmapViewport(ValueError):
     """热图视野参数非法；router 只把这类可预期输入错误映射为 422。"""
+
+
+def _public_activity_filter():
+    """无隐私记录视为公开；显式记录只允许 public。矢量与栅格入口共用。"""
+    return or_(
+        ~_Activity.privacy.has(),
+        _Activity.privacy.has(_ActivityPrivacy.visibility == "public"),
+    )
+
+
+def _public_heatmap_privacy_fingerprint(db: Session, user_id: int) -> str:
+    """公开缓存绑定数据库隐私状态；Redis 失效失败也不能复活旧的私密轨迹。"""
+    total, public, latest = (
+        db.query(
+            _func.count(_ActivityPrivacy.activity_id),
+            _func.sum(
+                case((_ActivityPrivacy.visibility == "public", 1), else_=0)
+            ),
+            _func.max(_ActivityPrivacy.updated_at),
+        )
+        .join(_Activity, _Activity.id == _ActivityPrivacy.activity_id)
+        .filter(_Activity.user_id == user_id)
+        .one()
+    )
+    latest_token = latest.isoformat(timespec="microseconds") if latest else "none"
+    return f"{int(total or 0)}-{int(public or 0)}-{latest_token}"
 
 
 def _get_redis_client():
@@ -230,8 +257,15 @@ def _heatmap_viewport_source_cache_key(
     city: str | None,
     year: int | None,
     generation: int = 0,
+    *,
+    include_private: bool = True,
+    privacy_fingerprint: str | None = None,
 ) -> str:
     parts = [f"{_HEATMAP_CACHE_PREFIX}{user_id}", "detail_viewport_source"]
+    if not include_private:
+        parts.append("audience_public")
+        if privacy_fingerprint is not None:
+            parts.append(f"privacy_{privacy_fingerprint}")
     if city is not None:
         parts.append(f"city_{city}")
     parts.append(f"year_{year}" if year is not None else "year_all")
@@ -750,6 +784,68 @@ def _heatmap_activity_year(activity: object) -> int | None:
     return started_at.astimezone(BEIJING_TZ).year
 
 
+def _heatmap_bounds_for_tracks(tracks: list[list[list[float]]]) -> list[list[float]]:
+    """把任意数量轨迹压成两个 WGS-84 范围角点，供地图首屏定位。"""
+    points = []
+    for track in tracks:
+        for point in track:
+            if not isinstance(point, (list, tuple)) or len(point) < 2:
+                continue
+            try:
+                lon, lat = float(point[0]), float(point[1])
+            except (TypeError, ValueError):
+                continue
+            if -180 <= lon <= 180 and -90 <= lat <= 90:
+                points.append((lon, lat))
+    if not points:
+        return []
+    min_lon = min(point[0] for point in points)
+    max_lon = max(point[0] for point in points)
+    min_lat = min(point[1] for point in points)
+    max_lat = max(point[1] for point in points)
+    if max_lon - min_lon < 0.01:
+        min_lon -= 0.005
+        max_lon += 0.005
+    if max_lat - min_lat < 0.01:
+        min_lat -= 0.005
+        max_lat += 0.005
+    return [
+        [round(min_lon, 6), round(min_lat, 6)],
+        [round(max_lon, 6), round(max_lat, 6)],
+    ]
+
+
+def _heatmap_focus_bounds_for_tracks(tracks: list[list[list[float]]]) -> list[list[float]]:
+    """找最密集 0.5 度网格及相邻一圈，作为默认常骑区域。"""
+    valid_points = []
+    buckets: dict[tuple[int, int], int] = {}
+    best_bucket = None
+    for track in tracks:
+        for point in track:
+            if not isinstance(point, (list, tuple)) or len(point) < 2:
+                continue
+            try:
+                lon, lat = float(point[0]), float(point[1])
+            except (TypeError, ValueError):
+                continue
+            if not (-180 <= lon <= 180 and -90 <= lat <= 90):
+                continue
+            valid_points.append([lon, lat])
+            bucket = (_math.floor(lat * 2), _math.floor(lon * 2))
+            buckets[bucket] = buckets.get(bucket, 0) + 1
+            if best_bucket is None or buckets[bucket] > buckets[best_bucket]:
+                best_bucket = bucket
+    if best_bucket is None:
+        return []
+    focus_points = [
+        point
+        for point in valid_points
+        if abs(_math.floor(point[1] * 2) - best_bucket[0]) <= 1
+        and abs(_math.floor(point[0] * 2) - best_bucket[1]) <= 1
+    ]
+    return _heatmap_bounds_for_tracks([focus_points if len(focus_points) >= 2 else valid_points])
+
+
 def get_user_heatmap(
     db: Session,
     user_id: int,
@@ -757,6 +853,7 @@ def get_user_heatmap(
     year: int | None = None,
     detail: str = "full",
     *,
+    include_private: bool = True,
     west: float | None = None,
     south: float | None = None,
     east: float | None = None,
@@ -769,10 +866,11 @@ def get_user_heatmap(
     把用户的骑行轨迹生成**地图显示精度数据**并保留 activity 边界，前端交给
     原生地图 polyline 图层；真实道路底图、拖动和缩放由地图组件负责。
 
-    detail 三档：
+    detail 四档：
+    - meta：只返回骑行数、年份和两组范围角点；地图轨迹全部走栅格瓦片
     - card：个人页交互预览，最多 4000 点 / 每活动最多 24 点
     - full：全屏首屏总览，最多 9000 点 / 每活动最多 64 点
-    - viewport：按当前视野和缩放级别裁切，最多 2.4 万到 3.6 万点
+    - viewport：从原始 Trackpoint 按当前视野和缩放级别裁切，最多 6000 点
 
     这对应 Strava 的层级细节思想：小视图不下载全屏精度，避免历史数据再次
     阻塞小程序；总览两档通过地理分桶保留稀有旅行区域，而不是只截常骑城市。
@@ -790,9 +888,9 @@ def get_user_heatmap(
     year 可选：不传返回全部年份，传入后只返回对应自然年活动；响应始终带
     available_years，供全屏地图的年份图层控制使用。
 
-    v5 cache 同时区分 city / year / detail；viewport 先生成 7.2 万点以内的压缩源层，
-    后续拖图不再读全量 JSONB。视野结果按边界和 zoom 分桶、TTL 15 分钟且每用户最多 12 份；
-    源层和总览 TTL 1 小时。
+    v5 cache 同时区分 city / year / detail；meta/card/full 继续使用兼容缓存。
+    viewport 直接走原始 Trackpoint 空间查询和曲率优先 LOD，压缩缓存 TTL 15 分钟，
+    每用户最多保留 16 份视野结果。
 
     陷阱守卫：
     - 陷阱 #5（redis-py 7+ 默认返 bytes）→ json.loads 前 decode
@@ -811,16 +909,42 @@ def get_user_heatmap(
           "selected_year": 2026 | None
         }
     """
-    if detail not in {"card", "full", "viewport"}:
+    if detail not in {"meta", "card", "full", "viewport"}:
         raise InvalidHeatmapViewport(f"invalid heatmap detail: {detail}")
 
     viewport = None
     if detail == "viewport":
         viewport = _normalize_heatmap_viewport(west, south, east, north, zoom)
+        # 图片覆盖层在微信开发者工具里不渲染；视野降级必须读原始 Trackpoint，
+        # 不能再从 simplified_track 抽点，否则发卡弯仍会被拉成直线。
+        from app.user.service_heatmap_tiles import (
+            InvalidHeatmapTile,
+            get_user_heatmap_viewport,
+        )
+
+        try:
+            return get_user_heatmap_viewport(
+                db,
+                user_id,
+                viewport,
+                year=year,
+                include_private=include_private,
+            )
+        except InvalidHeatmapTile as exc:
+            raise InvalidHeatmapViewport(str(exc)) from exc
 
     redis_client = _get_redis_client()
     cache_generation = _heatmap_cache_generation(redis_client, user_id)
+    privacy_fingerprint = (
+        None
+        if include_private
+        else _public_heatmap_privacy_fingerprint(db, user_id)
+    )
     cache_parts = [f"{_HEATMAP_CACHE_PREFIX}{user_id}", f"detail_{detail}"]
+    if not include_private:
+        # 公开热图必须使用独立缓存，不能命中本人视角里包含私密轨迹的旧对象。
+        cache_parts.append("audience_public")
+        cache_parts.append(f"privacy_{privacy_fingerprint}")
     if city is not None:
         cache_parts.append(f"city_{city}")
     cache_parts.append(f"year_{year}" if year is not None else "year_all")
@@ -843,6 +967,8 @@ def get_user_heatmap(
             city,
             year,
             cache_generation,
+            include_private=include_private,
+            privacy_fingerprint=privacy_fingerprint,
         )
         cached_source = redis_client.get(source_cache_key)
         if cached_source is not None:
@@ -895,13 +1021,15 @@ def get_user_heatmap(
 
     # 查该用户所有 completed activities + 有 simplified_track 的
     # Sprint 5 task-2 dedupe：跳过 duplicate 防 heatmap 同轨迹双显
-    activity_filters = (
+    activity_filters = [
         _Activity.user_id == user_id,
         _Activity.status == "completed",
         _Activity.duplicate_of.is_(None),
         _Activity.activity_type == "cycling",  # Sprint 7 Fix 7：防非骑行污染热力图
         _Activity.simplified_track.isnot(None),
-    )
+    ]
+    if not include_private:
+        activity_filters.append(_public_activity_filter())
     activities_query = db.query(_Activity.simplified_track, _Activity.started_at).filter(*activity_filters)
     prefetched_available_years = None
     if detail in {"full", "viewport"} and year is not None and city is None:
@@ -960,6 +1088,8 @@ def get_user_heatmap(
             city,
             year,
             cache_generation,
+            include_private=include_private,
+            privacy_fingerprint=privacy_fingerprint,
         )
         _store_heatmap_cache(
             redis_client,
@@ -989,7 +1119,7 @@ def get_user_heatmap(
         )
         return result
 
-    if detail == "card":
+    if detail in {"meta", "card"}:
         per_activity_limit = _HEATMAP_CARD_POINTS_PER_ACTIVITY
         total_point_budget = _HEATMAP_CARD_TOTAL_POINT_BUDGET
     else:
@@ -1033,6 +1163,26 @@ def get_user_heatmap(
         if track_points:
             tracks.append(track_points)
             valid_count += 1
+
+    if detail == "meta":
+        result = {
+            "city": city,
+            "tracks": [],
+            "activity_count": valid_count,
+            "available_years": available_years,
+            "selected_year": year,
+            "focus_points": _heatmap_focus_bounds_for_tracks(tracks),
+            "all_points": _heatmap_bounds_for_tracks(tracks),
+        }
+        _store_heatmap_result_cache(
+            redis_client,
+            user_id,
+            cache_key,
+            detail,
+            result,
+            cache_generation,
+        )
+        return result
 
     result = {
         "city": city,

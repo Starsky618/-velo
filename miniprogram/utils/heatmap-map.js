@@ -260,8 +260,22 @@ function buildHeatmapMapModel(rawTracks, colorKey, width, maxPoints, opacityHex)
   }
 }
 
+function buildHeatmapMetaModel(rawFocusPoints, rawAllPoints) {
+  var allPoints = toGcj02(normalizeTrack(rawAllPoints))
+  var focusPoints = toGcj02(normalizeTrack(rawFocusPoints))
+  var allBounds = boundsForPoints(allPoints)
+  var focusBounds = boundsForPoints(focusPoints) || allBounds
+  if (!allBounds || !focusBounds) return null
+  return {
+    center: focusBounds.center,
+    focusPoints: focusBounds.includePoints,
+    allPoints: allBounds.includePoints,
+  }
+}
+
 module.exports = {
   HEATMAP_COLORS: HEATMAP_COLORS,
+  buildHeatmapMetaModel: buildHeatmapMetaModel,
   buildHeatmapMapModel: buildHeatmapMapModel,
   buildPolylines: buildPolylines,
   limitTrackPoints: limitTrackPoints,

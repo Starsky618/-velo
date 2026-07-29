@@ -94,7 +94,8 @@ def _cleanup_redis(redis_client, user_id: int):
     redis_client.delete(f"heatmap:generation:user_{user_id}")
     for prefix in (
         "heatmap:v5:user_", "heatmap:v4:user_", "heatmap:v3:user_", "heatmap:v2:user_",
-        "heatmap:user_", "power_curve:user_",
+        "heatmap:user_", "heatmap:vector:v1:user_", "heatmap:raster:v1:user_",
+        "heatmap:raster:v1:source:user_", "power_curve:user_",
     ):
         redis_client.delete(f"{prefix}{user_id}")
         for key in redis_client.scan_iter(match=f"{prefix}{user_id}:*"):
@@ -118,7 +119,12 @@ def _make_user(db, suffix: str, city=None) -> User:
 def _make_activity_in_beijing(
     db, user: User, suffix: str, started_at: datetime, distance: float = 1000.0
 ) -> Activity:
-    """构造一条 simplified_track 起点在北京的活动（39.9N / 116.4E 是天安门附近）。"""
+    """构造一条带原始 Trackpoint 的北京活动（视野热图不再依赖 simplified_track）。"""
+    points = [
+        {"lat": 39.9, "lon": 116.4, "ele": 50.0},
+        {"lat": 39.91, "lon": 116.41, "ele": 52.0},
+        {"lat": 39.92, "lon": 116.42, "ele": 53.0},
+    ]
     activity = Activity(
         user_id=user.id,
         title=f"{_PREFIX} {suffix}",
@@ -130,15 +136,21 @@ def _make_activity_in_beijing(
         finished_at=started_at + timedelta(seconds=1800),
         data_source="gpx",
         activity_type="cycling",
-        simplified_track=[
-            {"lat": 39.9, "lon": 116.4, "ele": 50.0},
-            {"lat": 39.91, "lon": 116.41, "ele": 52.0},
-            {"lat": 39.92, "lon": 116.42, "ele": 53.0},
-        ],
+        simplified_track=points,
         avg_power=180.0,
     )
     db.add(activity)
     db.flush()
+    for seq, point in enumerate(points):
+        db.add(Trackpoint(
+            activity_id=activity.id,
+            seq=seq,
+            timestamp=started_at + timedelta(seconds=seq * 40),
+            longitude=point["lon"],
+            latitude=point["lat"],
+            elevation=point["ele"],
+            geom=WKTElement(f"POINT({point['lon']} {point['lat']})", srid=4326),
+        ))
     return activity
 
 
@@ -150,8 +162,13 @@ def _this_month_utc() -> datetime:
 def _make_activity_in_shanghai(
     db, user: User, suffix: str, started_at: datetime, distance: float = 1000.0
 ) -> Activity:
-    """构造一条 simplified_track 起点在上海的活动（31.2N / 121.5E 是上海市区核心圈）。
+    """构造一条带原始 Trackpoint 的上海活动（31.2N / 121.5E 是上海市区核心圈）。
     用于 v3 polish 跨城市测试 —— city is None 时该活动也应入选。"""
+    points = [
+        {"lat": 31.20, "lon": 121.47, "ele": 5.0},
+        {"lat": 31.21, "lon": 121.48, "ele": 5.5},
+        {"lat": 31.22, "lon": 121.49, "ele": 6.0},
+    ]
     activity = Activity(
         user_id=user.id,
         title=f"{_PREFIX} {suffix}",
@@ -163,15 +180,21 @@ def _make_activity_in_shanghai(
         finished_at=started_at + timedelta(seconds=1800),
         data_source="gpx",
         activity_type="cycling",
-        simplified_track=[
-            {"lat": 31.20, "lon": 121.47, "ele": 5.0},
-            {"lat": 31.21, "lon": 121.48, "ele": 5.5},
-            {"lat": 31.22, "lon": 121.49, "ele": 6.0},
-        ],
+        simplified_track=points,
         avg_power=170.0,
     )
     db.add(activity)
     db.flush()
+    for seq, point in enumerate(points):
+        db.add(Trackpoint(
+            activity_id=activity.id,
+            seq=seq,
+            timestamp=started_at + timedelta(seconds=seq * 40),
+            longitude=point["lon"],
+            latitude=point["lat"],
+            elevation=point["ele"],
+            geom=WKTElement(f"POINT({point['lon']} {point['lat']})", srid=4326),
+        ))
     return activity
 
 
@@ -567,7 +590,7 @@ class TestGetUserHeatmap:
             _cleanup_db(db)
             db.close()
 
-    def test_viewport_detail_filters_tracks_and_uses_bucketed_cache(self, pg_session_factory, real_redis):
+    def test_viewport_detail_filters_raw_tracks_and_reuses_exact_view_cache(self, pg_session_factory, real_redis):
         db = pg_session_factory()
         user_id = None
         try:
@@ -595,27 +618,25 @@ class TestGetUserHeatmap:
             assert first["activity_count"] == 1
             assert len(first["tracks"]) == 1
             assert 116 < first["tracks"][0][0][0] < 117
-            cached_keys = list(real_redis.scan_iter(match=f"heatmap:v5:user_{user_id}:detail_viewport:*"))
+            cached_keys = list(real_redis.scan_iter(match=f"heatmap:vector:v1:user_{user_id}:*"))
             assert len(cached_keys) == 1
 
-            source_key = f"heatmap:v5:user_{user_id}:detail_viewport_source:year_all"
-            assert real_redis.get(source_key).startswith(b"z1:")
-
-            with patch.object(db, "query", side_effect=AssertionError("source cache should avoid PostgreSQL")):
+            with patch.object(db, "query", side_effect=AssertionError("exact view cache should avoid PostgreSQL")):
                 second = get_user_heatmap(
                     db,
                     user_id,
                     None,
                     None,
                     "viewport",
-                    west=116.32,
+                    west=116.22,
                     south=39.72,
-                    east=116.68,
+                    east=116.58,
                     north=40.08,
                     zoom=10,
                 )
             assert second["activity_count"] == 1
-            assert len(list(real_redis.scan_iter(match=f"heatmap:v5:user_{user_id}:detail_viewport:*"))) == 2
+            assert second == first
+            assert len(list(real_redis.scan_iter(match=f"heatmap:vector:v1:user_{user_id}:*"))) == 1
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -639,6 +660,37 @@ class TestGetUserHeatmap:
             assert result["selected_year"] == 2025
             assert result["available_years"] == [2026, 2025]
             assert result["activity_count"] == 1
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
+            _cleanup_db(db)
+            db.close()
+
+    def test_meta_returns_two_bounds_without_client_track_payload(self, pg_session_factory, real_redis):
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "meta_bounds")
+            _make_activity_in_beijing(db, user, "bj", _this_month_utc())
+            _make_activity_in_shanghai(db, user, "sh", _this_month_utc())
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            result = get_user_heatmap(db, user_id, None, None, "meta")
+
+            assert result["activity_count"] == 2
+            assert result["tracks"] == []
+            assert len(result["focus_points"]) == 2
+            assert len(result["all_points"]) == 2
+            assert result["all_points"][0][0] < 117
+            assert result["all_points"][1][0] > 121
+            cached = real_redis.get(
+                f"heatmap:v5:user_{user_id}:detail_meta:year_all"
+            )
+            assert cached is not None
+            assert len(cached) < 1024
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -733,6 +785,7 @@ class TestUpdateUserCity:
             generation_key = f"heatmap:generation:user_{user_id}"
             generation_before = int(real_redis.get(generation_key) or 0)
             keys = [
+                f"heatmap:v5:user_{user_id}:detail_meta:year_all",
                 f"heatmap:v5:user_{user_id}:detail_full:year_all",
                 f"heatmap:v5:user_{user_id}:detail_card:year_2026",
                 f"heatmap:v5:user_{user_id}:detail_viewport_source:year_all",
@@ -754,7 +807,8 @@ class TestUpdateUserCity:
             generation_after = generation_before + 1
             assert int(real_redis.get(generation_key)) == generation_after
 
-            # generation 非零后 card/full/viewport 三条真实路径都能重建，且使用新代 key。
+            # generation 非零后 meta/card/full/viewport 四条真实路径都能重建，且使用新代 key。
+            meta = get_user_heatmap(db, user_id, None, None, "meta")
             card = get_user_heatmap(db, user_id, None, None, "card")
             full = get_user_heatmap(db, user_id, None, None, "full")
             viewport = get_user_heatmap(
@@ -769,6 +823,7 @@ class TestUpdateUserCity:
                 north=40.2,
                 zoom=10,
             )
+            assert meta["activity_count"] == 1
             assert card["activity_count"] == 1
             assert full["activity_count"] == 1
             assert viewport["activity_count"] == 1

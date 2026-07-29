@@ -12,6 +12,7 @@ GPX 解析器的测试已迁移到 test_parsing.py（40 个用例），这里不
 import math
 import os
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -407,10 +408,12 @@ def _set_activity_power(db, activity_id, avg_power=200.0, max_power=350.0, avg_h
 def test_update_privacy_visibility(client, auth_header, db, test_user):
     """PATCH 改 visibility → 200 + 后续查 detail 走新的可见性"""
     aid = _create_test_activity(db, test_user.id)
-    resp = client.patch(f"/api/activities/{aid}/privacy", headers=auth_header,
-                        json={"visibility": "private"})
+    with patch("app.user.service_social.invalidate_heatmap_cache") as invalidate:
+        resp = client.patch(f"/api/activities/{aid}/privacy", headers=auth_header,
+                            json={"visibility": "private"})
     assert resp.status_code == 200
     assert resp.json()["visibility"] == "private"
+    invalidate.assert_called_once_with(test_user.id)
 
 
 def test_update_privacy_hide_power(client, auth_header, db, test_user):

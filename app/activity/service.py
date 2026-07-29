@@ -11,6 +11,7 @@ router 是前台接待员（接请求、回结果），service 是后台办事�
 """
 
 import hashlib
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
@@ -26,6 +27,7 @@ from app.storage.local import LocalStorage
 
 # 存储后端实例（当前用本地存储，将来切云存储只改这一行）
 _storage = LocalStorage()
+_logger = logging.getLogger(__name__)
 
 # v5 task-0.8：_redis_conn / _queue 沿用旧别名，避免本文件 caller 大改
 # Redis 连接和 Queue 实例从 app.queue 单一源拿（禁止本地 Redis.from_url）
@@ -423,6 +425,15 @@ def update_activity_privacy(
 
     db.commit()
     db.refresh(privacy)
+    if visibility is not None:
+        # 可见性变化后推进热图 generation，避免他人继续拿到旧的私密轨迹瓦片。
+        # Redis 故障不能反向让隐私设置保存失败；旧 PNG 仍会在 1h TTL 后自然过期。
+        try:
+            from app.user.service_social import invalidate_heatmap_cache
+            invalidate_heatmap_cache(user_id)
+        except Exception:
+            # 公开瓦片还绑定数据库隐私指纹，因此不会 fail-open；保留日志供 Redis 修复。
+            _logger.exception("failed to invalidate heatmap after privacy update", extra={"user_id": user_id})
     return privacy
 
 

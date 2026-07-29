@@ -284,15 +284,34 @@ def test_no_wxml_in_whole_project_uses_paid_personalized_map_style():
         assert "layer-style" not in wxml, f"{wxml_path} 使用了付费个性化底图 layer-style"
 
 
+def test_miniprogram_runtime_does_not_commit_local_qa_api_origin():
+    app_js = _read(MINI / "app.js")
+    api_js = _read(MINI / "utils" / "api.js")
+
+    assert "baseUrl: 'https://api.weiluai.top'" in app_js
+    assert "var BASE_URL = 'https://api.weiluai.top'" in api_js
+    assert "127.0.0.1:18001" not in app_js
+    assert "127.0.0.1:18001" not in api_js
+
+
 def test_heatmap_card_uses_one_interactive_native_map_and_opens_fullscreen():
     js = _read(MINI / "components" / "heatmap-card" / "heatmap-card.js")
     wxml = _read(MINI / "components" / "heatmap-card" / "heatmap-card.wxml")
     wxss = _read(MINI / "components" / "heatmap-card" / "heatmap-card.wxss")
 
     assert "require('../../utils/heatmap-map')" in js
-    assert "detail: 'card'" in js
-    assert "buildHeatmapMapModel" in js
-    assert "'orange', 2, 4000, '52'" in js
+    assert "detail: 'meta'" in js
+    assert "buildHeatmapMetaModel" in js
+    assert "detail: 'viewport'" in js
+    assert "gcj02ToWgs84" in js
+    assert "_preferVectorLayer = isDeveloperTools()" in js
+    assert "limitTrackPoints(" not in js
+    assert "buildPolylines" in js
+    assert "downloadTemporaryFile" in js
+    assert "addGroundOverlay" in js
+    assert "removeGroundOverlay" in js
+    assert "complete: function (result)" in js
+    assert "'heatmap-card-' + idSeed" in js
     assert "wx.navigateTo" in js
     assert "/pages/heatmap/heatmap" in js
     assert wxml.count("<map") == 1
@@ -305,6 +324,50 @@ def test_heatmap_card_uses_one_interactive_native_map_and_opens_fullscreen():
     assert "height: 480rpx" in wxss
 
 
+def test_heatmap_card_vector_fallback_renders_current_raw_viewport():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const calls = []
+require.cache[apiPath] = { exports: {
+  get: function (url, params) {
+    calls.push({ url: url, params: params })
+    return Promise.resolve({
+      tracks: [[[112.50, 37.80], [112.51, 37.82], [112.52, 37.80]]]
+    })
+  }
+} }
+let componentDefinition = null
+global.Component = function (definition) { componentDefinition = definition }
+global.wx = {}
+require('./miniprogram/components/heatmap-card/heatmap-card')
+
+const component = Object.assign({}, componentDefinition.methods, {
+  _componentAlive: true,
+  data: Object.assign({}, componentDefinition.data, { userId: 0 }),
+  setData: function (update) { Object.assign(this.data, update) },
+})
+const viewport = {
+  west: 112.4, south: 37.7, east: 112.7, north: 38.0, zoom: 11,
+  mapWest: 112.4, mapSouth: 37.7, mapEast: 112.7, mapNorth: 38.0,
+}
+
+;(async function () {
+  component._preferVectorLayer = true
+  component._fetchViewport(viewport)
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(calls.length, 1)
+  assert.strictEqual(calls[0].params.detail, 'viewport')
+  assert.strictEqual(component.data.tileError, false)
+  assert.strictEqual(component.data.polylines.length, 1)
+  assert.strictEqual(component.data.polylines[0].points.length, 3)
+  assert.strictEqual(component.data.polylines[0].color, '#FF6B00C8')
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
 def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     app_json = json.loads(_read(MINI / "app.json"))
     js = _read(MINI / "pages" / "heatmap" / "heatmap.js")
@@ -312,22 +375,27 @@ def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     wxss = _read(MINI / "pages" / "heatmap" / "heatmap.wxss")
 
     assert "pages/heatmap/heatmap" in app_json["pages"]
-    assert "detail: 'full'" in js
+    assert "detail: 'meta'" in js
     assert "available_years" in js
     assert "wx.createMapContext('personal-heatmap-map'" in js
-    assert "detail: 'viewport'" not in js
+    assert "detail: 'viewport'" in js
+    assert "gcj02ToWgs84" in js
+    assert "_preferVectorLayer = isDeveloperTools()" in js
+    assert "buildPolylines" in js
     assert "getRegion" in js
     assert "getScale" in js
     assert "_viewportRequestSeq" in js
-    assert "this._showOverviewLayer()" in js
+    assert "_showOverviewLayer" not in js
     assert "this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1" in js
     assert "downloadTemporaryFile" in js
     assert "addGroundOverlay" in js
     assert "removeGroundOverlay" in js
+    assert "complete: function (result)" in js
+    assert "'heatmap-full-' + idSeed" in js
     assert "boundsForTile" in js
     assert "includePoints" in js
-    assert "buildPolylines" in js
-    assert "OVERVIEW_MAX_POINTS = 9000" in js
+    assert "buildHeatmapMetaModel" in js
+    assert "MIN_TILE_ZOOM = 3" in js
     assert "VIEWPORT_MAX_POINTS" not in js
     assert 'polyline="{{polylines}}"' in wxml
     assert 'bindregionchange="onMapRegionChange"' in wxml
@@ -368,6 +436,26 @@ assert.strictEqual(model.focusPoints.length, 2)
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
+def test_heatmap_meta_model_converts_only_two_bounds_without_building_polylines():
+    script = """
+const assert = require('assert')
+const heatmap = require('./miniprogram/utils/heatmap-map')
+
+const model = heatmap.buildHeatmapMetaModel(
+  [[116.30, 39.90], [116.50, 40.00]],
+  [[112.40, 37.60], [121.60, 40.10]]
+)
+
+assert.ok(model)
+assert.strictEqual(model.focusPoints.length, 2)
+assert.strictEqual(model.allPoints.length, 2)
+assert.ok(!Object.prototype.hasOwnProperty.call(model, 'polylines'))
+assert.notStrictEqual(model.focusPoints[0].longitude, 116.30)
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
 def test_heatmap_map_model_caps_render_payload_without_dropping_tracks():
     script = """
 const assert = require('assert')
@@ -390,7 +478,7 @@ model.polylines.forEach((line) => assert.ok(line.points.length >= 2))
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
-def test_heatmap_zooming_out_invalidates_inflight_tiles_even_when_overview_is_visible():
+def test_heatmap_all_zoom_levels_use_tiles_without_overview_polyline_fallback():
     script = """
 const assert = require('assert')
 let pageDefinition = null
@@ -398,51 +486,16 @@ global.Page = function (definition) { pageDefinition = definition }
 global.wx = {}
 require('./miniprogram/pages/heatmap/heatmap')
 
-const overview = [[{ longitude: 116.4, latitude: 39.9 }, { longitude: 116.5, latitude: 40.0 }]]
+const viewports = []
 const page = Object.assign({}, pageDefinition, {
-  data: { selectedColor: 'orange', updating: false },
-  _overviewPreparedTracks: overview,
-  _renderedTracks: overview,
-  _overviewRenderedColor: 'orange',
-  _tileLayerVisible: false,
-  _viewportRequestSeq: 7,
-  _lastTileSetKey: 'inflight',
-  setData: function () { throw new Error('same overview should not redraw') },
+  _pageAlive: true,
+  _refreshTileLayer: function (viewport) { viewports.push(viewport) },
 })
 
-page._showOverviewLayer()
+page._fetchViewport({ zoom: 3 })
+page._fetchViewport({ zoom: 18 })
 
-assert.strictEqual(page._viewportRequestSeq, 8)
-assert.strictEqual(page._lastTileSetKey, '')
-"""
-
-    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
-
-
-def test_heatmap_zooming_out_restores_overview_after_tile_layer():
-    script = """
-const assert = require('assert')
-let pageDefinition = null
-global.Page = function (definition) { pageDefinition = definition }
-global.wx = {}
-require('./miniprogram/pages/heatmap/heatmap')
-
-const overview = [[{ longitude: 116.4, latitude: 39.9 }, { longitude: 116.5, latitude: 40.0 }]]
-const page = Object.assign({}, pageDefinition, {
-  data: Object.assign({}, pageDefinition.data, { selectedColor: 'orange', polylines: [] }),
-  _overviewPreparedTracks: overview,
-  _renderedTracks: overview,
-  _overviewRenderedColor: 'orange',
-  _tileLayerVisible: true,
-  _activeTileOverlays: { tile: { id: 1001 } },
-  _removeGroundOverlay: function () {},
-  setData: function (update) { Object.assign(this.data, update) },
-})
-
-page._showOverviewLayer()
-
-assert.strictEqual(page._tileLayerVisible, false)
-assert.strictEqual(page.data.polylines.length, 1)
+assert.deepStrictEqual(viewports.map((viewport) => viewport.zoom), [3, 18])
 """
 
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
@@ -482,10 +535,12 @@ page._pageReady = true
 page._fetchHeatmap(2025, false)
 page._fetchHeatmap(2024, false)
 const response = (year) => ({
-  tracks: [[[116.4, 39.9], [116.5, 40.0]]],
+  tracks: [],
   activity_count: 1,
   available_years: [2025, 2024],
   selected_year: year,
+  focus_points: [[116.4, 39.9], [116.5, 40.0]],
+  all_points: [[116.4, 39.9], [116.5, 40.0]],
 })
 
 ;(async function () {
@@ -546,7 +601,6 @@ const latest = {
   downloads.slice(firstCount).forEach((request) => request.resolve({ filePath: '/tmp/new.png' }))
   await new Promise(setImmediate); await new Promise(setImmediate)
   assert.ok(Object.keys(page._activeTileOverlays).length > 0)
-  assert.deepStrictEqual(page.data.polylines, [])
 })().catch(function (error) { console.error(error); process.exit(1) })
 """
 
@@ -589,6 +643,107 @@ const key = page._tileKey(tile)
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
+def test_heatmap_partial_tile_frame_keeps_previous_complete_tiles_and_retries():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const downloads = []
+require.cache[apiPath] = { exports: {
+  downloadTemporaryFile: function (url) {
+    return new Promise((resolve, reject) => downloads.push({ url, resolve, reject }))
+  }
+} }
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const removed = []
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  data: Object.assign({}, pageDefinition.data, {
+    selectedColor: 'orange', selectedYear: null,
+  }),
+  setData: function (update) { Object.assign(this.data, update) },
+  _addGroundOverlay: function () { return Promise.resolve() },
+  _removeGroundOverlay: function (id) { removed.push(id) },
+  _activeTileOverlays: { stale: { key: 'stale', id: 77 } },
+  _tileLayerVisible: true,
+})
+const viewport = {
+  west: 116.2, south: 39.7, east: 116.6, north: 40.1, zoom: 10,
+  mapWest: 116.2, mapSouth: 39.7, mapEast: 116.6, mapNorth: 40.1,
+}
+
+;(async function () {
+  page._fetchViewport(viewport)
+  const firstCount = downloads.length
+  assert.ok(firstCount > 1)
+  downloads[0].resolve({ filePath: '/tmp/one.png' })
+  downloads.slice(1).forEach((request) => request.reject(new Error('network')))
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(page._lastTileSetKey, '')
+  assert.deepStrictEqual(Object.keys(page._activeTileOverlays || {}), ['stale'])
+  assert.strictEqual(removed.length, 1)
+
+  page._fetchViewport(viewport)
+  const retry = downloads.slice(firstCount)
+  assert.strictEqual(retry.length, firstCount - 1)
+  retry.forEach((request, index) => request.resolve({ filePath: '/tmp/retry-' + index + '.png' }))
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.deepStrictEqual(page.data.polylines, [])
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_partial_initial_tile_frame_falls_back_instead_of_staying_blank():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const downloads = []
+require.cache[apiPath] = { exports: {
+  downloadTemporaryFile: function (url) {
+    return new Promise((resolve, reject) => downloads.push({ url, resolve, reject }))
+  }
+} }
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+let vectorFallbacks = 0
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  data: Object.assign({}, pageDefinition.data, {
+    selectedColor: 'orange', selectedYear: null,
+  }),
+  setData: function (update) { Object.assign(this.data, update) },
+  _addGroundOverlay: function () { return Promise.resolve() },
+  _removeGroundOverlay: function () {},
+  _refreshVectorLayer: function () { vectorFallbacks += 1 },
+})
+const viewport = {
+  west: 116.2, south: 39.7, east: 116.6, north: 40.1, zoom: 10,
+  mapWest: 116.2, mapSouth: 39.7, mapEast: 116.6, mapNorth: 40.1,
+}
+
+;(async function () {
+  page._fetchViewport(viewport)
+  assert.ok(downloads.length > 1)
+  downloads[0].resolve({ filePath: '/tmp/one.png' })
+  downloads.slice(1).forEach((request) => request.reject(new Error('network')))
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(page._preferVectorLayer, true)
+  assert.strictEqual(vectorFallbacks, 1)
+  assert.deepStrictEqual(Object.keys(page._activeTileOverlays || {}), [])
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
 def test_heatmap_viewport_read_generation_keeps_newest_async_map_region():
     script = """
 const assert = require('assert')
@@ -601,7 +756,7 @@ const reads = []
 const fetched = []
 const page = Object.assign({}, pageDefinition, {
   _pageAlive: true,
-  _overviewLoaded: true,
+  _metadataLoaded: true,
   _ensureMapContext: function () { return {} },
   _readViewport: function () {
     return new Promise((resolve) => reads.push(resolve))
@@ -638,7 +793,7 @@ require('./miniprogram/pages/heatmap/heatmap')
 let resolveRead = null
 const page = Object.assign({}, pageDefinition, {
   _pageAlive: true,
-  _overviewLoaded: true,
+  _metadataLoaded: true,
   _ensureMapContext: function () { return {} },
   _readViewport: function () {
     return new Promise((resolve) => { resolveRead = resolve })
@@ -659,7 +814,7 @@ const page = Object.assign({}, pageDefinition, {
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
-def test_heatmap_unload_ignores_late_overview_and_tile_network_responses():
+def test_heatmap_unload_ignores_late_metadata_and_tile_network_responses():
     script = """
 const assert = require('assert')
 const apiPath = require.resolve('./miniprogram/utils/api')
@@ -683,17 +838,19 @@ const page = Object.assign({}, pageDefinition, {
     Object.assign(this.data, update)
   },
 })
-const overviewResponse = {
-  tracks: [[[116.4, 39.9], [116.5, 40.0]]],
+const metadataResponse = {
+  tracks: [],
   activity_count: 1,
   available_years: [2026],
+  focus_points: [[116.4, 39.9], [116.5, 40.0]],
+  all_points: [[116.4, 39.9], [116.5, 40.0]],
 }
 
 ;(async function () {
   page._fetchHeatmap(null, true)
   const callsBeforeUnload = page.setDataCalls
   page.onUnload()
-  requests[0](overviewResponse)
+  requests[0](metadataResponse)
   await new Promise(setImmediate)
   assert.strictEqual(page.setDataCalls, callsBeforeUnload)
 
