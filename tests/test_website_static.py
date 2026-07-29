@@ -10,6 +10,8 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 WEBSITE = ROOT / "website"
 LEGAL_NAME = "湖南湘江新区共演纪软件开发有限责任公司"
+ICP_RECORD = "湘ICP备2026023052号-1"
+ICP_QUERY_URL = "https://beian.miit.gov.cn/"
 
 
 class _LinkParser(HTMLParser):
@@ -117,6 +119,25 @@ def test_mobile_navigation_and_footer_links_have_full_touch_targets():
         rule = re.search(rf"{selector}\s*\{{(?P<body>[^}}]+)\}}", css)
         assert rule, selector
         assert re.search(r"min-height:\s*44px", rule.group("body")), selector
+
+
+def test_public_page_footers_show_the_verified_icp_record():
+    footer_pages = [
+        page for page in _html_files() if page.name != "404.html"
+    ]
+    assert footer_pages
+    for page in footer_pages:
+        source = page.read_text(encoding="utf-8")
+        footer = re.search(r"<footer\b[^>]*>(?P<body>.*?)</footer>", source, re.DOTALL)
+        assert footer, page
+        body = footer.group("body")
+        assert ICP_RECORD in body, page
+        assert re.search(
+            rf'<a\b[^>]*href="{re.escape(ICP_QUERY_URL)}"[^>]*>'
+            rf'\s*{re.escape(ICP_RECORD)}\s*</a\s*>',
+            body,
+            re.DOTALL,
+        ), page
 
 
 def test_homepage_uses_local_chinese_web_fonts_without_synthetic_weights():
