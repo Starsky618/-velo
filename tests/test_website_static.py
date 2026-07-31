@@ -12,6 +12,7 @@ WEBSITE = ROOT / "website"
 LEGAL_NAME = "湖南湘江新区共演纪软件开发有限责任公司"
 ICP_RECORD = "湘ICP备2026023052号-1"
 ICP_QUERY_URL = "https://beian.miit.gov.cn/"
+SITE_STYLESHEET_URL = "/assets/site.css?v=20260731a"
 
 
 class _LinkParser(HTMLParser):
@@ -96,12 +97,7 @@ def test_all_html_pages_are_mobile_ready_and_have_valid_internal_links():
         assert parser.has_title, page
         assert parser.has_viewport, page
         assert 'href="/favicon.svg"' in source, page
-        assert any(
-            not urlsplit(href).scheme
-            and not urlsplit(href).netloc
-            and urlsplit(href).path == "/assets/site.css"
-            for href in parser.stylesheets
-        ), page
+        assert SITE_STYLESHEET_URL in parser.stylesheets, page
 
         for href in parser.links:
             if href.startswith(("mailto:", "tel:", "#")):
