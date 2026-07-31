@@ -16,6 +16,10 @@ const HEATMAP_LINE_WIDTH = 3
 const HEATMAP_LINE_OPACITY = 'C8'
 const LEGACY_CARD_MAX_POINTS = 4000
 const GROUND_OVERLAY_ACK_TIMEOUT_MS = 4000
+const VECTOR_LOD_AHEAD = 2
+const MAX_VECTOR_DISPLAY_BLOCKS = 8
+const MAX_VECTOR_DISPLAY_POINTS = 20000
+const MAX_VECTOR_DISPLAY_LINES = 1000
 
 function isDeveloperTools() {
   try {
@@ -60,6 +64,12 @@ function boundsForTile(zoom, x, y) {
 function vectorLineStyle(zoom) {
   if (zoom <= 11) return { width: 2, opacity: HEATMAP_LINE_OPACITY }
   return { width: HEATMAP_LINE_WIDTH, opacity: HEATMAP_LINE_OPACITY }
+}
+
+function vectorLodZoom(scale) {
+  var numericScale = Number(scale)
+  if (!Number.isFinite(numericScale)) numericScale = 10
+  return Math.max(3, Math.min(20, Math.floor(numericScale + 0.001) + VECTOR_LOD_AHEAD))
 }
 
 Component({
@@ -107,6 +117,13 @@ Component({
       this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
       this._clearTileOverlays()
       this._lastVectorSetKey = ''
+      this._lastVectorScale = NaN
+      this._vectorPreparedTracks = []
+      this._vectorBlockFrames = {}
+      this._vectorDisplayKeys = []
+      this._vectorDisplayFamily = ''
+      this._vectorDisplayRenderKey = ''
+      this._vectorFrameTouch = 0
     },
   },
 
@@ -117,6 +134,11 @@ Component({
       this._preferVectorLayer = isDeveloperTools()
       this._lastVectorSetKey = ''
       this._vectorPreparedTracks = []
+      this._vectorBlockFrames = {}
+      this._vectorDisplayKeys = []
+      this._vectorDisplayFamily = ''
+      this._vectorDisplayRenderKey = ''
+      this._vectorFrameTouch = 0
       this.setData({ polylines: [] })
       this._fetchHeatmap()
     },
@@ -140,6 +162,12 @@ Component({
       var requestSeq = (this._metadataRequestSeq || 0) + 1
       this._metadataRequestSeq = requestSeq
       this._lastVectorSetKey = ''
+      this._vectorBlockFrames = {}
+      this._vectorDisplayKeys = []
+      this._vectorDisplayFamily = ''
+      this._vectorDisplayRenderKey = ''
+      this._vectorPreparedTracks = []
+      this._vectorFrameTouch = 0
       this.setData({ loading: true, error: false, tileError: false, isEmpty: false })
 
       var initialRequest = heatmapProtocol.shouldTryMeta()
@@ -237,21 +265,25 @@ Component({
       var eventScale = Number(event.detail && event.detail.scale)
       if (Number.isFinite(eventScale)) this._lastMapScale = eventScale
       if (event.type === 'end') {
-        this._clearStaleVectorFrameForZoom(eventScale)
-        this._scheduleViewportRefresh(80)
+        var causedBy = String(event.causedBy || (event.detail && event.detail.causedBy) || '')
+        this._clearStaleVectorFrameForZoom(eventScale, causedBy === 'scale')
+        this._scheduleViewportRefresh(0)
       }
     },
 
-    _clearStaleVectorFrameForZoom(zoom) {
+    _clearStaleVectorFrameForZoom(zoom, forceScaleChange) {
       if (!this._preferVectorLayer || !Number.isFinite(Number(zoom))) return false
-      var nextZoom = Math.max(MIN_TILE_ZOOM, Math.min(20, Math.round(Number(zoom))))
+      var numericScale = Number(zoom)
+      var nextZoom = vectorLodZoom(numericScale)
       var previousZoom = Number(this._lastVectorZoom)
       if (!Number.isFinite(previousZoom) || previousZoom === nextZoom) return false
       this._lastVectorZoom = nextZoom
+      this._lastVectorScale = numericScale
       this._lastVectorSetKey = ''
-      this._vectorPreparedTracks = []
       this._vectorRequestSeq = (this._vectorRequestSeq || 0) + 1
-      this.setData({ polylines: [], updating: true })
+      if (!Array.isArray(this.data.polylines) || this.data.polylines.length === 0) {
+        this.setData({ updating: true })
+      }
       return true
     },
 
@@ -286,6 +318,7 @@ Component({
               var swWgs = gcj02ToWgs84(Number(southwest.latitude), Number(southwest.longitude))
               var neWgs = gcj02ToWgs84(Number(northeast.latitude), Number(northeast.longitude))
               var viewport = {
+                scale: Number(scale) || fallbackScale,
                 zoom: Math.max(MIN_TILE_ZOOM, Math.min(MAX_TILE_ZOOM, Math.round(Number(scale) || fallbackScale))),
                 west: swWgs[1],
                 south: swWgs[0],
@@ -334,45 +367,28 @@ Component({
         if (this.data.updating) this.setData({ updating: false })
         return
       }
-      var requestViewport = this._vectorRequestViewport(viewport)
-      this._clearStaleVectorFrameForZoom(requestViewport.zoom)
-      if (requestViewport.key === this._lastVectorSetKey) {
+      var requestViewports = this._vectorRequestViewports(viewport)
+      if (!requestViewports.length) return
+      var requestKey = requestViewports.map(function (item) { return item.key }).join('|')
+      this._clearStaleVectorFrameForZoom(viewport.scale || viewport.zoom)
+      if (requestKey === this._lastVectorSetKey) {
         if (this.data.updating) this.setData({ updating: false })
         return
       }
-      this._lastVectorSetKey = requestViewport.key
-      this._lastVectorZoom = requestViewport.zoom
+      this._lastVectorSetKey = requestKey
+      this._lastVectorZoom = requestViewports[0].zoom
+      this._lastVectorScale = Number(viewport.scale || viewport.zoom)
       var requestSeq = (this._vectorRequestSeq || 0) + 1
       this._vectorRequestSeq = requestSeq
       this.setData({
         updating: !Array.isArray(this.data.polylines) || this.data.polylines.length === 0,
         tileError: false,
       })
-      api.get(this._endpoint(), {
-        detail: 'viewport',
-        west: requestViewport.west,
-        south: requestViewport.south,
-        east: requestViewport.east,
-        north: requestViewport.north,
-        zoom: requestViewport.zoom,
-      })
-        .then((data) => {
+      Promise.all(requestViewports.map((requestViewport) => this._loadVectorData(requestViewport)))
+        .then((responses) => {
           if (this._componentAlive === false || requestSeq !== this._vectorRequestSeq) return
-          // 服务端已经按视野和缩放做曲率优先 LOD；客户端不能再等距抽点，
-          // 否则发卡弯会被二次拉成直线。
-          var prepared = heatmapMap.prepareTracks(data && data.tracks)
-          var style = vectorLineStyle(viewport.zoom)
-          this._vectorPreparedTracks = prepared
-          this.setData({
-            updating: false,
-            tileError: false,
-            polylines: heatmapMap.buildPolylines(
-              prepared,
-              'orange',
-              style.width,
-              style.opacity
-            ),
-          })
+          this._storeVectorFrames(requestViewports, responses)
+          this._renderVectorFrames(requestViewports, viewport)
         })
         .catch(() => {
           if (this._componentAlive === false || requestSeq !== this._vectorRequestSeq) return
@@ -381,38 +397,196 @@ Component({
         })
     },
 
-    _vectorRequestViewport(viewport) {
-      var zoom = Math.max(MIN_TILE_ZOOM, Math.min(20, Math.round(viewport.zoom)))
-      var count = Math.pow(2, zoom)
-      var minX = Math.max(0, tileXForLongitude(viewport.mapWest, zoom))
-      var maxX = Math.min(count - 1, tileXForLongitude(viewport.mapEast, zoom))
-      var minY = Math.max(0, tileYForLatitude(viewport.mapNorth, zoom))
-      var maxY = Math.min(count - 1, tileYForLatitude(viewport.mapSouth, zoom))
-      var vectorBlockSize = zoom >= 14 ? 4 : 2
-      minX = Math.max(0, Math.floor(minX / vectorBlockSize) * vectorBlockSize)
-      maxX = Math.min(
-        count - 1,
-        Math.ceil((maxX + 1) / vectorBlockSize) * vectorBlockSize - 1
-      )
-      minY = Math.max(0, Math.floor(minY / vectorBlockSize) * vectorBlockSize)
-      maxY = Math.min(
-        count - 1,
-        Math.ceil((maxY + 1) / vectorBlockSize) * vectorBlockSize - 1
-      )
+    _storeVectorFrames(requestViewports, responses) {
+      var frames = this._vectorBlockFrames || {}
+      var touch = Number(this._vectorFrameTouch) || 0
+      requestViewports.forEach(function (requestViewport, index) {
+        var data = responses[index]
+        var tracks = data && Array.isArray(data.tracks) ? data.tracks : []
+        touch += 1
+        if (frames[requestViewport.key]) {
+          frames[requestViewport.key].touched = touch
+          return
+        }
+        frames[requestViewport.key] = {
+          family: requestViewport.gridZoom + ':' + requestViewport.zoom,
+          preparedTracks: heatmapMap.prepareTracks(tracks),
+          touched: touch,
+        }
+        frames[requestViewport.key].pointCount = frames[requestViewport.key].preparedTracks
+          .reduce(function (sum, track) { return sum + track.length }, 0)
+        frames[requestViewport.key].lineCount = frames[requestViewport.key].preparedTracks.length
+      })
+      this._vectorBlockFrames = frames
+      this._vectorFrameTouch = touch
+    },
+
+    _renderVectorFrames(requestViewports, viewport) {
+      var frames = this._vectorBlockFrames || {}
+      var visibleKeys = requestViewports.map(function (item) { return item.key })
+      var visible = {}
+      visibleKeys.forEach(function (key) { visible[key] = true })
+      var family = requestViewports[0].gridZoom + ':' + requestViewports[0].zoom
+      var sameFamily = family === this._vectorDisplayFamily
+      var previousKeys = sameFamily && Array.isArray(this._vectorDisplayKeys)
+        ? this._vectorDisplayKeys.filter(function (key) { return Boolean(frames[key]) })
+        : []
+      var candidateKeys = previousKeys.slice()
+      visibleKeys.forEach(function (key) {
+        if (candidateKeys.indexOf(key) < 0) candidateKeys.push(key)
+      })
+      var keep = visibleKeys.filter(function (key, index) {
+        return Boolean(frames[key]) && visibleKeys.indexOf(key) === index
+      })
+      var usedPoints = keep.reduce(function (sum, key) {
+        return sum + (frames[key].pointCount || 0)
+      }, 0)
+      var usedLines = keep.reduce(function (sum, key) {
+        return sum + (frames[key].lineCount || 0)
+      }, 0)
+      candidateKeys.filter(function (key) { return !visible[key] && frames[key] })
+        .sort(function (left, right) { return frames[right].touched - frames[left].touched })
+        .forEach(function (key) {
+          var nextPoints = usedPoints + (frames[key].pointCount || 0)
+          var nextLines = usedLines + (frames[key].lineCount || 0)
+          if (
+            keep.length >= MAX_VECTOR_DISPLAY_BLOCKS
+            || nextPoints > MAX_VECTOR_DISPLAY_POINTS
+            || nextLines > MAX_VECTOR_DISPLAY_LINES
+          ) return
+          keep.push(key)
+          usedPoints = nextPoints
+          usedLines = nextLines
+        })
+      if (candidateKeys.length !== keep.length) {
+        var allowed = {}
+        keep.forEach(function (key) { allowed[key] = true })
+        candidateKeys = candidateKeys.filter(function (key) { return allowed[key] })
+      }
+      var style = vectorLineStyle(Number(viewport.scale || viewport.zoom))
+      var renderKey = ['orange', style.width, style.opacity].join(':')
+      var previousDisplayKeys = Array.isArray(this._vectorDisplayKeys)
+        ? this._vectorDisplayKeys
+        : []
+      var displayUnchanged = sameFamily
+        && renderKey === this._vectorDisplayRenderKey
+        && candidateKeys.length === previousDisplayKeys.length
+        && candidateKeys.every(function (key, index) { return key === previousDisplayKeys[index] })
+      if (displayUnchanged) {
+        if (this.data.updating) this.setData({ updating: false })
+        return false
+      }
+      var prepared = []
+      var polylines = []
+      candidateKeys.forEach(function (key) {
+        var frame = frames[key]
+        if (!frame) return
+        prepared.push.apply(prepared, frame.preparedTracks)
+        if (frame.renderKey !== renderKey) {
+          frame.renderKey = renderKey
+          frame.polylines = heatmapMap.buildPolylines(
+            frame.preparedTracks,
+            'orange',
+            style.width,
+            style.opacity
+          )
+        }
+        polylines.push.apply(polylines, frame.polylines)
+      })
+      this._vectorDisplayKeys = candidateKeys
+      this._vectorDisplayFamily = family
+      this._vectorDisplayRenderKey = renderKey
+      this._vectorPreparedTracks = prepared
+      this.setData({
+        updating: false,
+        tileError: false,
+        polylines: polylines,
+      })
+      return true
+    },
+
+    _vectorDataKey(requestViewport) {
+      return [
+        'vector',
+        heatmapTileCache.viewerScope(),
+        heatmapTileCache.userScope(this.data.userId),
+        heatmapTileCache.audienceScope(this.data.userId),
+        this._heatmapCacheVersion || ('g' + (this._heatmapGeneration || 0)),
+        'all',
+        requestViewport.key,
+      ].join(':')
+    },
+
+    _loadVectorData(requestViewport) {
+      return heatmapTileCache.loadData(this._vectorDataKey(requestViewport), () => api.get(
+        this._endpoint(), {
+          detail: 'viewport',
+          west: requestViewport.west,
+          south: requestViewport.south,
+          east: requestViewport.east,
+          north: requestViewport.north,
+          zoom: requestViewport.zoom,
+        }
+      ))
+    },
+
+    _vectorViewportForTileRange(gridZoom, minX, maxX, minY, maxY, lodZoom) {
+      var renderZoom = Number.isFinite(Number(lodZoom)) ? Number(lodZoom) : gridZoom
+      var count = Math.pow(2, gridZoom)
       var mapWest = minX / count * 360 - 180
       var mapEast = (maxX + 1) / count * 360 - 180
-      var mapNorth = latitudeForTileY(minY, zoom)
-      var mapSouth = latitudeForTileY(maxY + 1, zoom)
+      var mapNorth = latitudeForTileY(minY, gridZoom)
+      var mapSouth = latitudeForTileY(maxY + 1, gridZoom)
       var southwest = gcj02ToWgs84(mapSouth, mapWest)
       var northeast = gcj02ToWgs84(mapNorth, mapEast)
       return {
-        key: [zoom, minX, maxX, minY, maxY].join(':'),
-        zoom: zoom,
+        key: [gridZoom, renderZoom, minX, maxX, minY, maxY].join(':'),
+        zoom: renderZoom,
+        gridZoom: gridZoom,
+        count: count,
+        minX: minX,
+        maxX: maxX,
+        minY: minY,
+        maxY: maxY,
         west: southwest[1],
         south: southwest[0],
         east: northeast[1],
         north: northeast[0],
       }
+    },
+
+    _vectorRequestViewports(viewport) {
+      var visualScale = Number(viewport.scale || viewport.zoom)
+      var gridZoom = Math.max(MIN_TILE_ZOOM, Math.min(20, Math.round(visualScale)))
+      var lodZoom = vectorLodZoom(visualScale)
+      var count = Math.pow(2, gridZoom)
+      var minX = Math.max(0, tileXForLongitude(viewport.mapWest, gridZoom))
+      var maxX = Math.min(count - 1, tileXForLongitude(viewport.mapEast, gridZoom))
+      var minY = Math.max(0, tileYForLatitude(viewport.mapNorth, gridZoom))
+      var maxY = Math.min(count - 1, tileYForLatitude(viewport.mapSouth, gridZoom))
+      var vectorBlockSize = gridZoom >= 16 || gridZoom <= 13 ? 8 : 4
+      var firstX = Math.max(0, Math.floor(minX / vectorBlockSize) * vectorBlockSize)
+      var lastX = Math.min(count - 1, Math.floor(maxX / vectorBlockSize) * vectorBlockSize)
+      var firstY = Math.max(0, Math.floor(minY / vectorBlockSize) * vectorBlockSize)
+      var lastY = Math.min(count - 1, Math.floor(maxY / vectorBlockSize) * vectorBlockSize)
+      var blocks = []
+      for (var blockY = firstY; blockY <= lastY; blockY += vectorBlockSize) {
+        for (var blockX = firstX; blockX <= lastX; blockX += vectorBlockSize) {
+          blocks.push(this._vectorViewportForTileRange(
+            gridZoom,
+            blockX,
+            Math.min(count - 1, blockX + vectorBlockSize - 1),
+            blockY,
+            Math.min(count - 1, blockY + vectorBlockSize - 1),
+            lodZoom
+          ))
+        }
+      }
+      return blocks
+    },
+
+    _vectorRequestViewport(viewport) {
+      return this._vectorRequestViewports(viewport)[0]
     },
 
     _visibleTiles(viewport) {

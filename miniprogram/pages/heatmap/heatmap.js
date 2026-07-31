@@ -10,6 +10,15 @@ const HEATMAP_LINE_WIDTH = 3
 const HEATMAP_LINE_OPACITY = 'C8'
 const LEGACY_OVERVIEW_MAX_POINTS = 9000
 const GROUND_OVERLAY_ACK_TIMEOUT_MS = 4000
+const VECTOR_PREFETCH_CONCURRENCY = 2
+const VECTOR_PREFETCH_LIMIT = 8
+const VECTOR_LOD_AHEAD = 2
+const MAX_VECTOR_DISPLAY_BLOCKS = 16
+const MAX_VECTOR_DISPLAY_POINTS = 30000
+const MAX_VECTOR_DISPLAY_LINES = 1600
+const DENSE_VECTOR_POINT_THRESHOLD = 18000
+const DENSE_VECTOR_LINE_THRESHOLD = 1000
+const DENSE_VECTOR_PREFETCH_LIMIT = 2
 
 function isDeveloperTools() {
   try {
@@ -58,6 +67,14 @@ function vectorLineStyle(zoom) {
   // 只随缩放调整线宽，不再降低透明度；否则同一条红线缩小时会褪成浅粉色。
   if (zoom <= 11) return { width: 2, opacity: HEATMAP_LINE_OPACITY }
   return { width: HEATMAP_LINE_WIDTH, opacity: HEATMAP_LINE_OPACITY }
+}
+
+function vectorLodZoom(scale) {
+  var numericScale = Number(scale)
+  if (!Number.isFinite(numericScale)) numericScale = 10
+  // 矢量折线没有栅格瓦片的跨级缩放抗性，显示层始终提前两级取几何。
+  // 例如地图 scale=12.x 时直接用 z14 曲率，避免放大旧 z12 折线时弯道变长直线。
+  return Math.max(3, Math.min(20, Math.floor(numericScale + 0.001) + VECTOR_LOD_AHEAD))
 }
 
 function colorOptions(selectedKey) {
@@ -139,11 +156,18 @@ Page({
     this._metadataRequestSeq = (this._metadataRequestSeq || 0) + 1
     this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1
     this._vectorRequestSeq = (this._vectorRequestSeq || 0) + 1
+    this._vectorPrefetchSeq = (this._vectorPrefetchSeq || 0) + 1
     this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
     this._viewportReadRetries = 0
     this._clearTileOverlays()
     this._lastVectorSetKey = ''
+    this._lastVectorScale = NaN
     this._vectorPreparedTracks = []
+    this._vectorBlockFrames = {}
+    this._vectorDisplayKeys = []
+    this._vectorDisplayFamily = ''
+    this._vectorDisplayRenderKey = ''
+    this._vectorFrameTouch = 0
   },
 
   _endpoint() {
@@ -175,6 +199,12 @@ Page({
     this._viewportReadRetries = 0
     this._lastTileSetKey = ''
     this._lastVectorSetKey = ''
+    this._vectorBlockFrames = {}
+    this._vectorDisplayKeys = []
+    this._vectorDisplayFamily = ''
+    this._vectorDisplayRenderKey = ''
+    this._vectorPreparedTracks = []
+    this._vectorFrameTouch = 0
     var metadataRequestSeq = (this._metadataRequestSeq || 0) + 1
     this._metadataRequestSeq = metadataRequestSeq
     this.setData(initial ? { loading: true, error: '' } : { updating: true })
@@ -333,23 +363,28 @@ Page({
     var eventScale = Number(event.detail && event.detail.scale)
     if (Number.isFinite(eventScale)) this._lastMapScale = eventScale
     if (event.type === 'end') {
-      this._clearStaleVectorFrameForZoom(eventScale)
-      this._scheduleViewportRefresh(80)
+      var causedBy = String(event.causedBy || (event.detail && event.detail.causedBy) || '')
+      this._clearStaleVectorFrameForZoom(eventScale, causedBy === 'scale')
+      this._scheduleViewportRefresh(0)
     }
   },
 
-  _clearStaleVectorFrameForZoom(zoom) {
+  _clearStaleVectorFrameForZoom(zoom, forceScaleChange) {
     if (!this._preferVectorLayer || !Number.isFinite(Number(zoom))) return false
-    var nextZoom = Math.max(3, Math.min(20, Math.round(Number(zoom))))
+    var numericScale = Number(zoom)
+    var nextZoom = vectorLodZoom(numericScale)
     var previousZoom = Number(this._lastVectorZoom)
     if (!Number.isFinite(previousZoom) || previousZoom === nextZoom) return false
-    // 低倍率 LOD 被原生地图放大时会短暂形成浅色长线；缩放层级一变就撤掉旧帧，
-    // 宁可显示短暂的干净底图，也不把过期几何冒充成新倍率的轨迹。
+    // 旧实现会在这里先清空 polylines，随后等待接口返回再整屏重画，视觉上就是
+    // “一动就闪一下”。现在保留旧帧作为前台缓冲，只取消过时请求；新 LOD 的
+    // 所有可见固定块就绪后，再由 _renderVectorFrames 一次切换。
     this._lastVectorZoom = nextZoom
+    this._lastVectorScale = numericScale
     this._lastVectorSetKey = ''
-    this._vectorPreparedTracks = []
     this._vectorRequestSeq = (this._vectorRequestSeq || 0) + 1
-    this.setData({ polylines: [], updating: true })
+    if (!Array.isArray(this.data.polylines) || this.data.polylines.length === 0) {
+      this.setData({ updating: true })
+    }
     return true
   },
 
@@ -394,6 +429,7 @@ Page({
             var swWgs = gcj02ToWgs84(Number(southwest.latitude), Number(southwest.longitude))
             var neWgs = gcj02ToWgs84(Number(northeast.latitude), Number(northeast.longitude))
             var viewport = {
+              scale: Number(scale) || fallbackScale,
               zoom: Math.max(3, Math.min(20, Math.round(Number(scale) || fallbackScale))),
               west: swWgs[1],
               south: swWgs[0],
@@ -443,39 +479,154 @@ Page({
       if (this.data.updating) this.setData({ updating: false })
       return
     }
-    var requestViewport = this._vectorRequestViewport(viewport)
-    this._clearStaleVectorFrameForZoom(requestViewport.zoom)
-    if (requestViewport.key === this._lastVectorSetKey) {
+    var requestViewports = this._vectorRequestViewports(viewport)
+    if (!requestViewports.length) return
+    var requestKey = requestViewports.map(function (item) { return item.key }).join('|')
+    this._clearStaleVectorFrameForZoom(viewport.scale || viewport.zoom)
+    if (requestKey === this._lastVectorSetKey) {
       if (this.data.updating) this.setData({ updating: false })
       return
     }
-    this._lastVectorSetKey = requestViewport.key
-    this._lastVectorZoom = requestViewport.zoom
+    this._vectorPrefetchSeq = (this._vectorPrefetchSeq || 0) + 1
+    if (this._vectorPrefetchTimer) clearTimeout(this._vectorPrefetchTimer)
+    this._vectorPrefetchTimer = null
+    this._lastVectorSetKey = requestKey
+    this._lastVectorZoom = requestViewports[0].zoom
+    this._lastVectorScale = Number(viewport.scale || viewport.zoom)
     var requestSeq = (this._vectorRequestSeq || 0) + 1
     this._vectorRequestSeq = requestSeq
     this.setData({ updating: !Array.isArray(this.data.polylines) || this.data.polylines.length === 0 })
-    this._loadVectorData(requestViewport)
-      .then((data) => {
+    Promise.all(requestViewports.map((item) => this._loadVectorData(item)))
+      .then((responses) => {
         if (this._pageAlive === false || requestSeq !== this._vectorRequestSeq) return
-        var prepared = heatmapMap.prepareTracks(data && data.tracks)
-        var style = vectorLineStyle(viewport.zoom)
-        this._vectorPreparedTracks = prepared
-        this.setData({
-          updating: false,
-          polylines: heatmapMap.buildPolylines(
-            prepared,
-            this.data.selectedColor,
-            style.width,
-            style.opacity
-          ),
-        })
-        this._prefetchVectorNeighbors(requestViewport)
+        this._storeVectorFrames(requestViewports, responses)
+        this._renderVectorFrames(requestViewports, viewport)
+        this._prefetchVectorNeighbors(requestViewports, viewport)
       })
       .catch(() => {
         if (this._pageAlive === false || requestSeq !== this._vectorRequestSeq) return
         this._lastVectorSetKey = ''
         this.setData({ updating: false })
       })
+  },
+
+  _storeVectorFrames(requestViewports, responses) {
+    var frames = this._vectorBlockFrames || {}
+    var touch = Number(this._vectorFrameTouch) || 0
+    requestViewports.forEach(function (requestViewport, index) {
+      var data = responses[index]
+      var tracks = data && Array.isArray(data.tracks) ? data.tracks : []
+      touch += 1
+      if (frames[requestViewport.key]) {
+        frames[requestViewport.key].touched = touch
+        return
+      }
+      frames[requestViewport.key] = {
+        family: requestViewport.gridZoom + ':' + requestViewport.zoom,
+        preparedTracks: heatmapMap.prepareTracks(tracks),
+        touched: touch,
+      }
+      frames[requestViewport.key].pointCount = frames[requestViewport.key].preparedTracks
+        .reduce(function (sum, track) { return sum + track.length }, 0)
+      frames[requestViewport.key].lineCount = frames[requestViewport.key].preparedTracks.length
+    })
+    this._vectorBlockFrames = frames
+    this._vectorFrameTouch = touch
+  },
+
+  _renderVectorFrames(requestViewports, viewport, prefetchedViewports) {
+    var frames = this._vectorBlockFrames || {}
+    var visibleKeys = requestViewports.map(function (item) { return item.key })
+    var visible = {}
+    visibleKeys.forEach(function (key) { visible[key] = true })
+    var family = requestViewports[0].gridZoom + ':' + requestViewports[0].zoom
+    var sameFamily = family === this._vectorDisplayFamily
+    var previousKeys = sameFamily && Array.isArray(this._vectorDisplayKeys)
+      ? this._vectorDisplayKeys.filter(function (key) { return Boolean(frames[key]) })
+      : []
+
+    // 同倍率平移只追加新固定块。达到上限时先保留当前屏幕，再保留最近访问的
+    // 旧块；这样连续拖动不会反复销毁并重建仍在附近的折线。
+    var candidateKeys = previousKeys.slice()
+    visibleKeys.forEach(function (key) {
+      if (candidateKeys.indexOf(key) < 0) candidateKeys.push(key)
+    })
+    ;(Array.isArray(prefetchedViewports) ? prefetchedViewports : []).forEach(function (item) {
+      if (item && candidateKeys.indexOf(item.key) < 0) candidateKeys.push(item.key)
+    })
+
+    var keep = visibleKeys.filter(function (key, index) {
+      return Boolean(frames[key]) && visibleKeys.indexOf(key) === index
+    })
+    var usedPoints = keep.reduce(function (sum, key) {
+      return sum + (frames[key].pointCount || 0)
+    }, 0)
+    var usedLines = keep.reduce(function (sum, key) {
+      return sum + (frames[key].lineCount || 0)
+    }, 0)
+    candidateKeys.filter(function (key) { return !visible[key] && frames[key] })
+      .sort(function (left, right) { return frames[right].touched - frames[left].touched })
+      .forEach(function (key) {
+        var nextPoints = usedPoints + (frames[key].pointCount || 0)
+        var nextLines = usedLines + (frames[key].lineCount || 0)
+        if (
+          keep.length >= MAX_VECTOR_DISPLAY_BLOCKS
+          || nextPoints > MAX_VECTOR_DISPLAY_POINTS
+          || nextLines > MAX_VECTOR_DISPLAY_LINES
+        ) return
+        keep.push(key)
+        usedPoints = nextPoints
+        usedLines = nextLines
+      })
+    if (candidateKeys.length !== keep.length) {
+      var allowed = {}
+      keep.forEach(function (key) { allowed[key] = true })
+      candidateKeys = candidateKeys.filter(function (key) { return allowed[key] })
+    }
+
+    var style = vectorLineStyle(Number(viewport.scale || viewport.zoom))
+    var prepared = []
+    var polylines = []
+    var renderKey = [
+      this.data.selectedColor,
+      style.width,
+      style.opacity,
+    ].join(':')
+    var previousDisplayKeys = Array.isArray(this._vectorDisplayKeys)
+      ? this._vectorDisplayKeys
+      : []
+    var displayUnchanged = sameFamily
+      && renderKey === this._vectorDisplayRenderKey
+      && candidateKeys.length === previousDisplayKeys.length
+      && candidateKeys.every(function (key, index) { return key === previousDisplayKeys[index] })
+    if (displayUnchanged) {
+      if (this.data.updating) this.setData({ updating: false })
+      return false
+    }
+    candidateKeys.forEach(function (key) {
+      var frame = frames[key]
+      if (!frame) return
+      prepared.push.apply(prepared, frame.preparedTracks)
+      if (frame.renderKey !== renderKey) {
+        frame.renderKey = renderKey
+        frame.polylines = heatmapMap.buildPolylines(
+          frame.preparedTracks,
+          this.data.selectedColor,
+          style.width,
+          style.opacity
+        )
+      }
+      polylines.push.apply(polylines, frame.polylines)
+    }, this)
+    this._vectorDisplayKeys = candidateKeys
+    this._vectorDisplayFamily = family
+    this._vectorDisplayRenderKey = renderKey
+    this._vectorPreparedTracks = prepared
+    this.setData({
+      updating: false,
+      polylines: polylines,
+    })
+    return true
   },
 
   _vectorDataKey(requestViewport) {
@@ -505,45 +656,130 @@ Page({
     ))
   },
 
-  _prefetchVectorNeighbors(requestViewport) {
-    if (requestViewport.zoom < 14 || this._pageAlive === false) return
+  _prefetchVectorNeighbors(requestViewports, viewport) {
+    if (
+      !Array.isArray(requestViewports) || !requestViewports.length
+      || requestViewports[0].gridZoom < 10 || this._pageAlive === false
+    ) return
     if (this._vectorPrefetchTimer) clearTimeout(this._vectorPrefetchTimer)
+    var prefetchSeq = (this._vectorPrefetchSeq || 0) + 1
+    this._vectorPrefetchSeq = prefetchSeq
     this._vectorPrefetchTimer = setTimeout(() => {
       this._vectorPrefetchTimer = null
-      if (this._pageAlive === false) return
-      var width = requestViewport.maxX - requestViewport.minX + 1
-      var height = requestViewport.maxY - requestViewport.minY + 1
-      ;[
-        [-1, 0], [1, 0], [0, -1], [0, 1],
-        [-1, -1], [1, -1], [-1, 1], [1, 1],
-      ].forEach((offset) => {
-        var minX = requestViewport.minX + offset[0] * width
-        var minY = requestViewport.minY + offset[1] * height
-        var maxX = minX + width - 1
-        var maxY = minY + height - 1
-        if (
-          minX < 0 || minY < 0
-          || maxX >= requestViewport.count || maxY >= requestViewport.count
-        ) return
-        var neighbor = this._vectorViewportForTileRange(
-          requestViewport.zoom, minX, maxX, minY, maxY
-        )
-        this._loadVectorData(neighbor).catch(function () {})
+      if (this._pageAlive === false || prefetchSeq !== this._vectorPrefetchSeq) return
+      var visible = {}
+      requestViewports.forEach(function (item) { visible[item.key] = true })
+      var candidates = {}
+      requestViewports.forEach((item) => {
+        var width = item.maxX - item.minX + 1
+        var height = item.maxY - item.minY + 1
+        ;[
+          [-1, 0], [1, 0], [0, -1], [0, 1],
+          [-1, -1], [1, -1], [-1, 1], [1, 1],
+        ].forEach((offset) => {
+          var minX = item.minX + offset[0] * width
+          var minY = item.minY + offset[1] * height
+          var maxX = minX + width - 1
+          var maxY = minY + height - 1
+          if (
+            minX < 0 || minY < 0
+            || maxX >= item.count || maxY >= item.count
+          ) return
+          var neighbor = this._vectorViewportForTileRange(
+            item.gridZoom, minX, maxX, minY, maxY, item.zoom
+          )
+          if (!visible[neighbor.key]) candidates[neighbor.key] = neighbor
+        })
       })
-    }, 120)
+      var centerX = requestViewports.reduce(function (sum, item) {
+        return sum + (item.minX + item.maxX) / 2
+      }, 0) / requestViewports.length
+      var centerY = requestViewports.reduce(function (sum, item) {
+        return sum + (item.minY + item.maxY) / 2
+      }, 0) / requestViewports.length
+      var mapCenter = {
+        x: (Number(viewport.mapWest) + Number(viewport.mapEast)) / 2,
+        y: (Number(viewport.mapSouth) + Number(viewport.mapNorth)) / 2,
+      }
+      var previousCenter = this._lastVectorViewportCenter
+      var directionX = previousCenter ? mapCenter.x - previousCenter.x : 0
+      var directionY = previousCenter ? mapCenter.y - previousCenter.y : 0
+      this._lastVectorViewportCenter = mapCenter
+      var queue = Object.keys(candidates).map(function (key) { return candidates[key] })
+      queue.sort(function (left, right) {
+        var leftX = (left.minX + left.maxX) / 2 - centerX
+        var leftY = (left.minY + left.maxY) / 2 - centerY
+        var rightX = (right.minX + right.maxX) / 2 - centerX
+        var rightY = (right.minY + right.maxY) / 2 - centerY
+        var leftForward = leftX * directionX - leftY * directionY
+        var rightForward = rightX * directionX - rightY * directionY
+        if (leftForward !== rightForward) return rightForward - leftForward
+        return Math.hypot(leftX, leftY) - Math.hypot(rightX, rightY)
+      })
+      queue = queue.slice(0, VECTOR_PREFETCH_LIMIT)
+      var visiblePoints = requestViewports.reduce((sum, item) => {
+        var frame = (this._vectorBlockFrames || {})[item.key]
+        return sum + (frame && frame.pointCount || 0)
+      }, 0)
+      var visibleLines = requestViewports.reduce((sum, item) => {
+        var frame = (this._vectorBlockFrames || {})[item.key]
+        return sum + (frame && frame.lineCount || 0)
+      }, 0)
+      if (
+        visiblePoints >= DENSE_VECTOR_POINT_THRESHOLD
+        || visibleLines >= DENSE_VECTOR_LINE_THRESHOLD
+      ) {
+        queue = queue.slice(0, DENSE_VECTOR_PREFETCH_LIMIT)
+      }
+      var pending = queue.length
+      var prefetched = []
+      var visibleRequestKey = requestViewports.map(function (item) { return item.key }).join('|')
+      if (!pending) return
+      var finishOne = (requestViewport, data) => {
+        if (data) {
+          this._storeVectorFrames([requestViewport], [data])
+          prefetched.push(requestViewport)
+        }
+        pending -= 1
+        if (
+          pending === 0 && prefetched.length
+          && this._pageAlive !== false
+          && prefetchSeq === this._vectorPrefetchSeq
+          && visibleRequestKey === this._lastVectorSetKey
+        ) {
+          // 邻块在用户静止时一次并入持久图层。之后在这一圈内平移，
+          // requestKey 即使变化也不会再触碰 polylines，更不会切帧。
+          this._renderVectorFrames(requestViewports, viewport, prefetched)
+        }
+      }
+      var runNext = () => {
+        if (
+          this._pageAlive === false || prefetchSeq !== this._vectorPrefetchSeq
+          || !queue.length
+        ) return
+        var next = queue.shift()
+        this._loadVectorData(next)
+          .then((data) => { finishOne(next, data) })
+          .catch(() => { finishOne(next, null) })
+          .then(runNext)
+      }
+      for (var worker = 0; worker < VECTOR_PREFETCH_CONCURRENCY; worker++) runNext()
+    }, 0)
   },
 
-  _vectorViewportForTileRange(zoom, minX, maxX, minY, maxY) {
-    var count = Math.pow(2, zoom)
+  _vectorViewportForTileRange(gridZoom, minX, maxX, minY, maxY, lodZoom) {
+    var renderZoom = Number.isFinite(Number(lodZoom)) ? Number(lodZoom) : gridZoom
+    var count = Math.pow(2, gridZoom)
     var mapWest = minX / count * 360 - 180
     var mapEast = (maxX + 1) / count * 360 - 180
-    var mapNorth = latitudeForTileY(minY, zoom)
-    var mapSouth = latitudeForTileY(maxY + 1, zoom)
+    var mapNorth = latitudeForTileY(minY, gridZoom)
+    var mapSouth = latitudeForTileY(maxY + 1, gridZoom)
     var southwest = gcj02ToWgs84(mapSouth, mapWest)
     var northeast = gcj02ToWgs84(mapNorth, mapEast)
     return {
-      key: [zoom, minX, maxX, minY, maxY].join(':'),
-      zoom: zoom,
+      key: [gridZoom, renderZoom, minX, maxX, minY, maxY].join(':'),
+      zoom: renderZoom,
+      gridZoom: gridZoom,
       count: count,
       minX: minX,
       maxX: maxX,
@@ -556,29 +792,43 @@ Page({
     }
   },
 
+  _vectorRequestViewports(viewport) {
+    // 固定块可以像真正的 z/x/y 瓦片一样拼装。旧实现把整个可见范围缓存成一个
+    // 可变长矩形；跨边界后 4x4 会变成 8x4，刚预取的邻块完全无法复用。
+    var visualScale = Number(viewport.scale || viewport.zoom)
+    var gridZoom = Math.max(3, Math.min(20, Math.round(visualScale)))
+    var lodZoom = vectorLodZoom(visualScale)
+    var count = Math.pow(2, gridZoom)
+    var minX = Math.max(0, tileXForLongitude(viewport.mapWest, gridZoom))
+    var maxX = Math.min(count - 1, tileXForLongitude(viewport.mapEast, gridZoom))
+    var minY = Math.max(0, tileYForLatitude(viewport.mapNorth, gridZoom))
+    var maxY = Math.min(count - 1, tileYForLatitude(viewport.mapSouth, gridZoom))
+    // 所有常用倍率都使用固定且互不重叠的块。原先 z<14 会把视野动态扩成
+    // 2/4/6... 个瓦片宽，移动一点缓存键就变，旧块也无法与新块拼接。
+    // 城市总览用 8x8 覆盖更大范围；z14-z15 用 4x4 控制密集区点数。
+    var vectorBlockSize = gridZoom >= 16 || gridZoom <= 13 ? 8 : 4
+    var firstX = Math.max(0, Math.floor(minX / vectorBlockSize) * vectorBlockSize)
+    var lastX = Math.min(count - 1, Math.floor(maxX / vectorBlockSize) * vectorBlockSize)
+    var firstY = Math.max(0, Math.floor(minY / vectorBlockSize) * vectorBlockSize)
+    var lastY = Math.min(count - 1, Math.floor(maxY / vectorBlockSize) * vectorBlockSize)
+    var blocks = []
+    for (var blockY = firstY; blockY <= lastY; blockY += vectorBlockSize) {
+      for (var blockX = firstX; blockX <= lastX; blockX += vectorBlockSize) {
+        blocks.push(this._vectorViewportForTileRange(
+          gridZoom,
+          blockX,
+          Math.min(count - 1, blockX + vectorBlockSize - 1),
+          blockY,
+          Math.min(count - 1, blockY + vectorBlockSize - 1),
+          lodZoom
+        ))
+      }
+    }
+    return blocks
+  },
+
   _vectorRequestViewport(viewport) {
-    // 请求边界吸附到地图瓦片网格。同一组可见瓦片内拖动只复用当前帧；跨格才请求，
-    // 同时保证新视野边缘已经包含在上一次响应中，不会用“缓存”换来缺线。
-    var zoom = Math.max(3, Math.min(20, Math.round(viewport.zoom)))
-    var count = Math.pow(2, zoom)
-    var minX = Math.max(0, tileXForLongitude(viewport.mapWest, zoom))
-    var maxX = Math.min(count - 1, tileXForLongitude(viewport.mapEast, zoom))
-    var minY = Math.max(0, tileYForLatitude(viewport.mapNorth, zoom))
-    var maxY = Math.min(count - 1, tileYForLatitude(viewport.mapSouth, zoom))
-    // 低倍率按 2x2、高倍率按 4x4 supertile 预取。z15-z19 拖动时不再每跨一个
-    // 约百米小瓦片就请求一次；地图自身会裁掉块内屏幕外的轨迹。
-    var vectorBlockSize = zoom >= 14 ? 4 : 2
-    minX = Math.max(0, Math.floor(minX / vectorBlockSize) * vectorBlockSize)
-    maxX = Math.min(
-      count - 1,
-      Math.ceil((maxX + 1) / vectorBlockSize) * vectorBlockSize - 1
-    )
-    minY = Math.max(0, Math.floor(minY / vectorBlockSize) * vectorBlockSize)
-    maxY = Math.min(
-      count - 1,
-      Math.ceil((maxY + 1) / vectorBlockSize) * vectorBlockSize - 1
-    )
-    return this._vectorViewportForTileRange(zoom, minX, maxX, minY, maxY)
+    return this._vectorRequestViewports(viewport)[0]
   },
 
   _visibleTiles(viewport) {

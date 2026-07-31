@@ -15,7 +15,7 @@ from io import BytesIO
 import json
 import math
 from threading import RLock
-from time import monotonic, sleep
+from time import monotonic, sleep, time_ns
 from weakref import WeakValueDictionary
 import zlib
 
@@ -60,7 +60,10 @@ _DETAIL_SOURCE_MEMORY_TTL_SEC = 60
 _DETAIL_SOURCE_MEMORY_MAX_ITEMS = 128
 _VECTOR_CACHE_TTL_SEC = 900
 _VECTOR_CACHE_PREFIX = "heatmap:vector:v3:user_"
+_VECTOR_LRU_PREFIX = "heatmap:vector:lru:v1:user_"
 _VECTOR_MAX_CACHE_KEYS = 16
+_AVAILABLE_YEARS_REDIS_PREFIX = "heatmap:years:v1:user_"
+_AVAILABLE_YEARS_REDIS_TTL_SEC = 7 * 86400
 _VECTOR_TOTAL_POINT_BUDGET = 14_000
 _VECTOR_POINTS_PER_SEGMENT = 320
 _DERIVED_BUILD_LOCK_TTL_SEC = 30
@@ -1516,6 +1519,43 @@ def _available_heatmap_years(
     )
 
 
+def _available_heatmap_years_cached(
+    db: Session,
+    user_id: int,
+    include_private: bool,
+    generation: int,
+    activity_fingerprint: str,
+    privacy_fingerprint: str | None,
+    redis_client,
+) -> list[int]:
+    """按数据代缓存年份，固定块视野请求不能各自重复扫描 Trackpoint。"""
+    key = (
+        f"{_AVAILABLE_YEARS_REDIS_PREFIX}{user_id}:g{generation}:"
+        f"data_{activity_fingerprint}:"
+        f"audience_{'owner' if include_private else 'public'}"
+    )
+    if privacy_fingerprint is not None:
+        key += f":privacy_{privacy_fingerprint}"
+    try:
+        cached = redis_client.get(key)
+        if isinstance(cached, bytes):
+            decoded = json.loads(cached.decode())
+            if isinstance(decoded, list):
+                return [int(year) for year in decoded]
+    except Exception:
+        pass
+    years = _available_heatmap_years(db, user_id, include_private, None)
+    try:
+        redis_client.setex(
+            key,
+            _AVAILABLE_YEARS_REDIS_TTL_SEC,
+            json.dumps(years, separators=(",", ":")).encode(),
+        )
+    except Exception:
+        pass
+    return years
+
+
 def _heatmap_activity_ids_for_city(
     db: Session,
     user_id: int,
@@ -1753,12 +1793,6 @@ def get_user_heatmap_overview(
         include_private,
         city,
     )
-    available_years = _available_heatmap_years(
-        db,
-        user_id,
-        include_private,
-        activity_ids,
-    )
     if redis_client is None:
         redis_client = _get_redis_client()
     if generation is None:
@@ -1776,6 +1810,24 @@ def get_user_heatmap_overview(
             user_id,
             include_private,
         )
+    available_years = (
+        _available_heatmap_years_cached(
+            db,
+            user_id,
+            include_private,
+            generation,
+            activity_fingerprint,
+            privacy_fingerprint,
+            redis_client,
+        )
+        if activity_ids is None
+        else _available_heatmap_years(
+            db,
+            user_id,
+            include_private,
+            activity_ids,
+        )
+    )
     cache_version = _heatmap_cache_version(generation, activity_fingerprint)
 
     segments = _get_overview_segments_cached(
@@ -1822,8 +1874,15 @@ def get_user_heatmap_overview(
     }
 
 
+def _touch_vector_cache(redis_client, user_id: int, cache_key: str) -> None:
+    lru_key = f"{_VECTOR_LRU_PREFIX}{user_id}"
+    redis_client.expire(cache_key, _VECTOR_CACHE_TTL_SEC)
+    redis_client.zadd(lru_key, {cache_key: time_ns()})
+    redis_client.expire(lru_key, _VECTOR_CACHE_TTL_SEC)
+
+
 def _trim_vector_cache(redis_client, user_id: int, current_key: str) -> None:
-    """连续拖图时每个用户最多保留少量视野帧，防降级数据在 Redis 中无限堆积。"""
+    """按最近使用淘汰矢量视野帧，防止预取随机删掉刚访问的高密度块。"""
     try:
         keys = [
             key
@@ -1832,17 +1891,44 @@ def _trim_vector_cache(redis_client, user_id: int, current_key: str) -> None:
                 key.decode() if isinstance(key, bytes) else str(key)
             ).endswith(":build")
         ]
+        _touch_vector_cache(redis_client, user_id, current_key)
+        lru_key = f"{_VECTOR_LRU_PREFIX}{user_id}"
+        actual = {
+            key.decode() if isinstance(key, bytes) else str(key): key
+            for key in keys
+        }
+        missing = {
+            key: 0
+            for key in actual
+            if redis_client.zscore(lru_key, key) is None
+        }
+        if missing:
+            redis_client.zadd(lru_key, missing)
+        members = redis_client.zrange(lru_key, 0, -1)
+        member_names = [
+            item.decode() if isinstance(item, bytes) else str(item)
+            for item in members
+        ]
+        stale = [item for item in member_names if item not in actual]
+        if stale:
+            redis_client.zrem(lru_key, *stale)
         if len(keys) <= _VECTOR_MAX_CACHE_KEYS:
             return
-        current_bytes = current_key.encode()
         overflow = len(keys) - _VECTOR_MAX_CACHE_KEYS
         victims = [
-            key
-            for key in keys
-            if key != current_key and key != current_bytes
+            actual[name]
+            for name in member_names
+            if name in actual and name != current_key
         ][:overflow]
         if victims:
             redis_client.delete(*victims)
+            redis_client.zrem(
+                lru_key,
+                *[
+                    key.decode() if isinstance(key, bytes) else str(key)
+                    for key in victims
+                ],
+            )
     except Exception:
         pass
 
@@ -1927,6 +2013,10 @@ def get_user_heatmap_viewport(
     except Exception:
         pass
     if cached_result is not None:
+        try:
+            _touch_vector_cache(redis_client, user_id, cache_key)
+        except Exception:
+            pass
         if activity_snapshot_changed():
             return retry_after_activity_snapshot_change()
         return cached_result
@@ -2000,20 +2090,14 @@ def get_user_heatmap_viewport(
             (south + north) / 2,
             total_point_budget=_vector_point_budget_for_zoom(zoom),
         )
-        available_year_rows = (
-            db.query(Activity.started_at)
-            .join(Trackpoint, Trackpoint.activity_id == Activity.id)
-            .filter(*_activity_filters(user_id, None, include_private))
-            .distinct()
-            .all()
-        )
-        available_years = sorted(
-            {
-                started_at.astimezone(_BEIJING_TZ).year
-                for (started_at,) in available_year_rows
-                if isinstance(started_at, datetime)
-            },
-            reverse=True,
+        available_years = _available_heatmap_years_cached(
+            db,
+            user_id,
+            include_private,
+            generation,
+            activity_fingerprint,
+            privacy_fingerprint,
+            redis_client,
         )
         result = {
             "city": None,

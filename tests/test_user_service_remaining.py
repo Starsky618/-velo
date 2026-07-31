@@ -98,7 +98,8 @@ def _cleanup_redis(redis_client, user_id: int):
     redis_client.delete(f"heatmap:generation:user_{user_id}")
     for prefix in (
         "heatmap:v5:user_", "heatmap:v4:user_", "heatmap:v3:user_", "heatmap:v2:user_",
-        "heatmap:vector:v3:user_", "heatmap:vector:v2:user_", "heatmap:raster:v2:user_",
+        "heatmap:vector:v3:user_", "heatmap:vector:lru:v1:user_",
+        "heatmap:vector:v2:user_", "heatmap:raster:v2:user_",
         "heatmap:raster:v2:source:user_",
         "heatmap:detail:v1:user_",
         "heatmap:user_", "heatmap:vector:v1:user_", "heatmap:raster:v1:user_",

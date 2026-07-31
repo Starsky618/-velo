@@ -24,6 +24,7 @@ from app.user.service_heatmap_tiles import (
     _claim_derived_cache_build,
     _clip_vector_segments_to_bounds,
     _DETAIL_SOURCE_CHUNK_CACHE,
+    _available_heatmap_years_cached,
     _get_detail_segments_cached_for_bounds,
     _get_overview_segments_cached,
     _get_overview_map_segments_cached,
@@ -442,6 +443,26 @@ def test_cached_overview_source_clips_to_viewport_and_keeps_crossing_segment():
     assert clipped == {7: [[(112.0, 37.8), (112.5, 37.8), (113.0, 37.8)]]}
 
 
+def test_available_heatmap_years_cache_avoids_per_block_trackpoint_query():
+    redis = Mock()
+    redis.get.return_value = b"[2026,2025]"
+    db = Mock()
+
+    years = _available_heatmap_years_cached(
+        db,
+        42,
+        True,
+        9,
+        "data-v1",
+        None,
+        redis,
+    )
+
+    assert years == [2026, 2025]
+    db.query.assert_not_called()
+    redis.setex.assert_not_called()
+
+
 def test_vector_viewport_cache_reuses_overview_source_without_second_db_scan():
     redis = Mock()
     redis.get.side_effect = [b"9", None]
@@ -486,6 +507,8 @@ def test_vector_viewport_cache_reuses_overview_source_without_second_db_scan():
     assert redis.setex.call_args.args[0].startswith(
         "heatmap:vector:v3:user_42:g9:data_data-v1:year_all:audience_owner:"
     )
+    redis.expire.assert_any_call(redis.setex.call_args.args[0], 900)
+    redis.zadd.assert_called()
 
 
 def test_high_zoom_vector_viewport_falls_back_to_raw_when_detail_source_is_missing():
@@ -606,16 +629,23 @@ def test_vector_viewport_rejects_invalid_bounds_and_zoom(viewport):
 
 def test_vector_cache_is_capped_per_user_after_continuous_pan():
     redis = Mock()
-    redis.scan_iter.return_value = [
+    keys = [
         f"heatmap:vector:v3:user_42:view_{index}".encode()
         for index in range(18)
     ]
+    redis.scan_iter.return_value = keys
+    redis.zscore.return_value = None
+    redis.zrange.return_value = keys
     current = "heatmap:vector:v3:user_42:view_17"
 
     _trim_vector_cache(redis, 42, current)
 
     assert redis.delete.call_count == 1
     assert len(redis.delete.call_args.args) == 2
+    assert redis.delete.call_args.args == (
+        b"heatmap:vector:v3:user_42:view_0",
+        b"heatmap:vector:v3:user_42:view_1",
+    )
     assert current.encode() not in redis.delete.call_args.args
 
 

@@ -76,7 +76,9 @@ _HEATMAP_PREVIOUS_V3_CACHE_PREFIX = "heatmap:v3:user_"
 _HEATMAP_PREVIOUS_CACHE_PREFIX = "heatmap:v2:user_"
 _HEATMAP_LEGACY_CACHE_PREFIX = "heatmap:user_"
 _HEATMAP_DERIVED_CACHE_PREFIXES = (
+    "heatmap:years:v1:user_",
     "heatmap:vector:v3:user_",
+    "heatmap:vector:lru:v1:user_",
     "heatmap:vector:v2:user_",
     "heatmap:raster:v2:user_",
     "heatmap:raster:v2:source:user_",

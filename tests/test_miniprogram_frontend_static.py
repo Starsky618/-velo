@@ -309,7 +309,7 @@ def test_heatmap_card_uses_one_interactive_native_map_and_opens_fullscreen():
     assert "gcj02ToWgs84" in js
     assert "this._preferVectorLayer = isDeveloperTools()" in js
     assert "_vectorRequestViewport" in js
-    assert "vectorBlockSize = zoom >= 14 ? 4 : 2" in js
+    assert "vectorBlockSize = gridZoom >= 16 || gridZoom <= 13 ? 8 : 4" in js
     assert "opacity: HEATMAP_LINE_OPACITY" in js
     assert "&v=" in js
     assert "limitTrackPoints(" not in js
@@ -361,12 +361,14 @@ const viewport = {
 
 ;(async function () {
   component._preferVectorLayer = true
+  const visibleCount = component._vectorRequestViewports(viewport).length
   component._fetchViewport(viewport)
   await new Promise(setImmediate); await new Promise(setImmediate)
-  assert.strictEqual(calls.length, 1)
+  assert.strictEqual(calls.length, visibleCount)
   assert.strictEqual(calls[0].params.detail, 'viewport')
+  assert.strictEqual(calls[0].params.zoom, 13)
   assert.strictEqual(component.data.tileError, false)
-  assert.strictEqual(component.data.polylines.length, 1)
+  assert.strictEqual(component.data.polylines.length, visibleCount)
   assert.strictEqual(component.data.polylines[0].points.length, 3)
   assert.strictEqual(component.data.polylines[0].color, '#FF6B00C8')
   component._fetchViewport(Object.assign({}, viewport, {
@@ -374,14 +376,14 @@ const viewport = {
     mapWest: 112.401, mapSouth: 37.701, mapEast: 112.701, mapNorth: 38.001,
   }))
   await new Promise(setImmediate)
-  assert.strictEqual(calls.length, 1)
+  assert.strictEqual(calls.length, visibleCount)
 })().catch(function (error) { console.error(error); process.exit(1) })
 """
 
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
-def test_heatmap_red_stays_strong_when_zoomed_out_and_stale_zoom_frame_clears():
+def test_heatmap_red_stays_strong_and_fractional_zoom_keeps_existing_frame():
     script = """
 const assert = require('assert')
 const apiPath = require.resolve('./miniprogram/utils/api')
@@ -414,14 +416,337 @@ const viewport = {
   page._refreshVectorLayer(viewport)
   await new Promise(setImmediate); await new Promise(setImmediate)
   assert.strictEqual(page.data.polylines[0].color, '#FF174FC8')
-  assert.strictEqual(page._lastVectorZoom, 10)
+  assert.strictEqual(page._lastVectorZoom, 12)
+  const previousPolylines = page.data.polylines
+  const previousKey = page._lastVectorSetKey
 
-  page.onMapRegionChange({ type: 'end', detail: { scale: 14 } })
-  assert.deepStrictEqual(page.data.polylines, [])
-  assert.strictEqual(page.data.updating, true)
-  assert.strictEqual(page._lastVectorZoom, 14)
-  assert.strictEqual(page._lastVectorSetKey, '')
-  assert.strictEqual(page._scheduledDelay, 80)
+  page.onMapRegionChange({ type: 'end', causedBy: 'scale', detail: { scale: 10.3 } })
+  assert.strictEqual(page.data.polylines, previousPolylines)
+  assert.strictEqual(page.data.updating, false)
+  assert.strictEqual(page._lastVectorZoom, 12)
+  assert.strictEqual(page._lastVectorSetKey, previousKey)
+  assert.strictEqual(page._scheduledDelay, 0)
+
+  page._refreshVectorLayer(Object.assign({}, viewport, { scale: 10.3 }))
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(page.data.polylines[0].color, '#FF174FC8')
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_vector_view_uses_composable_fixed_blocks_across_pan_boundary():
+    script = """
+const assert = require('assert')
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const page = Object.assign({}, pageDefinition)
+const zoom = 16
+const count = Math.pow(2, zoom)
+const blockX = 53240
+const blockY = 25200
+const lon = function (x) { return x / count * 360 - 180 }
+const lat = function (y) {
+  const mercator = Math.PI * (1 - 2 * y / count)
+  return Math.atan(Math.sinh(mercator)) * 180 / Math.PI
+}
+const base = {
+  west: 112.4, south: 37.7, east: 112.7, north: 38.0, zoom: zoom,
+  mapWest: lon(blockX + 1.1), mapEast: lon(blockX + 7.5),
+  mapNorth: lat(blockY + 1.1), mapSouth: lat(blockY + 7.5),
+}
+const first = page._vectorRequestViewports(base)
+const crossed = page._vectorRequestViewports(Object.assign({}, base, {
+  mapWest: lon(blockX + 7.5),
+  mapEast: lon(blockX + 9.5),
+}))
+assert.strictEqual(first.length, 1)
+assert.strictEqual(crossed.length, 2)
+assert.strictEqual(crossed[0].key, first[0].key)
+assert.strictEqual(crossed[0].maxX - crossed[0].minX + 1, 8)
+assert.strictEqual(crossed[1].minX, crossed[0].maxX + 1)
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_vector_pan_keeps_old_frame_until_missing_block_is_ready_then_appends():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const calls = []
+const resolvers = []
+require.cache[apiPath] = { exports: {
+  get: function (url, params) {
+    calls.push({ url: url, params: params })
+    return new Promise(function (resolve) { resolvers.push(resolve) })
+  }
+} }
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  _preferVectorLayer: true,
+  _metadataLoaded: true,
+  _heatmapCacheVersion: 'g12-double-buffer',
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'red' }),
+  setData: function (update) {
+    if (Object.prototype.hasOwnProperty.call(update, 'polylines')) {
+      this._polylineWrites = (this._polylineWrites || 0) + 1
+    }
+    Object.assign(this.data, update)
+  },
+  _prefetchVectorNeighbors: function () {},
+})
+const zoom = 16
+const count = Math.pow(2, zoom)
+const blockX = 53240
+const blockY = 25200
+const lon = function (x) { return x / count * 360 - 180 }
+const lat = function (y) {
+  const mercator = Math.PI * (1 - 2 * y / count)
+  return Math.atan(Math.sinh(mercator)) * 180 / Math.PI
+}
+const firstViewport = {
+  west: 112.4, south: 37.7, east: 112.7, north: 38.0, zoom: zoom, scale: zoom,
+  mapWest: lon(blockX + 1.1), mapEast: lon(blockX + 7.5),
+  mapNorth: lat(blockY + 1.1), mapSouth: lat(blockY + 7.5),
+}
+const crossedViewport = Object.assign({}, firstViewport, {
+  mapWest: lon(blockX + 7.5), mapEast: lon(blockX + 9.5),
+})
+
+;(async function () {
+  page._refreshVectorLayer(firstViewport)
+  assert.strictEqual(calls.length, 1)
+  resolvers.shift()({ tracks: [[[112.4400, 37.7700], [112.4402, 37.7702]]] })
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  const oldPolylines = page.data.polylines
+  assert.strictEqual(oldPolylines.length, 1)
+
+  page._refreshVectorLayer(crossedViewport)
+  assert.strictEqual(calls.length, 2)
+  assert.strictEqual(page.data.polylines, oldPolylines)
+  assert.strictEqual(page.data.updating, false)
+
+  resolvers.shift()({ tracks: [[[112.4500, 37.7800], [112.4502, 37.7802]]] })
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(page.data.polylines.length, 2)
+  assert.strictEqual(page.data.polylines[0], oldPolylines[0])
+  const writesAfterAppend = page._polylineWrites
+
+  page._refreshVectorLayer(firstViewport)
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(page._polylineWrites, writesAfterAppend)
+  assert.strictEqual(page.data.polylines.length, 2)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_vector_zoom_switches_only_after_complete_new_lod_is_ready():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const calls = []
+const resolvers = []
+require.cache[apiPath] = { exports: {
+  get: function (url, params) {
+    calls.push({ url: url, params: params })
+    return new Promise(function (resolve) { resolvers.push(resolve) })
+  }
+} }
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  _preferVectorLayer: true,
+  _metadataLoaded: true,
+  _heatmapCacheVersion: 'g13-lod-buffer',
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'red' }),
+  setData: function (update) { Object.assign(this.data, update) },
+  _prefetchVectorNeighbors: function () {},
+})
+const first = {
+  west: 112.437, south: 37.770, east: 112.447, north: 37.785,
+  zoom: 16, scale: 16,
+  mapWest: 112.443, mapSouth: 37.776, mapEast: 112.453, mapNorth: 37.791,
+}
+
+;(async function () {
+  const firstCount = page._vectorRequestViewports(first).length
+  page._refreshVectorLayer(first)
+  for (let index = 0; index < firstCount; index++) {
+    resolvers.shift()({ tracks: [[[112.4400, 37.7700], [112.4402, 37.7702]]] })
+  }
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  const oldPolylines = page.data.polylines
+  assert.ok(oldPolylines.length > 0)
+
+  const zoomed = Object.assign({}, first, { zoom: 17, scale: 17 })
+  const nextCount = page._vectorRequestViewports(zoomed).length
+  page._refreshVectorLayer(zoomed)
+  assert.strictEqual(page.data.polylines, oldPolylines)
+  assert.strictEqual(page.data.updating, false)
+  assert.strictEqual(calls.length, firstCount + nextCount)
+
+  for (let index = 0; index < nextCount; index++) {
+    resolvers.shift()({ tracks: [[[112.4500, 37.7800], [112.4502, 37.7802]]] })
+  }
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(page._vectorDisplayFamily, '17:19')
+  assert.strictEqual(page.data.polylines.length, nextCount)
+  assert.notStrictEqual(page.data.polylines, oldPolylines)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_dense_vector_display_keeps_visible_detail_but_caps_offscreen_frames():
+    script = """
+const assert = require('assert')
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const page = Object.assign({}, pageDefinition, {
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'red' }),
+  setData: function (update) { Object.assign(this.data, update) },
+})
+const makeFrame = function (longitude, touched) {
+  return {
+    family: '16:18',
+    preparedTracks: [[
+      { longitude: longitude, latitude: 37.8 },
+      { longitude: longitude + 0.001, latitude: 37.801 },
+    ]],
+    pointCount: 14000,
+    lineCount: 600,
+    touched: touched,
+  }
+}
+page._vectorBlockFrames = {
+  visible: makeFrame(112.50, 1),
+  near: makeFrame(112.51, 3),
+  far: makeFrame(112.52, 2),
+}
+const viewport = { zoom: 16, scale: 16 }
+const visible = [{ key: 'visible', gridZoom: 16, zoom: 18 }]
+const prefetched = [
+  { key: 'near', gridZoom: 16, zoom: 18 },
+  { key: 'far', gridZoom: 16, zoom: 18 },
+]
+
+page._renderVectorFrames(visible, viewport, prefetched)
+assert.deepStrictEqual(page._vectorDisplayKeys, ['visible', 'near'])
+assert.strictEqual(page.data.polylines.length, 2)
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_dense_vector_view_prefetches_only_two_neighbors():
+    script = """
+const assert = require('assert')
+global.setTimeout = function (callback) { callback(); return 1 }
+global.clearTimeout = function () {}
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const calls = []
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  _vectorPrefetchSeq: 0,
+  _vectorBlockFrames: {},
+  _loadVectorData: function (item) {
+    calls.push(item.key)
+    return Promise.resolve({ tracks: [] })
+  },
+  _renderVectorFrames: function () {},
+})
+const viewport = {
+  west: 112.437, south: 37.770, east: 112.447, north: 37.785,
+  zoom: 16, scale: 16,
+  mapWest: 112.443, mapSouth: 37.776, mapEast: 112.453, mapNorth: 37.791,
+}
+const visible = page._vectorRequestViewports(viewport)
+page._lastVectorSetKey = visible.map(function (item) { return item.key }).join('|')
+visible.forEach(function (item) {
+  page._vectorBlockFrames[item.key] = {
+    family: item.gridZoom + ':' + item.zoom,
+    preparedTracks: [],
+    pointCount: 18000,
+    lineCount: 1001,
+    touched: 1,
+  }
+})
+
+;(async function () {
+  page._prefetchVectorNeighbors(visible, viewport)
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(calls.length, 2)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_vector_prefetch_never_competes_with_more_than_two_background_requests():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const calls = []
+const resolvers = []
+require.cache[apiPath] = { exports: {
+  get: function (url, params) {
+    calls.push({ url: url, params: params })
+    return new Promise(function (resolve) { resolvers.push(resolve) })
+  }
+} }
+global.setTimeout = function (callback) { callback(); return 1 }
+global.clearTimeout = function () {}
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  _preferVectorLayer: true,
+  _metadataLoaded: true,
+  _heatmapCacheVersion: 'g11-data-prefetch-limit',
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'red' }),
+  setData: function (update) { Object.assign(this.data, update) },
+})
+const viewport = {
+  west: 112.437, south: 37.770, east: 112.447, north: 37.785, zoom: 16,
+  mapWest: 112.443, mapSouth: 37.776, mapEast: 112.453, mapNorth: 37.791,
+}
+
+;(async function () {
+  const visibleCount = page._vectorRequestViewports(viewport).length
+  page._refreshVectorLayer(viewport)
+  assert.strictEqual(calls.length, visibleCount)
+  for (let index = 0; index < visibleCount; index++) {
+    resolvers.shift()({ tracks: [[[112.44, 37.77], [112.45, 37.78]]] })
+  }
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(calls.length, visibleCount + 2)
 })().catch(function (error) { console.error(error); process.exit(1) })
 """
 
@@ -463,20 +788,22 @@ const viewport = {
 }
 
 ;(async function () {
+  const visibleCount = page._vectorRequestViewports(viewport).length
   page._refreshVectorLayer(viewport)
   await new Promise(setImmediate); await new Promise(setImmediate)
-  assert.strictEqual(calls.length, 9)
+  assert.strictEqual(calls.length, visibleCount + 8)
   const current = page._vectorRequestViewport(viewport)
   const width = current.maxX - current.minX + 1
   const east = page._vectorViewportForTileRange(
-    current.zoom,
+    current.gridZoom,
     current.minX + width,
     current.maxX + width,
     current.minY,
-    current.maxY
+    current.maxY,
+    current.zoom
   )
   await page._loadVectorData(east)
-  assert.strictEqual(calls.length, 9)
+  assert.strictEqual(calls.length, visibleCount + 8)
 })().catch(function (error) { console.error(error); process.exit(1) })
 """
 
@@ -502,7 +829,7 @@ def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     assert "_vectorRequestViewport" in js
     assert "_prefetchVectorNeighbors" in js
     assert "heatmapTileCache.loadData" in js
-    assert "vectorBlockSize = zoom >= 14 ? 4 : 2" in js
+    assert "vectorBlockSize = gridZoom >= 16 || gridZoom <= 13 ? 8 : 4" in js
     assert "opacity: HEATMAP_LINE_OPACITY" in js
     assert "data && data.cache_version" in js
     assert "heatmapTileCache.viewerScope()" in js
