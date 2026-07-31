@@ -25,7 +25,9 @@
 
 **当前状态（未上线）**：生产热图仍依赖压缩后的 `simplified_track`，会把山区连续弯道画成跨路直线。任务分支已经在代码层把 meta/card/full/viewport/tile 五条热图路径统一改为以完整 `Trackpoint` 为唯一几何真值，但尚未经过 Tim 的微信端验收、合并或部署。
 
-**当前选择**：本轮采用 PostgreSQL/PostGIS 原始 `Trackpoint` → 按视野/缩放即时生成矢量 LOD 或彩色 PNG → Redis 与微信小程序临时文件缓存。原始点不因热图存储或传输预算而删除；显示层可以按 zoom 生成临时 LOD，但热图几何禁止读取 `simplified_track`。缓存通过用户 heatmap generation 隔离新旧版本，并区分 owner/public 隐私视图。
+**当前选择**：本轮采用 PostgreSQL/PostGIS 原始 `Trackpoint` → Redis 共享 WGS-84 总览源 → 按视野/缩放生成矢量 LOD 或彩色 PNG → Redis 结果缓存与微信小程序临时文件缓存。进程内短 TTL LRU 只用于复用坐标转换；带 token 续租的 Redis 单飞租约保证同一 generation/视野/瓦片只由一个请求扫描或渲染，其他请求等待并复用结果。热图 Redis 使用 1 秒 socket/connect timeout 的专用有界连接池，不影响 RQ 所需的长阻塞连接；网络黑洞时续租线程也会有界退出。原始点不因热图存储或传输预算而删除；显示层可以按 zoom 生成临时 LOD，但热图几何禁止读取 `simplified_track`。缓存通过用户 heatmap generation 隔离新旧版本，失效时即时回收旧代 raster/vector/source key，并区分 owner/public 隐私视图。
+
+**本地容量基线（不是生产 p95）**：2026-07-31 用生产 293 条骑行、752,234 个 Trackpoint 的脱敏副本在独立 PostGIS/Redis QA 环境验证。冷 meta 约 3.5 秒、共享源后的 full 约 0.37 秒、z10 viewport 约 2.88 秒、z9 tile 约 0.27 秒；热命中约 2–6 毫秒。同一 z10 视野 6 并发从改造前约 18.9 秒收敛到约 3.2–3.7 秒，交错发送到两个 API 进程仍只经历一次构建；故障注入无 Redis 的 API 进程时，6 个并发 meta 仍从 PostgreSQL 在约 3.8 秒返回 200。该基线只证明当前单用户规模可用，不能替代上线后的连续生产观测。
 
 **暂缓方案**：不在本轮引入对象存储冷瓦片、近期活动 warm delta、后台批量 compaction、全量预生成瓦片金字塔或 CDN。它们是 Strava 规模的容量方案，不是当前修复轨迹失真的前置条件。
 

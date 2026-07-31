@@ -15,9 +15,13 @@ Redis 连接 + RQ Queue 单一真相源——"全屋总进水阀"。
       模块都各自 mock `redis.Redis.from_url`
 
 使用：
-    # 直接读写 Redis（限速 / 缓存 / 一次性消费等）
+    # 通用 Redis（限速 / RQ / 一次性消费等）
     from app.queue import redis_conn
     redis_conn.set(key, value, ex=300, nx=True)
+
+    # 用户请求链路上的热图缓存（网络黑洞时必须有界失败）
+    from app.queue import heatmap_redis_conn
+    heatmap_redis_conn.get(key)
 
     # enqueue RQ 异步任务
     from app.queue import ai_drafts_queue
@@ -45,6 +49,19 @@ redis_conn = Redis.from_url(
     decode_responses=False,
     socket_keepalive=True,
     socket_keepalive_options={},
+)
+
+# 热图会在请求线程上读写 Redis，还有后台续租线程。通用 redis_conn
+# 不设 socket_timeout，因为 RQ 的阻塞取队列需要长读；热图必须使用
+# 独立有界连接池，否则 Redis 网络黑洞会把请求和续租线程永久卡住。
+heatmap_redis_conn = Redis.from_url(
+    settings.REDIS_URL,
+    decode_responses=False,
+    socket_keepalive=True,
+    socket_keepalive_options={},
+    socket_connect_timeout=1.0,
+    socket_timeout=1.0,
+    retry_on_timeout=False,
 )
 
 

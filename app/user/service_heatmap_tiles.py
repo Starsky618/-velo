@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timedelta, timezone
 import heapq
@@ -14,7 +15,8 @@ from io import BytesIO
 import json
 import math
 from threading import RLock
-from time import monotonic
+from time import monotonic, sleep
+from weakref import WeakValueDictionary
 import zlib
 
 import numpy as np
@@ -26,6 +28,8 @@ import xyconvert
 from app.activity.models import Activity, Trackpoint
 from app.common.geo import infer_city_from_coords
 from app.user.service_social import (
+    _RedisBuildLease,
+    _acquire_redis_build_lease,
     _public_activity_filter,
     _public_heatmap_privacy_fingerprint,
 )
@@ -43,13 +47,21 @@ _OVERVIEW_SOURCE_CACHE_TTL_SEC = 60
 _OVERVIEW_SOURCE_CACHE_MAX_ITEMS = 8
 _OVERVIEW_REDIS_SOURCE_TTL_SEC = 3600
 _OVERVIEW_REDIS_SOURCE_PREFIX = "heatmap:raster:v1:source:user_"
+_OVERVIEW_SOURCE_BUILD_LOCK_TTL_SEC = 30
+_OVERVIEW_SOURCE_BUILD_WAIT_SEC = 60
+_OVERVIEW_SOURCE_BUILD_POLL_SEC = 0.05
 _VECTOR_CACHE_TTL_SEC = 900
 _VECTOR_CACHE_PREFIX = "heatmap:vector:v1:user_"
 _VECTOR_MAX_CACHE_KEYS = 16
 _VECTOR_TOTAL_POINT_BUDGET = 6_000
 _VECTOR_POINTS_PER_SEGMENT = 320
+_DERIVED_BUILD_LOCK_TTL_SEC = 30
+_DERIVED_BUILD_WAIT_SEC = 60
+_DERIVED_BUILD_POLL_SEC = 0.05
 _OVERVIEW_SOURCE_CACHE: OrderedDict[tuple, tuple[float, dict]] = OrderedDict()
+_OVERVIEW_MAP_CACHE: OrderedDict[tuple, tuple[float, dict]] = OrderedDict()
 _OVERVIEW_SOURCE_CACHE_LOCK = RLock()
+_OVERVIEW_BUILD_LOCKS: WeakValueDictionary[tuple, RLock] = WeakValueDictionary()
 
 _COLOR_RAMPS = {
     # 默认色从高亮橙过渡到深红，和腾讯底图的浅橙道路保持足够区分。
@@ -64,10 +76,60 @@ class InvalidHeatmapTile(ValueError):
     """瓦片坐标或显示参数非法。"""
 
 
-def _get_redis_client():
-    from app.queue import redis_conn
+def _claim_derived_cache_build(
+    redis_client,
+    cache_key: str,
+    decoder: Callable[[bytes], object],
+) -> tuple[_RedisBuildLease | None, object | None]:
+    """同一视野/瓦片只让一个请求计算；其余请求等待 Redis 结果。"""
+    lock_key = f"{cache_key}:build"
+    try:
+        lease = _acquire_redis_build_lease(
+            redis_client,
+            lock_key,
+            _DERIVED_BUILD_LOCK_TTL_SEC,
+        )
+        if lease is not None:
+            lease.start()
+            return lease, None
+    except Exception:
+        return None, None
 
-    return redis_conn
+    deadline = monotonic() + _DERIVED_BUILD_WAIT_SEC
+    while monotonic() < deadline:
+        try:
+            cached = redis_client.get(cache_key)
+            if isinstance(cached, bytes):
+                try:
+                    return None, decoder(cached)
+                except Exception:
+                    # 损坏缓存不能交给调用方；等租约到期后由一个请求重建。
+                    pass
+            lease = _acquire_redis_build_lease(
+                redis_client,
+                lock_key,
+                _DERIVED_BUILD_LOCK_TTL_SEC,
+            )
+            if lease is not None:
+                lease.start()
+                return lease, None
+        except Exception:
+            return None, None
+        sleep(_DERIVED_BUILD_POLL_SEC)
+    # Redis/构建者持续异常时降级直算，避免用户永久打不开地图。
+    return None, None
+
+
+def _release_derived_cache_build(lease: _RedisBuildLease | None) -> None:
+    if lease is None:
+        return
+    lease.release()
+
+
+def _get_redis_client():
+    from app.queue import heatmap_redis_conn
+
+    return heatmap_redis_conn
 
 
 def _inside_china(coords: np.ndarray) -> np.ndarray:
@@ -557,6 +619,49 @@ def _load_overview_segments(
     return grouped
 
 
+def _decode_overview_segments(encoded: bytes):
+    payload = json.loads(zlib.decompress(encoded).decode())
+    restored: dict[int, list[list[tuple[float, float]]]] = defaultdict(list)
+    for activity_id, activity_segments in payload:
+        for segment in activity_segments:
+            clean = [
+                (float(point[0]), float(point[1]))
+                for point in segment
+                if isinstance(point, list) and len(point) == 2
+            ]
+            _append_segment(restored, int(activity_id), clean)
+    return restored
+
+
+def _overview_memory_get(key: tuple):
+    now = monotonic()
+    with _OVERVIEW_SOURCE_CACHE_LOCK:
+        cached = _OVERVIEW_SOURCE_CACHE.get(key)
+        if cached is not None and now - cached[0] <= _OVERVIEW_SOURCE_CACHE_TTL_SEC:
+            _OVERVIEW_SOURCE_CACHE.move_to_end(key)
+            return cached[1]
+        if cached is not None:
+            del _OVERVIEW_SOURCE_CACHE[key]
+    return None
+
+
+def _overview_memory_store(key: tuple, segments: dict) -> None:
+    with _OVERVIEW_SOURCE_CACHE_LOCK:
+        _OVERVIEW_SOURCE_CACHE[key] = (monotonic(), segments)
+        while len(_OVERVIEW_SOURCE_CACHE) > _OVERVIEW_SOURCE_CACHE_MAX_ITEMS:
+            _OVERVIEW_SOURCE_CACHE.popitem(last=False)
+
+
+def _overview_build_lock(key: tuple) -> RLock:
+    """只串行同一用户/年份/generation；弱引用避免按用户永久积累锁对象。"""
+    with _OVERVIEW_SOURCE_CACHE_LOCK:
+        lock = _OVERVIEW_BUILD_LOCKS.get(key)
+        if lock is None:
+            lock = RLock()
+            _OVERVIEW_BUILD_LOCKS[key] = lock
+        return lock
+
+
 def _get_overview_segments_cached(
     db: Session,
     user_id: int,
@@ -566,7 +671,12 @@ def _get_overview_segments_cached(
     privacy_fingerprint: str | None,
     redis_client,
 ) -> dict[int, list[list[tuple[float, float]]]]:
-    """进程缓存挡并发，Redis 源缓存挡多进程/跨 60 秒重复扫描 PostGIS。"""
+    """三层总览源：进程 LRU → Redis WGS-84 源 → PostgreSQL 原始 Trackpoint。
+
+    同一 generation 的跨进程冷启动使用 Redis 租约锁，只允许一个请求扫描
+    PostgreSQL；其他请求等待源层完成后复用。Redis 源必须保存 WGS-84，矢量响应
+    直接使用，只有栅格渲染时才转换成腾讯地图坐标。
+    """
     key = (user_id, year, include_private, generation, privacy_fingerprint)
     redis_key = (
         f"{_OVERVIEW_REDIS_SOURCE_PREFIX}{user_id}:g{generation}:"
@@ -574,58 +684,89 @@ def _get_overview_segments_cached(
     )
     if privacy_fingerprint is not None:
         redis_key += f":privacy_{privacy_fingerprint}"
-    now = monotonic()
-    with _OVERVIEW_SOURCE_CACHE_LOCK:
-        cached = _OVERVIEW_SOURCE_CACHE.get(key)
-        if cached is not None and now - cached[0] <= _OVERVIEW_SOURCE_CACHE_TTL_SEC:
-            _OVERVIEW_SOURCE_CACHE.move_to_end(key)
-            return cached[1]
-        if cached is not None:
-            del _OVERVIEW_SOURCE_CACHE[key]
+    cached = _overview_memory_get(key)
+    if cached is not None:
+        return cached
 
+    # Redis I/O、等待和 PG 扫描绝不能占用全局 LRU 锁；这里只串行同一 source key。
+    with _overview_build_lock(key):
+        cached = _overview_memory_get(key)
+        if cached is not None:
+            return cached
         try:
             encoded = redis_client.get(redis_key)
             if isinstance(encoded, bytes):
-                payload = json.loads(zlib.decompress(encoded).decode())
-                restored: dict[int, list[list[tuple[float, float]]]] = defaultdict(list)
-                for activity_id, activity_segments in payload:
-                    for segment in activity_segments:
-                        clean = [
-                            (float(point[0]), float(point[1]))
-                            for point in segment
-                            if isinstance(point, list) and len(point) == 2
-                        ]
-                        _append_segment(restored, int(activity_id), clean)
-                _OVERVIEW_SOURCE_CACHE[key] = (now, restored)
+                restored = _decode_overview_segments(encoded)
+                _overview_memory_store(key, restored)
                 return restored
         except Exception:
             # 损坏或旧格式缓存直接重建；不能让一张坏 source 卡死全部低缩放瓦片。
             pass
 
-        # 坐标转换也只做一次；同一首屏的 16 张瓦片复用 GCJ-02 源层。
-        segments = _segments_to_gcj02(
-            _load_overview_segments(db, user_id, year, include_private)
-        )
+        lock_key = f"{redis_key}:build"
+        build_lease = None
+        owns_lock = False
+        redis_available = True
         try:
-            payload = [
-                [activity_id, activity_segments]
-                for activity_id, activity_segments in segments.items()
-            ]
-            redis_client.setex(
-                redis_key,
-                _OVERVIEW_REDIS_SOURCE_TTL_SEC,
-                zlib.compress(
-                    json.dumps(payload, separators=(",", ":")).encode(),
-                    level=6,
-                ),
+            build_lease = _acquire_redis_build_lease(
+                redis_client,
+                lock_key,
+                _OVERVIEW_SOURCE_BUILD_LOCK_TTL_SEC,
             )
+            owns_lock = build_lease is not None
+            if build_lease is not None:
+                build_lease.start()
         except Exception:
-            # Redis 只是加速层；PostGIS 真值仍可生成当前请求。
-            pass
-        _OVERVIEW_SOURCE_CACHE[key] = (now, segments)
-        while len(_OVERVIEW_SOURCE_CACHE) > _OVERVIEW_SOURCE_CACHE_MAX_ITEMS:
-            _OVERVIEW_SOURCE_CACHE.popitem(last=False)
-        return segments
+            redis_available = False
+            owns_lock = True
+
+        if redis_available and not owns_lock:
+            deadline = monotonic() + _OVERVIEW_SOURCE_BUILD_WAIT_SEC
+            while monotonic() < deadline:
+                try:
+                    encoded = redis_client.get(redis_key)
+                    if isinstance(encoded, bytes):
+                        restored = _decode_overview_segments(encoded)
+                        _overview_memory_store(key, restored)
+                        return restored
+                    build_lease = _acquire_redis_build_lease(
+                        redis_client,
+                        lock_key,
+                        _OVERVIEW_SOURCE_BUILD_LOCK_TTL_SEC,
+                    )
+                    owns_lock = build_lease is not None
+                    if owns_lock:
+                        build_lease.start()
+                        break
+                except Exception:
+                    owns_lock = True
+                    break
+                sleep(_OVERVIEW_SOURCE_BUILD_POLL_SEC)
+
+        try:
+            # Redis 不可用或等待 60 秒仍无结果时故障降级直算，不能永久卡死地图。
+            segments = _load_overview_segments(db, user_id, year, include_private)
+            try:
+                payload = [
+                    [activity_id, activity_segments]
+                    for activity_id, activity_segments in segments.items()
+                ]
+                redis_client.setex(
+                    redis_key,
+                    _OVERVIEW_REDIS_SOURCE_TTL_SEC,
+                    zlib.compress(
+                        json.dumps(payload, separators=(",", ":")).encode(),
+                        level=6,
+                    ),
+                )
+            except Exception:
+                # Redis 只是加速层；PostGIS 真值仍可生成当前请求。
+                pass
+            _overview_memory_store(key, segments)
+            return segments
+        finally:
+            if redis_available and build_lease is not None:
+                build_lease.release()
 
 
 def _global_pixel(lon: float, lat: float, zoom: int) -> tuple[float, float]:
@@ -651,6 +792,31 @@ def _segments_to_gcj02(
                 (float(point[0]), float(point[1])) for point in gcj
             ])
     return converted
+
+
+def _get_overview_map_segments_cached(
+    segments: dict[int, list[list[tuple[float, float]]]],
+    user_id: int,
+    year: int | None,
+    include_private: bool,
+    generation: int,
+    privacy_fingerprint: str | None,
+) -> dict[int, list[list[tuple[float, float]]]]:
+    """同一进程每代只做一次 WGS-84 → 腾讯地图坐标转换，供多块瓦片复用。"""
+    key = (user_id, year, include_private, generation, privacy_fingerprint)
+    now = monotonic()
+    with _OVERVIEW_SOURCE_CACHE_LOCK:
+        cached = _OVERVIEW_MAP_CACHE.get(key)
+        if cached is not None and now - cached[0] <= _OVERVIEW_SOURCE_CACHE_TTL_SEC:
+            _OVERVIEW_MAP_CACHE.move_to_end(key)
+            return cached[1]
+        if cached is not None:
+            del _OVERVIEW_MAP_CACHE[key]
+        converted = _segments_to_gcj02(segments)
+        _OVERVIEW_MAP_CACHE[key] = (now, converted)
+        while len(_OVERVIEW_MAP_CACHE) > _OVERVIEW_SOURCE_CACHE_MAX_ITEMS:
+            _OVERVIEW_MAP_CACHE.popitem(last=False)
+        return converted
 
 
 def _render_tile_png(
@@ -1094,8 +1260,11 @@ def get_user_heatmap_overview(
     detail: str = "full",
     include_private: bool = True,
     city: str | None = None,
+    generation: int | None = None,
+    privacy_fingerprint: str | None = None,
+    redis_client=None,
 ) -> dict:
-    """用原始 Trackpoint 生成 meta/card/full；兼容路径也不能复活坏压缩轨迹。"""
+    """用共享原始轨迹源生成 meta/card/full；兼容路径也不能复活坏压缩轨迹。"""
     if detail not in {"meta", "card", "full"}:
         raise InvalidHeatmapTile("invalid heatmap overview detail")
     _year_window_utc(year)
@@ -1111,25 +1280,27 @@ def get_user_heatmap_overview(
         include_private,
         activity_ids,
     )
-    if detail == "meta":
-        activity_count, focus_points, all_points = _load_heatmap_meta_bounds(
-            db,
-            user_id,
-            year,
-            include_private,
-            activity_ids,
-        )
-        return {
-            "city": city,
-            "tracks": [],
-            "activity_count": activity_count,
-            "available_years": available_years,
-            "selected_year": year,
-            "focus_points": focus_points,
-            "all_points": all_points,
-        }
+    if redis_client is None:
+        redis_client = _get_redis_client()
+    if generation is None:
+        try:
+            generation = int(
+                redis_client.get(f"{_GENERATION_PREFIX}{user_id}") or 0
+            )
+        except Exception:
+            generation = 0
+    if not include_private and privacy_fingerprint is None:
+        privacy_fingerprint = _public_heatmap_privacy_fingerprint(db, user_id)
 
-    segments = _load_overview_segments(db, user_id, year, include_private)
+    segments = _get_overview_segments_cached(
+        db,
+        user_id,
+        year,
+        include_private,
+        generation,
+        privacy_fingerprint,
+        redis_client,
+    )
     if activity_ids is not None:
         segments = {
             activity_id: activity_segments
@@ -1165,7 +1336,13 @@ def get_user_heatmap_overview(
 def _trim_vector_cache(redis_client, user_id: int, current_key: str) -> None:
     """连续拖图时每个用户最多保留少量视野帧，防降级数据在 Redis 中无限堆积。"""
     try:
-        keys = list(redis_client.scan_iter(match=f"{_VECTOR_CACHE_PREFIX}{user_id}:*"))
+        keys = [
+            key
+            for key in redis_client.scan_iter(match=f"{_VECTOR_CACHE_PREFIX}{user_id}:*")
+            if not (
+                key.decode() if isinstance(key, bytes) else str(key)
+            ).endswith(":build")
+        ]
         if len(keys) <= _VECTOR_MAX_CACHE_KEYS:
             return
         current_bytes = current_key.encode()
@@ -1227,54 +1404,68 @@ def get_user_heatmap_viewport(
     except Exception:
         pass
 
-    segments = _load_raw_segments_for_bounds(
-        db,
-        user_id,
-        year,
-        west,
-        south,
-        east,
-        north,
-        include_private,
+    lock, waited_result = _claim_derived_cache_build(
+        redis_client,
+        cache_key,
+        lambda raw: json.loads(zlib.decompress(raw).decode()),
     )
-    prepared = _limit_vector_segments(segments, zoom, (south + north) / 2)
-    available_year_rows = (
-        db.query(Activity.started_at)
-        .join(Trackpoint, Trackpoint.activity_id == Activity.id)
-        .filter(*_activity_filters(user_id, None, include_private))
-        .distinct()
-        .all()
-    )
-    available_years = sorted(
-        {
-            started_at.astimezone(_BEIJING_TZ).year
-            for (started_at,) in available_year_rows
-            if isinstance(started_at, datetime)
-        },
-        reverse=True,
-    )
-    result = {
-        "city": None,
-        "tracks": [
-            [[round(lon, 6), round(lat, 6)] for lon, lat in points]
-            for _, points in prepared
-        ],
-        "activity_count": len({activity_id for activity_id, _ in prepared}),
-        "available_years": available_years,
-        "selected_year": year,
-        "focus_points": [],
-        "all_points": [],
-    }
+    if isinstance(waited_result, dict):
+        return waited_result
+
     try:
-        redis_client.setex(
-            cache_key,
-            _VECTOR_CACHE_TTL_SEC,
-            zlib.compress(json.dumps(result, separators=(",", ":")).encode(), level=6),
+        segments = _load_raw_segments_for_bounds(
+            db,
+            user_id,
+            year,
+            west,
+            south,
+            east,
+            north,
+            include_private,
         )
-        _trim_vector_cache(redis_client, user_id, cache_key)
-    except Exception:
-        pass
-    return result
+        prepared = _limit_vector_segments(segments, zoom, (south + north) / 2)
+        available_year_rows = (
+            db.query(Activity.started_at)
+            .join(Trackpoint, Trackpoint.activity_id == Activity.id)
+            .filter(*_activity_filters(user_id, None, include_private))
+            .distinct()
+            .all()
+        )
+        available_years = sorted(
+            {
+                started_at.astimezone(_BEIJING_TZ).year
+                for (started_at,) in available_year_rows
+                if isinstance(started_at, datetime)
+            },
+            reverse=True,
+        )
+        result = {
+            "city": None,
+            "tracks": [
+                [[round(lon, 6), round(lat, 6)] for lon, lat in points]
+                for _, points in prepared
+            ],
+            "activity_count": len({activity_id for activity_id, _ in prepared}),
+            "available_years": available_years,
+            "selected_year": year,
+            "focus_points": [],
+            "all_points": [],
+        }
+        try:
+            redis_client.setex(
+                cache_key,
+                _VECTOR_CACHE_TTL_SEC,
+                zlib.compress(
+                    json.dumps(result, separators=(",", ":")).encode(),
+                    level=6,
+                ),
+            )
+            _trim_vector_cache(redis_client, user_id, cache_key)
+        except Exception:
+            pass
+        return result
+    finally:
+        _release_derived_cache_build(lock)
 
 
 def get_user_heatmap_tile(
@@ -1316,30 +1507,50 @@ def get_user_heatmap_tile(
     except Exception:
         pass
 
-    overview = zoom <= 9
-    segments = (
-        _get_overview_segments_cached(
-            db,
-            user_id,
-            year,
-            include_private,
-            generation,
-            privacy_fingerprint,
-            redis_client,
-        )
-        if overview
-        else _load_raw_segments(db, user_id, year, zoom, x, y, include_private)
+    lock, waited_png = _claim_derived_cache_build(
+        redis_client,
+        cache_key,
+        lambda raw: raw,
     )
-    rendered = _render_tile_png(
-        segments,
-        zoom,
-        x,
-        y,
-        color,
-        coordinates_are_map=overview,
-    )
+    if isinstance(waited_png, bytes):
+        return waited_png
+
     try:
-        redis_client.setex(cache_key, _CACHE_TTL_SEC, rendered)
-    except Exception:
-        pass
-    return rendered
+        overview = zoom <= 9
+        segments = (
+            _get_overview_segments_cached(
+                db,
+                user_id,
+                year,
+                include_private,
+                generation,
+                privacy_fingerprint,
+                redis_client,
+            )
+            if overview
+            else _load_raw_segments(db, user_id, year, zoom, x, y, include_private)
+        )
+        if overview:
+            segments = _get_overview_map_segments_cached(
+                segments,
+                user_id,
+                year,
+                include_private,
+                generation,
+                privacy_fingerprint,
+            )
+        rendered = _render_tile_png(
+            segments,
+            zoom,
+            x,
+            y,
+            color,
+            coordinates_are_map=overview,
+        )
+        try:
+            redis_client.setex(cache_key, _CACHE_TTL_SEC, rendered)
+        except Exception:
+            pass
+        return rendered
+    finally:
+        _release_derived_cache_build(lock)

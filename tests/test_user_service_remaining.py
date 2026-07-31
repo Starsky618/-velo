@@ -9,6 +9,8 @@ v5 task-2.C.2 余下 3 函数测试：heatmap / update_user_city / profile_for_o
 
 import json
 import os
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -27,7 +29,9 @@ from app.user.service import (
     update_user_city,
 )
 from app.user.service_social import (
+    _acquire_redis_build_lease,
     _claim_heatmap_source_build,
+    _delete_heatmap_key_if_generation_current,
     _heatmap_cache_generation,
     _decode_heatmap_cache,
     _encode_heatmap_cache,
@@ -391,14 +395,131 @@ class TestGetUserHeatmap:
                 return self.cached
 
         redis = FakeRedis()
-        is_builder, waited = _claim_heatmap_source_build(redis, "source", 3)
+        is_builder, waited, lease = _claim_heatmap_source_build(redis, "source", 3)
         assert is_builder is True
         assert waited is None
+        assert lease is not None
+        lease.release()
 
         redis.cached = _encode_heatmap_cache(source, generation=3)
-        is_builder, waited = _claim_heatmap_source_build(redis, "source", 3)
+        is_builder, waited, lease = _claim_heatmap_source_build(redis, "source", 3)
         assert is_builder is False
         assert waited == source
+        assert lease is None
+
+    def test_build_lease_renews_until_release(self, real_redis):
+        key = "heatmap:test:renewing-lease"
+        real_redis.delete(key)
+        lease = _acquire_redis_build_lease(real_redis, key, 3)
+        assert lease is not None
+        lease.start()
+        try:
+            time.sleep(3.5)
+            assert real_redis.get(key) is not None
+        finally:
+            lease.release()
+        assert real_redis.get(key) is None
+        assert lease._thread is not None
+        assert not lease._thread.is_alive()
+
+    def test_build_lease_blackhole_timeout_does_not_leave_renew_thread(self):
+        class Pool:
+            connection_kwargs = {
+                "socket_connect_timeout": 0.05,
+                "socket_timeout": 0.05,
+            }
+
+        class BoundedBlackholeRedis:
+            connection_pool = Pool()
+
+            def __init__(self):
+                self.eval_started = threading.Event()
+
+            def set(self, *_args, **_kwargs):
+                return True
+
+            def eval(self, *_args, **_kwargs):
+                self.eval_started.set()
+                time.sleep(0.15)
+                raise TimeoutError("simulated bounded Redis blackhole")
+
+        redis = BoundedBlackholeRedis()
+        lease = _acquire_redis_build_lease(redis, "heatmap:test:blackhole", 0.3)
+        assert lease is not None
+        lease.start()
+        assert redis.eval_started.wait(timeout=1.2)
+
+        started = time.monotonic()
+        lease.release()
+
+        assert time.monotonic() - started < 0.8
+        assert lease._thread is not None
+        assert not lease._thread.is_alive()
+
+    def test_release_does_not_stack_second_eval_when_client_ignores_timeout(self):
+        class Pool:
+            connection_kwargs = {
+                "socket_connect_timeout": 0.05,
+                "socket_timeout": 0.05,
+            }
+
+        class NonCompliantRedis:
+            connection_pool = Pool()
+
+            def __init__(self):
+                self.eval_calls = 0
+                self.eval_started = threading.Event()
+                self.unblock = threading.Event()
+
+            def set(self, *_args, **_kwargs):
+                return True
+
+            def eval(self, *_args, **_kwargs):
+                self.eval_calls += 1
+                self.eval_started.set()
+                self.unblock.wait(timeout=2)
+                return 0
+
+        redis = NonCompliantRedis()
+        lease = _acquire_redis_build_lease(redis, "heatmap:test:stuck-client", 0.3)
+        assert lease is not None
+        lease.start()
+        assert redis.eval_started.wait(timeout=1.2)
+
+        lease.release()
+
+        assert redis.eval_calls == 1
+        assert lease._thread is not None
+        assert lease._thread.is_alive()
+        redis.unblock.set()
+        lease._thread.join(timeout=0.5)
+        assert not lease._thread.is_alive()
+
+    def test_production_heatmap_redis_client_has_bounded_socket_timeouts(self):
+        from app.queue import heatmap_redis_conn
+
+        connection_kwargs = heatmap_redis_conn.connection_pool.connection_kwargs
+        assert connection_kwargs["socket_connect_timeout"] == 1.0
+        assert connection_kwargs["socket_timeout"] == 1.0
+        assert connection_kwargs["retry_on_timeout"] is False
+
+    def test_stale_invalidator_cannot_delete_new_generation_key(self, real_redis):
+        user_id = 987654321
+        generation_key = f"heatmap:generation:user_{user_id}"
+        cache_key = f"heatmap:vector:v1:user_{user_id}:g2:test"
+        real_redis.set(generation_key, 2)
+        real_redis.set(cache_key, "current")
+        try:
+            assert _delete_heatmap_key_if_generation_current(
+                real_redis, user_id, 1, cache_key
+            ) == 0
+            assert real_redis.get(cache_key) is not None
+            assert _delete_heatmap_key_if_generation_current(
+                real_redis, user_id, 2, cache_key
+            ) == 1
+            assert real_redis.get(cache_key) is None
+        finally:
+            real_redis.delete(generation_key, cache_key)
 
     def test_invalid_tracks_do_not_consume_global_preview_budget(self):
         invalid = [
@@ -445,6 +566,44 @@ class TestGetUserHeatmap:
             assert result["city"] == "beijing"
             assert result["tracks"] == []
             assert result["activity_count"] == 0
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
+            _cleanup_db(db)
+            db.close()
+
+    def test_redis_outage_falls_back_to_postgres_for_meta(
+        self, pg_session_factory, real_redis
+    ):
+        class BrokenRedis:
+            def get(self, *_args, **_kwargs):
+                raise ConnectionError("redis unavailable")
+
+            def set(self, *_args, **_kwargs):
+                raise ConnectionError("redis unavailable")
+
+            def setex(self, *_args, **_kwargs):
+                raise ConnectionError("redis unavailable")
+
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "redis_outage")
+            _make_activity_in_beijing(db, user, "raw fallback", _this_month_utc())
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            with patch(
+                "app.user.service_social._get_redis_client",
+                return_value=BrokenRedis(),
+            ):
+                result = get_user_heatmap(db, user_id, None, None, "meta")
+
+            assert result["activity_count"] == 1
+            assert result["tracks"] == []
+            assert len(result["all_points"]) == 2
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -741,6 +900,10 @@ class TestGetUserHeatmap:
                 assert flattened
                 assert all(point[0] > 116 and point[1] > 39 for point in flattened)
                 assert [116.41, 39.912] in flattened
+            source_keys = list(real_redis.scan_iter(
+                match=f"heatmap:raster:v1:source:user_{user_id}:*"
+            ))
+            assert len(source_keys) == 1
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -849,11 +1012,19 @@ class TestUpdateUserCity:
             ]
             for key in keys:
                 real_redis.set(key, "cached")
+            derived_keys = [
+                f"heatmap:vector:v1:user_{user_id}:g{generation_before}:year_all:test",
+                f"heatmap:raster:v1:user_{user_id}:g{generation_before}:year_all:test",
+                f"heatmap:raster:v1:source:user_{user_id}:g{generation_before}:year_all:test",
+            ]
+            for key in derived_keys:
+                real_redis.set(key, "cached")
             assert all(real_redis.get(key) is not None for key in keys)
 
             # 改 city → 应清缓存
             update_user_city(db, user_id, "shanghai")
             assert all(real_redis.get(key) is None for key in keys)
+            assert all(real_redis.get(key) is None for key in derived_keys)
             generation_after = generation_before + 1
             assert int(real_redis.get(generation_key)) == generation_after
 

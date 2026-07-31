@@ -1,8 +1,12 @@
 from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor
+import json
 import math
 from datetime import datetime, timezone
 import os
+from threading import Event
 import uuid
+import zlib
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -15,8 +19,11 @@ import xyconvert
 
 from app.user.service_heatmap_tiles import (
     InvalidHeatmapTile,
+    _OVERVIEW_MAP_CACHE,
     _OVERVIEW_SOURCE_CACHE,
+    _claim_derived_cache_build,
     _get_overview_segments_cached,
+    _get_overview_map_segments_cached,
     _global_pixel,
     _limit_vector_segments,
     _map_coords_to_wgs84,
@@ -219,6 +226,26 @@ def test_vector_viewport_cache_reuses_compressed_result_without_second_db_scan()
     )
 
 
+def test_vector_cache_waiter_reuses_builder_result_without_duplicate_query():
+    expected = {"tracks": [[[112.5, 37.8], [112.6, 37.9]]]}
+    encoded = zlib.compress(
+        json.dumps(expected, separators=(",", ":")).encode(),
+        level=6,
+    )
+    redis = Mock()
+    redis.set.return_value = False
+    redis.get.return_value = encoded
+
+    lock, waited = _claim_derived_cache_build(
+        redis,
+        "heatmap:vector:v1:user_42:g7:test",
+        lambda raw: json.loads(zlib.decompress(raw).decode()),
+    )
+
+    assert lock is None
+    assert waited == expected
+
+
 @pytest.mark.parametrize(
     "viewport",
     [
@@ -299,7 +326,10 @@ def test_overview_source_redis_cache_avoids_repeated_postgis_scan_across_process
     _OVERVIEW_SOURCE_CACHE.clear()
     with (
         patch("app.user.service_heatmap_tiles._load_overview_segments", return_value=source) as loader,
-        patch("app.user.service_heatmap_tiles._segments_to_gcj02", side_effect=lambda value: value),
+        patch(
+            "app.user.service_heatmap_tiles._segments_to_gcj02",
+            side_effect=AssertionError("Redis overview source must stay WGS-84"),
+        ),
     ):
         first = _get_overview_segments_cached(
             Mock(), 42, None, True, 7, None, redis
@@ -317,6 +347,112 @@ def test_overview_source_redis_cache_avoids_repeated_postgis_scan_across_process
         "heatmap:raster:v1:source:user_42:g7:year_all:audience_owner"
     )
     _OVERVIEW_SOURCE_CACHE.clear()
+
+
+def test_overview_source_waiter_reuses_cross_process_builder_result():
+    source = [[7, [[[112.5, 37.8], [112.6, 37.9]]]]]
+    encoded = zlib.compress(json.dumps(source, separators=(",", ":")).encode())
+    redis = Mock()
+    redis.get.side_effect = [None, None, encoded]
+    redis.set.return_value = False
+    _OVERVIEW_SOURCE_CACHE.clear()
+
+    with (
+        patch(
+            "app.user.service_heatmap_tiles._load_overview_segments",
+            side_effect=AssertionError("waiter must not scan PostgreSQL"),
+        ),
+        patch("app.user.service_heatmap_tiles.sleep"),
+    ):
+        result = _get_overview_segments_cached(
+            Mock(), 42, None, True, 7, None, redis
+        )
+
+    assert result == {7: [[(112.5, 37.8), (112.6, 37.9)]]}
+    assert redis.set.call_count >= 2
+    _OVERVIEW_SOURCE_CACHE.clear()
+
+
+def test_overview_build_for_one_user_does_not_block_another_user():
+    first_started = Event()
+    release_first = Event()
+    redis = Mock()
+    redis.get.return_value = None
+    redis.set.return_value = True
+    _OVERVIEW_SOURCE_CACHE.clear()
+
+    def load(_db, user_id, _year, _include_private):
+        if user_id == 101:
+            first_started.set()
+            assert release_first.wait(2)
+        return {user_id: [[(112.5, 37.8), (112.6, 37.9)]]}
+
+    with (
+        patch("app.user.service_heatmap_tiles._load_overview_segments", side_effect=load),
+        ThreadPoolExecutor(max_workers=2) as executor,
+    ):
+        first = executor.submit(
+            _get_overview_segments_cached,
+            Mock(), 101, None, True, 7, None, redis,
+        )
+        assert first_started.wait(1)
+        second = executor.submit(
+            _get_overview_segments_cached,
+            Mock(), 202, None, True, 7, None, redis,
+        )
+        try:
+            assert second.result(timeout=0.5) == {
+                202: [[(112.5, 37.8), (112.6, 37.9)]]
+            }
+        finally:
+            release_first.set()
+        assert first.result(timeout=1) == {
+            101: [[(112.5, 37.8), (112.6, 37.9)]]
+        }
+    _OVERVIEW_SOURCE_CACHE.clear()
+
+
+def test_overview_pg_failure_releases_renewing_redis_lease():
+    redis = Mock()
+    redis.get.return_value = None
+    redis.set.return_value = True
+    _OVERVIEW_SOURCE_CACHE.clear()
+
+    with (
+        patch(
+            "app.user.service_heatmap_tiles._load_overview_segments",
+            side_effect=RuntimeError("postgres failed"),
+        ),
+        pytest.raises(RuntimeError, match="postgres failed"),
+    ):
+        _get_overview_segments_cached(
+            Mock(), 303, None, True, 7, None, redis
+        )
+
+    assert redis.eval.call_count == 1
+    assert "redis.call('del'" in redis.eval.call_args.args[0]
+    _OVERVIEW_SOURCE_CACHE.clear()
+
+
+def test_overview_map_conversion_is_reused_across_neighbor_tiles():
+    source = {7: [[(112.5, 37.8), (112.6, 37.9)]]}
+    converted = {7: [[(112.506, 37.801), (112.606, 37.901)]]}
+    _OVERVIEW_MAP_CACHE.clear()
+
+    with patch(
+        "app.user.service_heatmap_tiles._segments_to_gcj02",
+        return_value=converted,
+    ) as converter:
+        first = _get_overview_map_segments_cached(
+            source, 42, None, True, 7, None
+        )
+        second = _get_overview_map_segments_cached(
+            source, 42, None, True, 7, None
+        )
+
+    assert first == second == converted
+    assert converter.call_count == 1
+    _OVERVIEW_MAP_CACHE.clear()
 
 
 @pytest.mark.parametrize(

@@ -48,6 +48,8 @@ import math as _math
 import time as _time
 import zlib as _zlib
 from datetime import datetime, timedelta, timezone
+from threading import Event, Thread
+from uuid import uuid4
 
 from sqlalchemy import case, desc, or_
 from sqlalchemy import func as _func
@@ -69,6 +71,11 @@ _HEATMAP_PREVIOUS_V4_CACHE_PREFIX = "heatmap:v4:user_"
 _HEATMAP_PREVIOUS_V3_CACHE_PREFIX = "heatmap:v3:user_"
 _HEATMAP_PREVIOUS_CACHE_PREFIX = "heatmap:v2:user_"
 _HEATMAP_LEGACY_CACHE_PREFIX = "heatmap:user_"
+_HEATMAP_DERIVED_CACHE_PREFIXES = (
+    "heatmap:vector:v1:user_",
+    "heatmap:raster:v1:user_",
+    "heatmap:raster:v1:source:user_",
+)
 _HEATMAP_POINTS_PER_ACTIVITY = 64
 _HEATMAP_TOTAL_POINT_BUDGET = 9_000
 _HEATMAP_CARD_POINTS_PER_ACTIVITY = 24
@@ -79,7 +86,7 @@ _HEATMAP_VIEWPORT_SOURCE_POINT_BUDGET = 72_000
 _HEATMAP_VIEWPORT_SOURCE_POINTS_PER_ACTIVITY = 320
 _HEATMAP_VIEWPORT_MAX_CACHE_KEYS = 12
 _HEATMAP_COMPRESSED_CACHE_PREFIX = b"z1:"
-_HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC = 10
+_HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC = 30
 _HEATMAP_SOURCE_BUILD_POLL_SEC = 0.05
 # _VALID_USER_CITIES 已废弃（Tim 2026-05-17 真用拍放宽 user.city 到任意中文）
 # 历史 6 城枚举只剩 activity.city（worker 推断起点 / ck_activities_city CHECK 仍生效）
@@ -106,6 +113,95 @@ _PROFILE_RESPONSE_KEYS |= {"badges"}
 
 class InvalidHeatmapViewport(ValueError):
     """热图视野参数非法；router 只把这类可预期输入错误映射为 422。"""
+
+
+class _RedisBuildLease:
+    """带 token 续租的 Redis 构建租约；进程退出后仍由 TTL 自动释放。"""
+
+    def __init__(self, redis_client, key: str, token: str, ttl: int):
+        self.redis_client = redis_client
+        self.key = key
+        self.token = token
+        self.ttl = ttl
+        self._stop = Event()
+        self._thread: Thread | None = None
+
+    def start(self) -> None:
+        if self._thread is not None:
+            return
+        self._thread = Thread(
+            target=self._renew_loop,
+            name="heatmap-cache-lease",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _renew_loop(self) -> None:
+        interval = max(1.0, self.ttl / 3)
+        script = (
+            "if redis.call('get', KEYS[1]) == ARGV[1] then "
+            "return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end"
+        )
+        while not self._stop.wait(interval):
+            try:
+                renewed = self.redis_client.eval(
+                    script,
+                    1,
+                    self.key,
+                    self.token,
+                    self.ttl,
+                )
+                if not renewed:
+                    return
+            except Exception:
+                return
+
+    def _io_timeout_budget(self) -> float:
+        """Return an upper bound for one Redis command on the production pool."""
+        try:
+            kwargs = self.redis_client.connection_pool.connection_kwargs
+        except AttributeError:
+            return 1.0
+        timeouts = (
+            kwargs.get("socket_connect_timeout"),
+            kwargs.get("socket_timeout"),
+        )
+        positive = []
+        for value in timeouts:
+            try:
+                parsed = float(value)
+            except (TypeError, ValueError):
+                continue
+            if parsed > 0:
+                positive.append(parsed)
+        return sum(positive) + 0.5 if positive else 1.0
+
+    def release(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=self._io_timeout_budget())
+            if self._thread.is_alive():
+                # 生产热图连接有 socket timeout；此分支只防御不守约的
+                # 注入客户端，不再让请求线程叠加第二次可能无界的 eval。
+                return
+        try:
+            self.redis_client.eval(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                "return redis.call('del', KEYS[1]) else return 0 end",
+                1,
+                self.key,
+                self.token,
+            )
+        except Exception:
+            # 续租停止后租约仍有 TTL，不会形成永久锁。
+            pass
+
+
+def _acquire_redis_build_lease(redis_client, key: str, ttl: int):
+    token = uuid4().hex
+    if redis_client.set(key, token, nx=True, ex=ttl):
+        return _RedisBuildLease(redis_client, key, token, ttl)
+    return None
 
 
 def _public_activity_filter():
@@ -135,9 +231,10 @@ def _public_heatmap_privacy_fingerprint(db: Session, user_id: int) -> str:
 
 
 def _get_redis_client():
-    """延迟导入 redis_conn—— 让纯单元测试不依赖 Redis 启动（task-0.8 单一连接源 / Q1 a 独立复制 / 与 service_stats 一致）。"""
-    from app.queue import redis_conn
-    return redis_conn
+    """延迟导入有界热图连接；Redis 黑洞时请求与续租线程都不会永久卡住。"""
+    from app.queue import heatmap_redis_conn
+
+    return heatmap_redis_conn
 
 
 def _decode_heatmap_cache(cached: object, *, expected_generation: int | None = None) -> dict | None:
@@ -198,20 +295,38 @@ def _heatmap_cache_generation(redis_client, user_id: int) -> int:
         return 0
 
 
+def _delete_heatmap_key_if_generation_current(
+    redis_client,
+    user_id: int,
+    generation: int,
+    key,
+) -> int:
+    """只允许仍是最新 generation 的 invalidator 删除 key，避免并发清理互删新代。"""
+    return int(redis_client.eval(
+        "if tonumber(redis.call('get', KEYS[1]) or '0') == tonumber(ARGV[1]) "
+        "then return redis.call('del', KEYS[2]) else return 0 end",
+        2,
+        f"{_HEATMAP_GENERATION_PREFIX}{user_id}",
+        key,
+        generation,
+    ))
+
+
 def _claim_heatmap_source_build(
     redis_client,
     source_cache_key: str,
     generation: int,
-) -> tuple[bool, dict | None]:
+) -> tuple[bool, dict | None, _RedisBuildLease | None]:
     """同一用户同一图层冷启动只让一个请求扫描 PostgreSQL，其他请求短暂等源层。"""
     lock_key = f"{source_cache_key}:build:generation_{generation}"
-    if redis_client.set(
+    lease = _acquire_redis_build_lease(
+        redis_client,
         lock_key,
-        "1",
-        nx=True,
-        ex=_HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC,
-    ):
-        return True, None
+        _HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC,
+    )
+    if lease is not None:
+        lease.start()
+        return True, None, lease
     max_polls = int(
         (_HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC * 2)
         / _HEATMAP_SOURCE_BUILD_POLL_SEC
@@ -224,18 +339,19 @@ def _claim_heatmap_source_build(
                 expected_generation=generation,
             )
             if source is not None:
-                return False, source
+                return False, source, None
         # 首个 builder 崩溃时，租约到期后也只允许一个等待者接棒，避免并发惊群扫 PG。
-        if redis_client.set(
+        lease = _acquire_redis_build_lease(
+            redis_client,
             lock_key,
-            "1",
-            nx=True,
-            ex=_HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC,
-        ):
-            return True, None
+            _HEATMAP_SOURCE_BUILD_LOCK_TTL_SEC,
+        )
+        if lease is not None:
+            lease.start()
+            return True, None, lease
         _time.sleep(_HEATMAP_SOURCE_BUILD_POLL_SEC)
-    # 两个完整租约都没有产出源层时才故障降级，避免地图永久卡住。
-    return True, None
+    # 等待上限内仍无结果时故障降级，避免地图永久卡住。
+    return True, None, None
 
 
 def _trim_heatmap_viewport_cache(redis_client, user_id: int, current_key: str) -> None:
@@ -933,7 +1049,11 @@ def get_user_heatmap(
             raise InvalidHeatmapViewport(str(exc)) from exc
 
     redis_client = _get_redis_client()
-    cache_generation = _heatmap_cache_generation(redis_client, user_id)
+    try:
+        cache_generation = _heatmap_cache_generation(redis_client, user_id)
+    except Exception:
+        # Redis 是加速层；不可用时仍从 PostgreSQL 原始 Trackpoint 生成当前响应。
+        cache_generation = 0
     privacy_fingerprint = (
         None
         if include_private
@@ -953,34 +1073,63 @@ def get_user_heatmap(
     if cache_generation > 0:
         cache_parts.append(f"generation_{cache_generation}")
     cache_key = ":".join(cache_parts)
-    cached = redis_client.get(cache_key)
-    if cached is not None:
-        decoded_cache = _decode_heatmap_cache(cached, expected_generation=cache_generation)
-        if decoded_cache is not None:
-            return decoded_cache
+    try:
+        cached = redis_client.get(cache_key)
+        if cached is not None:
+            decoded_cache = _decode_heatmap_cache(
+                cached,
+                expected_generation=cache_generation,
+            )
+            if decoded_cache is not None:
+                return decoded_cache
+    except Exception:
+        # 连接失败或缓存对象损坏都按 miss 重建，不能把缓存故障变成热图 500。
+        pass
 
     if detail in {"meta", "card", "full"}:
         # 发布切换期的旧前端仍会请求 card/full；三档必须和 viewport/tile 一样
         # 从原始 Trackpoint 生成，不能让兼容路径重新画出 simplified_track 的坏直线。
         from app.user.service_heatmap_tiles import get_user_heatmap_overview
 
-        result = get_user_heatmap_overview(
-            db,
-            user_id,
-            year=year,
-            detail=detail,
-            include_private=include_private,
-            city=city,
-        )
-        _store_heatmap_result_cache(
-            redis_client,
-            user_id,
-            cache_key,
-            detail,
-            result,
-            cache_generation,
-        )
-        return result
+        build_lease = None
+        try:
+            is_builder, waited_result, build_lease = _claim_heatmap_source_build(
+                redis_client,
+                cache_key,
+                cache_generation,
+            )
+        except Exception:
+            is_builder, waited_result, build_lease = True, None, None
+        if not is_builder and waited_result is not None:
+            return waited_result
+
+        try:
+            result = get_user_heatmap_overview(
+                db,
+                user_id,
+                year=year,
+                detail=detail,
+                include_private=include_private,
+                city=city,
+                generation=cache_generation,
+                privacy_fingerprint=privacy_fingerprint,
+                redis_client=redis_client,
+            )
+            try:
+                _store_heatmap_result_cache(
+                    redis_client,
+                    user_id,
+                    cache_key,
+                    detail,
+                    result,
+                    cache_generation,
+                )
+            except Exception:
+                pass
+            return result
+        finally:
+            if build_lease is not None:
+                build_lease.release()
 
 def update_user_city(db: Session, user_id: int, city) -> User:
     """
@@ -1040,7 +1189,7 @@ def invalidate_heatmap_cache(user_id: int) -> None:
     """
     redis_client = _get_redis_client()
     # 先推进 generation：即使旧请求在扫描删除后才写回，它的缓存包也不会再被新请求接受。
-    redis_client.incr(f"{_HEATMAP_GENERATION_PREFIX}{user_id}")
+    generation = int(redis_client.incr(f"{_HEATMAP_GENERATION_PREFIX}{user_id}"))
     # 新 v3 地图缓存 + v2 静态卡片缓存 + 旧全量缓存一起失效；旧 key 会在自然 TTL 后消失，
     # 双删保证上传新活动时不会留下历史大对象。
     for prefix in (
@@ -1052,7 +1201,29 @@ def invalidate_heatmap_cache(user_id: int) -> None:
     ):
         redis_client.delete(f"{prefix}{user_id}")
         for key in redis_client.scan_iter(match=f"{prefix}{user_id}:*"):
-            redis_client.delete(key)
+            decoded_key = key.decode() if isinstance(key, bytes) else str(key)
+            current_response_token = f":generation_{generation}"
+            if current_response_token not in decoded_key:
+                _delete_heatmap_key_if_generation_current(
+                    redis_client,
+                    user_id,
+                    generation,
+                    key,
+                )
+    # raster/vector/source key 自带 gN，推进 generation 后旧代绝不会再读；这里同时回收
+    # 旧代派生对象，避免频繁导入时让多代瓦片在 TTL 窗口内叠加占满 Redis。若新请求
+    # 已经开始写当前代，只保留包含当前 gN 的 key，不误删刚重建的结果。
+    current_generation_token = f":g{generation}:"
+    for prefix in _HEATMAP_DERIVED_CACHE_PREFIXES:
+        for key in redis_client.scan_iter(match=f"{prefix}{user_id}:*"):
+            decoded_key = key.decode() if isinstance(key, bytes) else str(key)
+            if current_generation_token not in decoded_key:
+                _delete_heatmap_key_if_generation_current(
+                    redis_client,
+                    user_id,
+                    generation,
+                    key,
+                )
 
 
 def get_user_profile_for_others(
