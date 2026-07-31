@@ -23,12 +23,15 @@ from app.user.service_heatmap_tiles import (
     _OVERVIEW_SOURCE_CACHE,
     _claim_derived_cache_build,
     _clip_vector_segments_to_bounds,
+    _DETAIL_SOURCE_CHUNK_CACHE,
+    _get_detail_segments_cached_for_bounds,
     _get_overview_segments_cached,
     _get_overview_map_segments_cached,
     _global_pixel,
     _limit_vector_segments,
     _map_coords_to_wgs84,
     _load_overview_segments,
+    _partition_detail_segments,
     _render_tile_png,
     _raw_points_must_split,
     _sample_overview_segment,
@@ -37,6 +40,7 @@ from app.user.service_heatmap_tiles import (
     _trim_vector_cache,
     _vector_point_budget_for_zoom,
     _wgs84_to_map_coords,
+    build_user_heatmap_detail_source,
     get_user_heatmap_tile,
     get_user_heatmap_viewport,
 )
@@ -189,6 +193,120 @@ def test_overview_sampling_preserves_sharp_bend_instead_of_uniformly_dropping_it
     assert points[1003] in sampled
 
 
+def test_detail_source_partition_keeps_bend_and_boundary_neighbors():
+    source = {
+        7: [[
+            (112.4999, 37.8000),
+            (112.5000, 37.8010),
+            (112.5001, 37.8000),
+        ]]
+    }
+
+    chunks = _partition_detail_segments(source)
+
+    assert chunks
+    stored_segments = [
+        segment
+        for chunk in chunks.values()
+        for segment in chunk[7]
+    ]
+    assert any((112.5000, 37.8010) in segment for segment in stored_segments)
+    assert all(len(segment) >= 2 for segment in stored_segments)
+
+
+def test_detail_source_builds_manifest_last_and_serves_bounds_without_postgis():
+    source = {
+        7: [[
+            (112.4999, 37.8000),
+            (112.5000, 37.8010),
+            (112.5001, 37.8000),
+        ]]
+    }
+    stored = {}
+    writes = []
+
+    class Pipeline:
+        def setex(self, key, ttl, value):
+            writes.append((key, ttl, value))
+            return self
+
+        def execute(self):
+            for key, _ttl, value in writes:
+                stored[key] = value
+
+    class Redis:
+        def __init__(self):
+            stored["heatmap:generation:user_42"] = b"9"
+
+        def pipeline(self, transaction=False):
+            assert transaction is False
+            return Pipeline()
+
+        def get(self, key):
+            return stored.get(key)
+
+        def mget(self, keys):
+            return [stored.get(key) for key in keys]
+
+        def delete(self, *keys):
+            for key in keys:
+                stored.pop(key, None)
+
+    redis = Redis()
+    _DETAIL_SOURCE_CHUNK_CACHE.clear()
+    with patch(
+        "app.user.service_heatmap_tiles._load_detail_segments",
+        return_value=source,
+    ):
+        stats = build_user_heatmap_detail_source(
+            Mock(),
+            42,
+            generation=9,
+            activity_fingerprint="data-v1",
+            redis_client=redis,
+        )
+
+    assert stats["tile_count"] >= 1
+    assert stats["point_count"] >= 3
+    assert writes[-1][0].endswith(":manifest")
+    loaded = _get_detail_segments_cached_for_bounds(
+        redis,
+        42,
+        9,
+        "data-v1",
+        None,
+        True,
+        None,
+        112.49,
+        37.79,
+        112.51,
+        37.81,
+    )
+    assert loaded == source
+    _DETAIL_SOURCE_CHUNK_CACHE.clear()
+
+
+def test_detail_source_reclaims_chunks_if_generation_changes_during_build():
+    redis = Mock()
+    pipeline = redis.pipeline.return_value
+    redis.get.return_value = b"10"
+    with patch(
+        "app.user.service_heatmap_tiles._load_detail_segments",
+        return_value={7: [[(112.5, 37.8), (112.6, 37.9)]]},
+    ):
+        build_user_heatmap_detail_source(
+            Mock(),
+            42,
+            generation=9,
+            activity_fingerprint="data-v1",
+            redis_client=redis,
+        )
+
+    pipeline.execute.assert_called_once_with()
+    assert redis.delete.call_count == 1
+    assert any(str(key).endswith(":manifest") for key in redis.delete.call_args.args)
+
+
 def test_prewarm_enqueue_coalesces_by_user_and_generation():
     queue = Mock()
     queue.fetch_job.return_value = None
@@ -199,7 +317,7 @@ def test_prewarm_enqueue_coalesces_by_user_and_generation():
         result = enqueue_heatmap_cache_prewarm(42, 7)
 
     assert result is queued_job
-    queue.fetch_job.assert_called_once_with("heatmap-prewarm-v2-user-42-g7")
+    queue.fetch_job.assert_called_once_with("heatmap-prewarm-v3-user-42-g7")
     queue.enqueue.assert_called_once()
     call = queue.enqueue.call_args
     assert call.args == (
@@ -207,8 +325,8 @@ def test_prewarm_enqueue_coalesces_by_user_and_generation():
         42,
         7,
     )
-    assert call.kwargs["job_id"] == "heatmap-prewarm-v2-user-42-g7"
-    assert call.kwargs["job_timeout"] == 120
+    assert call.kwargs["job_id"] == "heatmap-prewarm-v3-user-42-g7"
+    assert call.kwargs["job_timeout"] == 300
     assert call.kwargs["result_ttl"] == 7 * 86400
     assert call.kwargs["failure_ttl"] == 3600
     assert call.kwargs["retry"].max == 2
@@ -245,10 +363,29 @@ def test_prewarm_task_builds_current_owner_meta_and_closes_session():
             "app.user.service_social.get_user_heatmap",
             return_value={"activity_count": 293},
         ) as build,
+        patch(
+            "app.user.service_social._heatmap_activity_fingerprint",
+            return_value="data-v1",
+        ),
+        patch(
+            "app.user.service_heatmap_tiles.build_user_heatmap_detail_source",
+            return_value={
+                "tile_count": 131,
+                "point_count": 700_000,
+                "compressed_bytes": 8_000_000,
+            },
+        ) as detail_build,
     ):
         result = prewarm_heatmap_cache_task(42, 7)
 
-    assert result == {"status": "warmed", "generation": 7, "activity_count": 293}
+    assert result == {
+        "status": "warmed",
+        "generation": 7,
+        "activity_count": 293,
+        "detail_tile_count": 131,
+        "detail_point_count": 700_000,
+        "detail_compressed_bytes": 8_000_000,
+    }
     build.assert_called_once_with(
         db,
         42,
@@ -256,6 +393,15 @@ def test_prewarm_task_builds_current_owner_meta_and_closes_session():
         None,
         "meta",
         include_private=True,
+    )
+    detail_build.assert_called_once_with(
+        db,
+        42,
+        year=None,
+        include_private=True,
+        generation=7,
+        activity_fingerprint="data-v1",
+        redis_client=redis,
     )
     db.close.assert_called_once_with()
 
@@ -338,11 +484,11 @@ def test_vector_viewport_cache_reuses_overview_source_without_second_db_scan():
     assert overview_loader.call_count == 1
     assert raw_loader.call_count == 0
     assert redis.setex.call_args.args[0].startswith(
-        "heatmap:vector:v2:user_42:g9:data_data-v1:year_all:audience_owner:"
+        "heatmap:vector:v3:user_42:g9:data_data-v1:year_all:audience_owner:"
     )
 
 
-def test_high_zoom_vector_viewport_keeps_direct_raw_trackpoint_path():
+def test_high_zoom_vector_viewport_falls_back_to_raw_when_detail_source_is_missing():
     redis = Mock()
     redis.get.side_effect = [b"9", None]
     db = Mock()
@@ -360,6 +506,9 @@ def test_high_zoom_vector_viewport_keeps_direct_raw_trackpoint_path():
             "app.user.service_heatmap_tiles._load_raw_segments_for_bounds",
             return_value=source,
         ) as raw_loader,
+        patch(
+            "app.user.service_heatmap_tiles._enqueue_detail_source_prewarm_if_needed",
+        ) as enqueue_prewarm,
         patch("app.user.service_heatmap_tiles._get_overview_segments_cached") as overview_loader,
         patch(
             "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
@@ -377,7 +526,46 @@ def test_high_zoom_vector_viewport_keeps_direct_raw_trackpoint_path():
         [[112.5, 37.8], [112.5001, 37.8002], [112.5002, 37.8]]
     ]
     assert raw_loader.call_count == 1
+    enqueue_prewarm.assert_called_once_with(42, 9, None, True)
     assert overview_loader.call_count == 0
+
+
+def test_high_zoom_vector_viewport_uses_prebuilt_detail_source_without_postgis():
+    redis = Mock()
+    redis.get.side_effect = [b"9", None]
+    db = Mock()
+    (
+        db.query.return_value
+        .join.return_value
+        .filter.return_value
+        .distinct.return_value
+        .all.return_value
+    ) = [(datetime(2025, 5, 1, tzinfo=timezone.utc),)]
+    source = {7: [[(112.5, 37.8), (112.5001, 37.8002), (112.5002, 37.8)]]}
+    with (
+        patch("app.user.service_heatmap_tiles._get_redis_client", return_value=redis),
+        patch(
+            "app.user.service_heatmap_tiles._get_detail_segments_cached_for_bounds",
+            return_value=source,
+        ) as detail_loader,
+        patch("app.user.service_heatmap_tiles._load_raw_segments_for_bounds") as raw_loader,
+        patch(
+            "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
+            return_value="data-v1",
+        ),
+    ):
+        result = get_user_heatmap_viewport(
+            db,
+            42,
+            (112.49, 37.79, 112.51, 37.81, 14),
+            activity_fingerprint="data-v1",
+        )
+
+    assert result["tracks"] == [
+        [[112.5, 37.8], [112.5001, 37.8002], [112.5002, 37.8]]
+    ]
+    assert detail_loader.call_count == 1
+    assert raw_loader.call_count == 0
 
 
 def test_vector_cache_waiter_reuses_builder_result_without_duplicate_query():
@@ -392,7 +580,7 @@ def test_vector_cache_waiter_reuses_builder_result_without_duplicate_query():
 
     lock, waited = _claim_derived_cache_build(
         redis,
-        "heatmap:vector:v2:user_42:g7:test",
+        "heatmap:vector:v3:user_42:g7:test",
         lambda raw: json.loads(zlib.decompress(raw).decode()),
     )
 
@@ -419,10 +607,10 @@ def test_vector_viewport_rejects_invalid_bounds_and_zoom(viewport):
 def test_vector_cache_is_capped_per_user_after_continuous_pan():
     redis = Mock()
     redis.scan_iter.return_value = [
-        f"heatmap:vector:v2:user_42:view_{index}".encode()
+        f"heatmap:vector:v3:user_42:view_{index}".encode()
         for index in range(18)
     ]
-    current = "heatmap:vector:v2:user_42:view_17"
+    current = "heatmap:vector:v3:user_42:view_17"
 
     _trim_vector_cache(redis, 42, current)
 
@@ -436,7 +624,7 @@ def test_tile_cache_uses_heatmap_generation_and_avoids_second_db_render():
     redis.get.side_effect = [b"7", None, b"7", b"png"]
     with (
         patch("app.user.service_heatmap_tiles._get_redis_client", return_value=redis),
-        patch("app.user.service_heatmap_tiles._load_raw_segments", return_value={}) as loader,
+        patch("app.user.service_heatmap_tiles._get_overview_segments_cached", return_value={}) as loader,
         patch("app.user.service_heatmap_tiles._render_tile_png", return_value=b"png") as renderer,
         patch(
             "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
@@ -468,7 +656,7 @@ def test_public_tile_cache_changes_when_privacy_fingerprint_changes():
             "app.user.service_heatmap_tiles._public_heatmap_privacy_fingerprint",
             side_effect=["1-1-before", "1-0-after"],
         ),
-        patch("app.user.service_heatmap_tiles._load_raw_segments", return_value={}),
+        patch("app.user.service_heatmap_tiles._get_overview_segments_cached", return_value={}),
         patch("app.user.service_heatmap_tiles._render_tile_png", return_value=b"png") as renderer,
         patch(
             "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
@@ -562,7 +750,7 @@ def test_tile_releases_old_build_lease_before_aba_retry():
             "app.user.service_heatmap_tiles._claim_derived_cache_build",
             side_effect=claim,
         ),
-        patch("app.user.service_heatmap_tiles._load_raw_segments", return_value={}),
+        patch("app.user.service_heatmap_tiles._get_overview_segments_cached", return_value={}),
         patch(
             "app.user.service_heatmap_tiles._render_tile_png",
             side_effect=[b"first", b"second"],

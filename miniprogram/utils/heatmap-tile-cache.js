@@ -7,8 +7,11 @@
  */
 
 const MAX_FILES = 128
+const MAX_DATA_ITEMS = 32
 const files = {}
 const inflight = {}
+const dataItems = {}
+const dataInflight = {}
 let accessSeed = 0
 
 function prune() {
@@ -59,6 +62,44 @@ function remove(key) {
   delete files[key]
 }
 
+function pruneData() {
+  var keys = Object.keys(dataItems)
+  if (keys.length <= MAX_DATA_ITEMS) return
+  keys.sort(function (left, right) {
+    return dataItems[left].access - dataItems[right].access
+  })
+  keys.slice(0, keys.length - MAX_DATA_ITEMS).forEach(function (key) {
+    delete dataItems[key]
+  })
+}
+
+function loadData(key, loader) {
+  var cached = dataItems[key]
+  if (cached) {
+    cached.access = ++accessSeed
+    return Promise.resolve(cached.value)
+  }
+  if (dataInflight[key]) return dataInflight[key]
+  var pending
+  try {
+    pending = loader()
+  } catch (error) {
+    return Promise.reject(error)
+  }
+  var request = Promise.resolve(pending)
+    .then(function (value) {
+      dataItems[key] = { value: value, access: ++accessSeed }
+      delete dataInflight[key]
+      pruneData()
+      return value
+    }, function (error) {
+      delete dataInflight[key]
+      throw error
+    })
+  dataInflight[key] = request
+  return request
+}
+
 function appIdentity() {
   if (typeof getApp !== 'function') return { userId: 0, token: '' }
   try {
@@ -107,10 +148,13 @@ function audienceScope(explicitUserId) {
 function clearAll() {
   Object.keys(files).forEach(function (key) { delete files[key] })
   Object.keys(inflight).forEach(function (key) { delete inflight[key] })
+  Object.keys(dataItems).forEach(function (key) { delete dataItems[key] })
+  Object.keys(dataInflight).forEach(function (key) { delete dataInflight[key] })
 }
 
 module.exports = {
   load: load,
+  loadData: loadData,
   remove: remove,
   userScope: userScope,
   viewerScope: viewerScope,

@@ -76,20 +76,23 @@ _HEATMAP_PREVIOUS_V3_CACHE_PREFIX = "heatmap:v3:user_"
 _HEATMAP_PREVIOUS_CACHE_PREFIX = "heatmap:v2:user_"
 _HEATMAP_LEGACY_CACHE_PREFIX = "heatmap:user_"
 _HEATMAP_DERIVED_CACHE_PREFIXES = (
+    "heatmap:vector:v3:user_",
     "heatmap:vector:v2:user_",
     "heatmap:raster:v2:user_",
     "heatmap:raster:v2:source:user_",
+    "heatmap:detail:v1:user_",
     # 发布切换期同时清旧版，避免废弃对象等到 TTL 才释放。
     "heatmap:vector:v1:user_",
     "heatmap:raster:v1:user_",
     "heatmap:raster:v1:source:user_",
 )
-# SCALE_GATE[personal-heatmap-source-v2]: 293 次 / 752k 原始点实测，全用户源后台
-# 重建约 7.7s、Redis 压缩约 0.9MB。当前用“导入后异步整用户预热 + 7 天源缓存”；
-# 当预热 p95 > 15s、单用户源 > 4MB 或 Redis 热图源 > 可用内存 25% 时，必须改为
-# 每 activity 分块 + 增量合并/瓦片预计算，不能继续单纯加 TTL 或提高同步超时。
-_HEATMAP_PREWARM_JOB_VERSION = "v2"
-_HEATMAP_PREWARM_JOB_TIMEOUT_SEC = 120
+# SCALE_GATE[personal-heatmap-source-v3]: 293 次 / 752k 原始点基线中，overview 重建约
+# 7.7s / Redis 约 0.9MB。v3 另外离线生成 z12 高精度 source tiles，高倍率请求不再扫 PG。
+# 当预热 p95 > 30s、单用户全部 detail chunks > 12MB 或 Redis 热图派生层 > 可用内存
+# 25% 时，必须把 detail chunks 迁到私有对象存储并只在 Redis 留 manifest/热点块；
+# 不得靠增加 Redis TTL/内存或把请求时 PG 扫描加回来掩盖容量问题。
+_HEATMAP_PREWARM_JOB_VERSION = "v3"
+_HEATMAP_PREWARM_JOB_TIMEOUT_SEC = 300
 _HEATMAP_PREWARM_RESULT_TTL_SEC = 7 * 86400
 _HEATMAP_POINTS_PER_ACTIVITY = 64
 _HEATMAP_TOTAL_POINT_BUDGET = 9_000
@@ -1388,7 +1391,7 @@ def enqueue_heatmap_cache_prewarm(user_id: int, generation: int):
 
 
 def prewarm_heatmap_cache_task(user_id: int, expected_generation: int) -> dict:
-    """RQ 任务：预先构建 owner/all-year 连续源与轻量 meta 缓存。"""
+    """RQ 任务：预先构建 owner/all-year meta 与高精度分块源。"""
     redis_client = _get_redis_client()
     current_generation = _heatmap_cache_generation(redis_client, user_id)
     if current_generation != expected_generation:
@@ -1410,6 +1413,18 @@ def prewarm_heatmap_cache_task(user_id: int, expected_generation: int) -> dict:
             "meta",
             include_private=True,
         )
+        activity_fingerprint = _heatmap_activity_fingerprint(db, user_id, True)
+        from app.user.service_heatmap_tiles import build_user_heatmap_detail_source
+
+        detail_stats = build_user_heatmap_detail_source(
+            db,
+            user_id,
+            year=None,
+            include_private=True,
+            generation=expected_generation,
+            activity_fingerprint=activity_fingerprint,
+            redis_client=redis_client,
+        )
         current_generation = _heatmap_cache_generation(redis_client, user_id)
         return {
             "status": (
@@ -1417,6 +1432,9 @@ def prewarm_heatmap_cache_task(user_id: int, expected_generation: int) -> dict:
             ),
             "generation": expected_generation,
             "activity_count": int(result.get("activity_count") or 0),
+            "detail_tile_count": int(detail_stats["tile_count"]),
+            "detail_point_count": int(detail_stats["point_count"]),
+            "detail_compressed_bytes": int(detail_stats["compressed_bytes"]),
         }
     finally:
         db.close()

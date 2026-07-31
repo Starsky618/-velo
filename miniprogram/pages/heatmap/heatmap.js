@@ -133,7 +133,9 @@ Page({
   onUnload() {
     this._pageAlive = false
     if (this._viewportTimer) clearTimeout(this._viewportTimer)
+    if (this._vectorPrefetchTimer) clearTimeout(this._vectorPrefetchTimer)
     this._viewportTimer = null
+    this._vectorPrefetchTimer = null
     this._metadataRequestSeq = (this._metadataRequestSeq || 0) + 1
     this._viewportRequestSeq = (this._viewportRequestSeq || 0) + 1
     this._vectorRequestSeq = (this._vectorRequestSeq || 0) + 1
@@ -451,17 +453,8 @@ Page({
     this._lastVectorZoom = requestViewport.zoom
     var requestSeq = (this._vectorRequestSeq || 0) + 1
     this._vectorRequestSeq = requestSeq
-    var params = {
-      detail: 'viewport',
-      west: requestViewport.west,
-      south: requestViewport.south,
-      east: requestViewport.east,
-      north: requestViewport.north,
-      zoom: requestViewport.zoom,
-    }
-    if (this.data.selectedYear !== null) params.year = this.data.selectedYear
     this.setData({ updating: !Array.isArray(this.data.polylines) || this.data.polylines.length === 0 })
-    api.get(this._endpoint(), params)
+    this._loadVectorData(requestViewport)
       .then((data) => {
         if (this._pageAlive === false || requestSeq !== this._vectorRequestSeq) return
         var prepared = heatmapMap.prepareTracks(data && data.tracks)
@@ -476,12 +469,91 @@ Page({
             style.opacity
           ),
         })
+        this._prefetchVectorNeighbors(requestViewport)
       })
       .catch(() => {
         if (this._pageAlive === false || requestSeq !== this._vectorRequestSeq) return
         this._lastVectorSetKey = ''
         this.setData({ updating: false })
       })
+  },
+
+  _vectorDataKey(requestViewport) {
+    return [
+      'vector',
+      heatmapTileCache.viewerScope(),
+      heatmapTileCache.userScope(this._userId),
+      heatmapTileCache.audienceScope(this._userId),
+      this._heatmapCacheVersion || ('g' + (this._heatmapGeneration || 0)),
+      this.data.selectedYear === null ? 'all' : this.data.selectedYear,
+      requestViewport.key,
+    ].join(':')
+  },
+
+  _loadVectorData(requestViewport) {
+    var params = {
+      detail: 'viewport',
+      west: requestViewport.west,
+      south: requestViewport.south,
+      east: requestViewport.east,
+      north: requestViewport.north,
+      zoom: requestViewport.zoom,
+    }
+    if (this.data.selectedYear !== null) params.year = this.data.selectedYear
+    return heatmapTileCache.loadData(this._vectorDataKey(requestViewport), () => (
+      api.get(this._endpoint(), params)
+    ))
+  },
+
+  _prefetchVectorNeighbors(requestViewport) {
+    if (requestViewport.zoom < 14 || this._pageAlive === false) return
+    if (this._vectorPrefetchTimer) clearTimeout(this._vectorPrefetchTimer)
+    this._vectorPrefetchTimer = setTimeout(() => {
+      this._vectorPrefetchTimer = null
+      if (this._pageAlive === false) return
+      var width = requestViewport.maxX - requestViewport.minX + 1
+      var height = requestViewport.maxY - requestViewport.minY + 1
+      ;[
+        [-1, 0], [1, 0], [0, -1], [0, 1],
+        [-1, -1], [1, -1], [-1, 1], [1, 1],
+      ].forEach((offset) => {
+        var minX = requestViewport.minX + offset[0] * width
+        var minY = requestViewport.minY + offset[1] * height
+        var maxX = minX + width - 1
+        var maxY = minY + height - 1
+        if (
+          minX < 0 || minY < 0
+          || maxX >= requestViewport.count || maxY >= requestViewport.count
+        ) return
+        var neighbor = this._vectorViewportForTileRange(
+          requestViewport.zoom, minX, maxX, minY, maxY
+        )
+        this._loadVectorData(neighbor).catch(function () {})
+      })
+    }, 120)
+  },
+
+  _vectorViewportForTileRange(zoom, minX, maxX, minY, maxY) {
+    var count = Math.pow(2, zoom)
+    var mapWest = minX / count * 360 - 180
+    var mapEast = (maxX + 1) / count * 360 - 180
+    var mapNorth = latitudeForTileY(minY, zoom)
+    var mapSouth = latitudeForTileY(maxY + 1, zoom)
+    var southwest = gcj02ToWgs84(mapSouth, mapWest)
+    var northeast = gcj02ToWgs84(mapNorth, mapEast)
+    return {
+      key: [zoom, minX, maxX, minY, maxY].join(':'),
+      zoom: zoom,
+      count: count,
+      minX: minX,
+      maxX: maxX,
+      minY: minY,
+      maxY: maxY,
+      west: southwest[1],
+      south: southwest[0],
+      east: northeast[1],
+      north: northeast[0],
+    }
   },
 
   _vectorRequestViewport(viewport) {
@@ -506,20 +578,7 @@ Page({
       count - 1,
       Math.ceil((maxY + 1) / vectorBlockSize) * vectorBlockSize - 1
     )
-    var mapWest = minX / count * 360 - 180
-    var mapEast = (maxX + 1) / count * 360 - 180
-    var mapNorth = latitudeForTileY(minY, zoom)
-    var mapSouth = latitudeForTileY(maxY + 1, zoom)
-    var southwest = gcj02ToWgs84(mapSouth, mapWest)
-    var northeast = gcj02ToWgs84(mapNorth, mapEast)
-    return {
-      key: [zoom, minX, maxX, minY, maxY].join(':'),
-      zoom: zoom,
-      west: southwest[1],
-      south: southwest[0],
-      east: northeast[1],
-      north: northeast[0],
-    }
+    return this._vectorViewportForTileRange(zoom, minX, maxX, minY, maxY)
   },
 
   _visibleTiles(viewport) {

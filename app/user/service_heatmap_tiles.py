@@ -53,8 +53,13 @@ _OVERVIEW_REDIS_SOURCE_PREFIX = "heatmap:raster:v2:source:user_"
 _OVERVIEW_SOURCE_BUILD_LOCK_TTL_SEC = 30
 _OVERVIEW_SOURCE_BUILD_WAIT_SEC = 60
 _OVERVIEW_SOURCE_BUILD_POLL_SEC = 0.05
+_DETAIL_SOURCE_REDIS_PREFIX = "heatmap:detail:v1:user_"
+_DETAIL_SOURCE_ZOOM = 12
+_DETAIL_SOURCE_REDIS_TTL_SEC = 7 * 86400
+_DETAIL_SOURCE_MEMORY_TTL_SEC = 60
+_DETAIL_SOURCE_MEMORY_MAX_ITEMS = 128
 _VECTOR_CACHE_TTL_SEC = 900
-_VECTOR_CACHE_PREFIX = "heatmap:vector:v2:user_"
+_VECTOR_CACHE_PREFIX = "heatmap:vector:v3:user_"
 _VECTOR_MAX_CACHE_KEYS = 16
 _VECTOR_TOTAL_POINT_BUDGET = 14_000
 _VECTOR_POINTS_PER_SEGMENT = 320
@@ -63,6 +68,7 @@ _DERIVED_BUILD_WAIT_SEC = 60
 _DERIVED_BUILD_POLL_SEC = 0.05
 _OVERVIEW_SOURCE_CACHE: OrderedDict[tuple, tuple[float, dict]] = OrderedDict()
 _OVERVIEW_MAP_CACHE: OrderedDict[tuple, tuple[float, dict]] = OrderedDict()
+_DETAIL_SOURCE_CHUNK_CACHE: OrderedDict[str, tuple[float, dict]] = OrderedDict()
 _OVERVIEW_SOURCE_CACHE_LOCK = RLock()
 _OVERVIEW_BUILD_LOCKS: WeakValueDictionary[tuple, RLock] = WeakValueDictionary()
 
@@ -490,13 +496,16 @@ def _load_raw_segments_for_bounds(
     return grouped
 
 
-def _load_overview_segments(
+def _load_segmented_segments(
     db: Session,
     user_id: int,
     year: int | None,
     include_private: bool,
+    *,
+    simplify_tolerance: float | None,
+    point_limit: int | None,
 ) -> dict[int, list[list[tuple[float, float]]]]:
-    """PostGIS 先按 seq/time/speed 切真实连续段，再简化；低缩放不再猜跳点。"""
+    """从原始点切出真实连续段，再按派生层精度做一次离线简化。"""
     year_window = _year_window_utc(year)
     year_clause = ""
     params: dict[str, object] = {"user_id": user_id}
@@ -506,6 +515,9 @@ def _load_overview_segments(
     privacy_clause = ""
     if not include_private:
         privacy_clause = "AND (ap.activity_id IS NULL OR ap.visibility = 'public')"
+    line_expression = "ST_MakeLine(geom ORDER BY seq)"
+    if simplify_tolerance is not None:
+        line_expression = f"ST_Simplify({line_expression}, :simplify_tolerance)"
 
     rows = db.execute(
         text(f"""
@@ -576,10 +588,7 @@ def _load_overview_segments(
                 SELECT
                     activity_id,
                     segment_id,
-                    ST_Simplify(
-                        ST_MakeLine(geom ORDER BY seq),
-                        :simplify_tolerance
-                    ) AS line_geom
+                    {line_expression} AS line_geom
                 FROM segmented
                 GROUP BY activity_id, segment_id
                 HAVING COUNT(*) >= 2
@@ -599,7 +608,7 @@ def _load_overview_segments(
             "untimed_gap_m": _RAW_UNTIMED_GAP_METERS,
             "max_elapsed_s": 45,
             "max_speed_mps": 45,
-            "simplify_tolerance": 0.00002,
+            "simplify_tolerance": simplify_tolerance or 0.0,
         },
     ).all()
 
@@ -609,17 +618,61 @@ def _load_overview_segments(
     for row in rows:
         key = (int(row.activity_id), int(row.segment_id))
         if current_key is not None and key != current_key:
+            prepared = (
+                _sample_segment_to_limit(current, point_limit)
+                if point_limit is not None
+                else current
+            )
             _append_segment(
                 grouped,
                 current_key[0],
-                _sample_overview_segment(current),
+                prepared,
             )
             current = []
         current_key = key
         current.append((float(row.longitude), float(row.latitude)))
     if current_key is not None:
-        _append_segment(grouped, current_key[0], _sample_overview_segment(current))
+        prepared = (
+            _sample_segment_to_limit(current, point_limit)
+            if point_limit is not None
+            else current
+        )
+        _append_segment(grouped, current_key[0], prepared)
     return grouped
+
+
+def _load_overview_segments(
+    db: Session,
+    user_id: int,
+    year: int | None,
+    include_private: bool,
+) -> dict[int, list[list[tuple[float, float]]]]:
+    """城市总览源：约 2 米保弯精度，每段最多 1000 点。"""
+    return _load_segmented_segments(
+        db,
+        user_id,
+        year,
+        include_private,
+        simplify_tolerance=0.00002,
+        point_limit=_OVERVIEW_POINTS_PER_SEGMENT,
+    )
+
+
+def _load_detail_segments(
+    db: Session,
+    user_id: int,
+    year: int | None,
+    include_private: bool,
+) -> dict[int, list[list[tuple[float, float]]]]:
+    """高倍率派生源：保留连续段全部原始几何点，只做无损压缩和空间分块。"""
+    return _load_segmented_segments(
+        db,
+        user_id,
+        year,
+        include_private,
+        simplify_tolerance=None,
+        point_limit=None,
+    )
 
 
 def _decode_overview_segments(encoded: bytes):
@@ -634,6 +687,322 @@ def _decode_overview_segments(encoded: bytes):
             ]
             _append_segment(restored, int(activity_id), clean)
     return restored
+
+
+def _encode_segment_chunks(
+    segments: dict[int, list[list[tuple[float, float]]]],
+) -> bytes:
+    payload = [
+        [activity_id, activity_segments]
+        for activity_id, activity_segments in segments.items()
+    ]
+    return zlib.compress(
+        json.dumps(payload, separators=(",", ":")).encode(),
+        level=6,
+    )
+
+
+def _source_tile_for_point(
+    longitude: float,
+    latitude: float,
+    zoom: int = _DETAIL_SOURCE_ZOOM,
+) -> tuple[int, int]:
+    count = 1 << zoom
+    x = int((longitude + 180.0) / 360.0 * count)
+    limited = max(-85.05112878, min(85.05112878, latitude))
+    radians = math.radians(limited)
+    y = int((1 - math.asinh(math.tan(radians)) / math.pi) / 2 * count)
+    return (
+        max(0, min(count - 1, x)),
+        max(0, min(count - 1, y)),
+    )
+
+
+def _detail_source_base_key(
+    user_id: int,
+    generation: int,
+    activity_fingerprint: str,
+    year: int | None,
+    include_private: bool,
+    privacy_fingerprint: str | None,
+) -> str:
+    key = (
+        f"{_DETAIL_SOURCE_REDIS_PREFIX}{user_id}:g{generation}:"
+        f"data_{activity_fingerprint}:year_{year or 'all'}:"
+        f"audience_{'owner' if include_private else 'public'}"
+    )
+    if privacy_fingerprint is not None:
+        key += f":privacy_{privacy_fingerprint}"
+    return key
+
+
+def _partition_detail_segments(
+    segments: dict[int, list[list[tuple[float, float]]]],
+    zoom: int = _DETAIL_SOURCE_ZOOM,
+) -> dict[tuple[int, int], dict[int, list[list[tuple[float, float]]]]]:
+    """把连续高精度轨迹切成粗粒度 source tiles，拖图时只解码邻近块。
+
+    source tile 不是最终 PNG；它相当于 Strava Meridian 文中预编码的矢量数据层。
+    每条相邻点线段按中点归入唯一 tile，同时保留两个端点。读取时会多取一圈邻块
+    再按真实视野精确裁剪，因此不会重复绘制，也不会在分块边缘制造断线或跨路直线。
+    """
+    chunks: dict[
+        tuple[int, int],
+        dict[int, list[list[tuple[float, float]]]],
+    ] = defaultdict(lambda: defaultdict(list))
+    for activity_id, activity_segments in segments.items():
+        for segment in activity_segments:
+            active: dict[tuple[int, int], list[tuple[float, float]]] = {}
+            for start, end in zip(segment, segment[1:]):
+                touched = {
+                    _source_tile_for_point(
+                        (start[0] + end[0]) / 2,
+                        (start[1] + end[1]) / 2,
+                        zoom,
+                    )
+                }
+                for tile in list(active):
+                    if tile not in touched:
+                        _append_segment(chunks[tile], activity_id, active.pop(tile))
+                for tile in touched:
+                    current = active.get(tile)
+                    if current is None:
+                        active[tile] = [start, end]
+                    elif current[-1] == start:
+                        current.append(end)
+                    else:
+                        _append_segment(chunks[tile], activity_id, current)
+                        active[tile] = [start, end]
+            for tile, current in active.items():
+                _append_segment(chunks[tile], activity_id, current)
+    return chunks
+
+
+def _detail_source_memory_get(cache_key: str):
+    now = monotonic()
+    with _OVERVIEW_SOURCE_CACHE_LOCK:
+        cached = _DETAIL_SOURCE_CHUNK_CACHE.get(cache_key)
+        if cached is not None and now - cached[0] <= _DETAIL_SOURCE_MEMORY_TTL_SEC:
+            _DETAIL_SOURCE_CHUNK_CACHE.move_to_end(cache_key)
+            return cached[1]
+        if cached is not None:
+            del _DETAIL_SOURCE_CHUNK_CACHE[cache_key]
+    return None
+
+
+def _detail_source_memory_store(cache_key: str, segments: dict) -> None:
+    with _OVERVIEW_SOURCE_CACHE_LOCK:
+        _DETAIL_SOURCE_CHUNK_CACHE[cache_key] = (monotonic(), segments)
+        while len(_DETAIL_SOURCE_CHUNK_CACHE) > _DETAIL_SOURCE_MEMORY_MAX_ITEMS:
+            _DETAIL_SOURCE_CHUNK_CACHE.popitem(last=False)
+
+
+def _join_detail_source_segment(
+    merged: dict[int, list[list[tuple[float, float]]]],
+    activity_id: int,
+    segment: list[tuple[float, float]],
+) -> None:
+    """把 source-tile 边界切开的相邻片段重新接回；只按完全相同端点连接。"""
+    if len(segment) < 2:
+        return
+    pending = list(segment)
+    candidates = merged[activity_id]
+    index = 0
+    while index < len(candidates):
+        current = candidates[index]
+        if current[-1] == pending[0]:
+            pending = current + pending[1:]
+            candidates.pop(index)
+            index = 0
+            continue
+        if pending[-1] == current[0]:
+            pending = pending + current[1:]
+            candidates.pop(index)
+            index = 0
+            continue
+        index += 1
+    candidates.append(pending)
+
+
+def _detail_source_tile_range(
+    west: float,
+    south: float,
+    east: float,
+    north: float,
+    zoom: int = _DETAIL_SOURCE_ZOOM,
+) -> list[tuple[int, int]]:
+    min_x, max_y = _source_tile_for_point(west, south, zoom)
+    max_x, min_y = _source_tile_for_point(east, north, zoom)
+    count = 1 << zoom
+    first_x = max(0, min(min_x, max_x) - 1)
+    last_x = min(count - 1, max(min_x, max_x) + 1)
+    first_y = max(0, min(min_y, max_y) - 1)
+    last_y = min(count - 1, max(min_y, max_y) + 1)
+    return [
+        (x, y)
+        for x in range(first_x, last_x + 1)
+        for y in range(first_y, last_y + 1)
+    ]
+
+
+def build_user_heatmap_detail_source(
+    db: Session,
+    user_id: int,
+    *,
+    year: int | None = None,
+    include_private: bool = True,
+    generation: int,
+    activity_fingerprint: str,
+    privacy_fingerprint: str | None = None,
+    redis_client=None,
+) -> dict[str, int]:
+    """RQ 预生成高精度分块源；manifest 最后写入，半成品绝不对请求可见。"""
+    if redis_client is None:
+        redis_client = _get_redis_client()
+    segments = _load_detail_segments(db, user_id, year, include_private)
+    chunks = _partition_detail_segments(segments)
+    base_key = _detail_source_base_key(
+        user_id,
+        generation,
+        activity_fingerprint,
+        year,
+        include_private,
+        privacy_fingerprint,
+    )
+    encoded_chunks: list[tuple[str, bytes]] = []
+    point_count = 0
+    for (x, y), chunk in sorted(chunks.items()):
+        encoded = _encode_segment_chunks(chunk)
+        encoded_chunks.append((f"{base_key}:z{_DETAIL_SOURCE_ZOOM}:{x}:{y}", encoded))
+        point_count += sum(
+            len(segment)
+            for activity_segments in chunk.values()
+            for segment in activity_segments
+        )
+    manifest = zlib.compress(
+        json.dumps(
+            {
+                "zoom": _DETAIL_SOURCE_ZOOM,
+                "tiles": [[x, y] for x, y in sorted(chunks)],
+                "point_count": point_count,
+            },
+            separators=(",", ":"),
+        ).encode(),
+        level=6,
+    )
+    pipeline = redis_client.pipeline(transaction=False)
+    for key, encoded in encoded_chunks:
+        pipeline.setex(key, _DETAIL_SOURCE_REDIS_TTL_SEC, encoded)
+    pipeline.setex(
+        f"{base_key}:manifest",
+        _DETAIL_SOURCE_REDIS_TTL_SEC,
+        manifest,
+    )
+    pipeline.execute()
+    written_keys = [key for key, _ in encoded_chunks] + [f"{base_key}:manifest"]
+    try:
+        current_generation = int(
+            redis_client.get(f"{_GENERATION_PREFIX}{user_id}") or 0
+        )
+        if current_generation != generation:
+            redis_client.delete(*written_keys)
+    except Exception:
+        # generation 仍编码在每个 key 中；即使回收失败，新请求也不会读到旧代。
+        pass
+    return {
+        "tile_count": len(encoded_chunks),
+        "point_count": point_count,
+        "compressed_bytes": sum(len(encoded) for _, encoded in encoded_chunks),
+    }
+
+
+def _get_detail_segments_cached_for_bounds(
+    redis_client,
+    user_id: int,
+    generation: int,
+    activity_fingerprint: str,
+    year: int | None,
+    include_private: bool,
+    privacy_fingerprint: str | None,
+    west: float,
+    south: float,
+    east: float,
+    north: float,
+) -> dict[int, list[list[tuple[float, float]]]] | None:
+    """读取预生成 source tiles；None 表示尚未预热，调用方可降级查当前 PG 视野。"""
+    base_key = _detail_source_base_key(
+        user_id,
+        generation,
+        activity_fingerprint,
+        year,
+        include_private,
+        privacy_fingerprint,
+    )
+    try:
+        raw_manifest = redis_client.get(f"{base_key}:manifest")
+        if not isinstance(raw_manifest, bytes):
+            return None
+        manifest = json.loads(zlib.decompress(raw_manifest).decode())
+        if int(manifest.get("zoom", -1)) != _DETAIL_SOURCE_ZOOM:
+            return None
+        occupied = {
+            (int(tile[0]), int(tile[1]))
+            for tile in manifest.get("tiles", [])
+            if isinstance(tile, list) and len(tile) == 2
+        }
+    except Exception:
+        return None
+
+    wanted = [
+        tile
+        for tile in _detail_source_tile_range(west, south, east, north)
+        if tile in occupied
+    ]
+    if not wanted:
+        return {}
+    keys = [
+        f"{base_key}:z{_DETAIL_SOURCE_ZOOM}:{x}:{y}"
+        for x, y in wanted
+    ]
+    missing_keys = [key for key in keys if _detail_source_memory_get(key) is None]
+    if missing_keys:
+        try:
+            encoded_chunks = redis_client.mget(missing_keys)
+        except Exception:
+            return None
+        if len(encoded_chunks) != len(missing_keys) or any(
+            not isinstance(encoded, bytes) for encoded in encoded_chunks
+        ):
+            return None
+        try:
+            for key, encoded in zip(missing_keys, encoded_chunks):
+                _detail_source_memory_store(key, _decode_overview_segments(encoded))
+        except Exception:
+            return None
+
+    merged: dict[int, list[list[tuple[float, float]]]] = defaultdict(list)
+    for key in keys:
+        chunk = _detail_source_memory_get(key)
+        if chunk is None:
+            return None
+        for activity_id, activity_segments in chunk.items():
+            for segment in activity_segments:
+                _join_detail_source_segment(merged, activity_id, segment)
+    return _clip_vector_segments_to_bounds(merged, west, south, east, north)
+
+
+def _enqueue_detail_source_prewarm_if_needed(
+    user_id: int,
+    generation: int,
+    year: int | None,
+    include_private: bool,
+) -> None:
+    """旧 owner/all-year 没有 v3 source 时补入队；当前请求仍走 PG 故障降级。"""
+    if not include_private or year is not None:
+        return
+    from app.user.service_social import enqueue_heatmap_cache_prewarm
+
+    enqueue_heatmap_cache_prewarm(user_id, generation)
 
 
 def _overview_memory_get(key: tuple):
@@ -1595,17 +1964,36 @@ def get_user_heatmap_viewport(
                 north,
             )
         else:
-            # z14 以上街区/山路直接读当前范围原始点，保持已经验收的微观细节。
-            segments = _load_raw_segments_for_bounds(
-                db,
+            # z14 以上从导入后异步生成的高精度 source tiles 读取；分块保留全部原始
+            # 几何点且不做固定点数截断，保持已经验收的山路/拐弯细节。旧用户或预热
+            # 失败时才降级查当前范围 PG，不能因为性能层缺失让热图打不开。
+            segments = _get_detail_segments_cached_for_bounds(
+                redis_client,
                 user_id,
+                generation,
+                activity_fingerprint,
                 year,
+                include_private,
+                privacy_fingerprint,
                 west,
                 south,
                 east,
                 north,
-                include_private,
             )
+            if segments is None:
+                _enqueue_detail_source_prewarm_if_needed(
+                    user_id, generation, year, include_private
+                )
+                segments = _load_raw_segments_for_bounds(
+                    db,
+                    user_id,
+                    year,
+                    west,
+                    south,
+                    east,
+                    north,
+                    include_private,
+                )
         prepared = _limit_vector_segments(
             segments,
             zoom,
@@ -1752,9 +2140,9 @@ def get_user_heatmap_tile(
         return waited_png
 
     try:
-        overview = zoom <= 9
-        segments = (
-            _get_overview_segments_cached(
+        overview = zoom <= 13
+        if overview:
+            segments = _get_overview_segments_cached(
                 db,
                 user_id,
                 year,
@@ -1764,9 +2152,34 @@ def get_user_heatmap_tile(
                 redis_client,
                 activity_fingerprint,
             )
-            if overview
-            else _load_raw_segments(db, user_id, year, zoom, x, y, include_private)
-        )
+        else:
+            west, south, east, north = _tile_query_bounds_wgs84(zoom, x, y)
+            segments = _get_detail_segments_cached_for_bounds(
+                redis_client,
+                user_id,
+                generation,
+                activity_fingerprint,
+                year,
+                include_private,
+                privacy_fingerprint,
+                west,
+                south,
+                east,
+                north,
+            )
+            if segments is None:
+                _enqueue_detail_source_prewarm_if_needed(
+                    user_id, generation, year, include_private
+                )
+                segments = _load_raw_segments(
+                    db,
+                    user_id,
+                    year,
+                    zoom,
+                    x,
+                    y,
+                    include_private,
+                )
         if overview:
             segments = _get_overview_map_segments_cached(
                 segments,

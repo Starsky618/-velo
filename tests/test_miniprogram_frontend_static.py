@@ -428,6 +428,61 @@ const viewport = {
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
+def test_high_zoom_vector_prefetches_neighbor_blocks_and_reuses_session_cache():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const calls = []
+require.cache[apiPath] = { exports: {
+  get: function (url, params) {
+    calls.push({ url: url, params: params })
+    return Promise.resolve({
+      tracks: [[[112.4400, 37.7700], [112.4402, 37.7702]]]
+    })
+  }
+} }
+global.setTimeout = function (callback) { callback(); return 1 }
+global.clearTimeout = function () {}
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  _preferVectorLayer: true,
+  _metadataLoaded: true,
+  _heatmapGeneration: 11,
+  _heatmapCacheVersion: 'g11-data-v1',
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'red' }),
+  setData: function (update) { Object.assign(this.data, update) },
+})
+const viewport = {
+  west: 112.437, south: 37.770, east: 112.447, north: 37.785, zoom: 16,
+  mapWest: 112.443, mapSouth: 37.776, mapEast: 112.453, mapNorth: 37.791,
+}
+
+;(async function () {
+  page._refreshVectorLayer(viewport)
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(calls.length, 9)
+  const current = page._vectorRequestViewport(viewport)
+  const width = current.maxX - current.minX + 1
+  const east = page._vectorViewportForTileRange(
+    current.zoom,
+    current.minX + width,
+    current.maxX + width,
+    current.minY,
+    current.maxY
+  )
+  await page._loadVectorData(east)
+  assert.strictEqual(calls.length, 9)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
 def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     app_json = json.loads(_read(MINI / "app.json"))
     js = _read(MINI / "pages" / "heatmap" / "heatmap.js")
@@ -445,6 +500,8 @@ def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     assert "gcj02ToWgs84" in js
     assert "this._preferVectorLayer = isDeveloperTools()" in js
     assert "_vectorRequestViewport" in js
+    assert "_prefetchVectorNeighbors" in js
+    assert "heatmapTileCache.loadData" in js
     assert "vectorBlockSize = zoom >= 14 ? 4 : 2" in js
     assert "opacity: HEATMAP_LINE_OPACITY" in js
     assert "data && data.cache_version" in js

@@ -98,8 +98,9 @@ def _cleanup_redis(redis_client, user_id: int):
     redis_client.delete(f"heatmap:generation:user_{user_id}")
     for prefix in (
         "heatmap:v5:user_", "heatmap:v4:user_", "heatmap:v3:user_", "heatmap:v2:user_",
-        "heatmap:vector:v2:user_", "heatmap:raster:v2:user_",
+        "heatmap:vector:v3:user_", "heatmap:vector:v2:user_", "heatmap:raster:v2:user_",
         "heatmap:raster:v2:source:user_",
+        "heatmap:detail:v1:user_",
         "heatmap:user_", "heatmap:vector:v1:user_", "heatmap:raster:v1:user_",
         "heatmap:raster:v1:source:user_", "power_curve:user_",
     ):
@@ -790,7 +791,7 @@ class TestGetUserHeatmap:
             assert first["activity_count"] == 1
             assert len(first["tracks"]) == 1
             assert 116 < first["tracks"][0][0][0] < 117
-            cached_keys = list(real_redis.scan_iter(match=f"heatmap:vector:v2:user_{user_id}:*"))
+            cached_keys = list(real_redis.scan_iter(match=f"heatmap:vector:v3:user_{user_id}:*"))
             assert len(cached_keys) == 1
 
             # 每次请求会用一次廉价聚合查询核对活动集合，但精确
@@ -815,7 +816,7 @@ class TestGetUserHeatmap:
                 )
             assert second["activity_count"] == 1
             assert second == first
-            assert len(list(real_redis.scan_iter(match=f"heatmap:vector:v2:user_{user_id}:*"))) == 1
+            assert len(list(real_redis.scan_iter(match=f"heatmap:vector:v3:user_{user_id}:*"))) == 1
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -1098,6 +1099,7 @@ class TestUpdateUserCity:
             for key in keys:
                 real_redis.set(key, "cached")
             derived_keys = [
+                f"heatmap:vector:v3:user_{user_id}:g{generation_before}:year_all:test",
                 f"heatmap:vector:v2:user_{user_id}:g{generation_before}:year_all:test",
                 f"heatmap:raster:v2:user_{user_id}:g{generation_before}:year_all:test",
                 f"heatmap:raster:v2:source:user_{user_id}:g{generation_before}:year_all:test",
