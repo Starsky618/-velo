@@ -74,4 +74,7 @@ heatmap_redis_conn = Redis.from_url(
 #   3. docker-compose.yml: worker service 的 RQ_QUEUES env 加 "new_q"
 #   4. 调用方 enqueue：`from app.queue import new_queue` + `.enqueue(...)`
 default_queue = Queue("velo", connection=redis_conn)
+# 同一个 velo 队列的有界 producer。Worker 仍用无 read timeout 的 default_queue
+# 阻塞消费；API/导入 post-commit 入队必须在 Redis 黑洞时 1 秒内失败返回。
+heatmap_prewarm_queue = Queue("velo", connection=heatmap_redis_conn)
 ai_drafts_queue = Queue("ai_drafts", connection=redis_conn)

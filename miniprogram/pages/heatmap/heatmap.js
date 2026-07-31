@@ -158,7 +158,9 @@ Page({
       : '/api/user/me/heatmap/tiles/'
     var params = ['color=' + encodeURIComponent(this.data.selectedColor)]
     if (this.data.selectedYear !== null) params.push('year=' + this.data.selectedYear)
-    params.push('v=' + (this._heatmapGeneration || 0))
+    params.push('v=' + encodeURIComponent(
+      this._heatmapCacheVersion || ('g' + (this._heatmapGeneration || 0))
+    ))
     return base + zoom + '/' + x + '/' + y + '.png?' + params.join('&')
   },
 
@@ -206,6 +208,9 @@ Page({
         var data = result && result.data
         var legacyProtocol = Boolean(result && result.legacyProtocol)
         this._heatmapGeneration = Math.max(0, Number(data && data.generation) || 0)
+        this._heatmapCacheVersion = String(
+          data && data.cache_version || ('g' + this._heatmapGeneration)
+        )
         var model = legacyProtocol
           ? heatmapMap.buildHeatmapMapModel(
             data && data.tracks,
@@ -522,8 +527,10 @@ Page({
 
   _tileKey(tile) {
     return [
+      heatmapTileCache.viewerScope(),
       heatmapTileCache.userScope(this._userId),
-      'g' + (this._heatmapGeneration || 0),
+      heatmapTileCache.audienceScope(this._userId),
+      this._heatmapCacheVersion || ('g' + (this._heatmapGeneration || 0)),
       tile.zoom,
       tile.x,
       tile.y,

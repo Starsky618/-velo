@@ -133,7 +133,8 @@ Component({
       var base = this.data.userId === 0
         ? '/api/user/me/heatmap/tiles/'
         : '/api/user/' + this.data.userId + '/heatmap/tiles/'
-      return base + zoom + '/' + x + '/' + y + '.png?color=orange&v=' + (this._heatmapGeneration || 0)
+      var cacheVersion = this._heatmapCacheVersion || ('g' + (this._heatmapGeneration || 0))
+      return base + zoom + '/' + x + '/' + y + '.png?color=orange&v=' + encodeURIComponent(cacheVersion)
     },
 
     _fetchHeatmap() {
@@ -170,6 +171,9 @@ Component({
           var data = result && result.data
           var legacyProtocol = Boolean(result && result.legacyProtocol)
           this._heatmapGeneration = Math.max(0, Number(data && data.generation) || 0)
+          this._heatmapCacheVersion = String(
+            data && data.cache_version || ('g' + this._heatmapGeneration)
+          )
           var activityCount = Number(data && data.activity_count) || 0
           var model = legacyProtocol
             ? heatmapMap.buildHeatmapMapModel(
@@ -415,8 +419,10 @@ Component({
 
     _tileKey(tile) {
       return [
+        heatmapTileCache.viewerScope(),
         heatmapTileCache.userScope(this.data.userId),
-        'g' + (this._heatmapGeneration || 0),
+        heatmapTileCache.audienceScope(this.data.userId),
+        this._heatmapCacheVersion || ('g' + (this._heatmapGeneration || 0)),
         tile.zoom,
         tile.x,
         tile.y,

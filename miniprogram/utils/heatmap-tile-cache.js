@@ -59,21 +59,61 @@ function remove(key) {
   delete files[key]
 }
 
+function appIdentity() {
+  if (typeof getApp !== 'function') return { userId: 0, token: '' }
+  try {
+    var app = getApp()
+    return {
+      userId: Number(app && app.globalData && app.globalData.userId) || 0,
+      token: String(app && app.globalData && app.globalData.token || ''),
+    }
+  } catch (error) {
+    return { userId: 0, token: '' }
+  }
+}
+
+function tokenHash(token) {
+  // 只用于内存 key 分区，不输出也不持久化 token；FNV-1a 足够区分本机会话。
+  var hash = 2166136261
+  for (var index = 0; index < token.length; index++) {
+    hash ^= token.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+function viewerScope() {
+  var identity = appIdentity()
+  if (identity.userId > 0) return 'viewer-' + identity.userId
+  if (identity.token) return 'viewer-token-' + tokenHash(identity.token)
+  return 'viewer-anonymous'
+}
+
 function userScope(explicitUserId) {
   var userId = Number(explicitUserId) || 0
-  if (!userId && typeof getApp === 'function') {
-    try {
-      var app = getApp()
-      userId = Number(app && app.globalData && app.globalData.userId) || 0
-    } catch (error) {
-      userId = 0
-    }
-  }
+  if (!userId) userId = appIdentity().userId
   return userId > 0 ? 'user-' + userId : 'me'
+}
+
+function audienceScope(explicitUserId) {
+  var targetUserId = Number(explicitUserId) || 0
+  var viewerUserId = appIdentity().userId
+  if (!targetUserId || (viewerUserId > 0 && viewerUserId === targetUserId)) {
+    return 'audience-owner'
+  }
+  return 'audience-public'
+}
+
+function clearAll() {
+  Object.keys(files).forEach(function (key) { delete files[key] })
+  Object.keys(inflight).forEach(function (key) { delete inflight[key] })
 }
 
 module.exports = {
   load: load,
   remove: remove,
   userScope: userScope,
+  viewerScope: viewerScope,
+  audienceScope: audienceScope,
+  clearAll: clearAll,
 }

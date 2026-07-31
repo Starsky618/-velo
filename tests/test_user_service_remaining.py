@@ -678,9 +678,14 @@ class TestGetUserHeatmap:
             _cleanup_redis(real_redis, user_id)
 
             first = get_user_heatmap(db, user_id, "beijing")
-            cached_raw = real_redis.get(
-                f"heatmap:v5:user_{user_id}:detail_full:city_beijing:year_all"
-            )
+            cached_keys = list(real_redis.scan_iter(
+                match=(
+                    f"heatmap:v5:user_{user_id}:detail_full:data_*:"
+                    "city_beijing:year_all*"
+                )
+            ))
+            assert len(cached_keys) == 1
+            cached_raw = real_redis.get(cached_keys[0])
             assert cached_raw is not None
 
             second = get_user_heatmap(db, user_id, "beijing")
@@ -735,16 +740,20 @@ class TestGetUserHeatmap:
             # 走无 city / 全年份 / full 路径
             get_user_heatmap(db, user_id, None)
 
-            no_city_key = f"heatmap:v5:user_{user_id}:detail_full:year_all"
-            assert real_redis.get(no_city_key) is not None, (
-                f"期望 cache key {no_city_key} 存在"
-            )
+            no_city_keys = list(real_redis.scan_iter(match=(
+                f"heatmap:v5:user_{user_id}:detail_full:data_*:year_all*"
+            )))
+            assert len(no_city_keys) == 1
+            no_city_key = no_city_keys[0]
+            assert real_redis.get(no_city_key) is not None
 
             get_user_heatmap(db, user_id, None, _this_month_utc().astimezone(_BJ_TZ).year, "card")
-            card_year_key = (
-                f"heatmap:v5:user_{user_id}:detail_card:"
-                f"year_{_this_month_utc().astimezone(_BJ_TZ).year}"
-            )
+            card_year_keys = list(real_redis.scan_iter(match=(
+                f"heatmap:v5:user_{user_id}:detail_card:data_*:"
+                f"year_{_this_month_utc().astimezone(_BJ_TZ).year}*"
+            )))
+            assert len(card_year_keys) == 1
+            card_year_key = card_year_keys[0]
             assert real_redis.get(card_year_key) is not None
             assert card_year_key != no_city_key
         finally:
@@ -784,7 +793,14 @@ class TestGetUserHeatmap:
             cached_keys = list(real_redis.scan_iter(match=f"heatmap:vector:v2:user_{user_id}:*"))
             assert len(cached_keys) == 1
 
-            with patch.object(db, "query", side_effect=AssertionError("exact view cache should avoid PostgreSQL")):
+            # 每次请求会用一次廉价聚合查询核对活动集合，但精确
+            # viewport 命中后不应再扫原始 Trackpoint 构建几何。
+            with patch(
+                "app.user.service_heatmap_tiles._get_overview_segments_cached",
+                side_effect=AssertionError(
+                    "exact view cache should avoid raw Trackpoint rebuild"
+                ),
+            ):
                 second = get_user_heatmap(
                     db,
                     user_id,
@@ -849,11 +865,78 @@ class TestGetUserHeatmap:
             assert len(result["all_points"]) == 2
             assert result["all_points"][0][0] < 117
             assert result["all_points"][1][0] > 121
-            cached = real_redis.get(
-                f"heatmap:v5:user_{user_id}:detail_meta:year_all"
-            )
+            cached_keys = list(real_redis.scan_iter(match=(
+                f"heatmap:v5:user_{user_id}:detail_meta:data_*:year_all*"
+            )))
+            assert len(cached_keys) == 1
+            cached = real_redis.get(cached_keys[0])
             assert cached is not None
             assert len(cached) < 1024
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
+            _cleanup_db(db)
+            db.close()
+
+    def test_database_fingerprint_fences_deleted_public_activity_when_redis_invalidation_fails(
+        self,
+        pg_session_factory,
+        real_redis,
+    ):
+        """Redis generation 未变也不能复活已删除的默认公开活动。"""
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "delete_fingerprint")
+            first_activity = _make_activity_in_beijing(
+                db,
+                user,
+                "delete fingerprint first",
+                _this_month_utc(),
+            )
+            _make_activity_in_beijing(
+                db,
+                user,
+                "delete fingerprint second",
+                _this_month_utc(),
+            )
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            before = get_user_heatmap(
+                db,
+                user_id,
+                None,
+                None,
+                "meta",
+                include_private=False,
+            )
+            generation_before = before["generation"]
+            version_before = before["cache_version"]
+            assert before["activity_count"] == 2
+
+            # 故意不调 invalidate_heatmap_cache，模拟 Redis 失效命令失败。
+            db.delete(first_activity)
+            db.commit()
+
+            after = get_user_heatmap(
+                db,
+                user_id,
+                None,
+                None,
+                "meta",
+                include_private=False,
+            )
+
+            assert after["activity_count"] == 1
+            assert after["generation"] == generation_before
+            assert after["cache_version"] != version_before
+            cache_keys = list(real_redis.scan_iter(match=(
+                f"heatmap:v5:user_{user_id}:detail_meta:data_*:audience_public:*"
+            )))
+            assert len(cache_keys) == 2
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)

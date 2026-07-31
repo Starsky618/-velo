@@ -42,6 +42,7 @@ from app.user.service_stats import (  # noqa: F401 — 转导出
     invalidate_power_curve_cache,
 )
 from app.user.service_social import (  # noqa: F401 — 转导出
+    HeatmapSnapshotChanged,
     InvalidHeatmapViewport,
     get_active_users,
     get_city_medals,  # Sprint 6 task-3：城市征服勋章聚合（自他对称入口）

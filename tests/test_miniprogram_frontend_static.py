@@ -400,7 +400,9 @@ def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     assert "_vectorRequestViewport" in js
     assert "vectorBlockSize = zoom >= 14 ? 4 : 2" in js
     assert "opacity: '2E'" in js
-    assert "'v=' + (this._heatmapGeneration || 0)" in js
+    assert "data && data.cache_version" in js
+    assert "heatmapTileCache.viewerScope()" in js
+    assert "heatmapTileCache.audienceScope(this._userId)" in js
     assert "buildPolylines" in js
     assert "getRegion" in js
     assert "getScale" in js
@@ -787,7 +789,7 @@ const tile = { zoom: 12, x: 3328, y: 1582 }
   const pageRequest = page._loadTileFile(tile, pageKey)
   const cardRequest = card._loadTileFile(tile, cardKey)
   assert.strictEqual(downloads.length, 1)
-  assert.ok(downloads[0].url.includes('v=7'))
+  assert.ok(downloads[0].url.includes('v=g7'))
   downloads[0].resolve({ filePath: '/tmp/shared-g7.png' })
   assert.strictEqual(await pageRequest, '/tmp/shared-g7.png')
   assert.strictEqual(await cardRequest, '/tmp/shared-g7.png')
@@ -797,13 +799,59 @@ const tile = { zoom: 12, x: 3328, y: 1582 }
   assert.notStrictEqual(nextKey, cardKey)
   const nextRequest = card._loadTileFile(tile, nextKey)
   assert.strictEqual(downloads.length, 2)
-  assert.ok(downloads[1].url.includes('v=8'))
+  assert.ok(downloads[1].url.includes('v=g8'))
   downloads[1].resolve({ filePath: '/tmp/shared-g8.png' })
   assert.strictEqual(await nextRequest, '/tmp/shared-g8.png')
 })().catch(function (error) { console.error(error); process.exit(1) })
 """
 
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_tile_cache_is_partitioned_by_viewer_and_cleared_on_logout():
+    script = """
+const assert = require('assert')
+const cache = require('./miniprogram/utils/heatmap-tile-cache')
+let session = { userId: 42, token: 'owner-token' }
+global.getApp = function () { return { globalData: session } }
+
+const ownerKey = [cache.viewerScope(), cache.userScope(42), cache.audienceScope(42), 'tile'].join(':')
+session = { userId: 99, token: 'viewer-token' }
+const publicKey = [cache.viewerScope(), cache.userScope(42), cache.audienceScope(42), 'tile'].join(':')
+assert.notStrictEqual(ownerKey, publicKey)
+assert.ok(ownerKey.includes('viewer-42:user-42:audience-owner'))
+assert.ok(publicKey.includes('viewer-99:user-42:audience-public'))
+
+let loads = 0
+;(async function () {
+  assert.strictEqual(await cache.load(ownerKey, function () {
+    loads += 1
+    return { filePath: '/tmp/owner-private.png' }
+  }), '/tmp/owner-private.png')
+  assert.strictEqual(await cache.load(publicKey, function () {
+    loads += 1
+    return { filePath: '/tmp/public.png' }
+  }), '/tmp/public.png')
+  assert.strictEqual(loads, 2)
+  cache.clearAll()
+  await cache.load(publicKey, function () {
+    loads += 1
+    return { filePath: '/tmp/public-new-session.png' }
+  })
+  assert.strictEqual(loads, 3)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_logout_and_401_clear_heatmap_tile_cache():
+    app_js = _read(MINI / "app.js")
+    api_js = _read(MINI / "utils" / "api.js")
+
+    assert "heatmapTileCache.clearAll()" in app_js
+    assert "function clearExpiredAuth(app)" in api_js
+    assert "heatmapTileCache.clearAll()" in api_js
 
 
 def test_heatmap_partial_tile_frame_keeps_previous_complete_tiles_and_retries():

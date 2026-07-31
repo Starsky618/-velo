@@ -266,6 +266,12 @@ def get_my_heatmap(
         )
     except service.InvalidHeatmapViewport as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.HeatmapSnapshotChanged as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="热图数据正在更新，请稍后重试",
+            headers={"Retry-After": "1"},
+        ) from exc
 
 
 @router.get("/me/heatmap/tiles/{zoom}/{x}/{y}.png")
@@ -275,7 +281,13 @@ def get_my_heatmap_tile(
     y: int,
     year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
     color: str = Query(default="orange"),
-    version: int | None = Query(default=None, alias="v", ge=0),
+    version: str | None = Query(
+        default=None,
+        alias="v",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    ),
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -286,13 +298,20 @@ def get_my_heatmap_tile(
         )
     except service.InvalidHeatmapTile as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.HeatmapSnapshotChanged as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="热图数据正在更新，请稍后重试",
+            headers={"Retry-After": "1"},
+        ) from exc
     return Response(
         content=content,
         media_type="image/png",
         headers={
             "Cache-Control": (
                 "private, max-age=86400" if version is not None else "private, no-store"
-            )
+            ),
+            "Vary": "Authorization",
         },
     )
 
@@ -621,6 +640,12 @@ def get_user_heatmap_for_others(
         )
     except service.InvalidHeatmapViewport as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.HeatmapSnapshotChanged as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="热图数据正在更新，请稍后重试",
+            headers={"Retry-After": "1"},
+        ) from exc
 
 
 @router.get("/{user_id}/heatmap/tiles/{zoom}/{x}/{y}.png")
@@ -631,7 +656,13 @@ def get_user_heatmap_tile_for_others(
     y: int,
     year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
     color: str = Query(default="orange"),
-    version: int | None = Query(default=None, alias="v", ge=0),
+    version: str | None = Query(
+        default=None,
+        alias="v",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    ),
     requester_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -653,13 +684,22 @@ def get_user_heatmap_tile_for_others(
         )
     except service.InvalidHeatmapTile as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.HeatmapSnapshotChanged as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="热图数据正在更新，请稍后重试",
+            headers={"Retry-After": "1"},
+        ) from exc
     return Response(
         content=content,
         media_type="image/png",
         headers={
             "Cache-Control": (
-                "private, max-age=86400" if version is not None else "private, no-store"
-            )
+                "private, max-age=86400"
+                if version is not None and requester_user_id == user_id
+                else "private, no-store"
+            ),
+            "Vary": "Authorization",
         },
     )
 

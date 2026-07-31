@@ -28,8 +28,11 @@ import xyconvert
 from app.activity.models import Activity, Trackpoint
 from app.common.geo import infer_city_from_coords
 from app.user.service_social import (
+    HeatmapSnapshotChanged,
     _RedisBuildLease,
     _acquire_redis_build_lease,
+    _heatmap_activity_fingerprint,
+    _heatmap_cache_version,
     _public_activity_filter,
     _public_heatmap_privacy_fingerprint,
 )
@@ -670,6 +673,7 @@ def _get_overview_segments_cached(
     generation: int,
     privacy_fingerprint: str | None,
     redis_client,
+    activity_fingerprint: str | None = None,
 ) -> dict[int, list[list[tuple[float, float]]]]:
     """三层总览源：进程 LRU → Redis WGS-84 源 → PostgreSQL 原始 Trackpoint。
 
@@ -677,10 +681,24 @@ def _get_overview_segments_cached(
     PostgreSQL；其他请求等待源层完成后复用。Redis 源必须保存 WGS-84，矢量响应
     直接使用，只有栅格渲染时才转换成腾讯地图坐标。
     """
-    key = (user_id, year, include_private, generation, privacy_fingerprint)
+    if activity_fingerprint is None:
+        activity_fingerprint = _heatmap_activity_fingerprint(
+            db,
+            user_id,
+            include_private,
+        )
+    key = (
+        user_id,
+        year,
+        include_private,
+        generation,
+        privacy_fingerprint,
+        activity_fingerprint,
+    )
     redis_key = (
         f"{_OVERVIEW_REDIS_SOURCE_PREFIX}{user_id}:g{generation}:"
-        f"year_{year or 'all'}:audience_{'owner' if include_private else 'public'}"
+        f"data_{activity_fingerprint}:year_{year or 'all'}:"
+        f"audience_{'owner' if include_private else 'public'}"
     )
     if privacy_fingerprint is not None:
         redis_key += f":privacy_{privacy_fingerprint}"
@@ -801,9 +819,17 @@ def _get_overview_map_segments_cached(
     include_private: bool,
     generation: int,
     privacy_fingerprint: str | None,
+    activity_fingerprint: str,
 ) -> dict[int, list[list[tuple[float, float]]]]:
     """同一进程每代只做一次 WGS-84 → 腾讯地图坐标转换，供多块瓦片复用。"""
-    key = (user_id, year, include_private, generation, privacy_fingerprint)
+    key = (
+        user_id,
+        year,
+        include_private,
+        generation,
+        privacy_fingerprint,
+        activity_fingerprint,
+    )
     now = monotonic()
     with _OVERVIEW_SOURCE_CACHE_LOCK:
         cached = _OVERVIEW_MAP_CACHE.get(key)
@@ -1345,6 +1371,7 @@ def get_user_heatmap_overview(
     city: str | None = None,
     generation: int | None = None,
     privacy_fingerprint: str | None = None,
+    activity_fingerprint: str | None = None,
     redis_client=None,
 ) -> dict:
     """用共享原始轨迹源生成 meta/card/full；兼容路径也不能复活坏压缩轨迹。"""
@@ -1374,6 +1401,13 @@ def get_user_heatmap_overview(
             generation = 0
     if not include_private and privacy_fingerprint is None:
         privacy_fingerprint = _public_heatmap_privacy_fingerprint(db, user_id)
+    if activity_fingerprint is None:
+        activity_fingerprint = _heatmap_activity_fingerprint(
+            db,
+            user_id,
+            include_private,
+        )
+    cache_version = _heatmap_cache_version(generation, activity_fingerprint)
 
     segments = _get_overview_segments_cached(
         db,
@@ -1383,6 +1417,7 @@ def get_user_heatmap_overview(
         generation,
         privacy_fingerprint,
         redis_client,
+        activity_fingerprint,
     )
     if activity_ids is not None:
         segments = {
@@ -1410,6 +1445,7 @@ def get_user_heatmap_overview(
         "tracks": tracks,
         "activity_count": activity_count,
         "generation": generation,
+        "cache_version": cache_version,
         "available_years": available_years,
         "selected_year": year,
         "focus_points": focus_points if detail == "meta" else [],
@@ -1449,6 +1485,8 @@ def get_user_heatmap_viewport(
     *,
     year: int | None = None,
     include_private: bool = True,
+    activity_fingerprint: str | None = None,
+    _consistency_retry: int = 0,
 ) -> dict:
     """返回当前视野的原始连续轨迹 LOD；只作为图片图层真实失败时的降级。"""
     west, south, east, north, zoom = viewport
@@ -1471,22 +1509,58 @@ def get_user_heatmap_viewport(
         if include_private
         else _public_heatmap_privacy_fingerprint(db, user_id)
     )
+    if activity_fingerprint is None:
+        activity_fingerprint = _heatmap_activity_fingerprint(
+            db,
+            user_id,
+            include_private,
+        )
+    cache_version = _heatmap_cache_version(generation, activity_fingerprint)
+
+    def activity_snapshot_changed() -> bool:
+        current_fingerprint = _heatmap_activity_fingerprint(
+            db,
+            user_id,
+            include_private,
+        )
+        return current_fingerprint != activity_fingerprint
+
+    def retry_after_activity_snapshot_change() -> dict:
+        if _consistency_retry >= 2:
+            raise HeatmapSnapshotChanged(
+                "heatmap activity snapshot changed during render"
+            )
+        return get_user_heatmap_viewport(
+            db,
+            user_id,
+            viewport,
+            year=year,
+            include_private=include_private,
+            _consistency_retry=_consistency_retry + 1,
+        )
+
     bounds_key = ":".join(
         str(value).replace("-", "m").replace(".", "p")
         for value in (west, south, east, north, zoom)
     )
     cache_key = (
-        f"{_VECTOR_CACHE_PREFIX}{user_id}:g{generation}:year_{year or 'all'}:"
+        f"{_VECTOR_CACHE_PREFIX}{user_id}:g{generation}:data_{activity_fingerprint}:"
+        f"year_{year or 'all'}:"
         f"audience_{'owner' if include_private else 'public'}:{bounds_key}"
     )
     if privacy_fingerprint is not None:
         cache_key += f":privacy_{privacy_fingerprint}"
+    cached_result = None
     try:
         cached = redis_client.get(cache_key)
         if isinstance(cached, bytes):
-            return json.loads(zlib.decompress(cached).decode())
+            cached_result = json.loads(zlib.decompress(cached).decode())
     except Exception:
         pass
+    if cached_result is not None:
+        if activity_snapshot_changed():
+            return retry_after_activity_snapshot_change()
+        return cached_result
 
     lock, waited_result = _claim_derived_cache_build(
         redis_client,
@@ -1494,6 +1568,8 @@ def get_user_heatmap_viewport(
         lambda raw: json.loads(zlib.decompress(raw).decode()),
     )
     if isinstance(waited_result, dict):
+        if activity_snapshot_changed():
+            return retry_after_activity_snapshot_change()
         return waited_result
 
     try:
@@ -1509,6 +1585,7 @@ def get_user_heatmap_viewport(
                 generation,
                 privacy_fingerprint,
                 redis_client,
+                activity_fingerprint,
             )
             segments = _clip_vector_segments_to_bounds(
                 overview_segments,
@@ -1558,11 +1635,16 @@ def get_user_heatmap_viewport(
             ],
             "activity_count": len({activity_id for activity_id, _ in prepared}),
             "generation": generation,
+            "cache_version": cache_version,
             "available_years": available_years,
             "selected_year": year,
             "focus_points": [],
             "all_points": [],
         }
+        if activity_snapshot_changed():
+            _release_derived_cache_build(lock)
+            lock = None
+            return retry_after_activity_snapshot_change()
         try:
             redis_client.setex(
                 cache_key,
@@ -1590,6 +1672,8 @@ def get_user_heatmap_tile(
     year: int | None = None,
     color: str = "orange",
     include_private: bool = True,
+    activity_fingerprint: str | None = None,
+    _consistency_retry: int = 0,
 ) -> bytes:
     """返回一个用户、年份、配色和地图瓦片唯一对应的透明 PNG。"""
     _validate_tile(zoom, x, y, color)
@@ -1605,19 +1689,57 @@ def get_user_heatmap_tile(
         if include_private
         else _public_heatmap_privacy_fingerprint(db, user_id)
     )
+    if activity_fingerprint is None:
+        activity_fingerprint = _heatmap_activity_fingerprint(
+            db,
+            user_id,
+            include_private,
+        )
+
+    def activity_snapshot_changed() -> bool:
+        current_fingerprint = _heatmap_activity_fingerprint(
+            db,
+            user_id,
+            include_private,
+        )
+        return current_fingerprint != activity_fingerprint
+
+    def retry_after_activity_snapshot_change() -> bytes:
+        if _consistency_retry >= 2:
+            raise HeatmapSnapshotChanged(
+                "heatmap activity snapshot changed during render"
+            )
+        return get_user_heatmap_tile(
+            db,
+            user_id,
+            zoom,
+            x,
+            y,
+            year=year,
+            color=color,
+            include_private=include_private,
+            _consistency_retry=_consistency_retry + 1,
+        )
+
     cache_key = (
-        f"{_CACHE_PREFIX}{user_id}:g{generation}:year_{year or 'all'}:"
+        f"{_CACHE_PREFIX}{user_id}:g{generation}:data_{activity_fingerprint}:"
+        f"year_{year or 'all'}:"
         f"audience_{'owner' if include_private else 'public'}:"
         f"color_{color}:z{zoom}:{x}:{y}"
     )
     if privacy_fingerprint is not None:
         cache_key += f":privacy_{privacy_fingerprint}"
+    cached_png = None
     try:
         cached = redis_client.get(cache_key)
         if isinstance(cached, bytes):
-            return cached
+            cached_png = cached
     except Exception:
         pass
+    if cached_png is not None:
+        if activity_snapshot_changed():
+            return retry_after_activity_snapshot_change()
+        return cached_png
 
     lock, waited_png = _claim_derived_cache_build(
         redis_client,
@@ -1625,6 +1747,8 @@ def get_user_heatmap_tile(
         lambda raw: raw,
     )
     if isinstance(waited_png, bytes):
+        if activity_snapshot_changed():
+            return retry_after_activity_snapshot_change()
         return waited_png
 
     try:
@@ -1638,6 +1762,7 @@ def get_user_heatmap_tile(
                 generation,
                 privacy_fingerprint,
                 redis_client,
+                activity_fingerprint,
             )
             if overview
             else _load_raw_segments(db, user_id, year, zoom, x, y, include_private)
@@ -1650,6 +1775,7 @@ def get_user_heatmap_tile(
                 include_private,
                 generation,
                 privacy_fingerprint,
+                activity_fingerprint,
             )
         rendered = _render_tile_png(
             segments,
@@ -1659,6 +1785,10 @@ def get_user_heatmap_tile(
             color,
             coordinates_are_map=overview,
         )
+        if activity_snapshot_changed():
+            _release_derived_cache_build(lock)
+            lock = None
+            return retry_after_activity_snapshot_change()
         try:
             redis_client.setex(cache_key, _CACHE_TTL_SEC, rendered)
         except Exception:

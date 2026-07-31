@@ -12,6 +12,7 @@
  */
 
 const ROUTE_DRAW_PENDING_SAVE_PREFIX = 'route_draw_pending_save_v1:'
+const heatmapTileCache = require('./utils/heatmap-tile-cache')
 
 App({
   globalData: {
@@ -106,6 +107,7 @@ App({
     this.globalData.token = null
     this.globalData.userId = 0
     this.globalData.userInfo = null
+    heatmapTileCache.clearAll()
     wx.removeStorageSync('token')
     wx.removeStorageSync('userId')
   },

@@ -43,6 +43,7 @@
 v5 task-user-split-001：从 service.py 834 行拆出（commit TBD）。
 """
 
+import hashlib as _hashlib
 import json as _json
 import logging as _logging
 import math as _math
@@ -127,6 +128,10 @@ _PROFILE_RESPONSE_KEYS |= {"badges"}
 
 class InvalidHeatmapViewport(ValueError):
     """热图视野参数非法；router 只把这类可预期输入错误映射为 422。"""
+
+
+class HeatmapSnapshotChanged(RuntimeError):
+    """热图构建期间数据连续变化；调用方应短暂等待后重试。"""
 
 
 class _RedisBuildLease:
@@ -242,6 +247,45 @@ def _public_heatmap_privacy_fingerprint(db: Session, user_id: int) -> str:
     )
     latest_token = latest.isoformat(timespec="microseconds") if latest else "none"
     return f"{int(total or 0)}-{int(public or 0)}-{latest_token}"
+
+
+def _heatmap_activity_fingerprint(
+    db: Session,
+    user_id: int,
+    include_private: bool,
+) -> str:
+    """数据库事实围栏：Redis 失效失败时也绝不能复用已删除活动的派生图。"""
+    # SCALE_GATE[personal-heatmap-db-revision]: 293 次骑行实测该聚合
+    # p50=0.50ms / p95=1.26ms，16 个已缓存 PNG 并发总耗时 0.22s。
+    # 当聚合 p95 > 5ms、16 瓦片暖命中 > 500ms，或非几何的 updated_at
+    # 变更经常导致 source 冷重建时，必须换成 PostgreSQL 中事务维护的
+    # geometry revision；不能用 Redis/TTL 缓存该指纹，否则会重新引入删除复活。
+    filters = [
+        _Activity.user_id == user_id,
+        _Activity.status == "completed",
+        _Activity.duplicate_of.is_(None),
+        _Activity.activity_type == "cycling",
+    ]
+    if not include_private:
+        filters.append(_public_activity_filter())
+    count, max_id, id_sum, latest = (
+        db.query(
+            _func.count(_Activity.id),
+            _func.max(_Activity.id),
+            _func.sum(_Activity.id),
+            _func.max(_Activity.updated_at),
+        )
+        .filter(*filters)
+        .one()
+    )
+    latest_token = latest.isoformat(timespec="microseconds") if latest else "none"
+    payload = f"{int(count or 0)}:{int(max_id or 0)}:{int(id_sum or 0)}:{latest_token}"
+    return _hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def _heatmap_cache_version(generation: int, activity_fingerprint: str) -> str:
+    """客户端/HTTP 缓存版本同时绑定 Redis generation 与数据库活动集合。"""
+    return f"g{generation}-d{activity_fingerprint}"
 
 
 def _get_redis_client():
@@ -988,6 +1032,7 @@ def get_user_heatmap(
     east: float | None = None,
     north: float | None = None,
     zoom: int | None = None,
+    _consistency_retry: int = 0,
 ) -> dict:
     """
     用户骑行热图——"我去过哪些地方"。
@@ -1073,7 +1118,52 @@ def get_user_heatmap(
         if include_private
         else _public_heatmap_privacy_fingerprint(db, user_id)
     )
-    cache_parts = [f"{_HEATMAP_CACHE_PREFIX}{user_id}", f"detail_{detail}"]
+    activity_fingerprint = _heatmap_activity_fingerprint(
+        db,
+        user_id,
+        include_private,
+    )
+    cache_version = _heatmap_cache_version(
+        cache_generation,
+        activity_fingerprint,
+    )
+
+    def activity_snapshot_changed() -> bool:
+        current_fingerprint = _heatmap_activity_fingerprint(
+            db,
+            user_id,
+            include_private,
+        )
+        return current_fingerprint != activity_fingerprint
+
+    def retry_after_activity_snapshot_change() -> dict:
+        """Retry after the caller has released any Redis build lease it owns."""
+        if _consistency_retry >= 2:
+            # A user whose activity set changes three times during one render should
+            # retry instead of receiving a stale response that clients may cache.
+            raise HeatmapSnapshotChanged(
+                "heatmap activity snapshot changed during render"
+            )
+        return get_user_heatmap(
+            db,
+            user_id,
+            city,
+            year,
+            detail,
+            include_private=include_private,
+            west=west,
+            south=south,
+            east=east,
+            north=north,
+            zoom=zoom,
+            _consistency_retry=_consistency_retry + 1,
+        )
+
+    cache_parts = [
+        f"{_HEATMAP_CACHE_PREFIX}{user_id}",
+        f"detail_{detail}",
+        f"data_{activity_fingerprint}",
+    ]
     if not include_private:
         # 公开热图必须使用独立缓存，不能命中本人视角里包含私密轨迹的旧对象。
         cache_parts.append("audience_public")
@@ -1087,6 +1177,7 @@ def get_user_heatmap(
     if cache_generation > 0:
         cache_parts.append(f"generation_{cache_generation}")
     cache_key = ":".join(cache_parts)
+    cached_result = None
     try:
         cached = redis_client.get(cache_key)
         if cached is not None:
@@ -1095,12 +1186,16 @@ def get_user_heatmap(
                 expected_generation=cache_generation,
             )
             if decoded_cache is not None:
-                result = dict(decoded_cache)
-                result["generation"] = cache_generation
-                return result
+                cached_result = dict(decoded_cache)
+                cached_result["generation"] = cache_generation
+                cached_result["cache_version"] = cache_version
     except Exception:
         # 连接失败或缓存对象损坏都按 miss 重建，不能把缓存故障变成热图 500。
         pass
+    if cached_result is not None:
+        if activity_snapshot_changed():
+            return retry_after_activity_snapshot_change()
+        return cached_result
 
     if detail in {"meta", "card", "full"}:
         # 发布切换期的旧前端仍会请求 card/full；三档必须和 viewport/tile 一样
@@ -1119,6 +1214,9 @@ def get_user_heatmap(
         if not is_builder and waited_result is not None:
             result = dict(waited_result)
             result["generation"] = cache_generation
+            result["cache_version"] = cache_version
+            if activity_snapshot_changed():
+                return retry_after_activity_snapshot_change()
             return result
 
         try:
@@ -1131,9 +1229,18 @@ def get_user_heatmap(
                 city=city,
                 generation=cache_generation,
                 privacy_fingerprint=privacy_fingerprint,
+                activity_fingerprint=activity_fingerprint,
                 redis_client=redis_client,
             )
             result["generation"] = cache_generation
+            result["cache_version"] = cache_version
+            if activity_snapshot_changed():
+                # 递归前必须释放旧 fingerprint key 的租约；否则
+                # A→B→A 可能等待自己，直到 60s 租约过期。
+                if build_lease is not None:
+                    build_lease.release()
+                    build_lease = None
+                return retry_after_activity_snapshot_change()
             try:
                 _store_heatmap_result_cache(
                     redis_client,
@@ -1255,13 +1362,13 @@ def enqueue_heatmap_cache_prewarm(user_id: int, generation: int):
         f"user-{user_id}-g{generation}"
     )
     try:
-        from app.queue import default_queue
+        from app.queue import heatmap_prewarm_queue
         from rq import Retry
 
-        existing = default_queue.fetch_job(job_id)
+        existing = heatmap_prewarm_queue.fetch_job(job_id)
         if existing is not None:
             return existing
-        return default_queue.enqueue(
+        return heatmap_prewarm_queue.enqueue(
             "app.user.service_social.prewarm_heatmap_cache_task",
             user_id,
             generation,

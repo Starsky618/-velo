@@ -43,6 +43,8 @@ from app.user.service_heatmap_tiles import (
 from app.activity.models import Activity, ActivityPrivacy, Trackpoint
 from app.user.models import User
 from app.user.service_social import (
+    HeatmapSnapshotChanged,
+    _encode_heatmap_cache,
     enqueue_heatmap_cache_prewarm,
     get_user_heatmap,
     prewarm_heatmap_cache_task,
@@ -193,7 +195,7 @@ def test_prewarm_enqueue_coalesces_by_user_and_generation():
     queued_job = Mock()
     queue.enqueue.return_value = queued_job
 
-    with patch("app.queue.default_queue", queue):
+    with patch("app.queue.heatmap_prewarm_queue", queue):
         result = enqueue_heatmap_cache_prewarm(42, 7)
 
     assert result is queued_job
@@ -314,11 +316,19 @@ def test_vector_viewport_cache_reuses_overview_source_without_second_db_scan():
             return_value=source,
         ) as overview_loader,
         patch("app.user.service_heatmap_tiles._load_raw_segments_for_bounds") as raw_loader,
+        patch(
+            "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
+            return_value="data-v1",
+        ),
     ):
-        first = get_user_heatmap_viewport(db, 42, viewport)
+        first = get_user_heatmap_viewport(
+            db, 42, viewport, activity_fingerprint="data-v1"
+        )
         encoded = redis.setex.call_args.args[2]
         redis.get.side_effect = [b"9", encoded]
-        second = get_user_heatmap_viewport(db, 42, viewport)
+        second = get_user_heatmap_viewport(
+            db, 42, viewport, activity_fingerprint="data-v1"
+        )
 
     assert first == second
     assert first["activity_count"] == 1
@@ -328,7 +338,7 @@ def test_vector_viewport_cache_reuses_overview_source_without_second_db_scan():
     assert overview_loader.call_count == 1
     assert raw_loader.call_count == 0
     assert redis.setex.call_args.args[0].startswith(
-        "heatmap:vector:v2:user_42:g9:year_all:audience_owner:"
+        "heatmap:vector:v2:user_42:g9:data_data-v1:year_all:audience_owner:"
     )
 
 
@@ -351,11 +361,16 @@ def test_high_zoom_vector_viewport_keeps_direct_raw_trackpoint_path():
             return_value=source,
         ) as raw_loader,
         patch("app.user.service_heatmap_tiles._get_overview_segments_cached") as overview_loader,
+        patch(
+            "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
+            return_value="data-v1",
+        ),
     ):
         result = get_user_heatmap_viewport(
             db,
             42,
             (112.49, 37.79, 112.51, 37.81, 14),
+            activity_fingerprint="data-v1",
         )
 
     assert result["tracks"] == [
@@ -396,7 +411,9 @@ def test_vector_cache_waiter_reuses_builder_result_without_duplicate_query():
 )
 def test_vector_viewport_rejects_invalid_bounds_and_zoom(viewport):
     with pytest.raises(InvalidHeatmapTile):
-        get_user_heatmap_viewport(Mock(), 42, viewport)
+        get_user_heatmap_viewport(
+            Mock(), 42, viewport, activity_fingerprint="data-v1"
+        )
 
 
 def test_vector_cache_is_capped_per_user_after_continuous_pan():
@@ -421,16 +438,24 @@ def test_tile_cache_uses_heatmap_generation_and_avoids_second_db_render():
         patch("app.user.service_heatmap_tiles._get_redis_client", return_value=redis),
         patch("app.user.service_heatmap_tiles._load_raw_segments", return_value={}) as loader,
         patch("app.user.service_heatmap_tiles._render_tile_png", return_value=b"png") as renderer,
+        patch(
+            "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
+            return_value="data-v1",
+        ),
     ):
-        first = get_user_heatmap_tile(Mock(), 42, 12, 3328, 1582, color="orange")
-        second = get_user_heatmap_tile(Mock(), 42, 12, 3328, 1582, color="orange")
+        first = get_user_heatmap_tile(
+            Mock(), 42, 12, 3328, 1582, color="orange", activity_fingerprint="data-v1"
+        )
+        second = get_user_heatmap_tile(
+            Mock(), 42, 12, 3328, 1582, color="orange", activity_fingerprint="data-v1"
+        )
 
     assert first == second == b"png"
     assert loader.call_count == 1
     assert renderer.call_count == 1
     assert redis.setex.call_args.args[1] == 86400
     assert redis.setex.call_args.args[0].startswith(
-        "heatmap:raster:v2:user_42:g7:year_all:audience_owner:color_orange:z12:"
+        "heatmap:raster:v2:user_42:g7:data_data-v1:year_all:audience_owner:color_orange:z12:"
     )
 
 
@@ -445,18 +470,124 @@ def test_public_tile_cache_changes_when_privacy_fingerprint_changes():
         ),
         patch("app.user.service_heatmap_tiles._load_raw_segments", return_value={}),
         patch("app.user.service_heatmap_tiles._render_tile_png", return_value=b"png") as renderer,
+        patch(
+            "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
+            return_value="data-v1",
+        ),
     ):
         get_user_heatmap_tile(
-            Mock(), 42, 12, 3328, 1582, include_private=False
+            Mock(), 42, 12, 3328, 1582, include_private=False,
+            activity_fingerprint="data-v1",
         )
         get_user_heatmap_tile(
-            Mock(), 42, 12, 3328, 1582, include_private=False
+            Mock(), 42, 12, 3328, 1582, include_private=False,
+            activity_fingerprint="data-v1",
         )
 
     assert renderer.call_count == 2
     keys = [call.args[0] for call in redis.setex.call_args_list]
     assert any("privacy_1-1-before" in key for key in keys)
     assert any("privacy_1-0-after" in key for key in keys)
+
+
+def test_tile_cache_retries_when_activity_snapshot_changes_during_cache_read():
+    redis = Mock()
+    redis.get.side_effect = [b"7", b"stale", b"7", b"fresh"]
+
+    with (
+        patch("app.user.service_heatmap_tiles._get_redis_client", return_value=redis),
+        patch(
+            "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
+            side_effect=["old", "new", "new", "new"],
+        ),
+    ):
+        result = get_user_heatmap_tile(Mock(), 42, 12, 3328, 1582)
+
+    assert result == b"fresh"
+    read_keys = [call.args[0] for call in redis.get.call_args_list]
+    assert any(":data_old:" in str(key) for key in read_keys)
+    assert any(":data_new:" in str(key) for key in read_keys)
+
+
+def test_meta_cache_retries_when_activity_snapshot_changes_during_cache_read():
+    redis = Mock()
+    stale = _encode_heatmap_cache(
+        {"activity_count": 2, "tracks": []},
+        generation=7,
+    )
+    fresh = _encode_heatmap_cache(
+        {"activity_count": 1, "tracks": []},
+        generation=7,
+    )
+    redis.get.side_effect = [b"7", stale, b"7", fresh]
+
+    with (
+        patch("app.user.service_social._get_redis_client", return_value=redis),
+        patch(
+            "app.user.service_social._heatmap_activity_fingerprint",
+            side_effect=["old", "new", "new", "new"],
+        ),
+    ):
+        result = get_user_heatmap(Mock(), 42, detail="meta")
+
+    assert result["activity_count"] == 1
+    assert result["cache_version"] == "g7-dnew"
+    read_keys = [call.args[0] for call in redis.get.call_args_list]
+    assert any(":data_old:" in str(key) for key in read_keys)
+    assert any(":data_new:" in str(key) for key in read_keys)
+
+
+def test_tile_releases_old_build_lease_before_aba_retry():
+    redis = Mock()
+    redis.get.side_effect = [b"7", None, b"7", None, b"7", b"final"]
+    first_lease = Mock()
+    second_lease = Mock()
+    claim_count = 0
+
+    def claim(*_args, **_kwargs):
+        nonlocal claim_count
+        claim_count += 1
+        if claim_count == 1:
+            return first_lease, None
+        assert first_lease.release.call_count == 1
+        return second_lease, None
+
+    with (
+        patch("app.user.service_heatmap_tiles._get_redis_client", return_value=redis),
+        patch(
+            "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
+            side_effect=["A", "B", "B", "A", "A", "A"],
+        ),
+        patch(
+            "app.user.service_heatmap_tiles._claim_derived_cache_build",
+            side_effect=claim,
+        ),
+        patch("app.user.service_heatmap_tiles._load_raw_segments", return_value={}),
+        patch(
+            "app.user.service_heatmap_tiles._render_tile_png",
+            side_effect=[b"first", b"second"],
+        ),
+    ):
+        result = get_user_heatmap_tile(Mock(), 42, 12, 3328, 1582)
+
+    assert result == b"final"
+    assert first_lease.release.call_count == 1
+    assert second_lease.release.call_count == 1
+
+
+def test_tile_snapshot_retry_exhaustion_raises_typed_retryable_error():
+    redis = Mock()
+    redis.get.side_effect = [b"7", b"A", b"7", b"B", b"7", b"A"]
+
+    with (
+        patch("app.user.service_heatmap_tiles._get_redis_client", return_value=redis),
+        patch(
+            "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
+            side_effect=["A", "B", "B", "A", "A", "B"],
+        ),
+        pytest.raises(HeatmapSnapshotChanged),
+    ):
+        get_user_heatmap_tile(Mock(), 42, 12, 3328, 1582)
 
 
 def test_overview_source_redis_cache_avoids_repeated_postgis_scan_across_process_ttl():
@@ -472,20 +603,20 @@ def test_overview_source_redis_cache_avoids_repeated_postgis_scan_across_process
         ),
     ):
         first = _get_overview_segments_cached(
-            Mock(), 42, None, True, 7, None, redis
+                Mock(), 42, None, True, 7, None, redis, "data-v1"
         )
         encoded = redis.setex.call_args.args[2]
         _OVERVIEW_SOURCE_CACHE.clear()
         redis.get.return_value = encoded
         second = _get_overview_segments_cached(
-            Mock(), 42, None, True, 7, None, redis
+                Mock(), 42, None, True, 7, None, redis, "data-v1"
         )
 
     assert first == second == source
     assert loader.call_count == 1
     assert redis.setex.call_args.args[1] == 7 * 86400
     assert redis.setex.call_args.args[0].startswith(
-        "heatmap:raster:v2:source:user_42:g7:year_all:audience_owner"
+        "heatmap:raster:v2:source:user_42:g7:data_data-v1:year_all:audience_owner"
     )
     _OVERVIEW_SOURCE_CACHE.clear()
 
@@ -506,7 +637,7 @@ def test_overview_source_waiter_reuses_cross_process_builder_result():
         patch("app.user.service_heatmap_tiles.sleep"),
     ):
         result = _get_overview_segments_cached(
-            Mock(), 42, None, True, 7, None, redis
+            Mock(), 42, None, True, 7, None, redis, "data-v1"
         )
 
     assert result == {7: [[(112.5, 37.8), (112.6, 37.9)]]}
@@ -534,12 +665,12 @@ def test_overview_build_for_one_user_does_not_block_another_user():
     ):
         first = executor.submit(
             _get_overview_segments_cached,
-            Mock(), 101, None, True, 7, None, redis,
+            Mock(), 101, None, True, 7, None, redis, "data-v1",
         )
         assert first_started.wait(1)
         second = executor.submit(
             _get_overview_segments_cached,
-            Mock(), 202, None, True, 7, None, redis,
+            Mock(), 202, None, True, 7, None, redis, "data-v1",
         )
         try:
             assert second.result(timeout=0.5) == {
@@ -567,7 +698,7 @@ def test_overview_pg_failure_releases_renewing_redis_lease():
         pytest.raises(RuntimeError, match="postgres failed"),
     ):
         _get_overview_segments_cached(
-            Mock(), 303, None, True, 7, None, redis
+                Mock(), 303, None, True, 7, None, redis, "data-v1"
         )
 
     assert redis.eval.call_count == 1
@@ -585,10 +716,10 @@ def test_overview_map_conversion_is_reused_across_neighbor_tiles():
         return_value=converted,
     ) as converter:
         first = _get_overview_map_segments_cached(
-            source, 42, None, True, 7, None
+                source, 42, None, True, 7, None, "data-v1"
         )
         second = _get_overview_map_segments_cached(
-            source, 42, None, True, 7, None
+                source, 42, None, True, 7, None, "data-v1"
         )
 
     assert first == second == converted

@@ -240,6 +240,8 @@ class HeatmapResponse(BaseModel):
     activity_count: int
     # 原始轨迹变化时递增；客户端用它隔离瓦片缓存，旧文件不会污染新数据。
     generation: int = 0
+    # 同时绑定 Redis generation 与数据库活动集合；Redis 失效失败也会换 URL/key。
+    cache_version: str = "g0-d0"
     available_years: list[int] = Field(default_factory=list)
     selected_year: Optional[int] = None
     # meta 只下发两个范围角点；小程序首屏不再接收数千个 polyline 点。
