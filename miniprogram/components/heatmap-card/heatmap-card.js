@@ -5,6 +5,7 @@
 
 const api = require('../../utils/api')
 const heatmapMap = require('../../utils/heatmap-map')
+const heatmapProtocol = require('../../utils/heatmap-protocol')
 const { gcj02ToWgs84 } = require('../../utils/coords')
 
 const MIN_TILE_ZOOM = 3
@@ -12,6 +13,7 @@ const MAX_TILE_ZOOM = 18
 const MAX_VISIBLE_TILES = 12
 const HEATMAP_LINE_WIDTH = 3
 const HEATMAP_LINE_OPACITY = 'C8'
+const LEGACY_CARD_MAX_POINTS = 4000
 
 function isDeveloperTools() {
   try {
@@ -129,14 +131,45 @@ Component({
       this._metadataRequestSeq = requestSeq
       this.setData({ loading: true, error: false, tileError: false, isEmpty: false })
 
-      api.get(this._endpoint(), { detail: 'meta' })
-        .then((data) => {
+      var initialRequest = heatmapProtocol.shouldTryMeta()
+        ? api.get(this._endpoint(), { detail: 'meta' })
+          .then(function (data) { return { data: data, legacyProtocol: false } })
+        : api.get(this._endpoint(), { detail: 'card' })
+          .then(function (data) { return { data: data, legacyProtocol: true } })
+
+      initialRequest
+        .catch((error) => {
+          if (
+            this._componentAlive === false
+            || requestSeq !== this._metadataRequestSeq
+            || Number(error && error.code) !== 422
+          ) {
+            throw error
+          }
+          // 小程序前端可能先于热图瓦片后端进入体验版。旧后端不认识 detail=meta，
+          // 但仍支持 card/full/viewport；协议协商失败时直接退回既有矢量链路，
+          // 不能让个人页因为分步发布而整卡打不开。
+          heatmapProtocol.markMetaUnsupported()
+          return api.get(this._endpoint(), { detail: 'card' })
+            .then(function (data) { return { data: data, legacyProtocol: true } })
+        })
+        .then((result) => {
           if (this._componentAlive === false || requestSeq !== this._metadataRequestSeq) return
+          var data = result && result.data
+          var legacyProtocol = Boolean(result && result.legacyProtocol)
           var activityCount = Number(data && data.activity_count) || 0
-          var model = heatmapMap.buildHeatmapMetaModel(
-            data && data.focus_points,
-            data && data.all_points
-          )
+          var model = legacyProtocol
+            ? heatmapMap.buildHeatmapMapModel(
+              data && data.tracks,
+              'orange',
+              HEATMAP_LINE_WIDTH,
+              LEGACY_CARD_MAX_POINTS,
+              HEATMAP_LINE_OPACITY
+            )
+            : heatmapMap.buildHeatmapMetaModel(
+              data && data.focus_points,
+              data && data.all_points
+            )
           if (!model || activityCount === 0) {
             this._metadataLoaded = false
             this._clearTileOverlays()
@@ -151,6 +184,10 @@ Component({
           }
 
           this._metadataLoaded = true
+          if (legacyProtocol) {
+            this._preferVectorLayer = true
+            this._vectorPreparedTracks = model.preparedTracks
+          }
           this.setData({
             loading: false,
             error: false,
@@ -158,6 +195,7 @@ Component({
             isEmpty: false,
             center: model.center,
             includePoints: model.focusPoints,
+            polylines: legacyProtocol ? model.polylines : [],
             activityCount: activityCount,
           }, () => {
             if (!this._componentReady) return

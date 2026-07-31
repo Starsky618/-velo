@@ -1,11 +1,13 @@
 const api = require('../../utils/api')
 const heatmapMap = require('../../utils/heatmap-map')
+const heatmapProtocol = require('../../utils/heatmap-protocol')
 const { gcj02ToWgs84 } = require('../../utils/coords')
 const MIN_TILE_ZOOM = 3
 const MAX_TILE_ZOOM = 18
 const MAX_VISIBLE_TILES = 16
 const HEATMAP_LINE_WIDTH = 3
 const HEATMAP_LINE_OPACITY = 'C8'
+const LEGACY_OVERVIEW_MAX_POINTS = 9000
 
 function isDeveloperTools() {
   try {
@@ -162,13 +164,46 @@ Page({
     this._metadataRequestSeq = metadataRequestSeq
     this.setData(initial ? { loading: true, error: '' } : { updating: true })
 
-    api.get(this._endpoint(), params)
-      .then((data) => {
+    var fallbackParams = { detail: 'full' }
+    if (year !== null) fallbackParams.year = year
+    var initialRequest = heatmapProtocol.shouldTryMeta()
+      ? api.get(this._endpoint(), params)
+        .then(function (data) { return { data: data, legacyProtocol: false } })
+      : api.get(this._endpoint(), fallbackParams)
+        .then(function (data) { return { data: data, legacyProtocol: true } })
+
+    initialRequest
+      .catch((error) => {
+        if (
+          this._pageAlive === false
+          || metadataRequestSeq !== this._metadataRequestSeq
+          || Number(error && error.code) !== 422
+        ) {
+          throw error
+        }
+        // 兼容尚未支持 meta/PNG 瓦片协议的线上后端。首次协商返回 422 时，
+        // 用旧 full 响应完成首屏并固定走 viewport 矢量层，避免页面白屏或反复请求
+        // 不存在的瓦片接口；后端升级后仍会自动使用上面的新协议。
+        heatmapProtocol.markMetaUnsupported()
+        return api.get(this._endpoint(), fallbackParams)
+          .then(function (data) { return { data: data, legacyProtocol: true } })
+      })
+      .then((result) => {
         if (this._pageAlive === false || metadataRequestSeq !== this._metadataRequestSeq) return
-        var model = heatmapMap.buildHeatmapMetaModel(
-          data && data.focus_points,
-          data && data.all_points
-        )
+        var data = result && result.data
+        var legacyProtocol = Boolean(result && result.legacyProtocol)
+        var model = legacyProtocol
+          ? heatmapMap.buildHeatmapMapModel(
+            data && data.tracks,
+            this.data.selectedColor,
+            HEATMAP_LINE_WIDTH,
+            LEGACY_OVERVIEW_MAX_POINTS,
+            HEATMAP_LINE_OPACITY
+          )
+          : heatmapMap.buildHeatmapMetaModel(
+            data && data.focus_points,
+            data && data.all_points
+          )
         var availableYears = data && Array.isArray(data.available_years) ? data.available_years : []
         var activityCount = Number(data && data.activity_count) || 0
         if (!model || activityCount === 0) {
@@ -192,6 +227,10 @@ Page({
         }
 
         this._metadataLoaded = true
+        if (legacyProtocol) {
+          this._preferVectorLayer = true
+          this._vectorPreparedTracks = model.preparedTracks
+        }
         this._focusPoints = model.focusPoints
         this._allPoints = model.allPoints
         this.setData({
@@ -201,6 +240,7 @@ Page({
           isEmpty: false,
           center: model.center,
           includePoints: model.focusPoints,
+          polylines: legacyProtocol ? model.polylines : [],
           activityCount: activityCount,
           selectedYear: year,
           selectedYearLabel: year === null ? '全部年份' : String(year) + ' 年',

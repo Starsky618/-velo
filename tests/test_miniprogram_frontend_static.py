@@ -300,7 +300,9 @@ def test_heatmap_card_uses_one_interactive_native_map_and_opens_fullscreen():
     wxss = _read(MINI / "components" / "heatmap-card" / "heatmap-card.wxss")
 
     assert "require('../../utils/heatmap-map')" in js
+    assert "require('../../utils/heatmap-protocol')" in js
     assert "detail: 'meta'" in js
+    assert "detail: 'card'" in js
     assert "buildHeatmapMetaModel" in js
     assert "detail: 'viewport'" in js
     assert "gcj02ToWgs84" in js
@@ -376,6 +378,8 @@ def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
 
     assert "pages/heatmap/heatmap" in app_json["pages"]
     assert "detail: 'meta'" in js
+    assert "require('../../utils/heatmap-protocol')" in js
+    assert "detail: 'full'" in js
     assert "available_years" in js
     assert "wx.createMapContext('personal-heatmap-map'" in js
     assert "detail: 'viewport'" in js
@@ -451,6 +455,94 @@ assert.strictEqual(model.focusPoints.length, 2)
 assert.strictEqual(model.allPoints.length, 2)
 assert.ok(!Object.prototype.hasOwnProperty.call(model, 'polylines'))
 assert.notStrictEqual(model.focusPoints[0].longitude, 116.30)
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_card_falls_back_to_legacy_protocol_when_meta_is_unsupported():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const calls = []
+require.cache[apiPath] = { exports: {
+  get: function (url, params) {
+    calls.push({ url: url, params: params })
+    if (params.detail === 'meta') return Promise.reject({ code: 422 })
+    return Promise.resolve({
+      tracks: [[[112.50, 37.80], [112.51, 37.82], [112.52, 37.80]]],
+      activity_count: 1,
+    })
+  }
+} }
+let componentDefinition = null
+global.Component = function (definition) { componentDefinition = definition }
+global.wx = {}
+require('./miniprogram/components/heatmap-card/heatmap-card')
+
+const component = Object.assign({}, componentDefinition.methods, {
+  _componentAlive: true,
+  data: Object.assign({}, componentDefinition.data, { userId: 0 }),
+  setData: function (update, callback) {
+    Object.assign(this.data, update)
+    if (callback) callback()
+  },
+})
+
+;(async function () {
+  component._fetchHeatmap()
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.deepStrictEqual(calls.map((call) => call.params.detail), ['meta', 'card'])
+  assert.strictEqual(component._preferVectorLayer, true)
+  assert.strictEqual(component.data.error, false)
+  assert.strictEqual(component.data.polylines.length, 1)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_fullscreen_heatmap_falls_back_to_legacy_protocol_when_meta_is_unsupported():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const calls = []
+require.cache[apiPath] = { exports: {
+  get: function (url, params) {
+    calls.push({ url: url, params: params })
+    if (params.detail === 'meta') return Promise.reject({ code: 422 })
+    return Promise.resolve({
+      tracks: [[[112.50, 37.80], [112.51, 37.82], [112.52, 37.80]]],
+      activity_count: 1,
+      available_years: [2026],
+    })
+  }
+} }
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'orange' }),
+  _endpoint: function () { return '/api/user/me/heatmap' },
+  _ensureMapContext: function () { return null },
+  _scheduleViewportRefresh: function () {},
+  setData: function (update, callback) {
+    Object.assign(this.data, update)
+    if (callback) callback()
+  },
+})
+
+;(async function () {
+  page._fetchHeatmap(null, true)
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.deepStrictEqual(calls.map((call) => call.params.detail), ['meta', 'full'])
+  assert.strictEqual(page._preferVectorLayer, true)
+  assert.strictEqual(page.data.error, '')
+  assert.strictEqual(page.data.polylines.length, 1)
+})().catch(function (error) { console.error(error); process.exit(1) })
 """
 
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
