@@ -1,6 +1,7 @@
 const api = require('../../utils/api')
 const heatmapMap = require('../../utils/heatmap-map')
 const heatmapProtocol = require('../../utils/heatmap-protocol')
+const heatmapTileCache = require('../../utils/heatmap-tile-cache')
 const { gcj02ToWgs84 } = require('../../utils/coords')
 const MIN_TILE_ZOOM = 3
 const MAX_TILE_ZOOM = 18
@@ -8,6 +9,7 @@ const MAX_VISIBLE_TILES = 16
 const HEATMAP_LINE_WIDTH = 3
 const HEATMAP_LINE_OPACITY = 'C8'
 const LEGACY_OVERVIEW_MAX_POINTS = 9000
+const GROUND_OVERLAY_ACK_TIMEOUT_MS = 4000
 
 function isDeveloperTools() {
   try {
@@ -49,6 +51,15 @@ function boundsForTile(zoom, x, y) {
       latitude: latitudeForTileY(y, zoom),
     },
   }
+}
+
+function vectorLineStyle(zoom) {
+  // 开发者工具无法显示 PNG 热度瓦片，只能靠半透明矢量叠加表达密度。
+  // 缩小时降低单次骑行亮度，常骑道路会因多次重叠自然变亮；放大后恢复验收过的线宽。
+  if (zoom <= 10) return { width: 2, opacity: '2E' }
+  if (zoom <= 11) return { width: 2, opacity: '48' }
+  if (zoom <= 12) return { width: 3, opacity: '58' }
+  return { width: HEATMAP_LINE_WIDTH, opacity: HEATMAP_LINE_OPACITY }
 }
 
 function colorOptions(selectedKey) {
@@ -98,7 +109,8 @@ Page({
 
   onLoad(options) {
     this._pageAlive = true
-    // 微信开发者工具至今不渲染 addGroundOverlay；IDE 走同源原始轨迹 LOD，真机走 PNG 瓦片。
+    // 微信开发者工具实测接受 addGroundOverlay 却不显示图片；IDE 使用同源矢量预览，
+    // 真机使用版本化 PNG 瓦片。两条路径都从原始 Trackpoint 派生。
     this._preferVectorLayer = isDeveloperTools()
     var requestedUserId = Number(options && options.userId)
     this._userId = Number.isInteger(requestedUserId) && requestedUserId > 0 ? requestedUserId : 0
@@ -130,8 +142,7 @@ Page({
     this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
     this._viewportReadRetries = 0
     this._clearTileOverlays()
-    this._tileFileCache = {}
-    this._tileDownloadPromises = {}
+    this._lastVectorSetKey = ''
     this._vectorPreparedTracks = []
   },
 
@@ -147,6 +158,7 @@ Page({
       : '/api/user/me/heatmap/tiles/'
     var params = ['color=' + encodeURIComponent(this.data.selectedColor)]
     if (this.data.selectedYear !== null) params.push('year=' + this.data.selectedYear)
+    params.push('v=' + (this._heatmapGeneration || 0))
     return base + zoom + '/' + x + '/' + y + '.png?' + params.join('&')
   },
 
@@ -160,6 +172,7 @@ Page({
     this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
     this._viewportReadRetries = 0
     this._lastTileSetKey = ''
+    this._lastVectorSetKey = ''
     var metadataRequestSeq = (this._metadataRequestSeq || 0) + 1
     this._metadataRequestSeq = metadataRequestSeq
     this.setData(initial ? { loading: true, error: '' } : { updating: true })
@@ -192,6 +205,7 @@ Page({
         if (this._pageAlive === false || metadataRequestSeq !== this._metadataRequestSeq) return
         var data = result && result.data
         var legacyProtocol = Boolean(result && result.legacyProtocol)
+        this._heatmapGeneration = Math.max(0, Number(data && data.generation) || 0)
         var model = legacyProtocol
           ? heatmapMap.buildHeatmapMapModel(
             data && data.tracks,
@@ -294,12 +308,13 @@ Page({
     if (!isKnownColor(key) || key === this.data.selectedColor) return
     wx.setStorageSync('heatmapColor', key)
     var prepared = this._vectorPreparedTracks || []
+    var vectorStyle = vectorLineStyle(this._lastVectorZoom || 13)
     this.setData({
       selectedColor: key,
       colorOptions: colorOptions(key),
       updating: !this._preferVectorLayer || prepared.length === 0,
       polylines: this._preferVectorLayer && prepared.length
-        ? heatmapMap.buildPolylines(prepared, key, HEATMAP_LINE_WIDTH, HEATMAP_LINE_OPACITY)
+        ? heatmapMap.buildPolylines(prepared, key, vectorStyle.width, vectorStyle.opacity)
         : this.data.polylines,
     }, () => {
       if (this._preferVectorLayer && prepared.length) return
@@ -405,37 +420,84 @@ Page({
       if (this.data.updating) this.setData({ updating: false })
       return
     }
+    var requestViewport = this._vectorRequestViewport(viewport)
+    if (requestViewport.key === this._lastVectorSetKey) {
+      if (this.data.updating) this.setData({ updating: false })
+      return
+    }
+    this._lastVectorSetKey = requestViewport.key
+    this._lastVectorZoom = viewport.zoom
     var requestSeq = (this._vectorRequestSeq || 0) + 1
     this._vectorRequestSeq = requestSeq
     var params = {
       detail: 'viewport',
-      west: viewport.west,
-      south: viewport.south,
-      east: viewport.east,
-      north: viewport.north,
-      zoom: viewport.zoom,
+      west: requestViewport.west,
+      south: requestViewport.south,
+      east: requestViewport.east,
+      north: requestViewport.north,
+      zoom: requestViewport.zoom,
     }
     if (this.data.selectedYear !== null) params.year = this.data.selectedYear
-    this.setData({ updating: true })
+    this.setData({ updating: !Array.isArray(this.data.polylines) || this.data.polylines.length === 0 })
     api.get(this._endpoint(), params)
       .then((data) => {
         if (this._pageAlive === false || requestSeq !== this._vectorRequestSeq) return
         var prepared = heatmapMap.prepareTracks(data && data.tracks)
+        var style = vectorLineStyle(viewport.zoom)
         this._vectorPreparedTracks = prepared
         this.setData({
           updating: false,
           polylines: heatmapMap.buildPolylines(
             prepared,
             this.data.selectedColor,
-            HEATMAP_LINE_WIDTH,
-            HEATMAP_LINE_OPACITY
+            style.width,
+            style.opacity
           ),
         })
       })
       .catch(() => {
         if (this._pageAlive === false || requestSeq !== this._vectorRequestSeq) return
+        this._lastVectorSetKey = ''
         this.setData({ updating: false })
       })
+  },
+
+  _vectorRequestViewport(viewport) {
+    // 请求边界吸附到地图瓦片网格。同一组可见瓦片内拖动只复用当前帧；跨格才请求，
+    // 同时保证新视野边缘已经包含在上一次响应中，不会用“缓存”换来缺线。
+    var zoom = Math.max(3, Math.min(20, Math.round(viewport.zoom)))
+    var count = Math.pow(2, zoom)
+    var minX = Math.max(0, tileXForLongitude(viewport.mapWest, zoom))
+    var maxX = Math.min(count - 1, tileXForLongitude(viewport.mapEast, zoom))
+    var minY = Math.max(0, tileYForLatitude(viewport.mapNorth, zoom))
+    var maxY = Math.min(count - 1, tileYForLatitude(viewport.mapSouth, zoom))
+    // 低倍率按 2x2、高倍率按 4x4 supertile 预取。z15-z19 拖动时不再每跨一个
+    // 约百米小瓦片就请求一次；地图自身会裁掉块内屏幕外的轨迹。
+    var vectorBlockSize = zoom >= 14 ? 4 : 2
+    minX = Math.max(0, Math.floor(minX / vectorBlockSize) * vectorBlockSize)
+    maxX = Math.min(
+      count - 1,
+      Math.ceil((maxX + 1) / vectorBlockSize) * vectorBlockSize - 1
+    )
+    minY = Math.max(0, Math.floor(minY / vectorBlockSize) * vectorBlockSize)
+    maxY = Math.min(
+      count - 1,
+      Math.ceil((maxY + 1) / vectorBlockSize) * vectorBlockSize - 1
+    )
+    var mapWest = minX / count * 360 - 180
+    var mapEast = (maxX + 1) / count * 360 - 180
+    var mapNorth = latitudeForTileY(minY, zoom)
+    var mapSouth = latitudeForTileY(maxY + 1, zoom)
+    var southwest = gcj02ToWgs84(mapSouth, mapWest)
+    var northeast = gcj02ToWgs84(mapNorth, mapEast)
+    return {
+      key: [zoom, minX, maxX, minY, maxY].join(':'),
+      zoom: zoom,
+      west: southwest[1],
+      south: southwest[0],
+      east: northeast[1],
+      north: northeast[0],
+    }
   },
 
   _visibleTiles(viewport) {
@@ -451,7 +513,6 @@ Page({
         tiles.push({ zoom: zoom, x: x, y: y })
       }
     }
-    if (tiles.length <= MAX_VISIBLE_TILES) return tiles
     var centerX = (minX + maxX) / 2
     var centerY = (minY + maxY) / 2
     return tiles.sort(function (a, b) {
@@ -461,6 +522,8 @@ Page({
 
   _tileKey(tile) {
     return [
+      heatmapTileCache.userScope(this._userId),
+      'g' + (this._heatmapGeneration || 0),
       tile.zoom,
       tile.x,
       tile.y,
@@ -478,7 +541,7 @@ Page({
       var settled = false
       var timeout = setTimeout(function () {
         rejectOnce(new Error('ground overlay timed out'))
-      }, 4000)
+      }, GROUND_OVERLAY_ACK_TIMEOUT_MS)
       var resolveOnce = function () {
         if (settled) return
         settled = true
@@ -500,7 +563,6 @@ Page({
         opacity: 1,
         success: resolveOnce,
         fail: rejectOnce,
-        // 开发者工具 2.02.2607161 实测图层已出现但 success 不回调；complete 才是稳定收口。
         complete: function (result) {
           if (result && /:fail/.test(result.errMsg || '')) rejectOnce(result)
           else resolveOnce()
@@ -516,23 +578,9 @@ Page({
   },
 
   _loadTileFile(tile, key) {
-    var cache = this._tileFileCache || (this._tileFileCache = {})
-    if (cache[key]) return Promise.resolve(cache[key])
-    var inflight = this._tileDownloadPromises || (this._tileDownloadPromises = {})
-    if (inflight[key]) return inflight[key]
-    var request = api.downloadTemporaryFile(this._tileEndpoint(tile.zoom, tile.x, tile.y))
-      .then(function (file) {
-        var path = file && (file.filePath || file.tempFilePath)
-        if (!path) throw new Error('heatmap tile has no local path')
-        cache[key] = path
-        delete inflight[key]
-        return path
-      }, function (error) {
-        delete inflight[key]
-        throw error
-      })
-    inflight[key] = request
-    return request
+    return heatmapTileCache.load(key, () => (
+      api.downloadTemporaryFile(this._tileEndpoint(tile.zoom, tile.x, tile.y))
+    ))
   },
 
   _refreshTileLayer(viewport) {
@@ -554,16 +602,20 @@ Page({
       if (active[key]) return
       var idSeed = (this._tileIdSeed || 1000) + 1
       this._tileIdSeed = idSeed
-      // 微信 MapContext 合同要求 String id；传 Number 会静默不渲染且不回调。
-      var id = 'heatmap-full-' + idSeed
+      // addGroundOverlay/removeGroundOverlay 的 id 合同是 Number；String 会直接 parameter error。
+      var id = idSeed
       downloads.push(
         this._loadTileFile(tile, key)
           .then((filePath) => this._addGroundOverlay(tile, filePath, id))
           .then(() => ({ key: key, id: id }))
-          .catch(() => null)
+          .catch((error) => {
+            console.warn('heatmap tile overlay failed:', error && error.errMsg ? error.errMsg : error)
+            heatmapTileCache.remove(key)
+            return null
+          })
       )
     })
-    this.setData({ updating: downloads.length > 0 })
+    this.setData({ updating: downloads.length > 0 && Object.keys(active).length === 0 })
     Promise.all(downloads).then((added) => {
       if (this._pageAlive === false || requestSeq !== this._viewportRequestSeq) {
         added.forEach((item) => { if (item) this._removeGroundOverlay(item.id) })
@@ -609,7 +661,8 @@ Page({
       })
       this._activeTileOverlays = active
       this._tileLayerVisible = visibleCount > 0
-      this.setData({ updating: false })
+      this._preferVectorLayer = false
+      this.setData({ updating: false, polylines: [] })
     })
   },
 

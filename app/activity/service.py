@@ -427,10 +427,10 @@ def update_activity_privacy(
     db.refresh(privacy)
     if visibility is not None:
         # 可见性变化后推进热图 generation，避免他人继续拿到旧的私密轨迹瓦片。
-        # Redis 故障不能反向让隐私设置保存失败；旧 PNG 仍会在 1h TTL 后自然过期。
+        # Redis 故障不能反向让隐私设置保存失败；公开瓦片还有隐私指纹防止复活旧数据。
         try:
             from app.user.service_social import invalidate_heatmap_cache
-            invalidate_heatmap_cache(user_id)
+            invalidate_heatmap_cache(user_id, prewarm=True)
         except Exception:
             # 公开瓦片还绑定数据库隐私指纹，因此不会 fail-open；保留日志供 Redis 修复。
             _logger.exception("failed to invalidate heatmap after privacy update", extra={"user_id": user_id})
@@ -461,10 +461,10 @@ def delete_activity(db: Session, activity_id: int, user_id: int) -> None:
     db.delete(activity)
     db.commit()
 
-    # 删除成功后立即清热图；失败只影响最多 1h 的展示缓存，不能反向让删除 API 失败。
+    # 删除成功后立即清热图；缓存故障不能反向让删除 API 失败。
     try:
         from app.user.service_social import invalidate_heatmap_cache
-        invalidate_heatmap_cache(user_id)
+        invalidate_heatmap_cache(user_id, prewarm=True)
     except Exception:
         pass
 

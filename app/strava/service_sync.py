@@ -94,7 +94,7 @@ def handle_webhook_event(db: Session, payload: dict) -> None:
             db.commit()
             try:
                 from app.user.service_social import invalidate_heatmap_cache
-                invalidate_heatmap_cache(user.id)
+                invalidate_heatmap_cache(user.id, prewarm=True)
             except Exception:
                 logger.exception("heatmap cache invalidation failed user_id=%s", user.id)
             logger.info("删除 Strava 活动 strava_id=%s activity_id=%d", object_id, activity_id)

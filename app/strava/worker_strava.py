@@ -128,7 +128,7 @@ def process_strava_webhook_update(user_id: int, strava_activity_id: int) -> None
         activity.updated_at = datetime.now(timezone.utc)
         db.commit()
         # wipe 已提交后，completed 轨迹已从 DB 消失；立刻清缓存，确保后续详情失败、
-        # 非骑行或 streams 失败的早退分支也不会继续展示旧路线 1 小时。
+        # 非骑行或 streams 失败的早退分支也不会继续展示旧路线。
         try:
             from app.user.service_social import invalidate_heatmap_cache
             invalidate_heatmap_cache(activity.user_id)
@@ -273,11 +273,11 @@ def _process_strava_main(db, user_id: int, strava_activity_id: int) -> None:
     db.commit()
 
     # 与 GPX worker 一致：只在 activity 提交成功后删热图缓存，避免并发请求
-    # 在 commit 前把旧 DB 结果重新写回 1h 缓存。
+    # 在 commit 前把旧 DB 结果重新写回当前代缓存。
     if not is_duplicate:
         try:
             from app.user.service_social import invalidate_heatmap_cache
-            invalidate_heatmap_cache(activity.user_id)
+            invalidate_heatmap_cache(activity.user_id, prewarm=True)
         except Exception:
             logger.exception("heatmap cache invalidation failed activity_id=%s", activity.id)
 

@@ -36,24 +36,24 @@ from app.user.service_social import (
 
 
 _TILE_SIZE = 512  # 2x retina tile；地图上仍覆盖一个标准 Web-Mercator tile
-_CACHE_TTL_SEC = 3600
-_CACHE_PREFIX = "heatmap:raster:v1:user_"
+_CACHE_TTL_SEC = 86400
+_CACHE_PREFIX = "heatmap:raster:v2:user_"
 _GENERATION_PREFIX = "heatmap:generation:user_"
 _BEIJING_TZ = timezone(timedelta(hours=8))
 _RAW_POINT_QUERY_BUFFER_METERS = 1_000
 _RAW_UNTIMED_GAP_METERS = 500
-_OVERVIEW_POINTS_PER_SEGMENT = 320
+_OVERVIEW_POINTS_PER_SEGMENT = 1_000
 _OVERVIEW_SOURCE_CACHE_TTL_SEC = 60
 _OVERVIEW_SOURCE_CACHE_MAX_ITEMS = 8
-_OVERVIEW_REDIS_SOURCE_TTL_SEC = 3600
-_OVERVIEW_REDIS_SOURCE_PREFIX = "heatmap:raster:v1:source:user_"
+_OVERVIEW_REDIS_SOURCE_TTL_SEC = 7 * 86400
+_OVERVIEW_REDIS_SOURCE_PREFIX = "heatmap:raster:v2:source:user_"
 _OVERVIEW_SOURCE_BUILD_LOCK_TTL_SEC = 30
 _OVERVIEW_SOURCE_BUILD_WAIT_SEC = 60
 _OVERVIEW_SOURCE_BUILD_POLL_SEC = 0.05
 _VECTOR_CACHE_TTL_SEC = 900
-_VECTOR_CACHE_PREFIX = "heatmap:vector:v1:user_"
+_VECTOR_CACHE_PREFIX = "heatmap:vector:v2:user_"
 _VECTOR_MAX_CACHE_KEYS = 16
-_VECTOR_TOTAL_POINT_BUDGET = 6_000
+_VECTOR_TOTAL_POINT_BUDGET = 14_000
 _VECTOR_POINTS_PER_SEGMENT = 320
 _DERIVED_BUILD_LOCK_TTL_SEC = 30
 _DERIVED_BUILD_WAIT_SEC = 60
@@ -428,7 +428,7 @@ def _load_raw_segments_for_bounds(
     north: float,
     include_private: bool,
 ) -> dict[int, list[list[tuple[float, float]]]]:
-    """按 WGS-84 范围读取连续原始点；供瓦片和开发者工具矢量降级共用。"""
+    """按 WGS-84 范围读取连续原始点；供瓦片和图片图层失败后的矢量降级共用。"""
     envelope = func.ST_MakeEnvelope(west, south, east, north, 4326)
     spatial_filter = or_(
         Trackpoint.geom.op("&&")(envelope),
@@ -964,6 +964,89 @@ def _limit_vector_segments(
     ]
 
 
+def _vector_point_budget_for_zoom(zoom: int) -> int:
+    """开发者工具的矢量预览预算；真机仍使用 PNG 瓦片。
+
+    293 次真实骑行实测中，20k 点会在微信渲染层膨胀成约 1.4 MB setData；
+    因此城市预览锁在 12k。z14 以上视野已经足够小，允许 14k，
+    避免山路和连续拐弯被二次抽稀。
+    """
+    if zoom <= 13:
+        return 12_000
+    return _VECTOR_TOTAL_POINT_BUDGET
+
+
+def _vector_segment_intersects_bounds(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    west: float,
+    south: float,
+    east: float,
+    north: float,
+) -> bool:
+    """Liang-Barsky 判断线段是否穿过视野，端点都在屏外时也不能漏线。"""
+    x1, y1 = start
+    dx = end[0] - x1
+    dy = end[1] - y1
+    t_min = 0.0
+    t_max = 1.0
+    for p, q in (
+        (-dx, x1 - west),
+        (dx, east - x1),
+        (-dy, y1 - south),
+        (dy, north - y1),
+    ):
+        if abs(p) < 1e-12:
+            if q < 0:
+                return False
+            continue
+        ratio = q / p
+        if p < 0:
+            if ratio > t_max:
+                return False
+            t_min = max(t_min, ratio)
+        else:
+            if ratio < t_min:
+                return False
+            t_max = min(t_max, ratio)
+    return True
+
+
+def _clip_vector_segments_to_bounds(
+    segments: dict[int, list[list[tuple[float, float]]]],
+    west: float,
+    south: float,
+    east: float,
+    north: float,
+) -> dict[int, list[list[tuple[float, float]]]]:
+    """从长期缓存的总览源裁出当前帧，保留进出边界的相邻点。"""
+    clipped: dict[int, list[list[tuple[float, float]]]] = defaultdict(list)
+    for activity_id, activity_segments in segments.items():
+        for segment in activity_segments:
+            current: list[tuple[float, float]] = []
+            for start, end in zip(segment, segment[1:]):
+                if _vector_segment_intersects_bounds(
+                    start,
+                    end,
+                    west,
+                    south,
+                    east,
+                    north,
+                ):
+                    if not current:
+                        current = [start]
+                    elif current[-1] != start:
+                        _append_segment(clipped, activity_id, current)
+                        current = [start]
+                    if current[-1] != end:
+                        current.append(end)
+                elif current:
+                    _append_segment(clipped, activity_id, current)
+                    current = []
+            _append_segment(clipped, activity_id, current)
+    return clipped
+
+
 def _heatmap_bounds_from_segments(
     segments: dict[int, list[list[tuple[float, float]]]],
 ) -> tuple[list[list[float]], list[list[float]]]:
@@ -1326,6 +1409,7 @@ def get_user_heatmap_overview(
         "city": city,
         "tracks": tracks,
         "activity_count": activity_count,
+        "generation": generation,
         "available_years": available_years,
         "selected_year": year,
         "focus_points": focus_points if detail == "meta" else [],
@@ -1366,7 +1450,7 @@ def get_user_heatmap_viewport(
     year: int | None = None,
     include_private: bool = True,
 ) -> dict:
-    """返回当前视野的原始连续轨迹 LOD；主要作为开发者工具/图片图层失败时的降级。"""
+    """返回当前视野的原始连续轨迹 LOD；只作为图片图层真实失败时的降级。"""
     west, south, east, north, zoom = viewport
     _year_window_utc(year)
     if not (
@@ -1413,17 +1497,44 @@ def get_user_heatmap_viewport(
         return waited_result
 
     try:
-        segments = _load_raw_segments_for_bounds(
-            db,
-            user_id,
-            year,
-            west,
-            south,
-            east,
-            north,
-            include_private,
+        if zoom <= 13:
+            # 城市总览复用 7 天 Redis 原始派生源：第一次从 PG 构建，之后换区域只做
+            # 内存裁切，不再为每次拖图重新扫描 40 万级 Trackpoint。该源先按
+            # seq/time/speed 切段，再以约 2 米容差保曲率，不读取 simplified_track。
+            overview_segments = _get_overview_segments_cached(
+                db,
+                user_id,
+                year,
+                include_private,
+                generation,
+                privacy_fingerprint,
+                redis_client,
+            )
+            segments = _clip_vector_segments_to_bounds(
+                overview_segments,
+                west,
+                south,
+                east,
+                north,
+            )
+        else:
+            # z14 以上街区/山路直接读当前范围原始点，保持已经验收的微观细节。
+            segments = _load_raw_segments_for_bounds(
+                db,
+                user_id,
+                year,
+                west,
+                south,
+                east,
+                north,
+                include_private,
+            )
+        prepared = _limit_vector_segments(
+            segments,
+            zoom,
+            (south + north) / 2,
+            total_point_budget=_vector_point_budget_for_zoom(zoom),
         )
-        prepared = _limit_vector_segments(segments, zoom, (south + north) / 2)
         available_year_rows = (
             db.query(Activity.started_at)
             .join(Trackpoint, Trackpoint.activity_id == Activity.id)
@@ -1446,6 +1557,7 @@ def get_user_heatmap_viewport(
                 for _, points in prepared
             ],
             "activity_count": len({activity_id for activity_id, _ in prepared}),
+            "generation": generation,
             "available_years": available_years,
             "selected_year": year,
             "focus_points": [],

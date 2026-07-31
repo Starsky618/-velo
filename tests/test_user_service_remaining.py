@@ -98,6 +98,8 @@ def _cleanup_redis(redis_client, user_id: int):
     redis_client.delete(f"heatmap:generation:user_{user_id}")
     for prefix in (
         "heatmap:v5:user_", "heatmap:v4:user_", "heatmap:v3:user_", "heatmap:v2:user_",
+        "heatmap:vector:v2:user_", "heatmap:raster:v2:user_",
+        "heatmap:raster:v2:source:user_",
         "heatmap:user_", "heatmap:vector:v1:user_", "heatmap:raster:v1:user_",
         "heatmap:raster:v1:source:user_", "power_curve:user_",
     ):
@@ -506,7 +508,7 @@ class TestGetUserHeatmap:
     def test_stale_invalidator_cannot_delete_new_generation_key(self, real_redis):
         user_id = 987654321
         generation_key = f"heatmap:generation:user_{user_id}"
-        cache_key = f"heatmap:vector:v1:user_{user_id}:g2:test"
+        cache_key = f"heatmap:vector:v2:user_{user_id}:g2:test"
         real_redis.set(generation_key, 2)
         real_redis.set(cache_key, "current")
         try:
@@ -779,7 +781,7 @@ class TestGetUserHeatmap:
             assert first["activity_count"] == 1
             assert len(first["tracks"]) == 1
             assert 116 < first["tracks"][0][0][0] < 117
-            cached_keys = list(real_redis.scan_iter(match=f"heatmap:vector:v1:user_{user_id}:*"))
+            cached_keys = list(real_redis.scan_iter(match=f"heatmap:vector:v2:user_{user_id}:*"))
             assert len(cached_keys) == 1
 
             with patch.object(db, "query", side_effect=AssertionError("exact view cache should avoid PostgreSQL")):
@@ -797,7 +799,7 @@ class TestGetUserHeatmap:
                 )
             assert second["activity_count"] == 1
             assert second == first
-            assert len(list(real_redis.scan_iter(match=f"heatmap:vector:v1:user_{user_id}:*"))) == 1
+            assert len(list(real_redis.scan_iter(match=f"heatmap:vector:v2:user_{user_id}:*"))) == 1
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -901,7 +903,7 @@ class TestGetUserHeatmap:
                 assert all(point[0] > 116 and point[1] > 39 for point in flattened)
                 assert [116.41, 39.912] in flattened
             source_keys = list(real_redis.scan_iter(
-                match=f"heatmap:raster:v1:source:user_{user_id}:*"
+                match=f"heatmap:raster:v2:source:user_{user_id}:*"
             ))
             assert len(source_keys) == 1
         finally:
@@ -1013,6 +1015,9 @@ class TestUpdateUserCity:
             for key in keys:
                 real_redis.set(key, "cached")
             derived_keys = [
+                f"heatmap:vector:v2:user_{user_id}:g{generation_before}:year_all:test",
+                f"heatmap:raster:v2:user_{user_id}:g{generation_before}:year_all:test",
+                f"heatmap:raster:v2:source:user_{user_id}:g{generation_before}:year_all:test",
                 f"heatmap:vector:v1:user_{user_id}:g{generation_before}:year_all:test",
                 f"heatmap:raster:v1:user_{user_id}:g{generation_before}:year_all:test",
                 f"heatmap:raster:v1:source:user_{user_id}:g{generation_before}:year_all:test",
@@ -1048,6 +1053,10 @@ class TestUpdateUserCity:
             assert card["activity_count"] == 1
             assert full["activity_count"] == 1
             assert viewport["activity_count"] == 1
+            assert all(
+                result["generation"] == generation_after
+                for result in (meta, card, full, viewport)
+            )
             new_keys = list(real_redis.scan_iter(match=f"heatmap:v5:user_{user_id}:*"))
             assert new_keys
             assert all(f"generation_{generation_after}".encode() in key for key in new_keys)

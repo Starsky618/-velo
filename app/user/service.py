@@ -48,7 +48,9 @@ from app.user.service_social import (  # noqa: F401 — 转导出
     get_user_badges,  # Sprint 6 task-2：身份徽章计算（自他对称入口）
     get_user_heatmap,
     get_user_profile_for_others,
+    enqueue_heatmap_cache_prewarm,
     invalidate_heatmap_cache,
+    prewarm_heatmap_cache_task,
     update_user_city,
 )
 from app.user.service_heatmap_tiles import (  # noqa: F401 — 转导出

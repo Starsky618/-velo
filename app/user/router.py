@@ -246,7 +246,7 @@ def get_my_heatmap(
 
     year 可选，按北京时间自然年筛；detail=card/full 控制个人页与全屏总览的数据预算。
     detail=viewport 时必须同时传 west/south/east/north/zoom，只返回当前地图视野的高精度轨迹。
-    总览与高精度源层缓存 1h；视野结果缓存 15min、每用户最多 12 份，city/year/detail 互相隔离。
+    版本化总览源缓存 7 天、PNG 瓦片 24h；矢量降级视野缓存 15min，city/year/detail 互相隔离。
     """
     if detail == schemas.HeatmapDetail.viewport and None in (west, south, east, north, zoom):
         raise HTTPException(status_code=422, detail="viewport detail requires west/south/east/north/zoom")
@@ -275,10 +275,11 @@ def get_my_heatmap_tile(
     y: int,
     year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
     color: str = Query(default="orange"),
+    version: int | None = Query(default=None, alias="v", ge=0),
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """当前用户的透明热力图瓦片；由原生地图图片图层按当前视野加载。"""
+    """当前用户的透明热力图瓦片；v 只用于客户端/HTTP 缓存版本隔离。"""
     try:
         content = service.get_user_heatmap_tile(
             db, user_id, zoom, x, y, year=year, color=color, include_private=True
@@ -288,7 +289,11 @@ def get_my_heatmap_tile(
     return Response(
         content=content,
         media_type="image/png",
-        headers={"Cache-Control": "private, no-store"},
+        headers={
+            "Cache-Control": (
+                "private, max-age=86400" if version is not None else "private, no-store"
+            )
+        },
     )
 
 
@@ -592,7 +597,7 @@ def get_user_heatmap_for_others(
 
     user 不存在 → service.get_user_by_id 抛 ValueError → 翻译为 404
     （跟 L220-223 /{user_id}/profile 同 pattern / Claude 综合审 Critical-1 验证后修）。
-    缓存策略同 /me/heatmap：总览/源层 1h，视野结果 15min 且每用户最多 12 份。
+    缓存策略同 /me/heatmap：版本化总览源 7 天、PNG 瓦片 24h，矢量降级视野 15min。
     """
     try:
         service.get_user_by_id(db, user_id)
@@ -626,6 +631,7 @@ def get_user_heatmap_tile_for_others(
     y: int,
     year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
     color: str = Query(default="orange"),
+    version: int | None = Query(default=None, alias="v", ge=0),
     requester_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -650,7 +656,11 @@ def get_user_heatmap_tile_for_others(
     return Response(
         content=content,
         media_type="image/png",
-        headers={"Cache-Control": "private, no-store"},
+        headers={
+            "Cache-Control": (
+                "private, max-age=86400" if version is not None else "private, no-store"
+            )
+        },
     )
 
 

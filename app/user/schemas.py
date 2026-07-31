@@ -238,6 +238,8 @@ class HeatmapResponse(BaseModel):
     city: Optional[str] = None
     tracks: list[list[list[float]]]
     activity_count: int
+    # 原始轨迹变化时递增；客户端用它隔离瓦片缓存，旧文件不会污染新数据。
+    generation: int = 0
     available_years: list[int] = Field(default_factory=list)
     selected_year: Optional[int] = None
     # meta 只下发两个范围角点；小程序首屏不再接收数千个 polyline 点。

@@ -301,19 +301,24 @@ def test_heatmap_card_uses_one_interactive_native_map_and_opens_fullscreen():
 
     assert "require('../../utils/heatmap-map')" in js
     assert "require('../../utils/heatmap-protocol')" in js
+    assert "require('../../utils/heatmap-tile-cache')" in js
     assert "detail: 'meta'" in js
     assert "detail: 'card'" in js
     assert "buildHeatmapMetaModel" in js
     assert "detail: 'viewport'" in js
     assert "gcj02ToWgs84" in js
-    assert "_preferVectorLayer = isDeveloperTools()" in js
+    assert "this._preferVectorLayer = isDeveloperTools()" in js
+    assert "_vectorRequestViewport" in js
+    assert "vectorBlockSize = zoom >= 14 ? 4 : 2" in js
+    assert "opacity: '2E'" in js
+    assert "&v=" in js
     assert "limitTrackPoints(" not in js
     assert "buildPolylines" in js
     assert "downloadTemporaryFile" in js
     assert "addGroundOverlay" in js
     assert "removeGroundOverlay" in js
     assert "complete: function (result)" in js
-    assert "'heatmap-card-' + idSeed" in js
+    assert "var id = idSeed" in js
     assert "wx.navigateTo" in js
     assert "/pages/heatmap/heatmap" in js
     assert wxml.count("<map") == 1
@@ -363,7 +368,13 @@ const viewport = {
   assert.strictEqual(component.data.tileError, false)
   assert.strictEqual(component.data.polylines.length, 1)
   assert.strictEqual(component.data.polylines[0].points.length, 3)
-  assert.strictEqual(component.data.polylines[0].color, '#FF6B00C8')
+  assert.strictEqual(component.data.polylines[0].color, '#FF6B0048')
+  component._fetchViewport(Object.assign({}, viewport, {
+    west: 112.401, south: 37.701, east: 112.701, north: 38.001,
+    mapWest: 112.401, mapSouth: 37.701, mapEast: 112.701, mapNorth: 38.001,
+  }))
+  await new Promise(setImmediate)
+  assert.strictEqual(calls.length, 1)
 })().catch(function (error) { console.error(error); process.exit(1) })
 """
 
@@ -379,12 +390,17 @@ def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     assert "pages/heatmap/heatmap" in app_json["pages"]
     assert "detail: 'meta'" in js
     assert "require('../../utils/heatmap-protocol')" in js
+    assert "require('../../utils/heatmap-tile-cache')" in js
     assert "detail: 'full'" in js
     assert "available_years" in js
     assert "wx.createMapContext('personal-heatmap-map'" in js
     assert "detail: 'viewport'" in js
     assert "gcj02ToWgs84" in js
-    assert "_preferVectorLayer = isDeveloperTools()" in js
+    assert "this._preferVectorLayer = isDeveloperTools()" in js
+    assert "_vectorRequestViewport" in js
+    assert "vectorBlockSize = zoom >= 14 ? 4 : 2" in js
+    assert "opacity: '2E'" in js
+    assert "'v=' + (this._heatmapGeneration || 0)" in js
     assert "buildPolylines" in js
     assert "getRegion" in js
     assert "getScale" in js
@@ -395,7 +411,7 @@ def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     assert "addGroundOverlay" in js
     assert "removeGroundOverlay" in js
     assert "complete: function (result)" in js
-    assert "'heatmap-full-' + idSeed" in js
+    assert "var id = idSeed" in js
     assert "boundsForTile" in js
     assert "includePoints" in js
     assert "buildHeatmapMetaModel" in js
@@ -729,6 +745,61 @@ const key = page._tileKey(tile)
   assert.strictEqual(await concurrent, '/tmp/tile.png')
   assert.strictEqual(await page._loadTileFile(tile, key), '/tmp/tile.png')
   assert.strictEqual(downloads.length, 1)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_card_and_fullscreen_share_generation_scoped_tile_files():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+const downloads = []
+require.cache[apiPath] = { exports: {
+  downloadTemporaryFile: function (url) {
+    return new Promise((resolve) => downloads.push({ url: url, resolve: resolve }))
+  }
+} }
+let pageDefinition = null
+let componentDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.Component = function (definition) { componentDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+require('./miniprogram/components/heatmap-card/heatmap-card')
+
+const page = Object.assign({}, pageDefinition, {
+  _userId: 42,
+  _heatmapGeneration: 7,
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'orange', selectedYear: null }),
+})
+const card = Object.assign({}, componentDefinition.methods, {
+  _heatmapGeneration: 7,
+  data: Object.assign({}, componentDefinition.data, { userId: 42 }),
+})
+const tile = { zoom: 12, x: 3328, y: 1582 }
+
+;(async function () {
+  const pageKey = page._tileKey(tile)
+  const cardKey = card._tileKey(tile)
+  assert.strictEqual(pageKey, cardKey)
+  const pageRequest = page._loadTileFile(tile, pageKey)
+  const cardRequest = card._loadTileFile(tile, cardKey)
+  assert.strictEqual(downloads.length, 1)
+  assert.ok(downloads[0].url.includes('v=7'))
+  downloads[0].resolve({ filePath: '/tmp/shared-g7.png' })
+  assert.strictEqual(await pageRequest, '/tmp/shared-g7.png')
+  assert.strictEqual(await cardRequest, '/tmp/shared-g7.png')
+
+  card._heatmapGeneration = 8
+  const nextKey = card._tileKey(tile)
+  assert.notStrictEqual(nextKey, cardKey)
+  const nextRequest = card._loadTileFile(tile, nextKey)
+  assert.strictEqual(downloads.length, 2)
+  assert.ok(downloads[1].url.includes('v=8'))
+  downloads[1].resolve({ filePath: '/tmp/shared-g8.png' })
+  assert.strictEqual(await nextRequest, '/tmp/shared-g8.png')
 })().catch(function (error) { console.error(error); process.exit(1) })
 """
 

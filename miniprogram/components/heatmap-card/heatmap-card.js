@@ -6,6 +6,7 @@
 const api = require('../../utils/api')
 const heatmapMap = require('../../utils/heatmap-map')
 const heatmapProtocol = require('../../utils/heatmap-protocol')
+const heatmapTileCache = require('../../utils/heatmap-tile-cache')
 const { gcj02ToWgs84 } = require('../../utils/coords')
 
 const MIN_TILE_ZOOM = 3
@@ -14,6 +15,7 @@ const MAX_VISIBLE_TILES = 12
 const HEATMAP_LINE_WIDTH = 3
 const HEATMAP_LINE_OPACITY = 'C8'
 const LEGACY_CARD_MAX_POINTS = 4000
+const GROUND_OVERLAY_ACK_TIMEOUT_MS = 4000
 
 function isDeveloperTools() {
   try {
@@ -55,6 +57,13 @@ function boundsForTile(zoom, x, y) {
   }
 }
 
+function vectorLineStyle(zoom) {
+  if (zoom <= 10) return { width: 2, opacity: '2E' }
+  if (zoom <= 11) return { width: 2, opacity: '48' }
+  if (zoom <= 12) return { width: 3, opacity: '58' }
+  return { width: HEATMAP_LINE_WIDTH, opacity: HEATMAP_LINE_OPACITY }
+}
+
 Component({
   properties: {
     userId: {
@@ -79,6 +88,7 @@ Component({
   lifetimes: {
     attached() {
       this._componentAlive = true
+      // 开发者工具不显示图片覆盖层；IDE 用原始点派生的密度矢量，真机用 PNG 瓦片。
       this._preferVectorLayer = isDeveloperTools()
       this._fetchHeatmap()
     },
@@ -98,8 +108,7 @@ Component({
       this._vectorRequestSeq = (this._vectorRequestSeq || 0) + 1
       this._viewportReadSeq = (this._viewportReadSeq || 0) + 1
       this._clearTileOverlays()
-      this._tileFileCache = {}
-      this._tileDownloadPromises = {}
+      this._lastVectorSetKey = ''
     },
   },
 
@@ -107,6 +116,8 @@ Component({
     _onPropsChange() {
       if (!this._fetchedOnce) return
       this._clearTileOverlays()
+      this._preferVectorLayer = isDeveloperTools()
+      this._lastVectorSetKey = ''
       this._vectorPreparedTracks = []
       this.setData({ polylines: [] })
       this._fetchHeatmap()
@@ -122,13 +133,14 @@ Component({
       var base = this.data.userId === 0
         ? '/api/user/me/heatmap/tiles/'
         : '/api/user/' + this.data.userId + '/heatmap/tiles/'
-      return base + zoom + '/' + x + '/' + y + '.png?color=orange'
+      return base + zoom + '/' + x + '/' + y + '.png?color=orange&v=' + (this._heatmapGeneration || 0)
     },
 
     _fetchHeatmap() {
       this._fetchedOnce = true
       var requestSeq = (this._metadataRequestSeq || 0) + 1
       this._metadataRequestSeq = requestSeq
+      this._lastVectorSetKey = ''
       this.setData({ loading: true, error: false, tileError: false, isEmpty: false })
 
       var initialRequest = heatmapProtocol.shouldTryMeta()
@@ -157,6 +169,7 @@ Component({
           if (this._componentAlive === false || requestSeq !== this._metadataRequestSeq) return
           var data = result && result.data
           var legacyProtocol = Boolean(result && result.legacyProtocol)
+          this._heatmapGeneration = Math.max(0, Number(data && data.generation) || 0)
           var activityCount = Number(data && data.activity_count) || 0
           var model = legacyProtocol
             ? heatmapMap.buildHeatmapMapModel(
@@ -303,22 +316,32 @@ Component({
         if (this.data.updating) this.setData({ updating: false })
         return
       }
+      var requestViewport = this._vectorRequestViewport(viewport)
+      if (requestViewport.key === this._lastVectorSetKey) {
+        if (this.data.updating) this.setData({ updating: false })
+        return
+      }
+      this._lastVectorSetKey = requestViewport.key
       var requestSeq = (this._vectorRequestSeq || 0) + 1
       this._vectorRequestSeq = requestSeq
-      this.setData({ updating: true, tileError: false })
+      this.setData({
+        updating: !Array.isArray(this.data.polylines) || this.data.polylines.length === 0,
+        tileError: false,
+      })
       api.get(this._endpoint(), {
         detail: 'viewport',
-        west: viewport.west,
-        south: viewport.south,
-        east: viewport.east,
-        north: viewport.north,
-        zoom: viewport.zoom,
+        west: requestViewport.west,
+        south: requestViewport.south,
+        east: requestViewport.east,
+        north: requestViewport.north,
+        zoom: requestViewport.zoom,
       })
         .then((data) => {
           if (this._componentAlive === false || requestSeq !== this._vectorRequestSeq) return
           // 服务端已经按视野和缩放做曲率优先 LOD；客户端不能再等距抽点，
           // 否则发卡弯会被二次拉成直线。
           var prepared = heatmapMap.prepareTracks(data && data.tracks)
+          var style = vectorLineStyle(viewport.zoom)
           this._vectorPreparedTracks = prepared
           this.setData({
             updating: false,
@@ -326,15 +349,50 @@ Component({
             polylines: heatmapMap.buildPolylines(
               prepared,
               'orange',
-              HEATMAP_LINE_WIDTH,
-              HEATMAP_LINE_OPACITY
+              style.width,
+              style.opacity
             ),
           })
         })
         .catch(() => {
           if (this._componentAlive === false || requestSeq !== this._vectorRequestSeq) return
+          this._lastVectorSetKey = ''
           this.setData({ updating: false, tileError: true })
         })
+    },
+
+    _vectorRequestViewport(viewport) {
+      var zoom = Math.max(MIN_TILE_ZOOM, Math.min(20, Math.round(viewport.zoom)))
+      var count = Math.pow(2, zoom)
+      var minX = Math.max(0, tileXForLongitude(viewport.mapWest, zoom))
+      var maxX = Math.min(count - 1, tileXForLongitude(viewport.mapEast, zoom))
+      var minY = Math.max(0, tileYForLatitude(viewport.mapNorth, zoom))
+      var maxY = Math.min(count - 1, tileYForLatitude(viewport.mapSouth, zoom))
+      var vectorBlockSize = zoom >= 14 ? 4 : 2
+      minX = Math.max(0, Math.floor(minX / vectorBlockSize) * vectorBlockSize)
+      maxX = Math.min(
+        count - 1,
+        Math.ceil((maxX + 1) / vectorBlockSize) * vectorBlockSize - 1
+      )
+      minY = Math.max(0, Math.floor(minY / vectorBlockSize) * vectorBlockSize)
+      maxY = Math.min(
+        count - 1,
+        Math.ceil((maxY + 1) / vectorBlockSize) * vectorBlockSize - 1
+      )
+      var mapWest = minX / count * 360 - 180
+      var mapEast = (maxX + 1) / count * 360 - 180
+      var mapNorth = latitudeForTileY(minY, zoom)
+      var mapSouth = latitudeForTileY(maxY + 1, zoom)
+      var southwest = gcj02ToWgs84(mapSouth, mapWest)
+      var northeast = gcj02ToWgs84(mapNorth, mapEast)
+      return {
+        key: [zoom, minX, maxX, minY, maxY].join(':'),
+        zoom: zoom,
+        west: southwest[1],
+        south: southwest[0],
+        east: northeast[1],
+        north: northeast[0],
+      }
     },
 
     _visibleTiles(viewport) {
@@ -348,7 +406,6 @@ Component({
       for (var y = minY; y <= maxY; y++) {
         for (var x = minX; x <= maxX; x++) tiles.push({ zoom: zoom, x: x, y: y })
       }
-      if (tiles.length <= MAX_VISIBLE_TILES) return tiles
       var centerX = (minX + maxX) / 2
       var centerY = (minY + maxY) / 2
       return tiles.sort(function (a, b) {
@@ -357,7 +414,15 @@ Component({
     },
 
     _tileKey(tile) {
-      return [tile.zoom, tile.x, tile.y].join(':')
+      return [
+        heatmapTileCache.userScope(this.data.userId),
+        'g' + (this._heatmapGeneration || 0),
+        tile.zoom,
+        tile.x,
+        tile.y,
+        'all',
+        'orange',
+      ].join(':')
     },
 
     _addGroundOverlay(tile, filePath, id) {
@@ -369,7 +434,7 @@ Component({
         var settled = false
         var timeout = setTimeout(function () {
           rejectOnce(new Error('ground overlay timed out'))
-        }, 4000)
+        }, GROUND_OVERLAY_ACK_TIMEOUT_MS)
         var resolveOnce = function () {
           if (settled) return
           settled = true
@@ -405,23 +470,9 @@ Component({
     },
 
     _loadTileFile(tile, key) {
-      var cache = this._tileFileCache || (this._tileFileCache = {})
-      if (cache[key]) return Promise.resolve(cache[key])
-      var inflight = this._tileDownloadPromises || (this._tileDownloadPromises = {})
-      if (inflight[key]) return inflight[key]
-      var request = api.downloadTemporaryFile(this._tileEndpoint(tile.zoom, tile.x, tile.y))
-        .then(function (file) {
-          var path = file && (file.filePath || file.tempFilePath)
-          if (!path) throw new Error('heatmap tile has no local path')
-          cache[key] = path
-          delete inflight[key]
-          return path
-        }, function (error) {
-          delete inflight[key]
-          throw error
-        })
-      inflight[key] = request
-      return request
+      return heatmapTileCache.load(key, () => (
+        api.downloadTemporaryFile(this._tileEndpoint(tile.zoom, tile.x, tile.y))
+      ))
     },
 
     _refreshTileLayer(viewport) {
@@ -440,15 +491,22 @@ Component({
         if (active[key]) return
         var idSeed = (this._tileIdSeed || 20000) + 1
         this._tileIdSeed = idSeed
-        var id = 'heatmap-card-' + idSeed
+        var id = idSeed
         downloads.push(
           this._loadTileFile(tile, key)
             .then((filePath) => this._addGroundOverlay(tile, filePath, id))
             .then(() => ({ key: key, id: id }))
-            .catch(() => null)
+            .catch((error) => {
+              console.warn('heatmap card tile overlay failed:', error && error.errMsg ? error.errMsg : error)
+              heatmapTileCache.remove(key)
+              return null
+            })
         )
       })
-      this.setData({ updating: downloads.length > 0, tileError: false })
+      this.setData({
+        updating: downloads.length > 0 && Object.keys(active).length === 0,
+        tileError: false,
+      })
       Promise.all(downloads).then((added) => {
         if (this._componentAlive === false || requestSeq !== this._viewportRequestSeq) {
           added.forEach((item) => { if (item) this._removeGroundOverlay(item.id) })
@@ -478,7 +536,8 @@ Component({
           delete active[key]
         })
         this._activeTileOverlays = active
-        this.setData({ updating: false, tileError: false })
+        this._preferVectorLayer = false
+        this.setData({ updating: false, tileError: false, polylines: [] })
       })
     },
 
@@ -494,6 +553,7 @@ Component({
     },
 
     _retryTiles() {
+      this._preferVectorLayer = false
       this._lastTileSetKey = ''
       this._scheduleViewportRefresh(0)
     },

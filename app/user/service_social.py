@@ -44,6 +44,7 @@ v5 task-user-split-001：从 service.py 834 行拆出（commit TBD）。
 """
 
 import json as _json
+import logging as _logging
 import math as _math
 import time as _time
 import zlib as _zlib
@@ -59,6 +60,8 @@ from app.activity.models import Activity as _Activity
 from app.activity.models import ActivityPrivacy as _ActivityPrivacy
 from app.user.models import User
 
+_logger = _logging.getLogger(__name__)
+
 # 北京时间偏移量（UTC+8）——看他人主页"本月汇总"按北京时间划月
 # Q1 a 决策：与 service_stats 各自独立复制（DRY 违反但 0 跨依赖）
 BEIJING_TZ = timezone(timedelta(hours=8))
@@ -72,10 +75,21 @@ _HEATMAP_PREVIOUS_V3_CACHE_PREFIX = "heatmap:v3:user_"
 _HEATMAP_PREVIOUS_CACHE_PREFIX = "heatmap:v2:user_"
 _HEATMAP_LEGACY_CACHE_PREFIX = "heatmap:user_"
 _HEATMAP_DERIVED_CACHE_PREFIXES = (
+    "heatmap:vector:v2:user_",
+    "heatmap:raster:v2:user_",
+    "heatmap:raster:v2:source:user_",
+    # 发布切换期同时清旧版，避免废弃对象等到 TTL 才释放。
     "heatmap:vector:v1:user_",
     "heatmap:raster:v1:user_",
     "heatmap:raster:v1:source:user_",
 )
+# SCALE_GATE[personal-heatmap-source-v2]: 293 次 / 752k 原始点实测，全用户源后台
+# 重建约 7.7s、Redis 压缩约 0.9MB。当前用“导入后异步整用户预热 + 7 天源缓存”；
+# 当预热 p95 > 15s、单用户源 > 4MB 或 Redis 热图源 > 可用内存 25% 时，必须改为
+# 每 activity 分块 + 增量合并/瓦片预计算，不能继续单纯加 TTL 或提高同步超时。
+_HEATMAP_PREWARM_JOB_VERSION = "v2"
+_HEATMAP_PREWARM_JOB_TIMEOUT_SEC = 120
+_HEATMAP_PREWARM_RESULT_TTL_SEC = 7 * 86400
 _HEATMAP_POINTS_PER_ACTIVITY = 64
 _HEATMAP_TOTAL_POINT_BUDGET = 9_000
 _HEATMAP_CARD_POINTS_PER_ACTIVITY = 24
@@ -1081,7 +1095,9 @@ def get_user_heatmap(
                 expected_generation=cache_generation,
             )
             if decoded_cache is not None:
-                return decoded_cache
+                result = dict(decoded_cache)
+                result["generation"] = cache_generation
+                return result
     except Exception:
         # 连接失败或缓存对象损坏都按 miss 重建，不能把缓存故障变成热图 500。
         pass
@@ -1101,7 +1117,9 @@ def get_user_heatmap(
         except Exception:
             is_builder, waited_result, build_lease = True, None, None
         if not is_builder and waited_result is not None:
-            return waited_result
+            result = dict(waited_result)
+            result["generation"] = cache_generation
+            return result
 
         try:
             result = get_user_heatmap_overview(
@@ -1115,6 +1133,7 @@ def get_user_heatmap(
                 privacy_fingerprint=privacy_fingerprint,
                 redis_client=redis_client,
             )
+            result["generation"] = cache_generation
             try:
                 _store_heatmap_result_cache(
                     redis_client,
@@ -1168,12 +1187,12 @@ def update_user_city(db: Session, user_id: int, city) -> User:
     db.commit()
 
     # 失效该用户所有 heatmap 缓存（含按 city 和无 city 两种 key 形态 / D27 v3 polish 修 Critical）
-    invalidate_heatmap_cache(user_id)
+    invalidate_heatmap_cache(user_id, prewarm=True)
 
     return user
 
 
-def invalidate_heatmap_cache(user_id: int) -> None:
+def invalidate_heatmap_cache(user_id: int, *, prewarm: bool = False) -> int:
     """
     清掉用户全部 heatmap 缓存——"通知账房先生热图重算"。
 
@@ -1224,6 +1243,76 @@ def invalidate_heatmap_cache(user_id: int) -> None:
                     generation,
                     key,
                 )
+    if prewarm:
+        enqueue_heatmap_cache_prewarm(user_id, generation)
+    return generation
+
+
+def enqueue_heatmap_cache_prewarm(user_id: int, generation: int):
+    """把整用户原始派生源移出首屏请求；同一代只允许一个 RQ 任务。"""
+    job_id = (
+        f"heatmap-prewarm-{_HEATMAP_PREWARM_JOB_VERSION}-"
+        f"user-{user_id}-g{generation}"
+    )
+    try:
+        from app.queue import default_queue
+        from rq import Retry
+
+        existing = default_queue.fetch_job(job_id)
+        if existing is not None:
+            return existing
+        return default_queue.enqueue(
+            "app.user.service_social.prewarm_heatmap_cache_task",
+            user_id,
+            generation,
+            job_id=job_id,
+            job_timeout=_HEATMAP_PREWARM_JOB_TIMEOUT_SEC,
+            result_ttl=_HEATMAP_PREWARM_RESULT_TTL_SEC,
+            failure_ttl=3600,
+            retry=Retry(max=2, interval=[10, 60]),
+        )
+    except Exception:
+        # 预热只是性能层；队列故障不能反向让活动导入/删除/隐私更新失败。
+        _logger.exception(
+            "heatmap cache prewarm enqueue failed",
+            extra={"user_id": user_id, "generation": generation},
+        )
+        return None
+
+
+def prewarm_heatmap_cache_task(user_id: int, expected_generation: int) -> dict:
+    """RQ 任务：预先构建 owner/all-year 连续源与轻量 meta 缓存。"""
+    redis_client = _get_redis_client()
+    current_generation = _heatmap_cache_generation(redis_client, user_id)
+    if current_generation != expected_generation:
+        return {
+            "status": "stale",
+            "expected_generation": expected_generation,
+            "current_generation": current_generation,
+        }
+
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        result = get_user_heatmap(
+            db,
+            user_id,
+            None,
+            None,
+            "meta",
+            include_private=True,
+        )
+        current_generation = _heatmap_cache_generation(redis_client, user_id)
+        return {
+            "status": (
+                "warmed" if current_generation == expected_generation else "superseded"
+            ),
+            "generation": expected_generation,
+            "activity_count": int(result.get("activity_count") or 0),
+        }
+    finally:
+        db.close()
 
 
 def get_user_profile_for_others(

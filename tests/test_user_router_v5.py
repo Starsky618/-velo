@@ -167,6 +167,7 @@ def test_heatmap_meta_returns_only_bounds_and_passes_meta_detail(client, auth_he
         "city": None,
         "tracks": [],
         "activity_count": 293,
+        "generation": 7,
         "available_years": [2026, 2025],
         "selected_year": None,
         "focus_points": [[112.4, 37.6], [112.8, 38.0]],
@@ -179,6 +180,7 @@ def test_heatmap_meta_returns_only_bounds_and_passes_meta_detail(client, auth_he
     body = resp.json()
     assert body["tracks"] == []
     assert body["activity_count"] == 293
+    assert body["generation"] == 7
     assert len(body["focus_points"]) == 2
     assert len(body["all_points"]) == 2
     assert mock_svc.call_args.args[3:] == (None, "meta")
@@ -242,7 +244,7 @@ def test_heatmap_only_translates_expected_viewport_errors_to_422(client, auth_he
 
 
 def test_heatmap_tile_requires_auth_and_returns_private_png(client, auth_header):
-    url = "/api/user/me/heatmap/tiles/12/3328/1582.png?color=red&year=2025"
+    url = "/api/user/me/heatmap/tiles/12/3328/1582.png?color=red&year=2025&v=7"
     assert client.get(url).status_code == 401
 
     with patch("app.user.router.service.get_user_heatmap_tile", return_value=b"png") as mock_tile:
@@ -251,7 +253,7 @@ def test_heatmap_tile_requires_auth_and_returns_private_png(client, auth_header)
     assert response.status_code == 200
     assert response.content == b"png"
     assert response.headers["content-type"] == "image/png"
-    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["cache-control"] == "private, max-age=86400"
     assert mock_tile.call_args.args[1:] == (1, 12, 3328, 1582)
     assert mock_tile.call_args.kwargs == {
         "year": 2025,
@@ -271,7 +273,19 @@ def test_other_heatmap_tile_filters_private_tracks_for_non_owner(client, auth_he
         )
 
     assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
     assert mock_tile.call_args.kwargs["include_private"] is False
+
+
+def test_unversioned_my_heatmap_tile_is_not_cached_by_http_clients(client, auth_header):
+    with patch("app.user.router.service.get_user_heatmap_tile", return_value=b"png"):
+        response = client.get(
+            "/api/user/me/heatmap/tiles/12/3328/1582.png?color=red",
+            headers=auth_header,
+        )
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
 
 
 def test_other_heatmap_overview_filters_private_tracks_for_non_owner(client, auth_header):
