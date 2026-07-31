@@ -266,6 +266,52 @@ def test_heatmap_tile_requires_auth_and_returns_private_png(client, auth_header)
     }
 
 
+def test_heatmap_tile_manifest_requires_auth_and_returns_track_coverage(
+    client, auth_header
+):
+    url = "/api/user/me/heatmap/tiles/manifest?min_zoom=11&max_zoom=18"
+    assert client.get(url).status_code == 401
+
+    payload = {
+        "generation": 7,
+        "cache_version": "g7-d0123456789abcdef",
+        "min_zoom": 11,
+        "max_zoom": 18,
+        "tile_count": 2,
+        "activity_count": 293,
+        "center": {"longitude": 112.56, "latitude": 37.85},
+        "tiles": {"11": [[1664, 791]], "18": [[213000, 101300]]},
+    }
+    with patch(
+        "app.user.router.service.get_user_heatmap_tile_manifest",
+        return_value=payload,
+    ) as mock_manifest:
+        response = client.get(url, headers=auth_header)
+
+    assert response.status_code == 200
+    assert response.json() == payload
+    assert mock_manifest.call_args.args[1] == 1
+    assert mock_manifest.call_args.kwargs == {
+        "year": None,
+        "include_private": True,
+        "min_zoom": 11,
+        "max_zoom": 18,
+    }
+
+
+def test_heatmap_tile_manifest_translates_invalid_zoom_to_422(client, auth_header):
+    with patch(
+        "app.user.router.service.get_user_heatmap_tile_manifest",
+        side_effect=service.InvalidHeatmapTile("invalid heatmap tile manifest zoom"),
+    ):
+        response = client.get(
+            "/api/user/me/heatmap/tiles/manifest?min_zoom=18&max_zoom=11",
+            headers=auth_header,
+        )
+
+    assert response.status_code == 422
+
+
 def test_other_heatmap_tile_filters_private_tracks_for_non_owner(client, auth_header):
     with (
         patch("app.user.router.service.get_user_by_id", return_value=object()),

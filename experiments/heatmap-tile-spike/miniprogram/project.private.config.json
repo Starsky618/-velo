@@ -1,0 +1,9 @@
+{
+  "projectname": "velo-heatmap-tile-spike",
+  "condition": {},
+  "setting": {
+    "urlCheck": false,
+    "coverView": true,
+    "useApiHook": true
+  }
+}

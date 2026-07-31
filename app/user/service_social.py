@@ -83,6 +83,7 @@ _HEATMAP_DERIVED_CACHE_PREFIXES = (
     "heatmap:raster:v2:user_",
     "heatmap:raster:v2:source:user_",
     "heatmap:detail:v1:user_",
+    "heatmap:tile-manifest:v1:user_",
     # 发布切换期同时清旧版，避免废弃对象等到 TTL 才释放。
     "heatmap:vector:v1:user_",
     "heatmap:raster:v1:user_",
@@ -93,6 +94,10 @@ _HEATMAP_DERIVED_CACHE_PREFIXES = (
 # 当预热 p95 > 30s、单用户全部 detail chunks > 12MB 或 Redis 热图派生层 > 可用内存
 # 25% 时，必须把 detail chunks 迁到私有对象存储并只在 Redis 留 manifest/热点块；
 # 不得靠增加 Redis TTL/内存或把请求时 PG 扫描加回来掩盖容量问题。
+# SCALE_GATE[personal-heatmap-raster-pyramid]: 293 次真实骑行的 z11-z18 稀疏清单
+# 已有 43,594 块（其中 z11-z15 仅 3,351 块）。禁止在每次 generation 后把全部
+# 最终 PNG 灌进 Redis；Redis 只保 source/manifest/热点，冷产物必须走版本化持久层，
+# 高倍率请求必须保留父级瓦片直到真实子瓦片可用。
 _HEATMAP_PREWARM_JOB_VERSION = "v3"
 _HEATMAP_PREWARM_JOB_TIMEOUT_SEC = 300
 _HEATMAP_PREWARM_RESULT_TTL_SEC = 7 * 86400
@@ -1416,7 +1421,10 @@ def prewarm_heatmap_cache_task(user_id: int, expected_generation: int) -> dict:
             include_private=True,
         )
         activity_fingerprint = _heatmap_activity_fingerprint(db, user_id, True)
-        from app.user.service_heatmap_tiles import build_user_heatmap_detail_source
+        from app.user.service_heatmap_tiles import (
+            build_user_heatmap_detail_source,
+            get_user_heatmap_tile_manifest,
+        )
 
         detail_stats = build_user_heatmap_detail_source(
             db,
@@ -1426,6 +1434,15 @@ def prewarm_heatmap_cache_task(user_id: int, expected_generation: int) -> dict:
             generation=expected_generation,
             activity_fingerprint=activity_fingerprint,
             redis_client=redis_client,
+        )
+        tile_manifest = get_user_heatmap_tile_manifest(
+            db,
+            user_id,
+            year=None,
+            include_private=True,
+            min_zoom=11,
+            max_zoom=18,
+            activity_fingerprint=activity_fingerprint,
         )
         current_generation = _heatmap_cache_generation(redis_client, user_id)
         return {
@@ -1437,6 +1454,7 @@ def prewarm_heatmap_cache_task(user_id: int, expected_generation: int) -> dict:
             "detail_tile_count": int(detail_stats["tile_count"]),
             "detail_point_count": int(detail_stats["point_count"]),
             "detail_compressed_bytes": int(detail_stats["compressed_bytes"]),
+            "raster_manifest_tile_count": int(tile_manifest["tile_count"]),
         }
     finally:
         db.close()

@@ -274,6 +274,37 @@ def get_my_heatmap(
         ) from exc
 
 
+@router.get(
+    "/me/heatmap/tiles/manifest",
+    response_model=schemas.HeatmapTileManifestResponse,
+)
+def get_my_heatmap_tile_manifest(
+    year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
+    min_zoom: int = Query(default=11, ge=3, le=18),
+    max_zoom: int = Query(default=18, ge=3, le=18),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """返回 owner 热图完整瓦片清单；后台据此预生成，不按城市方块盲目铺满。"""
+    try:
+        return service.get_user_heatmap_tile_manifest(
+            db,
+            user_id,
+            year=year,
+            include_private=True,
+            min_zoom=min_zoom,
+            max_zoom=max_zoom,
+        )
+    except service.InvalidHeatmapTile as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.HeatmapSnapshotChanged as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="热图数据正在更新，请稍后重试",
+            headers={"Retry-After": "1"},
+        ) from exc
+
+
 @router.get("/me/heatmap/tiles/{zoom}/{x}/{y}.png")
 def get_my_heatmap_tile(
     zoom: int,

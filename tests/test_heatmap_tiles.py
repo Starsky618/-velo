@@ -7,7 +7,7 @@ import os
 from threading import Event
 import uuid
 import zlib
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import numpy as np
 from PIL import Image
@@ -29,6 +29,7 @@ from app.user.service_heatmap_tiles import (
     _get_overview_segments_cached,
     _get_overview_map_segments_cached,
     _global_pixel,
+    _heatmap_tile_coverage,
     _limit_vector_segments,
     _map_coords_to_wgs84,
     _load_overview_segments,
@@ -38,11 +39,13 @@ from app.user.service_heatmap_tiles import (
     _sample_overview_segment,
     _tile_bounds_gcj02,
     _tile_query_bounds_wgs84,
+    _tiles_touched_by_normalized_line,
     _trim_vector_cache,
     _vector_point_budget_for_zoom,
     _wgs84_to_map_coords,
     build_user_heatmap_detail_source,
     get_user_heatmap_tile,
+    get_user_heatmap_tile_manifest,
     get_user_heatmap_viewport,
 )
 from app.activity.models import Activity, ActivityPrivacy, Trackpoint
@@ -215,6 +218,54 @@ def test_detail_source_partition_keeps_bend_and_boundary_neighbors():
     assert all(len(segment) >= 2 for segment in stored_segments)
 
 
+def test_supercover_manifest_includes_every_tile_crossed_by_a_long_segment():
+    touched = _tiles_touched_by_normalized_line((0.1, 0.1), (0.9, 0.1), 2)
+
+    assert touched == {(0, 0), (1, 0), (2, 0), (3, 0)}
+
+
+def test_track_driven_coverage_populates_each_zoom_without_center_square():
+    coverage = _heatmap_tile_coverage(
+        {7: [[(112.50, 37.80), (112.55, 37.85), (112.60, 37.80)]]},
+        11,
+        14,
+    )
+
+    assert set(coverage) == {11, 12, 13, 14}
+    assert all(coverage[zoom] for zoom in coverage)
+    assert len(coverage[14]) > len(coverage[11])
+
+
+def test_tile_manifest_uses_raw_segments_and_returns_map_center():
+    redis = Mock()
+    redis.get.side_effect = [b"7", None]
+    source = {
+        7: [[(112.50, 37.80), (112.55, 37.85), (112.60, 37.80)]]
+    }
+    with (
+        patch("app.user.service_heatmap_tiles._get_redis_client", return_value=redis),
+        patch(
+            "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
+            return_value="data-v1",
+        ),
+        patch(
+            "app.user.service_heatmap_tiles._load_detail_segments",
+            return_value=source,
+        ) as load,
+    ):
+        result = get_user_heatmap_tile_manifest(
+            Mock(), 42, min_zoom=11, max_zoom=14
+        )
+
+    assert result["generation"] == 7
+    assert result["cache_version"].startswith("g7-")
+    assert result["tile_count"] == sum(len(items) for items in result["tiles"].values())
+    assert result["center"]["longitude"] != 112.55  # 中国境内已转腾讯地图坐标
+    assert set(result["tiles"]) == {"11", "12", "13", "14"}
+    load.assert_called_once_with(ANY, 42, None, True)
+    redis.setex.assert_called_once()
+
+
 def test_detail_source_builds_manifest_last_and_serves_bounds_without_postgis():
     source = {
         7: [[
@@ -376,6 +427,10 @@ def test_prewarm_task_builds_current_owner_meta_and_closes_session():
                 "compressed_bytes": 8_000_000,
             },
         ) as detail_build,
+        patch(
+            "app.user.service_heatmap_tiles.get_user_heatmap_tile_manifest",
+            return_value={"tile_count": 2048},
+        ) as manifest_build,
     ):
         result = prewarm_heatmap_cache_task(42, 7)
 
@@ -386,6 +441,7 @@ def test_prewarm_task_builds_current_owner_meta_and_closes_session():
         "detail_tile_count": 131,
         "detail_point_count": 700_000,
         "detail_compressed_bytes": 8_000_000,
+        "raster_manifest_tile_count": 2048,
     }
     build.assert_called_once_with(
         db,
@@ -403,6 +459,15 @@ def test_prewarm_task_builds_current_owner_meta_and_closes_session():
         generation=7,
         activity_fingerprint="data-v1",
         redis_client=redis,
+    )
+    manifest_build.assert_called_once_with(
+        db,
+        42,
+        year=None,
+        include_private=True,
+        min_zoom=11,
+        max_zoom=18,
+        activity_fingerprint="data-v1",
     )
     db.close.assert_called_once_with()
 

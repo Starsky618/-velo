@@ -249,6 +249,24 @@ class HeatmapResponse(BaseModel):
     all_points: list[list[float]] = Field(default_factory=list)
 
 
+class HeatmapTileCenter(BaseModel):
+    longitude: float
+    latitude: float
+
+
+class HeatmapTileManifestResponse(BaseModel):
+    """后台预生成清单：只列真实连续轨迹实际触达的瓦片。"""
+
+    generation: int
+    cache_version: str
+    min_zoom: int
+    max_zoom: int
+    tile_count: int
+    activity_count: int
+    center: Optional[HeatmapTileCenter] = None
+    tiles: dict[str, list[list[int]]]
+
+
 class UserPatchRequest(BaseModel):
     """
     PATCH /api/user/me 请求体——目前只支持改 city（其他字段沿用现有 PUT /profile）。

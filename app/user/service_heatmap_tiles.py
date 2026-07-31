@@ -64,6 +64,9 @@ _VECTOR_LRU_PREFIX = "heatmap:vector:lru:v1:user_"
 _VECTOR_MAX_CACHE_KEYS = 16
 _AVAILABLE_YEARS_REDIS_PREFIX = "heatmap:years:v1:user_"
 _AVAILABLE_YEARS_REDIS_TTL_SEC = 7 * 86400
+_TILE_MANIFEST_REDIS_PREFIX = "heatmap:tile-manifest:v1:user_"
+_TILE_MANIFEST_REDIS_TTL_SEC = 7 * 86400
+_TILE_MANIFEST_MAX_TILES = 100_000
 _VECTOR_TOTAL_POINT_BUDGET = 14_000
 _VECTOR_POINTS_PER_SEGMENT = 320
 _DERIVED_BUILD_LOCK_TTL_SEC = 30
@@ -1184,6 +1187,112 @@ def _segments_to_gcj02(
     return converted
 
 
+def _normalized_tile_point(lon: float, lat: float) -> tuple[float, float]:
+    """把地图坐标转成 zoom 0 的连续瓦片坐标，后续按 2**zoom 缩放。"""
+    limited_lat = max(-85.05112878, min(85.05112878, lat))
+    radians = math.radians(limited_lat)
+    return (
+        max(0.0, min(math.nextafter(1.0, 0.0), (lon + 180.0) / 360.0)),
+        max(
+            0.0,
+            min(
+                math.nextafter(1.0, 0.0),
+                (1.0 - math.asinh(math.tan(radians)) / math.pi) / 2.0,
+            ),
+        ),
+    )
+
+
+def _tiles_touched_by_normalized_line(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    zoom: int,
+) -> set[tuple[int, int]]:
+    """Supercover 网格遍历：列出线段真正经过的全部 Web-Mercator 瓦片。"""
+    count = 1 << zoom
+    start_x = start[0] * count
+    start_y = start[1] * count
+    end_x_value = end[0] * count
+    end_y_value = end[1] * count
+    x = max(0, min(count - 1, math.floor(start_x)))
+    y = max(0, min(count - 1, math.floor(start_y)))
+    target_x = max(0, min(count - 1, math.floor(end_x_value)))
+    target_y = max(0, min(count - 1, math.floor(end_y_value)))
+    touched = {(x, y)}
+    if (x, y) == (target_x, target_y):
+        return touched
+
+    delta_x = end_x_value - start_x
+    delta_y = end_y_value - start_y
+    step_x = 1 if delta_x > 0 else -1 if delta_x < 0 else 0
+    step_y = 1 if delta_y > 0 else -1 if delta_y < 0 else 0
+    t_delta_x = math.inf if step_x == 0 else abs(1.0 / delta_x)
+    t_delta_y = math.inf if step_y == 0 else abs(1.0 / delta_y)
+    next_x_boundary = x + 1 if step_x > 0 else x
+    next_y_boundary = y + 1 if step_y > 0 else y
+    t_max_x = (
+        math.inf
+        if step_x == 0
+        else (next_x_boundary - start_x) / delta_x
+    )
+    t_max_y = (
+        math.inf
+        if step_y == 0
+        else (next_y_boundary - start_y) / delta_y
+    )
+
+    # 一条合法骑行相邻点通常只跨少量瓦片；上界防浮点边界异常形成死循环。
+    max_steps = abs(target_x - x) + abs(target_y - y) + 4
+    for _ in range(max_steps):
+        if (x, y) == (target_x, target_y):
+            break
+        if t_max_x < t_max_y:
+            x += step_x
+            t_max_x += t_delta_x
+        elif t_max_y < t_max_x:
+            y += step_y
+            t_max_y += t_delta_y
+        else:
+            # 正好穿过瓦片角点时，线宽会同时覆盖两个正交邻块。
+            side_x = x + step_x
+            side_y = y + step_y
+            if 0 <= side_x < count:
+                touched.add((side_x, y))
+            if 0 <= side_y < count:
+                touched.add((x, side_y))
+            x = side_x
+            y = side_y
+            t_max_x += t_delta_x
+            t_max_y += t_delta_y
+        if 0 <= x < count and 0 <= y < count:
+            touched.add((x, y))
+    return touched
+
+
+def _heatmap_tile_coverage(
+    segments: dict[int, list[list[tuple[float, float]]]],
+    min_zoom: int,
+    max_zoom: int,
+) -> dict[int, set[tuple[int, int]]]:
+    """由完整连续轨迹计算每个缩放层实际需要的瓦片，不再生成中心方块。"""
+    coverage = {zoom: set() for zoom in range(min_zoom, max_zoom + 1)}
+    map_segments = _segments_to_gcj02(segments)
+    total = 0
+    for activity_segments in map_segments.values():
+        for segment in activity_segments:
+            normalized = [_normalized_tile_point(lon, lat) for lon, lat in segment]
+            for start, end in zip(normalized, normalized[1:]):
+                for zoom in coverage:
+                    before = len(coverage[zoom])
+                    coverage[zoom].update(
+                        _tiles_touched_by_normalized_line(start, end, zoom)
+                    )
+                    total += len(coverage[zoom]) - before
+                    if total > _TILE_MANIFEST_MAX_TILES:
+                        raise InvalidHeatmapTile("heatmap tile manifest is too large")
+    return coverage
+
+
 def _get_overview_map_segments_cached(
     segments: dict[int, list[list[tuple[float, float]]]],
     user_id: int,
@@ -2132,6 +2241,106 @@ def get_user_heatmap_viewport(
         return result
     finally:
         _release_derived_cache_build(lock)
+
+
+def get_user_heatmap_tile_manifest(
+    db: Session,
+    user_id: int,
+    *,
+    year: int | None = None,
+    include_private: bool = True,
+    min_zoom: int = 11,
+    max_zoom: int = 18,
+    activity_fingerprint: str | None = None,
+    _consistency_retry: int = 0,
+) -> dict:
+    """返回真实轨迹触达的完整瓦片清单；供后台预生成，不向中心方块扩散。"""
+    _year_window_utc(year)
+    if not (3 <= min_zoom <= max_zoom <= 18):
+        raise InvalidHeatmapTile("invalid heatmap tile manifest zoom")
+    redis_client = _get_redis_client()
+    try:
+        generation = int(redis_client.get(f"{_GENERATION_PREFIX}{user_id}") or 0)
+    except Exception:
+        generation = 0
+    privacy_fingerprint = (
+        None
+        if include_private
+        else _public_heatmap_privacy_fingerprint(db, user_id)
+    )
+    if activity_fingerprint is None:
+        activity_fingerprint = _heatmap_activity_fingerprint(
+            db, user_id, include_private
+        )
+    cache_key = (
+        f"{_TILE_MANIFEST_REDIS_PREFIX}{user_id}:g{generation}:"
+        f"data_{activity_fingerprint}:year_{year or 'all'}:"
+        f"audience_{'owner' if include_private else 'public'}:"
+        f"z{min_zoom}-{max_zoom}"
+    )
+    if privacy_fingerprint is not None:
+        cache_key += f":privacy_{privacy_fingerprint}"
+    try:
+        cached = redis_client.get(cache_key)
+        if isinstance(cached, bytes):
+            return json.loads(zlib.decompress(cached).decode())
+    except Exception:
+        pass
+
+    segments = _load_detail_segments(db, user_id, year, include_private)
+    coverage = _heatmap_tile_coverage(segments, min_zoom, max_zoom)
+    focus_points, all_points = _heatmap_bounds_from_segments(segments)
+    center = None
+    center_bounds = focus_points or all_points
+    if len(center_bounds) == 2:
+        center_wgs = np.array([[
+            (center_bounds[0][0] + center_bounds[1][0]) / 2,
+            (center_bounds[0][1] + center_bounds[1][1]) / 2,
+        ]], dtype=np.float64)
+        center_map = _wgs84_to_map_coords(center_wgs)[0]
+        center = {
+            "longitude": round(float(center_map[0]), 7),
+            "latitude": round(float(center_map[1]), 7),
+        }
+    tiles = {
+        str(zoom): [[x, y] for x, y in sorted(coverage[zoom])]
+        for zoom in range(min_zoom, max_zoom + 1)
+    }
+    result = {
+        "generation": generation,
+        "cache_version": _heatmap_cache_version(
+            generation, activity_fingerprint
+        ),
+        "min_zoom": min_zoom,
+        "max_zoom": max_zoom,
+        "tile_count": sum(len(items) for items in coverage.values()),
+        "activity_count": len(segments),
+        "center": center,
+        "tiles": tiles,
+    }
+    if _heatmap_activity_fingerprint(db, user_id, include_private) != activity_fingerprint:
+        if _consistency_retry >= 2:
+            raise HeatmapSnapshotChanged(
+                "heatmap activity snapshot changed during tile manifest build"
+            )
+        return get_user_heatmap_tile_manifest(
+            db,
+            user_id,
+            year=year,
+            include_private=include_private,
+            min_zoom=min_zoom,
+            max_zoom=max_zoom,
+            _consistency_retry=_consistency_retry + 1,
+        )
+    try:
+        redis_client.setex(
+            cache_key,
+            _TILE_MANIFEST_REDIS_TTL_SEC,
+            zlib.compress(json.dumps(result, separators=(",", ":")).encode(), level=6),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def get_user_heatmap_tile(
