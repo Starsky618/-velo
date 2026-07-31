@@ -58,9 +58,7 @@ function boundsForTile(zoom, x, y) {
 }
 
 function vectorLineStyle(zoom) {
-  if (zoom <= 10) return { width: 2, opacity: '2E' }
-  if (zoom <= 11) return { width: 2, opacity: '48' }
-  if (zoom <= 12) return { width: 3, opacity: '58' }
+  if (zoom <= 11) return { width: 2, opacity: HEATMAP_LINE_OPACITY }
   return { width: HEATMAP_LINE_WIDTH, opacity: HEATMAP_LINE_OPACITY }
 }
 
@@ -238,7 +236,23 @@ Component({
       if (!event) return
       var eventScale = Number(event.detail && event.detail.scale)
       if (Number.isFinite(eventScale)) this._lastMapScale = eventScale
-      if (event.type === 'end') this._scheduleViewportRefresh(180)
+      if (event.type === 'end') {
+        this._clearStaleVectorFrameForZoom(eventScale)
+        this._scheduleViewportRefresh(80)
+      }
+    },
+
+    _clearStaleVectorFrameForZoom(zoom) {
+      if (!this._preferVectorLayer || !Number.isFinite(Number(zoom))) return false
+      var nextZoom = Math.max(MIN_TILE_ZOOM, Math.min(20, Math.round(Number(zoom))))
+      var previousZoom = Number(this._lastVectorZoom)
+      if (!Number.isFinite(previousZoom) || previousZoom === nextZoom) return false
+      this._lastVectorZoom = nextZoom
+      this._lastVectorSetKey = ''
+      this._vectorPreparedTracks = []
+      this._vectorRequestSeq = (this._vectorRequestSeq || 0) + 1
+      this.setData({ polylines: [], updating: true })
+      return true
     },
 
     _scheduleViewportRefresh(delay) {
@@ -321,11 +335,13 @@ Component({
         return
       }
       var requestViewport = this._vectorRequestViewport(viewport)
+      this._clearStaleVectorFrameForZoom(requestViewport.zoom)
       if (requestViewport.key === this._lastVectorSetKey) {
         if (this.data.updating) this.setData({ updating: false })
         return
       }
       this._lastVectorSetKey = requestViewport.key
+      this._lastVectorZoom = requestViewport.zoom
       var requestSeq = (this._vectorRequestSeq || 0) + 1
       this._vectorRequestSeq = requestSeq
       this.setData({

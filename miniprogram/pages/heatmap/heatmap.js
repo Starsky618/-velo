@@ -55,10 +55,8 @@ function boundsForTile(zoom, x, y) {
 
 function vectorLineStyle(zoom) {
   // 开发者工具无法显示 PNG 热度瓦片，只能靠半透明矢量叠加表达密度。
-  // 缩小时降低单次骑行亮度，常骑道路会因多次重叠自然变亮；放大后恢复验收过的线宽。
-  if (zoom <= 10) return { width: 2, opacity: '2E' }
-  if (zoom <= 11) return { width: 2, opacity: '48' }
-  if (zoom <= 12) return { width: 3, opacity: '58' }
+  // 只随缩放调整线宽，不再降低透明度；否则同一条红线缩小时会褪成浅粉色。
+  if (zoom <= 11) return { width: 2, opacity: HEATMAP_LINE_OPACITY }
   return { width: HEATMAP_LINE_WIDTH, opacity: HEATMAP_LINE_OPACITY }
 }
 
@@ -332,7 +330,25 @@ Page({
     if (!event) return
     var eventScale = Number(event.detail && event.detail.scale)
     if (Number.isFinite(eventScale)) this._lastMapScale = eventScale
-    if (event.type === 'end') this._scheduleViewportRefresh(180)
+    if (event.type === 'end') {
+      this._clearStaleVectorFrameForZoom(eventScale)
+      this._scheduleViewportRefresh(80)
+    }
+  },
+
+  _clearStaleVectorFrameForZoom(zoom) {
+    if (!this._preferVectorLayer || !Number.isFinite(Number(zoom))) return false
+    var nextZoom = Math.max(3, Math.min(20, Math.round(Number(zoom))))
+    var previousZoom = Number(this._lastVectorZoom)
+    if (!Number.isFinite(previousZoom) || previousZoom === nextZoom) return false
+    // 低倍率 LOD 被原生地图放大时会短暂形成浅色长线；缩放层级一变就撤掉旧帧，
+    // 宁可显示短暂的干净底图，也不把过期几何冒充成新倍率的轨迹。
+    this._lastVectorZoom = nextZoom
+    this._lastVectorSetKey = ''
+    this._vectorPreparedTracks = []
+    this._vectorRequestSeq = (this._vectorRequestSeq || 0) + 1
+    this.setData({ polylines: [], updating: true })
+    return true
   },
 
   _scheduleViewportRefresh(delay) {
@@ -426,12 +442,13 @@ Page({
       return
     }
     var requestViewport = this._vectorRequestViewport(viewport)
+    this._clearStaleVectorFrameForZoom(requestViewport.zoom)
     if (requestViewport.key === this._lastVectorSetKey) {
       if (this.data.updating) this.setData({ updating: false })
       return
     }
     this._lastVectorSetKey = requestViewport.key
-    this._lastVectorZoom = viewport.zoom
+    this._lastVectorZoom = requestViewport.zoom
     var requestSeq = (this._vectorRequestSeq || 0) + 1
     this._vectorRequestSeq = requestSeq
     var params = {

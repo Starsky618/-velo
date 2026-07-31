@@ -310,7 +310,7 @@ def test_heatmap_card_uses_one_interactive_native_map_and_opens_fullscreen():
     assert "this._preferVectorLayer = isDeveloperTools()" in js
     assert "_vectorRequestViewport" in js
     assert "vectorBlockSize = zoom >= 14 ? 4 : 2" in js
-    assert "opacity: '2E'" in js
+    assert "opacity: HEATMAP_LINE_OPACITY" in js
     assert "&v=" in js
     assert "limitTrackPoints(" not in js
     assert "buildPolylines" in js
@@ -368,13 +368,60 @@ const viewport = {
   assert.strictEqual(component.data.tileError, false)
   assert.strictEqual(component.data.polylines.length, 1)
   assert.strictEqual(component.data.polylines[0].points.length, 3)
-  assert.strictEqual(component.data.polylines[0].color, '#FF6B0048')
+  assert.strictEqual(component.data.polylines[0].color, '#FF6B00C8')
   component._fetchViewport(Object.assign({}, viewport, {
     west: 112.401, south: 37.701, east: 112.701, north: 38.001,
     mapWest: 112.401, mapSouth: 37.701, mapEast: 112.701, mapNorth: 38.001,
   }))
   await new Promise(setImmediate)
   assert.strictEqual(calls.length, 1)
+})().catch(function (error) { console.error(error); process.exit(1) })
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_heatmap_red_stays_strong_when_zoomed_out_and_stale_zoom_frame_clears():
+    script = """
+const assert = require('assert')
+const apiPath = require.resolve('./miniprogram/utils/api')
+require.cache[apiPath] = { exports: {
+  get: function () {
+    return Promise.resolve({
+      tracks: [[[112.50, 37.80], [112.51, 37.82], [112.52, 37.80]]]
+    })
+  }
+} }
+let pageDefinition = null
+global.Page = function (definition) { pageDefinition = definition }
+global.wx = {}
+require('./miniprogram/pages/heatmap/heatmap')
+
+const page = Object.assign({}, pageDefinition, {
+  _pageAlive: true,
+  _preferVectorLayer: true,
+  _metadataLoaded: true,
+  data: Object.assign({}, pageDefinition.data, { selectedColor: 'red' }),
+  setData: function (update) { Object.assign(this.data, update) },
+  _scheduleViewportRefresh: function (delay) { this._scheduledDelay = delay },
+})
+const viewport = {
+  west: 112.4, south: 37.7, east: 112.7, north: 38.0, zoom: 10,
+  mapWest: 112.4, mapSouth: 37.7, mapEast: 112.7, mapNorth: 38.0,
+}
+
+;(async function () {
+  page._refreshVectorLayer(viewport)
+  await new Promise(setImmediate); await new Promise(setImmediate)
+  assert.strictEqual(page.data.polylines[0].color, '#FF174FC8')
+  assert.strictEqual(page._lastVectorZoom, 10)
+
+  page.onMapRegionChange({ type: 'end', detail: { scale: 14 } })
+  assert.deepStrictEqual(page.data.polylines, [])
+  assert.strictEqual(page.data.updating, true)
+  assert.strictEqual(page._lastVectorZoom, 14)
+  assert.strictEqual(page._lastVectorSetKey, '')
+  assert.strictEqual(page._scheduledDelay, 80)
 })().catch(function (error) { console.error(error); process.exit(1) })
 """
 
@@ -399,7 +446,7 @@ def test_fullscreen_heatmap_has_map_layer_controls_and_real_map_interactions():
     assert "this._preferVectorLayer = isDeveloperTools()" in js
     assert "_vectorRequestViewport" in js
     assert "vectorBlockSize = zoom >= 14 ? 4 : 2" in js
-    assert "opacity: '2E'" in js
+    assert "opacity: HEATMAP_LINE_OPACITY" in js
     assert "data && data.cache_version" in js
     assert "heatmapTileCache.viewerScope()" in js
     assert "heatmapTileCache.audienceScope(this._userId)" in js
