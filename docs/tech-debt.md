@@ -6,6 +6,44 @@
 
 ---
 
+## `SCALE-TRIGGER`：规模触发型技术选型登记规则
+
+这类条目不是普通的“以后优化”，而是当前有意选择较简单的方案，并约定在数据量、延迟、成本或可靠性越线时重新评估。每条必须包含：
+
+- **当前选择**：现在实际采用什么；未上线的方案必须明确写“未上线”。
+- **暂缓方案**：为了避免过度建设，本轮明确不建什么。
+- **触发条件**：至少一个可观测的数值或事件，不能只写“用户多了以后”。
+- **检查入口**：指标、日志、SQL、告警或固定验收命令从哪里读取。
+- **越线风险**：忘记升级会造成什么用户或生产后果。
+- **到点动作**：触发后需要重新评估或实施的具体方向；不是提前承诺必选某个旧方案。
+
+能自动监测的条件应优先进入指标或告警；本清单和 Agent memory 只负责让人找到决策背景，不能代替监控。
+
+---
+
+## 🟡 P2 `[SCALE-TRIGGER]`：个人热图暂不上 Strava 式冷热持久瓦片存储（2026-07-31）
+
+**当前状态（未上线）**：生产热图仍依赖压缩后的 `simplified_track`，会把山区连续弯道画成跨路直线。任务分支已经在代码层把 meta/card/full/viewport/tile 五条热图路径统一改为以完整 `Trackpoint` 为唯一几何真值，但尚未经过 Tim 的微信端验收、合并或部署。
+
+**当前选择**：本轮采用 PostgreSQL/PostGIS 原始 `Trackpoint` → 按视野/缩放即时生成矢量 LOD 或彩色 PNG → Redis 与微信小程序临时文件缓存。原始点不因热图存储或传输预算而删除；显示层可以按 zoom 生成临时 LOD，但热图几何禁止读取 `simplified_track`。缓存通过用户 heatmap generation 隔离新旧版本，并区分 owner/public 隐私视图。
+
+**暂缓方案**：不在本轮引入对象存储冷瓦片、近期活动 warm delta、后台批量 compaction、全量预生成瓦片金字塔或 CDN。它们是 Strava 规模的容量方案，不是当前修复轨迹失真的前置条件。
+
+**触发条件（任一满足即重评，阈值先作为上线后观测护栏）**：
+
+1. 真实生产中，热图瓦片冷缓存生成 `p95 > 1s`，连续 7 天或抽样不少于 100 次仍成立；
+2. 任一用户的 completed cycling 活动达到 2,000 条，或原始 Trackpoint 达到 5,000,000 个；
+3. 热图相关 Redis key 占实例已用内存超过 25%，或出现由热图缓存引起的 eviction；
+4. 新活动或隐私变更推进 generation 后，常骑城市首屏连续出现超过 3 秒的可见重建等待。
+
+**检查入口**：热图正式上线时必须补齐 cache hit/miss、tile render ms、查询 Trackpoint 数和输出字节数的结构化日志或指标；Redis 用 `INFO memory`/`INFO stats` 看内存与 eviction；PostgreSQL 用按用户聚合的 activity/Trackpoint 计数查询。监测入口未落地前，本条不能标记为“受监控”。
+
+**越线风险**：继续全局 generation 失效和按需重建会造成数据库尖峰、Redis 驱逐其他业务缓存、用户打开热图长时间空白；但提前建设冷热系统会增加对象存储、增量合并、删除/隐私回滚和运维复杂度，反而扩大当前事故面。
+
+**到点动作**：先用生产指标复核瓶颈位于数据库扫描、热度矩阵生成、PNG 染色还是缓存容量，再选择局部瓦片失效、持久热度矩阵、warm/cold 合并或 CDN；不得因为本条预先写过 Strava 架构就直接照搬。
+
+---
+
 ## 🟡 P3：meetup 包内 service↔media_service 循环 import（延迟 import 规避 / Sprint 13 T4 / 2026-06-11）
 
 `media_service.py` 顶层 import `service._load_and_authorize_meetup`；`service.get_meetup_report` 函数内延迟 import `media_service`（顶层回 import 会真循环炸）。运行正确但属架构债。**触发清理条件**：下次重构 meetup 包时把 `_load_and_authorize_meetup` 抽到无 media 依赖的 `_auth.py` 辅助模块，消除环。

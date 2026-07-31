@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 import xyconvert
 
 from app.activity.models import Activity, Trackpoint
+from app.common.geo import infer_city_from_coords
 from app.user.service_social import (
     _public_activity_filter,
     _public_heatmap_privacy_fingerprint,
@@ -160,7 +161,11 @@ def _year_window_utc(year: int | None) -> tuple[datetime, datetime] | None:
     return start, end
 
 
-def _activity_filters(user_id: int, year: int | None, include_private: bool) -> list:
+def _activity_filters(
+    user_id: int,
+    year: int | None,
+    include_private: bool,
+) -> list:
     filters = [
         Activity.user_id == user_id,
         Activity.status == "completed",
@@ -734,19 +739,22 @@ def _limit_vector_segments(
     segments: dict[int, list[list[tuple[float, float]]]],
     zoom: int,
     latitude: float,
+    *,
+    total_point_budget: int = _VECTOR_TOTAL_POINT_BUDGET,
+    points_per_segment: int = _VECTOR_POINTS_PER_SEGMENT,
 ) -> list[tuple[int, list[tuple[float, float]]]]:
     """把当前视野压到小程序可流畅渲染的预算，同时按曲率保留弯道。"""
     prepared: list[tuple[int, list[tuple[float, float]]]] = []
     for activity_id, activity_segments in segments.items():
         for segment in activity_segments:
             reduced = _simplify_segment_for_zoom(segment, zoom, latitude)
-            reduced = _sample_segment_to_limit(reduced, _VECTOR_POINTS_PER_SEGMENT)
+            reduced = _sample_segment_to_limit(reduced, points_per_segment)
             if len(reduced) >= 2:
                 prepared.append((activity_id, reduced))
     if not prepared:
         return []
 
-    if len(prepared) * 2 > _VECTOR_TOTAL_POINT_BUDGET:
+    if len(prepared) * 2 > total_point_budget:
         # 极端碎片数据先保每个 activity 最长的一段，再按长度补齐，避免少数脏活动霸屏。
         longest_by_activity: dict[int, tuple[int, list[tuple[float, float]]]] = {}
         for item in prepared:
@@ -760,14 +768,14 @@ def _limit_vector_segments(
             key=lambda item: len(item[1]),
             reverse=True,
         )
-        prepared = (selected + remaining)[: _VECTOR_TOTAL_POINT_BUDGET // 2]
+        prepared = (selected + remaining)[: total_point_budget // 2]
 
     total = sum(len(points) for _, points in prepared)
-    if total <= _VECTOR_TOTAL_POINT_BUDGET:
+    if total <= total_point_budget:
         return prepared
 
     base = len(prepared) * 2
-    extra_budget = max(0, _VECTOR_TOTAL_POINT_BUDGET - base)
+    extra_budget = max(0, total_point_budget - base)
     total_weight = sum(max(0, len(points) - 2) for _, points in prepared)
     limits = []
     remainders = []
@@ -778,7 +786,7 @@ def _limit_vector_segments(
         remainders.append(exact - math.floor(exact))
     used = sum(limits)
     for index in sorted(range(len(prepared)), key=lambda item: remainders[item], reverse=True):
-        if used >= _VECTOR_TOTAL_POINT_BUDGET:
+        if used >= total_point_budget:
             break
         if limits[index] < len(prepared[index][1]):
             limits[index] += 1
@@ -788,6 +796,370 @@ def _limit_vector_segments(
         (activity_id, _sample_segment_to_limit(points, limits[index]))
         for index, (activity_id, points) in enumerate(prepared)
     ]
+
+
+def _heatmap_bounds_from_segments(
+    segments: dict[int, list[list[tuple[float, float]]]],
+) -> tuple[list[list[float]], list[list[float]]]:
+    """从原始点派生的连续段计算全局和常骑区域范围，不读取压缩轨迹。"""
+    all_bounds = [math.inf, math.inf, -math.inf, -math.inf]
+    buckets: dict[tuple[int, int], list[float]] = {}
+    for activity_segments in segments.values():
+        for segment in activity_segments:
+            for lon, lat in segment:
+                all_bounds[0] = min(all_bounds[0], lon)
+                all_bounds[1] = min(all_bounds[1], lat)
+                all_bounds[2] = max(all_bounds[2], lon)
+                all_bounds[3] = max(all_bounds[3], lat)
+                key = (math.floor(lat * 2), math.floor(lon * 2))
+                bucket = buckets.setdefault(
+                    key,
+                    [0.0, math.inf, math.inf, -math.inf, -math.inf],
+                )
+                bucket[0] += 1
+                bucket[1] = min(bucket[1], lon)
+                bucket[2] = min(bucket[2], lat)
+                bucket[3] = max(bucket[3], lon)
+                bucket[4] = max(bucket[4], lat)
+
+    if not buckets:
+        return [], []
+
+    best_key = max(buckets, key=lambda key: buckets[key][0])
+    focus_bounds = [math.inf, math.inf, -math.inf, -math.inf]
+    for key, bucket in buckets.items():
+        if abs(key[0] - best_key[0]) > 1 or abs(key[1] - best_key[1]) > 1:
+            continue
+        focus_bounds[0] = min(focus_bounds[0], bucket[1])
+        focus_bounds[1] = min(focus_bounds[1], bucket[2])
+        focus_bounds[2] = max(focus_bounds[2], bucket[3])
+        focus_bounds[3] = max(focus_bounds[3], bucket[4])
+
+    def as_points(bounds: list[float]) -> list[list[float]]:
+        return [
+            [round(bounds[0], 6), round(bounds[1], 6)],
+            [round(bounds[2], 6), round(bounds[3], 6)],
+        ]
+
+    return as_points(focus_bounds), as_points(all_bounds)
+
+
+def _available_heatmap_years(
+    db: Session,
+    user_id: int,
+    include_private: bool,
+    activity_ids: set[int] | None,
+) -> list[int]:
+    if activity_ids == set():
+        return []
+    filters = _activity_filters(user_id, None, include_private)
+    if activity_ids is not None:
+        filters.append(Activity.id.in_(activity_ids))
+    rows = (
+        db.query(Activity.started_at)
+        .join(Trackpoint, Trackpoint.activity_id == Activity.id)
+        .filter(*filters)
+        .distinct()
+        .all()
+    )
+    return sorted(
+        {
+            started_at.astimezone(_BEIJING_TZ).year
+            for (started_at,) in rows
+            if isinstance(started_at, datetime)
+        },
+        reverse=True,
+    )
+
+
+def _heatmap_activity_ids_for_city(
+    db: Session,
+    user_id: int,
+    include_private: bool,
+    city: str | None,
+) -> set[int] | None:
+    """城市筛选优先用 Activity.city；历史 NULL 行从首个原始 Trackpoint 重新推断。"""
+    if city is None:
+        return None
+    first_seq = (
+        db.query(
+            Trackpoint.activity_id.label("activity_id"),
+            func.min(Trackpoint.seq).label("first_seq"),
+        )
+        .join(Activity, Activity.id == Trackpoint.activity_id)
+        .filter(*_activity_filters(user_id, None, include_private))
+        .group_by(Trackpoint.activity_id)
+        .subquery()
+    )
+    rows = (
+        db.query(
+            Activity.id,
+            Activity.city,
+            Trackpoint.latitude,
+            Trackpoint.longitude,
+        )
+        .join(first_seq, first_seq.c.activity_id == Activity.id)
+        .join(
+            Trackpoint,
+            and_(
+                Trackpoint.activity_id == first_seq.c.activity_id,
+                Trackpoint.seq == first_seq.c.first_seq,
+            ),
+        )
+        .filter(*_activity_filters(user_id, None, include_private))
+        .all()
+    )
+    selected = set()
+    for activity_id, stored_city, latitude, longitude in rows:
+        resolved_city = stored_city
+        if resolved_city is None:
+            resolved_city = infer_city_from_coords(latitude, longitude)
+        if resolved_city == city:
+            selected.add(int(activity_id))
+    return selected
+
+
+def _load_heatmap_meta_bounds(
+    db: Session,
+    user_id: int,
+    year: int | None,
+    include_private: bool,
+    activity_ids: set[int] | None,
+) -> tuple[int, list[list[float]], list[list[float]]]:
+    """直接在 PostgreSQL 聚合原始连续段范围；meta 不必构造并回传整批折线。"""
+    if activity_ids == set():
+        return 0, [], []
+    params: dict[str, object] = {
+        "user_id": user_id,
+        "untimed_gap_m": _RAW_UNTIMED_GAP_METERS,
+        "max_elapsed_s": 45,
+        "max_speed_mps": 45,
+    }
+    year_window = _year_window_utc(year)
+    year_clause = ""
+    if year_window is not None:
+        year_clause = "AND a.started_at >= :year_start AND a.started_at < :year_end"
+        params.update({"year_start": year_window[0], "year_end": year_window[1]})
+    privacy_clause = ""
+    if not include_private:
+        privacy_clause = "AND (ap.activity_id IS NULL OR ap.visibility = 'public')"
+    activity_clause = ""
+    if activity_ids is not None:
+        activity_clause = "AND a.id = ANY(CAST(:activity_ids AS integer[]))"
+        params["activity_ids"] = sorted(activity_ids)
+
+    row = db.execute(
+        text(f"""
+            WITH ordered AS (
+                SELECT
+                    tp.activity_id,
+                    tp.seq,
+                    tp.timestamp,
+                    tp.longitude,
+                    tp.latitude,
+                    COALESCE(
+                        tp.geom,
+                        ST_SetSRID(ST_MakePoint(tp.longitude, tp.latitude), 4326)
+                    ) AS geom,
+                    LAG(tp.seq) OVER activity_order AS previous_seq,
+                    LAG(tp.timestamp) OVER activity_order AS previous_timestamp,
+                    LAG(COALESCE(
+                        tp.geom,
+                        ST_SetSRID(ST_MakePoint(tp.longitude, tp.latitude), 4326)
+                    )) OVER activity_order AS previous_geom
+                FROM trackpoints tp
+                JOIN activities a ON a.id = tp.activity_id
+                LEFT JOIN activity_privacy ap ON ap.activity_id = a.id
+                WHERE a.user_id = :user_id
+                  AND a.status = 'completed'
+                  AND a.duplicate_of IS NULL
+                  AND a.activity_type = 'cycling'
+                  {year_clause}
+                  {activity_clause}
+                  {privacy_clause}
+                WINDOW activity_order AS (
+                    PARTITION BY tp.activity_id ORDER BY tp.seq
+                )
+            ),
+            measured AS (
+                SELECT
+                    *,
+                    CASE
+                        WHEN previous_geom IS NULL THEN NULL
+                        ELSE ST_DistanceSphere(geom, previous_geom)
+                    END AS distance_m,
+                    CASE
+                        WHEN previous_timestamp IS NULL OR timestamp IS NULL THEN NULL
+                        ELSE EXTRACT(EPOCH FROM timestamp - previous_timestamp)
+                    END AS elapsed_s
+                FROM ordered
+            ),
+            marked AS (
+                SELECT
+                    *,
+                    CASE
+                        WHEN previous_seq IS NULL THEN 0
+                        WHEN seq <> previous_seq + 1 THEN 1
+                        WHEN elapsed_s IS NULL AND distance_m > :untimed_gap_m THEN 1
+                        WHEN elapsed_s <= 0 OR elapsed_s > :max_elapsed_s THEN 1
+                        WHEN distance_m / NULLIF(elapsed_s, 0) > :max_speed_mps THEN 1
+                        ELSE 0
+                    END AS starts_segment
+                FROM measured
+            ),
+            segmented AS (
+                SELECT
+                    *,
+                    SUM(starts_segment) OVER (
+                        PARTITION BY activity_id ORDER BY seq
+                        ROWS UNBOUNDED PRECEDING
+                    ) AS segment_id
+                FROM marked
+            ),
+            valid_segments AS (
+                SELECT activity_id, segment_id
+                FROM segmented
+                GROUP BY activity_id, segment_id
+                HAVING COUNT(*) >= 2
+            ),
+            valid_points AS (
+                SELECT
+                    segmented.activity_id,
+                    segmented.longitude,
+                    segmented.latitude,
+                    FLOOR(segmented.latitude * 2)::integer AS lat_bucket,
+                    FLOOR(segmented.longitude * 2)::integer AS lon_bucket
+                FROM segmented
+                JOIN valid_segments USING (activity_id, segment_id)
+            ),
+            bucket_counts AS (
+                SELECT lat_bucket, lon_bucket, COUNT(*) AS point_count
+                FROM valid_points
+                GROUP BY lat_bucket, lon_bucket
+            ),
+            best_bucket AS (
+                SELECT lat_bucket, lon_bucket
+                FROM bucket_counts
+                ORDER BY point_count DESC, lat_bucket, lon_bucket
+                LIMIT 1
+            )
+            SELECT
+                COUNT(DISTINCT valid_points.activity_id) AS activity_count,
+                MIN(valid_points.longitude) AS all_west,
+                MIN(valid_points.latitude) AS all_south,
+                MAX(valid_points.longitude) AS all_east,
+                MAX(valid_points.latitude) AS all_north,
+                MIN(valid_points.longitude) FILTER (
+                    WHERE ABS(valid_points.lat_bucket - (SELECT lat_bucket FROM best_bucket)) <= 1
+                      AND ABS(valid_points.lon_bucket - (SELECT lon_bucket FROM best_bucket)) <= 1
+                ) AS focus_west,
+                MIN(valid_points.latitude) FILTER (
+                    WHERE ABS(valid_points.lat_bucket - (SELECT lat_bucket FROM best_bucket)) <= 1
+                      AND ABS(valid_points.lon_bucket - (SELECT lon_bucket FROM best_bucket)) <= 1
+                ) AS focus_south,
+                MAX(valid_points.longitude) FILTER (
+                    WHERE ABS(valid_points.lat_bucket - (SELECT lat_bucket FROM best_bucket)) <= 1
+                      AND ABS(valid_points.lon_bucket - (SELECT lon_bucket FROM best_bucket)) <= 1
+                ) AS focus_east,
+                MAX(valid_points.latitude) FILTER (
+                    WHERE ABS(valid_points.lat_bucket - (SELECT lat_bucket FROM best_bucket)) <= 1
+                      AND ABS(valid_points.lon_bucket - (SELECT lon_bucket FROM best_bucket)) <= 1
+                ) AS focus_north
+            FROM valid_points
+        """),
+        params,
+    ).one()
+    activity_count = int(row.activity_count or 0)
+    if activity_count == 0:
+        return 0, [], []
+
+    def as_points(west, south, east, north) -> list[list[float]]:
+        return [
+            [round(float(west), 6), round(float(south), 6)],
+            [round(float(east), 6), round(float(north), 6)],
+        ]
+
+    return (
+        activity_count,
+        as_points(row.focus_west, row.focus_south, row.focus_east, row.focus_north),
+        as_points(row.all_west, row.all_south, row.all_east, row.all_north),
+    )
+
+
+def get_user_heatmap_overview(
+    db: Session,
+    user_id: int,
+    *,
+    year: int | None = None,
+    detail: str = "full",
+    include_private: bool = True,
+    city: str | None = None,
+) -> dict:
+    """用原始 Trackpoint 生成 meta/card/full；兼容路径也不能复活坏压缩轨迹。"""
+    if detail not in {"meta", "card", "full"}:
+        raise InvalidHeatmapTile("invalid heatmap overview detail")
+    _year_window_utc(year)
+    activity_ids = _heatmap_activity_ids_for_city(
+        db,
+        user_id,
+        include_private,
+        city,
+    )
+    available_years = _available_heatmap_years(
+        db,
+        user_id,
+        include_private,
+        activity_ids,
+    )
+    if detail == "meta":
+        activity_count, focus_points, all_points = _load_heatmap_meta_bounds(
+            db,
+            user_id,
+            year,
+            include_private,
+            activity_ids,
+        )
+        return {
+            "city": city,
+            "tracks": [],
+            "activity_count": activity_count,
+            "available_years": available_years,
+            "selected_year": year,
+            "focus_points": focus_points,
+            "all_points": all_points,
+        }
+
+    segments = _load_overview_segments(db, user_id, year, include_private)
+    if activity_ids is not None:
+        segments = {
+            activity_id: activity_segments
+            for activity_id, activity_segments in segments.items()
+            if activity_id in activity_ids
+        }
+    focus_points, all_points = _heatmap_bounds_from_segments(segments)
+    activity_count = len(segments)
+    tracks: list[list[list[float]]] = []
+    if detail != "meta" and all_points:
+        latitude = (all_points[0][1] + all_points[1][1]) / 2
+        prepared = _limit_vector_segments(
+            segments,
+            9 if detail == "card" else 10,
+            latitude,
+            total_point_budget=4_000 if detail == "card" else 9_000,
+        )
+        tracks = [
+            [[round(lon, 6), round(lat, 6)] for lon, lat in points]
+            for _, points in prepared
+        ]
+    return {
+        "city": city,
+        "tracks": tracks,
+        "activity_count": activity_count,
+        "available_years": available_years,
+        "selected_year": year,
+        "focus_points": focus_points if detail == "meta" else [],
+        "all_points": all_points if detail == "meta" else [],
+    }
 
 
 def _trim_vector_cache(redis_client, user_id: int, current_key: str) -> None:

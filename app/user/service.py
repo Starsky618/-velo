@@ -53,6 +53,7 @@ from app.user.service_social import (  # noqa: F401 — 转导出
 )
 from app.user.service_heatmap_tiles import (  # noqa: F401 — 转导出
     InvalidHeatmapTile,
+    get_user_heatmap_overview,
     get_user_heatmap_tile,
     get_user_heatmap_viewport,
 )

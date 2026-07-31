@@ -238,12 +238,11 @@ def get_my_heatmap(
     city 参数：
     - 不传 → 返回该用户所有 completed activities 的轨迹（不按起点城市筛 / response.city = None）。
       前端"全部"视图走这条路径——一次性看用户在所有城市的足迹。
-    - 传枚举值（6 主城 + unknown）→ 保留旧行为：按 simplified_track 起点城市筛。
+    - 传枚举值（6 主城 + unknown）→ 按 Activity.city 筛；历史 NULL 从首个原始 Trackpoint 推断。
 
     返回 tracks: list[list[[lon, lat]]]（保留 activity 边界；card/full 每个 activity 一条，
     viewport 可因进出视野裁成多段；前端画 polyline）
-    + activity_count（card/full 与 tracks 长度一致；viewport 为当前视野实际渲染的骑行数，
-    一条骑行裁成多段时可小于 tracks 长度）。
+    + activity_count（去重后的实际骑行数；轨迹断档会切成多段，因此 tracks 可多于骑行数）。
 
     year 可选，按北京时间自然年筛；detail=card/full 控制个人页与全屏总览的数据预算。
     detail=viewport 时必须同时传 west/south/east/north/zoom，只返回当前地图视野的高精度轨迹。
@@ -589,7 +588,7 @@ def get_user_heatmap_for_others(
 
     city 可选（D30 v3 polish / 同 /me/heatmap）：
     - 不传 → 看 ta 全部足迹（不按起点城市筛 / response.city = None）。
-    - 传枚举值 → 按 simplified_track 起点城市筛。
+    - 传枚举值 → 按 Activity.city 筛；历史 NULL 从首个原始 Trackpoint 推断。
 
     user 不存在 → service.get_user_by_id 抛 ValueError → 翻译为 404
     （跟 L220-223 /{user_id}/profile 同 pattern / Claude 综合审 Critical-1 验证后修）。

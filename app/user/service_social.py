@@ -23,8 +23,8 @@
       invalidate_heatmap_cache 同时清新旧 key，避免历史大对象残留
     - **GCJ-02 坐标转换在前端**：后端返 WGS-84 原始坐标 [lon, lat]；前端拿到后转 GCJ-02 给腾讯地图
       （陷阱 #31 / D31 决策）；不要在后端转 / 否则坐标双重转换
-    - **simplified_track polyline 起点定 city**：infer_city_from_coords 是 common.geo 纯函数
-      （spec §1.3）；纯函数不依赖 DB / 可独立测
+    - **热图几何只读原始 Trackpoint**：meta/card/full/viewport/tile 共用原始点派生层；
+      simplified_track 只属于活动详情等轻量展示，不能再作为个人热图几何真值
     - **Sprint 4 D7 决策**：profile 默认公开（无隐私开关 / requester_user_id 留 v6 隐私开关预留位）
     - **Sprint 4 D-P08 红线**：看自己 = 看他人（字段集合完全一致）
     - **Sprint 5 task-3 NEW**：get_active_users 用 INNER JOIN activities 自然过滤无活动用户
@@ -33,7 +33,7 @@
 数据流：
     入：user_id（self / target） + 可选 city / search query
     出：热图 dict / 用户对象 / 看他人 dict（白名单严格） / 活跃用户列表
-    边界：DB activities + users + simplified_track JSON / Redis cache / common.geo 纯函数
+    边界：DB activities + users + Trackpoint/PostGIS / Redis cache / common.geo 纯函数
 
 不允许：
     - import service_stats（保持单向依赖）
@@ -55,7 +55,6 @@ from sqlalchemy.orm import Session
 
 from app.activity.models import Activity as _Activity
 from app.activity.models import ActivityPrivacy as _ActivityPrivacy
-from app.common.geo import infer_city_from_coords as _infer_city_from_coords
 from app.user.models import User
 
 # 北京时间偏移量（UTC+8）——看他人主页"本月汇总"按北京时间划月
@@ -878,8 +877,7 @@ def get_user_heatmap(
     city 参数（v3 polish / Sprint 4 task-4.2 v3）：
     - city is None → 返回该用户**所有** completed activities 的轨迹（不按城市筛 /
       response.city 也是 None）。前端"全部"视图走这条路径，一次性看跨城市足迹。
-    - city 有值 → 保留旧行为：按 simplified_track 起点城市筛
-      （infer_city_from_coords 是 common.geo 纯函数 / spec §1.3）。
+    - city 有值 → 按活动解析时写入的 Activity.city 筛选；不再为热图读取 simplified_track。
 
     D27 v2 polish（Sprint 4 task-4.2 v2）：从扁平 multipoint.coordinates
     改为 tracks: list[list[[lon,lat]]] —— 保留 activity 边界让前端画 polyline，
@@ -888,7 +886,8 @@ def get_user_heatmap(
     year 可选：不传返回全部年份，传入后只返回对应自然年活动；响应始终带
     available_years，供全屏地图的年份图层控制使用。
 
-    v5 cache 同时区分 city / year / detail；meta/card/full 继续使用兼容缓存。
+    v5 cache 同时区分 city / year / detail；meta/card/full 继续使用兼容响应合同，
+    但底层几何统一改由原始 Trackpoint 生成。
     viewport 直接走原始 Trackpoint 空间查询和曲率优先 LOD，压缩缓存 TTL 15 分钟，
     每用户最多保留 16 份视野结果。
 
@@ -960,155 +959,19 @@ def get_user_heatmap(
         if decoded_cache is not None:
             return decoded_cache
 
-    source_cache_key = None
-    if detail in {"full", "viewport"}:
-        source_cache_key = _heatmap_viewport_source_cache_key(
+    if detail in {"meta", "card", "full"}:
+        # 发布切换期的旧前端仍会请求 card/full；三档必须和 viewport/tile 一样
+        # 从原始 Trackpoint 生成，不能让兼容路径重新画出 simplified_track 的坏直线。
+        from app.user.service_heatmap_tiles import get_user_heatmap_overview
+
+        result = get_user_heatmap_overview(
+            db,
             user_id,
-            city,
-            year,
-            cache_generation,
+            year=year,
+            detail=detail,
             include_private=include_private,
-            privacy_fingerprint=privacy_fingerprint,
+            city=city,
         )
-        cached_source = redis_client.get(source_cache_key)
-        if cached_source is not None:
-            source = _decode_heatmap_cache(
-                cached_source,
-                expected_generation=cache_generation,
-            )
-        else:
-            source = None
-        if source is not None:
-            result = _heatmap_result_from_source(
-                source,
-                detail=detail,
-                city=city,
-                year=year,
-                viewport=viewport,
-            )
-            _store_heatmap_result_cache(
-                redis_client,
-                user_id,
-                cache_key,
-                detail,
-                result,
-                cache_generation,
-            )
-            return result
-
-        _, waited_source = _claim_heatmap_source_build(
-            redis_client,
-            source_cache_key,
-            cache_generation,
-        )
-        if waited_source is not None:
-            result = _heatmap_result_from_source(
-                waited_source,
-                detail=detail,
-                city=city,
-                year=year,
-                viewport=viewport,
-            )
-            _store_heatmap_result_cache(
-                redis_client,
-                user_id,
-                cache_key,
-                detail,
-                result,
-                cache_generation,
-            )
-            return result
-
-    # 查该用户所有 completed activities + 有 simplified_track 的
-    # Sprint 5 task-2 dedupe：跳过 duplicate 防 heatmap 同轨迹双显
-    activity_filters = [
-        _Activity.user_id == user_id,
-        _Activity.status == "completed",
-        _Activity.duplicate_of.is_(None),
-        _Activity.activity_type == "cycling",  # Sprint 7 Fix 7：防非骑行污染热力图
-        _Activity.simplified_track.isnot(None),
-    ]
-    if not include_private:
-        activity_filters.append(_public_activity_filter())
-    activities_query = db.query(_Activity.simplified_track, _Activity.started_at).filter(*activity_filters)
-    prefetched_available_years = None
-    if detail in {"full", "viewport"} and year is not None and city is None:
-        # 年份全屏首帧与视野共用源层；先轻量读取年份列表，再把大 JSONB 查询下推到所选年。
-        year_rows = db.query(_Activity.started_at).filter(*activity_filters).all()
-        prefetched_available_years = sorted(
-            {
-                activity_year
-                for row in year_rows
-                if (activity_year := _heatmap_activity_year(row)) is not None
-            },
-            reverse=True,
-        )
-        start_bj = datetime(year, 1, 1, tzinfo=BEIJING_TZ)
-        end_bj = datetime(year + 1, 1, 1, tzinfo=BEIJING_TZ)
-        activities_query = activities_query.filter(
-            _Activity.started_at >= start_bj.astimezone(timezone.utc),
-            _Activity.started_at < end_bj.astimezone(timezone.utc),
-        )
-    activities = activities_query.all()
-
-    # 城市筛分支：
-    # - city is None → 不筛 / 全部 completed activities（含 simplified_track）都算
-    # - city 有值 → 按起点城市筛（B2A-2 修复反向依赖 / infer_city_from_coords 纯函数）
-    filtered = []
-    for a in activities:
-        track = a.simplified_track
-        if not track or len(track) == 0:
-            continue
-        if city is None:
-            filtered.append(a)
-            continue
-        first_pt = track[0]
-        lat = first_pt.get("lat")
-        lon = first_pt.get("lon")
-        if _infer_city_from_coords(lat, lon) == city:
-            filtered.append(a)
-
-    available_years = (
-        prefetched_available_years
-        if prefetched_available_years is not None
-        else sorted(
-            {activity_year for a in filtered if (activity_year := _heatmap_activity_year(a)) is not None},
-            reverse=True,
-        )
-    )
-    if year is not None:
-        filtered = [a for a in filtered if _heatmap_activity_year(a) == year]
-
-    source_tracks = None
-    if detail in {"full", "viewport"}:
-        source_tracks = _build_heatmap_viewport_source(filtered)
-        source = {"tracks": source_tracks, "available_years": available_years}
-        source_cache_key = source_cache_key or _heatmap_viewport_source_cache_key(
-            user_id,
-            city,
-            year,
-            cache_generation,
-            include_private=include_private,
-            privacy_fingerprint=privacy_fingerprint,
-        )
-        _store_heatmap_cache(
-            redis_client,
-            source_cache_key,
-            source,
-            _HEATMAP_CACHE_TTL_SEC,
-            compress=True,
-            generation=cache_generation,
-        )
-
-    if detail == "viewport":
-        tracks, visible_activity_count = _build_heatmap_viewport_tracks(source_tracks, viewport)
-        result = {
-            "city": city,
-            "tracks": tracks,
-            "activity_count": visible_activity_count,
-            "available_years": available_years,
-            "selected_year": year,
-        }
         _store_heatmap_result_cache(
             redis_client,
             user_id,
@@ -1118,90 +981,6 @@ def get_user_heatmap(
             cache_generation,
         )
         return result
-
-    if detail in {"meta", "card"}:
-        per_activity_limit = _HEATMAP_CARD_POINTS_PER_ACTIVITY
-        total_point_budget = _HEATMAP_CARD_TOTAL_POINT_BUDGET
-    else:
-        per_activity_limit = _HEATMAP_POINTS_PER_ACTIVITY
-        total_point_budget = _HEATMAP_TOTAL_POINT_BUDGET
-
-    if detail == "full" and source_tracks is not None:
-        tracks = _build_heatmap_tracks_from_source(
-            source_tracks,
-            per_activity_limit=per_activity_limit,
-            total_point_budget=total_point_budget,
-        )
-        result = {
-            "city": city,
-            "tracks": tracks,
-            "activity_count": len(tracks),
-            "available_years": available_years,
-            "selected_year": year,
-        }
-        _store_heatmap_result_cache(
-            redis_client,
-            user_id,
-            cache_key,
-            detail,
-            result,
-            cache_generation,
-        )
-        return result
-
-    max_tracks = total_point_budget // 2
-    preview_activities = _select_heatmap_preview_activities(filtered, max_tracks)
-    point_limit = _heatmap_points_per_activity(
-        len(preview_activities),
-        per_activity_limit=per_activity_limit,
-        total_point_budget=total_point_budget,
-    )
-    tracks = []
-    valid_count = 0
-    for a in preview_activities:
-        track_points = _build_heatmap_preview_track(a.simplified_track, point_limit)
-        if track_points:
-            tracks.append(track_points)
-            valid_count += 1
-
-    if detail == "meta":
-        result = {
-            "city": city,
-            "tracks": [],
-            "activity_count": valid_count,
-            "available_years": available_years,
-            "selected_year": year,
-            "focus_points": _heatmap_focus_bounds_for_tracks(tracks),
-            "all_points": _heatmap_bounds_for_tracks(tracks),
-        }
-        _store_heatmap_result_cache(
-            redis_client,
-            user_id,
-            cache_key,
-            detail,
-            result,
-            cache_generation,
-        )
-        return result
-
-    result = {
-        "city": city,
-        "tracks": tracks,
-        "activity_count": valid_count,  # 跟 tracks 长度一致 / 不数被跳过的单点 activity
-        "available_years": available_years,
-        "selected_year": year,
-    }
-
-    _store_heatmap_result_cache(
-        redis_client,
-        user_id,
-        cache_key,
-        detail,
-        result,
-        cache_generation,
-    )
-    return result
-
 
 def update_user_city(db: Session, user_id: int, city) -> User:
     """

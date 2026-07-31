@@ -468,9 +468,11 @@ class TestGetUserHeatmap:
             # 2 活动 → 2 条独立轨迹（不再扁平合并）
             assert result["activity_count"] == 2
             assert len(result["tracks"]) == 2
-            # 每条轨迹各 3 个点
-            assert len(result["tracks"][0]) == 3
-            assert len(result["tracks"][1]) == 3
+            # 三点完全共线时允许按屏幕精度收成首尾两点；两次活动仍不能互相连线。
+            assert len(result["tracks"][0]) >= 2
+            assert len(result["tracks"][1]) >= 2
+            assert result["tracks"][0][0] == [116.4, 39.9]
+            assert result["tracks"][0][-1] == [116.42, 39.92]
             # 验证 GeoJSON 顺序 [lon, lat]
             first_point = result["tracks"][0][0]
             assert first_point[0] > 100  # lon 在中国是 73-135
@@ -691,6 +693,54 @@ class TestGetUserHeatmap:
             )
             assert cached is not None
             assert len(cached) < 1024
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
+            _cleanup_db(db)
+            db.close()
+
+    def test_all_overview_details_ignore_corrupted_simplified_track(
+        self, pg_session_factory, real_redis
+    ):
+        """meta/card/full 都以原始 Trackpoint 为真值，发布兼容期也不能复活坏直线。"""
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "raw_overview")
+            activity = _make_activity_in_beijing(
+                db,
+                user,
+                "raw geometry",
+                _this_month_utc(),
+            )
+            activity.simplified_track = [
+                {"lon": 0.0, "lat": 0.0},
+                {"lon": 80.0, "lat": 50.0},
+            ]
+            db.flush()
+            middle = (
+                db.query(Trackpoint)
+                .filter(Trackpoint.activity_id == activity.id, Trackpoint.seq == 1)
+                .one()
+            )
+            middle.latitude = 39.912
+            middle.geom = WKTElement("POINT(116.41 39.912)", srid=4326)
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            meta = get_user_heatmap(db, user_id, None, None, "meta")
+            card = get_user_heatmap(db, user_id, None, None, "card")
+            full = get_user_heatmap(db, user_id, None, None, "full")
+
+            assert meta["all_points"][0][0] > 116
+            assert meta["all_points"][0][1] > 39
+            for result in (card, full):
+                flattened = [point for track in result["tracks"] for point in track]
+                assert flattened
+                assert all(point[0] > 116 and point[1] > 39 for point in flattened)
+                assert [116.41, 39.912] in flattened
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
