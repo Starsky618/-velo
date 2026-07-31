@@ -690,14 +690,24 @@ h1 {
   font-size: 14px;
 }
 
-.footer-links a {
+.footer-record {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  margin-top: -12px;
+  font-size: 13px;
+}
+
+.footer-links a,
+.footer-record a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
   color: var(--text-secondary);
 }
 
-.footer-links a:hover {
+.footer-links a:hover,
+.footer-record a:hover {
   color: var(--text);
 }
 
@@ -1386,11 +1396,13 @@ h1 {
 }
 
 .home-v2 .home-footer .footer-legal,
-.home-v2 .home-footer .footer-links a {
+.home-v2 .home-footer .footer-links a,
+.home-v2 .home-footer .footer-record a {
   color: #bdbdc1;
 }
 
-.home-v2 .home-footer .footer-links a:hover {
+.home-v2 .home-footer .footer-links a:hover,
+.home-v2 .home-footer .footer-record a:hover {
   color: #ffffff;
 }
 
