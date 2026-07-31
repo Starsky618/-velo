@@ -115,10 +115,17 @@ def test_all_html_pages_are_mobile_ready_and_have_valid_internal_links():
 
 def test_mobile_navigation_and_footer_links_have_full_touch_targets():
     css = (WEBSITE / "assets/site.css").read_text(encoding="utf-8")
-    for selector in [r"\.brand", r"\.nav-links a", r"\.footer-links a"]:
+    for selector in [r"\.brand", r"\.nav-links a"]:
         rule = re.search(rf"{selector}\s*\{{(?P<body>[^}}]+)\}}", css)
         assert rule, selector
         assert re.search(r"min-height:\s*44px", rule.group("body")), selector
+
+    footer_rule = re.search(
+        r"\.footer-links a,\s*\.footer-record a\s*\{(?P<body>[^}]+)\}",
+        css,
+    )
+    assert footer_rule
+    assert re.search(r"min-height:\s*44px", footer_rule.group("body"))
 
 
 def test_public_page_footers_show_the_verified_icp_record():
@@ -131,13 +138,26 @@ def test_public_page_footers_show_the_verified_icp_record():
         footer = re.search(r"<footer\b[^>]*>(?P<body>.*?)</footer>", source, re.DOTALL)
         assert footer, page
         body = footer.group("body")
-        assert ICP_RECORD in body, page
+        record_row = re.search(
+            r'<div\b[^>]*class="footer-record"[^>]*>(?P<body>.*?)</div>',
+            body,
+            re.DOTALL,
+        )
+        assert record_row, page
+        record_body = record_row.group("body")
+        assert ICP_RECORD in record_body, page
         assert re.search(
             rf'<a\b[^>]*href="{re.escape(ICP_QUERY_URL)}"[^>]*>'
             rf'\s*{re.escape(ICP_RECORD)}\s*</a\s*>',
-            body,
+            record_body,
             re.DOTALL,
         ), page
+
+    css = (WEBSITE / "assets/site.css").read_text(encoding="utf-8")
+    record_rule = re.search(r"\.footer-record\s*\{(?P<body>[^}]+)\}", css)
+    assert record_rule
+    assert re.search(r"grid-column:\s*1\s*/\s*-1", record_rule.group("body"))
+    assert re.search(r"justify-content:\s*center", record_rule.group("body"))
 
 
 def test_homepage_uses_local_chinese_web_fonts_without_synthetic_weights():
