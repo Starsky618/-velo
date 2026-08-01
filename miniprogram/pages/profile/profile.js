@@ -393,7 +393,7 @@ Page({
 
     app.login()
       .then((data) => {
-        console.log('[login] step 2: app.login resolved', data);
+        console.log('[login] step 2: app.login resolved');
         clearTimeout(timeoutHide);
         wx.hideLoading();
         this.setData({ isLoggedIn: true, loginLoading: false });

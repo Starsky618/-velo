@@ -36,13 +36,23 @@
     return result
   }
 
-  function hasTile(coverage, zoom, x, y) {
+  function hasTile(sourceManifest, coverage, zoom, x, y) {
     const tiles = coverage.get(Number(zoom))
-    return !!tiles && tiles.has(key(x, y))
+    if (tiles && tiles.has(key(x, y))) return true
+    const parentZoom = Number(sourceManifest.coverage_max_zoom)
+    if (
+      sourceManifest.coverage_mode !== 'parent' ||
+      !Number.isFinite(parentZoom) ||
+      zoom <= parentZoom
+    ) return false
+    const parents = coverage.get(parentZoom)
+    if (!parents) return false
+    const scale = Math.pow(2, zoom - parentZoom)
+    return parents.has(key(Math.floor(x / scale), Math.floor(y / scale)))
   }
 
   function tileUrl(layer, x, y, zoom, sourceManifest, sourceYear, coverage) {
-    const path = !hasTile(coverage, zoom, x, y)
+    const path = !hasTile(sourceManifest, coverage, zoom, x, y)
       ? '/heatmap/blank.png'
       : '/heatmap/' + layer + '-tiles/' + encodeURIComponent(sourceManifest.cache_version) +
         '/' + zoom + '/' + x + '/' + y + '.png' + yearQuery(sourceYear)
@@ -90,7 +100,7 @@
       for (let offsetY = -2; offsetY <= 2; offsetY += 1) {
         const x = center.x + offsetX
         const y = center.y + offsetY
-        if (!hasTile(coverage, zoom, x, y)) continue
+        if (!hasTile(sourceManifest, coverage, zoom, x, y)) continue
         urls.push(tileUrl(
           'fallback', x, y, zoom, sourceManifest, sourceYear, coverage
         ))
@@ -163,7 +173,9 @@
   function fit(points, fallbackZoom) {
     const bounds = boundsFor(points)
     if (bounds && typeof map.fitBounds === 'function') {
-      map.fitBounds(bounds, { padding: 72 })
+      // 按钮切换是视图模式切换，不是路线播放；禁用跨十几个 zoom 的相机动画，
+      // 避免中间级别瓦片排队并让用户误以为又在重新加载。
+      map.fitBounds(bounds, { padding: 72, duration: 0 })
       return
     }
     map.easeTo({

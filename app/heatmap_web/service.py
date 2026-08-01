@@ -723,7 +723,7 @@ def enqueue_base_tile_prewarm(
     year: int | None,
     coordinates: Iterable[tuple[int, int, int]],
 ) -> int:
-    """幂等地把 z11-z15 分块放入低优先级队列；请求线程不做全量渲染。"""
+    """幂等地把 z3-z15 分块放入低优先级队列；请求线程不做全量渲染。"""
     year_part = str(year) if year is not None else "all"
     marker = (
         f"{_PREWARM_MARKER_PREFIX}user_{user_id}:g{generation}:"
@@ -812,7 +812,7 @@ def prewarm_tile_chunk_task(
             int(user_id),
             year=year,
             include_private=True,
-            min_zoom=11,
+            min_zoom=3,
             max_zoom=15,
         )
         if manifest["cache_version"] != expected_version:

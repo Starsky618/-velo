@@ -177,7 +177,9 @@ def heatmap_manifest(
             target_user_id,
             year=year,
             include_private=audience == "owner",
-            min_zoom=11,
+            # “全部足迹”可能跨城市、跨国，视野会落到 z3-z10。地图与栅格金字塔
+            # 必须共享同一个全球最小级别，否则 fitBounds 会被 z11 下限卡成白屏。
+            min_zoom=3,
             max_zoom=18,
         )
         heatmap_web.remember_session_coverage(
@@ -214,7 +216,14 @@ def heatmap_manifest(
             base_tiles,
         )
 
-    payload = dict(manifest)
+    # 完整 coverage 只留在服务端 Redis 会话中。客户端只拿 z3-z15 基础覆盖；
+    # z16-z18 由 z15 父格判断是否值得请求，既避免解析数万项，也不请求大片空白区。
+    payload = {key: value for key, value in manifest.items() if key != "tiles"}
+    payload["tiles"] = {
+        zoom: coordinates
+        for zoom, coordinates in manifest["tiles"].items()
+        if int(zoom) <= 15
+    }
     payload.update(
         {
             "selected_year": year,
@@ -222,6 +231,8 @@ def heatmap_manifest(
             "fallback_max_zoom": 15,
             "audience": audience,
             "prewarm_queued_chunks": queued_chunks,
+            "coverage_mode": "parent",
+            "coverage_max_zoom": 15,
         }
     )
     return Response(
@@ -243,14 +254,27 @@ def _serve_versioned_tile(
 ) -> Response:
     try:
         heatmap_web.validate_session_version(str(session["session_id"]), year, version)
-        heatmap_web.validate_session_tile(
-            str(session["session_id"]),
-            year,
-            version,
-            zoom,
-            x,
-            y,
-        )
+        try:
+            heatmap_web.validate_session_tile(
+                str(session["session_id"]),
+                year,
+                version,
+                zoom,
+                x,
+                y,
+            )
+        except heatmap_web.HeatmapTileNotCovered:
+            # 客户端不再下载数万项 coverage；空块由服务端内存/Redis 集合 O(1)
+            # 判定后直接给透明图，不校验 DB 指纹、不触发磁盘或 PG 渲染。
+            return Response(
+                _TRANSPARENT_PNG,
+                media_type="image/png",
+                headers={
+                    "Cache-Control": "private, no-store",
+                    "Vary": "Cookie",
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
         viewer_user_id = int(session["viewer_user_id"])
         target_user_id = int(session["target_user_id"])
         audience = "owner" if viewer_user_id == target_user_id else "public"

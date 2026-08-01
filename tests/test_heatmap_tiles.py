@@ -187,6 +187,28 @@ def test_raster_tile_preserves_bend_and_uses_strong_nontransparent_color():
     assert alpha[max(0, bend_y - 2):bend_y + 3, max(0, bend_x - 2):bend_x + 3].max() > 0
 
 
+def test_global_raster_tile_keeps_single_ride_visible_after_retina_scaling():
+    zoom = 3
+    x, y = 6, 3
+    west, south, east, north = _tile_bounds_gcj02(zoom, x, y)
+    latitude = (south + north) / 2
+    png = _render_tile_png(
+        {1: [[
+            (west + (east - west) * 0.2, latitude),
+            (west + (east - west) * 0.8, latitude),
+        ]]},
+        zoom,
+        x,
+        y,
+        "red",
+        coordinates_are_map=True,
+    )
+    alpha = np.asarray(Image.open(BytesIO(png)).convert("RGBA"))[:, :, 3]
+
+    # 8 个源像素在腾讯地图 retina 缩放后仍有约 4px，全球视角不会看不见。
+    assert np.count_nonzero(alpha[:, 256]) >= 8
+
+
 def test_overview_sampling_preserves_sharp_bend_instead_of_uniformly_dropping_it():
     points = [(112.0 + index * 0.00001, 37.8) for index in range(2000)]
     points[1003] = (points[1003][0], 37.82)
@@ -263,6 +285,7 @@ def test_tile_manifest_uses_raw_segments_and_returns_map_center():
 
     assert result["generation"] == 7
     assert result["cache_version"].startswith("g7-")
+    assert result["cache_version"].endswith("-r3")
     assert result["tile_count"] == sum(len(items) for items in result["tiles"].values())
     assert result["center"]["longitude"] != 112.55  # 中国境内已转腾讯地图坐标
     assert result["available_years"] == [2026, 2025]
@@ -270,6 +293,7 @@ def test_tile_manifest_uses_raw_segments_and_returns_map_center():
     assert result["all_points"][1][0] != 112.60
     assert set(result["tiles"]) == {"11", "12", "13", "14"}
     load.assert_called_once_with(ANY, 42, None, True)
+    assert ":render_r3:" in redis.setex.call_args.args[0]
     redis.setex.assert_called_once()
 
 
@@ -492,7 +516,7 @@ def test_prewarm_task_builds_current_owner_meta_and_closes_session():
         42,
         year=None,
         include_private=True,
-        min_zoom=11,
+        min_zoom=3,
         max_zoom=18,
         activity_fingerprint="data-v1",
     )
@@ -765,7 +789,7 @@ def test_tile_cache_uses_heatmap_generation_and_avoids_second_db_render():
     assert renderer.call_count == 1
     assert redis.setex.call_args.args[1] == 86400
     assert redis.setex.call_args.args[0].startswith(
-        "heatmap:raster:v2:user_42:g7:data_data-v1:year_all:audience_owner:color_orange:z12:"
+        "heatmap:raster:v3:user_42:g7:data_data-v1:year_all:audience_owner:color_orange:z12:"
     )
 
 

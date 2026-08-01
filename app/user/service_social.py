@@ -80,9 +80,11 @@ _HEATMAP_DERIVED_CACHE_PREFIXES = (
     "heatmap:vector:v3:user_",
     "heatmap:vector:lru:v1:user_",
     "heatmap:vector:v2:user_",
+    "heatmap:raster:v3:user_",
     "heatmap:raster:v2:user_",
     "heatmap:raster:v2:source:user_",
     "heatmap:detail:v1:user_",
+    "heatmap:tile-manifest:v3:user_",
     "heatmap:tile-manifest:v2:user_",
     "heatmap:tile-manifest:v1:user_",
     # 发布切换期同时清旧版，避免废弃对象等到 TTL 才释放。
@@ -95,8 +97,8 @@ _HEATMAP_DERIVED_CACHE_PREFIXES = (
 # 当预热 p95 > 30s、单用户全部 detail chunks > 12MB 或 Redis 热图派生层 > 可用内存
 # 25% 时，必须把 detail chunks 迁到私有对象存储并只在 Redis 留 manifest/热点块；
 # 不得靠增加 Redis TTL/内存或把请求时 PG 扫描加回来掩盖容量问题。
-# SCALE_GATE[personal-heatmap-raster-pyramid]: 293 次真实骑行的 z11-z18 稀疏清单
-# 已有 43,594 块（其中 z11-z15 仅 3,351 块）。禁止在每次 generation 后把全部
+# SCALE_GATE[personal-heatmap-raster-pyramid]: 293 次真实骑行使用 z3-z18 稀疏清单；
+# z3-z10 只补跨城市/跨国总览，z11-z18 保留道路细节。禁止在每次 generation 后把全部
 # 最终 PNG 灌进 Redis；Redis 只保 source/manifest/热点，冷产物必须走版本化持久层，
 # 高倍率请求必须保留父级瓦片直到真实子瓦片可用。
 _HEATMAP_PREWARM_JOB_VERSION = "v3"
@@ -1441,7 +1443,7 @@ def prewarm_heatmap_cache_task(user_id: int, expected_generation: int) -> dict:
             user_id,
             year=None,
             include_private=True,
-            min_zoom=11,
+            min_zoom=3,
             max_zoom=18,
             activity_fingerprint=activity_fingerprint,
         )

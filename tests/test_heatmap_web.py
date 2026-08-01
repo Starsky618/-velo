@@ -278,6 +278,9 @@ def test_webgl_client_keeps_previous_layers_during_version_switch():
     )
     assert "new TMap.ImageTileLayer" in source
     assert "new URL(path, window.location.href).href" in source
+    assert "sourceManifest.coverage_mode !== 'parent'" in source
+    assert "Math.floor(x / scale)" in source
+    assert "map.fitBounds(bounds, { padding: 72, duration: 0 })" in source
     assert "const previousLayers = [fallbackLayer, detailLayer]" in source
     assert "sourceManifest, sourceYear, coverage" in source
     assert "await preloadVisibleFallback" in source
@@ -324,7 +327,7 @@ def test_manifest_binds_version_and_queues_only_base_tiles(client):
     payload = {
         "generation": 7,
         "cache_version": "g7-deadbeef",
-        "min_zoom": 11,
+        "min_zoom": 3,
         "max_zoom": 18,
         "tile_count": 3,
         "activity_count": 293,
@@ -332,7 +335,12 @@ def test_manifest_binds_version_and_queues_only_base_tiles(client):
         "available_years": [2026],
         "focus_points": [[112.4, 37.7], [112.7, 38.0]],
         "all_points": [[110.0, 35.0], [118.0, 41.0]],
-        "tiles": {"11": [[1664, 791]], "15": [[26620, 12680]], "18": [[213000, 101300]]},
+        "tiles": {
+            "3": [[6, 3]],
+            "11": [[1664, 791]],
+            "15": [[26620, 12680]],
+            "18": [[213000, 101300]],
+        },
     }
     with (
         patch(
@@ -355,10 +363,16 @@ def test_manifest_binds_version_and_queues_only_base_tiles(client):
             cookies={"velo_heatmap_session": token},
         )
     assert response.status_code == 200
+    assert response.json()["min_zoom"] == 3
     assert response.json()["fallback_max_zoom"] == 15
+    assert response.json()["coverage_mode"] == "parent"
+    assert response.json()["coverage_max_zoom"] == 15
+    assert set(response.json()["tiles"]) == {"3", "11", "15"}
+    assert "18" not in response.json()["tiles"]
     remember.assert_called_once()
     prune.assert_called_once_with(1, "owner", "g7-deadbeef")
     assert enqueue.call_args.args[-1] == [
+        (3, 6, 3),
         (11, 1664, 791),
         (15, 26620, 12680),
     ]
@@ -369,7 +383,7 @@ def test_public_manifest_never_queues_private_base_tiles(client):
     payload = {
         "generation": 7,
         "cache_version": "g7-public",
-        "min_zoom": 11,
+        "min_zoom": 3,
         "max_zoom": 18,
         "tile_count": 1,
         "activity_count": 1,
@@ -402,6 +416,7 @@ def test_public_manifest_never_queues_private_base_tiles(client):
     assert response.status_code == 200
     assert response.json()["audience"] == "public"
     assert manifest.call_args.kwargs["include_private"] is False
+    assert manifest.call_args.kwargs["min_zoom"] == 3
     prune.assert_called_once_with(2, "public", "g7-public")
     prewarm.assert_not_called()
 
@@ -487,7 +502,7 @@ def test_privacy_change_during_tile_read_is_checked_again_before_response(client
     render.assert_called_once()
 
 
-def test_manifest_outside_tile_never_reaches_db_or_disk_renderer(client):
+def test_manifest_outside_tile_returns_blank_without_db_or_disk_renderer(client):
     token = heatmap_web.create_session_token(1, 1)
     with (
         patch("app.heatmap_web.router.heatmap_web.validate_session_version"),
@@ -506,6 +521,9 @@ def test_manifest_outside_tile_never_reaches_db_or_disk_renderer(client):
             "/heatmap/live-tiles/g8-current/15/100/200.png",
             cookies={"velo_heatmap_session": token},
         )
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    with Image.open(BytesIO(response.content)) as image:
+        assert image.convert("RGBA").getpixel((0, 0))[3] == 0
     current.assert_not_called()
     render.assert_not_called()

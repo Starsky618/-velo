@@ -41,7 +41,7 @@ from app.user.service_social import (
 
 _TILE_SIZE = 512  # 2x retina tile；地图上仍覆盖一个标准 Web-Mercator tile
 _CACHE_TTL_SEC = 86400
-_CACHE_PREFIX = "heatmap:raster:v2:user_"
+_CACHE_PREFIX = "heatmap:raster:v3:user_"
 _GENERATION_PREFIX = "heatmap:generation:user_"
 _BEIJING_TZ = timezone(timedelta(hours=8))
 _RAW_POINT_QUERY_BUFFER_METERS = 1_000
@@ -65,9 +65,10 @@ _VECTOR_LRU_PREFIX = "heatmap:vector:lru:v1:user_"
 _VECTOR_MAX_CACHE_KEYS = 16
 _AVAILABLE_YEARS_REDIS_PREFIX = "heatmap:years:v1:user_"
 _AVAILABLE_YEARS_REDIS_TTL_SEC = 7 * 86400
-_TILE_MANIFEST_REDIS_PREFIX = "heatmap:tile-manifest:v2:user_"
+_TILE_MANIFEST_REDIS_PREFIX = "heatmap:tile-manifest:v3:user_"
 _TILE_MANIFEST_REDIS_TTL_SEC = 7 * 86400
 _TILE_MANIFEST_MAX_TILES = 100_000
+_TILE_RENDER_REVISION = "r3"
 _VECTOR_TOTAL_POINT_BUDGET = 14_000
 _VECTOR_POINTS_PER_SEGMENT = 320
 _DERIVED_BUILD_LOCK_TTL_SEC = 30
@@ -210,7 +211,9 @@ def _tile_manifest_cache_version(
         fingerprint = hashlib.sha256(
             f"{activity_fingerprint}:{privacy_fingerprint}".encode()
         ).hexdigest()[:16]
-    return _heatmap_cache_version(generation, fingerprint)
+    # PNG 是持久化派生产物。渲染样式变更必须进入版本，否则磁盘/CDN 会继续返回
+    # 同一批活动旧样式的瓦片，代码已更新但用户画面不会更新。
+    return f"{_heatmap_cache_version(generation, fingerprint)}-{_TILE_RENDER_REVISION}"
 
 
 def get_current_heatmap_tile_version(
@@ -1378,7 +1381,14 @@ def _render_tile_png(
     heat = np.zeros((_TILE_SIZE, _TILE_SIZE), dtype=np.uint16)
     origin_x = x * _TILE_SIZE
     origin_y = y * _TILE_SIZE
-    line_width = 3 if zoom >= 14 else 2
+    if zoom <= 5:
+        # 512px retina 瓦片在地图上按 256px 展示；全球视角至少需要 4px 视觉宽度，
+        # 否则一条真实骑行会缩成截图里不可见的亚像素。
+        line_width = 8
+    elif zoom <= 10:
+        line_width = 5
+    else:
+        line_width = 3 if zoom >= 14 else 2
 
     map_segments = segments if coordinates_are_map else _segments_to_gcj02(segments)
     west, south, east, north = _tile_bounds_gcj02(zoom, x, y)
@@ -2315,6 +2325,7 @@ def get_user_heatmap_tile_manifest(
         f"{_TILE_MANIFEST_REDIS_PREFIX}{user_id}:g{generation}:"
         f"data_{activity_fingerprint}:year_{year or 'all'}:"
         f"audience_{'owner' if include_private else 'public'}:"
+        f"render_{_TILE_RENDER_REVISION}:"
         f"z{min_zoom}-{max_zoom}"
     )
     if privacy_fingerprint is not None:
