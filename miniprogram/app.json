@@ -61,12 +61,12 @@
     ]
   },
   "permission": {
-    "scope.userFuzzyLocation": {
-      "desc": "用于在路线绘制时将地图移动到所在区域，路线点仍由用户手动设置"
+    "scope.userLocation": {
+      "desc": "用于在路线绘制时将地图移动到当前位置，方便设置骑行路线起点"
     }
   },
   "requiredPrivateInfos": [
-    "getFuzzyLocation",
+    "getLocation",
     "chooseLocation"
   ],
   "style": "v2",
