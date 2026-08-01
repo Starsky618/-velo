@@ -280,6 +280,8 @@ class ManualDrawnSnapPreviewResponse(BaseModel):
     raw_distance_m: float
     distance_m: float
     segment_count: int
+    provider_point_count: int = Field(ge=2)
+    requires_confirmation: bool = False
     warnings: list[str] = Field(default_factory=list)
     failed_segment: int | None = None
 

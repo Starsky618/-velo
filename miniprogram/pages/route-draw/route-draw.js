@@ -10,6 +10,7 @@ const SKETCH_RENDER_EVERY_POINTS = 4
 const SKETCH_AUTO_FINISH_MS = 900
 const SKETCH_PREPARE_TIMEOUT_MS = 800
 const ELEVATION_PREVIEW_DEBOUNCE_MS = 800
+const MAP_TAP_SUPPRESSION_MS = 450
 const SNAP_COLOR = '#FC4C02'
 const RAW_COLOR = '#FC4C02'
 const PREVIEW_COLOR = '#8E8E93'
@@ -522,7 +523,7 @@ function modeTitle(mode) {
 }
 
 function modeHelp(mode) {
-  if (mode === 'sketch') return '沿着想骑的方向画线，松手后自动贴到可骑行道路。'
+  if (mode === 'sketch') return '沿确认可骑的道路画线；手绘会保留原线，不再自动绕路。'
   return '直接点地图添加路线点，或使用手绘快速指定走向。'
 }
 
@@ -805,6 +806,7 @@ Page({
     var canSaveRoute = (
       view.confirmedPoints.length >= 2 &&
       nextRequestStatus !== 'previewing' &&
+      nextRequestStatus !== 'confirming' &&
       nextRequestStatus !== 'saving' &&
       nextRequestStatus !== 'unknown' &&
       nextBuilderMode !== 'sketch' &&
@@ -883,8 +885,18 @@ Page({
 
   onMapRegionChange: function (event) {
     if (this.data.builderMode === 'sketch') return
+    if (!event) return
+    var cause = event.causedBy || (event.detail && event.detail.causedBy) || ''
+    if (event.type === 'begin') {
+      if (!cause || cause === 'gesture' || cause === 'scale') this._mapGestureActive = true
+      return
+    }
+    if (event.type !== 'end') return
+    if (this._mapGestureActive || cause === 'gesture' || cause === 'scale') {
+      this._suppressMapTapUntil = Date.now() + MAP_TAP_SUPPRESSION_MS
+    }
+    this._mapGestureActive = false
     if (this.data.requestStatus !== 'idle') return
-    if (!event || event.type !== 'end') return
     this.setData({
       statusText: this.lastConfirmedPoint() ? '点地图添加下一个路线点' : '点地图设置起点',
     })
@@ -894,8 +906,16 @@ Page({
     if (this.preventPendingSaveEdit()) return
     if (!this.ensureLoggedIn()) return
     if (this.data.builderMode === 'sketch') return
+    if (Date.now() < (this._suppressMapTapUntil || 0)) {
+      wx.showToast({ title: '刚才是在移动地图，请再轻点一次加点', icon: 'none' })
+      return
+    }
     if (this.data.requestStatus === 'previewing') {
       wx.showToast({ title: '等这一段贴好再继续', icon: 'none' })
+      return
+    }
+    if (this.data.requestStatus === 'confirming') {
+      wx.showToast({ title: '先处理当前绕行预览', icon: 'none' })
       return
     }
     if (this.data.requestStatus === 'saving' || this.data.saving) return
@@ -926,10 +946,11 @@ Page({
     this.startSnapPreview([lastPoint, normalized])
   },
 
-  startSnapPreview: function (rawPoints) {
+  startSnapPreview: function (rawPoints, requestedMode) {
     if (!this.ensureLoggedIn()) return
     var raw = cloneLonLatPoints(rawPoints)
     if (raw.length < 2) return
+    var requestMode = requestedMode === 'freehand' ? 'freehand' : 'snap'
 
     var that = this
     this.cancelElevationPreview()
@@ -944,14 +965,14 @@ Page({
     this._snapSeq = (this._snapSeq || 0) + 1
     var snapSeq = this._snapSeq
     var pending = {
-      mode: 'snap',
+      mode: requestMode,
       rawPoints: raw,
       previewPoints: [],
       warnings: [],
     }
     this.applyDraftState(this._routeActions || [], pending, {
       requestStatus: 'previewing',
-      statusText: '正在贴到可骑行道路',
+      statusText: requestMode === 'freehand' ? '正在生成手绘路线' : '正在贴到可骑行道路',
       errorMessage: '',
       showSketchLayer: false,
       isSketching: false,
@@ -960,15 +981,31 @@ Page({
 
     api.snapManualDrawnRoute({
       coordinate_system: 'gcj02',
-      mode: 'snap',
+      mode: requestMode,
       points: simplifyForSnap(raw),
     }).then(function (result) {
       if (snapSeq !== that._snapSeq) return
       var preview = normalizeLonLatPoints(result && result.snapped_points)
       if (preview.length < 2) throw { code: 422 }
       var warnings = (result && Array.isArray(result.warnings)) ? result.warnings : []
+      if (requestMode === 'snap' && result && result.requires_confirmation) {
+        that.applyDraftState(that._routeActions || [], {
+          mode: 'snap',
+          rawPoints: raw,
+          previewPoints: preview,
+          warnings: warnings,
+        }, {
+          requestStatus: 'confirming',
+          statusText: '这段绕路明显，尚未加入路线',
+          errorMessage: '腾讯认为这里不能直接骑行。可接受绕行，或改用手绘保留你确认可骑的道路。',
+          showSketchLayer: false,
+          isSketching: false,
+          mapScrollEnabled: true,
+        })
+        return
+      }
       that.commitSegmentAction({
-        mode: 'snap',
+        mode: requestMode,
         rawPoints: raw,
         points: preview,
         warnings: warnings,
@@ -977,7 +1014,7 @@ Page({
       if (snapSeq !== that._snapSeq) return
       var message = snapErrorMessage(err)
       that.applyDraftState(that._routeActions || [], {
-        mode: 'snap',
+        mode: requestMode,
         rawPoints: raw,
         previewPoints: [],
         warnings: [],
@@ -991,6 +1028,28 @@ Page({
       })
       if ((that._confirmedPoints || []).length >= 2) that.scheduleElevationPreview()
     })
+  },
+
+  onTapAcceptDetour: function () {
+    if (this.data.requestStatus !== 'confirming' || !this._routePending) return
+    var pending = clonePending(this._routePending)
+    if (!pending || pending.previewPoints.length < 2) return
+    this.commitSegmentAction({
+      mode: 'snap',
+      rawPoints: pending.rawPoints,
+      points: pending.previewPoints,
+      warnings: pending.warnings,
+    })
+  },
+
+  onTapSketchDetour: function () {
+    if (this.data.requestStatus !== 'confirming') return
+    this.applyDraftState(this._routeActions || [], null, {
+      requestStatus: 'idle',
+      statusText: '沿确认可骑的道路重新手绘',
+      errorMessage: '',
+    })
+    this.onTapStartSketch()
   },
 
   onTapStartSketch: function () {
@@ -1200,7 +1259,7 @@ Page({
       mapScrollEnabled: true,
     })
     this._sketchViewport = null
-    this.startSnapPreview(raw)
+    this.startSnapPreview(raw, 'freehand')
   },
 
   finishSketchMode: function (text) {

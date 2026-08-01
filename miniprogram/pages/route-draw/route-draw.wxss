@@ -270,6 +270,35 @@ page {
   color: #b45309;
 }
 
+.detour-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  margin-top: 18rpx;
+}
+
+.detour-button {
+  width: 100%;
+  min-height: 88rpx;
+  margin: 0;
+  padding: 0 18rpx;
+  border-radius: 44rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 88rpx;
+  box-sizing: border-box;
+}
+
+.detour-button.is-secondary {
+  background: #f2f2f7;
+  color: #1c1c1e;
+}
+
+.detour-button.is-primary {
+  background: #fc4c02;
+  color: #ffffff;
+}
+
 .save-card {
   margin-top: 26rpx;
 }

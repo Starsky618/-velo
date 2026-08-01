@@ -172,10 +172,13 @@ def preview_manual_drawn_snap(
         )
         logger.info(
             "route_draw_snap_preview status=ready raw_point_count=%d "
-            "snapped_point_count=%d segment_count=%d duration_ms=%.1f",
+            "provider_point_count=%d snapped_point_count=%d segment_count=%d "
+            "requires_confirmation=%d duration_ms=%.1f",
             raw_point_count,
+            int(result.get("provider_point_count") or len(result.get("snapped_points") or [])),
             len(result.get("snapped_points") or []),
             int(result.get("segment_count") or 0),
+            int(bool(result.get("requires_confirmation"))),
             (time.perf_counter() - started_at) * 1000,
         )
         return result

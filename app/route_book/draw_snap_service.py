@@ -18,10 +18,13 @@ from app.route_book.tencent_direction import TencentMapError, plan_tencent_bicyc
 MAX_RAW_POINTS = 120
 MAX_ANCHOR_POINTS = 11
 MAX_SEGMENTS = 10
+MAX_SNAPPED_PREVIEW_POINTS = 300
 SNAP_PREVIEW_TOTAL_TIMEOUT_SEC = 12.0
 SNAP_PREVIEW_MAX_SINGLE_TIMEOUT_SEC = 3.0
 SIMPLIFY_TOLERANCE_M = 30.0
 MIN_PREVIEW_DISTANCE_M = 5.0
+DETOUR_RATIO_THRESHOLD = 1.8
+DETOUR_EXTRA_DISTANCE_M = 1000.0
 
 
 class DrawSnapSegmentError(ValueError):
@@ -57,6 +60,8 @@ def build_snap_preview(
             "raw_distance_m": raw_distance_m,
             "distance_m": raw_distance_m,
             "segment_count": len(raw_points) - 1,
+            "provider_point_count": len(raw_points),
+            "requires_confirmation": False,
             "warnings": [],
             "failed_segment": None,
         }
@@ -90,9 +95,19 @@ def build_snap_preview(
     if len(snapped_points) < 2:
         raise TencentMapError("腾讯地图没有返回可用路线")
 
+    provider_point_count = len(snapped_points)
+    requires_confirmation = (
+        raw_distance_m > 0
+        and distance_m
+        > max(
+            raw_distance_m * DETOUR_RATIO_THRESHOLD,
+            raw_distance_m + DETOUR_EXTRA_DISTANCE_M,
+        )
+    )
     warnings: list[str] = []
-    if raw_distance_m > 0 and distance_m > max(raw_distance_m * 1.8, raw_distance_m + 1000):
+    if requires_confirmation:
         warnings.append("系统贴出的路线可能偏离你的手画线，请检查后再保存。")
+    snapped_points = _simplify_preview_points(snapped_points)
 
     return {
         "mode": mode,
@@ -103,6 +118,8 @@ def build_snap_preview(
         "raw_distance_m": raw_distance_m,
         "distance_m": distance_m,
         "segment_count": segment_count,
+        "provider_point_count": provider_point_count,
+        "requires_confirmation": requires_confirmation,
         "warnings": warnings,
         "failed_segment": None,
     }
@@ -140,20 +157,51 @@ def _simplify_anchor_points(points: list[list[float]]) -> list[list[float]]:
     return [points[index] for index in indices]
 
 
-def _rdp_indices(points: list[list[float]], start: int, end: int, tolerance_m: float) -> list[int]:
-    max_distance = -1.0
-    max_index = start
-    for index in range(start + 1, end):
-        distance = _perpendicular_distance_m(points[index], points[start], points[end])
-        if distance > max_distance:
-            max_distance = distance
-            max_index = index
+def _simplify_preview_points(points: list[list[float]]) -> list[list[float]]:
+    """保留道路形状，但不把腾讯的上千个原始顶点全部推给小程序。"""
+    if len(points) <= MAX_SNAPPED_PREVIEW_POINTS:
+        return points
 
-    if max_distance > tolerance_m:
-        left = _rdp_indices(points, start, max_index, tolerance_m)
-        right = _rdp_indices(points, max_index, end, tolerance_m)
-        return left[:-1] + right
-    return [start, end]
+    candidate = points
+    for tolerance_m in (1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0):
+        indices = _rdp_indices(points, 0, len(points) - 1, tolerance_m)
+        candidate = [points[index] for index in indices]
+        if len(candidate) <= MAX_SNAPPED_PREVIEW_POINTS:
+            return candidate
+    return _sample_points(candidate, MAX_SNAPPED_PREVIEW_POINTS)
+
+
+def _rdp_indices(points: list[list[float]], start: int, end: int, tolerance_m: float) -> list[int]:
+    kept = {start, end}
+    pending = [(start, end)]
+    while pending:
+        segment_start, segment_end = pending.pop()
+        max_distance = -1.0
+        max_index = segment_start
+        for index in range(segment_start + 1, segment_end):
+            distance = _perpendicular_distance_m(
+                points[index],
+                points[segment_start],
+                points[segment_end],
+            )
+            if distance > max_distance:
+                max_distance = distance
+                max_index = index
+        if max_distance > tolerance_m:
+            kept.add(max_index)
+            pending.append((segment_start, max_index))
+            pending.append((max_index, segment_end))
+    return sorted(kept)
+
+
+def _sample_points(points: list[list[float]], limit: int) -> list[list[float]]:
+    if len(points) <= limit:
+        return points
+    result: list[list[float]] = []
+    step = (len(points) - 1) / (limit - 1)
+    for index in range(limit):
+        result.append(points[round(index * step)])
+    return result
 
 
 def _perpendicular_distance_m(point: list[float], start: list[float], end: list[float]) -> float:

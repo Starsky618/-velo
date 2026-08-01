@@ -3,6 +3,7 @@
 from pathlib import Path
 import json
 import logging
+import math
 import subprocess
 import textwrap
 
@@ -67,12 +68,76 @@ def test_logged_in_user_gets_snap_preview_without_creating_route_book(
     assert body["raw_distance_m"] > 0
     assert body["distance_m"] == 6800.0
     assert body["segment_count"] == 1
+    assert body["provider_point_count"] == 3
+    assert body["requires_confirmation"] is False
     assert body["warnings"] == []
     assert body["failed_segment"] is None
     assert calls == [((37.8001, 112.5001), (37.8601, 112.5601), 3.0)]
     assert db.query(RouteBook).count() == 0
     assert "route_draw_snap_preview status=ready raw_point_count=2" in caplog.text
-    assert "snapped_point_count=3 segment_count=1 duration_ms=" in caplog.text
+    assert "provider_point_count=3 snapped_point_count=3 segment_count=1" in caplog.text
+    assert "requires_confirmation=0 duration_ms=" in caplog.text
+
+
+def test_snap_preview_simplifies_dense_provider_geometry_before_mobile_response(
+    client, auth_header, monkeypatch
+):
+    provider_points = []
+    for index in range(1500):
+        progress = index / 1499
+        provider_points.append(
+            {
+                "lat": 37.8 + progress * 0.02 + math.sin(index / 12) * 0.00002,
+                "lon": 112.5 + progress * 0.1,
+            }
+        )
+    provider_points[0] = {"lat": 37.8, "lon": 112.5}
+    provider_points[-1] = {"lat": 37.82, "lon": 112.6}
+
+    def fake_plan(start, end, timeout_sec=None):
+        return {"distance": 9200.0, "duration": 30, "points": provider_points}
+
+    monkeypatch.setattr("app.route_book.draw_snap_service.plan_tencent_bicycling_route", fake_plan)
+    res = client.post(
+        "/api/route-books/manual-drawn/snap-preview",
+        json=_snap_payload(points=[[112.5, 37.8], [112.6, 37.82]]),
+        headers=auth_header,
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["provider_point_count"] == 1500
+    assert 2 <= len(body["snapped_points"]) <= 300
+    assert body["snapped_points"][0] == [112.5, 37.8]
+    assert body["snapped_points"][-1] == [112.6, 37.82]
+    assert body["distance_m"] == 9200.0
+    assert body["requires_confirmation"] is False
+
+
+def test_snap_preview_marks_extreme_detour_for_explicit_confirmation(client, auth_header, monkeypatch):
+    def fake_plan(start, end, timeout_sec=None):
+        return {
+            "distance": 5000.0,
+            "duration": 20,
+            "points": [
+                {"lat": start[0], "lon": start[1]},
+                {"lat": start[0] + 0.02, "lon": start[1] + 0.02},
+                {"lat": end[0], "lon": end[1]},
+            ],
+        }
+
+    monkeypatch.setattr("app.route_book.draw_snap_service.plan_tencent_bicycling_route", fake_plan)
+    res = client.post(
+        "/api/route-books/manual-drawn/snap-preview",
+        json=_snap_payload(points=[[112.5, 37.8], [112.501, 37.8]]),
+        headers=auth_header,
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["requires_confirmation"] is True
+    assert body["provider_point_count"] == 3
+    assert body["warnings"] == ["系统贴出的路线可能偏离你的手画线，请检查后再保存。"]
 
 
 def test_snap_preview_requires_login(client, monkeypatch):
@@ -193,6 +258,8 @@ def test_freehand_preview_returns_raw_line_without_calling_tencent(client, auth_
     assert body["anchor_points"] == points
     assert body["distance_m"] == pytest.approx(body["raw_distance_m"])
     assert body["segment_count"] == 2
+    assert body["provider_point_count"] == 3
+    assert body["requires_confirmation"] is False
 
 
 def test_snap_preview_rejects_more_than_120_raw_points_before_tencent(client, auth_header, monkeypatch):
