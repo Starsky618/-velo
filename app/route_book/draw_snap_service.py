@@ -20,6 +20,7 @@ MAX_RAW_POINTS = 120
 MAX_ANCHOR_POINTS = 11
 MAX_SEGMENTS = 10
 MAX_SNAPPED_PREVIEW_POINTS = 300
+MAX_CANONICAL_POINTS = 5000
 MAX_CANONICAL_SIMPLIFICATION_ERROR_M = 1.0
 SNAP_PREVIEW_TOTAL_TIMEOUT_SEC = 12.0
 SNAP_PREVIEW_MAX_SINGLE_TIMEOUT_SEC = 3.0
@@ -183,6 +184,8 @@ def _simplify_preview_points(points: list[list[float]]) -> tuple[list[list[float
         if remaining_error_m <= MAX_CANONICAL_SIMPLIFICATION_ERROR_M
         else points
     )
+    if len(canonical_points) > MAX_CANONICAL_POINTS:
+        raise ValueError("这段道路细节太多，请缩短一段再点，或改用手绘")
     return canonical_points, display_points
 
 

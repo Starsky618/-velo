@@ -150,6 +150,20 @@ def test_preview_budget_never_replaces_complex_canonical_geometry_with_lossy_sam
     assert calls <= len(points) * 300
 
 
+def test_preview_rejects_unsaveable_canonical_geometry_over_hard_limit(monkeypatch):
+    from app.route_book import draw_snap_service
+
+    points = [[112.5 + index * 0.000001, 37.8] for index in range(5001)]
+    monkeypatch.setattr(
+        draw_snap_service,
+        "_rdp_budget_indices",
+        lambda *args, **kwargs: (list(range(300)), 2.0),
+    )
+
+    with pytest.raises(ValueError, match="道路细节太多"):
+        draw_snap_service._simplify_preview_points(points)
+
+
 def test_snap_preview_marks_extreme_detour_for_explicit_confirmation(client, auth_header, monkeypatch):
     def fake_plan(start, end, timeout_sec=None):
         return {

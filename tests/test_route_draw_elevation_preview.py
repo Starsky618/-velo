@@ -141,6 +141,16 @@ def test_elevation_preview_rejects_more_than_5000_points_before_dem_query(
     assert called is False
 
 
+def test_manual_route_service_accepts_complex_canonical_geometry_up_to_5000_points():
+    from app.route_book import service
+
+    points = [(112.5 + index * 0.000001, 37.8) for index in range(501)]
+    payload = service._manual_route_payload_from_points(points)
+
+    assert payload["distance"] > 20
+    assert payload["wkt"].count(",") == 500
+
+
 def test_elevation_preview_applies_its_own_rate_limit(
     client, auth_header, test_user, monkeypatch
 ):
