@@ -1,7 +1,9 @@
 # ADR-009: 为什么 agent 层独立,不污染主 SaaS
 
 ## 状态
-accepted (2026-04-22)
+superseded (2026-07-29) — 由 `docs/agent-rules/product-decisions.md` D-P07 取代
+
+本 ADR 保留为历史决策记录。关于 Agent 的当前产品角色、实施顺序和确定性业务边界,以 D-P07 为准。
 
 ## 上下文
 
