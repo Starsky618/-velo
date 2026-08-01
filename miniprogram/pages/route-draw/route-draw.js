@@ -3,11 +3,13 @@ const api = require('../../utils/api')
 const DEFAULT_CENTER = { latitude: 37.8706, longitude: 112.5489 }
 const MAX_SNAP_POINTS = 120
 const MAX_SAVE_POINTS = 500
+const MAX_DISPLAY_POINTS = 500
 const TOUCH_SAMPLE_INTERVAL_MS = 32
 const TOUCH_SAMPLE_DISTANCE_PX = 6
+const SKETCH_RENDER_EVERY_POINTS = 4
 const SKETCH_AUTO_FINISH_MS = 900
 const SKETCH_PREPARE_TIMEOUT_MS = 800
-const ELEVATION_PREVIEW_DEBOUNCE_MS = 400
+const ELEVATION_PREVIEW_DEBOUNCE_MS = 800
 const SNAP_COLOR = '#FC4C02'
 const RAW_COLOR = '#FC4C02'
 const PREVIEW_COLOR = '#8E8E93'
@@ -256,6 +258,12 @@ function simplifyForSave(points) {
     if (simplified.length <= MAX_SAVE_POINTS) return simplified
   }
   return normalized
+}
+
+function simplifyForDisplay(points) {
+  var simplified = simplifyForSave(points)
+  if (simplified.length <= MAX_DISPLAY_POINTS) return simplified
+  return samplePoints(simplified, MAX_DISPLAY_POINTS)
 }
 
 function mergeSegments(segments) {
@@ -559,7 +567,7 @@ function clonePending(pending) {
 function buildMarkers(actions) {
   var markerPoints = []
   var hasConfirmedSegment = false
-  cloneActions(actions).forEach(function (action) {
+  ;(actions || []).forEach(function (action) {
     if (action.kind === 'anchor') {
       markerPoints.push(action.point)
       return
@@ -621,11 +629,11 @@ function deriveDraftView(actions, pending) {
 
   safeActions.forEach(function (action) {
     if (action.kind !== 'segment') return
-    var segmentPoints = cloneLonLatPoints(action.points)
+    var segmentPoints = action.points
     if (segmentPoints.length < 2) return
     segments.push(segmentPoints)
     modes.push(action.mode)
-    rawSegments.push(cloneLonLatPoints(action.rawPoints))
+    rawSegments.push(action.rawPoints)
     segmentWarnings.push(Array.isArray(action.warnings) ? action.warnings.slice(0, 20) : [])
   })
 
@@ -653,14 +661,6 @@ function deriveDraftView(actions, pending) {
   }
 }
 
-function buildRouteDraft(actions, pending, segments) {
-  return {
-    actions: cloneActions(actions),
-    segments: (segments || []).map(cloneLonLatPoints),
-    pending: clonePending(pending),
-  }
-}
-
 Page({
   data: {
     notLoggedIn: false,
@@ -677,19 +677,9 @@ Page({
     showSketchLayer: false,
     isSketching: false,
     sketchViewportReady: false,
-    routeDraft: {
-      actions: [],
-      segments: [],
-      pending: null,
-    },
-    confirmedSegments: [],
-    confirmedSegmentModes: [],
-    confirmedRawSegments: [],
-    confirmedSegmentWarnings: [],
-    confirmedPoints: [],
+    actionCount: 0,
+    confirmedPointCount: 0,
     markers: [],
-    currentRawPoints: [],
-    previewPoints: [],
     drawPolylines: [],
     routeStats: buildRouteStats([], null, 'idle'),
     elevationStatus: 'idle',
@@ -779,6 +769,14 @@ Page({
   applyDraftState: function (actions, pending, extraPatch) {
     var patch = extraPatch || {}
     var view = deriveDraftView(actions, pending)
+    var displayConfirmedPoints = simplifyForDisplay(view.confirmedPoints)
+    this._routeActions = view.actions
+    this._routePending = view.pending
+    this._confirmedPoints = view.confirmedPoints
+    this._displayConfirmedPoints = displayConfirmedPoints
+    this._segmentModes = view.modes
+    this._rawSegments = view.rawSegments
+    this._segmentWarnings = view.segmentWarnings
     var nextRequestStatus = patch.requestStatus !== undefined ? patch.requestStatus : this.data.requestStatus
     var nextBuilderMode = patch.builderMode !== undefined ? patch.builderMode : this.data.builderMode
     var nextSaving = patch.saving !== undefined ? patch.saving : this.data.saving
@@ -815,18 +813,11 @@ Page({
     )
 
     this.setData(Object.assign({
-      routeDraft: buildRouteDraft(view.actions, view.pending, view.segments),
-      confirmedSegments: view.segments,
-      confirmedSegmentModes: view.modes,
-      confirmedRawSegments: view.rawSegments,
-      confirmedSegmentWarnings: view.segmentWarnings,
-      confirmedPoints: view.confirmedPoints,
+      actionCount: view.actions.length,
+      confirmedPointCount: view.confirmedPoints.length,
       markers: view.markers,
-      currentRawPoints: view.currentRawPoints,
-      previewPoints: view.previewPoints,
-      currentWarnings: view.pendingWarnings,
       warnings: flattenWarnings(view.segmentWarnings, view.pendingWarnings),
-      drawPolylines: buildDrawPolylines(view.confirmedPoints, view.currentRawPoints, view.previewPoints),
+      drawPolylines: buildDrawPolylines(displayConfirmedPoints, view.currentRawPoints, view.previewPoints),
       routeStats: buildRouteStats(view.confirmedPoints, nextElevationPreview, nextElevationStatus),
       elevationStatus: nextElevationStatus,
       elevationPreview: nextElevationPreview,
@@ -837,7 +828,7 @@ Page({
   },
 
   markGestureUnsupported: function () {
-    this.applyDraftState(this.data.routeDraft.actions, null, {
+    this.applyDraftState(this._routeActions || [], null, {
       builderMode: 'smart',
       modeTitle: modeTitle('smart'),
       modeHelp: modeHelp('smart'),
@@ -852,14 +843,14 @@ Page({
   },
 
   lastConfirmedPoint: function () {
-    var points = normalizeLonLatPoints(this.data.confirmedPoints)
+    var points = normalizeLonLatPoints(this._confirmedPoints || [])
     return points.length ? points[points.length - 1] : null
   },
 
   commitAnchorAction: function (point) {
     this._snapSeq = (this._snapSeq || 0) + 1
     this.cancelElevationPreview()
-    var actions = cloneActions(this.data.routeDraft.actions)
+    var actions = cloneActions(this._routeActions || [])
     actions.push({ kind: 'anchor', point: point })
     this.applyDraftState(actions, null, {
       requestStatus: 'idle',
@@ -874,7 +865,7 @@ Page({
     this._snapSeq = (this._snapSeq || 0) + 1
     var points = cloneLonLatPoints(segment && segment.points)
     if (points.length < 2) return
-    var actions = cloneActions(this.data.routeDraft.actions)
+    var actions = cloneActions(this._routeActions || [])
     actions.push({
       kind: 'segment',
       mode: segment.mode === 'freehand' ? 'freehand' : 'snap',
@@ -941,6 +932,15 @@ Page({
     if (raw.length < 2) return
 
     var that = this
+    this.cancelElevationPreview()
+    if (this.data.elevationStatus === 'loading') {
+      this.applyElevationState({
+        elevationStatus: 'idle',
+        elevationPreview: null,
+        elevationGeometryKey: '',
+        elevationMessage: '',
+      })
+    }
     this._snapSeq = (this._snapSeq || 0) + 1
     var snapSeq = this._snapSeq
     var pending = {
@@ -949,7 +949,7 @@ Page({
       previewPoints: [],
       warnings: [],
     }
-    this.applyDraftState(this.data.routeDraft.actions, pending, {
+    this.applyDraftState(this._routeActions || [], pending, {
       requestStatus: 'previewing',
       statusText: '正在贴到可骑行道路',
       errorMessage: '',
@@ -973,14 +973,10 @@ Page({
         points: preview,
         warnings: warnings,
       })
-      that.applyDraftState(that.data.routeDraft.actions, null, {
-        requestStatus: 'idle',
-        statusText: '路线已贴好，可以继续加点或手绘',
-      })
     }).catch(function (err) {
       if (snapSeq !== that._snapSeq) return
       var message = snapErrorMessage(err)
-      that.applyDraftState(that.data.routeDraft.actions, {
+      that.applyDraftState(that._routeActions || [], {
         mode: 'snap',
         rawPoints: raw,
         previewPoints: [],
@@ -993,6 +989,7 @@ Page({
         isSketching: false,
         mapScrollEnabled: true,
       })
+      if ((that._confirmedPoints || []).length >= 2) that.scheduleElevationPreview()
     })
   },
 
@@ -1009,7 +1006,7 @@ Page({
     this._drawSeq = (this._drawSeq || 0) + 1
     this._rawSegmentPoints = []
     this._sketchViewport = null
-    this.applyDraftState(this.data.routeDraft.actions, null, {
+    this.applyDraftState(this._routeActions || [], null, {
       builderMode: 'sketch',
       modeTitle: modeTitle('sketch'),
       modeHelp: modeHelp('sketch'),
@@ -1094,7 +1091,7 @@ Page({
     this._rawSegmentPoints = []
     this._lastScreenPoint = null
     this._lastCaptureAt = 0
-    this.applyDraftState(this.data.routeDraft.actions, null, {
+    this.applyDraftState(this._routeActions || [], null, {
       requestStatus: 'idle',
       statusText: '继续画，松手后自动贴路',
       errorMessage: '',
@@ -1136,6 +1133,19 @@ Page({
     this._sketchAutoFinishTimer = null
   },
 
+  renderSketchInk: function (rawPoints) {
+    var raw = cloneLonLatPoints(rawPoints)
+    this._routePending = {
+      mode: 'freehand',
+      rawPoints: raw,
+      previewPoints: [],
+      warnings: [],
+    }
+    this.setData({
+      drawPolylines: buildDrawPolylines(this._displayConfirmedPoints || [], raw, []),
+    })
+  },
+
   captureTouchLocation: function (event, force) {
     var screenPoint = screenPointFromEvent(event)
     if (!screenPoint) return
@@ -1151,19 +1161,7 @@ Page({
     if (raw.length >= MAX_SNAP_POINTS * 2) return
     if (!raw.length || !samePoint(raw[raw.length - 1], point)) raw.push(point)
     this._rawSegmentPoints = raw
-    if (force || raw.length % 2 === 0) {
-      this.applyDraftState(this.data.routeDraft.actions, {
-        mode: 'freehand',
-        rawPoints: raw.slice(),
-        previewPoints: [],
-        warnings: [],
-      }, {
-        requestStatus: 'idle',
-        showSketchLayer: true,
-        isSketching: true,
-        mapScrollEnabled: false,
-      })
-    }
+    if (force || raw.length % SKETCH_RENDER_EVERY_POINTS === 0) this.renderSketchInk(raw)
   },
 
   finishSketchSegment: function () {
@@ -1171,14 +1169,14 @@ Page({
     if (this.data.builderMode !== 'sketch') return
     this.clearSketchAutoFinish()
 
-    var raw = normalizeLonLatPoints(this._rawSegmentPoints || this.data.currentRawPoints)
+    var raw = normalizeLonLatPoints(this._rawSegmentPoints || (this._routePending && this._routePending.rawPoints))
     var lastPoint = this.lastConfirmedPoint()
     if (lastPoint && raw.length && !samePoint(lastPoint, raw[0])) {
       raw = [lastPoint].concat(raw)
     }
 
     if (raw.length < 2 || distanceOf(raw) < 5) {
-      this.applyDraftState(this.data.routeDraft.actions, null, {
+      this.applyDraftState(this._routeActions || [], null, {
         builderMode: 'sketch',
         modeTitle: modeTitle('sketch'),
         modeHelp: modeHelp('sketch'),
@@ -1191,7 +1189,7 @@ Page({
       return
     }
 
-    this.applyDraftState(this.data.routeDraft.actions, null, {
+    this.applyDraftState(this._routeActions || [], null, {
       builderMode: 'smart',
       modeTitle: modeTitle('smart'),
       modeHelp: modeHelp('smart'),
@@ -1211,7 +1209,7 @@ Page({
     this._sketchPrepareSeq = (this._sketchPrepareSeq || 0) + 1
     this._rawSegmentPoints = []
     this._sketchViewport = null
-    this.applyDraftState(this.data.routeDraft.actions, null, {
+    this.applyDraftState(this._routeActions || [], null, {
       builderMode: 'smart',
       modeTitle: modeTitle('smart'),
       modeHelp: modeHelp('smart'),
@@ -1236,9 +1234,9 @@ Page({
       this.finishSketchMode('已退出铅笔手绘')
       return
     }
-    var pending = this.data.routeDraft.pending
+    var pending = this._routePending
     if (pending) {
-      this.applyDraftState(this.data.routeDraft.actions, null, {
+      this.applyDraftState(this._routeActions || [], null, {
         requestStatus: 'idle',
         statusText: '已丢弃当前预览',
         errorMessage: '',
@@ -1246,10 +1244,11 @@ Page({
         isSketching: false,
         mapScrollEnabled: true,
       })
+      if ((this._confirmedPoints || []).length >= 2) this.scheduleElevationPreview()
       return
     }
 
-    var actions = cloneActions(this.data.routeDraft.actions)
+    var actions = cloneActions(this._routeActions || [])
     if (!actions.length) {
       wx.showToast({ title: '还没有可撤回的动作', icon: 'none' })
       return
@@ -1261,7 +1260,7 @@ Page({
       statusText: actions.length ? '已撤回上一步' : '路线已清空，点地图设置起点',
       errorMessage: '',
     })
-    if (this.data.confirmedPoints.length >= 2) this.scheduleElevationPreview()
+    if ((this._confirmedPoints || []).length >= 2) this.scheduleElevationPreview()
   },
 
   clearElevationPreviewTimer: function () {
@@ -1285,13 +1284,30 @@ Page({
     }
   },
 
+  applyElevationState: function (patch) {
+    var next = patch || {}
+    var status = next.elevationStatus !== undefined ? next.elevationStatus : this.data.elevationStatus
+    var preview = next.elevationPreview !== undefined ? next.elevationPreview : this.data.elevationPreview
+    this.setData({
+      elevationStatus: status,
+      elevationPreview: preview,
+      elevationGeometryKey: next.elevationGeometryKey !== undefined
+        ? next.elevationGeometryKey
+        : this.data.elevationGeometryKey,
+      elevationMessage: next.elevationMessage !== undefined
+        ? next.elevationMessage
+        : this.data.elevationMessage,
+      routeStats: buildRouteStats(this._confirmedPoints || [], preview, status),
+    })
+  },
+
   scheduleElevationPreview: function () {
     this.clearElevationPreviewTimer()
     this._elevationSeq = (this._elevationSeq || 0) + 1
     var elevationSeq = this._elevationSeq
-    var points = simplifyForSave(this.data.confirmedPoints)
+    var points = simplifyForSave(this._confirmedPoints || [])
     if (points.length < 2) {
-      this.applyDraftState(this.data.routeDraft.actions, this.data.routeDraft.pending, {
+      this.applyElevationState({
         elevationStatus: 'idle',
         elevationPreview: null,
         elevationGeometryKey: '',
@@ -1302,7 +1318,7 @@ Page({
     var key = geometryKey(points)
     var cached = this._elevationCache && this._elevationCache[key]
     if (cached) {
-      this.applyDraftState(this.data.routeDraft.actions, this.data.routeDraft.pending, {
+      this.applyElevationState({
         elevationStatus: 'ready',
         elevationPreview: cached,
         elevationGeometryKey: key,
@@ -1312,7 +1328,7 @@ Page({
       return
     }
 
-    this.applyDraftState(this.data.routeDraft.actions, this.data.routeDraft.pending, {
+    this.applyElevationState({
       elevationStatus: 'loading',
       elevationPreview: null,
       elevationGeometryKey: key,
@@ -1325,11 +1341,11 @@ Page({
         coordinate_system: 'gcj02',
         points: points,
       }).then(function (result) {
-        if (elevationSeq !== that._elevationSeq || key !== geometryKey(simplifyForSave(that.data.confirmedPoints))) return
+        if (elevationSeq !== that._elevationSeq || key !== geometryKey(simplifyForSave(that._confirmedPoints || []))) return
         var preview = normalizeElevationPreview(result)
         if (!preview) throw { code: 422 }
         that.rememberElevationPreview(key, preview)
-        that.applyDraftState(that.data.routeDraft.actions, that.data.routeDraft.pending, {
+        that.applyElevationState({
           elevationStatus: 'ready',
           elevationPreview: preview,
           elevationGeometryKey: key,
@@ -1337,8 +1353,8 @@ Page({
         })
         that.drawElevationChartSoon()
       }).catch(function (err) {
-        if (elevationSeq !== that._elevationSeq || key !== geometryKey(simplifyForSave(that.data.confirmedPoints))) return
-        that.applyDraftState(that.data.routeDraft.actions, that.data.routeDraft.pending, {
+        if (elevationSeq !== that._elevationSeq || key !== geometryKey(simplifyForSave(that._confirmedPoints || []))) return
+        that.applyElevationState({
           elevationStatus: 'error',
           elevationPreview: null,
           elevationGeometryKey: key,
@@ -1500,11 +1516,11 @@ Page({
       wx.showToast({ title: '先退出铅笔手绘', icon: 'none' })
       return
     }
-    if (this.data.routeDraft.pending) {
+    if (this._routePending) {
       wx.showToast({ title: '先处理当前预览', icon: 'none' })
       return
     }
-    var confirmedPoints = normalizeLonLatPoints(this.data.confirmedPoints)
+    var confirmedPoints = normalizeLonLatPoints(this._confirmedPoints || [])
     if (confirmedPoints.length < 2) {
       wx.showToast({ title: '至少点 2 个点再保存', icon: 'none' })
       return
@@ -1517,9 +1533,9 @@ Page({
     }
 
     var drawMetadata = buildDrawMetadata(
-      this.data.confirmedSegmentModes,
-      this.data.confirmedRawSegments,
-      this.data.confirmedSegmentWarnings
+      this._segmentModes || [],
+      this._rawSegments || [],
+      this._segmentWarnings || []
     )
     var payload = {
       name: name,
@@ -1541,7 +1557,7 @@ Page({
     var payload = readPendingSave()
     if (!payload) {
       clearPendingSave()
-      this.applyDraftState(this.data.routeDraft.actions, null, {
+      this.applyDraftState(this._routeActions || [], null, {
         pendingSaveLocked: false,
         requestStatus: 'idle',
         saveError: '',
@@ -1558,7 +1574,7 @@ Page({
     var that = this
     var abandon = function () {
       clearPendingSave()
-      that.applyDraftState(that.data.routeDraft.actions, null, {
+      that.applyDraftState(that._routeActions || [], null, {
         pendingSaveLocked: false,
         requestStatus: 'idle',
         saveError: '',
@@ -1584,7 +1600,7 @@ Page({
     var normalizedPayload = normalizePendingSavePayload(payload)
     if (!normalizedPayload) {
       clearPendingSave()
-      this.applyDraftState(this.data.routeDraft.actions, null, {
+      this.applyDraftState(this._routeActions || [], null, {
         saving: false,
         pendingSaveLocked: false,
         requestStatus: 'idle',
@@ -1597,7 +1613,7 @@ Page({
     }
     var that = this
     var confirmingUnknown = this.data.requestStatus === 'unknown'
-    this.applyDraftState(this.data.routeDraft.actions, null, {
+    this.applyDraftState(this._routeActions || [], null, {
       saving: true,
       pendingSaveLocked: true,
       requestStatus: 'saving',
@@ -1609,7 +1625,7 @@ Page({
     api.createRouteBookFromManualDrawn(normalizedPayload).then(function (route) {
       var routeBookId = route && (route.route_book_id || route.id)
       if (!routeBookId) {
-        that.applyDraftState(that.data.routeDraft.actions, null, {
+        that.applyDraftState(that._routeActions || [], null, {
           saving: false,
           requestStatus: 'unknown',
           saveError: '保存结果不确定，请不要重复保存',
@@ -1621,7 +1637,7 @@ Page({
         return
       }
       clearPendingSave()
-      that.applyDraftState(that.data.routeDraft.actions, null, {
+      that.applyDraftState(that._routeActions || [], null, {
         saving: false,
         requestStatus: 'saved',
         savedRouteBookId: routeBookId,
@@ -1634,7 +1650,7 @@ Page({
     }, function (err) {
       var code = Number(err && err.code)
       if (code === -1 || code >= 500 || (confirmingUnknown && code !== 409 && code !== 410)) {
-        that.applyDraftState(that.data.routeDraft.actions, null, {
+        that.applyDraftState(that._routeActions || [], null, {
           saving: false,
           requestStatus: 'unknown',
           saveError: '保存结果不确定，请不要重复保存',
@@ -1647,7 +1663,7 @@ Page({
       }
       clearPendingSave()
       var message = saveErrorMessage(err)
-      that.applyDraftState(that.data.routeDraft.actions, null, {
+      that.applyDraftState(that._routeActions || [], null, {
         saving: false,
         pendingSaveLocked: false,
         requestStatus: 'error',
@@ -1660,7 +1676,7 @@ Page({
   },
 
   markSavedNavigationFailure: function (routeBookId) {
-    this.applyDraftState(this.data.routeDraft.actions, null, {
+    this.applyDraftState(this._routeActions || [], null, {
       saving: false,
       requestStatus: 'saved',
       savedRouteBookId: routeBookId,
@@ -1708,6 +1724,7 @@ if (typeof module !== 'undefined') {
     normalizeElevationPreview: normalizeElevationPreview,
     sketchViewportFromParts: sketchViewportFromParts,
     simplifyForSave: simplifyForSave,
+    simplifyForDisplay: simplifyForDisplay,
     simplifyForSnap: simplifyForSnap,
     buildDrawMetadata: buildDrawMetadata,
     mergeSegments: mergeSegments,

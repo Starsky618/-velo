@@ -10,6 +10,8 @@
 输入输出：接 multipart/form 表单（含可选上传文件）→ 调 service → 返回 schemas 定义的 JSON。
 """
 
+import logging
+import time
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
@@ -27,6 +29,7 @@ from app.route_book.tencent_direction import (
 
 
 router = APIRouter(prefix="/api/route-books", tags=["route_book"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=schemas.RouteBookListResponse)
@@ -151,6 +154,8 @@ def preview_manual_drawn_snap(
     payload: schemas.ManualDrawnSnapPreviewRequest,
     current_user_id: int = Depends(get_current_user),
 ):
+    started_at = time.perf_counter()
+    raw_point_count = len(payload.points)
     check_rate_limit_by_user(
         current_user_id,
         "route-book-draw-snap-preview",
@@ -160,14 +165,33 @@ def preview_manual_drawn_snap(
         window_sec=300,
     )
     try:
-        return draw_snap_service.build_snap_preview(
+        result = draw_snap_service.build_snap_preview(
             mode=payload.mode,
             coordinate_system=payload.coordinate_system,
             points=payload.points,
         )
+        logger.info(
+            "route_draw_snap_preview status=ready raw_point_count=%d "
+            "snapped_point_count=%d segment_count=%d duration_ms=%.1f",
+            raw_point_count,
+            len(result.get("snapped_points") or []),
+            int(result.get("segment_count") or 0),
+            (time.perf_counter() - started_at) * 1000,
+        )
+        return result
     except (TencentMapConfigError, TencentMapServiceUnavailableError) as e:
+        logger.info(
+            "route_draw_snap_preview status=unavailable raw_point_count=%d duration_ms=%.1f",
+            raw_point_count,
+            (time.perf_counter() - started_at) * 1000,
+        )
         raise HTTPException(status_code=503, detail=str(e))
     except draw_snap_service.DrawSnapSegmentError as e:
+        logger.info(
+            "route_draw_snap_preview status=input_error raw_point_count=%d duration_ms=%.1f",
+            raw_point_count,
+            (time.perf_counter() - started_at) * 1000,
+        )
         raise HTTPException(
             status_code=422,
             detail={
@@ -177,8 +201,18 @@ def preview_manual_drawn_snap(
             },
         )
     except TencentMapError as e:
+        logger.info(
+            "route_draw_snap_preview status=input_error raw_point_count=%d duration_ms=%.1f",
+            raw_point_count,
+            (time.perf_counter() - started_at) * 1000,
+        )
         raise HTTPException(status_code=422, detail=str(e))
     except ValueError as e:
+        logger.info(
+            "route_draw_snap_preview status=input_error raw_point_count=%d duration_ms=%.1f",
+            raw_point_count,
+            (time.perf_counter() - started_at) * 1000,
+        )
         raise HTTPException(status_code=422, detail=str(e))
 
 
