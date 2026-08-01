@@ -45,6 +45,7 @@ services:
     environment:
       DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
+      HEATMAP_TILE_DIR: /var/cache/velo/heatmap-tiles
       JWT_SECRET: ${JWT_SECRET}
       WX_APPID: ${WX_APPID}
       WX_SECRET: ${WX_SECRET}
@@ -64,6 +65,7 @@ services:
     volumes:
       - uploads:/app/uploads
       - glo30_cache:/var/cache/velo/glo30   # Copernicus GLO-30 COG 瓦片懒下载缓存
+      - heatmap_tiles:/var/cache/velo/heatmap-tiles  # api/worker 共享的私有版本化 PNG 冷缓存
       # 路线百科内容目录（2026-06-11）：内容是数据不是代码，只读挂载让"改介绍"走数据通道——
       # git pull 后直接 exec 灌库脚本即生效，不 rebuild 镜像、不碰迁移、不动其他容器。
       - ./content:/app/content:ro
@@ -77,6 +79,7 @@ services:
     environment:
       DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
+      HEATMAP_TILE_DIR: /var/cache/velo/heatmap-tiles
       # v5 task-0.8：单 worker 容器订阅多队列
       # velo = GPX/Strava 解析；ai_drafts = AI 草稿生成（task 1.B.1 起用）
       # 用 docker compose up --scale worker=N 横向扩展
@@ -93,6 +96,23 @@ services:
     volumes:
       - uploads:/app/uploads
       - glo30_cache:/var/cache/velo/glo30   # worker 跑回填脚本时复用同一 GLO-30 缓存
+      - heatmap_tiles:/var/cache/velo/heatmap-tiles
+
+  # PNG 渲染任务不可抢占，必须与骑行导入 worker 进程隔离。
+  heatmap-worker:
+    build: .
+    command: python worker.py
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
+      REDIS_URL: redis://redis:6379/0
+      HEATMAP_TILE_DIR: /var/cache/velo/heatmap-tiles
+      RQ_QUEUES: "heatmap_tiles"
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - heatmap_tiles:/var/cache/velo/heatmap-tiles
 
   # ===== Cleanup：定时僵尸回收 =====
   # 每 5 分钟运行一次清理脚本，回收孤儿 activity + 孤儿文件
@@ -103,11 +123,13 @@ services:
     environment:
       DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
+      HEATMAP_TILE_DIR: /var/cache/velo/heatmap-tiles
     depends_on:
       - db
       - redis
     volumes:
       - uploads:/app/uploads
+      - heatmap_tiles:/var/cache/velo/heatmap-tiles
 
   # ===== DB-backup：pg_dump 自动备份（Sprint 5 task-1）=====
   # 每 24h 跑一次 pg_dump → gzip → 写到 ./backups/velo_YYYYMMDD_HHMMSS.sql.gz
@@ -229,3 +251,4 @@ volumes:
   caddy_data:  # SSL 证书存储
   caddy_config:
   glo30_cache:  # Copernicus GLO-30 COG 瓦片持久缓存
+  heatmap_tiles:  # 个人热图版本化 PNG 冷缓存；丢失可由 PG 原始轨迹重建

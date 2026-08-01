@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>VELO 太原热图瓦片实验</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./styles.css">
+  <!-- TENCENT_MAP_SCRIPT -->
+</head>
+<body>
+  <main id="map" aria-label="太原个人骑行热图实验"></main>
+  <section class="hud" aria-live="polite">
+    <strong>PNG 瓦片实验</strong>
+    <span id="status">正在初始化腾讯 WebGL 地图…</span>
+    <span id="metrics">等待采样</span>
+  </section>
+  <div class="actions">
+    <button id="toggle" type="button">隐藏热图</button>
+    <button id="reset" type="button">回到太原</button>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>

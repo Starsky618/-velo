@@ -39,9 +39,11 @@ services:
     environment:
       DATABASE_URL: postgresql://velo:${DB_PASSWORD:-devpass}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
+      HEATMAP_TILE_DIR: /var/cache/velo/heatmap-tiles
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret}
       WX_APPID: ${WX_APPID:-dev-placeholder}
       WX_SECRET: ${WX_SECRET:-dev-placeholder}
+      TENCENT_MAP_KEY: ${TENCENT_MAP_KEY:-}
       # Strava：本地不真调外部 API，给占位符让 import 不报 KeyError
       STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID:-dev-placeholder}
       STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET:-dev-placeholder}
@@ -60,6 +62,7 @@ services:
     volumes:
       - uploads_dev:/app/uploads
       - glo30_cache_dev:/var/cache/velo/glo30
+      - heatmap_tiles_dev:/var/cache/velo/heatmap-tiles
       # dev 专用：源码 + 测试 + 脚本目录挂宿主，--reload 修改即时生效；
       # tests/ 被 .dockerignore 排除（生产镜像不含），靠挂载补回
       - ./app:/app/app
@@ -75,7 +78,7 @@ services:
     environment:
       DATABASE_URL: postgresql://velo:${DB_PASSWORD:-devpass}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
-      # 与生产对齐：单 worker 容器订阅 velo + ai_drafts 两个队列
+      HEATMAP_TILE_DIR: /var/cache/velo/heatmap-tiles
       RQ_QUEUES: "velo,ai_drafts"
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-dev-placeholder}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
@@ -86,6 +89,22 @@ services:
     volumes:
       - uploads_dev:/app/uploads
       - glo30_cache_dev:/var/cache/velo/glo30
+      - heatmap_tiles_dev:/var/cache/velo/heatmap-tiles
+
+  heatmap-worker:
+    build: .
+    command: python worker.py
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD:-devpass}@db:5432/velo
+      REDIS_URL: redis://redis:6379/0
+      HEATMAP_TILE_DIR: /var/cache/velo/heatmap-tiles
+      RQ_QUEUES: "heatmap_tiles"
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - heatmap_tiles_dev:/var/cache/velo/heatmap-tiles
 
   scheduler:
     build: .
@@ -107,11 +126,13 @@ services:
     environment:
       DATABASE_URL: postgresql://velo:${DB_PASSWORD:-devpass}@db:5432/velo
       REDIS_URL: redis://redis:6379/0
+      HEATMAP_TILE_DIR: /var/cache/velo/heatmap-tiles
     depends_on:
       - db
       - redis
     volumes:
       - uploads_dev:/app/uploads
+      - heatmap_tiles_dev:/var/cache/velo/heatmap-tiles
 
   # v5 task-1.C.1：worker 软目标监控（dev 同步生产 / 沿用模式）
   monitor:
@@ -128,3 +149,4 @@ volumes:
   pgdata_dev:    # dev 独立卷，不和生产共享
   uploads_dev:
   glo30_cache_dev:
+  heatmap_tiles_dev:

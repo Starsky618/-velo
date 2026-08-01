@@ -15,9 +15,13 @@ Redis 连接 + RQ Queue 单一真相源——"全屋总进水阀"。
       模块都各自 mock `redis.Redis.from_url`
 
 使用：
-    # 直接读写 Redis（限速 / 缓存 / 一次性消费等）
+    # 通用 Redis（限速 / RQ / 一次性消费等）
     from app.queue import redis_conn
     redis_conn.set(key, value, ex=300, nx=True)
+
+    # 用户请求链路上的热图缓存（网络黑洞时必须有界失败）
+    from app.queue import heatmap_redis_conn
+    heatmap_redis_conn.get(key)
 
     # enqueue RQ 异步任务
     from app.queue import ai_drafts_queue
@@ -47,6 +51,19 @@ redis_conn = Redis.from_url(
     socket_keepalive_options={},
 )
 
+# 热图会在请求线程上读写 Redis，还有后台续租线程。通用 redis_conn
+# 不设 socket_timeout，因为 RQ 的阻塞取队列需要长读；热图必须使用
+# 独立有界连接池，否则 Redis 网络黑洞会把请求和续租线程永久卡住。
+heatmap_redis_conn = Redis.from_url(
+    settings.REDIS_URL,
+    decode_responses=False,
+    socket_keepalive=True,
+    socket_keepalive_options={},
+    socket_connect_timeout=1.0,
+    socket_timeout=1.0,
+    retry_on_timeout=False,
+)
+
 
 # RQ Queue 实例——v5 用到的所有队列在此 expose，禁止 caller 就地构造
 # 命名约定：snake_case + 与 enqueue 字符串一致（防拼写漂移）
@@ -57,4 +74,10 @@ redis_conn = Redis.from_url(
 #   3. docker-compose.yml: worker service 的 RQ_QUEUES env 加 "new_q"
 #   4. 调用方 enqueue：`from app.queue import new_queue` + `.enqueue(...)`
 default_queue = Queue("velo", connection=redis_conn)
+# 同一个 velo 队列的有界 producer。Worker 仍用无 read timeout 的 default_queue
+# 阻塞消费；API/导入 post-commit 入队必须在 Redis 黑洞时 1 秒内失败返回。
+heatmap_prewarm_queue = Queue("velo", connection=heatmap_redis_conn)
+# PNG 冷瓦片生成量可达数千块，必须放在独立队列并由 heatmap-worker 消费；
+# RQ 任务不可抢占，不能只把它排在主 worker 队尾后假装不会堵骑行导入。
+heatmap_tiles_queue = Queue("heatmap_tiles", connection=heatmap_redis_conn)
 ai_drafts_queue = Queue("ai_drafts", connection=redis_conn)

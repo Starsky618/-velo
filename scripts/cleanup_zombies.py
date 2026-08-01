@@ -5,6 +5,7 @@
 1. processing 僵尸：Worker 崩溃后卡在 processing 超过 10 分钟 → 标记 failed
 2. pending 僵尸：Redis 宕机导致入队失败，卡在 pending 超过 30 分钟 → 重新入队
 3. 孤儿文件：磁盘上有文件但数据库无对应记录（超过 1 小时）→ 删除
+4. 孤儿热图：账号已从 DB 删除但 Redis 故障使实时清理失败 → 删除
 
 为什么不在 API 或 Worker 里做？
 - API 依赖用户请求触发，没人访问就没扫描
@@ -25,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import settings
 from app.database import SessionLocal
+from app.heatmap_web.service import sweep_orphan_user_artifacts
 # v5 task-0.8：Redis + Queue 走 app.queue 单一源
 from app.queue import redis_conn, default_queue
 
@@ -147,6 +149,11 @@ def main():
     """脚本入口：依次执行三项清理，任一失败不影响其他。"""
     db = SessionLocal()
     try:
+        # 放在最前：即使后续 Redis 补队或 activity 清理失败，
+        # 注销用户的私有 PNG 仍能在本周期按 DB 真相收敛。
+        swept = sweep_orphan_user_artifacts(db)
+        if swept:
+            logger.info(f"删除 {swept} 个孤儿热图目录")
         cleanup_processing_zombies(db)
         rescue_pending_zombies(db)
         cleanup_orphan_files(db)

@@ -4,7 +4,8 @@
 本文件在 v5 task-user-split-001 中完成物理拆分（834 行红灯 → 4 文件）：
 - 微信登录 / JWT 鉴权 / 用户 CRUD → service_auth.py
 - 骑行统计 / 功率曲线 / cache → service_stats.py
-- 热图 / 城市 / 看他人主页 / 探索骑友 → service_social.py
+- 热图 JSON / 城市 / 看他人主页 / 探索骑友 → service_social.py
+- 热图 PNG 瓦片 → service_heatmap_tiles.py
 - 本文件保留共享 doc + 转导出（re-export）所有 public API，对外契约 0 改动
 
 调用方按 `from app.user.service import xxx` 继续工作（含 app.dependencies.decode_token
@@ -15,6 +16,7 @@
 - service_auth.py = 大门口的门卫 + 户籍登记处
 - service_stats.py = 物业的"住户健康报表"（骑行 + 功率曲线）
 - service_social.py = 物业的"住户名片簿 + 邻居通讯录"
+- service_heatmap_tiles.py = 物业的"足迹瓦片印刷机"
 
 注意事项：
 - 所有数据库操作都在子文件完成，router 层不直接操作数据库
@@ -23,6 +25,8 @@
 - 跨子文件依赖严格单向：service_stats → service_auth.get_user_by_id（拿 weekly_goal）
 - BEIJING_TZ + _get_redis_client 在 stats + social 各自独立复制（Q1 a 决策 / 不抽共享）
 """
+
+import logging
 
 # v5 task-user-split-001：service.py 834 行红灯 → 拆 4 文件，对外契约不变
 # 调用方按 `from app.user.service import xxx` 继续工作，不必感知文件分拆细节
@@ -40,15 +44,29 @@ from app.user.service_stats import (  # noqa: F401 — 转导出
     invalidate_power_curve_cache,
 )
 from app.user.service_social import (  # noqa: F401 — 转导出
+    HeatmapSnapshotChanged,
     InvalidHeatmapViewport,
     get_active_users,
     get_city_medals,  # Sprint 6 task-3：城市征服勋章聚合（自他对称入口）
     get_user_badges,  # Sprint 6 task-2：身份徽章计算（自他对称入口）
     get_user_heatmap,
     get_user_profile_for_others,
+    enqueue_heatmap_cache_prewarm,
     invalidate_heatmap_cache,
+    prewarm_heatmap_cache_task,
     update_user_city,
 )
+from app.user.service_heatmap_tiles import (  # noqa: F401 — 转导出
+    InvalidHeatmapTile,
+    get_user_heatmap_overview,
+    get_current_heatmap_tile_version,
+    get_user_heatmap_tile,
+    get_user_heatmap_tile_manifest,
+    get_user_heatmap_viewport,
+)
+
+
+_logger = logging.getLogger(__name__)
 
 
 def delete_user(db, user_id: int) -> None:
@@ -132,3 +150,27 @@ def delete_user(db, user_id: int) -> None:
     db.commit()
     # commit 后再删物理文件（DB 是 source of truth）：删失败只记日志，不回滚已删的账号数据。
     _cleanup_meetup_storage(storage_files)
+    # 正式个人热图的 PNG 是可重建私有派生物；账号注销后不能继续留在持久卷。
+    # 和 GPX/约骑文件一致放在 commit 后清理，避免 DB 回滚时先删不可恢复文件。
+    from app.heatmap_web.service import (
+        enqueue_user_artifact_purge,
+        purge_user_tile_artifacts,
+    )
+
+    try:
+        # 先推进 Redis generation，撤销仍持有旧 cookie 的浏览器；失败时下游每块 PNG
+        # 仍会用数据库活动指纹校验，账号已无活动，因此不会 fail-open。
+        invalidate_heatmap_cache(user_id, prewarm=False)
+    except Exception:
+        _logger.exception(
+            "failed to invalidate heatmap cache after account deletion",
+            extra={"user_id": user_id},
+        )
+    try:
+        purge_user_tile_artifacts(user_id)
+    except Exception:
+        _logger.exception(
+            "failed to purge heatmap artifacts after account deletion",
+            extra={"user_id": user_id},
+        )
+        enqueue_user_artifact_purge(user_id)

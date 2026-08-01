@@ -5,6 +5,7 @@ v5 task-0.8 验证：app/queue.py 单一 Redis 连接源契约保证。
 1. redis_conn 模块级单例（多次 import 同一对象）
 2. default_queue / ai_drafts_queue 共享同一连接
 3. Queue 命名稳定（防拼写漂移成两个队列）
+4. 请求链路的热图预热 producer 使用有界超时连接
 """
 
 
@@ -35,10 +36,21 @@ def test_queue_names_stable():
     若有人改了 Queue 实例名但漏改 enqueue 字符串，任务会进错队列
     Worker 永远捞不到 → 用户体感为"AI 草稿生成卡死"。
     """
-    from app.queue import default_queue, ai_drafts_queue
+    from app.queue import default_queue, heatmap_prewarm_queue, ai_drafts_queue
 
     assert default_queue.name == "velo"
+    assert heatmap_prewarm_queue.name == default_queue.name
     assert ai_drafts_queue.name == "ai_drafts"
+
+
+def test_heatmap_prewarm_producer_has_bounded_redis_timeouts():
+    """Redis 网络黑洞时，活动上传/删除不能卡在 post-commit 入队。"""
+    from app.queue import heatmap_prewarm_queue
+
+    kwargs = heatmap_prewarm_queue.connection.connection_pool.connection_kwargs
+    assert kwargs["socket_connect_timeout"] == 1.0
+    assert kwargs["socket_timeout"] == 1.0
+    assert kwargs["retry_on_timeout"] is False
 
 
 def test_redis_conn_decode_responses_is_false():

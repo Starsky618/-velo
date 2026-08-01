@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>我的骑行热图</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/heatmap/assets/styles.css">
+  <!-- TENCENT_MAP_SCRIPT -->
+</head>
+<body>
+  <main id="map" aria-label="个人骑行热图"></main>
+
+  <section class="meta-pill" aria-live="polite">
+    <strong id="ride-count">正在加载热图…</strong>
+  </section>
+
+  <button id="layer-button" class="layer-button" type="button">图层</button>
+
+  <section id="layer-panel" class="layer-panel" hidden>
+    <div class="layer-head">
+      <strong>我的热图</strong>
+      <button id="layer-done" type="button">完成</button>
+    </div>
+    <p>年份</p>
+    <div id="year-options" class="year-options"></div>
+    <p>轨迹颜色</p>
+    <div class="red-chip"><span></span>VELO 红</div>
+  </section>
+
+  <section class="fit-controls">
+    <button id="fit-local" class="active" type="button">常骑区域</button>
+    <button id="fit-all" type="button">全部足迹</button>
+  </section>
+
+  <section id="page-state" class="page-state">正在准备个人热图…</section>
+
+  <script src="/heatmap/assets/app.js"></script>
+</body>
+</html>

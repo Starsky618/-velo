@@ -391,7 +391,7 @@ def _do_parse(db, activity_id: int) -> None:
     if not is_duplicate:
         try:
             from app.user.service_social import invalidate_heatmap_cache
-            invalidate_heatmap_cache(activity.user_id)
+            invalidate_heatmap_cache(activity.user_id, prewarm=True)
         except Exception:
             logger.exception("heatmap cache invalidation failed activity_id=%s", activity.id)
 

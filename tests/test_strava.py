@@ -489,7 +489,7 @@ class TestWebhookRoutes:
         invalidated = []
         monkeypatch.setattr(
             "app.user.service_social.invalidate_heatmap_cache",
-            lambda user_id: invalidated.append(user_id),
+            lambda user_id, **kwargs: invalidated.append((user_id, kwargs)),
         )
 
         payload = {
@@ -505,7 +505,7 @@ class TestWebhookRoutes:
 
         # 验证活动已被删除
         assert db.query(Activity).filter_by(id=activity_id).first() is None
-        assert invalidated == [test_user.id]
+        assert invalidated == [(test_user.id, {"prewarm": True})]
 
 
 # ==================== 手动同步测试 ====================

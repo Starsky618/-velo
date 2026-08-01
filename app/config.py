@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # GPX 文件本地存储根目录
     UPLOAD_DIR: str = "./uploads"
 
+    # 个人热图版本化 PNG 冷缓存。生产由 api/worker 共享持久卷；原始 Trackpoint
+    # 仍在 PostgreSQL，删除该目录只会触发重建，不会丢失骑行真值。
+    HEATMAP_TILE_DIR: str = "./heatmap_tiles"
+
     # Strava OAuth 凭证——调用 Strava API 时需要
     # 这三个值从 .env 文件读取，开发/生产环境各自配置
     STRAVA_CLIENT_ID: str = ""           # Strava API 应用 ID

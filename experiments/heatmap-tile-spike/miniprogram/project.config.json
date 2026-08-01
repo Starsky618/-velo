@@ -1,0 +1,13 @@
+{
+  "description": "Disposable VELO personal heatmap tile rendering spike",
+  "compileType": "miniprogram",
+  "appid": "wx8817dc514d95394a",
+  "projectname": "velo-heatmap-tile-spike",
+  "libVersion": "3.15.1",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "minified": true
+  }
+}

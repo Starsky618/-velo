@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from app.meetup import service
 from app.meetup.models import Meetup, MeetupActivity, MeetupMedia, MeetupParticipant
@@ -174,6 +175,28 @@ def test_delete_user_purges_all_personal_data(db, test_user, monkeypatch):
     assert "202606/ride.gpx" in deleted_files  # 活动 GPX 文件被收集并清理
     # 挂在被删活动上的"脏"突破事件也必须被清掉（否则 activity_id RESTRICT 外键会挡住删活动）
     assert db.query(BreakthroughEvent).filter(BreakthroughEvent.id == dirty_bt_id).first() is None
+
+
+def test_delete_user_succeeds_when_heatmap_volume_cleanup_needs_retry(db, test_user):
+    from app.user.models import User
+    from app.user.service import delete_user
+
+    user_id = test_user.id
+    with (
+        patch("app.user.service.invalidate_heatmap_cache"),
+        patch(
+            "app.heatmap_web.service.purge_user_tile_artifacts",
+            side_effect=OSError("volume unavailable"),
+        ),
+        patch(
+            "app.heatmap_web.service.enqueue_user_artifact_purge",
+            return_value=True,
+        ) as retry,
+    ):
+        delete_user(db, user_id)
+
+    assert db.query(User).filter(User.id == user_id).first() is None
+    retry.assert_called_once_with(user_id)
 
 
 def test_delete_user_removes_manual_route_save_tombstones(db, test_user, monkeypatch):

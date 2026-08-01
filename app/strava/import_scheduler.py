@@ -597,7 +597,7 @@ def _run_tier2(
     if not is_duplicate:
         try:
             from app.user.service_social import invalidate_heatmap_cache
-            invalidate_heatmap_cache(activity.user_id)
+            invalidate_heatmap_cache(activity.user_id, prewarm=True)
         except Exception:
             logger.exception("heatmap cache invalidation failed activity_id=%s", activity.id)
 

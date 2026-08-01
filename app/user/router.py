@@ -14,7 +14,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.activity import schemas as activity_schemas
@@ -238,16 +238,15 @@ def get_my_heatmap(
     city 参数：
     - 不传 → 返回该用户所有 completed activities 的轨迹（不按起点城市筛 / response.city = None）。
       前端"全部"视图走这条路径——一次性看用户在所有城市的足迹。
-    - 传枚举值（6 主城 + unknown）→ 保留旧行为：按 simplified_track 起点城市筛。
+    - 传枚举值（6 主城 + unknown）→ 按 Activity.city 筛；历史 NULL 从首个原始 Trackpoint 推断。
 
     返回 tracks: list[list[[lon, lat]]]（保留 activity 边界；card/full 每个 activity 一条，
     viewport 可因进出视野裁成多段；前端画 polyline）
-    + activity_count（card/full 与 tracks 长度一致；viewport 为当前视野实际渲染的骑行数，
-    一条骑行裁成多段时可小于 tracks 长度）。
+    + activity_count（去重后的实际骑行数；轨迹断档会切成多段，因此 tracks 可多于骑行数）。
 
     year 可选，按北京时间自然年筛；detail=card/full 控制个人页与全屏总览的数据预算。
     detail=viewport 时必须同时传 west/south/east/north/zoom，只返回当前地图视野的高精度轨迹。
-    总览与高精度源层缓存 1h；视野结果缓存 15min、每用户最多 12 份，city/year/detail 互相隔离。
+    版本化总览源缓存 7 天、PNG 瓦片 24h；矢量降级视野缓存 15min，city/year/detail 互相隔离。
     """
     if detail == schemas.HeatmapDetail.viewport and None in (west, south, east, north, zoom):
         raise HTTPException(status_code=422, detail="viewport detail requires west/south/east/north/zoom")
@@ -258,6 +257,7 @@ def get_my_heatmap(
             city.value if city else None,
             year,
             detail.value,
+            include_private=True,
             west=west,
             south=south,
             east=east,
@@ -266,6 +266,85 @@ def get_my_heatmap(
         )
     except service.InvalidHeatmapViewport as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.HeatmapSnapshotChanged as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="热图数据正在更新，请稍后重试",
+            headers={"Retry-After": "1"},
+        ) from exc
+
+
+@router.get(
+    "/me/heatmap/tiles/manifest",
+    response_model=schemas.HeatmapTileManifestResponse,
+)
+def get_my_heatmap_tile_manifest(
+    year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
+    min_zoom: int = Query(default=11, ge=3, le=18),
+    max_zoom: int = Query(default=18, ge=3, le=18),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """返回 owner 热图完整瓦片清单；后台据此预生成，不按城市方块盲目铺满。"""
+    try:
+        return service.get_user_heatmap_tile_manifest(
+            db,
+            user_id,
+            year=year,
+            include_private=True,
+            min_zoom=min_zoom,
+            max_zoom=max_zoom,
+        )
+    except service.InvalidHeatmapTile as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.HeatmapSnapshotChanged as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="热图数据正在更新，请稍后重试",
+            headers={"Retry-After": "1"},
+        ) from exc
+
+
+@router.get("/me/heatmap/tiles/{zoom}/{x}/{y}.png")
+def get_my_heatmap_tile(
+    zoom: int,
+    x: int,
+    y: int,
+    year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
+    color: str = Query(default="orange"),
+    version: str | None = Query(
+        default=None,
+        alias="v",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    ),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """当前用户的透明热力图瓦片；v 只用于客户端/HTTP 缓存版本隔离。"""
+    try:
+        content = service.get_user_heatmap_tile(
+            db, user_id, zoom, x, y, year=year, color=color, include_private=True
+        )
+    except service.InvalidHeatmapTile as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.HeatmapSnapshotChanged as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="热图数据正在更新，请稍后重试",
+            headers={"Retry-After": "1"},
+        ) from exc
+    return Response(
+        content=content,
+        media_type="image/png",
+        headers={
+            "Cache-Control": (
+                "private, max-age=86400" if version is not None else "private, no-store"
+            ),
+            "Vary": "Authorization",
+        },
+    )
 
 
 @router.get("/me/city-medals", response_model=schemas.CityMedalsResponse)
@@ -564,11 +643,11 @@ def get_user_heatmap_for_others(
 
     city 可选（D30 v3 polish / 同 /me/heatmap）：
     - 不传 → 看 ta 全部足迹（不按起点城市筛 / response.city = None）。
-    - 传枚举值 → 按 simplified_track 起点城市筛。
+    - 传枚举值 → 按 Activity.city 筛；历史 NULL 从首个原始 Trackpoint 推断。
 
     user 不存在 → service.get_user_by_id 抛 ValueError → 翻译为 404
     （跟 L220-223 /{user_id}/profile 同 pattern / Claude 综合审 Critical-1 验证后修）。
-    缓存策略同 /me/heatmap：总览/源层 1h，视野结果 15min 且每用户最多 12 份。
+    缓存策略同 /me/heatmap：版本化总览源 7 天、PNG 瓦片 24h，矢量降级视野 15min。
     """
     try:
         service.get_user_by_id(db, user_id)
@@ -583,6 +662,7 @@ def get_user_heatmap_for_others(
             city.value if city else None,
             year,
             detail.value,
+            include_private=requester_user_id == user_id,
             west=west,
             south=south,
             east=east,
@@ -591,6 +671,68 @@ def get_user_heatmap_for_others(
         )
     except service.InvalidHeatmapViewport as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.HeatmapSnapshotChanged as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="热图数据正在更新，请稍后重试",
+            headers={"Retry-After": "1"},
+        ) from exc
+
+
+@router.get("/{user_id}/heatmap/tiles/{zoom}/{x}/{y}.png")
+def get_user_heatmap_tile_for_others(
+    user_id: int,
+    zoom: int,
+    x: int,
+    y: int,
+    year: int | None = Query(default=None, ge=2000, le=datetime.now(timezone.utc).year),
+    color: str = Query(default="orange"),
+    version: str | None = Query(
+        default=None,
+        alias="v",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    ),
+    requester_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """看他人热图使用同一套栅格瓦片合同。"""
+    try:
+        service.get_user_by_id(db, user_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    try:
+        content = service.get_user_heatmap_tile(
+            db,
+            user_id,
+            zoom,
+            x,
+            y,
+            year=year,
+            color=color,
+            include_private=requester_user_id == user_id,
+        )
+    except service.InvalidHeatmapTile as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.HeatmapSnapshotChanged as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="热图数据正在更新，请稍后重试",
+            headers={"Retry-After": "1"},
+        ) from exc
+    return Response(
+        content=content,
+        media_type="image/png",
+        headers={
+            "Cache-Control": (
+                "private, max-age=86400"
+                if version is not None and requester_user_id == user_id
+                else "private, no-store"
+            ),
+            "Vary": "Authorization",
+        },
+    )
 
 
 @router.get("/{user_id}/city-medals", response_model=schemas.CityMedalsResponse)

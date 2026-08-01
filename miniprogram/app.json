@@ -13,6 +13,7 @@
     "pages/segment-efforts/segment-efforts",
     "pages/training-calendar/training-calendar",
     "pages/training-distribution/training-distribution",
+    "pages/heatmap-web/heatmap-web",
     "pages/heatmap/heatmap",
     "pages/route-map/route-map",
     "pages/route-list/route-list",

@@ -9,6 +9,8 @@ v5 task-2.C.2 余下 3 函数测试：heatmap / update_user_city / profile_for_o
 
 import json
 import os
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -27,7 +29,9 @@ from app.user.service import (
     update_user_city,
 )
 from app.user.service_social import (
+    _acquire_redis_build_lease,
     _claim_heatmap_source_build,
+    _delete_heatmap_key_if_generation_current,
     _heatmap_cache_generation,
     _decode_heatmap_cache,
     _encode_heatmap_cache,
@@ -94,7 +98,12 @@ def _cleanup_redis(redis_client, user_id: int):
     redis_client.delete(f"heatmap:generation:user_{user_id}")
     for prefix in (
         "heatmap:v5:user_", "heatmap:v4:user_", "heatmap:v3:user_", "heatmap:v2:user_",
-        "heatmap:user_", "power_curve:user_",
+        "heatmap:vector:v3:user_", "heatmap:vector:lru:v1:user_",
+        "heatmap:vector:v2:user_", "heatmap:raster:v2:user_",
+        "heatmap:raster:v2:source:user_",
+        "heatmap:detail:v1:user_",
+        "heatmap:user_", "heatmap:vector:v1:user_", "heatmap:raster:v1:user_",
+        "heatmap:raster:v1:source:user_", "power_curve:user_",
     ):
         redis_client.delete(f"{prefix}{user_id}")
         for key in redis_client.scan_iter(match=f"{prefix}{user_id}:*"):
@@ -118,7 +127,12 @@ def _make_user(db, suffix: str, city=None) -> User:
 def _make_activity_in_beijing(
     db, user: User, suffix: str, started_at: datetime, distance: float = 1000.0
 ) -> Activity:
-    """构造一条 simplified_track 起点在北京的活动（39.9N / 116.4E 是天安门附近）。"""
+    """构造一条带原始 Trackpoint 的北京活动（视野热图不再依赖 simplified_track）。"""
+    points = [
+        {"lat": 39.9, "lon": 116.4, "ele": 50.0},
+        {"lat": 39.91, "lon": 116.41, "ele": 52.0},
+        {"lat": 39.92, "lon": 116.42, "ele": 53.0},
+    ]
     activity = Activity(
         user_id=user.id,
         title=f"{_PREFIX} {suffix}",
@@ -130,15 +144,21 @@ def _make_activity_in_beijing(
         finished_at=started_at + timedelta(seconds=1800),
         data_source="gpx",
         activity_type="cycling",
-        simplified_track=[
-            {"lat": 39.9, "lon": 116.4, "ele": 50.0},
-            {"lat": 39.91, "lon": 116.41, "ele": 52.0},
-            {"lat": 39.92, "lon": 116.42, "ele": 53.0},
-        ],
+        simplified_track=points,
         avg_power=180.0,
     )
     db.add(activity)
     db.flush()
+    for seq, point in enumerate(points):
+        db.add(Trackpoint(
+            activity_id=activity.id,
+            seq=seq,
+            timestamp=started_at + timedelta(seconds=seq * 40),
+            longitude=point["lon"],
+            latitude=point["lat"],
+            elevation=point["ele"],
+            geom=WKTElement(f"POINT({point['lon']} {point['lat']})", srid=4326),
+        ))
     return activity
 
 
@@ -150,8 +170,13 @@ def _this_month_utc() -> datetime:
 def _make_activity_in_shanghai(
     db, user: User, suffix: str, started_at: datetime, distance: float = 1000.0
 ) -> Activity:
-    """构造一条 simplified_track 起点在上海的活动（31.2N / 121.5E 是上海市区核心圈）。
+    """构造一条带原始 Trackpoint 的上海活动（31.2N / 121.5E 是上海市区核心圈）。
     用于 v3 polish 跨城市测试 —— city is None 时该活动也应入选。"""
+    points = [
+        {"lat": 31.20, "lon": 121.47, "ele": 5.0},
+        {"lat": 31.21, "lon": 121.48, "ele": 5.5},
+        {"lat": 31.22, "lon": 121.49, "ele": 6.0},
+    ]
     activity = Activity(
         user_id=user.id,
         title=f"{_PREFIX} {suffix}",
@@ -163,15 +188,21 @@ def _make_activity_in_shanghai(
         finished_at=started_at + timedelta(seconds=1800),
         data_source="gpx",
         activity_type="cycling",
-        simplified_track=[
-            {"lat": 31.20, "lon": 121.47, "ele": 5.0},
-            {"lat": 31.21, "lon": 121.48, "ele": 5.5},
-            {"lat": 31.22, "lon": 121.49, "ele": 6.0},
-        ],
+        simplified_track=points,
         avg_power=170.0,
     )
     db.add(activity)
     db.flush()
+    for seq, point in enumerate(points):
+        db.add(Trackpoint(
+            activity_id=activity.id,
+            seq=seq,
+            timestamp=started_at + timedelta(seconds=seq * 40),
+            longitude=point["lon"],
+            latitude=point["lat"],
+            elevation=point["ele"],
+            geom=WKTElement(f"POINT({point['lon']} {point['lat']})", srid=4326),
+        ))
     return activity
 
 
@@ -368,14 +399,131 @@ class TestGetUserHeatmap:
                 return self.cached
 
         redis = FakeRedis()
-        is_builder, waited = _claim_heatmap_source_build(redis, "source", 3)
+        is_builder, waited, lease = _claim_heatmap_source_build(redis, "source", 3)
         assert is_builder is True
         assert waited is None
+        assert lease is not None
+        lease.release()
 
         redis.cached = _encode_heatmap_cache(source, generation=3)
-        is_builder, waited = _claim_heatmap_source_build(redis, "source", 3)
+        is_builder, waited, lease = _claim_heatmap_source_build(redis, "source", 3)
         assert is_builder is False
         assert waited == source
+        assert lease is None
+
+    def test_build_lease_renews_until_release(self, real_redis):
+        key = "heatmap:test:renewing-lease"
+        real_redis.delete(key)
+        lease = _acquire_redis_build_lease(real_redis, key, 3)
+        assert lease is not None
+        lease.start()
+        try:
+            time.sleep(3.5)
+            assert real_redis.get(key) is not None
+        finally:
+            lease.release()
+        assert real_redis.get(key) is None
+        assert lease._thread is not None
+        assert not lease._thread.is_alive()
+
+    def test_build_lease_blackhole_timeout_does_not_leave_renew_thread(self):
+        class Pool:
+            connection_kwargs = {
+                "socket_connect_timeout": 0.05,
+                "socket_timeout": 0.05,
+            }
+
+        class BoundedBlackholeRedis:
+            connection_pool = Pool()
+
+            def __init__(self):
+                self.eval_started = threading.Event()
+
+            def set(self, *_args, **_kwargs):
+                return True
+
+            def eval(self, *_args, **_kwargs):
+                self.eval_started.set()
+                time.sleep(0.15)
+                raise TimeoutError("simulated bounded Redis blackhole")
+
+        redis = BoundedBlackholeRedis()
+        lease = _acquire_redis_build_lease(redis, "heatmap:test:blackhole", 0.3)
+        assert lease is not None
+        lease.start()
+        assert redis.eval_started.wait(timeout=1.2)
+
+        started = time.monotonic()
+        lease.release()
+
+        assert time.monotonic() - started < 0.8
+        assert lease._thread is not None
+        assert not lease._thread.is_alive()
+
+    def test_release_does_not_stack_second_eval_when_client_ignores_timeout(self):
+        class Pool:
+            connection_kwargs = {
+                "socket_connect_timeout": 0.05,
+                "socket_timeout": 0.05,
+            }
+
+        class NonCompliantRedis:
+            connection_pool = Pool()
+
+            def __init__(self):
+                self.eval_calls = 0
+                self.eval_started = threading.Event()
+                self.unblock = threading.Event()
+
+            def set(self, *_args, **_kwargs):
+                return True
+
+            def eval(self, *_args, **_kwargs):
+                self.eval_calls += 1
+                self.eval_started.set()
+                self.unblock.wait(timeout=2)
+                return 0
+
+        redis = NonCompliantRedis()
+        lease = _acquire_redis_build_lease(redis, "heatmap:test:stuck-client", 0.3)
+        assert lease is not None
+        lease.start()
+        assert redis.eval_started.wait(timeout=1.2)
+
+        lease.release()
+
+        assert redis.eval_calls == 1
+        assert lease._thread is not None
+        assert lease._thread.is_alive()
+        redis.unblock.set()
+        lease._thread.join(timeout=0.5)
+        assert not lease._thread.is_alive()
+
+    def test_production_heatmap_redis_client_has_bounded_socket_timeouts(self):
+        from app.queue import heatmap_redis_conn
+
+        connection_kwargs = heatmap_redis_conn.connection_pool.connection_kwargs
+        assert connection_kwargs["socket_connect_timeout"] == 1.0
+        assert connection_kwargs["socket_timeout"] == 1.0
+        assert connection_kwargs["retry_on_timeout"] is False
+
+    def test_stale_invalidator_cannot_delete_new_generation_key(self, real_redis):
+        user_id = 987654321
+        generation_key = f"heatmap:generation:user_{user_id}"
+        cache_key = f"heatmap:vector:v2:user_{user_id}:g2:test"
+        real_redis.set(generation_key, 2)
+        real_redis.set(cache_key, "current")
+        try:
+            assert _delete_heatmap_key_if_generation_current(
+                real_redis, user_id, 1, cache_key
+            ) == 0
+            assert real_redis.get(cache_key) is not None
+            assert _delete_heatmap_key_if_generation_current(
+                real_redis, user_id, 2, cache_key
+            ) == 1
+            assert real_redis.get(cache_key) is None
+        finally:
+            real_redis.delete(generation_key, cache_key)
 
     def test_invalid_tracks_do_not_consume_global_preview_budget(self):
         invalid = [
@@ -428,6 +576,44 @@ class TestGetUserHeatmap:
             _cleanup_db(db)
             db.close()
 
+    def test_redis_outage_falls_back_to_postgres_for_meta(
+        self, pg_session_factory, real_redis
+    ):
+        class BrokenRedis:
+            def get(self, *_args, **_kwargs):
+                raise ConnectionError("redis unavailable")
+
+            def set(self, *_args, **_kwargs):
+                raise ConnectionError("redis unavailable")
+
+            def setex(self, *_args, **_kwargs):
+                raise ConnectionError("redis unavailable")
+
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "redis_outage")
+            _make_activity_in_beijing(db, user, "raw fallback", _this_month_utc())
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            with patch(
+                "app.user.service_social._get_redis_client",
+                return_value=BrokenRedis(),
+            ):
+                result = get_user_heatmap(db, user_id, None, None, "meta")
+
+            assert result["activity_count"] == 1
+            assert result["tracks"] == []
+            assert len(result["all_points"]) == 2
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
+            _cleanup_db(db)
+            db.close()
+
     def test_aggregates_tracks_preserving_activity_boundary(self, pg_session_factory, real_redis):
         """北京 2 活动各自一条独立轨迹（D27 v2 polish / 保留 activity 边界）。"""
         db = pg_session_factory()
@@ -445,9 +631,11 @@ class TestGetUserHeatmap:
             # 2 活动 → 2 条独立轨迹（不再扁平合并）
             assert result["activity_count"] == 2
             assert len(result["tracks"]) == 2
-            # 每条轨迹各 3 个点
-            assert len(result["tracks"][0]) == 3
-            assert len(result["tracks"][1]) == 3
+            # 三点完全共线时允许按屏幕精度收成首尾两点；两次活动仍不能互相连线。
+            assert len(result["tracks"][0]) >= 2
+            assert len(result["tracks"][1]) >= 2
+            assert result["tracks"][0][0] == [116.4, 39.9]
+            assert result["tracks"][0][-1] == [116.42, 39.92]
             # 验证 GeoJSON 顺序 [lon, lat]
             first_point = result["tracks"][0][0]
             assert first_point[0] > 100  # lon 在中国是 73-135
@@ -492,9 +680,14 @@ class TestGetUserHeatmap:
             _cleanup_redis(real_redis, user_id)
 
             first = get_user_heatmap(db, user_id, "beijing")
-            cached_raw = real_redis.get(
-                f"heatmap:v5:user_{user_id}:detail_full:city_beijing:year_all"
-            )
+            cached_keys = list(real_redis.scan_iter(
+                match=(
+                    f"heatmap:v5:user_{user_id}:detail_full:data_*:"
+                    "city_beijing:year_all*"
+                )
+            ))
+            assert len(cached_keys) == 1
+            cached_raw = real_redis.get(cached_keys[0])
             assert cached_raw is not None
 
             second = get_user_heatmap(db, user_id, "beijing")
@@ -549,16 +742,20 @@ class TestGetUserHeatmap:
             # 走无 city / 全年份 / full 路径
             get_user_heatmap(db, user_id, None)
 
-            no_city_key = f"heatmap:v5:user_{user_id}:detail_full:year_all"
-            assert real_redis.get(no_city_key) is not None, (
-                f"期望 cache key {no_city_key} 存在"
-            )
+            no_city_keys = list(real_redis.scan_iter(match=(
+                f"heatmap:v5:user_{user_id}:detail_full:data_*:year_all*"
+            )))
+            assert len(no_city_keys) == 1
+            no_city_key = no_city_keys[0]
+            assert real_redis.get(no_city_key) is not None
 
             get_user_heatmap(db, user_id, None, _this_month_utc().astimezone(_BJ_TZ).year, "card")
-            card_year_key = (
-                f"heatmap:v5:user_{user_id}:detail_card:"
-                f"year_{_this_month_utc().astimezone(_BJ_TZ).year}"
-            )
+            card_year_keys = list(real_redis.scan_iter(match=(
+                f"heatmap:v5:user_{user_id}:detail_card:data_*:"
+                f"year_{_this_month_utc().astimezone(_BJ_TZ).year}*"
+            )))
+            assert len(card_year_keys) == 1
+            card_year_key = card_year_keys[0]
             assert real_redis.get(card_year_key) is not None
             assert card_year_key != no_city_key
         finally:
@@ -567,7 +764,7 @@ class TestGetUserHeatmap:
             _cleanup_db(db)
             db.close()
 
-    def test_viewport_detail_filters_tracks_and_uses_bucketed_cache(self, pg_session_factory, real_redis):
+    def test_viewport_detail_filters_raw_tracks_and_reuses_exact_view_cache(self, pg_session_factory, real_redis):
         db = pg_session_factory()
         user_id = None
         try:
@@ -595,27 +792,32 @@ class TestGetUserHeatmap:
             assert first["activity_count"] == 1
             assert len(first["tracks"]) == 1
             assert 116 < first["tracks"][0][0][0] < 117
-            cached_keys = list(real_redis.scan_iter(match=f"heatmap:v5:user_{user_id}:detail_viewport:*"))
+            cached_keys = list(real_redis.scan_iter(match=f"heatmap:vector:v3:user_{user_id}:*"))
             assert len(cached_keys) == 1
 
-            source_key = f"heatmap:v5:user_{user_id}:detail_viewport_source:year_all"
-            assert real_redis.get(source_key).startswith(b"z1:")
-
-            with patch.object(db, "query", side_effect=AssertionError("source cache should avoid PostgreSQL")):
+            # 每次请求会用一次廉价聚合查询核对活动集合，但精确
+            # viewport 命中后不应再扫原始 Trackpoint 构建几何。
+            with patch(
+                "app.user.service_heatmap_tiles._get_overview_segments_cached",
+                side_effect=AssertionError(
+                    "exact view cache should avoid raw Trackpoint rebuild"
+                ),
+            ):
                 second = get_user_heatmap(
                     db,
                     user_id,
                     None,
                     None,
                     "viewport",
-                    west=116.32,
+                    west=116.22,
                     south=39.72,
-                    east=116.68,
+                    east=116.58,
                     north=40.08,
                     zoom=10,
                 )
             assert second["activity_count"] == 1
-            assert len(list(real_redis.scan_iter(match=f"heatmap:v5:user_{user_id}:detail_viewport:*"))) == 2
+            assert second == first
+            assert len(list(real_redis.scan_iter(match=f"heatmap:vector:v3:user_{user_id}:*"))) == 1
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -639,6 +841,156 @@ class TestGetUserHeatmap:
             assert result["selected_year"] == 2025
             assert result["available_years"] == [2026, 2025]
             assert result["activity_count"] == 1
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
+            _cleanup_db(db)
+            db.close()
+
+    def test_meta_returns_two_bounds_without_client_track_payload(self, pg_session_factory, real_redis):
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "meta_bounds")
+            _make_activity_in_beijing(db, user, "bj", _this_month_utc())
+            _make_activity_in_shanghai(db, user, "sh", _this_month_utc())
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            result = get_user_heatmap(db, user_id, None, None, "meta")
+
+            assert result["activity_count"] == 2
+            assert result["tracks"] == []
+            assert len(result["focus_points"]) == 2
+            assert len(result["all_points"]) == 2
+            assert result["all_points"][0][0] < 117
+            assert result["all_points"][1][0] > 121
+            cached_keys = list(real_redis.scan_iter(match=(
+                f"heatmap:v5:user_{user_id}:detail_meta:data_*:year_all*"
+            )))
+            assert len(cached_keys) == 1
+            cached = real_redis.get(cached_keys[0])
+            assert cached is not None
+            assert len(cached) < 1024
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
+            _cleanup_db(db)
+            db.close()
+
+    def test_database_fingerprint_fences_deleted_public_activity_when_redis_invalidation_fails(
+        self,
+        pg_session_factory,
+        real_redis,
+    ):
+        """Redis generation 未变也不能复活已删除的默认公开活动。"""
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "delete_fingerprint")
+            first_activity = _make_activity_in_beijing(
+                db,
+                user,
+                "delete fingerprint first",
+                _this_month_utc(),
+            )
+            _make_activity_in_beijing(
+                db,
+                user,
+                "delete fingerprint second",
+                _this_month_utc(),
+            )
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            before = get_user_heatmap(
+                db,
+                user_id,
+                None,
+                None,
+                "meta",
+                include_private=False,
+            )
+            generation_before = before["generation"]
+            version_before = before["cache_version"]
+            assert before["activity_count"] == 2
+
+            # 故意不调 invalidate_heatmap_cache，模拟 Redis 失效命令失败。
+            db.delete(first_activity)
+            db.commit()
+
+            after = get_user_heatmap(
+                db,
+                user_id,
+                None,
+                None,
+                "meta",
+                include_private=False,
+            )
+
+            assert after["activity_count"] == 1
+            assert after["generation"] == generation_before
+            assert after["cache_version"] != version_before
+            cache_keys = list(real_redis.scan_iter(match=(
+                f"heatmap:v5:user_{user_id}:detail_meta:data_*:audience_public:*"
+            )))
+            assert len(cache_keys) == 2
+        finally:
+            if user_id is not None:
+                _cleanup_redis(real_redis, user_id)
+            _cleanup_db(db)
+            db.close()
+
+    def test_all_overview_details_ignore_corrupted_simplified_track(
+        self, pg_session_factory, real_redis
+    ):
+        """meta/card/full 都以原始 Trackpoint 为真值，发布兼容期也不能复活坏直线。"""
+        db = pg_session_factory()
+        user_id = None
+        try:
+            _cleanup_db(db)
+            user = _make_user(db, "raw_overview")
+            activity = _make_activity_in_beijing(
+                db,
+                user,
+                "raw geometry",
+                _this_month_utc(),
+            )
+            activity.simplified_track = [
+                {"lon": 0.0, "lat": 0.0},
+                {"lon": 80.0, "lat": 50.0},
+            ]
+            db.flush()
+            middle = (
+                db.query(Trackpoint)
+                .filter(Trackpoint.activity_id == activity.id, Trackpoint.seq == 1)
+                .one()
+            )
+            middle.latitude = 39.912
+            middle.geom = WKTElement("POINT(116.41 39.912)", srid=4326)
+            db.commit()
+            user_id = user.id
+            _cleanup_redis(real_redis, user_id)
+
+            meta = get_user_heatmap(db, user_id, None, None, "meta")
+            card = get_user_heatmap(db, user_id, None, None, "card")
+            full = get_user_heatmap(db, user_id, None, None, "full")
+
+            assert meta["all_points"][0][0] > 116
+            assert meta["all_points"][0][1] > 39
+            for result in (card, full):
+                flattened = [point for track in result["tracks"] for point in track]
+                assert flattened
+                assert all(point[0] > 116 and point[1] > 39 for point in flattened)
+                assert [116.41, 39.912] in flattened
+            source_keys = list(real_redis.scan_iter(
+                match=f"heatmap:raster:v2:source:user_{user_id}:*"
+            ))
+            assert len(source_keys) == 1
         finally:
             if user_id is not None:
                 _cleanup_redis(real_redis, user_id)
@@ -733,6 +1085,7 @@ class TestUpdateUserCity:
             generation_key = f"heatmap:generation:user_{user_id}"
             generation_before = int(real_redis.get(generation_key) or 0)
             keys = [
+                f"heatmap:v5:user_{user_id}:detail_meta:year_all",
                 f"heatmap:v5:user_{user_id}:detail_full:year_all",
                 f"heatmap:v5:user_{user_id}:detail_card:year_2026",
                 f"heatmap:v5:user_{user_id}:detail_viewport_source:year_all",
@@ -746,15 +1099,28 @@ class TestUpdateUserCity:
             ]
             for key in keys:
                 real_redis.set(key, "cached")
+            derived_keys = [
+                f"heatmap:vector:v3:user_{user_id}:g{generation_before}:year_all:test",
+                f"heatmap:vector:v2:user_{user_id}:g{generation_before}:year_all:test",
+                f"heatmap:raster:v2:user_{user_id}:g{generation_before}:year_all:test",
+                f"heatmap:raster:v2:source:user_{user_id}:g{generation_before}:year_all:test",
+                f"heatmap:vector:v1:user_{user_id}:g{generation_before}:year_all:test",
+                f"heatmap:raster:v1:user_{user_id}:g{generation_before}:year_all:test",
+                f"heatmap:raster:v1:source:user_{user_id}:g{generation_before}:year_all:test",
+            ]
+            for key in derived_keys:
+                real_redis.set(key, "cached")
             assert all(real_redis.get(key) is not None for key in keys)
 
             # 改 city → 应清缓存
             update_user_city(db, user_id, "shanghai")
             assert all(real_redis.get(key) is None for key in keys)
+            assert all(real_redis.get(key) is None for key in derived_keys)
             generation_after = generation_before + 1
             assert int(real_redis.get(generation_key)) == generation_after
 
-            # generation 非零后 card/full/viewport 三条真实路径都能重建，且使用新代 key。
+            # generation 非零后 meta/card/full/viewport 四条真实路径都能重建，且使用新代 key。
+            meta = get_user_heatmap(db, user_id, None, None, "meta")
             card = get_user_heatmap(db, user_id, None, None, "card")
             full = get_user_heatmap(db, user_id, None, None, "full")
             viewport = get_user_heatmap(
@@ -769,9 +1135,14 @@ class TestUpdateUserCity:
                 north=40.2,
                 zoom=10,
             )
+            assert meta["activity_count"] == 1
             assert card["activity_count"] == 1
             assert full["activity_count"] == 1
             assert viewport["activity_count"] == 1
+            assert all(
+                result["generation"] == generation_after
+                for result in (meta, card, full, viewport)
+            )
             new_keys = list(real_redis.scan_iter(match=f"heatmap:v5:user_{user_id}:*"))
             assert new_keys
             assert all(f"generation_{generation_after}".encode() in key for key in new_keys)

@@ -162,6 +162,30 @@ def test_heatmap_passes_year_and_detail_to_service(client, auth_header):
         assert mock_svc.call_args.args[3:] == (2025, "card")
 
 
+def test_heatmap_meta_returns_only_bounds_and_passes_meta_detail(client, auth_header):
+    fake_result = {
+        "city": None,
+        "tracks": [],
+        "activity_count": 293,
+        "generation": 7,
+        "available_years": [2026, 2025],
+        "selected_year": None,
+        "focus_points": [[112.4, 37.6], [112.8, 38.0]],
+        "all_points": [[110.0, 30.0], [121.0, 40.0]],
+    }
+    with patch("app.user.router.service.get_user_heatmap", return_value=fake_result) as mock_svc:
+        resp = client.get("/api/user/me/heatmap?detail=meta", headers=auth_header)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["tracks"] == []
+    assert body["activity_count"] == 293
+    assert body["generation"] == 7
+    assert len(body["focus_points"]) == 2
+    assert len(body["all_points"]) == 2
+    assert mock_svc.call_args.args[3:] == (None, "meta")
+
+
 def test_heatmap_rejects_invalid_year_and_detail(client, auth_header):
     assert client.get(
         "/api/user/me/heatmap?year=1999",
@@ -190,6 +214,7 @@ def test_heatmap_viewport_requires_bounds_and_passes_visible_region(client, auth
     assert resp.status_code == 200
     assert mock_svc.call_args.args[4] == "viewport"
     assert mock_svc.call_args.kwargs == {
+        "include_private": True,
         "west": 112.3,
         "south": 37.5,
         "east": 112.8,
@@ -216,6 +241,158 @@ def test_heatmap_only_translates_expected_viewport_errors_to_422(client, auth_he
     with patch("app.user.router.service.get_user_heatmap", side_effect=ValueError("corrupt cache")):
         with pytest.raises(ValueError, match="corrupt cache"):
             client.get(url, headers=auth_header)
+
+
+def test_heatmap_tile_requires_auth_and_returns_private_png(client, auth_header):
+    url = (
+        "/api/user/me/heatmap/tiles/12/3328/1582.png"
+        "?color=red&year=2025&v=g7-d0123456789abcdef"
+    )
+    assert client.get(url).status_code == 401
+
+    with patch("app.user.router.service.get_user_heatmap_tile", return_value=b"png") as mock_tile:
+        response = client.get(url, headers=auth_header)
+
+    assert response.status_code == 200
+    assert response.content == b"png"
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "private, max-age=86400"
+    assert response.headers["vary"] == "Authorization"
+    assert mock_tile.call_args.args[1:] == (1, 12, 3328, 1582)
+    assert mock_tile.call_args.kwargs == {
+        "year": 2025,
+        "color": "red",
+        "include_private": True,
+    }
+
+
+def test_heatmap_tile_manifest_requires_auth_and_returns_track_coverage(
+    client, auth_header
+):
+    url = "/api/user/me/heatmap/tiles/manifest?min_zoom=11&max_zoom=18"
+    assert client.get(url).status_code == 401
+
+    payload = {
+        "generation": 7,
+        "cache_version": "g7-d0123456789abcdef",
+        "min_zoom": 11,
+        "max_zoom": 18,
+        "tile_count": 2,
+        "activity_count": 293,
+        "center": {"longitude": 112.56, "latitude": 37.85},
+        "available_years": [2026, 2025],
+        "focus_points": [[112.4, 37.7], [112.7, 38.0]],
+        "all_points": [[110.0, 35.0], [118.0, 41.0]],
+        "tiles": {"11": [[1664, 791]], "18": [[213000, 101300]]},
+    }
+    with patch(
+        "app.user.router.service.get_user_heatmap_tile_manifest",
+        return_value=payload,
+    ) as mock_manifest:
+        response = client.get(url, headers=auth_header)
+
+    assert response.status_code == 200
+    assert response.json() == payload
+    assert mock_manifest.call_args.args[1] == 1
+    assert mock_manifest.call_args.kwargs == {
+        "year": None,
+        "include_private": True,
+        "min_zoom": 11,
+        "max_zoom": 18,
+    }
+
+
+def test_heatmap_tile_manifest_translates_invalid_zoom_to_422(client, auth_header):
+    with patch(
+        "app.user.router.service.get_user_heatmap_tile_manifest",
+        side_effect=service.InvalidHeatmapTile("invalid heatmap tile manifest zoom"),
+    ):
+        response = client.get(
+            "/api/user/me/heatmap/tiles/manifest?min_zoom=18&max_zoom=11",
+            headers=auth_header,
+        )
+
+    assert response.status_code == 422
+
+
+def test_other_heatmap_tile_filters_private_tracks_for_non_owner(client, auth_header):
+    with (
+        patch("app.user.router.service.get_user_by_id", return_value=object()),
+        patch("app.user.router.service.get_user_heatmap_tile", return_value=b"png") as mock_tile,
+    ):
+        response = client.get(
+            "/api/user/42/heatmap/tiles/12/3328/1582.png"
+            "?color=red&v=g7-d0123456789abcdef",
+            headers=auth_header,
+        )
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["vary"] == "Authorization"
+    assert mock_tile.call_args.kwargs["include_private"] is False
+
+
+def test_unversioned_my_heatmap_tile_is_not_cached_by_http_clients(client, auth_header):
+    with patch("app.user.router.service.get_user_heatmap_tile", return_value=b"png"):
+        response = client.get(
+            "/api/user/me/heatmap/tiles/12/3328/1582.png?color=red",
+            headers=auth_header,
+        )
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["vary"] == "Authorization"
+
+
+def test_heatmap_tile_rejects_unsafe_cache_version(client, auth_header):
+    response = client.get(
+        "/api/user/me/heatmap/tiles/12/3328/1582.png?v=../../private",
+        headers=auth_header,
+    )
+
+    assert response.status_code == 422
+
+
+def test_other_heatmap_overview_filters_private_tracks_for_non_owner(client, auth_header):
+    with (
+        patch("app.user.router.service.get_user_by_id", return_value=object()),
+        patch(
+            "app.user.router.service.get_user_heatmap",
+            return_value={
+                "city": None,
+                "tracks": [],
+                "activity_count": 0,
+                "available_years": [],
+                "selected_year": None,
+            },
+        ) as mock_heatmap,
+    ):
+        response = client.get("/api/user/42/heatmap", headers=auth_header)
+
+    assert response.status_code == 200
+    assert mock_heatmap.call_args.kwargs["include_private"] is False
+
+
+def test_heatmap_tile_only_translates_expected_tile_error(client, auth_header):
+    url = "/api/user/me/heatmap/tiles/12/3328/1582.png?color=red"
+    with patch(
+        "app.user.router.service.get_user_heatmap_tile",
+        side_effect=service.InvalidHeatmapTile("invalid heatmap tile"),
+    ):
+        assert client.get(url, headers=auth_header).status_code == 422
+
+
+def test_heatmap_snapshot_change_returns_retryable_503(client, auth_header):
+    url = "/api/user/me/heatmap/tiles/12/3328/1582.png?color=red"
+    with patch(
+        "app.user.router.service.get_user_heatmap_tile",
+        side_effect=service.HeatmapSnapshotChanged("changing"),
+    ):
+        response = client.get(url, headers=auth_header)
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "1"
+    assert response.json()["detail"] == "热图数据正在更新，请稍后重试"
 
 
 # ───────────────────────────────────────────────────────────────────────

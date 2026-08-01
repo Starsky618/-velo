@@ -12,6 +12,7 @@
  */
 
 const ROUTE_DRAW_PENDING_SAVE_PREFIX = 'route_draw_pending_save_v1:'
+const heatmapTileCache = require('./utils/heatmap-tile-cache')
 
 App({
   globalData: {
@@ -73,7 +74,7 @@ App({
           console.log('[app.login] step C: calling POST /api/user/login')
           api.post('/api/user/login', { code: loginRes.code })
             .then((data) => {
-              console.log('[app.login] step D: POST /api/user/login success', data)
+              console.log('[app.login] step D: POST /api/user/login success')
               // 第三步：存 token + userId（内存 + 本地缓存双保险）
               // userId 给 isOwner 判断用（detail 页 task-4.6 隐私入口 / 不等 profile tab 激活）
               this.globalData.token = data.token
@@ -106,6 +107,7 @@ App({
     this.globalData.token = null
     this.globalData.userId = 0
     this.globalData.userInfo = null
+    heatmapTileCache.clearAll()
     wx.removeStorageSync('token')
     wx.removeStorageSync('userId')
   },

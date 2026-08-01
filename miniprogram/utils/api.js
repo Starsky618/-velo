@@ -21,6 +21,7 @@
 // 2026-06-12 切回 https 域名（与 app.js baseUrl 同步，两处一起改）；
 // 前置 = 腾讯云安全组放行 443（详 app.js 同位置注释）
 var BASE_URL = 'https://api.weiluai.top'
+var heatmapTileCache = require('./heatmap-tile-cache')
 var DEFAULT_REQUEST_TIMEOUT_MS = 30000
 var ROUTE_SAVE_REQUEST_TIMEOUT_MS = 150000
 var FILE_DOWNLOAD_TIMEOUT_MS = 60000
@@ -50,6 +51,12 @@ function buildRequestError(statusCode, data, defaultMsg) {
     error.detail = detail
   }
   return error
+}
+
+function clearExpiredAuth(app) {
+  if (app) app.globalData.token = null
+  heatmapTileCache.clearAll()
+  wx.removeStorageSync('token')
 }
 
 /**
@@ -108,10 +115,7 @@ function request(url, method, data, timeoutMs) {
         success: function (res) {
           if (res.statusCode === 401) {
             // 清除本地 token（可能已过期）
-            if (app) {
-              app.globalData.token = null
-            }
-            wx.removeStorageSync('token')
+            clearExpiredAuth(app)
             rejectOnce(buildRequestError(401, res.data, '登录已过期，请重新登录'))
             return
           }
@@ -166,10 +170,7 @@ function requestForm(url, method, data) {
       },
       success: function (res) {
         if (res.statusCode === 401) {
-          if (app) {
-            app.globalData.token = null
-          }
-          wx.removeStorageSync('token')
+          clearExpiredAuth(app)
           reject(buildRequestError(401, res.data, '登录已过期，请重新登录'))
           return
         }
@@ -587,6 +588,11 @@ module.exports = {
 
   downloadRouteExport: function (downloadUrl, fileName) {
     return downloadFile(downloadUrl, fileName)
+  },
+
+  // 地图图片图层只需要微信临时路径；不写入 USER_DATA_PATH，避免拖图后留下大量瓦片文件。
+  downloadTemporaryFile: function (downloadUrl) {
+    return downloadFile(downloadUrl)
   },
 
   shareRouteExportFile: function (filePath, fileName) {
