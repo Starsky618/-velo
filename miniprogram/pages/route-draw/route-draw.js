@@ -2,7 +2,8 @@ const api = require('../../utils/api')
 
 const DEFAULT_CENTER = { latitude: 37.8706, longitude: 112.5489 }
 const MAX_SNAP_POINTS = 120
-const MAX_SAVE_POINTS = 500
+const TARGET_SAVE_POINTS = 500
+const MAX_SAVE_POINTS = 5000
 const MAX_DISPLAY_POINTS = 500
 const TOUCH_SAMPLE_INTERVAL_MS = 32
 const TOUCH_SAMPLE_DISTANCE_PX = 6
@@ -15,7 +16,7 @@ const SNAP_COLOR = '#FC4C02'
 const RAW_COLOR = '#FC4C02'
 const PREVIEW_COLOR = '#8E8E93'
 const PENDING_SAVE_STORAGE_PREFIX = 'route_draw_pending_save_v1:'
-const MAX_PENDING_SAVE_BYTES = 64 * 1024
+const MAX_PENDING_SAVE_BYTES = 256 * 1024
 
 var memoryPendingSave = null
 
@@ -233,6 +234,53 @@ function rdpSimplify(points, toleranceM) {
   return indices.map(function (index) { return normalized[index] })
 }
 
+function rdpSimplifyWithBudget(points, limit, toleranceM) {
+  var normalized = normalizeLonLatPoints(points)
+  if (normalized.length <= 2) {
+    return { points: normalized, remainingErrorM: 0 }
+  }
+  var kept = { 0: true }
+  kept[normalized.length - 1] = true
+  var candidates = []
+
+  function pushCandidate(start, end) {
+    if (end - start <= 1) return
+    var maxDistance = -1
+    var maxIndex = start
+    for (var index = start + 1; index < end; index += 1) {
+      var distance = pointDistanceToLine(normalized[index], normalized[start], normalized[end])
+      if (distance > maxDistance) {
+        maxDistance = distance
+        maxIndex = index
+      }
+    }
+    candidates.push({ distance: maxDistance, start: start, end: end, index: maxIndex })
+  }
+
+  pushCandidate(0, normalized.length - 1)
+  var keptCount = 2
+  while (candidates.length && keptCount < limit) {
+    var bestPosition = 0
+    for (var i = 1; i < candidates.length; i += 1) {
+      if (candidates[i].distance > candidates[bestPosition].distance) bestPosition = i
+    }
+    var best = candidates.splice(bestPosition, 1)[0]
+    if (best.distance <= toleranceM) break
+    kept[best.index] = true
+    keptCount += 1
+    pushCandidate(best.start, best.index)
+    pushCandidate(best.index, best.end)
+  }
+  var remainingErrorM = 0
+  candidates.forEach(function (candidate) {
+    remainingErrorM = Math.max(remainingErrorM, candidate.distance)
+  })
+  return {
+    points: normalized.filter(function (_, index) { return kept[index] }),
+    remainingErrorM: remainingErrorM,
+  }
+}
+
 function simplifyForSnap(points) {
   var normalized = normalizeLonLatPoints(points)
   if (normalized.length <= MAX_SNAP_POINTS) return normalized
@@ -252,12 +300,9 @@ function simplifyForSnap(points) {
 
 function simplifyForSave(points) {
   var normalized = normalizeLonLatPoints(points)
-  if (normalized.length <= MAX_SAVE_POINTS) return normalized
-  var tolerances = [5, 10, 20, 40, 80]
-  for (var i = 0; i < tolerances.length; i += 1) {
-    var simplified = rdpSimplify(normalized, tolerances[i])
-    if (simplified.length <= MAX_SAVE_POINTS) return simplified
-  }
+  if (normalized.length <= TARGET_SAVE_POINTS) return normalized
+  var budgeted = rdpSimplifyWithBudget(normalized, TARGET_SAVE_POINTS, 1)
+  if (budgeted.remainingErrorM <= 1) return budgeted.points
   return normalized
 }
 
@@ -991,7 +1036,6 @@ Page({
     api.snapManualDrawnRoute({
       coordinate_system: 'gcj02',
       mode: requestMode,
-      supports_detour_confirmation: true,
       points: simplifyForSnap(raw),
     }).then(function (result) {
       if (snapSeq !== that._snapSeq) return

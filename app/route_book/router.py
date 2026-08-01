@@ -14,7 +14,7 @@ import logging
 import time
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -152,6 +152,7 @@ def create_route_book_from_manual_drawn(
 @router.post("/manual-drawn/snap-preview", response_model=schemas.ManualDrawnSnapPreviewResponse)
 def preview_manual_drawn_snap(
     payload: schemas.ManualDrawnSnapPreviewRequest,
+    detour_confirmation: str | None = Header(None, alias="X-VELO-Detour-Confirmation"),
     current_user_id: int = Depends(get_current_user),
 ):
     started_at = time.perf_counter()
@@ -169,7 +170,7 @@ def preview_manual_drawn_snap(
             mode=payload.mode,
             coordinate_system=payload.coordinate_system,
             points=payload.points,
-            supports_detour_confirmation=payload.supports_detour_confirmation,
+            supports_detour_confirmation=detour_confirmation == "1",
         )
         logger.info(
             "route_draw_snap_preview status=ready raw_point_count=%d "

@@ -110,7 +110,7 @@ def test_snap_preview_simplifies_dense_provider_geometry_before_mobile_response(
     res = client.post(
         "/api/route-books/manual-drawn/snap-preview",
         json=_snap_payload(points=[[112.5, 37.8], [112.6, 37.82]]),
-        headers=auth_header,
+        headers={**auth_header, "X-VELO-Detour-Confirmation": "1"},
     )
 
     assert res.status_code == 200
@@ -165,11 +165,8 @@ def test_snap_preview_marks_extreme_detour_for_explicit_confirmation(client, aut
     monkeypatch.setattr("app.route_book.draw_snap_service.plan_tencent_bicycling_route", fake_plan)
     res = client.post(
         "/api/route-books/manual-drawn/snap-preview",
-        json={
-            **_snap_payload(points=[[112.5, 37.8], [112.501, 37.8]]),
-            "supports_detour_confirmation": True,
-        },
-        headers=auth_header,
+        json=_snap_payload(points=[[112.5, 37.8], [112.501, 37.8]]),
+        headers={**auth_header, "X-VELO-Detour-Confirmation": "1"},
     )
 
     assert res.status_code == 200
@@ -608,7 +605,8 @@ def test_api_js_exposes_snap_manual_drawn_route_helper():
     api_js = (ROOT / "miniprogram" / "utils" / "api.js").read_text(encoding="utf-8")
 
     assert "snapManualDrawnRoute" in api_js
-    assert "return request('/api/route-books/manual-drawn/snap-preview', 'POST', payload)" in api_js
+    assert "return request('/api/route-books/manual-drawn/snap-preview', 'POST', payload" in api_js
+    assert "'X-VELO-Detour-Confirmation': '1'" in api_js
 
 
 def test_api_js_keeps_structured_snap_error_detail_readable():

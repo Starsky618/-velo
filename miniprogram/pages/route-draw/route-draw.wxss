@@ -235,7 +235,7 @@ page {
 }
 
 .elevation-state {
-  min-height: 44px;
+  min-height: 88rpx;
   margin-top: 22rpx;
   padding: 24rpx;
   border-radius: 20rpx;
@@ -279,7 +279,7 @@ page {
 
 .detour-button {
   width: 100%;
-  min-height: 88rpx;
+  min-height: 44px;
   margin: 0;
   padding: 0 18rpx;
   border-radius: 44rpx;

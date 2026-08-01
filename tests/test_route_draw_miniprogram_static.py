@@ -198,6 +198,8 @@ def test_first_marker_moves_to_the_confirmed_snapped_start():
 def test_route_draw_exposes_smart_tap_and_true_manual_pencil_modes():
     js = _read(PAGE_DIR / "route-draw.js")
     wxml = _read(PAGE_DIR / "route-draw.wxml")
+    api_js = _read(MINI / "utils" / "api.js")
+    wxss = _read(PAGE_DIR / "route-draw.wxss")
     metadata_block = js.split("function buildDrawMetadata", 1)[1].split("function screenPointFromEvent", 1)[0]
 
     assert "Manual Mode" not in wxml
@@ -205,7 +207,8 @@ def test_route_draw_exposes_smart_tap_and_true_manual_pencil_modes():
     assert 'catchtap="onTapStartSketch"' in wxml
     assert "this.startSnapPreview([lastPoint, normalized])" in js
     assert "this.startSnapPreview(raw, 'freehand')" not in js
-    assert "supports_detour_confirmation: true" in js
+    assert "supports_detour_confirmation" not in js
+    assert "'X-VELO-Detour-Confirmation': '1'" in api_js
     assert "mode: 'freehand'" in js
     assert 'bindtap="onTapAcceptDetour"' in wxml
     assert 'bindtap="onTapSketchDetour"' in wxml
@@ -214,7 +217,8 @@ def test_route_draw_exposes_smart_tap_and_true_manual_pencil_modes():
     assert "mode: 'manual'" not in js
     assert "手绘会保留原线，不再自动绕路" in wxml
     assert "松手后会自动贴到可骑行道路" not in wxml
-    assert "min-height: 44px" in _read(PAGE_DIR / "route-draw.wxss")
+    detour_button_block = wxss.split(".detour-button {", 1)[1].split("}", 1)[0]
+    assert "min-height: 44px" in detour_button_block
 
 
 def test_sketch_pencil_temporarily_takes_over_touch_and_then_restores_map():
@@ -570,7 +574,7 @@ def test_pending_save_survives_page_restart_and_replays_the_same_request_once():
                     client_request_id: 'test-oversized-pending-payload',
                     coordinate_system: 'gcj02',
                     points: [[112.5, 37.8], [112.6, 37.9]],
-                    draw_metadata: { warnings: ['x'.repeat(70 * 1024)] },
+                    draw_metadata: { warnings: ['x'.repeat(270 * 1024)] },
                   })
 
                   process.stdout.write(JSON.stringify({
@@ -698,6 +702,8 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
                 for (let i = 0; i < 620; i += 1) straight.push([112.5 + i * 0.00001, 37.8])
                 const noisy = []
                 for (let i = 0; i < 620; i += 1) noisy.push([112.5 + i * 0.00001, 37.8 + (i % 2 === 0 ? 0.02 : -0.02)])
+                const fourMeterWiggle = []
+                for (let i = 0; i < 602; i += 1) fourMeterWiggle.push([112.5 + i * 0.00001, 37.8 + (i % 2 === 0 ? 0.000036 : -0.000036)])
                 const confirmed = [[112.5, 37.8], [112.51, 37.81]]
                 const raw = [[112.52, 37.82], [112.53, 37.83]]
                 const preview = [[112.54, 37.84], [112.55, 37.85]]
@@ -711,6 +717,7 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
                 process.stdout.write(JSON.stringify({
                   straightLength: draw.simplifyForSave(straight).length,
                   noisyLength: draw.simplifyForSave(noisy).length,
+                  fourMeterWiggleLength: draw.simplifyForSave(fourMeterWiggle).length,
                   polylines: draw.buildDrawPolylines(confirmed, raw, preview).map((item) => item.role),
                   stats: draw.buildRouteStats([[112.5, 37.8], [112.51, 37.8]]),
                   readyStats: draw.buildRouteStats(
@@ -736,7 +743,8 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
     rows = json.loads(result.stdout)
 
     assert 2 <= rows["straightLength"] <= 500
-    assert rows["noisyLength"] > 500
+    assert 500 < rows["noisyLength"] <= 5000
+    assert rows["fourMeterWiggleLength"] == 602
     assert rows["polylines"] == ["confirmedPolyline", "rawPolyline", "previewPolyline"]
     assert rows["stats"]["pointCount"] == 2
     assert rows["stats"]["distanceM"] > 800

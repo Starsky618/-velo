@@ -118,7 +118,7 @@ def test_elevation_preview_returns_503_when_glo_tile_is_unavailable(
     assert "正在下载" in response.text
 
 
-def test_elevation_preview_rejects_more_than_500_points_before_dem_query(
+def test_elevation_preview_rejects_more_than_5000_points_before_dem_query(
     client, auth_header, monkeypatch
 ):
     called = False
@@ -129,7 +129,7 @@ def test_elevation_preview_rejects_more_than_500_points_before_dem_query(
         return [700.0 for _point in points]
 
     monkeypatch.setattr("app.route_book.service.query_elevations", fake_query)
-    points = [[112.5 + index * 0.00001, 37.8] for index in range(501)]
+    points = [[112.5 + index * 0.000001, 37.8] for index in range(5001)]
 
     response = client.post(
         "/api/route-books/manual-drawn/elevation-preview",
