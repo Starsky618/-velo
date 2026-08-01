@@ -3,13 +3,14 @@ const api = require('../../utils/api')
 const DEFAULT_CENTER = { latitude: 37.8706, longitude: 112.5489 }
 const MAX_SNAP_POINTS = 120
 const MAX_SAVE_POINTS = 500
-const TOUCH_SAMPLE_INTERVAL_MS = 45
-const TOUCH_SAMPLE_DISTANCE_PX = 7
+const TOUCH_SAMPLE_INTERVAL_MS = 32
+const TOUCH_SAMPLE_DISTANCE_PX = 6
 const SKETCH_AUTO_FINISH_MS = 900
-const SKETCH_LOCATION_TIMEOUT_MS = 500
-const SNAP_COLOR = '#FF9500'
-const RAW_COLOR = '#8E8E93'
-const PREVIEW_COLOR = '#30B0C7'
+const SKETCH_PREPARE_TIMEOUT_MS = 800
+const ELEVATION_PREVIEW_DEBOUNCE_MS = 400
+const SNAP_COLOR = '#FC4C02'
+const RAW_COLOR = '#FC4C02'
+const PREVIEW_COLOR = '#8E8E93'
 const PENDING_SAVE_STORAGE_PREFIX = 'route_draw_pending_save_v1:'
 const MAX_PENDING_SAVE_BYTES = 64 * 1024
 
@@ -87,8 +88,10 @@ function buildDrawPolylines(confirmedPoints, currentRawPoints, previewPoints) {
       role: 'rawPolyline',
       points: raw,
       color: RAW_COLOR,
-      width: 4,
-      dottedLine: true,
+      width: 7,
+      borderColor: '#FFFFFF',
+      borderWidth: 2,
+      dottedLine: false,
       arrowLine: false,
       level: 'abovelabels',
     })
@@ -132,17 +135,53 @@ function distanceOf(points) {
   return total
 }
 
-function buildRouteStats(points) {
+function normalizeElevationPreview(value) {
+  if (!value || typeof value !== 'object') return null
+  var climbM = Number(value.climb_m)
+  var descentM = Number(value.descent_m)
+  var profile = []
+  ;(Array.isArray(value.elevation_profile) ? value.elevation_profile : []).forEach(function (point) {
+    if (!Array.isArray(point) || point.length < 2) return
+    var distanceKm = Number(point[0])
+    var elevationM = Number(point[1])
+    if (Number.isFinite(distanceKm) && Number.isFinite(elevationM)) profile.push([distanceKm, elevationM])
+  })
+  if (!Number.isFinite(climbM) || !Number.isFinite(descentM) || profile.length < 2) return null
+  return {
+    climb_m: climbM,
+    descent_m: descentM,
+    elevation_profile: profile,
+  }
+}
+
+function geometryKey(points) {
+  return normalizeLonLatPoints(points).map(function (point) {
+    return point[0].toFixed(6) + ',' + point[1].toFixed(6)
+  }).join(';')
+}
+
+function buildRouteStats(points, elevationPreview, elevationStatus) {
   var normalized = normalizeLonLatPoints(points)
   var distanceM = distanceOf(normalized)
   var km = distanceM / 1000
   var estimatedMinutes = distanceM > 0 ? Math.max(1, Math.round(distanceM / 1000 / 20 * 60)) : 0
+  var preview = normalizeElevationPreview(elevationPreview)
+  var climbText = '—'
+  if (normalized.length >= 2 && elevationStatus === 'loading') climbText = '计算中'
+  if (normalized.length >= 2 && elevationStatus === 'error') climbText = '待重试'
+  if (preview && elevationStatus === 'ready') climbText = Math.round(preview.climb_m) + ' m'
+  var etaText = '0 分钟'
+  if (estimatedMinutes >= 60) {
+    etaText = Math.floor(estimatedMinutes / 60) + ' 小时 ' + (estimatedMinutes % 60) + ' 分钟'
+  } else if (estimatedMinutes > 0) {
+    etaText = estimatedMinutes + ' 分钟'
+  }
   return {
     distanceM: distanceM,
     distanceText: distanceM > 0 ? (km >= 10 ? km.toFixed(1) : km.toFixed(2)) + ' km' : '0 km',
     pointCount: normalized.length,
-    climbText: '保存后生成',
-    etaText: estimatedMinutes > 0 ? estimatedMinutes + ' 分钟' : '0 分钟',
+    climbText: climbText,
+    etaText: etaText,
   }
 }
 
@@ -276,8 +315,8 @@ function screenPointFromEvent(event) {
   var touch = event && event.touches && event.touches[0]
   if (!touch && event && event.changedTouches) touch = event.changedTouches[0]
   if (!touch) return null
-  var x = finiteNumber(touch.x !== undefined ? touch.x : touch.clientX, NaN)
-  var y = finiteNumber(touch.y !== undefined ? touch.y : touch.clientY, NaN)
+  var x = finiteNumber(touch.clientX !== undefined ? touch.clientX : touch.x, NaN)
+  var y = finiteNumber(touch.clientY !== undefined ? touch.clientY : touch.y, NaN)
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null
   return { x: x, y: y }
 }
@@ -298,51 +337,69 @@ function mapPointFromTapEvent(event) {
   })
 }
 
-function mapContextFromScreenLocation(context, screenPoint) {
-  return new Promise(function (resolve, reject) {
-    if (!context || typeof context.fromScreenLocation !== 'function') {
-      reject(new Error('fromScreenLocation unavailable'))
-      return
-    }
-    var settled = false
-    var timeout = setTimeout(function () {
-      if (settled) return
-      settled = true
-      reject(new Error('fromScreenLocation timeout'))
-    }, SKETCH_LOCATION_TIMEOUT_MS)
-    function settle(fn, value) {
-      if (settled) return
-      settled = true
-      clearTimeout(timeout)
-      fn(value)
-    }
-    context.fromScreenLocation({
-      x: screenPoint.x,
-      y: screenPoint.y,
-      success: function (res) {
-        var lon = Number(res && res.longitude)
-        var lat = Number(res && res.latitude)
-        if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
-          settle(reject, new Error('bad location'))
-          return
-        }
-        settle(resolve, [lon, lat])
-      },
-      fail: function (err) {
-        settle(reject, err || new Error('fromScreenLocation failed'))
-      },
-    })
-  })
+function mercatorY(latitude) {
+  var bounded = Math.max(-85.05112878, Math.min(85.05112878, Number(latitude)))
+  var radians = toRadians(bounded)
+  return Math.log(Math.tan(Math.PI / 4 + radians / 2))
+}
+
+function inverseMercatorY(value) {
+  return Math.atan(Math.sinh(value)) * 180 / Math.PI
+}
+
+function sketchViewportFromParts(rect, region) {
+  var southwest = region && region.southwest
+  var northeast = region && region.northeast
+  var left = Number(rect && rect.left)
+  var top = Number(rect && rect.top)
+  var width = Number(rect && rect.width)
+  var height = Number(rect && rect.height)
+  var west = Number(southwest && southwest.longitude)
+  var south = Number(southwest && southwest.latitude)
+  var east = Number(northeast && northeast.longitude)
+  var north = Number(northeast && northeast.latitude)
+  if (![left, top, width, height, west, south, east, north].every(Number.isFinite)) return null
+  if (width <= 0 || height <= 0 || east <= west || north <= south) return null
+  return {
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+    west: west,
+    east: east,
+    southMercator: mercatorY(south),
+    northMercator: mercatorY(north),
+  }
+}
+
+function mapPointFromSketchViewport(screenPoint, viewport) {
+  if (!screenPoint || !viewport) return null
+  var xRatio = (screenPoint.x - viewport.left) / viewport.width
+  var yRatio = (screenPoint.y - viewport.top) / viewport.height
+  if (!Number.isFinite(xRatio) || !Number.isFinite(yRatio)) return null
+  xRatio = Math.max(0, Math.min(1, xRatio))
+  yRatio = Math.max(0, Math.min(1, yRatio))
+  var longitude = viewport.west + (viewport.east - viewport.west) * xRatio
+  var mercator = viewport.northMercator + (viewport.southMercator - viewport.northMercator) * yRatio
+  var latitude = inverseMercatorY(mercator)
+  return normalizeLonLatPoint([longitude, latitude])
 }
 
 function snapErrorMessage(err) {
-  if (err && err.code === -1) return '网络断了，这段没有贴上路，可以切 Manual Mode 直连。'
-  if (err && err.code === 404) return '贴路服务还没上线，可以切 Manual Mode 继续画。'
-  if (err && err.code === 429) return '贴路操作太快，稍等再试，或切 Manual Mode 继续画。'
-  if (err && err.code === 503) return '贴路服务暂时不可用，可以先用 Manual Mode 保存。'
-  if (err && err.code === 422) return '这段附近没有找到合适的路，缩短一点或切 Manual Mode。'
-  if (err && err.code >= 500) return '贴路服务暂时不可用，可以先用 Manual Mode 保存。'
-  return '这一段没有贴好，缩短一点或切 Manual Mode。'
+  if (err && err.code === -1) return '网络断了，这段没有贴上路，请联网后重试。'
+  if (err && err.code === 404) return '贴路服务还没上线，请更新服务后再试。'
+  if (err && err.code === 429) return '贴路操作太快，稍等一下再继续。'
+  if (err && err.code === 503) return '贴路服务暂时不可用，请稍后重试。'
+  if (err && err.code === 422) return '这段附近没有找到合适的路，画短一点再试。'
+  if (err && err.code >= 500) return '贴路服务暂时不可用，请稍后重试。'
+  return '这一段没有贴好，画短一点再试。'
+}
+
+function elevationErrorMessage(err) {
+  if (err && (err.code === -1 || err.code === -2)) return '网络恢复后会重新计算海拔。'
+  if (err && err.code === 429) return '海拔计算太频繁，稍后会自动重试。'
+  if (err && err.code === 503) return '海拔底图正在准备，路线仍可继续编辑。'
+  return '暂时没有算出海拔，路线仍可继续编辑。'
 }
 
 function saveErrorMessage(err) {
@@ -452,15 +509,13 @@ function clearPendingSave() {
 }
 
 function modeTitle(mode) {
-  if (mode === 'manual') return 'Manual Mode'
-  if (mode === 'sketch') return '铅笔手绘'
-  return '智能贴路'
+  if (mode === 'sketch') return '用手指画出你的路线'
+  return '规划骑行路线'
 }
 
 function modeHelp(mode) {
-  if (mode === 'manual') return '拖动地图对准路口后点添加点，会按直线接上。'
-  if (mode === 'sketch') return '按住地图画一小段，松手后自动处理。'
-  return '拖动地图对准路口后点添加点；也可以直接点地图。'
+  if (mode === 'sketch') return '沿着想骑的方向画线，松手后自动贴到可骑行道路。'
+  return '直接点地图添加路线点，或使用手绘快速指定走向。'
 }
 
 function cloneAction(action) {
@@ -521,12 +576,28 @@ function buildMarkers(actions) {
     }
   })
   return markerPoints.map(function (point, index) {
+    var isStart = index === 0
+    var isEnd = index === markerPoints.length - 1 && markerPoints.length > 1
     return {
       id: index + 1,
       longitude: point[0],
       latitude: point[1],
       width: 18,
       height: 18,
+      label: {
+        content: isStart ? '起' : (isEnd ? '终' : String(index + 1)),
+        color: isEnd ? '#FFFFFF' : '#FC4C02',
+        fontSize: 11,
+        fontWeight: 'bold',
+        borderRadius: 12,
+        bgColor: isEnd ? '#FC4C02' : '#FFFFFF',
+        borderColor: '#FC4C02',
+        borderWidth: 2,
+        padding: 4,
+        textAlign: 'center',
+        anchorX: -10,
+        anchorY: -10,
+      },
       callout: {
         content: index === 0 ? '起点' : String(index + 1),
         color: '#1C1C1E',
@@ -596,16 +667,16 @@ Page({
     gestureSupported: true,
     builderMode: 'smart',
     requestStatus: 'idle',
-    statusText: '拖动地图对准起点，点添加点',
+    statusText: '点地图设置起点',
     modeTitle: modeTitle('smart'),
     modeHelp: modeHelp('smart'),
     errorMessage: '',
     latitude: DEFAULT_CENTER.latitude,
     longitude: DEFAULT_CENTER.longitude,
     mapScrollEnabled: true,
-    centerAddBusy: false,
     showSketchLayer: false,
     isSketching: false,
+    sketchViewportReady: false,
     routeDraft: {
       actions: [],
       segments: [],
@@ -620,7 +691,11 @@ Page({
     currentRawPoints: [],
     previewPoints: [],
     drawPolylines: [],
-    routeStats: buildRouteStats([]),
+    routeStats: buildRouteStats([], null, 'idle'),
+    elevationStatus: 'idle',
+    elevationPreview: null,
+    elevationGeometryKey: '',
+    elevationMessage: '',
     routeName: '',
     warnings: [],
     currentWarnings: [],
@@ -641,6 +716,13 @@ Page({
     }
   },
 
+  onUnload: function () {
+    this.clearSketchAutoFinish()
+    this.clearElevationPreviewTimer()
+    this._snapSeq = (this._snapSeq || 0) + 1
+    this._elevationSeq = (this._elevationSeq || 0) + 1
+  },
+
   ensureLoggedIn: function () {
     var app = typeof getApp === 'function' ? getApp() : null
     var token = app && app.globalData && app.globalData.token
@@ -659,7 +741,7 @@ Page({
         notLoggedIn: false,
         errorMessage: '',
         requestStatus: 'idle',
-        statusText: '拖动地图对准起点，点添加点',
+        statusText: '点地图设置起点',
       })
     }
     return true
@@ -703,6 +785,25 @@ Page({
     var nextSavedRouteBookId = patch.savedRouteBookId !== undefined
       ? patch.savedRouteBookId
       : this.data.savedRouteBookId
+    var confirmedGeometryKey = geometryKey(simplifyForSave(view.confirmedPoints))
+    var nextElevationStatus = patch.elevationStatus !== undefined
+      ? patch.elevationStatus
+      : this.data.elevationStatus
+    var nextElevationPreview = patch.elevationPreview !== undefined
+      ? patch.elevationPreview
+      : this.data.elevationPreview
+    var nextElevationGeometryKey = patch.elevationGeometryKey !== undefined
+      ? patch.elevationGeometryKey
+      : this.data.elevationGeometryKey
+    var nextElevationMessage = patch.elevationMessage !== undefined
+      ? patch.elevationMessage
+      : this.data.elevationMessage
+    if (!confirmedGeometryKey || nextElevationGeometryKey !== confirmedGeometryKey) {
+      nextElevationStatus = 'idle'
+      nextElevationPreview = null
+      nextElevationGeometryKey = ''
+      nextElevationMessage = ''
+    }
     var canSaveRoute = (
       view.confirmedPoints.length >= 2 &&
       nextRequestStatus !== 'previewing' &&
@@ -726,34 +827,26 @@ Page({
       currentWarnings: view.pendingWarnings,
       warnings: flattenWarnings(view.segmentWarnings, view.pendingWarnings),
       drawPolylines: buildDrawPolylines(view.confirmedPoints, view.currentRawPoints, view.previewPoints),
-      routeStats: buildRouteStats(view.confirmedPoints),
+      routeStats: buildRouteStats(view.confirmedPoints, nextElevationPreview, nextElevationStatus),
+      elevationStatus: nextElevationStatus,
+      elevationPreview: nextElevationPreview,
+      elevationGeometryKey: nextElevationGeometryKey,
+      elevationMessage: nextElevationMessage,
       canSaveRoute: canSaveRoute,
     }, patch))
   },
 
-  updateMode: function (mode, patch) {
-    this.applyDraftState(
-      this.data.routeDraft.actions,
-      this.data.routeDraft.pending,
-      Object.assign({
-        builderMode: mode,
-        modeTitle: modeTitle(mode),
-        modeHelp: modeHelp(mode),
-      }, patch || {})
-    )
-  },
-
   markGestureUnsupported: function () {
     this.applyDraftState(this.data.routeDraft.actions, null, {
-      gestureSupported: false,
-      builderMode: this._builderModeBeforeSketch || 'smart',
-      modeTitle: modeTitle(this._builderModeBeforeSketch || 'smart'),
-      modeHelp: modeHelp(this._builderModeBeforeSketch || 'smart'),
+      builderMode: 'smart',
+      modeTitle: modeTitle('smart'),
+      modeHelp: modeHelp('smart'),
       requestStatus: 'error',
-      statusText: '当前微信版本暂不支持铅笔手绘',
-      errorMessage: '可以继续点地图创建路线，或更新微信后再试铅笔手绘。',
+      statusText: '地图还没有准备好手绘',
+      errorMessage: '可以继续点地图创建路线，或重新点一次手绘。',
       showSketchLayer: false,
       isSketching: false,
+      sketchViewportReady: false,
       mapScrollEnabled: true,
     })
   },
@@ -765,6 +858,7 @@ Page({
 
   commitAnchorAction: function (point) {
     this._snapSeq = (this._snapSeq || 0) + 1
+    this.cancelElevationPreview()
     var actions = cloneActions(this.data.routeDraft.actions)
     actions.push({ kind: 'anchor', point: point })
     this.applyDraftState(actions, null, {
@@ -793,6 +887,7 @@ Page({
       statusText: '这一段已接上，继续点地图加路线点',
       errorMessage: '',
     })
+    this.scheduleElevationPreview()
   },
 
   onMapRegionChange: function (event) {
@@ -800,64 +895,7 @@ Page({
     if (this.data.requestStatus !== 'idle') return
     if (!event || event.type !== 'end') return
     this.setData({
-      statusText: this.lastConfirmedPoint() ? '对准下一个路口，点添加点' : '对准起点，点添加点',
-    })
-  },
-
-  readMapCenterPoint: function () {
-    var that = this
-    var fallback = normalizeLonLatPoint({
-      longitude: this.data.longitude,
-      latitude: this.data.latitude,
-    }) || [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude]
-    var context = this.mapContext || (typeof wx.createMapContext === 'function' ? wx.createMapContext('route-draw-map', this) : null)
-
-    return new Promise(function (resolve) {
-      if (!context || typeof context.getCenterLocation !== 'function') {
-        resolve(fallback)
-        return
-      }
-      context.getCenterLocation({
-        success: function (res) {
-          var point = normalizeLonLatPoint({
-            longitude: res && res.longitude,
-            latitude: res && res.latitude,
-          }) || fallback
-          that.setData({
-            latitude: point[1],
-            longitude: point[0],
-          })
-          resolve(point)
-        },
-        fail: function () {
-          wx.showToast({ title: '没有读到地图中心，先按当前中心加点', icon: 'none' })
-          resolve(fallback)
-        },
-      })
-    })
-  },
-
-  onTapAddCenterPoint: function () {
-    if (this.preventPendingSaveEdit()) return Promise.resolve()
-    if (!this.ensureLoggedIn()) return Promise.resolve()
-    if (this.data.builderMode === 'sketch') {
-      wx.showToast({ title: '先退出铅笔手绘', icon: 'none' })
-      return Promise.resolve()
-    }
-    if (this.data.requestStatus === 'previewing') {
-      wx.showToast({ title: '等这一段贴好再继续', icon: 'none' })
-      return Promise.resolve()
-    }
-    if (this.data.requestStatus === 'saving' || this.data.saving || this.data.centerAddBusy) return Promise.resolve()
-
-    var that = this
-    this.setData({ centerAddBusy: true })
-    return this.readMapCenterPoint().then(function (point) {
-      that.setData({ centerAddBusy: false })
-      that.addRoutePoint(point)
-    }).catch(function () {
-      that.setData({ centerAddBusy: false })
-      wx.showToast({ title: '没有读到地图中心，再试一次', icon: 'none' })
+      statusText: this.lastConfirmedPoint() ? '点地图添加下一个路线点' : '点地图设置起点',
     })
   },
 
@@ -894,18 +932,7 @@ Page({
     }
     if (samePoint(lastPoint, normalized)) return
 
-    var raw = [lastPoint, normalized]
-    if (this.data.builderMode === 'manual') {
-      this.commitSegmentAction({
-        mode: 'freehand',
-        rawPoints: raw,
-        points: raw,
-        warnings: [],
-      })
-      return
-    }
-
-    this.startSnapPreview(raw)
+    this.startSnapPreview([lastPoint, normalized])
   },
 
   startSnapPreview: function (rawPoints) {
@@ -919,12 +946,12 @@ Page({
     var pending = {
       mode: 'snap',
       rawPoints: raw,
-      previewPoints: raw,
+      previewPoints: [],
       warnings: [],
     }
     this.applyDraftState(this.data.routeDraft.actions, pending, {
       requestStatus: 'previewing',
-      statusText: '正在帮你贴到可骑行道路',
+      statusText: '正在贴到可骑行道路',
       errorMessage: '',
       showSketchLayer: false,
       isSketching: false,
@@ -948,7 +975,7 @@ Page({
       })
       that.applyDraftState(that.data.routeDraft.actions, null, {
         requestStatus: 'idle',
-        statusText: '贴路成功，橙色路线已并入草稿',
+        statusText: '路线已贴好，可以继续加点或手绘',
       })
     }).catch(function (err) {
       if (snapSeq !== that._snapSeq) return
@@ -969,41 +996,6 @@ Page({
     })
   },
 
-  onTapToggleManualMode: function () {
-    if (this.preventPendingSaveEdit()) return
-    if (this.data.requestStatus === 'previewing' || this.data.requestStatus === 'saving' || this.data.saving) return
-
-    var next = this.data.builderMode === 'manual' ? 'smart' : 'manual'
-    var pending = clonePending(this.data.routeDraft.pending)
-    if (next === 'manual' && this.data.requestStatus === 'error' && pending && pending.rawPoints.length >= 2) {
-      this.updateMode('manual', {
-        requestStatus: 'idle',
-        statusText: '已切 Manual Mode，这段按直线接上',
-        errorMessage: '',
-      })
-      this.commitSegmentAction({
-        mode: 'freehand',
-        rawPoints: pending.rawPoints,
-        points: pending.rawPoints,
-        warnings: [],
-      })
-      return
-    }
-
-    this._snapSeq = (this._snapSeq || 0) + 1
-    this.applyDraftState(this.data.routeDraft.actions, null, {
-      builderMode: next,
-      modeTitle: modeTitle(next),
-      modeHelp: modeHelp(next),
-      requestStatus: 'idle',
-      statusText: next === 'manual' ? 'Manual Mode 已开启，点地图会直连' : '智能贴路已开启，继续点地图加路线点',
-      errorMessage: '',
-      showSketchLayer: false,
-      isSketching: false,
-      mapScrollEnabled: true,
-    })
-  },
-
   onTapStartSketch: function () {
     if (this.preventPendingSaveEdit()) return
     if (!this.ensureLoggedIn()) return
@@ -1014,17 +1006,75 @@ Page({
     }
 
     this._snapSeq = (this._snapSeq || 0) + 1
-    this._builderModeBeforeSketch = this.data.builderMode === 'manual' ? 'manual' : 'smart'
+    this._drawSeq = (this._drawSeq || 0) + 1
+    this._rawSegmentPoints = []
+    this._sketchViewport = null
     this.applyDraftState(this.data.routeDraft.actions, null, {
       builderMode: 'sketch',
       modeTitle: modeTitle('sketch'),
       modeHelp: modeHelp('sketch'),
       requestStatus: 'idle',
-      statusText: '按住地图画一小段，松手后处理',
+      statusText: '正在准备手绘区域',
       errorMessage: '',
       showSketchLayer: true,
       isSketching: false,
+      sketchViewportReady: false,
       mapScrollEnabled: false,
+    })
+    return this.prepareSketchViewport()
+  },
+
+  prepareSketchViewport: function () {
+    var that = this
+    var context = this.mapContext || (typeof wx.createMapContext === 'function' ? wx.createMapContext('route-draw-map', this) : null)
+    var prepareSeq = (this._sketchPrepareSeq || 0) + 1
+    this._sketchPrepareSeq = prepareSeq
+    if (!context || typeof context.getRegion !== 'function' || typeof wx.createSelectorQuery !== 'function') {
+      this.markGestureUnsupported()
+      return Promise.resolve(false)
+    }
+
+    var regionPromise = new Promise(function (resolve, reject) {
+      context.getRegion({ success: resolve, fail: reject })
+    })
+    var rectPromise = new Promise(function (resolve, reject) {
+      var query = wx.createSelectorQuery()
+      if (query && typeof query.in === 'function') query = query.in(that)
+      if (!query || typeof query.select !== 'function') {
+        reject(new Error('selector query unavailable'))
+        return
+      }
+      var selected = query.select('#route-draw-map')
+      if (!selected || typeof selected.boundingClientRect !== 'function') {
+        reject(new Error('map rect unavailable'))
+        return
+      }
+      selected.boundingClientRect(function (rect) {
+        if (rect) resolve(rect)
+        else reject(new Error('map rect missing'))
+      })
+      query.exec()
+    })
+
+    var preparePromise = Promise.all([rectPromise, regionPromise])
+    var timeoutPromise = new Promise(function (_resolve, reject) {
+      setTimeout(function () { reject(new Error('sketch viewport timeout')) }, SKETCH_PREPARE_TIMEOUT_MS)
+    })
+    return Promise.race([preparePromise, timeoutPromise]).then(function (parts) {
+      if (prepareSeq !== that._sketchPrepareSeq || that.data.builderMode !== 'sketch') return false
+      var viewport = sketchViewportFromParts(parts[0], parts[1])
+      if (!viewport) throw new Error('invalid sketch viewport')
+      that._sketchViewport = viewport
+      that.setData({
+        sketchViewportReady: true,
+        statusText: '用手指画出你的路线',
+      })
+      return true
+    }).catch(function () {
+      if (prepareSeq === that._sketchPrepareSeq && that.data.builderMode === 'sketch') {
+        that.markGestureUnsupported()
+      }
+      return false
     })
   },
 
@@ -1033,16 +1083,20 @@ Page({
     if (!this.ensureLoggedIn()) return
     if (this.data.builderMode !== 'sketch') return
     if (!this.data.gestureSupported || this.data.requestStatus === 'previewing' || this.data.saving) return
+    if (!this.data.sketchViewportReady || !this._sketchViewport) {
+      wx.showToast({ title: '地图正在准备，稍等一下再画', icon: 'none' })
+      this.prepareSketchViewport()
+      return
+    }
 
     this.clearSketchAutoFinish()
     this._drawSeq = (this._drawSeq || 0) + 1
     this._rawSegmentPoints = []
     this._lastScreenPoint = null
     this._lastCaptureAt = 0
-    this._captureChain = Promise.resolve()
     this.applyDraftState(this.data.routeDraft.actions, null, {
       requestStatus: 'idle',
-      statusText: '继续沿路画，松手后处理',
+      statusText: '继续画，松手后自动贴路',
       errorMessage: '',
       showSketchLayer: true,
       isSketching: true,
@@ -1064,7 +1118,7 @@ Page({
     if (this.data.builderMode !== 'sketch' || !this.data.isSketching) return
     this.clearSketchAutoFinish()
     this.captureTouchLocation(event, true)
-    this.finishSketchAfterCapture()
+    this.finishSketchSegment()
   },
 
   armSketchAutoFinish: function () {
@@ -1072,7 +1126,7 @@ Page({
     this.clearSketchAutoFinish()
     this._sketchAutoFinishTimer = setTimeout(function () {
       that._sketchAutoFinishTimer = null
-      that.finishSketchAfterCapture()
+      if (that.data.builderMode === 'sketch' && that.data.isSketching) that.finishSketchSegment()
     }, SKETCH_AUTO_FINISH_MS)
   },
 
@@ -1080,34 +1134,6 @@ Page({
     if (this._sketchAutoFinishTimer === undefined || this._sketchAutoFinishTimer === null) return
     clearTimeout(this._sketchAutoFinishTimer)
     this._sketchAutoFinishTimer = null
-  },
-
-  finishSketchAfterCapture: function () {
-    var that = this
-    var finished = false
-    var timeout = setTimeout(function () {
-      if (finished) return
-      finished = true
-      if (that.data.builderMode === 'sketch' && that.data.isSketching) {
-        that.finishSketchSegment()
-      }
-    }, SKETCH_LOCATION_TIMEOUT_MS + 120)
-
-    ;(this._captureChain || Promise.resolve()).then(function () {
-      if (finished) return
-      finished = true
-      clearTimeout(timeout)
-      if (that.data.builderMode === 'sketch' && that.data.isSketching) {
-        that.finishSketchSegment()
-      }
-    }).catch(function () {
-      if (finished) return
-      finished = true
-      clearTimeout(timeout)
-      if (that.data.builderMode === 'sketch' && that.data.isSketching) {
-        that.finishSketchSegment()
-      }
-    })
   },
 
   captureTouchLocation: function (event, force) {
@@ -1119,33 +1145,25 @@ Page({
     }
     this._lastCaptureAt = now
     this._lastScreenPoint = screenPoint
-
-    var that = this
-    var seq = this._drawSeq
-    var context = this.mapContext || (typeof wx.createMapContext === 'function' ? wx.createMapContext('route-draw-map', this) : null)
-    this._captureChain = (this._captureChain || Promise.resolve()).then(function () {
-      return mapContextFromScreenLocation(context, screenPoint)
-    }).then(function (point) {
-      if (seq !== that._drawSeq) return
-      var raw = that._rawSegmentPoints || []
-      if (!raw.length || !samePoint(raw[raw.length - 1], point)) raw.push(point)
-      that._rawSegmentPoints = raw
-      if (force || raw.length % 3 === 0) {
-        that.applyDraftState(that.data.routeDraft.actions, {
-          mode: 'freehand',
-          rawPoints: raw.slice(),
-          previewPoints: [],
-          warnings: [],
-        }, {
-          requestStatus: 'idle',
-          showSketchLayer: true,
-          isSketching: true,
-          mapScrollEnabled: false,
-        })
-      }
-    }).catch(function () {
-      if (seq === that._drawSeq) that.markGestureUnsupported()
-    })
+    var point = mapPointFromSketchViewport(screenPoint, this._sketchViewport)
+    if (!point) return
+    var raw = this._rawSegmentPoints || []
+    if (raw.length >= MAX_SNAP_POINTS * 2) return
+    if (!raw.length || !samePoint(raw[raw.length - 1], point)) raw.push(point)
+    this._rawSegmentPoints = raw
+    if (force || raw.length % 2 === 0) {
+      this.applyDraftState(this.data.routeDraft.actions, {
+        mode: 'freehand',
+        rawPoints: raw.slice(),
+        previewPoints: [],
+        warnings: [],
+      }, {
+        requestStatus: 'idle',
+        showSketchLayer: true,
+        isSketching: true,
+        mapScrollEnabled: false,
+      })
+    }
   },
 
   finishSketchSegment: function () {
@@ -1153,7 +1171,6 @@ Page({
     if (this.data.builderMode !== 'sketch') return
     this.clearSketchAutoFinish()
 
-    var previousMode = this._builderModeBeforeSketch || 'smart'
     var raw = normalizeLonLatPoints(this._rawSegmentPoints || this.data.currentRawPoints)
     var lastPoint = this.lastConfirmedPoint()
     if (lastPoint && raw.length && !samePoint(lastPoint, raw[0])) {
@@ -1162,54 +1179,54 @@ Page({
 
     if (raw.length < 2 || distanceOf(raw) < 5) {
       this.applyDraftState(this.data.routeDraft.actions, null, {
-        builderMode: previousMode,
-        modeTitle: modeTitle(previousMode),
-        modeHelp: modeHelp(previousMode),
+        builderMode: 'sketch',
+        modeTitle: modeTitle('sketch'),
+        modeHelp: modeHelp('sketch'),
         requestStatus: 'idle',
-        statusText: '这段太短了，再多画一点',
-        showSketchLayer: false,
+        statusText: '这段太短了，再画长一点',
+        showSketchLayer: true,
         isSketching: false,
-        mapScrollEnabled: true,
+        mapScrollEnabled: false,
       })
       return
     }
 
     this.applyDraftState(this.data.routeDraft.actions, null, {
-      builderMode: previousMode,
-      modeTitle: modeTitle(previousMode),
-      modeHelp: modeHelp(previousMode),
+      builderMode: 'smart',
+      modeTitle: modeTitle('smart'),
+      modeHelp: modeHelp('smart'),
       requestStatus: 'idle',
       showSketchLayer: false,
       isSketching: false,
+      sketchViewportReady: false,
       mapScrollEnabled: true,
     })
-
-    if (previousMode === 'manual') {
-      this.commitSegmentAction({
-        mode: 'freehand',
-        rawPoints: raw,
-        points: raw,
-        warnings: [],
-      })
-      return
-    }
-
+    this._sketchViewport = null
     this.startSnapPreview(raw)
   },
 
   finishSketchMode: function (text) {
     this.clearSketchAutoFinish()
-    var previousMode = this._builderModeBeforeSketch || 'smart'
+    this._drawSeq = (this._drawSeq || 0) + 1
+    this._sketchPrepareSeq = (this._sketchPrepareSeq || 0) + 1
+    this._rawSegmentPoints = []
+    this._sketchViewport = null
     this.applyDraftState(this.data.routeDraft.actions, null, {
-      builderMode: previousMode,
-      modeTitle: modeTitle(previousMode),
-      modeHelp: modeHelp(previousMode),
+      builderMode: 'smart',
+      modeTitle: modeTitle('smart'),
+      modeHelp: modeHelp('smart'),
       requestStatus: 'idle',
-      statusText: text || '已退出铅笔手绘',
+      statusText: text || '已取消手绘',
       showSketchLayer: false,
       isSketching: false,
+      sketchViewportReady: false,
       mapScrollEnabled: true,
     })
+  },
+
+  onTapCancelSketch: function () {
+    if (this.data.builderMode !== 'sketch') return
+    this.finishSketchMode('已取消手绘，可以继续点地图加点')
   },
 
   onTapUndoAction: function () {
@@ -1237,11 +1254,168 @@ Page({
       wx.showToast({ title: '还没有可撤回的动作', icon: 'none' })
       return
     }
+    this.cancelElevationPreview()
     actions.pop()
     this.applyDraftState(actions, null, {
       requestStatus: 'idle',
       statusText: actions.length ? '已撤回上一步' : '路线已清空，点地图设置起点',
       errorMessage: '',
+    })
+    if (this.data.confirmedPoints.length >= 2) this.scheduleElevationPreview()
+  },
+
+  clearElevationPreviewTimer: function () {
+    if (this._elevationPreviewTimer === undefined || this._elevationPreviewTimer === null) return
+    clearTimeout(this._elevationPreviewTimer)
+    this._elevationPreviewTimer = null
+  },
+
+  cancelElevationPreview: function () {
+    this.clearElevationPreviewTimer()
+    this._elevationSeq = (this._elevationSeq || 0) + 1
+  },
+
+  rememberElevationPreview: function (key, preview) {
+    if (!this._elevationCache) this._elevationCache = {}
+    if (!this._elevationCacheOrder) this._elevationCacheOrder = []
+    if (!this._elevationCache[key]) this._elevationCacheOrder.push(key)
+    this._elevationCache[key] = preview
+    while (this._elevationCacheOrder.length > 8) {
+      delete this._elevationCache[this._elevationCacheOrder.shift()]
+    }
+  },
+
+  scheduleElevationPreview: function () {
+    this.clearElevationPreviewTimer()
+    this._elevationSeq = (this._elevationSeq || 0) + 1
+    var elevationSeq = this._elevationSeq
+    var points = simplifyForSave(this.data.confirmedPoints)
+    if (points.length < 2) {
+      this.applyDraftState(this.data.routeDraft.actions, this.data.routeDraft.pending, {
+        elevationStatus: 'idle',
+        elevationPreview: null,
+        elevationGeometryKey: '',
+        elevationMessage: '',
+      })
+      return
+    }
+    var key = geometryKey(points)
+    var cached = this._elevationCache && this._elevationCache[key]
+    if (cached) {
+      this.applyDraftState(this.data.routeDraft.actions, this.data.routeDraft.pending, {
+        elevationStatus: 'ready',
+        elevationPreview: cached,
+        elevationGeometryKey: key,
+        elevationMessage: '',
+      })
+      this.drawElevationChartSoon()
+      return
+    }
+
+    this.applyDraftState(this.data.routeDraft.actions, this.data.routeDraft.pending, {
+      elevationStatus: 'loading',
+      elevationPreview: null,
+      elevationGeometryKey: key,
+      elevationMessage: '正在计算爬升与海拔曲线',
+    })
+    var that = this
+    this._elevationPreviewTimer = setTimeout(function () {
+      that._elevationPreviewTimer = null
+      api.previewManualDrawnElevation({
+        coordinate_system: 'gcj02',
+        points: points,
+      }).then(function (result) {
+        if (elevationSeq !== that._elevationSeq || key !== geometryKey(simplifyForSave(that.data.confirmedPoints))) return
+        var preview = normalizeElevationPreview(result)
+        if (!preview) throw { code: 422 }
+        that.rememberElevationPreview(key, preview)
+        that.applyDraftState(that.data.routeDraft.actions, that.data.routeDraft.pending, {
+          elevationStatus: 'ready',
+          elevationPreview: preview,
+          elevationGeometryKey: key,
+          elevationMessage: '',
+        })
+        that.drawElevationChartSoon()
+      }).catch(function (err) {
+        if (elevationSeq !== that._elevationSeq || key !== geometryKey(simplifyForSave(that.data.confirmedPoints))) return
+        that.applyDraftState(that.data.routeDraft.actions, that.data.routeDraft.pending, {
+          elevationStatus: 'error',
+          elevationPreview: null,
+          elevationGeometryKey: key,
+          elevationMessage: elevationErrorMessage(err),
+        })
+      })
+    }, ELEVATION_PREVIEW_DEBOUNCE_MS)
+  },
+
+  onTapRetryElevation: function () {
+    if (this.data.elevationStatus !== 'error') return
+    this.scheduleElevationPreview()
+  },
+
+  drawElevationChartSoon: function () {
+    var that = this
+    if (typeof wx.nextTick === 'function') {
+      wx.nextTick(function () { that.drawElevationChart() })
+      return
+    }
+    setTimeout(function () { that.drawElevationChart() }, 0)
+  },
+
+  drawElevationChart: function () {
+    var preview = normalizeElevationPreview(this.data.elevationPreview)
+    if (!preview || !Array.isArray(preview.elevation_profile) || preview.elevation_profile.length < 2) return
+    if (typeof wx.createSelectorQuery !== 'function') return
+    var query = wx.createSelectorQuery()
+    if (query && typeof query.in === 'function') query = query.in(this)
+    if (!query || typeof query.select !== 'function') return
+    var selected = query.select('#routeElevationCanvas')
+    if (!selected || typeof selected.fields !== 'function') return
+    selected.fields({ node: true, size: true }).exec(function (results) {
+      var result = results && results[0]
+      var canvas = result && result.node
+      var width = Number(result && result.width)
+      var height = Number(result && result.height)
+      if (!canvas || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return
+      var context = canvas.getContext('2d')
+      var windowInfo = typeof wx.getWindowInfo === 'function'
+        ? wx.getWindowInfo()
+        : (typeof wx.getSystemInfoSync === 'function' ? wx.getSystemInfoSync() : {})
+      var dpr = Math.max(1, Number(windowInfo && windowInfo.pixelRatio) || 1)
+      canvas.width = Math.round(width * dpr)
+      canvas.height = Math.round(height * dpr)
+      context.scale(dpr, dpr)
+      context.clearRect(0, 0, width, height)
+
+      var profile = preview.elevation_profile
+      var maxDistance = Math.max(Number(profile[profile.length - 1][0]) || 0, 0.001)
+      var values = profile.map(function (point) { return Number(point[1]) })
+      var minElevation = Math.min.apply(Math, values)
+      var maxElevation = Math.max.apply(Math, values)
+      var range = Math.max(maxElevation - minElevation, 1)
+      var top = 10
+      var bottom = height - 12
+      function toX(point) { return Number(point[0]) / maxDistance * width }
+      function toY(point) { return bottom - (Number(point[1]) - minElevation) / range * (bottom - top) }
+
+      context.beginPath()
+      context.moveTo(toX(profile[0]), bottom)
+      profile.forEach(function (point) { context.lineTo(toX(point), toY(point)) })
+      context.lineTo(toX(profile[profile.length - 1]), bottom)
+      context.closePath()
+      context.fillStyle = '#E5E5EA'
+      context.fill()
+
+      context.beginPath()
+      context.moveTo(toX(profile[0]), toY(profile[0]))
+      for (var index = 1; index < profile.length; index += 1) {
+        context.lineTo(toX(profile[index]), toY(profile[index]))
+      }
+      context.strokeStyle = SNAP_COLOR
+      context.lineWidth = 3
+      context.lineJoin = 'round'
+      context.lineCap = 'round'
+      context.stroke()
     })
   },
 
@@ -1279,7 +1453,7 @@ Page({
         that.setData({
           latitude: point[1],
           longitude: point[0],
-          statusText: '已找到' + label + '，点“+ 添加点”设为路线点',
+          statusText: '已找到' + label + '，直接点地图设置路线点',
         })
       },
       fail: function (err) {
@@ -1529,6 +1703,10 @@ if (typeof module !== 'undefined') {
     buildDrawPolylines: buildDrawPolylines,
     buildMarkers: buildMarkers,
     buildRouteStats: buildRouteStats,
+    geometryKey: geometryKey,
+    mapPointFromSketchViewport: mapPointFromSketchViewport,
+    normalizeElevationPreview: normalizeElevationPreview,
+    sketchViewportFromParts: sketchViewportFromParts,
     simplifyForSave: simplifyForSave,
     simplifyForSnap: simplifyForSnap,
     buildDrawMetadata: buildDrawMetadata,

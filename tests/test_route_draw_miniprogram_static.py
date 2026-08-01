@@ -5,6 +5,8 @@ import subprocess
 import textwrap
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MINI = ROOT / "miniprogram"
@@ -45,7 +47,10 @@ def test_route_draw_page_uses_map_tap_as_default_input_and_sketch_only_touch_lay
     assert 'class="route-draw-touch-layer"' in wxml
     assert 'wx:if="{{showSketchLayer}}"' in wxml
     assert "wx.createMapContext('route-draw-map'" in js
-    assert ".fromScreenLocation" in js
+    assert ".getRegion" in js
+    assert "sketchViewportFromParts" in js
+    assert "mapPointFromSketchViewport" in js
+    assert ".fromScreenLocation" not in js
     assert "onDrawTouchStart" in js
     assert "onDrawTouchMove" in js
     assert "onDrawTouchEnd" in js
@@ -63,25 +68,23 @@ def test_route_draw_can_search_and_center_an_exact_location():
     assert "搜地点" in wxml
     assert "onTapSearchLocation: function" in js
     assert "wx.chooseLocation" in js
-    assert "点“+ 添加点”设为路线点" in js
+    assert "直接点地图设置路线点" in js
 
 
-def test_route_draw_has_center_crosshair_add_point_fallback():
+def test_route_draw_removes_center_crosshair_and_add_center_fallback():
     js = _read(PAGE_DIR / "route-draw.js")
     wxml = _read(PAGE_DIR / "route-draw.wxml")
     wxss = _read(PAGE_DIR / "route-draw.wxss")
 
     assert 'bindregionchange="onMapRegionChange"' in wxml
-    assert 'class="route-draw-crosshair"' in wxml
-    assert 'class="center-add-button' in wxml
-    assert 'bindtap="onTapAddCenterPoint"' in wxml
-    assert "添加点" in wxml
-    assert "onTapAddCenterPoint: function" in js
-    assert "readMapCenterPoint: function" in js
-    assert ".getCenterLocation" in js
-    assert "this.addRoutePoint(point)" in js
-    assert "route-draw-crosshair" in wxss
-    assert "center-add-button" in wxss
+    assert 'class="route-draw-crosshair"' not in wxml
+    assert 'class="center-add-button' not in wxml
+    assert 'bindtap="onTapAddCenterPoint"' not in wxml
+    assert "onTapAddCenterPoint: function" not in js
+    assert "readMapCenterPoint: function" not in js
+    assert ".getCenterLocation" not in js
+    assert "route-draw-crosshair" not in wxss
+    assert "center-add-button" not in wxss
 
 
 def test_route_draw_page_uses_builder_status_and_action_draft_state():
@@ -102,19 +105,23 @@ def test_route_draw_page_uses_builder_status_and_action_draft_state():
     assert "confirmedPolyline" in js
     assert "rawPolyline" in js
     assert "previewPolyline" in js
-    assert "Manual Mode" in wxml
+    assert "Manual Mode" not in wxml
+    assert "onTapToggleManualMode" not in js
     assert "确认当前段" not in wxml
     assert "自由画线" not in wxml
     assert "segmentReady" not in js
 
 
-def test_route_draw_bottom_sheet_includes_activity_type_and_elevation_placeholder():
+def test_route_draw_bottom_sheet_has_live_elevation_states_without_activity_selector():
     wxml = _read(PAGE_DIR / "route-draw.wxml")
 
-    assert "运动类型" in wxml
-    assert "骑行" in wxml
-    assert "海拔图" in wxml
-    assert "保存后生成海拔图" in wxml
+    assert "运动类型" not in wxml
+    assert "保存后生成海拔图" not in wxml
+    assert "累计爬升" in wxml
+    assert "海拔曲线" in wxml
+    assert 'id="routeElevationCanvas"' in wxml
+    assert "elevationStatus === 'loading'" in wxml
+    assert "onTapRetryElevation" in wxml
 
 
 def test_first_map_tap_sets_start_marker_without_snap_request():
@@ -137,10 +144,10 @@ def test_second_smart_map_tap_snaps_and_auto_merges_draft_segment():
     js = _read(PAGE_DIR / "route-draw.js")
     wxml = _read(PAGE_DIR / "route-draw.wxml")
     add_point_block = js.split("addRoutePoint: function", 1)[1].split("\n  startSnapPreview: function", 1)[0]
-    snap_block = js.split("startSnapPreview: function", 1)[1].split("onTapToggleManualMode", 1)[0]
+    snap_block = js.split("startSnapPreview: function", 1)[1].split("onTapStartSketch", 1)[0]
     success_block = snap_block.split("api.snapManualDrawnRoute", 1)[1].split(".catch", 1)[0]
 
-    assert "this.startSnapPreview(raw)" in add_point_block
+    assert "this.startSnapPreview([lastPoint, normalized])" in add_point_block
     assert "mode: 'snap'" in snap_block
     assert "points: simplifyForSnap(raw)" in snap_block
     assert "commitSegmentAction" in success_block
@@ -183,15 +190,16 @@ def test_first_marker_moves_to_the_confirmed_snapped_start():
     assert markers[0]["callout"]["content"] == "起点"
 
 
-def test_manual_mode_uses_freehand_contract_without_snap_or_manual_backend_mode():
+def test_route_draw_exposes_only_smart_tap_and_pencil_snap_modes():
     js = _read(PAGE_DIR / "route-draw.js")
     wxml = _read(PAGE_DIR / "route-draw.wxml")
-    manual_branch = js.split("if (this.data.builderMode === 'manual')", 1)[1].split("this.startSnapPreview", 1)[0]
     metadata_block = js.split("function buildDrawMetadata", 1)[1].split("function screenPointFromEvent", 1)[0]
 
-    assert "Manual Mode" in wxml
-    assert "mode: 'freehand'" in manual_branch
-    assert "api.snapManualDrawnRoute" not in manual_branch
+    assert "Manual Mode" not in wxml
+    assert "builderMode === 'manual'" not in js
+    assert 'bindtap="onTapStartSketch"' in wxml
+    assert "this.startSnapPreview([lastPoint, normalized])" in js
+    assert "this.startSnapPreview(raw)" in js
     assert "freehand_segment_count" in metadata_block
     assert "snap_provider: freehandCount === modes.length ? 'freehand' : 'tencent_bicycling'" in metadata_block
     assert "mode: 'manual'" not in js
@@ -207,23 +215,24 @@ def test_sketch_pencil_temporarily_takes_over_touch_and_then_restores_map():
     assert "builderMode: 'sketch'" in start_block
     assert "showSketchLayer: true" in start_block
     assert "mapScrollEnabled: false" in start_block
-    assert "mapContextFromScreenLocation" in js
+    assert "prepareSketchViewport" in js
+    assert "mapPointFromSketchViewport" in js
+    assert "sketchViewportReady" in js
     assert "showSketchLayer: false" in finish_block
     assert "mapScrollEnabled: true" in finish_block
     assert "SKETCH_AUTO_FINISH_MS" in js
-    assert "SKETCH_LOCATION_TIMEOUT_MS" in js
+    assert "SKETCH_PREPARE_TIMEOUT_MS" in js
     assert "armSketchAutoFinish: function" in js
     assert "clearSketchAutoFinish: function" in js
-    assert "finishSketchAfterCapture: function" in js
     assert "this.armSketchAutoFinish()" in js
     assert "this.clearSketchAutoFinish()" in js
-    assert "fromScreenLocation timeout" in js
+    assert "fromScreenLocation" not in js
 
 
 def test_route_draw_undo_is_action_based_and_invalidates_stale_snap_response():
     js = _read(PAGE_DIR / "route-draw.js")
-    snap_block = js.split("startSnapPreview: function", 1)[1].split("onTapToggleManualMode", 1)[0]
-    undo_block = js.split("onTapUndoAction: function", 1)[1].split("onTapStartSketch", 1)[0]
+    snap_block = js.split("startSnapPreview: function", 1)[1].split("onTapStartSketch", 1)[0]
+    undo_block = js.split("onTapUndoAction: function", 1)[1].split("clearElevationPreviewTimer", 1)[0]
 
     assert "var snapSeq = this._snapSeq" in snap_block
     assert "if (snapSeq !== that._snapSeq) return" in snap_block
@@ -259,15 +268,15 @@ def test_route_draw_save_contract_and_error_copy():
     assert "defaultRouteName(new Date())" in js
     assert "先给路线起名" not in js
     assert "路线保存服务还没上线，先更新服务后再试。" in js
-    assert "贴路服务还没上线，可以切 Manual Mode 继续画。" in js
-    assert "贴路操作太快，稍等再试，或切 Manual Mode 继续画。" in js
+    assert "贴路服务还没上线，请更新服务后再试。" in js
+    assert "贴路操作太快，稍等一下再继续。" in js
     assert "路线没有保存成功，请稍后再试" in js
     assert "路线太长，分几段保存更稳" in js
     assert "腾讯" not in js
     assert "this.data.requestStatus === 'previewing'" in save_block
     assert "confirmedPoints.length < 2" in save_block
     assert 'disabled="{{!canSaveRoute}}"' in wxml
-    assert "少于 2 个点时保存不可用" in wxml
+    assert "点地图设置起点和终点后即可保存" in wxml
 
 
 def test_saved_route_navigation_failure_does_not_post_a_duplicate_route():
@@ -680,11 +689,24 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
                 const confirmed = [[112.5, 37.8], [112.51, 37.81]]
                 const raw = [[112.52, 37.82], [112.53, 37.83]]
                 const preview = [[112.54, 37.84], [112.55, 37.85]]
+                const viewport = draw.sketchViewportFromParts(
+                  { left: 10, top: 20, width: 200, height: 100 },
+                  {
+                    southwest: { longitude: 112.5, latitude: 37.8 },
+                    northeast: { longitude: 112.7, latitude: 38.0 },
+                  }
+                )
                 process.stdout.write(JSON.stringify({
                   straightLength: draw.simplifyForSave(straight).length,
                   noisyLength: draw.simplifyForSave(noisy).length,
                   polylines: draw.buildDrawPolylines(confirmed, raw, preview).map((item) => item.role),
                   stats: draw.buildRouteStats([[112.5, 37.8], [112.51, 37.8]]),
+                  readyStats: draw.buildRouteStats(
+                    [[112.5, 37.8], [112.51, 37.8]],
+                    { climb_m: 123.4, descent_m: 20, elevation_profile: [[0, 700], [1, 720]] },
+                    'ready'
+                  ),
+                  viewportCenter: draw.mapPointFromSketchViewport({ x: 110, y: 70 }, viewport),
                   metadata: draw.buildDrawMetadata(
                     ['snap'],
                     [[[112.5, 37.8], [112.51, 37.8]]],
@@ -706,6 +728,10 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
     assert rows["polylines"] == ["confirmedPolyline", "rawPolyline", "previewPolyline"]
     assert rows["stats"]["pointCount"] == 2
     assert rows["stats"]["distanceM"] > 800
+    assert rows["stats"]["climbText"] == "—"
+    assert rows["readyStats"]["climbText"] == "123 m"
+    assert rows["viewportCenter"][0] == pytest.approx(112.6)
+    assert rows["viewportCenter"][1] == pytest.approx(37.9, abs=0.001)
     assert rows["metadata"]["tool"] == "route_draw_v0"
     assert rows["metadata"]["snap_provider"] == "tencent_bicycling"
     assert rows["metadata"]["segment_count"] == 1
@@ -714,7 +740,7 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
     assert rows["metadata"]["warnings"] == ["系统贴出的路线可能偏离你的手画线，请检查后再保存。"]
 
 
-def test_route_draw_center_add_flow_sets_anchor_then_snaps_second_point():
+def test_route_draw_map_tap_flow_sets_anchor_snaps_and_loads_elevation():
     result = subprocess.run(
         [
             "node",
@@ -723,21 +749,17 @@ def test_route_draw_center_add_flow_sets_anchor_then_snaps_second_point():
                 """
                 ;(async function () {
                   let pageConfig
-                  let center = [112.5, 37.8]
                   let snapCalls = []
+                  let elevationCalls = []
                   global.getApp = function () {
                     return { globalData: { token: 'token-for-test', baseUrl: 'http://127.0.0.1' } }
                   }
                   global.wx = {
                     createMapContext: function () {
-                      return {
-                        getCenterLocation: function (options) {
-                          options.success({ longitude: center[0], latitude: center[1] })
-                        },
-                        fromScreenLocation: function () {},
-                      }
+                      return {}
                     },
                     showToast: function () {},
+                    createSelectorQuery: function () { return null },
                   }
                   const api = require('./miniprogram/utils/api.js')
                   api.snapManualDrawnRoute = function (payload) {
@@ -745,6 +767,14 @@ def test_route_draw_center_add_flow_sets_anchor_then_snaps_second_point():
                     return Promise.resolve({
                       snapped_points: payload.points,
                       warnings: [],
+                    })
+                  }
+                  api.previewManualDrawnElevation = function (payload) {
+                    elevationCalls.push(payload)
+                    return Promise.resolve({
+                      climb_m: 42.4,
+                      descent_m: 10,
+                      elevation_profile: [[0, 700], [1.4, 742]],
                     })
                   }
                   global.Page = function (config) { pageConfig = config }
@@ -757,7 +787,7 @@ def test_route_draw_center_add_flow_sets_anchor_then_snaps_second_point():
                   })
                   page.onReady()
 
-                  await page.onTapAddCenterPoint()
+                  page.onMapTap({ detail: { longitude: 112.5, latitude: 37.8 } })
                   const first = {
                     snapCalls: snapCalls.length,
                     pointCount: page.data.routeStats.pointCount,
@@ -765,8 +795,13 @@ def test_route_draw_center_add_flow_sets_anchor_then_snaps_second_point():
                     statusText: page.data.statusText,
                   }
 
-                  center = [112.51, 37.81]
-                  await page.onTapAddCenterPoint()
+                  page.onMapTap({ detail: { longitude: 112.51, latitude: 37.81 } })
+                  await new Promise(function (resolve) { setTimeout(resolve, 0) })
+                  const duringElevation = {
+                    canSaveRoute: page.data.canSaveRoute,
+                    elevationStatus: page.data.elevationStatus,
+                  }
+                  await new Promise(function (resolve) { setTimeout(resolve, 450) })
                   await new Promise(function (resolve) { setTimeout(resolve, 0) })
                   const second = {
                     snapCalls: snapCalls.length,
@@ -775,8 +810,11 @@ def test_route_draw_center_add_flow_sets_anchor_then_snaps_second_point():
                     pointCount: page.data.routeStats.pointCount,
                     canSaveRoute: page.data.canSaveRoute,
                     segmentMode: page.data.confirmedSegmentModes[0],
+                    elevationCalls: elevationCalls.length,
+                    elevationStatus: page.data.elevationStatus,
+                    climbText: page.data.routeStats.climbText,
                   }
-                  process.stdout.write(JSON.stringify({ first, second }))
+                  process.stdout.write(JSON.stringify({ first, duringElevation, second }))
                 })().catch(function (err) {
                   console.error(err && err.stack ? err.stack : err)
                   process.exit(1)
@@ -794,12 +832,105 @@ def test_route_draw_center_add_flow_sets_anchor_then_snaps_second_point():
     assert rows["first"]["snapCalls"] == 0
     assert rows["first"]["pointCount"] == 1
     assert rows["first"]["canSaveRoute"] is False
+    assert rows["duringElevation"]["elevationStatus"] == "loading"
+    assert rows["duringElevation"]["canSaveRoute"] is True
     assert rows["second"]["snapCalls"] == 1
     assert rows["second"]["snapMode"] == "snap"
     assert rows["second"]["coordinateSystem"] == "gcj02"
     assert rows["second"]["pointCount"] == 2
     assert rows["second"]["canSaveRoute"] is True
     assert rows["second"]["segmentMode"] == "snap"
+    assert rows["second"]["elevationCalls"] == 1
+    assert rows["second"]["elevationStatus"] == "ready"
+    assert rows["second"]["climbText"] == "42 m"
+
+
+def test_route_draw_ignores_stale_elevation_result_after_geometry_changes():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                ;(async function () {
+                  let pageConfig
+                  const elevationResolvers = []
+                  global.getApp = function () {
+                    return { globalData: { token: 'token-for-test', baseUrl: 'http://127.0.0.1' } }
+                  }
+                  global.wx = {
+                    showToast: function () {},
+                    createSelectorQuery: function () { return null },
+                  }
+                  const api = require('./miniprogram/utils/api.js')
+                  api.previewManualDrawnElevation = function () {
+                    return new Promise(function (resolve) { elevationResolvers.push(resolve) })
+                  }
+                  global.Page = function (config) { pageConfig = config }
+                  require('./miniprogram/pages/route-draw/route-draw.js')
+                  const page = Object.assign({}, pageConfig, {
+                    data: JSON.parse(JSON.stringify(pageConfig.data)),
+                    setData: function (patch) {
+                      this.data = Object.assign({}, this.data, patch)
+                    },
+                  })
+
+                  page.commitSegmentAction({
+                    mode: 'snap',
+                    rawPoints: [[112.5, 37.8], [112.51, 37.81]],
+                    points: [[112.5, 37.8], [112.51, 37.81]],
+                    warnings: [],
+                  })
+                  await new Promise(function (resolve) { setTimeout(resolve, 450) })
+                  page.commitSegmentAction({
+                    mode: 'snap',
+                    rawPoints: [[112.51, 37.81], [112.52, 37.82]],
+                    points: [[112.51, 37.81], [112.52, 37.82]],
+                    warnings: [],
+                  })
+                  await new Promise(function (resolve) { setTimeout(resolve, 450) })
+
+                  elevationResolvers[1]({
+                    climb_m: 20,
+                    descent_m: 3,
+                    elevation_profile: [[0, 700], [2, 720]],
+                  })
+                  await Promise.resolve()
+                  await Promise.resolve()
+                  elevationResolvers[0]({
+                    climb_m: 999,
+                    descent_m: 0,
+                    elevation_profile: [[0, 700], [1, 1699]],
+                  })
+                  await Promise.resolve()
+                  await Promise.resolve()
+
+                  process.stdout.write(JSON.stringify({
+                    elevationCalls: elevationResolvers.length,
+                    elevationStatus: page.data.elevationStatus,
+                    climbText: page.data.routeStats.climbText,
+                    pointCount: page.data.routeStats.pointCount,
+                    canSaveRoute: page.data.canSaveRoute,
+                  }))
+                })().catch(function (err) {
+                  console.error(err && err.stack ? err.stack : err)
+                  process.exit(1)
+                })
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    rows = json.loads(result.stdout)
+
+    assert rows["elevationCalls"] == 2
+    assert rows["elevationStatus"] == "ready"
+    assert rows["climbText"] == "20 m"
+    assert rows["pointCount"] == 3
+    assert rows["canSaveRoute"] is True
 
 
 def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
@@ -825,18 +956,40 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                   global.wx = {
                     createMapContext: function () {
                       return {
-                        getCenterLocation: function (options) {
-                          options.success({ longitude: 112.5, latitude: 37.8 })
-                        },
-                        fromScreenLocation: function (options) {
+                        getRegion: function (options) {
                           options.success({
-                            longitude: 112.5 + options.x / 10000,
-                            latitude: 37.8 + options.y / 10000,
+                            southwest: { longitude: 112.5, latitude: 37.8 },
+                            northeast: { longitude: 112.6, latitude: 37.9 },
                           })
                         },
                       }
                     },
+                    createSelectorQuery: function () {
+                      const query = {
+                        in: function () { return query },
+                        select: function () {
+                          return {
+                            boundingClientRect: function (callback) {
+                              callback({ left: 0, top: 0, width: 100, height: 100 })
+                            },
+                          }
+                        },
+                        exec: function () {},
+                      }
+                      return query
+                    },
                     showToast: function () {},
+                  }
+                  const api = require('./miniprogram/utils/api.js')
+                  api.snapManualDrawnRoute = function (payload) {
+                    return Promise.resolve({ snapped_points: payload.points, warnings: [] })
+                  }
+                  api.previewManualDrawnElevation = function () {
+                    return Promise.resolve({
+                      climb_m: 18,
+                      descent_m: 2,
+                      elevation_profile: [[0, 700], [10, 718]],
+                    })
                   }
                   global.Page = function (config) { pageConfig = config }
                   require('./miniprogram/pages/route-draw/route-draw.js')
@@ -848,13 +1001,16 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                   })
                   page.onReady()
                   page.commitAnchorAction([112.5, 37.8])
-                  page.updateMode('manual', { requestStatus: 'idle' })
-                  page.onTapStartSketch()
-                  page.onDrawTouchStart({ touches: [{ x: 0, y: 0 }] })
-                  page.onDrawTouchMove({ touches: [{ x: 100, y: 0 }] })
+                  await page.onTapStartSketch()
+                  page.onDrawTouchStart({ touches: [{ clientX: 0, clientY: 100 }] })
+                  page.onDrawTouchMove({ touches: [{ clientX: 100, clientY: 100 }] })
                   for (let i = 0; i < 8; i += 1) await Promise.resolve()
                   timers.filter(function (timer) {
                     return timer.ms === 900 && !timer.cleared
+                  }).pop().fn()
+                  for (let i = 0; i < 8; i += 1) await Promise.resolve()
+                  timers.filter(function (timer) {
+                    return timer.ms === 400 && !timer.cleared
                   }).pop().fn()
                   for (let i = 0; i < 8; i += 1) await Promise.resolve()
                   process.stdout.write(JSON.stringify({
@@ -864,6 +1020,7 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                     pointCount: page.data.routeStats.pointCount,
                     canSaveRoute: page.data.canSaveRoute,
                     segmentMode: page.data.confirmedSegmentModes[0],
+                    elevationStatus: page.data.elevationStatus,
                   }))
                 })().catch(function (err) {
                   console.error(err && err.stack ? err.stack : err)
@@ -879,15 +1036,16 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
     )
     rows = json.loads(result.stdout)
 
-    assert rows["builderMode"] == "manual"
+    assert rows["builderMode"] == "smart"
     assert rows["showSketchLayer"] is False
     assert rows["mapScrollEnabled"] is True
     assert rows["pointCount"] >= 2
     assert rows["canSaveRoute"] is True
-    assert rows["segmentMode"] == "freehand"
+    assert rows["segmentMode"] == "snap"
+    assert rows["elevationStatus"] == "ready"
 
 
-def test_route_draw_sketch_does_not_stay_trapped_when_location_callback_hangs():
+def test_route_draw_sketch_does_not_stay_trapped_when_region_callback_hangs():
     result = subprocess.run(
         [
             "node",
@@ -902,15 +1060,22 @@ def test_route_draw_sketch_does_not_stay_trapped_when_location_callback_hangs():
                   global.wx = {
                     createMapContext: function () {
                       return {
-                        getCenterLocation: function (options) {
-                          options.success({ longitude: 112.5, latitude: 37.8 })
-                        },
-                        fromScreenLocation: function (options) {
-                          if (options.x === 0) {
-                            options.success({ longitude: 112.5, latitude: 37.8 })
+                        getRegion: function () {},
+                      }
+                    },
+                    createSelectorQuery: function () {
+                      const query = {
+                        in: function () { return query },
+                        select: function () {
+                          return {
+                            boundingClientRect: function (callback) {
+                              callback({ left: 0, top: 0, width: 100, height: 100 })
+                            },
                           }
                         },
+                        exec: function () {},
                       }
+                      return query
                     },
                     showToast: function () {},
                   }
@@ -923,25 +1088,13 @@ def test_route_draw_sketch_does_not_stay_trapped_when_location_callback_hangs():
                     },
                   })
                   page.onReady()
-                  page.commitAnchorAction([112.5, 37.8])
-                  page.updateMode('manual', { requestStatus: 'idle' })
-                  page.commitSegmentAction({
-                    mode: 'freehand',
-                    rawPoints: [[112.5, 37.8], [112.51, 37.8]],
-                    points: [[112.5, 37.8], [112.51, 37.8]],
-                    warnings: [],
-                  })
-                  page.onTapStartSketch()
-                  page.onDrawTouchStart({ touches: [{ x: 0, y: 0 }] })
-                  page.onDrawTouchMove({ touches: [{ x: 100, y: 0 }] })
-                  page.onDrawTouchEnd({ changedTouches: [{ x: 100, y: 0 }] })
-                  await new Promise(function (resolve) { setTimeout(resolve, 850) })
+                  await page.onTapStartSketch()
                   process.stdout.write(JSON.stringify({
                     builderMode: page.data.builderMode,
                     showSketchLayer: page.data.showSketchLayer,
                     mapScrollEnabled: page.data.mapScrollEnabled,
-                    pointCount: page.data.routeStats.pointCount,
-                    canSaveRoute: page.data.canSaveRoute,
+                    statusText: page.data.statusText,
+                    errorMessage: page.data.errorMessage,
                   }))
                 })().catch(function (err) {
                   console.error(err && err.stack ? err.stack : err)
@@ -957,11 +1110,11 @@ def test_route_draw_sketch_does_not_stay_trapped_when_location_callback_hangs():
     )
     rows = json.loads(result.stdout)
 
-    assert rows["builderMode"] == "manual"
+    assert rows["builderMode"] == "smart"
     assert rows["showSketchLayer"] is False
     assert rows["mapScrollEnabled"] is True
-    assert rows["pointCount"] >= 2
-    assert rows["canSaveRoute"] is True
+    assert rows["statusText"] == "地图还没有准备好手绘"
+    assert "重新点一次手绘" in rows["errorMessage"]
 
 
 def test_route_draw_js_syntax():

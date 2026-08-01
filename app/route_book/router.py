@@ -182,6 +182,31 @@ def preview_manual_drawn_snap(
         raise HTTPException(status_code=422, detail=str(e))
 
 
+@router.post(
+    "/manual-drawn/elevation-preview",
+    response_model=schemas.ManualDrawnElevationPreviewResponse,
+)
+def preview_manual_drawn_elevation(
+    payload: schemas.ManualDrawnElevationPreviewRequest,
+    current_user_id: int = Depends(get_current_user),
+):
+    check_rate_limit_by_user(
+        current_user_id,
+        "route-book-draw-elevation-preview",
+        limit=30,
+        window_sec=300,
+    )
+    try:
+        return service.preview_manual_drawn_elevation(
+            points=payload.points,
+            coordinate_system=payload.coordinate_system,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.get("/activity-candidates", response_model=schemas.ActivityCandidateResponse)
 def list_activity_candidates(
     current_user_id: int = Depends(get_current_user),

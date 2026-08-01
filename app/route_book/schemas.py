@@ -284,6 +284,37 @@ class ManualDrawnSnapPreviewResponse(BaseModel):
     failed_segment: int | None = None
 
 
+class ManualDrawnElevationPreviewRequest(BaseModel):
+    """已贴路线的海拔预览请求——只计算，不写入正式路书。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    coordinate_system: ManualDrawnCoordinateSystem = "gcj02"
+    points: list[tuple[float, float]] = Field(..., min_length=2, max_length=500)
+
+    @field_validator("points")
+    @classmethod
+    def validate_points(cls, points: list[tuple[float, float]]):
+        for index, (lon, lat) in enumerate(points):
+            if not math.isfinite(lon) or not math.isfinite(lat):
+                raise ValueError(f"第 {index + 1} 个路线点不是有效数字")
+            if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
+                raise ValueError(f"第 {index + 1} 个路线点超出经纬度范围")
+        return points
+
+
+class ManualDrawnElevationPreviewResponse(BaseModel):
+    """路线编辑页的非持久化海拔结果。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    coordinate_system: ManualDrawnCoordinateSystem
+    distance_m: float
+    climb_m: float
+    descent_m: float
+    elevation_profile: list[list[float]]
+
+
 class ManualDrawnRawPointsSummary(BaseModel):
     """原始手画线摘要——像抽样照片，只留少量点用于排查，不存完整触摸轨迹。"""
 

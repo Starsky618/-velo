@@ -60,6 +60,8 @@ class _RestartPartialDownload(Exception):
 def query_elevations(
     points: Iterable[tuple[float, float]],
     dem_url: str | None = None,
+    *,
+    timeout_seconds: float | None = None,
 ) -> list[float | None]:
     """批量查询 ``[(lat, lon), ...]``，返回同顺序的 GLO-30 高度。"""
     points_list = list(points)
@@ -82,13 +84,20 @@ def query_elevations(
 
     base_url = (dem_url or os.environ.get("GLO30_BASE_URL") or GLO30_BASE_URL).rstrip("/")
     cache_dir = Path(os.environ.get("GLO30_CACHE_DIR", GLO30_DEFAULT_CACHE_DIR))
-    deadline = time.monotonic() + GLO30_QUERY_TIMEOUT_SECONDS
+    query_timeout_seconds = (
+        GLO30_QUERY_TIMEOUT_SECONDS
+        if timeout_seconds is None
+        else float(timeout_seconds)
+    )
+    if not math.isfinite(query_timeout_seconds) or query_timeout_seconds <= 0:
+        raise ValueError("GLO-30 查询时限必须是正数")
+    deadline = time.monotonic() + query_timeout_seconds
     deadline_token = _query_deadline.set(deadline)
     try:
         for (south, west), items in grouped.items():
             if time.monotonic() >= deadline:
                 raise DEMServiceError(
-                    f"GLO-30 路线海拔查询超过 {GLO30_QUERY_TIMEOUT_SECONDS:.0f} 秒总时限"
+                    f"GLO-30 路线海拔查询超过 {query_timeout_seconds:g} 秒总时限"
                 )
             try:
                 tile = _load_tile(south, west, str(cache_dir), base_url)

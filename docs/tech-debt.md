@@ -49,6 +49,27 @@
 
 ---
 
+## 🟡 P2 `[SCALE-TRIGGER]`：路线编辑海拔先复用按需 GLO-30 缓存，暂不建全国预热队列（2026-08-01）
+
+**当前选择**：路线每次贴路完成后，客户端等待 400ms 再异步请求非持久化海拔预览；同一几何在页面内缓存，旧几何的迟到响应会被丢弃。服务端复用正式路书的约 20m 重采样、100m 平滑和有效爬升算法，以及 API/worker 共享的 `glo30_cache` 持久卷。正式保存仍允许最长 120 秒完成冷瓦片；编辑预览单次只占用 8 秒，客户端 12 秒结束等待。未下载完的 `.part` 保留并支持下次断点续传，预览失败只显示“待重试”，不清空路线、不阻止继续编辑或保存。当前 GLO-30 不是全国离线全集，而是按 1° 瓦片首次命中后懒下载。
+
+**暂缓方案**：本轮不下载全中国 GLO-30，不新增独立海拔预热队列/worker，不引入商业海拔 API，也不把爬升改成前端近似值。全国预热会先引入几十至上百 GB 级存储与更新责任；把 120 秒下载任务塞进现有 `velo` 队列又会阻塞骑行导入，不能用错误队列伪装异步。
+
+**触发条件（任一满足即重评）**：
+
+1. 生产 `route_draw_elevation_preview` 的 `ready` 请求 `p95 > 2s`，连续 7 天或有效样本不少于 100 次仍成立；
+2. `status=unavailable` 占比超过 5%，连续 7 天或有效样本不少于 100 次；
+3. 任一真实用户反馈常用城市连续两次重试仍没有海拔，或路线保存因 GLO-30 冷下载失败；
+4. 路线制作请求达到每天 500 次，导致 API 工作者被冷瓦片下载占用并影响其他接口延迟。
+
+**检查入口**：API 日志输出 `route_draw_elevation_preview status=<ready|unavailable|input_error> point_count=<n> duration_ms=<ms>`，不记录坐标、路线名、用户标识或 token。生产用 `sudo docker compose logs api --since 24h | grep 'route_draw_elevation_preview'` 抽样统计；GLO 持久卷容量用 `docker system df -v` 检查。当前没有自动告警，达到阈值后必须人工复核。
+
+**越线风险**：冷城市首次预览可能等待 8 秒后进入“待重试”，与 Strava 预计算全球海拔的即时体验仍有差距；若继续扩量，多个不同冷瓦片会同时占住 API 线程，拖慢登录、动态和路线保存。
+
+**到点动作**：先按日志确认瓶颈是冷下载、TIFF 解码还是算法计算，再决定是否拆独立 `route_elevation` 队列和 worker、按活跃城市预热、改用可范围读取的 COG 客户端，或采购具备中国授权的商业海拔服务；不得直接把长任务塞进现有骑行导入队列。
+
+---
+
 ## 🟡 P3：meetup 包内 service↔media_service 循环 import（延迟 import 规避 / Sprint 13 T4 / 2026-06-11）
 
 `media_service.py` 顶层 import `service._load_and_authorize_meetup`；`service.get_meetup_report` 函数内延迟 import `media_service`（顶层回 import 会真循环炸）。运行正确但属架构债。**触发清理条件**：下次重构 meetup 包时把 `_load_and_authorize_meetup` 抽到无 media 依赖的 `_auth.py` 辅助模块，消除环。
