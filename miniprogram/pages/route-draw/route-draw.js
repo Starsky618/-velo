@@ -1247,8 +1247,8 @@ Page({
 
   onTapLocate: function () {
     var that = this
-    if (typeof wx.getLocation !== 'function') return
-    wx.getLocation({
+    if (typeof wx.getFuzzyLocation !== 'function') return
+    wx.getFuzzyLocation({
       type: 'gcj02',
       success: function (res) {
         var point = normalizeLonLatPoint({ longitude: res.longitude, latitude: res.latitude })
