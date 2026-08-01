@@ -57,12 +57,17 @@ sudo docker compose exec -T redis redis-cli --scan --pattern 'power_curve:*' \
 
 # DEPLOY-3  rebuild（不能只 restart）
 # 原因：build:. 无 volume mount，restart 只重启进程不重建 image，容器跑的还是旧代码
+# 纯 website/ 静态内容例外：website 通过只读 bind mount 进入 Caddy，服务器 git pull
+# 后立即生效。确认整个待部署 commit 范围没有后端、Caddyfile 或 Compose 变更时，跳过
+# 本步的 build/recreate，直接执行官网专项公网 gate 和 API 健康回归；website/ 已从
+# 后端 Docker build context 排除，静态资源不应触发 api/worker/scheduler 镜像重建。
 # 改 Caddyfile 时先用不占端口的一次性容器读取当前工作树做 preflight，失败就停，不能先打断 API：
 sudo docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile
 sudo docker compose up -d --build           # 默认不指定 service，自动 rebuild 所有受影响容器（最稳）
 sudo docker compose logs api --tail 20      # 看启动日志确认 healthy
 # ⚠ 若指定 service：改 worker.py 必须 rebuild worker，别只 rebuild api（2026-05-20 漏 worker 静默失效 30min）
-# ⚠ preflight 通过后，改 Caddy volumes 或 website/ 时必须 recreate caddy，不能只 restart：
+# ⚠ preflight 通过后，只有改 Caddyfile 或 Caddy volumes 时才 recreate caddy；纯 website/
+#   内容是 bind mount，禁止为此重启共享 API 入口：
 #   sudo docker compose up -d --force-recreate caddy
 #   sudo docker compose logs caddy --tail 30
 
@@ -109,7 +114,7 @@ ssh ubuntu@114.132.190.245 "sudo docker image prune -a -f && sudo docker builder
 涉及 `website/`、`Caddyfile`、Caddy volume 或根域 DNS 时，在通用步骤之外必须完成：
 
 1. DNSPod 权威查询确认 `weiluai.top A → 114.132.190.245`、`www CNAME → weiluai.top`，且 `api.weiluai.top` 记录未变化；
-2. 先用不占端口的一次性 Caddy 容器读取当前工作树并执行 `caddy validate`；通过后再用 `docker compose up -d --force-recreate caddy` 让新增挂载进入正式容器，并检查启动日志；
+2. 改 `Caddyfile` 或 Caddy volume 时，先用不占端口的一次性 Caddy 容器读取当前工作树并执行 `caddy validate`；通过后再用 `docker compose up -d --force-recreate caddy` 让配置或新增挂载进入正式容器，并检查启动日志。仅改 `website/` 内容时，确认只读 bind mount 已更新，不重建或重启 Caddy；
 3. 公网分别验证根域首页、公司页、两份隐私政策、中英文页、未知路径 404、`www` 永久跳转和 `api` 健康检查；
 4. 验证根域请求 `/uploads/`、`/uploads/meetup_media/`、`/uploads/route_covers/` 和编码路径穿越均不能读取文件；
 5. 检查 Caddy 日志，确认根域与 `www` 证书已签发且没有持续 ACME 错误。

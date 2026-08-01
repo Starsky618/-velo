@@ -9,6 +9,7 @@ __pycache__
 *.pyc
 tests/
 docs/
+website/
 uploads/
 backup/
 backups/
