@@ -87,17 +87,20 @@ def test_route_draw_removes_center_crosshair_and_add_center_fallback():
     assert "center-add-button" not in wxss
 
 
-def test_route_draw_page_uses_builder_status_and_action_draft_state():
+def test_route_draw_page_keeps_full_route_state_off_the_view_data_bridge():
     js = _read(PAGE_DIR / "route-draw.js")
     wxml = _read(PAGE_DIR / "route-draw.wxml")
 
     assert "builderMode: 'smart'" in js
     assert "requestStatus: 'idle'" in js
-    assert "routeDraft" in js
-    assert "actions: []" in js
-    assert "segments: []" in js
-    assert "pending: null" in js
-    assert "confirmedPoints" in js
+    assert "_routeActions" in js
+    assert "_routePending" in js
+    assert "actionCount: 0" in js
+    assert "routeDraft" not in js
+    assert "confirmedSegments" not in js
+    assert "MAX_DISPLAY_POINTS = 500" in js
+    assert "simplifyForDisplay" in js
+    assert "_confirmedPoints" in js
     assert "currentRawPoints" in js
     assert "previewPoints" in js
     assert "markers" in js
@@ -151,7 +154,7 @@ def test_second_smart_map_tap_snaps_and_auto_merges_draft_segment():
     assert "mode: 'snap'" in snap_block
     assert "points: simplifyForSnap(raw)" in snap_block
     assert "commitSegmentAction" in success_block
-    assert "requestStatus: 'idle'" in success_block
+    assert "that.applyDraftState" not in success_block
     assert "onTapConfirmSegment" not in js
     assert "确认当前段" not in wxml
 
@@ -514,9 +517,9 @@ def test_pending_save_survives_page_restart_and_replays_the_same_request_once():
                   const secondPage = makePage()
                   secondPage.onLoad()
                   const callsAfterRestore = calls.length
-                  const pointsBeforeBlockedEdit = JSON.stringify(secondPage.data.confirmedPoints)
+                  const pointsBeforeBlockedEdit = JSON.stringify(secondPage._confirmedPoints)
                   secondPage.onMapTap({ detail: { longitude: 112.9, latitude: 37.9 } })
-                  const pointsAfterBlockedEdit = JSON.stringify(secondPage.data.confirmedPoints)
+                  const pointsAfterBlockedEdit = JSON.stringify(secondPage._confirmedPoints)
                   secondPage.onTapConfirmPendingSave()
                   await new Promise(function (resolve) { setTimeout(resolve, 0) })
                   const afterRateLimit = {
@@ -740,6 +743,129 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
     assert rows["metadata"]["warnings"] == ["系统贴出的路线可能偏离你的手画线，请检查后再保存。"]
 
 
+def test_long_route_keeps_canonical_points_internal_and_bounds_view_payload():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                ;(async function () {
+                  let pageConfig
+                  let savedPayload = null
+                  let timerId = 0
+                  const patches = []
+                  const storage = { userId: 7 }
+                  global.setTimeout = function () { timerId += 1; return timerId }
+                  global.clearTimeout = function () {}
+                  global.getApp = function () {
+                    return { globalData: { token: 'token-for-test', userId: 7 } }
+                  }
+                  global.wx = {
+                    showToast: function () {},
+                    setStorageSync: function (key, value) { storage[key] = value },
+                    removeStorageSync: function (key) { delete storage[key] },
+                    getStorageSync: function (key) { return storage[key] },
+                    redirectTo: function () {},
+                  }
+                  const api = require('./miniprogram/utils/api.js')
+                  api.createRouteBookFromManualDrawn = function (payload) {
+                    savedPayload = JSON.parse(JSON.stringify(payload))
+                    return Promise.resolve({ id: 701 })
+                  }
+                  global.Page = function (config) { pageConfig = config }
+                  require('./miniprogram/pages/route-draw/route-draw.js')
+                  const page = Object.assign({}, pageConfig, {
+                    data: JSON.parse(JSON.stringify(pageConfig.data)),
+                    setData: function (patch) {
+                      patches.push(JSON.parse(JSON.stringify(patch)))
+                      this.data = Object.assign({}, this.data, patch)
+                    },
+                  })
+                  const totalPointCount = 19 * 399 + 1
+                  const longitudeSpan = 1.375
+                  for (let segment = 0; segment < 19; segment += 1) {
+                    const points = []
+                    for (let index = 0; index < 400; index += 1) {
+                      const absolute = segment * 399 + index
+                      points.push([
+                        112.5 + longitudeSpan * absolute / (totalPointCount - 1),
+                        37.8 + Math.sin(absolute / 20) * 0.0001,
+                      ])
+                    }
+                    page.commitSegmentAction({
+                      mode: 'snap',
+                      rawPoints: [points[0], points[points.length - 1]],
+                      points: points,
+                      warnings: [],
+                    })
+                  }
+                  const routePatches = patches.filter(function (patch) { return patch.drawPolylines })
+                  const elevationPatches = patches.filter(function (patch) {
+                    return patch.elevationStatus && !patch.drawPolylines
+                  })
+                  const renderedPointCounts = routePatches.map(function (patch) {
+                    const line = patch.drawPolylines.find(function (item) {
+                      return item.role === 'confirmedPolyline'
+                    })
+                    return line ? line.points.length : 0
+                  })
+                  const routePatchBytes = routePatches.map(function (patch) {
+                    return JSON.stringify(patch).length
+                  })
+                  page.setData({ routeName: '121 公里长路线回归' })
+                  page.onTapSave()
+                  await Promise.resolve()
+                  await Promise.resolve()
+                  process.stdout.write(JSON.stringify({
+                    internalPointCount: page._confirmedPoints.length,
+                    distanceM: page.data.routeStats.distanceM,
+                    routePatchCount: routePatches.length,
+                    maxRenderedPointCount: Math.max.apply(Math, renderedPointCounts),
+                    maxRoutePatchBytes: Math.max.apply(Math, routePatchBytes),
+                    routePatchKeys: Object.keys(routePatches[routePatches.length - 1]),
+                    elevationPatchesCarryPolyline: elevationPatches.some(function (patch) {
+                      return patch.drawPolylines || patch.confirmedPoints || patch.routeDraft
+                    }),
+                    internalSegmentCount: page._segmentModes.length,
+                    savedPointCount: savedPayload && savedPayload.points.length,
+                    savedSegmentCount: savedPayload && savedPayload.draw_metadata.segment_count,
+                    savedRawPointCount: savedPayload && savedPayload.draw_metadata.raw_points_summary.total_raw_points,
+                    savedFirstPoint: savedPayload && savedPayload.points[0],
+                    savedLastPoint: savedPayload && savedPayload.points[savedPayload.points.length - 1],
+                  }))
+                })().catch(function (err) {
+                  console.error(err && err.stack ? err.stack : err)
+                  process.exit(1)
+                })
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    row = json.loads(result.stdout)
+
+    assert row["internalPointCount"] > 7_000
+    assert 115_000 < row["distanceM"] < 130_000
+    assert row["routePatchCount"] == 19
+    assert row["maxRenderedPointCount"] <= 500
+    assert row["maxRoutePatchBytes"] < 200_000
+    assert row["internalSegmentCount"] == 19
+    assert row["savedPointCount"] <= 500
+    assert row["savedSegmentCount"] == 19
+    # 19 个首尾相接的两点段合并后保留 20 个唯一锚点。
+    assert row["savedRawPointCount"] == 20
+    assert row["savedFirstPoint"] == pytest.approx([112.5, 37.8])
+    assert row["savedLastPoint"] == pytest.approx([113.875, 37.8], abs=0.001)
+    assert "routeDraft" not in row["routePatchKeys"]
+    assert "confirmedSegments" not in row["routePatchKeys"]
+    assert "confirmedPoints" not in row["routePatchKeys"]
+    assert row["elevationPatchesCarryPolyline"] is False
+
+
 def test_route_draw_map_tap_flow_sets_anchor_snaps_and_loads_elevation():
     result = subprocess.run(
         [
@@ -801,7 +927,7 @@ def test_route_draw_map_tap_flow_sets_anchor_snaps_and_loads_elevation():
                     canSaveRoute: page.data.canSaveRoute,
                     elevationStatus: page.data.elevationStatus,
                   }
-                  await new Promise(function (resolve) { setTimeout(resolve, 450) })
+                  await new Promise(function (resolve) { setTimeout(resolve, 850) })
                   await new Promise(function (resolve) { setTimeout(resolve, 0) })
                   const second = {
                     snapCalls: snapCalls.length,
@@ -809,7 +935,7 @@ def test_route_draw_map_tap_flow_sets_anchor_snaps_and_loads_elevation():
                     coordinateSystem: snapCalls[0] && snapCalls[0].coordinate_system,
                     pointCount: page.data.routeStats.pointCount,
                     canSaveRoute: page.data.canSaveRoute,
-                    segmentMode: page.data.confirmedSegmentModes[0],
+                    segmentMode: page._segmentModes[0],
                     elevationCalls: elevationCalls.length,
                     elevationStatus: page.data.elevationStatus,
                     climbText: page.data.routeStats.climbText,
@@ -881,14 +1007,14 @@ def test_route_draw_ignores_stale_elevation_result_after_geometry_changes():
                     points: [[112.5, 37.8], [112.51, 37.81]],
                     warnings: [],
                   })
-                  await new Promise(function (resolve) { setTimeout(resolve, 450) })
+                  await new Promise(function (resolve) { setTimeout(resolve, 850) })
                   page.commitSegmentAction({
                     mode: 'snap',
                     rawPoints: [[112.51, 37.81], [112.52, 37.82]],
                     points: [[112.51, 37.81], [112.52, 37.82]],
                     warnings: [],
                   })
-                  await new Promise(function (resolve) { setTimeout(resolve, 450) })
+                  await new Promise(function (resolve) { setTimeout(resolve, 850) })
 
                   elevationResolvers[1]({
                     climb_m: 20,
@@ -931,6 +1057,83 @@ def test_route_draw_ignores_stale_elevation_result_after_geometry_changes():
     assert rows["climbText"] == "20 m"
     assert rows["pointCount"] == 3
     assert rows["canSaveRoute"] is True
+
+
+def test_failed_next_snap_reschedules_the_cancelled_elevation_preview():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                ;(async function () {
+                  let pageConfig
+                  let elevationCalls = 0
+                  global.getApp = function () {
+                    return { globalData: { token: 'token-for-test' } }
+                  }
+                  global.wx = {
+                    showToast: function () {},
+                    createSelectorQuery: function () { return null },
+                  }
+                  const api = require('./miniprogram/utils/api.js')
+                  api.snapManualDrawnRoute = function () {
+                    return Promise.reject({ code: 422 })
+                  }
+                  api.previewManualDrawnElevation = function () {
+                    elevationCalls += 1
+                    return Promise.resolve({
+                      climb_m: 12,
+                      descent_m: 2,
+                      elevation_profile: [[0, 700], [1, 712]],
+                    })
+                  }
+                  global.Page = function (config) { pageConfig = config }
+                  require('./miniprogram/pages/route-draw/route-draw.js')
+                  const page = Object.assign({}, pageConfig, {
+                    data: JSON.parse(JSON.stringify(pageConfig.data)),
+                    setData: function (patch) {
+                      this.data = Object.assign({}, this.data, patch)
+                    },
+                  })
+                  page.commitSegmentAction({
+                    mode: 'snap',
+                    rawPoints: [[112.5, 37.8], [112.51, 37.81]],
+                    points: [[112.5, 37.8], [112.51, 37.81]],
+                    warnings: [],
+                  })
+                  page.startSnapPreview([[112.51, 37.81], [112.52, 37.82]])
+                  await Promise.resolve()
+                  await Promise.resolve()
+                  await new Promise(function (resolve) { setTimeout(resolve, 850) })
+                  await Promise.resolve()
+                  await Promise.resolve()
+                  process.stdout.write(JSON.stringify({
+                    elevationCalls,
+                    elevationStatus: page.data.elevationStatus,
+                    climbText: page.data.routeStats.climbText,
+                    requestStatus: page.data.requestStatus,
+                  }))
+                })().catch(function (err) {
+                  console.error(err && err.stack ? err.stack : err)
+                  process.exit(1)
+                })
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    row = json.loads(result.stdout)
+
+    assert row == {
+        "elevationCalls": 1,
+        "elevationStatus": "ready",
+        "climbText": "12 m",
+        "requestStatus": "error",
+    }
 
 
 def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
@@ -1010,7 +1213,7 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                   }).pop().fn()
                   for (let i = 0; i < 8; i += 1) await Promise.resolve()
                   timers.filter(function (timer) {
-                    return timer.ms === 400 && !timer.cleared
+                    return timer.ms === 800 && !timer.cleared
                   }).pop().fn()
                   for (let i = 0; i < 8; i += 1) await Promise.resolve()
                   process.stdout.write(JSON.stringify({
@@ -1019,7 +1222,7 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                     mapScrollEnabled: page.data.mapScrollEnabled,
                     pointCount: page.data.routeStats.pointCount,
                     canSaveRoute: page.data.canSaveRoute,
-                    segmentMode: page.data.confirmedSegmentModes[0],
+                    segmentMode: page._segmentModes[0],
                     elevationStatus: page.data.elevationStatus,
                   }))
                 })().catch(function (err) {

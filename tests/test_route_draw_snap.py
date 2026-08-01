@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import json
+import logging
 import subprocess
 import textwrap
 
@@ -32,9 +33,12 @@ def _snap_payload(points=None, mode="snap", coordinate_system="gcj02"):
     }
 
 
-def test_logged_in_user_gets_snap_preview_without_creating_route_book(client, db, auth_header, monkeypatch):
+def test_logged_in_user_gets_snap_preview_without_creating_route_book(
+    client, db, auth_header, monkeypatch, caplog
+):
     from app.route_book.models import RouteBook
 
+    caplog.set_level(logging.INFO, logger="app.route_book.router")
     calls = []
 
     def fake_plan(start, end, timeout_sec=None):
@@ -67,6 +71,8 @@ def test_logged_in_user_gets_snap_preview_without_creating_route_book(client, db
     assert body["failed_segment"] is None
     assert calls == [((37.8001, 112.5001), (37.8601, 112.5601), 3.0)]
     assert db.query(RouteBook).count() == 0
+    assert "route_draw_snap_preview status=ready raw_point_count=2" in caplog.text
+    assert "snapped_point_count=3 segment_count=1 duration_ms=" in caplog.text
 
 
 def test_snap_preview_requires_login(client, monkeypatch):

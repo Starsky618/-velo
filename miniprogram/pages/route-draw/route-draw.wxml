@@ -29,7 +29,7 @@
 
     <cover-view wx:if="{{!showSketchLayer}}" class="route-draw-toolbox">
       <cover-view class="mode-tool" bindtap="onTapStartSketch">手绘</cover-view>
-      <cover-view class="mode-tool {{routeDraft.actions.length ? '' : 'is-disabled'}}" bindtap="onTapUndoAction">撤销</cover-view>
+      <cover-view class="mode-tool {{actionCount ? '' : 'is-disabled'}}" bindtap="onTapUndoAction">撤销</cover-view>
     </cover-view>
 
     <cover-view
@@ -127,7 +127,7 @@
         class="pending-abandon-button"
         bindtap="onTapAbandonPendingSave">放弃确认并继续编辑</button>
 
-      <view wx:if="{{confirmedPoints.length < 2}}" class="save-hint">点地图设置起点和终点后即可保存</view>
+      <view wx:if="{{confirmedPointCount < 2}}" class="save-hint">点地图设置起点和终点后即可保存</view>
     </block>
   </view>
 </view>
