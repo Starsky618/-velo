@@ -1265,6 +1265,30 @@ Page({
     })
   },
 
+  onTapSearchLocation: function () {
+    var that = this
+    if (typeof wx.chooseLocation !== 'function') {
+      wx.showToast({ title: '当前微信版本不支持地点搜索', icon: 'none' })
+      return
+    }
+    wx.chooseLocation({
+      success: function (res) {
+        var point = normalizeLonLatPoint({ longitude: res.longitude, latitude: res.latitude })
+        if (!point) return
+        var label = String(res.name || res.address || '该地点').trim()
+        that.setData({
+          latitude: point[1],
+          longitude: point[0],
+          statusText: '已找到' + label + '，点“+ 添加点”设为路线点',
+        })
+      },
+      fail: function (err) {
+        if (err && String(err.errMsg || '').indexOf('cancel') >= 0) return
+        wx.showToast({ title: '没有选中地点，再试一次', icon: 'none' })
+      },
+    })
+  },
+
   onTapClose: function () {
     if (typeof wx.navigateBack === 'function') {
       wx.navigateBack({
