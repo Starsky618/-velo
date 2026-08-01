@@ -12,6 +12,13 @@
 # www 的 CNAME → weiluai.top，轻量服务器防火墙放行 80/443。
 
 (velo_site) {
+    # 微信小程序业务域名所有权校验。仅开放微信生成的精确文件名，
+    # 不扩大 /srv/website 在 API 域名下的静态文件访问范围。
+    handle /l5SARfvHJ6.txt {
+        root * /srv/website
+        file_server
+    }
+
     # 上传体积上限：约骑媒体图 ≤5MB / 视频 ≤50MB，留余量 55MB。
     # 在反代之前就拦超大请求，0 应用层内存消耗（防大文件先读进内存才被后端 413）。
     request_body {
