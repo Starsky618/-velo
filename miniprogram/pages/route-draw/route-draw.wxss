@@ -235,7 +235,7 @@ page {
 }
 
 .elevation-state {
-  min-height: 88rpx;
+  min-height: 44px;
   margin-top: 22rpx;
   padding: 24rpx;
   border-radius: 20rpx;
@@ -285,7 +285,7 @@ page {
   border-radius: 44rpx;
   font-size: 26rpx;
   font-weight: 600;
-  line-height: 88rpx;
+  line-height: 44px;
   box-sizing: border-box;
 }
 

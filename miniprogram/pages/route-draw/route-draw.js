@@ -540,6 +540,7 @@ function cloneAction(action) {
       mode: action.mode === 'freehand' ? 'freehand' : 'snap',
       rawPoints: cloneLonLatPoints(action.rawPoints),
       points: cloneLonLatPoints(action.points),
+      displayPoints: cloneLonLatPoints(action.displayPoints || action.points),
       warnings: Array.isArray(action.warnings) ? action.warnings.slice(0, 20) : [],
     }
   }
@@ -561,6 +562,7 @@ function clonePending(pending) {
     mode: pending.mode === 'freehand' ? 'freehand' : 'snap',
     rawPoints: cloneLonLatPoints(pending.rawPoints),
     previewPoints: cloneLonLatPoints(pending.previewPoints),
+    displayPoints: cloneLonLatPoints(pending.displayPoints || pending.previewPoints),
     warnings: Array.isArray(pending.warnings) ? pending.warnings.slice(0, 20) : [],
   }
 }
@@ -626,6 +628,7 @@ function deriveDraftView(actions, pending) {
   var segments = []
   var modes = []
   var rawSegments = []
+  var displaySegments = []
   var segmentWarnings = []
 
   safeActions.forEach(function (action) {
@@ -633,16 +636,19 @@ function deriveDraftView(actions, pending) {
     var segmentPoints = action.points
     if (segmentPoints.length < 2) return
     segments.push(segmentPoints)
+    displaySegments.push(action.displayPoints.length >= 2 ? action.displayPoints : segmentPoints)
     modes.push(action.mode)
     rawSegments.push(action.rawPoints)
     segmentWarnings.push(Array.isArray(action.warnings) ? action.warnings.slice(0, 20) : [])
   })
 
   var confirmedPoints = segments.length ? mergeSegments(segments) : []
+  var confirmedDisplayPoints = displaySegments.length ? mergeSegments(displaySegments) : []
   if (!confirmedPoints.length) {
     safeActions.some(function (action) {
       if (action.kind !== 'anchor') return false
       confirmedPoints = [action.point]
+      confirmedDisplayPoints = [action.point]
       return true
     })
   }
@@ -654,9 +660,10 @@ function deriveDraftView(actions, pending) {
     rawSegments: rawSegments,
     segmentWarnings: segmentWarnings,
     confirmedPoints: confirmedPoints,
+    confirmedDisplayPoints: confirmedDisplayPoints,
     pending: safePending,
     currentRawPoints: safePending ? safePending.rawPoints : [],
-    previewPoints: safePending ? safePending.previewPoints : [],
+    previewPoints: safePending ? safePending.displayPoints : [],
     pendingWarnings: safePending ? safePending.warnings : [],
     markers: buildMarkers(safeActions),
   }
@@ -770,7 +777,7 @@ Page({
   applyDraftState: function (actions, pending, extraPatch) {
     var patch = extraPatch || {}
     var view = deriveDraftView(actions, pending)
-    var displayConfirmedPoints = simplifyForDisplay(view.confirmedPoints)
+    var displayConfirmedPoints = simplifyForDisplay(view.confirmedDisplayPoints)
     this._routeActions = view.actions
     this._routePending = view.pending
     this._confirmedPoints = view.confirmedPoints
@@ -873,6 +880,7 @@ Page({
       mode: segment.mode === 'freehand' ? 'freehand' : 'snap',
       rawPoints: cloneLonLatPoints(segment.rawPoints || points),
       points: points,
+      displayPoints: cloneLonLatPoints(segment.displayPoints || points),
       warnings: Array.isArray(segment.warnings) ? segment.warnings.slice(0, 20) : [],
     })
     this.applyDraftState(actions, null, {
@@ -946,11 +954,11 @@ Page({
     this.startSnapPreview([lastPoint, normalized])
   },
 
-  startSnapPreview: function (rawPoints, requestedMode) {
+  startSnapPreview: function (rawPoints) {
     if (!this.ensureLoggedIn()) return
     var raw = cloneLonLatPoints(rawPoints)
     if (raw.length < 2) return
-    var requestMode = requestedMode === 'freehand' ? 'freehand' : 'snap'
+    var requestMode = 'snap'
 
     var that = this
     this.cancelElevationPreview()
@@ -968,6 +976,7 @@ Page({
       mode: requestMode,
       rawPoints: raw,
       previewPoints: [],
+      displayPoints: [],
       warnings: [],
     }
     this.applyDraftState(this._routeActions || [], pending, {
@@ -982,17 +991,21 @@ Page({
     api.snapManualDrawnRoute({
       coordinate_system: 'gcj02',
       mode: requestMode,
+      supports_detour_confirmation: true,
       points: simplifyForSnap(raw),
     }).then(function (result) {
       if (snapSeq !== that._snapSeq) return
       var preview = normalizeLonLatPoints(result && result.snapped_points)
       if (preview.length < 2) throw { code: 422 }
+      var displayPreview = normalizeLonLatPoints(result && result.display_points)
+      if (displayPreview.length < 2) displayPreview = simplifyForDisplay(preview)
       var warnings = (result && Array.isArray(result.warnings)) ? result.warnings : []
       if (requestMode === 'snap' && result && result.requires_confirmation) {
         that.applyDraftState(that._routeActions || [], {
           mode: 'snap',
           rawPoints: raw,
           previewPoints: preview,
+          displayPoints: displayPreview,
           warnings: warnings,
         }, {
           requestStatus: 'confirming',
@@ -1008,6 +1021,7 @@ Page({
         mode: requestMode,
         rawPoints: raw,
         points: preview,
+        displayPoints: displayPreview,
         warnings: warnings,
       })
     }).catch(function (err) {
@@ -1017,6 +1031,7 @@ Page({
         mode: requestMode,
         rawPoints: raw,
         previewPoints: [],
+        displayPoints: [],
         warnings: [],
       }, {
         requestStatus: 'error',
@@ -1038,6 +1053,7 @@ Page({
       mode: 'snap',
       rawPoints: pending.rawPoints,
       points: pending.previewPoints,
+      displayPoints: pending.displayPoints,
       warnings: pending.warnings,
     })
   },
@@ -1259,7 +1275,13 @@ Page({
       mapScrollEnabled: true,
     })
     this._sketchViewport = null
-    this.startSnapPreview(raw, 'freehand')
+    this.commitSegmentAction({
+      mode: 'freehand',
+      rawPoints: raw,
+      points: raw,
+      displayPoints: simplifyForDisplay(raw),
+      warnings: [],
+    })
   },
 
   finishSketchMode: function (text) {

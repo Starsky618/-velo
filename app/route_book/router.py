@@ -169,14 +169,16 @@ def preview_manual_drawn_snap(
             mode=payload.mode,
             coordinate_system=payload.coordinate_system,
             points=payload.points,
+            supports_detour_confirmation=payload.supports_detour_confirmation,
         )
         logger.info(
             "route_draw_snap_preview status=ready raw_point_count=%d "
-            "provider_point_count=%d snapped_point_count=%d segment_count=%d "
+            "provider_point_count=%d snapped_point_count=%d display_point_count=%d segment_count=%d "
             "requires_confirmation=%d duration_ms=%.1f",
             raw_point_count,
             int(result.get("provider_point_count") or len(result.get("snapped_points") or [])),
             len(result.get("snapped_points") or []),
+            len(result.get("display_points") or []),
             int(result.get("segment_count") or 0),
             int(bool(result.get("requires_confirmation"))),
             (time.perf_counter() - started_at) * 1000,

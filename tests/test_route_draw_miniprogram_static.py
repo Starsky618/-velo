@@ -204,7 +204,9 @@ def test_route_draw_exposes_smart_tap_and_true_manual_pencil_modes():
     assert "builderMode === 'manual'" not in js
     assert 'catchtap="onTapStartSketch"' in wxml
     assert "this.startSnapPreview([lastPoint, normalized])" in js
-    assert "this.startSnapPreview(raw, 'freehand')" in js
+    assert "this.startSnapPreview(raw, 'freehand')" not in js
+    assert "supports_detour_confirmation: true" in js
+    assert "mode: 'freehand'" in js
     assert 'bindtap="onTapAcceptDetour"' in wxml
     assert 'bindtap="onTapSketchDetour"' in wxml
     assert "freehand_segment_count" in metadata_block
@@ -212,6 +214,7 @@ def test_route_draw_exposes_smart_tap_and_true_manual_pencil_modes():
     assert "mode: 'manual'" not in js
     assert "手绘会保留原线，不再自动绕路" in wxml
     assert "松手后会自动贴到可骑行道路" not in wxml
+    assert "min-height: 44px" in _read(PAGE_DIR / "route-draw.wxss")
 
 
 def test_sketch_pencil_temporarily_takes_over_touch_and_then_restores_map():
@@ -1007,6 +1010,11 @@ def test_map_pan_does_not_add_point_and_extreme_detour_waits_for_confirmation():
                         [112.55, 37.85],
                         [112.501, 37.8],
                       ],
+                      display_points: [
+                        [112.5, 37.8],
+                        [112.55, 37.85],
+                        [112.501, 37.8],
+                      ],
                       warnings: ['系统贴出的路线可能偏离你的手画线，请检查后再保存。'],
                       requires_confirmation: true,
                     })
@@ -1262,7 +1270,7 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                 ;(async function () {
                   let pageConfig
                   let timers = []
-                  const snapModes = []
+                  let snapCallCount = 0
                   global.setTimeout = function (fn, ms) {
                     timers.push({ fn, ms, cleared: false })
                     return timers.length - 1
@@ -1302,7 +1310,7 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                   }
                   const api = require('./miniprogram/utils/api.js')
                   api.snapManualDrawnRoute = function (payload) {
-                    snapModes.push(payload.mode)
+                    snapCallCount += 1
                     return Promise.resolve({ snapped_points: payload.points, warnings: [] })
                   }
                   api.previewManualDrawnElevation = function () {
@@ -1341,7 +1349,7 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                     pointCount: page.data.routeStats.pointCount,
                     canSaveRoute: page.data.canSaveRoute,
                     segmentMode: page._segmentModes[0],
-                    snapMode: snapModes[0],
+                    snapCallCount: snapCallCount,
                     elevationStatus: page.data.elevationStatus,
                   }))
                 })().catch(function (err) {
@@ -1364,7 +1372,7 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
     assert rows["pointCount"] >= 2
     assert rows["canSaveRoute"] is True
     assert rows["segmentMode"] == "freehand"
-    assert rows["snapMode"] == "freehand"
+    assert rows["snapCallCount"] == 0
     assert rows["elevationStatus"] == "ready"
 
 

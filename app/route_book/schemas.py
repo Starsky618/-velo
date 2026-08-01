@@ -254,6 +254,7 @@ class ManualDrawnSnapPreviewRequest(BaseModel):
 
     coordinate_system: RouteDrawCoordinateSystem
     mode: RouteDrawMode
+    supports_detour_confirmation: bool = False
     points: list[tuple[float, float]] = Field(..., min_length=2, max_length=120)
 
     @field_validator("points")
@@ -275,10 +276,12 @@ class ManualDrawnSnapPreviewResponse(BaseModel):
     mode: RouteDrawMode
     coordinate_system: RouteDrawCoordinateSystem
     snapped_points: list[list[float]]
+    display_points: list[list[float]]
     raw_points: list[list[float]]
     anchor_points: list[list[float]]
     raw_distance_m: float
     distance_m: float
+    provider_distance_m: float
     segment_count: int
     provider_point_count: int = Field(ge=2)
     requires_confirmation: bool = False
