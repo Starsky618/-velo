@@ -23,13 +23,13 @@
 
 ## 🟡 P2 `[SCALE-TRIGGER]`：个人热图先用单机持久瓦片卷，暂不上对象存储/CDN（2026-07-31，2026-08-01 更新）
 
-**当前状态（未上线）**：生产热图仍依赖压缩后的 `simplified_track`，会把山区连续弯道画成跨路直线。任务分支已经在代码层把所有可见热图路径统一改为以完整 `Trackpoint` 为唯一几何真值，并新增正式 H5/WebGL 分层瓦片页；尚未经过微信 web-view 真机验收、合并或部署。
+**当前状态（已上线）**：2026-08-01 已把所有可见热图路径统一到完整 `Trackpoint` 几何真值，并正式接入 H5/WebGL 分层瓦片页。代码已通过 PR/CI、部署到 `api.weiluai.top`，微信业务域名根目录校验已通过，Tim 在正式微信开发者工具项目中确认新版个人热图可用。该证据不等同于独立真机性能验收；真机差异仍以之后的真实反馈为准。
 
 **当前选择**：本轮采用 PostgreSQL/PostGIS 原始 `Trackpoint` → Redis 共享原始派生源、版本清单和短会话 → 独立 RQ `heatmap-worker` 预热 z11–z15 → API/热图 worker 共享 Docker 持久卷保存可重建 PNG。热图 worker 与骑行导入 worker 进程隔离，避免不可抢占的长 PNG 任务堵住新活动入库。z16–z18 先显示 z15 父级红线，真实细节瓦片到达后无缝覆盖并写入同一持久卷；Redis 不承载数万个最终 PNG。进程内短 TTL LRU 只复用坐标转换；Redis 单飞租约避免同一 generation 重复扫描或渲染，独立 1 秒超时连接池避免网络黑洞拖死请求。原始点不因显示、传输或缓存预算而删除，热图几何禁止读取 `simplified_track`。产物按 user/audience/year/generation 隔离，每次读取同时校验数据库活动/隐私指纹，因此 Redis 失效失败也不能复活旧 PNG。
 
 **本地容量基线（不是生产 p95）**：2026-07-31 用生产 293 条骑行、752,234 个 Trackpoint 的脱敏副本在独立 PostGIS/Redis QA 环境验证。冷 meta 约 3.5 秒、共享源后的 full 约 0.37 秒、z10 viewport 约 2.88 秒、z9 tile 约 0.27 秒；热命中约 2–6 毫秒。同一 z10 视野 6 并发从改造前约 18.9 秒收敛到约 3.2–3.7 秒，交错发送到两个 API 进程仍只经历一次构建；故障注入无 Redis 的 API 进程时，6 个并发 meta 仍从 PostgreSQL 在约 3.8 秒返回 200。该基线只证明当前单用户规模可用，不能替代上线后的连续生产观测。
 
-**2026-08-01 分层瓦片实验（任务分支，未上线）**：真实原始轨迹计算出的 z11–z18 稀疏清单为 43,594 块，其中 z11–z15 为 3,351 块，z16–z18 为 40,243 块。逐块把全部最终 PNG 灌进 Redis 的一次本地尝试只生成 920/43,594 就被主动停止；该结果已经足够否定“每次 generation 后全量重画最终 PNG 并塞 Redis”。任务分支现改为：RQ 预热原始高精度 source + 真实轨迹覆盖清单；持久层先完整生成 z11–z15；z16–z18 在细节请求期间始终保留父级红线，真实子瓦片到达后覆盖并持久化。390×780 浏览器做 12 次快速跨区/缩放，帧间隔 P50 16.7ms、P95 17.6ms、`>34ms` 为 0；这仍不是微信真机或生产网络证据。
+**2026-08-01 分层瓦片实现基线（已上线，数字仍是上线前实验）**：真实原始轨迹计算出的 z11–z18 稀疏清单为 43,594 块，其中 z11–z15 为 3,351 块，z16–z18 为 40,243 块。逐块把全部最终 PNG 灌进 Redis 的一次本地尝试只生成 920/43,594 就被主动停止；该结果已经足够否定“每次 generation 后全量重画最终 PNG 并塞 Redis”。正式实现采用 RQ 预热原始高精度 source + 真实轨迹覆盖清单；持久层先生成 z3–z15 基础瓦片，z16–z18 在细节请求期间保留 z15 父级红线，真实子瓦片到达后覆盖并持久化。390×780 浏览器曾做 12 次快速跨区/缩放，帧间隔 P50 16.7ms、P95 17.6ms、`>34ms` 为 0；这些数字仍不是微信真机或生产网络指标，不能用来替代上线后的观测日志。
 
 **暂缓方案**：不把 43,594 个最终 PNG 全量塞进 Redis，也暂不引入私有对象存储、近期活动 warm delta、后台批量 compaction 或 CDN。当前持久层只是服务器本机 Docker volume，不具备跨主机复制、边缘分发或无限容量；它能消除同一代瓦片在进程重启后的重复生成，但不能冒充 Strava 级全球交付网络。
 
@@ -41,7 +41,7 @@
 4. 新活动或隐私变更推进 generation 后，常骑城市首屏连续出现超过 3 秒的可见重建等待。
 5. `heatmap_tiles` volume 使用量超过服务器可用磁盘的 10%，或近 30 天增长趋势预计 90 天内耗尽磁盘。
 
-**检查入口**：热图正式上线时必须补齐 cache hit/miss、tile render ms、查询 Trackpoint 数和输出字节数的结构化日志或指标；Redis 用 `INFO memory`/`INFO stats` 看内存与 eviction；PostgreSQL 用按用户聚合的 activity/Trackpoint 计数查询；服务器用 `docker system df -v` 与 heatmap volume 挂载点磁盘监控观察 PNG 容量。监测入口未落地前，本条不能标记为“受监控”。
+**检查入口（2026-08-01 已落地）**：API 日志中的 `heatmap_tile_observation` 以 `key=value` 输出 audience、year、zoom、cache status、source、参与本次构建的 source point 数、输出字节数和总耗时；不记录瓦片 x/y、轨迹坐标、cookie、ticket 或 token。磁盘/Redis 命中时 `source_point_count=not_queried`，避免把“未查询”误写成空轨迹。生产检查用 `sudo docker compose logs api --since 24h | grep 'heatmap_tile_observation'`；Redis 用 `INFO memory`/`INFO stats` 看内存与 eviction；PostgreSQL 用按用户聚合的 activity/Trackpoint 计数查询；服务器用 `docker system df -v` 与 heatmap volume 挂载点磁盘监控观察 PNG 容量。当前是可查询日志，不是自动告警；达到任一触发条件时仍需人工重评。
 
 **越线风险**：继续全局 generation 失效和按需重建会造成数据库尖峰、Redis 驱逐其他业务缓存、用户打开热图长时间空白；但提前建设冷热系统会增加对象存储、增量合并、删除/隐私回滚和运维复杂度，反而扩大当前事故面。
 
@@ -606,7 +606,6 @@ CREATE TABLE segment_facts (
 ## P2（远期）
 
 ### 前端相关
-- 小程序 web-view 业务域名白名单未配：正式个人热图页与既有 Strava 授权都依赖 `api.weiluai.top`；代码/浏览器通过不能代替微信后台配置和真机验收
 - 积分 + 骑行等级系统（spec §9.5，用户活跃度达标后启动）
 - 微信服务消息推送（spec §9.3，独立大任务）
 

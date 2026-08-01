@@ -174,6 +174,40 @@ def test_versioned_tile_artifact_path_is_user_audience_and_year_scoped(tmp_path,
     )
 
 
+def test_live_artifact_hit_reports_disk_cache_without_coordinates(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "HEATMAP_TILE_DIR", str(tmp_path))
+    payload = b"\x89PNG\r\n\x1a\nobserved"
+    path = heatmap_web.tile_artifact_path(
+        7, "owner", "g2-deadbeef", 2026, 15, 100, 200
+    )
+    path.parent.mkdir(parents=True)
+    path.write_bytes(payload)
+    observation = {}
+
+    result = heatmap_web.get_live_tile_artifact(
+        Mock(),
+        7,
+        "owner",
+        "g2-deadbeef",
+        2026,
+        15,
+        100,
+        200,
+        observation=observation,
+    )
+
+    assert result == payload
+    assert observation == {
+        "cache_status": "artifact_hit",
+        "source": "disk",
+        "source_point_count": None,
+        "output_bytes": len(payload),
+    }
+
+
 def test_prune_keeps_current_version_and_delete_user_purges_all(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "HEATMAP_TILE_DIR", str(tmp_path))
     current = heatmap_web.tile_artifact_path(7, "owner", "g8-current", None, 15, 1, 1)
@@ -527,3 +561,45 @@ def test_manifest_outside_tile_returns_blank_without_db_or_disk_renderer(client)
         assert image.convert("RGBA").getpixel((0, 0))[3] == 0
     current.assert_not_called()
     render.assert_not_called()
+
+
+def test_live_tile_emits_privacy_safe_observation_log(client, caplog):
+    token = heatmap_web.create_session_token(1, 1)
+
+    def render(*_args, observation, **_kwargs):
+        observation.update(
+            cache_status="artifact_miss_rendered",
+            source="postgres",
+            source_point_count=1234,
+            output_bytes=3,
+        )
+        return b"png"
+
+    caplog.set_level("INFO", logger="app.heatmap_web.router")
+    with (
+        patch("app.heatmap_web.router.heatmap_web.validate_session_version"),
+        patch("app.heatmap_web.router.heatmap_web.validate_session_tile"),
+        patch(
+            "app.heatmap_web.router.heatmap_web.validate_current_artifact_version"
+        ),
+        patch(
+            "app.heatmap_web.router.heatmap_web.get_live_tile_artifact",
+            side_effect=render,
+        ),
+    ):
+        response = client.get(
+            "/heatmap/live-tiles/g8-current/15/100/200.png",
+            cookies={"velo_heatmap_session": token},
+        )
+
+    assert response.status_code == 200
+    message = next(
+        record.message
+        for record in caplog.records
+        if "heatmap_tile_observation" in record.message
+    )
+    assert "cache_status=artifact_miss_rendered" in message
+    assert "source_point_count=1234" in message
+    assert "target_user_id=1" in message
+    assert "x=" not in message
+    assert "y=" not in message

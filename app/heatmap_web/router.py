@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from pathlib import Path
+from time import monotonic
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -18,6 +20,7 @@ from app.user import service as user_service
 
 
 router = APIRouter(tags=["heatmap-web"])
+_logger = logging.getLogger(__name__)
 _STATIC_ROOT = Path(__file__).resolve().parent / "static"
 _SESSION_COOKIE = "velo_heatmap_session"
 _TRANSPARENT_PNG = base64.b64decode(
@@ -242,6 +245,40 @@ def heatmap_manifest(
     )
 
 
+def _log_tile_observation(
+    *,
+    status: str,
+    layer: str,
+    audience: str,
+    target_user_id: int,
+    year: int | None,
+    zoom: int,
+    observation: dict[str, object],
+    output_bytes: int,
+    started_at: float,
+    error_type: str | None = None,
+) -> None:
+    log = _logger.warning if status == "error" else _logger.info
+    log(
+        "heatmap_tile_observation status=%s layer=%s audience=%s target_user_id=%s "
+        "year=%s zoom=%s cache_status=%s source=%s source_point_count=%s "
+        "output_bytes=%s source_duration_ms=%s duration_ms=%.2f error_type=%s",
+        status,
+        layer,
+        audience,
+        target_user_id,
+        year or "all",
+        zoom,
+        observation.get("cache_status", "unknown"),
+        observation.get("source", "unknown"),
+        observation.get("source_point_count", "not_queried"),
+        output_bytes,
+        observation.get("source_duration_ms", "not_measured"),
+        (monotonic() - started_at) * 1000,
+        error_type or "none",
+    )
+
+
 def _serve_versioned_tile(
     layer: str,
     version: str,
@@ -252,6 +289,11 @@ def _serve_versioned_tile(
     session: dict[str, int | str],
     db: Session,
 ) -> Response:
+    started_at = monotonic()
+    viewer_user_id = int(session["viewer_user_id"])
+    target_user_id = int(session["target_user_id"])
+    audience = "owner" if viewer_user_id == target_user_id else "public"
+    observation: dict[str, object] = {}
     try:
         heatmap_web.validate_session_version(str(session["session_id"]), year, version)
         try:
@@ -266,6 +308,18 @@ def _serve_versioned_tile(
         except heatmap_web.HeatmapTileNotCovered:
             # 客户端不再下载数万项 coverage；空块由服务端内存/Redis 集合 O(1)
             # 判定后直接给透明图，不校验 DB 指纹、不触发磁盘或 PG 渲染。
+            observation.update(cache_status="outside_coverage", source="manifest")
+            _log_tile_observation(
+                status="ok",
+                layer=layer,
+                audience=audience,
+                target_user_id=target_user_id,
+                year=year,
+                zoom=zoom,
+                observation=observation,
+                output_bytes=len(_TRANSPARENT_PNG),
+                started_at=started_at,
+            )
             return Response(
                 _TRANSPARENT_PNG,
                 media_type="image/png",
@@ -275,9 +329,6 @@ def _serve_versioned_tile(
                     "X-Content-Type-Options": "nosniff",
                 },
             )
-        viewer_user_id = int(session["viewer_user_id"])
-        target_user_id = int(session["target_user_id"])
-        audience = "owner" if viewer_user_id == target_user_id else "public"
         heatmap_web.validate_current_artifact_version(
             db,
             target_user_id,
@@ -286,11 +337,13 @@ def _serve_versioned_tile(
         )
         if layer == "fallback":
             payload = heatmap_web.get_fallback_tile_artifact(
-                db, target_user_id, audience, version, year, zoom, x, y
+                db, target_user_id, audience, version, year, zoom, x, y,
+                observation=observation,
             )
         else:
             payload = heatmap_web.get_live_tile_artifact(
-                db, target_user_id, audience, version, year, zoom, x, y
+                db, target_user_id, audience, version, year, zoom, x, y,
+                observation=observation,
             )
         # 防 TOCTOU：隐私/删除可能恰在首次校验与磁盘读取之间提交。
         # 响应前再读一次 DB 指纹，live/fallback/父级裁切统一 fail closed。
@@ -301,7 +354,30 @@ def _serve_versioned_tile(
             version,
         )
     except (ValueError, heatmap_web.HeatmapWebSessionError, heatmap_web.HeatmapWebUnavailable, heatmap_web.HeatmapTileNotCovered, user_service.InvalidHeatmapTile, user_service.HeatmapSnapshotChanged) as exc:
+        _log_tile_observation(
+            status="error",
+            layer=layer,
+            audience=audience,
+            target_user_id=target_user_id,
+            year=year,
+            zoom=zoom,
+            observation=observation,
+            output_bytes=0,
+            started_at=started_at,
+            error_type=type(exc).__name__,
+        )
         raise _translate_web_error(exc) from exc
+    _log_tile_observation(
+        status="ok",
+        layer=layer,
+        audience=audience,
+        target_user_id=target_user_id,
+        year=year,
+        zoom=zoom,
+        observation=observation,
+        output_bytes=len(payload),
+        started_at=started_at,
+    )
     return Response(
         payload,
         media_type="image/png",

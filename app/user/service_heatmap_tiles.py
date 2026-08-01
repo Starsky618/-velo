@@ -93,6 +93,18 @@ class InvalidHeatmapTile(ValueError):
     """瓦片坐标或显示参数非法。"""
 
 
+def _record_observation(
+    observation: dict[str, object] | None,
+    started_at: float,
+    **values: object,
+) -> None:
+    """把无坐标、无 token 的热图性能字段交给入口层统一记录。"""
+    if observation is None:
+        return
+    observation.update(values)
+    observation["duration_ms"] = round((monotonic() - started_at) * 1000, 2)
+
+
 def _claim_derived_cache_build(
     redis_client,
     cache_key: str,
@@ -1376,6 +1388,7 @@ def _render_tile_png(
     color: str,
     *,
     coordinates_are_map: bool = False,
+    observation: dict[str, object] | None = None,
 ) -> bytes:
     """每条活动每个像素最多计一次，再用对数归一化增强稀疏路线与常骑路线的反差。"""
     heat = np.zeros((_TILE_SIZE, _TILE_SIZE), dtype=np.uint16)
@@ -1395,10 +1408,12 @@ def _render_tile_png(
     lon_margin = (east - west) * 0.02
     lat_margin = (north - south) * 0.02
 
+    source_point_count = 0
     for activity_segments in map_segments.values():
         mask = Image.new("L", (_TILE_SIZE, _TILE_SIZE), 0)
         draw = ImageDraw.Draw(mask)
         for segment in activity_segments:
+            source_point_count += len(segment)
             longitudes = [point[0] for point in segment]
             latitudes = [point[1] for point in segment]
             if (
@@ -1454,7 +1469,13 @@ def _render_tile_png(
 
     output = BytesIO()
     Image.fromarray(rgba, mode="RGBA").save(output, format="PNG", optimize=True)
-    return output.getvalue()
+    payload = output.getvalue()
+    if observation is not None:
+        observation.update(
+            source_point_count=source_point_count,
+            output_bytes=len(payload),
+        )
+    return payload
 
 
 def _limit_vector_segments(
@@ -2427,9 +2448,11 @@ def get_user_heatmap_tile(
     color: str = "orange",
     include_private: bool = True,
     activity_fingerprint: str | None = None,
+    observation: dict[str, object] | None = None,
     _consistency_retry: int = 0,
 ) -> bytes:
     """返回一个用户、年份、配色和地图瓦片唯一对应的透明 PNG。"""
+    started_at = monotonic()
     _validate_tile(zoom, x, y, color)
     _year_window_utc(year)
     redis_client = _get_redis_client()
@@ -2472,6 +2495,7 @@ def get_user_heatmap_tile(
             year=year,
             color=color,
             include_private=include_private,
+            observation=observation,
             _consistency_retry=_consistency_retry + 1,
         )
 
@@ -2493,6 +2517,14 @@ def get_user_heatmap_tile(
     if cached_png is not None:
         if activity_snapshot_changed():
             return retry_after_activity_snapshot_change()
+        _record_observation(
+            observation,
+            started_at,
+            cache_status="redis_hit",
+            source="redis",
+            source_point_count=None,
+            output_bytes=len(cached_png),
+        )
         return cached_png
 
     lock, waited_png = _claim_derived_cache_build(
@@ -2503,11 +2535,20 @@ def get_user_heatmap_tile(
     if isinstance(waited_png, bytes):
         if activity_snapshot_changed():
             return retry_after_activity_snapshot_change()
+        _record_observation(
+            observation,
+            started_at,
+            cache_status="singleflight_hit",
+            source="redis",
+            source_point_count=None,
+            output_bytes=len(waited_png),
+        )
         return waited_png
 
     try:
         overview = zoom <= 13
         if overview:
+            source = "overview_source"
             segments = _get_overview_segments_cached(
                 db,
                 user_id,
@@ -2534,6 +2575,7 @@ def get_user_heatmap_tile(
                 north,
             )
             if segments is None:
+                source = "postgres"
                 _enqueue_detail_source_prewarm_if_needed(
                     user_id, generation, year, include_private
                 )
@@ -2546,6 +2588,8 @@ def get_user_heatmap_tile(
                     y,
                     include_private,
                 )
+            else:
+                source = "detail_source_cache"
         if overview:
             segments = _get_overview_map_segments_cached(
                 segments,
@@ -2556,6 +2600,7 @@ def get_user_heatmap_tile(
                 privacy_fingerprint,
                 activity_fingerprint,
             )
+        render_observation: dict[str, object] = {}
         rendered = _render_tile_png(
             segments,
             zoom,
@@ -2563,6 +2608,7 @@ def get_user_heatmap_tile(
             y,
             color,
             coordinates_are_map=overview,
+            observation=render_observation,
         )
         if activity_snapshot_changed():
             _release_derived_cache_build(lock)
@@ -2572,6 +2618,14 @@ def get_user_heatmap_tile(
             redis_client.setex(cache_key, _CACHE_TTL_SEC, rendered)
         except Exception:
             pass
+        _record_observation(
+            observation,
+            started_at,
+            cache_status="rendered",
+            source=source,
+            source_point_count=render_observation.get("source_point_count"),
+            output_bytes=len(rendered),
+        )
         return rendered
     finally:
         _release_derived_cache_build(lock)
