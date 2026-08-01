@@ -616,14 +616,24 @@ def get_live_tile_artifact(
     zoom: int,
     x: int,
     y: int,
+    *,
+    observation: dict[str, object] | None = None,
 ) -> bytes:
     path = tile_artifact_path(user_id, audience, version, year, zoom, x, y)
     payload = _read_png(path)
     if payload is not None:
+        if observation is not None:
+            observation.update(
+                cache_status="artifact_hit",
+                source="disk",
+                source_point_count=None,
+                output_bytes=len(payload),
+            )
         return payload
 
     from app.user.service_heatmap_tiles import get_user_heatmap_tile
 
+    tile_observation: dict[str, object] = {}
     payload = get_user_heatmap_tile(
         db,
         user_id,
@@ -633,11 +643,20 @@ def get_live_tile_artifact(
         year=year,
         color="red",
         include_private=audience == "owner",
+        observation=tile_observation,
     )
     # generation 可能在渲染期间推进；旧请求不得在清理任务后重新落盘旧私有数据。
     with _artifact_mutation_lock(user_id):
         validate_current_artifact_version(db, user_id, audience, version)
         _write_png(path, payload)
+    if observation is not None:
+        observation.update(
+            cache_status=f"artifact_miss_{tile_observation.get('cache_status', 'unknown')}",
+            source=tile_observation.get("source", "unknown"),
+            source_point_count=tile_observation.get("source_point_count"),
+            output_bytes=len(payload),
+            source_duration_ms=tile_observation.get("duration_ms"),
+        )
     return payload
 
 
@@ -677,16 +696,25 @@ def get_fallback_tile_artifact(
     y: int,
     *,
     base_max_zoom: int = 15,
+    observation: dict[str, object] | None = None,
 ) -> bytes:
     if zoom <= base_max_zoom:
         return get_live_tile_artifact(
-            db, user_id, audience, version, year, zoom, x, y
+            db, user_id, audience, version, year, zoom, x, y,
+            observation=observation,
         )
     path = tile_artifact_path(
         user_id, audience, version, year, zoom, x, y, fallback=True
     )
     payload = _read_png(path)
     if payload is not None:
+        if observation is not None:
+            observation.update(
+                cache_status="fallback_artifact_hit",
+                source="disk",
+                source_point_count=None,
+                output_bytes=len(payload),
+            )
         return payload
 
     parent_zoom = base_max_zoom
@@ -694,15 +722,10 @@ def get_fallback_tile_artifact(
     scale = 1 << delta
     parent_x = x // scale
     parent_y = y // scale
+    parent_observation: dict[str, object] = {}
     parent = get_live_tile_artifact(
-        db,
-        user_id,
-        audience,
-        version,
-        year,
-        parent_zoom,
-        parent_x,
-        parent_y,
+        db, user_id, audience, version, year, parent_zoom, parent_x, parent_y,
+        observation=parent_observation,
     )
     payload = _crop_parent_tile(
         parent,
@@ -713,6 +736,17 @@ def get_fallback_tile_artifact(
     with _artifact_mutation_lock(user_id):
         validate_current_artifact_version(db, user_id, audience, version)
         _write_png(path, payload)
+    if observation is not None:
+        observation.update(
+            cache_status=(
+                "fallback_artifact_miss_"
+                f"{parent_observation.get('cache_status', 'unknown')}"
+            ),
+            source=f"parent_{parent_observation.get('source', 'unknown')}",
+            source_point_count=parent_observation.get("source_point_count"),
+            output_bytes=len(payload),
+            source_duration_ms=parent_observation.get("source_duration_ms"),
+        )
     return payload
 
 

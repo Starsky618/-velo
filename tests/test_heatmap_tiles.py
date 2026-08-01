@@ -768,20 +768,44 @@ def test_vector_cache_is_capped_per_user_after_continuous_pan():
 def test_tile_cache_uses_heatmap_generation_and_avoids_second_db_render():
     redis = Mock()
     redis.get.side_effect = [b"7", None, b"7", b"png"]
+    first_observation = {}
+    second_observation = {}
+
+    def render(*_args, observation, **_kwargs):
+        observation.update(source_point_count=0, output_bytes=3)
+        return b"png"
+
     with (
         patch("app.user.service_heatmap_tiles._get_redis_client", return_value=redis),
         patch("app.user.service_heatmap_tiles._get_overview_segments_cached", return_value={}) as loader,
-        patch("app.user.service_heatmap_tiles._render_tile_png", return_value=b"png") as renderer,
+        patch(
+            "app.user.service_heatmap_tiles._render_tile_png",
+            side_effect=render,
+        ) as renderer,
         patch(
             "app.user.service_heatmap_tiles._heatmap_activity_fingerprint",
             return_value="data-v1",
         ),
     ):
         first = get_user_heatmap_tile(
-            Mock(), 42, 12, 3328, 1582, color="orange", activity_fingerprint="data-v1"
+            Mock(),
+            42,
+            12,
+            3328,
+            1582,
+            color="orange",
+            activity_fingerprint="data-v1",
+            observation=first_observation,
         )
         second = get_user_heatmap_tile(
-            Mock(), 42, 12, 3328, 1582, color="orange", activity_fingerprint="data-v1"
+            Mock(),
+            42,
+            12,
+            3328,
+            1582,
+            color="orange",
+            activity_fingerprint="data-v1",
+            observation=second_observation,
         )
 
     assert first == second == b"png"
@@ -791,6 +815,14 @@ def test_tile_cache_uses_heatmap_generation_and_avoids_second_db_render():
     assert redis.setex.call_args.args[0].startswith(
         "heatmap:raster:v3:user_42:g7:data_data-v1:year_all:audience_owner:color_orange:z12:"
     )
+    assert first_observation["cache_status"] == "rendered"
+    assert first_observation["source"] == "overview_source"
+    assert first_observation["source_point_count"] == 0
+    assert first_observation["output_bytes"] == 3
+    assert second_observation["cache_status"] == "redis_hit"
+    assert second_observation["source"] == "redis"
+    assert second_observation["source_point_count"] is None
+    assert second_observation["output_bytes"] == 3
 
 
 def test_public_tile_cache_changes_when_privacy_fingerprint_changes():
