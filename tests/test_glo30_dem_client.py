@@ -162,6 +162,29 @@ def test_glo30_query_shares_one_deadline_across_multiple_tiles(monkeypatch):
     assert dem_client._query_deadline.get() is None
 
 
+def test_glo30_query_accepts_short_realtime_preview_deadline(monkeypatch):
+    from app.elevation import dem_client
+
+    loaded_tiles = []
+    clock = iter((0.0, 1.0, 9.0))
+
+    def fake_load(south, west, _cache_dir, _base_url):
+        loaded_tiles.append((south, west))
+        return np.zeros((2, 2), dtype=np.float32)
+
+    monkeypatch.setattr(dem_client.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(dem_client, "_load_tile", fake_load)
+
+    with pytest.raises(dem_client.DEMServiceError, match="超过 8 秒总时限"):
+        dem_client.query_elevations(
+            [(37.5, 112.5), (38.5, 113.5)],
+            timeout_seconds=8,
+        )
+
+    assert loaded_tiles == [(37, 112)]
+    assert dem_client._query_deadline.get() is None
+
+
 def test_glo30_416_accepts_partial_that_already_matches_remote_size(tmp_path, monkeypatch):
     from app.elevation import dem_client
 

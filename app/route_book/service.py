@@ -13,6 +13,7 @@ import logging
 import hashlib
 import json
 import math
+import time
 
 from geoalchemy2 import WKTElement
 from sqlalchemy import func, or_
@@ -64,6 +65,7 @@ MANUAL_ROUTE_MAX_POINTS = 500
 MAX_DRAW_METADATA_BYTES = 8 * 1024
 MAX_DRAW_METADATA_WARNINGS = 20
 MAX_DRAW_METADATA_SAMPLE_POINTS = 20
+MANUAL_DRAW_ELEVATION_PREVIEW_TIMEOUT_SECONDS = 8.0
 MANUAL_DRAW_IDEMPOTENCY_CONSTRAINT = "uq_route_save_req_creator_key"
 _storage = LocalStorage()
 
@@ -708,6 +710,57 @@ def create_route_book_from_manual_drawn(
     db.refresh(route)
     route._preview_points_override = preview_points
     return route
+
+
+def preview_manual_drawn_elevation(
+    points: list[tuple[float, float]],
+    coordinate_system: str = "gcj02",
+) -> dict:
+    """为已贴路的草稿生成海拔预览，不开启数据库事务或写正式路线。"""
+    started_at = time.perf_counter()
+    points_wgs84 = _manual_points_for_storage(points, coordinate_system)
+    payload = _manual_route_payload_from_points(points_wgs84)
+    preview_points = [[float(lon), float(lat)] for lon, lat in points_wgs84]
+
+    def query_preview_elevations(query_points):
+        # 正式保存仍可用 120 秒把冷瓦片下完；编辑页只占用最多 8 秒。
+        # 下载产生的 .part 会保留，用户重试时可断点续传，不让冷区块住交互。
+        return query_elevations(
+            query_points,
+            timeout_seconds=MANUAL_DRAW_ELEVATION_PREVIEW_TIMEOUT_SECONDS,
+        )
+
+    try:
+        elevation_result = build_route_elevation_result(
+            preview_points,
+            query_func=query_preview_elevations,
+        )
+    except RouteElevationInputError:
+        logger.info(
+            "route_draw_elevation_preview status=input_error point_count=%d duration_ms=%.1f",
+            len(points_wgs84),
+            (time.perf_counter() - started_at) * 1000,
+        )
+        raise
+    except (DEMServiceError, ValueError) as exc:
+        logger.info(
+            "route_draw_elevation_preview status=unavailable point_count=%d duration_ms=%.1f",
+            len(points_wgs84),
+            (time.perf_counter() - started_at) * 1000,
+        )
+        raise RuntimeError(f"路线海拔查询失败：{exc}") from exc
+    logger.info(
+        "route_draw_elevation_preview status=ready point_count=%d duration_ms=%.1f",
+        len(points_wgs84),
+        (time.perf_counter() - started_at) * 1000,
+    )
+    return {
+        "coordinate_system": coordinate_system,
+        "distance_m": float(payload["distance"]),
+        "climb_m": elevation_result.climb,
+        "descent_m": elevation_result.descent,
+        "elevation_profile": elevation_result.profile,
+    }
 
 
 def list_route_books(

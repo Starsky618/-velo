@@ -24,6 +24,7 @@ var BASE_URL = 'https://api.weiluai.top'
 var heatmapTileCache = require('./heatmap-tile-cache')
 var DEFAULT_REQUEST_TIMEOUT_MS = 30000
 var ROUTE_SAVE_REQUEST_TIMEOUT_MS = 150000
+var ROUTE_ELEVATION_PREVIEW_TIMEOUT_MS = 12000
 var FILE_DOWNLOAD_TIMEOUT_MS = 60000
 var NETWORK_WATCHDOG_GRACE_MS = 1000
 
@@ -577,6 +578,10 @@ module.exports = {
 
   snapManualDrawnRoute: function (payload) {
     return request('/api/route-books/manual-drawn/snap-preview', 'POST', payload)
+  },
+
+  previewManualDrawnElevation: function (payload) {
+    return request('/api/route-books/manual-drawn/elevation-preview', 'POST', payload, ROUTE_ELEVATION_PREVIEW_TIMEOUT_MS)
   },
 
   createRouteExport: function (routeBookId, format, targetPlatform) {
