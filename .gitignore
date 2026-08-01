@@ -12,6 +12,7 @@ venv/
 
 # 上传的文件
 uploads/
+heatmap_tiles/
 
 # IDE
 .vscode/

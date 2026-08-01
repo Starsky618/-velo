@@ -77,4 +77,7 @@ default_queue = Queue("velo", connection=redis_conn)
 # 同一个 velo 队列的有界 producer。Worker 仍用无 read timeout 的 default_queue
 # 阻塞消费；API/导入 post-commit 入队必须在 Redis 黑洞时 1 秒内失败返回。
 heatmap_prewarm_queue = Queue("velo", connection=heatmap_redis_conn)
+# PNG 冷瓦片生成量可达数千块，必须放在独立队列并由 heatmap-worker 消费；
+# RQ 任务不可抢占，不能只把它排在主 worker 队尾后假装不会堵骑行导入。
+heatmap_tiles_queue = Queue("heatmap_tiles", connection=heatmap_redis_conn)
 ai_drafts_queue = Queue("ai_drafts", connection=redis_conn)

@@ -83,6 +83,7 @@ _HEATMAP_DERIVED_CACHE_PREFIXES = (
     "heatmap:raster:v2:user_",
     "heatmap:raster:v2:source:user_",
     "heatmap:detail:v1:user_",
+    "heatmap:tile-manifest:v2:user_",
     "heatmap:tile-manifest:v1:user_",
     # 发布切换期同时清旧版，避免废弃对象等到 TTL 才释放。
     "heatmap:vector:v1:user_",
@@ -1445,6 +1446,23 @@ def prewarm_heatmap_cache_task(user_id: int, expected_generation: int) -> dict:
             activity_fingerprint=activity_fingerprint,
         )
         current_generation = _heatmap_cache_generation(redis_client, user_id)
+        base_tile_chunks = 0
+        if current_generation == expected_generation:
+            from app.heatmap_web.service import enqueue_base_tile_prewarm
+
+            base_tiles = [
+                (int(zoom), int(x), int(y))
+                for zoom, coordinates in tile_manifest["tiles"].items()
+                if int(zoom) <= 15
+                for x, y in coordinates
+            ]
+            base_tile_chunks = enqueue_base_tile_prewarm(
+                user_id,
+                expected_generation,
+                str(tile_manifest["cache_version"]),
+                None,
+                base_tiles,
+            )
         return {
             "status": (
                 "warmed" if current_generation == expected_generation else "superseded"
@@ -1455,6 +1473,7 @@ def prewarm_heatmap_cache_task(user_id: int, expected_generation: int) -> dict:
             "detail_point_count": int(detail_stats["point_count"]),
             "detail_compressed_bytes": int(detail_stats["compressed_bytes"]),
             "raster_manifest_tile_count": int(tile_manifest["tile_count"]),
+            "base_tile_prewarm_chunks": int(base_tile_chunks),
         }
     finally:
         db.close()

@@ -26,6 +26,8 @@
 - BEIJING_TZ + _get_redis_client 在 stats + social 各自独立复制（Q1 a 决策 / 不抽共享）
 """
 
+import logging
+
 # v5 task-user-split-001：service.py 834 行红灯 → 拆 4 文件，对外契约不变
 # 调用方按 `from app.user.service import xxx` 继续工作，不必感知文件分拆细节
 from app.user.service_auth import (  # noqa: F401 — 转导出
@@ -57,10 +59,14 @@ from app.user.service_social import (  # noqa: F401 — 转导出
 from app.user.service_heatmap_tiles import (  # noqa: F401 — 转导出
     InvalidHeatmapTile,
     get_user_heatmap_overview,
+    get_current_heatmap_tile_version,
     get_user_heatmap_tile,
     get_user_heatmap_tile_manifest,
     get_user_heatmap_viewport,
 )
+
+
+_logger = logging.getLogger(__name__)
 
 
 def delete_user(db, user_id: int) -> None:
@@ -144,3 +150,27 @@ def delete_user(db, user_id: int) -> None:
     db.commit()
     # commit 后再删物理文件（DB 是 source of truth）：删失败只记日志，不回滚已删的账号数据。
     _cleanup_meetup_storage(storage_files)
+    # 正式个人热图的 PNG 是可重建私有派生物；账号注销后不能继续留在持久卷。
+    # 和 GPX/约骑文件一致放在 commit 后清理，避免 DB 回滚时先删不可恢复文件。
+    from app.heatmap_web.service import (
+        enqueue_user_artifact_purge,
+        purge_user_tile_artifacts,
+    )
+
+    try:
+        # 先推进 Redis generation，撤销仍持有旧 cookie 的浏览器；失败时下游每块 PNG
+        # 仍会用数据库活动指纹校验，账号已无活动，因此不会 fail-open。
+        invalidate_heatmap_cache(user_id, prewarm=False)
+    except Exception:
+        _logger.exception(
+            "failed to invalidate heatmap cache after account deletion",
+            extra={"user_id": user_id},
+        )
+    try:
+        purge_user_tile_artifacts(user_id)
+    except Exception:
+        _logger.exception(
+            "failed to purge heatmap artifacts after account deletion",
+            extra={"user_id": user_id},
+        )
+        enqueue_user_artifact_purge(user_id)

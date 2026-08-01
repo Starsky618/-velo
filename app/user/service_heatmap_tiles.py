@@ -11,6 +11,7 @@ from collections.abc import Callable
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timedelta, timezone
 import heapq
+import hashlib
 from io import BytesIO
 import json
 import math
@@ -64,7 +65,7 @@ _VECTOR_LRU_PREFIX = "heatmap:vector:lru:v1:user_"
 _VECTOR_MAX_CACHE_KEYS = 16
 _AVAILABLE_YEARS_REDIS_PREFIX = "heatmap:years:v1:user_"
 _AVAILABLE_YEARS_REDIS_TTL_SEC = 7 * 86400
-_TILE_MANIFEST_REDIS_PREFIX = "heatmap:tile-manifest:v1:user_"
+_TILE_MANIFEST_REDIS_PREFIX = "heatmap:tile-manifest:v2:user_"
 _TILE_MANIFEST_REDIS_TTL_SEC = 7 * 86400
 _TILE_MANIFEST_MAX_TILES = 100_000
 _VECTOR_TOTAL_POINT_BUDGET = 14_000
@@ -196,6 +197,44 @@ def _validate_tile(zoom: int, x: int, y: int, color: str) -> None:
         raise InvalidHeatmapTile("invalid heatmap tile coordinate")
     if color not in _COLOR_RAMPS:
         raise InvalidHeatmapTile("invalid heatmap color")
+
+
+def _tile_manifest_cache_version(
+    generation: int,
+    activity_fingerprint: str,
+    privacy_fingerprint: str | None,
+) -> str:
+    """公开瓦片版本同时绑定活动集合和隐私表状态，不能只依赖 Redis 失效。"""
+    fingerprint = activity_fingerprint
+    if privacy_fingerprint is not None:
+        fingerprint = hashlib.sha256(
+            f"{activity_fingerprint}:{privacy_fingerprint}".encode()
+        ).hexdigest()[:16]
+    return _heatmap_cache_version(generation, fingerprint)
+
+
+def get_current_heatmap_tile_version(
+    db: Session,
+    user_id: int,
+    *,
+    include_private: bool,
+) -> str:
+    """直接读取 DB 事实围栏；正式落盘 PNG 每次读取前都用它撤销旧版本。"""
+    redis_client = _get_redis_client()
+    generation = int(redis_client.get(f"{_GENERATION_PREFIX}{user_id}") or 0)
+    activity_fingerprint = _heatmap_activity_fingerprint(
+        db, user_id, include_private
+    )
+    privacy_fingerprint = (
+        None
+        if include_private
+        else _public_heatmap_privacy_fingerprint(db, user_id)
+    )
+    return _tile_manifest_cache_version(
+        generation,
+        activity_fingerprint,
+        privacy_fingerprint,
+    )
 
 
 def _tile_query_bounds_wgs84(zoom: int, x: int, y: int) -> tuple[float, float, float, float]:
@@ -2290,6 +2329,16 @@ def get_user_heatmap_tile_manifest(
     segments = _load_detail_segments(db, user_id, year, include_private)
     coverage = _heatmap_tile_coverage(segments, min_zoom, max_zoom)
     focus_points, all_points = _heatmap_bounds_from_segments(segments)
+
+    def map_bounds(points: list[list[float]]) -> list[list[float]]:
+        if len(points) != 2:
+            return []
+        converted = _wgs84_to_map_coords(np.asarray(points, dtype=np.float64))
+        return [
+            [round(float(lon), 7), round(float(lat), 7)]
+            for lon, lat in converted
+        ]
+
     center = None
     center_bounds = focus_points or all_points
     if len(center_bounds) == 2:
@@ -2308,14 +2357,27 @@ def get_user_heatmap_tile_manifest(
     }
     result = {
         "generation": generation,
-        "cache_version": _heatmap_cache_version(
-            generation, activity_fingerprint
+        "cache_version": _tile_manifest_cache_version(
+            generation,
+            activity_fingerprint,
+            privacy_fingerprint,
         ),
         "min_zoom": min_zoom,
         "max_zoom": max_zoom,
         "tile_count": sum(len(items) for items in coverage.values()),
         "activity_count": len(segments),
         "center": center,
+        "available_years": _available_heatmap_years_cached(
+            db,
+            user_id,
+            include_private,
+            generation,
+            activity_fingerprint,
+            privacy_fingerprint,
+            redis_client,
+        ),
+        "focus_points": map_bounds(focus_points),
+        "all_points": map_bounds(all_points),
         "tiles": tiles,
     }
     if _heatmap_activity_fingerprint(db, user_id, include_private) != activity_fingerprint:

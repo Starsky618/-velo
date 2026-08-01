@@ -1,0 +1,3 @@
+<view wx:if="{{loading}}" class="page-state">正在打开骑行热图…</view>
+<view wx:elif="{{error}}" class="page-state error-state" bindtap="onRetry">{{error}} · 点击重试</view>
+<web-view wx:else src="{{webUrl}}" binderror="onWebViewError"></web-view>

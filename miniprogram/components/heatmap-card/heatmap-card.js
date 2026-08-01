@@ -756,7 +756,7 @@ Component({
 
     _openFullScreen() {
       var userQuery = this.data.userId > 0 ? '?userId=' + this.data.userId : ''
-      wx.navigateTo({ url: '/pages/heatmap/heatmap' + userQuery })
+      wx.navigateTo({ url: '/pages/heatmap-web/heatmap-web' + userQuery })
     },
   },
 })

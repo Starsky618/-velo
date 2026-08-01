@@ -264,6 +264,9 @@ class HeatmapTileManifestResponse(BaseModel):
     tile_count: int
     activity_count: int
     center: Optional[HeatmapTileCenter] = None
+    available_years: list[int] = Field(default_factory=list)
+    focus_points: list[list[float]] = Field(default_factory=list)
+    all_points: list[list[float]] = Field(default_factory=list)
     tiles: dict[str, list[list[int]]]
 
 

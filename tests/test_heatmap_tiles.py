@@ -252,6 +252,10 @@ def test_tile_manifest_uses_raw_segments_and_returns_map_center():
             "app.user.service_heatmap_tiles._load_detail_segments",
             return_value=source,
         ) as load,
+        patch(
+            "app.user.service_heatmap_tiles._available_heatmap_years_cached",
+            return_value=[2026, 2025],
+        ),
     ):
         result = get_user_heatmap_tile_manifest(
             Mock(), 42, min_zoom=11, max_zoom=14
@@ -261,6 +265,9 @@ def test_tile_manifest_uses_raw_segments_and_returns_map_center():
     assert result["cache_version"].startswith("g7-")
     assert result["tile_count"] == sum(len(items) for items in result["tiles"].values())
     assert result["center"]["longitude"] != 112.55  # 中国境内已转腾讯地图坐标
+    assert result["available_years"] == [2026, 2025]
+    assert result["focus_points"][0][0] != 112.50
+    assert result["all_points"][1][0] != 112.60
     assert set(result["tiles"]) == {"11", "12", "13", "14"}
     load.assert_called_once_with(ANY, 42, None, True)
     redis.setex.assert_called_once()
@@ -429,8 +436,20 @@ def test_prewarm_task_builds_current_owner_meta_and_closes_session():
         ) as detail_build,
         patch(
             "app.user.service_heatmap_tiles.get_user_heatmap_tile_manifest",
-            return_value={"tile_count": 2048},
+            return_value={
+                "tile_count": 2048,
+                "cache_version": "g7-data",
+                "tiles": {
+                    "11": [[10, 20]],
+                    "15": [[30, 40]],
+                    "16": [[50, 60]],
+                },
+            },
         ) as manifest_build,
+        patch(
+            "app.heatmap_web.service.enqueue_base_tile_prewarm",
+            return_value=2,
+        ) as base_prewarm,
     ):
         result = prewarm_heatmap_cache_task(42, 7)
 
@@ -442,6 +461,7 @@ def test_prewarm_task_builds_current_owner_meta_and_closes_session():
         "detail_point_count": 700_000,
         "detail_compressed_bytes": 8_000_000,
         "raster_manifest_tile_count": 2048,
+        "base_tile_prewarm_chunks": 2,
     }
     build.assert_called_once_with(
         db,
@@ -459,6 +479,13 @@ def test_prewarm_task_builds_current_owner_meta_and_closes_session():
         generation=7,
         activity_fingerprint="data-v1",
         redis_client=redis,
+    )
+    base_prewarm.assert_called_once_with(
+        42,
+        7,
+        "g7-data",
+        None,
+        [(11, 10, 20), (15, 30, 40)],
     )
     manifest_build.assert_called_once_with(
         db,

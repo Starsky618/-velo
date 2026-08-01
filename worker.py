@@ -9,11 +9,11 @@ rq Worker 启动脚本——后台"快递分拣工人"的入口。
 
 v5 task-0.8 改造：
 - Redis 连接 + Queue 实例从 app.queue 单一源 import，不再就地 Redis.from_url
-- 支持 RQ_QUEUES env 多队列订阅——单 worker 容器同时跑 velo（GPX/Strava 解析）
-  和 ai_drafts（AI 草稿生成）。env 不设时默认订阅这两个队列
+- 支持 RQ_QUEUES env 多队列订阅。生产主 worker 跑 velo + ai_drafts；独立
+  heatmap-worker 只跑 heatmap_tiles，避免不可抢占的长 PNG 任务堵住骑行导入。
 - **列表顺序 = 队列优先级**：RQ Worker 按 queues 列表顺序消费，第一个有任务就
-  优先处理。当前默认 "velo,ai_drafts" 让 GPX/Strava 解析（前台用户体感）
-  优先于 AI 草稿生成（后台 admin 离线任务）——改顺序前先想清楚优先级语义
+  优先处理。当前默认 "velo,ai_drafts"；heatmap_tiles 必须由显式环境变量启动的
+  独立 worker 消费——改队列归属前先想清楚不可抢占任务的阻塞语义
 
 注意事项：
 - 必须先启动 Redis 服务，否则 Worker 连不上队列
@@ -25,7 +25,7 @@ import os
 
 from rq import Worker
 
-from app.queue import redis_conn, default_queue, ai_drafts_queue
+from app.queue import ai_drafts_queue, default_queue, heatmap_tiles_queue, redis_conn
 
 
 # 已知队列名 → Queue 实例的映射
@@ -33,6 +33,7 @@ from app.queue import redis_conn, default_queue, ai_drafts_queue
 _QUEUES_MAP = {
     "velo": default_queue,
     "ai_drafts": ai_drafts_queue,
+    "heatmap_tiles": heatmap_tiles_queue,
 }
 
 

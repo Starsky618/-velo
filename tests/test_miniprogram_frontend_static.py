@@ -320,7 +320,7 @@ def test_heatmap_card_uses_one_interactive_native_map_and_opens_fullscreen():
     assert "complete: function (result)" in js
     assert "var id = idSeed" in js
     assert "wx.navigateTo" in js
-    assert "/pages/heatmap/heatmap" in js
+    assert "/pages/heatmap-web/heatmap-web" in js
     assert wxml.count("<map") == 1
     assert "<canvas" not in wxml
     assert 'polyline="{{polylines}}"' in wxml
@@ -329,6 +329,22 @@ def test_heatmap_card_uses_one_interactive_native_map_and_opens_fullscreen():
     assert 'enable-zoom="{{true}}"' in wxml
     assert "全屏查看" in wxml
     assert "height: 480rpx" in wxss
+
+
+def test_heatmap_fullscreen_uses_authenticated_web_session_without_jwt_in_url():
+    js = _read(MINI / "pages" / "heatmap-web" / "heatmap-web.js")
+    wxml = _read(MINI / "pages" / "heatmap-web" / "heatmap-web.wxml")
+    app_json = _read(MINI / "app.json")
+
+    assert "pages/heatmap-web/heatmap-web" in app_json
+    assert "/api/user/me/heatmap/web-session" in js
+    assert "api.resolveUrl(data.url)" in js
+    assert "query.userId || query.user_id" in js
+    assert "wx.redirectTo" in js
+    assert "/pages/heatmap/heatmap" in js
+    assert "token=" not in js
+    assert "Authorization" not in js
+    assert '<web-view wx:else src="{{webUrl}}"' in wxml
 
 
 def test_heatmap_card_vector_fallback_renders_current_raw_viewport():

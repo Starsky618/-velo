@@ -280,6 +280,9 @@ def test_heatmap_tile_manifest_requires_auth_and_returns_track_coverage(
         "tile_count": 2,
         "activity_count": 293,
         "center": {"longitude": 112.56, "latitude": 37.85},
+        "available_years": [2026, 2025],
+        "focus_points": [[112.4, 37.7], [112.7, 38.0]],
+        "all_points": [[110.0, 35.0], [118.0, 41.0]],
         "tiles": {"11": [[1664, 791]], "18": [[213000, 101300]]},
     }
     with patch(
