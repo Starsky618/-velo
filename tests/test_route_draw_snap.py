@@ -164,7 +164,9 @@ def test_preview_rejects_unsaveable_canonical_geometry_over_hard_limit(monkeypat
         draw_snap_service._simplify_preview_points(points)
 
 
-def test_snap_preview_marks_extreme_detour_for_explicit_confirmation(client, auth_header, monkeypatch):
+def test_snap_preview_marks_short_local_gap_with_kilometre_detour_for_confirmation(
+    client, auth_header, monkeypatch
+):
     def fake_plan(start, end, timeout_sec=None):
         return {
             "distance": 5000.0,
@@ -187,13 +189,13 @@ def test_snap_preview_marks_extreme_detour_for_explicit_confirmation(client, aut
     body = res.json()
     assert body["requires_confirmation"] is True
     assert body["provider_point_count"] == 3
-    assert body["warnings"] == ["系统贴出的路线可能偏离你的手画线，请检查后再保存。"]
+    assert body["warnings"] == ["这两个点离得很近，但腾讯规划得很远，请检查后再保存。"]
 
 
 def test_old_client_cannot_silently_accept_extreme_detour(client, auth_header, monkeypatch):
     def fake_plan(start, end, timeout_sec=None):
         return {
-            "distance": 900.0,
+            "distance": 1500.0,
             "duration": 20,
             "points": [
                 {"lat": start[0], "lon": start[1]},
@@ -211,6 +213,57 @@ def test_old_client_cannot_silently_accept_extreme_detour(client, auth_header, m
 
     assert res.status_code == 422
     assert "绕行明显" in res.json()["detail"]
+
+
+def test_long_distance_endpoints_never_trigger_local_gap_confirmation(
+    client, auth_header, monkeypatch
+):
+    def fake_plan(start, end, timeout_sec=None):
+        return {
+            "distance": 50000.0,
+            "duration": 120,
+            "points": [
+                {"lat": start[0], "lon": start[1]},
+                {"lat": start[0] + 0.1, "lon": start[1] + 0.1},
+                {"lat": end[0], "lon": end[1]},
+            ],
+        }
+
+    monkeypatch.setattr("app.route_book.draw_snap_service.plan_tencent_bicycling_route", fake_plan)
+    res = client.post(
+        "/api/route-books/manual-drawn/snap-preview",
+        # 同纬度约 527 米，刚超过 500 米局部断点保护范围。
+        json=_snap_payload(points=[[112.5, 37.8], [112.506, 37.8]]),
+        headers={**auth_header, "X-VELO-Detour-Confirmation": "1"},
+    )
+
+    assert res.status_code == 200
+    assert res.json()["requires_confirmation"] is False
+
+
+def test_short_segment_with_sub_kilometre_extra_distance_is_accepted(
+    client, auth_header, monkeypatch
+):
+    def fake_plan(start, end, timeout_sec=None):
+        return {
+            "distance": 900.0,
+            "duration": 10,
+            "points": [
+                {"lat": start[0], "lon": start[1]},
+                {"lat": start[0] + 0.003, "lon": start[1] + 0.003},
+                {"lat": end[0], "lon": end[1]},
+            ],
+        }
+
+    monkeypatch.setattr("app.route_book.draw_snap_service.plan_tencent_bicycling_route", fake_plan)
+    res = client.post(
+        "/api/route-books/manual-drawn/snap-preview",
+        json=_snap_payload(points=[[112.5, 37.8], [112.501, 37.8]]),
+        headers={**auth_header, "X-VELO-Detour-Confirmation": "1"},
+    )
+
+    assert res.status_code == 200
+    assert res.json()["requires_confirmation"] is False
 
 
 def test_snap_preview_requires_login(client, monkeypatch):

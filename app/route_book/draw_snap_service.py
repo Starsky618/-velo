@@ -26,9 +26,11 @@ SNAP_PREVIEW_TOTAL_TIMEOUT_SEC = 12.0
 SNAP_PREVIEW_MAX_SINGLE_TIMEOUT_SEC = 3.0
 SIMPLIFY_TOLERANCE_M = 30.0
 MIN_PREVIEW_DISTANCE_M = 5.0
-DETOUR_RATIO_THRESHOLD = 1.8
-DETOUR_EXTRA_DISTANCE_M = 1000.0
-DETOUR_RATIO_MIN_EXTRA_M = 100.0
+# 只拦截“局部短断点”：用户点的两处本来很近，腾讯却给出公里级大绕行。
+# 长距离起终点天然可能受盘山、跨河和路网结构影响，不在这里替用户判断。
+LOCAL_GAP_MAX_DISTANCE_M = 500.0
+LOCAL_GAP_MIN_DETOUR_RATIO = 3.0
+LOCAL_GAP_MIN_EXTRA_DISTANCE_M = 1000.0
 
 
 class DrawSnapSegmentError(ValueError):
@@ -104,18 +106,16 @@ def build_snap_preview(
 
     provider_point_count = len(snapped_points)
     detour_extra_m = provider_distance_m - raw_distance_m
-    requires_confirmation = raw_distance_m > 0 and (
-        detour_extra_m > DETOUR_EXTRA_DISTANCE_M
-        or (
-            provider_distance_m > raw_distance_m * DETOUR_RATIO_THRESHOLD
-            and detour_extra_m > DETOUR_RATIO_MIN_EXTRA_M
-        )
+    requires_confirmation = (
+        0 < raw_distance_m <= LOCAL_GAP_MAX_DISTANCE_M
+        and detour_extra_m >= LOCAL_GAP_MIN_EXTRA_DISTANCE_M
+        and provider_distance_m >= raw_distance_m * LOCAL_GAP_MIN_DETOUR_RATIO
     )
     warnings: list[str] = []
     if requires_confirmation:
         if not supports_detour_confirmation:
             raise ValueError("这段绕行明显，请更新后改用手绘或确认绕行")
-        warnings.append("系统贴出的路线可能偏离你的手画线，请检查后再保存。")
+        warnings.append("这两个点离得很近，但腾讯规划得很远，请检查后再保存。")
     snapped_points, display_points = _simplify_preview_points(snapped_points)
     preview_distance_m = _distance_m(snapped_points)
 
