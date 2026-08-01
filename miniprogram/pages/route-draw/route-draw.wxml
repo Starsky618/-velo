@@ -25,6 +25,7 @@
 
     <cover-view class="route-draw-topbar">
       <cover-view class="map-tool" bindtap="onTapClose">关闭</cover-view>
+      <cover-view class="map-tool" bindtap="onTapSearchLocation">搜地点</cover-view>
       <cover-view class="map-tool" bindtap="onTapLocate">定位</cover-view>
     </cover-view>
 

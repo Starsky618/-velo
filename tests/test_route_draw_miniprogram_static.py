@@ -27,7 +27,7 @@ def test_route_draw_declares_fuzzy_location_permission():
     app_json = json.loads(_read(MINI / "app.json"))
     js = _read(PAGE_DIR / "route-draw.js")
 
-    assert app_json["requiredPrivateInfos"] == ["getFuzzyLocation"]
+    assert app_json["requiredPrivateInfos"] == ["getFuzzyLocation", "chooseLocation"]
     assert "路线绘制" in app_json["permission"]["scope.userFuzzyLocation"]["desc"]
     assert "wx.getFuzzyLocation" in js
     assert "wx.getLocation" not in js
@@ -53,7 +53,17 @@ def test_route_draw_page_uses_map_tap_as_default_input_and_sketch_only_touch_lay
     assert 'catchtouchmove="onDrawTouchMove"' in wxml
     assert 'catchtouchend="onDrawTouchEnd"' in wxml
     assert "onTapStartSketch" in js
-    assert "chooseLocation" not in js
+
+
+def test_route_draw_can_search_and_center_an_exact_location():
+    js = _read(PAGE_DIR / "route-draw.js")
+    wxml = _read(PAGE_DIR / "route-draw.wxml")
+
+    assert 'bindtap="onTapSearchLocation"' in wxml
+    assert "搜地点" in wxml
+    assert "onTapSearchLocation: function" in js
+    assert "wx.chooseLocation" in js
+    assert "点“+ 添加点”设为路线点" in js
 
 
 def test_route_draw_has_center_crosshair_add_point_fallback():
