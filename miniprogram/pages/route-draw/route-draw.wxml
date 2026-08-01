@@ -97,7 +97,7 @@
       <view wx:if="{{warnings.length}}" class="warning-text">{{warnings[0]}}</view>
 
       <view wx:if="{{requestStatus === 'confirming'}}" class="detour-actions">
-        <button class="detour-button is-secondary" bindtap="onTapSketchDetour">改用手绘</button>
+        <button class="detour-button is-secondary" bindtap="onTapSketchDetour">手绘这一小段</button>
         <button class="detour-button is-primary" bindtap="onTapAcceptDetour">接受绕行</button>
       </view>
 

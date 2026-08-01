@@ -212,6 +212,7 @@ def test_route_draw_exposes_smart_tap_and_true_manual_pencil_modes():
     assert "mode: 'freehand'" in js
     assert 'bindtap="onTapAcceptDetour"' in wxml
     assert 'bindtap="onTapSketchDetour"' in wxml
+    assert ">手绘这一小段</button>" in wxml
     assert "freehand_segment_count" in metadata_block
     assert "snap_provider: freehandCount === modes.length ? 'freehand' : 'tencent_bicycling'" in metadata_block
     assert "mode: 'manual'" not in js

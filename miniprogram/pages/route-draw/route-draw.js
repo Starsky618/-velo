@@ -1053,8 +1053,8 @@ Page({
           warnings: warnings,
         }, {
           requestStatus: 'confirming',
-          statusText: '这段绕路明显，尚未加入路线',
-          errorMessage: '腾讯认为这里不能直接骑行。可接受绕行，或改用手绘保留你确认可骑的道路。',
+          statusText: '这两个点很近，但路线绕得很远',
+          errorMessage: '可接受腾讯规划的绕行，或手绘这一小段。',
           showSketchLayer: false,
           isSketching: false,
           mapScrollEnabled: true,
