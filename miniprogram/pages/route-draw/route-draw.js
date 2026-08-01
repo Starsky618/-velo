@@ -2,7 +2,8 @@ const api = require('../../utils/api')
 
 const DEFAULT_CENTER = { latitude: 37.8706, longitude: 112.5489 }
 const MAX_SNAP_POINTS = 120
-const MAX_SAVE_POINTS = 500
+const TARGET_SAVE_POINTS = 500
+const MAX_SAVE_POINTS = 5000
 const MAX_DISPLAY_POINTS = 500
 const TOUCH_SAMPLE_INTERVAL_MS = 32
 const TOUCH_SAMPLE_DISTANCE_PX = 6
@@ -10,11 +11,12 @@ const SKETCH_RENDER_EVERY_POINTS = 4
 const SKETCH_AUTO_FINISH_MS = 900
 const SKETCH_PREPARE_TIMEOUT_MS = 800
 const ELEVATION_PREVIEW_DEBOUNCE_MS = 800
+const MAP_TAP_SUPPRESSION_MS = 450
 const SNAP_COLOR = '#FC4C02'
 const RAW_COLOR = '#FC4C02'
 const PREVIEW_COLOR = '#8E8E93'
 const PENDING_SAVE_STORAGE_PREFIX = 'route_draw_pending_save_v1:'
-const MAX_PENDING_SAVE_BYTES = 64 * 1024
+const MAX_PENDING_SAVE_BYTES = 256 * 1024
 
 var memoryPendingSave = null
 
@@ -232,6 +234,53 @@ function rdpSimplify(points, toleranceM) {
   return indices.map(function (index) { return normalized[index] })
 }
 
+function rdpSimplifyWithBudget(points, limit, toleranceM) {
+  var normalized = normalizeLonLatPoints(points)
+  if (normalized.length <= 2) {
+    return { points: normalized, remainingErrorM: 0 }
+  }
+  var kept = { 0: true }
+  kept[normalized.length - 1] = true
+  var candidates = []
+
+  function pushCandidate(start, end) {
+    if (end - start <= 1) return
+    var maxDistance = -1
+    var maxIndex = start
+    for (var index = start + 1; index < end; index += 1) {
+      var distance = pointDistanceToLine(normalized[index], normalized[start], normalized[end])
+      if (distance > maxDistance) {
+        maxDistance = distance
+        maxIndex = index
+      }
+    }
+    candidates.push({ distance: maxDistance, start: start, end: end, index: maxIndex })
+  }
+
+  pushCandidate(0, normalized.length - 1)
+  var keptCount = 2
+  while (candidates.length && keptCount < limit) {
+    var bestPosition = 0
+    for (var i = 1; i < candidates.length; i += 1) {
+      if (candidates[i].distance > candidates[bestPosition].distance) bestPosition = i
+    }
+    var best = candidates.splice(bestPosition, 1)[0]
+    if (best.distance <= toleranceM) break
+    kept[best.index] = true
+    keptCount += 1
+    pushCandidate(best.start, best.index)
+    pushCandidate(best.index, best.end)
+  }
+  var remainingErrorM = 0
+  candidates.forEach(function (candidate) {
+    remainingErrorM = Math.max(remainingErrorM, candidate.distance)
+  })
+  return {
+    points: normalized.filter(function (_, index) { return kept[index] }),
+    remainingErrorM: remainingErrorM,
+  }
+}
+
 function simplifyForSnap(points) {
   var normalized = normalizeLonLatPoints(points)
   if (normalized.length <= MAX_SNAP_POINTS) return normalized
@@ -251,12 +300,9 @@ function simplifyForSnap(points) {
 
 function simplifyForSave(points) {
   var normalized = normalizeLonLatPoints(points)
-  if (normalized.length <= MAX_SAVE_POINTS) return normalized
-  var tolerances = [5, 10, 20, 40, 80]
-  for (var i = 0; i < tolerances.length; i += 1) {
-    var simplified = rdpSimplify(normalized, tolerances[i])
-    if (simplified.length <= MAX_SAVE_POINTS) return simplified
-  }
+  if (normalized.length <= TARGET_SAVE_POINTS) return normalized
+  var budgeted = rdpSimplifyWithBudget(normalized, TARGET_SAVE_POINTS, 1)
+  if (budgeted.remainingErrorM <= 1) return budgeted.points
   return normalized
 }
 
@@ -522,7 +568,7 @@ function modeTitle(mode) {
 }
 
 function modeHelp(mode) {
-  if (mode === 'sketch') return '沿着想骑的方向画线，松手后自动贴到可骑行道路。'
+  if (mode === 'sketch') return '沿确认可骑的道路画线；手绘会保留原线，不再自动绕路。'
   return '直接点地图添加路线点，或使用手绘快速指定走向。'
 }
 
@@ -539,6 +585,7 @@ function cloneAction(action) {
       mode: action.mode === 'freehand' ? 'freehand' : 'snap',
       rawPoints: cloneLonLatPoints(action.rawPoints),
       points: cloneLonLatPoints(action.points),
+      displayPoints: cloneLonLatPoints(action.displayPoints || action.points),
       warnings: Array.isArray(action.warnings) ? action.warnings.slice(0, 20) : [],
     }
   }
@@ -560,6 +607,7 @@ function clonePending(pending) {
     mode: pending.mode === 'freehand' ? 'freehand' : 'snap',
     rawPoints: cloneLonLatPoints(pending.rawPoints),
     previewPoints: cloneLonLatPoints(pending.previewPoints),
+    displayPoints: cloneLonLatPoints(pending.displayPoints || pending.previewPoints),
     warnings: Array.isArray(pending.warnings) ? pending.warnings.slice(0, 20) : [],
   }
 }
@@ -625,6 +673,7 @@ function deriveDraftView(actions, pending) {
   var segments = []
   var modes = []
   var rawSegments = []
+  var displaySegments = []
   var segmentWarnings = []
 
   safeActions.forEach(function (action) {
@@ -632,16 +681,19 @@ function deriveDraftView(actions, pending) {
     var segmentPoints = action.points
     if (segmentPoints.length < 2) return
     segments.push(segmentPoints)
+    displaySegments.push(action.displayPoints.length >= 2 ? action.displayPoints : segmentPoints)
     modes.push(action.mode)
     rawSegments.push(action.rawPoints)
     segmentWarnings.push(Array.isArray(action.warnings) ? action.warnings.slice(0, 20) : [])
   })
 
   var confirmedPoints = segments.length ? mergeSegments(segments) : []
+  var confirmedDisplayPoints = displaySegments.length ? mergeSegments(displaySegments) : []
   if (!confirmedPoints.length) {
     safeActions.some(function (action) {
       if (action.kind !== 'anchor') return false
       confirmedPoints = [action.point]
+      confirmedDisplayPoints = [action.point]
       return true
     })
   }
@@ -653,9 +705,10 @@ function deriveDraftView(actions, pending) {
     rawSegments: rawSegments,
     segmentWarnings: segmentWarnings,
     confirmedPoints: confirmedPoints,
+    confirmedDisplayPoints: confirmedDisplayPoints,
     pending: safePending,
     currentRawPoints: safePending ? safePending.rawPoints : [],
-    previewPoints: safePending ? safePending.previewPoints : [],
+    previewPoints: safePending ? safePending.displayPoints : [],
     pendingWarnings: safePending ? safePending.warnings : [],
     markers: buildMarkers(safeActions),
   }
@@ -769,7 +822,7 @@ Page({
   applyDraftState: function (actions, pending, extraPatch) {
     var patch = extraPatch || {}
     var view = deriveDraftView(actions, pending)
-    var displayConfirmedPoints = simplifyForDisplay(view.confirmedPoints)
+    var displayConfirmedPoints = simplifyForDisplay(view.confirmedDisplayPoints)
     this._routeActions = view.actions
     this._routePending = view.pending
     this._confirmedPoints = view.confirmedPoints
@@ -805,6 +858,7 @@ Page({
     var canSaveRoute = (
       view.confirmedPoints.length >= 2 &&
       nextRequestStatus !== 'previewing' &&
+      nextRequestStatus !== 'confirming' &&
       nextRequestStatus !== 'saving' &&
       nextRequestStatus !== 'unknown' &&
       nextBuilderMode !== 'sketch' &&
@@ -871,6 +925,7 @@ Page({
       mode: segment.mode === 'freehand' ? 'freehand' : 'snap',
       rawPoints: cloneLonLatPoints(segment.rawPoints || points),
       points: points,
+      displayPoints: cloneLonLatPoints(segment.displayPoints || points),
       warnings: Array.isArray(segment.warnings) ? segment.warnings.slice(0, 20) : [],
     })
     this.applyDraftState(actions, null, {
@@ -883,8 +938,18 @@ Page({
 
   onMapRegionChange: function (event) {
     if (this.data.builderMode === 'sketch') return
+    if (!event) return
+    var cause = event.causedBy || (event.detail && event.detail.causedBy) || ''
+    if (event.type === 'begin') {
+      if (!cause || cause === 'gesture' || cause === 'scale') this._mapGestureActive = true
+      return
+    }
+    if (event.type !== 'end') return
+    if (this._mapGestureActive || cause === 'gesture' || cause === 'scale') {
+      this._suppressMapTapUntil = Date.now() + MAP_TAP_SUPPRESSION_MS
+    }
+    this._mapGestureActive = false
     if (this.data.requestStatus !== 'idle') return
-    if (!event || event.type !== 'end') return
     this.setData({
       statusText: this.lastConfirmedPoint() ? '点地图添加下一个路线点' : '点地图设置起点',
     })
@@ -894,8 +959,16 @@ Page({
     if (this.preventPendingSaveEdit()) return
     if (!this.ensureLoggedIn()) return
     if (this.data.builderMode === 'sketch') return
+    if (Date.now() < (this._suppressMapTapUntil || 0)) {
+      wx.showToast({ title: '刚才是在移动地图，请再轻点一次加点', icon: 'none' })
+      return
+    }
     if (this.data.requestStatus === 'previewing') {
       wx.showToast({ title: '等这一段贴好再继续', icon: 'none' })
+      return
+    }
+    if (this.data.requestStatus === 'confirming') {
+      wx.showToast({ title: '先处理当前绕行预览', icon: 'none' })
       return
     }
     if (this.data.requestStatus === 'saving' || this.data.saving) return
@@ -930,6 +1003,7 @@ Page({
     if (!this.ensureLoggedIn()) return
     var raw = cloneLonLatPoints(rawPoints)
     if (raw.length < 2) return
+    var requestMode = 'snap'
 
     var that = this
     this.cancelElevationPreview()
@@ -944,14 +1018,15 @@ Page({
     this._snapSeq = (this._snapSeq || 0) + 1
     var snapSeq = this._snapSeq
     var pending = {
-      mode: 'snap',
+      mode: requestMode,
       rawPoints: raw,
       previewPoints: [],
+      displayPoints: [],
       warnings: [],
     }
     this.applyDraftState(this._routeActions || [], pending, {
       requestStatus: 'previewing',
-      statusText: '正在贴到可骑行道路',
+      statusText: requestMode === 'freehand' ? '正在生成手绘路线' : '正在贴到可骑行道路',
       errorMessage: '',
       showSketchLayer: false,
       isSketching: false,
@@ -960,26 +1035,47 @@ Page({
 
     api.snapManualDrawnRoute({
       coordinate_system: 'gcj02',
-      mode: 'snap',
+      mode: requestMode,
       points: simplifyForSnap(raw),
     }).then(function (result) {
       if (snapSeq !== that._snapSeq) return
       var preview = normalizeLonLatPoints(result && result.snapped_points)
       if (preview.length < 2) throw { code: 422 }
+      var displayPreview = normalizeLonLatPoints(result && result.display_points)
+      if (displayPreview.length < 2) displayPreview = simplifyForDisplay(preview)
       var warnings = (result && Array.isArray(result.warnings)) ? result.warnings : []
+      if (requestMode === 'snap' && result && result.requires_confirmation) {
+        that.applyDraftState(that._routeActions || [], {
+          mode: 'snap',
+          rawPoints: raw,
+          previewPoints: preview,
+          displayPoints: displayPreview,
+          warnings: warnings,
+        }, {
+          requestStatus: 'confirming',
+          statusText: '这段绕路明显，尚未加入路线',
+          errorMessage: '腾讯认为这里不能直接骑行。可接受绕行，或改用手绘保留你确认可骑的道路。',
+          showSketchLayer: false,
+          isSketching: false,
+          mapScrollEnabled: true,
+        })
+        return
+      }
       that.commitSegmentAction({
-        mode: 'snap',
+        mode: requestMode,
         rawPoints: raw,
         points: preview,
+        displayPoints: displayPreview,
         warnings: warnings,
       })
     }).catch(function (err) {
       if (snapSeq !== that._snapSeq) return
       var message = snapErrorMessage(err)
       that.applyDraftState(that._routeActions || [], {
-        mode: 'snap',
+        mode: requestMode,
         rawPoints: raw,
         previewPoints: [],
+        displayPoints: [],
         warnings: [],
       }, {
         requestStatus: 'error',
@@ -991,6 +1087,29 @@ Page({
       })
       if ((that._confirmedPoints || []).length >= 2) that.scheduleElevationPreview()
     })
+  },
+
+  onTapAcceptDetour: function () {
+    if (this.data.requestStatus !== 'confirming' || !this._routePending) return
+    var pending = clonePending(this._routePending)
+    if (!pending || pending.previewPoints.length < 2) return
+    this.commitSegmentAction({
+      mode: 'snap',
+      rawPoints: pending.rawPoints,
+      points: pending.previewPoints,
+      displayPoints: pending.displayPoints,
+      warnings: pending.warnings,
+    })
+  },
+
+  onTapSketchDetour: function () {
+    if (this.data.requestStatus !== 'confirming') return
+    this.applyDraftState(this._routeActions || [], null, {
+      requestStatus: 'idle',
+      statusText: '沿确认可骑的道路重新手绘',
+      errorMessage: '',
+    })
+    this.onTapStartSketch()
   },
 
   onTapStartSketch: function () {
@@ -1200,7 +1319,13 @@ Page({
       mapScrollEnabled: true,
     })
     this._sketchViewport = null
-    this.startSnapPreview(raw)
+    this.commitSegmentAction({
+      mode: 'freehand',
+      rawPoints: raw,
+      points: raw,
+      displayPoints: simplifyForDisplay(raw),
+      warnings: [],
+    })
   },
 
   finishSketchMode: function (text) {

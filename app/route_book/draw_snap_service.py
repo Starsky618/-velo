@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import heapq
 import math
 from typing import Any
 
@@ -18,10 +19,16 @@ from app.route_book.tencent_direction import TencentMapError, plan_tencent_bicyc
 MAX_RAW_POINTS = 120
 MAX_ANCHOR_POINTS = 11
 MAX_SEGMENTS = 10
+MAX_SNAPPED_PREVIEW_POINTS = 300
+MAX_CANONICAL_POINTS = 5000
+MAX_CANONICAL_SIMPLIFICATION_ERROR_M = 1.0
 SNAP_PREVIEW_TOTAL_TIMEOUT_SEC = 12.0
 SNAP_PREVIEW_MAX_SINGLE_TIMEOUT_SEC = 3.0
 SIMPLIFY_TOLERANCE_M = 30.0
 MIN_PREVIEW_DISTANCE_M = 5.0
+DETOUR_RATIO_THRESHOLD = 1.8
+DETOUR_EXTRA_DISTANCE_M = 1000.0
+DETOUR_RATIO_MIN_EXTRA_M = 100.0
 
 
 class DrawSnapSegmentError(ValueError):
@@ -38,6 +45,7 @@ def build_snap_preview(
     mode: str,
     coordinate_system: str,
     points: list[tuple[float, float]],
+    supports_detour_confirmation: bool = False,
 ) -> dict[str, Any]:
     if coordinate_system != "gcj02":
         raise ValueError("coordinate_system 只支持 gcj02")
@@ -52,11 +60,15 @@ def build_snap_preview(
             "mode": mode,
             "coordinate_system": coordinate_system,
             "snapped_points": raw_points,
+            "display_points": raw_points,
             "raw_points": raw_points,
             "anchor_points": raw_points,
             "raw_distance_m": raw_distance_m,
             "distance_m": raw_distance_m,
+            "provider_distance_m": raw_distance_m,
             "segment_count": len(raw_points) - 1,
+            "provider_point_count": len(raw_points),
+            "requires_confirmation": False,
             "warnings": [],
             "failed_segment": None,
         }
@@ -70,7 +82,7 @@ def build_snap_preview(
 
     timeout_sec = _timeout_per_segment(segment_count)
     snapped_points: list[list[float]] = []
-    distance_m = 0.0
+    provider_distance_m = 0.0
     for index, (start, end) in enumerate(zip(anchor_points, anchor_points[1:])):
         try:
             planned = plan_tencent_bicycling_route(
@@ -85,24 +97,41 @@ def build_snap_preview(
         if snapped_points and segment_points and _same_point(snapped_points[-1], segment_points[0]):
             segment_points = segment_points[1:]
         snapped_points.extend(segment_points)
-        distance_m += _finite_float(planned.get("distance")) or _distance_m(segment_points)
+        provider_distance_m += _finite_float(planned.get("distance")) or _distance_m(segment_points)
 
     if len(snapped_points) < 2:
         raise TencentMapError("腾讯地图没有返回可用路线")
 
+    provider_point_count = len(snapped_points)
+    detour_extra_m = provider_distance_m - raw_distance_m
+    requires_confirmation = raw_distance_m > 0 and (
+        detour_extra_m > DETOUR_EXTRA_DISTANCE_M
+        or (
+            provider_distance_m > raw_distance_m * DETOUR_RATIO_THRESHOLD
+            and detour_extra_m > DETOUR_RATIO_MIN_EXTRA_M
+        )
+    )
     warnings: list[str] = []
-    if raw_distance_m > 0 and distance_m > max(raw_distance_m * 1.8, raw_distance_m + 1000):
+    if requires_confirmation:
+        if not supports_detour_confirmation:
+            raise ValueError("这段绕行明显，请更新后改用手绘或确认绕行")
         warnings.append("系统贴出的路线可能偏离你的手画线，请检查后再保存。")
+    snapped_points, display_points = _simplify_preview_points(snapped_points)
+    preview_distance_m = _distance_m(snapped_points)
 
     return {
         "mode": mode,
         "coordinate_system": coordinate_system,
         "snapped_points": snapped_points,
+        "display_points": display_points,
         "raw_points": raw_points,
         "anchor_points": anchor_points,
         "raw_distance_m": raw_distance_m,
-        "distance_m": distance_m,
+        "distance_m": preview_distance_m,
+        "provider_distance_m": provider_distance_m,
         "segment_count": segment_count,
+        "provider_point_count": provider_point_count,
+        "requires_confirmation": requires_confirmation,
         "warnings": warnings,
         "failed_segment": None,
     }
@@ -140,7 +169,56 @@ def _simplify_anchor_points(points: list[list[float]]) -> list[list[float]]:
     return [points[index] for index in indices]
 
 
-def _rdp_indices(points: list[list[float]], start: int, end: int, tolerance_m: float) -> list[int]:
+def _simplify_preview_points(points: list[list[float]]) -> tuple[list[list[float]], list[list[float]]]:
+    """展示线固定预算；正式几何只有在误差不超过 1m 时才使用抽稀结果。"""
+    if len(points) <= MAX_SNAPPED_PREVIEW_POINTS:
+        return points, points
+    indices, remaining_error_m = _rdp_budget_indices(
+        points,
+        MAX_SNAPPED_PREVIEW_POINTS,
+        tolerance_m=MAX_CANONICAL_SIMPLIFICATION_ERROR_M,
+    )
+    display_points = [points[index] for index in indices]
+    canonical_points = (
+        display_points
+        if remaining_error_m <= MAX_CANONICAL_SIMPLIFICATION_ERROR_M
+        else points
+    )
+    if len(canonical_points) > MAX_CANONICAL_POINTS:
+        raise ValueError("这段道路细节太多，请缩短一段再点，或改用手绘")
+    return canonical_points, display_points
+
+
+def _rdp_budget_indices(
+    points: list[list[float]],
+    limit: int,
+    *,
+    tolerance_m: float,
+) -> tuple[list[int], float]:
+    """在固定点数预算内优先保留偏差最大的转折，限制最坏扫描次数。"""
+    kept = {0, len(points) - 1}
+    candidates: list[tuple[float, int, int, int]] = []
+    _push_rdp_candidate(candidates, points, 0, len(points) - 1)
+
+    while candidates and len(kept) < limit:
+        negative_distance, start, end, index = heapq.heappop(candidates)
+        if -negative_distance <= tolerance_m:
+            break
+        kept.add(index)
+        _push_rdp_candidate(candidates, points, start, index)
+        _push_rdp_candidate(candidates, points, index, end)
+    remaining_error_m = -candidates[0][0] if candidates else 0.0
+    return sorted(kept), remaining_error_m
+
+
+def _push_rdp_candidate(
+    candidates: list[tuple[float, int, int, int]],
+    points: list[list[float]],
+    start: int,
+    end: int,
+) -> None:
+    if end - start <= 1:
+        return
     max_distance = -1.0
     max_index = start
     for index in range(start + 1, end):
@@ -148,12 +226,30 @@ def _rdp_indices(points: list[list[float]], start: int, end: int, tolerance_m: f
         if distance > max_distance:
             max_distance = distance
             max_index = index
+    heapq.heappush(candidates, (-max_distance, start, end, max_index))
 
-    if max_distance > tolerance_m:
-        left = _rdp_indices(points, start, max_index, tolerance_m)
-        right = _rdp_indices(points, max_index, end, tolerance_m)
-        return left[:-1] + right
-    return [start, end]
+
+def _rdp_indices(points: list[list[float]], start: int, end: int, tolerance_m: float) -> list[int]:
+    kept = {start, end}
+    pending = [(start, end)]
+    while pending:
+        segment_start, segment_end = pending.pop()
+        max_distance = -1.0
+        max_index = segment_start
+        for index in range(segment_start + 1, segment_end):
+            distance = _perpendicular_distance_m(
+                points[index],
+                points[segment_start],
+                points[segment_end],
+            )
+            if distance > max_distance:
+                max_distance = distance
+                max_index = index
+        if max_distance > tolerance_m:
+            kept.add(max_index)
+            pending.append((segment_start, max_index))
+            pending.append((max_index, segment_end))
+    return sorted(kept)
 
 
 def _perpendicular_distance_m(point: list[float], start: list[float], end: list[float]) -> float:

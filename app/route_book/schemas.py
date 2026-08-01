@@ -275,11 +275,15 @@ class ManualDrawnSnapPreviewResponse(BaseModel):
     mode: RouteDrawMode
     coordinate_system: RouteDrawCoordinateSystem
     snapped_points: list[list[float]]
+    display_points: list[list[float]]
     raw_points: list[list[float]]
     anchor_points: list[list[float]]
     raw_distance_m: float
     distance_m: float
+    provider_distance_m: float
     segment_count: int
+    provider_point_count: int = Field(ge=2)
+    requires_confirmation: bool = False
     warnings: list[str] = Field(default_factory=list)
     failed_segment: int | None = None
 
@@ -290,7 +294,7 @@ class ManualDrawnElevationPreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     coordinate_system: ManualDrawnCoordinateSystem = "gcj02"
-    points: list[tuple[float, float]] = Field(..., min_length=2, max_length=500)
+    points: list[tuple[float, float]] = Field(..., min_length=2, max_length=5000)
 
     @field_validator("points")
     @classmethod
@@ -360,7 +364,7 @@ class ManualDrawnRouteBookRequest(BaseModel):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     coordinate_system: ManualDrawnCoordinateSystem = "wgs84"
-    points: list[tuple[float, float]] = Field(..., min_length=2, max_length=500)
+    points: list[tuple[float, float]] = Field(..., min_length=2, max_length=5000)
     draw_metadata: ManualDrawnDrawMetadata | None = None
 
     @field_validator("points")

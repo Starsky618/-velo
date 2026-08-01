@@ -1659,7 +1659,7 @@ def test_manual_drawn_route_rejects_too_many_points_before_elevation_query(clien
         json={
             "name": "点太多",
             "client_request_id": "test-manual-too-many-points",
-            "points": [[112.5 + index * 0.0001, 37.8] for index in range(501)],
+            "points": [[112.5 + index * 0.00001, 37.8] for index in range(5001)],
         },
         headers=auth_header,
     )

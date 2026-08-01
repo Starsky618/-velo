@@ -68,7 +68,7 @@ function clearExpiredAuth(app) {
  * @param {object} data - 请求体数据
  * @returns {Promise} 后端返回的 JSON 数据
  */
-function request(url, method, data, timeoutMs) {
+function request(url, method, data, timeoutMs, extraHeaders) {
   // 每次请求时获取 app 实例（此时 App 一定已经初始化完成）
   var app = getAppSafe()
   var baseUrl = (app && app.globalData.baseUrl) || BASE_URL
@@ -108,11 +108,11 @@ function request(url, method, data, timeoutMs) {
         method: method,
         data: data,
         timeout: timeoutMs,
-        header: {
+        header: Object.assign({
           'Content-Type': 'application/json',
           // 如果有 token，自动带上（证明"我是谁"）
           'Authorization': token ? 'Bearer ' + token : '',
-        },
+        }, extraHeaders || {}),
         success: function (res) {
           if (res.statusCode === 401) {
             // 清除本地 token（可能已过期）
@@ -577,7 +577,9 @@ module.exports = {
   },
 
   snapManualDrawnRoute: function (payload) {
-    return request('/api/route-books/manual-drawn/snap-preview', 'POST', payload)
+    return request('/api/route-books/manual-drawn/snap-preview', 'POST', payload, undefined, {
+      'X-VELO-Detour-Confirmation': '1',
+    })
   },
 
   previewManualDrawnElevation: function (payload) {

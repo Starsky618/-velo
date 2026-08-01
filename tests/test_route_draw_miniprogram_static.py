@@ -64,7 +64,7 @@ def test_route_draw_can_search_and_center_an_exact_location():
     js = _read(PAGE_DIR / "route-draw.js")
     wxml = _read(PAGE_DIR / "route-draw.wxml")
 
-    assert 'bindtap="onTapSearchLocation"' in wxml
+    assert 'catchtap="onTapSearchLocation"' in wxml
     assert "搜地点" in wxml
     assert "onTapSearchLocation: function" in js
     assert "wx.chooseLocation" in js
@@ -154,7 +154,9 @@ def test_second_smart_map_tap_snaps_and_auto_merges_draft_segment():
     assert "mode: 'snap'" in snap_block
     assert "points: simplifyForSnap(raw)" in snap_block
     assert "commitSegmentAction" in success_block
-    assert "that.applyDraftState" not in success_block
+    assert "result.requires_confirmation" in success_block
+    assert "requestStatus: 'confirming'" in success_block
+    assert "onTapAcceptDetour" in js
     assert "onTapConfirmSegment" not in js
     assert "确认当前段" not in wxml
 
@@ -193,19 +195,30 @@ def test_first_marker_moves_to_the_confirmed_snapped_start():
     assert markers[0]["callout"]["content"] == "起点"
 
 
-def test_route_draw_exposes_only_smart_tap_and_pencil_snap_modes():
+def test_route_draw_exposes_smart_tap_and_true_manual_pencil_modes():
     js = _read(PAGE_DIR / "route-draw.js")
     wxml = _read(PAGE_DIR / "route-draw.wxml")
+    api_js = _read(MINI / "utils" / "api.js")
+    wxss = _read(PAGE_DIR / "route-draw.wxss")
     metadata_block = js.split("function buildDrawMetadata", 1)[1].split("function screenPointFromEvent", 1)[0]
 
     assert "Manual Mode" not in wxml
     assert "builderMode === 'manual'" not in js
-    assert 'bindtap="onTapStartSketch"' in wxml
+    assert 'catchtap="onTapStartSketch"' in wxml
     assert "this.startSnapPreview([lastPoint, normalized])" in js
-    assert "this.startSnapPreview(raw)" in js
+    assert "this.startSnapPreview(raw, 'freehand')" not in js
+    assert "supports_detour_confirmation" not in js
+    assert "'X-VELO-Detour-Confirmation': '1'" in api_js
+    assert "mode: 'freehand'" in js
+    assert 'bindtap="onTapAcceptDetour"' in wxml
+    assert 'bindtap="onTapSketchDetour"' in wxml
     assert "freehand_segment_count" in metadata_block
     assert "snap_provider: freehandCount === modes.length ? 'freehand' : 'tencent_bicycling'" in metadata_block
     assert "mode: 'manual'" not in js
+    assert "手绘会保留原线，不再自动绕路" in wxml
+    assert "松手后会自动贴到可骑行道路" not in wxml
+    detour_button_block = wxss.split(".detour-button {", 1)[1].split("}", 1)[0]
+    assert "min-height: 44px" in detour_button_block
 
 
 def test_sketch_pencil_temporarily_takes_over_touch_and_then_restores_map():
@@ -275,7 +288,7 @@ def test_route_draw_save_contract_and_error_copy():
     assert "贴路操作太快，稍等一下再继续。" in js
     assert "路线没有保存成功，请稍后再试" in js
     assert "路线太长，分几段保存更稳" in js
-    assert "腾讯" not in js
+    assert "TENCENT_MAP_KEY" not in js
     assert "this.data.requestStatus === 'previewing'" in save_block
     assert "confirmedPoints.length < 2" in save_block
     assert 'disabled="{{!canSaveRoute}}"' in wxml
@@ -561,7 +574,7 @@ def test_pending_save_survives_page_restart_and_replays_the_same_request_once():
                     client_request_id: 'test-oversized-pending-payload',
                     coordinate_system: 'gcj02',
                     points: [[112.5, 37.8], [112.6, 37.9]],
-                    draw_metadata: { warnings: ['x'.repeat(70 * 1024)] },
+                    draw_metadata: { warnings: ['x'.repeat(270 * 1024)] },
                   })
 
                   process.stdout.write(JSON.stringify({
@@ -689,6 +702,8 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
                 for (let i = 0; i < 620; i += 1) straight.push([112.5 + i * 0.00001, 37.8])
                 const noisy = []
                 for (let i = 0; i < 620; i += 1) noisy.push([112.5 + i * 0.00001, 37.8 + (i % 2 === 0 ? 0.02 : -0.02)])
+                const fourMeterWiggle = []
+                for (let i = 0; i < 602; i += 1) fourMeterWiggle.push([112.5 + i * 0.00001, 37.8 + (i % 2 === 0 ? 0.000036 : -0.000036)])
                 const confirmed = [[112.5, 37.8], [112.51, 37.81]]
                 const raw = [[112.52, 37.82], [112.53, 37.83]]
                 const preview = [[112.54, 37.84], [112.55, 37.85]]
@@ -702,6 +717,7 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
                 process.stdout.write(JSON.stringify({
                   straightLength: draw.simplifyForSave(straight).length,
                   noisyLength: draw.simplifyForSave(noisy).length,
+                  fourMeterWiggleLength: draw.simplifyForSave(fourMeterWiggle).length,
                   polylines: draw.buildDrawPolylines(confirmed, raw, preview).map((item) => item.role),
                   stats: draw.buildRouteStats([[112.5, 37.8], [112.51, 37.8]]),
                   readyStats: draw.buildRouteStats(
@@ -727,7 +743,8 @@ def test_route_draw_helpers_are_executable_and_keep_save_limit():
     rows = json.loads(result.stdout)
 
     assert 2 <= rows["straightLength"] <= 500
-    assert rows["noisyLength"] > 500
+    assert 500 < rows["noisyLength"] <= 5000
+    assert rows["fourMeterWiggleLength"] == 602
     assert rows["polylines"] == ["confirmedPolyline", "rawPolyline", "previewPolyline"]
     assert rows["stats"]["pointCount"] == 2
     assert rows["stats"]["distanceM"] > 800
@@ -971,6 +988,121 @@ def test_route_draw_map_tap_flow_sets_anchor_snaps_and_loads_elevation():
     assert rows["second"]["climbText"] == "42 m"
 
 
+def test_map_pan_does_not_add_point_and_extreme_detour_waits_for_confirmation():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                ;(async function () {
+                  let pageConfig
+                  let now = 1000
+                  let snapCalls = 0
+                  const toasts = []
+                  Date.now = function () { return now }
+                  global.setTimeout = function () { return 1 }
+                  global.clearTimeout = function () {}
+                  global.getApp = function () {
+                    return { globalData: { token: 'token-for-test' } }
+                  }
+                  global.wx = {
+                    showToast: function (options) { toasts.push(options.title) },
+                  }
+                  const api = require('./miniprogram/utils/api.js')
+                  api.snapManualDrawnRoute = function () {
+                    snapCalls += 1
+                    return Promise.resolve({
+                      snapped_points: [
+                        [112.5, 37.8],
+                        [112.55, 37.85],
+                        [112.501, 37.8],
+                      ],
+                      display_points: [
+                        [112.5, 37.8],
+                        [112.55, 37.85],
+                        [112.501, 37.8],
+                      ],
+                      warnings: ['系统贴出的路线可能偏离你的手画线，请检查后再保存。'],
+                      requires_confirmation: true,
+                    })
+                  }
+                  global.Page = function (config) { pageConfig = config }
+                  require('./miniprogram/pages/route-draw/route-draw.js')
+                  const page = Object.assign({}, pageConfig, {
+                    data: JSON.parse(JSON.stringify(pageConfig.data)),
+                    setData: function (patch) {
+                      this.data = Object.assign({}, this.data, patch)
+                    },
+                  })
+                  page.commitAnchorAction([112.5, 37.8])
+                  page.onMapRegionChange({ type: 'begin', causedBy: 'gesture' })
+                  page.onMapRegionChange({ type: 'end', causedBy: 'gesture' })
+                  page.onMapTap({ detail: { longitude: 112.501, latitude: 37.8 } })
+                  const callsAfterPan = snapCalls
+
+                  now += 451
+                  page.onMapTap({ detail: { longitude: 112.501, latitude: 37.8 } })
+                  await Promise.resolve()
+                  await Promise.resolve()
+                  const beforeAccept = {
+                    requestStatus: page.data.requestStatus,
+                    segmentCount: page._segmentModes.length,
+                    pendingPointCount: page._routePending.previewPoints.length,
+                    canSaveRoute: page.data.canSaveRoute,
+                  }
+                  page.onMapTap({ detail: { longitude: 112.502, latitude: 37.8 } })
+                  const callsWhileConfirming = snapCalls
+                  page.onTapAcceptDetour()
+                  const afterAccept = {
+                    requestStatus: page.data.requestStatus,
+                    segmentMode: page._segmentModes[0],
+                    pointCount: page._confirmedPoints.length,
+                    pendingCleared: page._routePending === null,
+                    canSaveRoute: page.data.canSaveRoute,
+                  }
+                  process.stdout.write(JSON.stringify({
+                    callsAfterPan,
+                    callsWhileConfirming,
+                    snapCalls,
+                    beforeAccept,
+                    afterAccept,
+                    toasts,
+                  }))
+                })().catch(function (err) {
+                  console.error(err && err.stack ? err.stack : err)
+                  process.exit(1)
+                })
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    row = json.loads(result.stdout)
+
+    assert row["callsAfterPan"] == 0
+    assert row["callsWhileConfirming"] == 1
+    assert row["snapCalls"] == 1
+    assert row["beforeAccept"] == {
+        "requestStatus": "confirming",
+        "segmentCount": 0,
+        "pendingPointCount": 3,
+        "canSaveRoute": False,
+    }
+    assert row["afterAccept"] == {
+        "requestStatus": "idle",
+        "segmentMode": "snap",
+        "pointCount": 3,
+        "pendingCleared": True,
+        "canSaveRoute": True,
+    }
+    assert any("移动地图" in text for text in row["toasts"])
+    assert any("先处理当前绕行" in text for text in row["toasts"])
+
+
 def test_route_draw_ignores_stale_elevation_result_after_geometry_changes():
     result = subprocess.run(
         [
@@ -1146,6 +1278,7 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                 ;(async function () {
                   let pageConfig
                   let timers = []
+                  let snapCallCount = 0
                   global.setTimeout = function (fn, ms) {
                     timers.push({ fn, ms, cleared: false })
                     return timers.length - 1
@@ -1185,6 +1318,7 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                   }
                   const api = require('./miniprogram/utils/api.js')
                   api.snapManualDrawnRoute = function (payload) {
+                    snapCallCount += 1
                     return Promise.resolve({ snapped_points: payload.points, warnings: [] })
                   }
                   api.previewManualDrawnElevation = function () {
@@ -1223,6 +1357,7 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                     pointCount: page.data.routeStats.pointCount,
                     canSaveRoute: page.data.canSaveRoute,
                     segmentMode: page._segmentModes[0],
+                    snapCallCount: snapCallCount,
                     elevationStatus: page.data.elevationStatus,
                   }))
                 })().catch(function (err) {
@@ -1244,7 +1379,8 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
     assert rows["mapScrollEnabled"] is True
     assert rows["pointCount"] >= 2
     assert rows["canSaveRoute"] is True
-    assert rows["segmentMode"] == "snap"
+    assert rows["segmentMode"] == "freehand"
+    assert rows["snapCallCount"] == 0
     assert rows["elevationStatus"] == "ready"
 
 
