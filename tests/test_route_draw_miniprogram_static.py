@@ -23,14 +23,14 @@ def test_route_draw_page_files_are_registered_after_creation():
         assert (PAGE_DIR / f"route-draw.{suffix}").exists()
 
 
-def test_route_draw_declares_fuzzy_location_permission():
+def test_route_draw_declares_exact_location_permission():
     app_json = json.loads(_read(MINI / "app.json"))
     js = _read(PAGE_DIR / "route-draw.js")
 
-    assert app_json["requiredPrivateInfos"] == ["getFuzzyLocation", "chooseLocation"]
-    assert "路线绘制" in app_json["permission"]["scope.userFuzzyLocation"]["desc"]
-    assert "wx.getFuzzyLocation" in js
-    assert "wx.getLocation" not in js
+    assert app_json["requiredPrivateInfos"] == ["getLocation", "chooseLocation"]
+    assert "路线绘制" in app_json["permission"]["scope.userLocation"]["desc"]
+    assert "wx.getLocation" in js
+    assert "wx.getFuzzyLocation" not in js
 
 
 def test_route_draw_page_uses_map_tap_as_default_input_and_sketch_only_touch_layer():
