@@ -19,19 +19,7 @@
       bindregionchange="onMapRegionChange">
     </map>
 
-    <cover-view wx:if="{{!showSketchLayer}}" class="route-draw-topbar">
-      <cover-view class="map-tool" catchtap="onTapClose">关闭</cover-view>
-    </cover-view>
-
-    <cover-view wx:if="{{!showSketchLayer}}" class="route-draw-map-side-tools">
-      <cover-view class="map-tool" catchtap="onTapSearchLocation">搜地点</cover-view>
-      <cover-view class="map-tool" catchtap="onTapLocate">定位</cover-view>
-    </cover-view>
-
-    <cover-view wx:if="{{!showSketchLayer}}" class="route-draw-toolbox">
-      <cover-view class="mode-tool" catchtap="onTapStartSketch">手绘</cover-view>
-      <cover-view class="mode-tool {{actionCount ? '' : 'is-disabled'}}" catchtap="onTapUndoAction">撤销</cover-view>
-    </cover-view>
+    <cover-view wx:if="{{!showSketchLayer}}" class="map-tool route-draw-close-tool" catchtap="onTapClose">关闭</cover-view>
 
     <canvas
       wx:if="{{showSketchLayer}}"
@@ -44,10 +32,6 @@
       catchtouchend="onDrawTouchEnd"
       catchtouchcancel="onDrawTouchEnd">
     </canvas>
-
-    <cover-view wx:if="{{showSketchLayer}}" class="sketch-cancel-wrap">
-      <cover-view class="sketch-cancel-button" catchtap="onTapCancelSketch">取消手绘</cover-view>
-    </cover-view>
   </view>
 
   <view class="route-draw-panel {{showSketchLayer ? 'sketch-panel' : ''}}">
@@ -62,9 +46,17 @@
       <view class="sketch-panel-subtitle">沿确认可骑的道路画线；手绘会保留原线，不再自动绕路。</view>
       <image class="sketch-illustration" src="/assets/route-placeholder.svg" mode="aspectFit"></image>
       <view wx:if="{{!sketchViewportReady}}" class="sketch-preparing">地图准备中…</view>
+      <button class="sketch-cancel-button" bindtap="onTapCancelSketch">取消手绘</button>
     </block>
 
     <block wx:else>
+      <view class="route-draw-actions-row">
+        <button class="route-draw-action-button" bindtap="onTapSearchLocation">搜地点</button>
+        <button class="route-draw-action-button" bindtap="onTapLocate">定位</button>
+        <button class="route-draw-action-button" bindtap="onTapStartSketch">手绘</button>
+        <button class="route-draw-action-button {{actionCount ? '' : 'is-disabled'}}" bindtap="onTapUndoAction">撤销</button>
+      </view>
+
       <view class="status-row">
         <view class="status-copy">
           <view class="panel-title">{{modeTitle}}</view>

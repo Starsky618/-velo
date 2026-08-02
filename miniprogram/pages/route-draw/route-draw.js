@@ -1673,9 +1673,127 @@ Page({
     })
   },
 
-  onTapLocate: function () {
+  locationPrivacyErrorMessage: function (err) {
+    var raw = String(err && (err.errMsg || err.message) || '')
+    var errno = Number(err && err.errno)
+    if (errno === 112 || raw.indexOf('not declared in the privacy agreement') >= 0 || raw.indexOf('privacy api banned') >= 0) {
+      return '后台《小程序用户隐私保护指引》还没有声明位置信息，配置完成后才能使用。'
+    }
+    return '需要先同意小程序隐私保护指引，才能使用位置功能。'
+  },
+
+  beginLocationAction: function (action) {
     var that = this
-    if (typeof wx.getLocation !== 'function') return
+    this._pendingLocationAction = action
+    this.setData({ statusText: '正在检查位置授权…' })
+    if (typeof wx.requirePrivacyAuthorize !== 'function') {
+      this.ensureUserLocationPermission(action)
+      return
+    }
+    wx.requirePrivacyAuthorize({
+      success: function () {
+        that.ensureUserLocationPermission(action)
+      },
+      fail: function (err) {
+        var message = that.locationPrivacyErrorMessage(err)
+        that.setData({ statusText: message })
+        wx.showModal({
+          title: '位置功能暂不可用',
+          content: message,
+          showCancel: false,
+        })
+      },
+    })
+  },
+
+  ensureUserLocationPermission: function (action) {
+    var that = this
+    function runAction() {
+      that._pendingLocationAction = null
+      that.executeLocationAction(action)
+    }
+    function requestPermission() {
+      if (typeof wx.authorize !== 'function') {
+        runAction()
+        return
+      }
+      wx.authorize({
+        scope: 'scope.userLocation',
+        success: runAction,
+        fail: function () {
+          that.setData({ statusText: '需要开启位置权限，才能使用定位和地点搜索' })
+          wx.showToast({ title: '请允许使用位置信息', icon: 'none' })
+        },
+      })
+    }
+    if (typeof wx.getSetting !== 'function') {
+      requestPermission()
+      return
+    }
+    wx.getSetting({
+      success: function (res) {
+        var authSetting = res && res.authSetting || {}
+        var granted = authSetting['scope.userLocation']
+        if (granted === true) {
+          runAction()
+          return
+        }
+        if (granted === false) {
+          that.openUserLocationSetting(action)
+          return
+        }
+        requestPermission()
+      },
+      fail: requestPermission,
+    })
+  },
+
+  openUserLocationSetting: function (action) {
+    var that = this
+    wx.showModal({
+      title: '需要位置权限',
+      content: '请在设置中打开“位置信息”，用于定位当前位置和搜索地点。',
+      confirmText: '去设置',
+      success: function (modalRes) {
+        if (!modalRes.confirm) {
+          that.setData({ statusText: '未开启位置权限，仍可直接点地图设置路线点' })
+          return
+        }
+        if (typeof wx.openSetting !== 'function') return
+        wx.openSetting({
+          success: function (settingRes) {
+            var enabled = settingRes && settingRes.authSetting && settingRes.authSetting['scope.userLocation']
+            if (enabled) {
+              that._pendingLocationAction = null
+              that.executeLocationAction(action)
+              return
+            }
+            that.setData({ statusText: '位置权限仍未开启，仍可直接点地图设置路线点' })
+          },
+        })
+      },
+    })
+  },
+
+  executeLocationAction: function (action) {
+    if (action === 'search') {
+      this.openLocationChooser()
+      return
+    }
+    this.getCurrentLocation()
+  },
+
+  onTapLocate: function () {
+    this.beginLocationAction('locate')
+  },
+
+  getCurrentLocation: function () {
+    var that = this
+    if (typeof wx.getLocation !== 'function') {
+      wx.showToast({ title: '当前微信版本不支持定位', icon: 'none' })
+      return
+    }
+    that.setData({ statusText: '正在获取当前位置…' })
     wx.getLocation({
       type: 'gcj02',
       success: function (res) {
@@ -1687,18 +1805,31 @@ Page({
           statusText: '已回到你附近，点地图设置路线点',
         })
       },
-      fail: function () {
+      fail: function (err) {
+        var message = that.locationPrivacyErrorMessage(err)
+        var raw = String(err && err.errMsg || '')
+        if (Number(err && err.errno) === 112 || raw.indexOf('privacy') >= 0) {
+          that.setData({ statusText: message })
+          wx.showModal({ title: '定位暂不可用', content: message, showCancel: false })
+          return
+        }
+        that.setData({ statusText: '定位失败，仍可手动拖地图设置路线点' })
         wx.showToast({ title: '没有拿到当前位置，可以手动拖地图', icon: 'none' })
       },
     })
   },
 
   onTapSearchLocation: function () {
+    this.beginLocationAction('search')
+  },
+
+  openLocationChooser: function () {
     var that = this
     if (typeof wx.chooseLocation !== 'function') {
       wx.showToast({ title: '当前微信版本不支持地点搜索', icon: 'none' })
       return
     }
+    that.setData({ statusText: '正在打开地点搜索…' })
     wx.chooseLocation({
       success: function (res) {
         var point = normalizeLonLatPoint({ longitude: res.longitude, latitude: res.latitude })
@@ -1711,7 +1842,18 @@ Page({
         })
       },
       fail: function (err) {
-        if (err && String(err.errMsg || '').indexOf('cancel') >= 0) return
+        if (err && String(err.errMsg || '').indexOf('cancel') >= 0) {
+          that.setData({ statusText: '未选择地点，仍可直接点地图设置路线点' })
+          return
+        }
+        var raw = String(err && err.errMsg || '')
+        if (Number(err && err.errno) === 112 || raw.indexOf('privacy') >= 0) {
+          var message = that.locationPrivacyErrorMessage(err)
+          that.setData({ statusText: message })
+          wx.showModal({ title: '地点搜索暂不可用', content: message, showCancel: false })
+          return
+        }
+        that.setData({ statusText: '地点搜索失败，仍可直接点地图设置路线点' })
         wx.showToast({ title: '没有选中地点，再试一次', icon: 'none' })
       },
     })

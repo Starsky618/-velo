@@ -25,27 +25,14 @@ page {
   background: #eef3ee;
 }
 
-.route-draw-topbar {
+.route-draw-close-tool {
   position: absolute;
+  z-index: 4;
   left: 24rpx;
   top: 24rpx;
-  z-index: 4;
-  pointer-events: none;
 }
 
-.route-draw-map-side-tools {
-  position: absolute;
-  right: 24rpx;
-  top: 24rpx;
-  z-index: 4;
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-  pointer-events: none;
-}
-
-.map-tool,
-.mode-tool {
+.map-tool {
   min-width: 96rpx;
   height: 88rpx;
   line-height: 88rpx;
@@ -58,25 +45,6 @@ page {
   text-align: center;
   box-sizing: border-box;
   box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.14);
-  pointer-events: auto;
-}
-
-.route-draw-toolbox {
-  position: absolute;
-  right: 24rpx;
-  bottom: 32rpx;
-  z-index: 4;
-  display: flex;
-  gap: 16rpx;
-}
-
-.mode-tool {
-  min-width: 128rpx;
-  padding: 0 28rpx;
-}
-
-.mode-tool.is-disabled {
-  color: #aeaeb2;
 }
 
 .route-draw-touch-layer {
@@ -89,18 +57,9 @@ page {
   background: transparent;
 }
 
-.sketch-cancel-wrap {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 30rpx;
-  z-index: 5;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-
 .sketch-cancel-button {
+  margin: 24rpx auto 0;
+  width: 220rpx;
   min-width: 220rpx;
   height: 88rpx;
   line-height: 88rpx;
@@ -112,7 +71,10 @@ page {
   font-weight: 600;
   text-align: center;
   box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.18);
-  pointer-events: auto;
+}
+
+.sketch-cancel-button::after {
+  border: 0;
 }
 
 .route-draw-panel {
@@ -130,6 +92,34 @@ page {
   min-height: 360rpx;
   padding-top: 44rpx;
   text-align: center;
+}
+
+.route-draw-actions-row {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+
+.route-draw-action-button {
+  flex: 1;
+  min-width: 0;
+  height: 88rpx;
+  line-height: 88rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 44rpx;
+  background: #f2f2f7;
+  color: #1c1c1e;
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+.route-draw-action-button::after {
+  border: 0;
+}
+
+.route-draw-action-button.is-disabled {
+  color: #aeaeb2;
 }
 
 .status-row {
