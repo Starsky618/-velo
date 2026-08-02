@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-02T20:46:44+08:00'
+updated_at: '2026-08-02T21:46:06+08:00'
 status: active
 authority:
   order:
@@ -41,27 +41,30 @@ repository:
   local_repository_trusted: false
   local_repository_policy: ignore_all_previously_claimed_local_repositories_unless_user_reauthorizes
   baseline_commit_from_prior_audit: 433ec012ac44592688e95cc681be6d630f3a51c2
-  baseline_must_be_reverified: false
-  last_verified_main_commit: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
-  last_verified_main_commit_time_utc: '2026-08-02T09:48:14Z'
-  last_verified_at: '2026-08-02T20:46:44+08:00'
-  verified_via: git_fetch_origin_and_pr35_review_head_verification
+  baseline_must_be_reverified: true
+  last_verified_main_commit_before_a0c_merge: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
+  last_verified_main_commit_before_a0c_merge_time_utc: '2026-08-02T09:48:14Z'
+  a0c_delivery_head: bc7d458dfc10474ee0626c6271e418128d74d37c
+  last_verified_main_commit: null
+  last_verified_main_commit_status: pending_post_merge_reverification
+  last_verified_at: null
+  verified_via: pending_post_merge_remote_main_reverification
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
-  execution_branch: codex/agent-first-a0-docs
-  execution_base_commit: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
-  execution_merge_base_with_origin_main: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
-  execution_branch_relation_to_origin_main: based_directly_on_start_of_task_origin_main
+  a0c_delivery_branch: codex/agent-first-a0-docs
+  a0c_delivery_base_commit: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
+  a0c_delivery_merge_base_with_origin_main: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
+  a0c_delivery_branch_relation_to_origin_main: based_directly_on_start_of_task_origin_main
   a0c_delivery_worktree_initial_status: clean
   original_authoring_worktree_status_at_a0c_start: dirty_with_reviewed_a0_files_preserved
   dirty_workspace_policy: preserve_all_user_changes
-  git_write_permission: true
+  git_write_permission: false
   merge_permission: false
   deploy_permission: false
-  execution_branch_role: clean_delivery_branch
+  a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: A0C_existing_feature_branch_review_fixes_commit_and_normal_push_only
+  git_write_scope: none_until_next_orchestrator_task_packet
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -78,45 +81,23 @@ current_phase:
   - provider_success_timeout_ambiguity_no_result_disconnect_and_hard_fail_are_simulatable
   - raw_provider_orm_public_publish_and_real_export_are_unreachable
 next_task:
-  id: A0C
-  name: publish_a0_from_clean_independent_branch
-  status: in_review
-  objective: Synchronize the Agent-First entry README with root State on the existing
-    feature branch, update Draft PR 35, and collect new CI evidence without merging,
-    deploying, or starting A1.
-  required_branch: codex/agent-first-a0-docs
-  base: latest_origin_main
-  original_worktree_must_remain_untouched: true
-  review_round: A0C_R1
-  last_orchestrator_decision: REVISE
-  revision_required:
-  - synchronize_docs_agent_first_readme_with_root_state
-  revision_status: applied_waiting_orchestrator_re_review
-  allowed_git_actions:
-  - edit_reviewed_files
-  - commit_review_fix
-  - normal_push_existing_branch
-  forbidden_git_actions:
-  - modify_local_main
-  - rebase_existing_branch
-  - reset
-  - stash
-  - clean
-  - force_push
-  - merge_pr
-  non_goals:
-  - start_A1
-  - modify_runtime
-  - modify_schema
-  - call_real_provider
-  - real_export
-  - deploy
-  orchestrator_decision: selected_after_A0_PASS
-subsequent_tasks:
-- id: A1
+  id: A1
   name: architecture_adrs
-  status: blocked
-  blocked_by: A0C
+  status: ready_to_specify
+  objective: Resolve and record the five Phase A architecture boundaries before any
+    Agent runtime or contract implementation.
+  execution_authorized: false
+  requires_new_orchestrator_task_packet: true
+  non_goals:
+  - implement_runtime
+  - implement_contracts
+  - modify_database
+  - modify_api
+  - modify_miniprogram
+  - call_real_provider
+  - create_real_export
+  - deploy
+subsequent_tasks:
 - id: A2
   name: agent_v0_contracts
   status: blocked
@@ -334,19 +315,35 @@ evidence_log:
     allowed_fix_files:
     - docs/agent-first/README.md
     - VELO_ORCHESTRATOR_STATE.yaml
+- id: E-20260802-A0C-ORCHESTRATOR-REVIEW-R2
+  type: orchestrator_pr_re_review
+  status: PASS
+  evidence:
+    pr: 35
+    reviewed_head: bc7d458dfc10474ee0626c6271e418128d74d37c
+    mergeable: true
+    changed_files: 8
+    review_threads: 0
+    readme_state_synchronized: true
+    branch_ci_run: 30748666047
+    merge_ref_ci_run: 30748667466
+    branch_ci_result: 2074_passed_0_skipped_814_warnings
+    merge_ref_ci_result: 2074_passed_0_skipped_814_warnings
+    fresh_postgis_migration: true
+    decision: PASS
 - id: E-20260802-A0C-DELIVERY
   type: clean_branch_delivery
-  status: in_review
+  status: PASS_approved_for_merge
   evidence:
     branch: codex/agent-first-a0-docs
     base: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
     changed_path_scope: exact_eight_file_allowlist
     source_hashes: byte_identical
     protected_paths: zero_diff
-    merge: not_authorized_not_run
+    merge_authorized_by_task_packet: true
     deploy: not_authorized_not_run
     A1: not_started
-    revision_status: applied_waiting_orchestrator_re_review
+    revision_status: completed_and_re_reviewed_PASS
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec
@@ -354,7 +351,20 @@ completed_tasks:
   passed_at: '2026-08-02T04:51:58-07:00'
   evidence_bundle: VELO_A0_REVIEW_BUNDLE_R1.zip
   evidence_bundle_sha256: 1da2f2073671f24d0c66773df116495fa09123d8744c971c1371e3d6ff26884d
-  delivery_status: clean_branch_draft_pr_in_review
+  delivery_status: delivered_via_a0c_pr35
+- id: A0C
+  name: publish_a0_from_clean_independent_branch
+  decision: PASS
+  passed_at: '2026-08-02T21:46:06+08:00'
+  pr: 35
+  reviewed_head: bc7d458dfc10474ee0626c6271e418128d74d37c
+  orchestrator_review_round: A0C_R2
+  branch_ci_run: 30748666047
+  merge_ref_ci_run: 30748667466
+  tests_passed: 2074
+  skipped: 0
+  fresh_postgis_migration: true
+  merge_authorized_by_task_packet: true
 risks:
 - id: R1
   description: main_moves_during_orchestration_or_execution
@@ -376,7 +386,7 @@ risks:
   mitigation: mandatory_expected_end_state_forbidden_actions_code_grader_and_ledgers
 - id: R7
   description: A0_docs_misread_as_runtime_schema_or_production_authorization
-  mitigation: keep_A0_PASS_A0C_in_review_A1_A5_blocked_and_deploy_false
+  mitigation: keep_A0_A0C_PASS_A1_ready_to_specify_not_started_A2_A5_blocked_and_deploy_false
 - id: R8
   description: baseline_ci_or_mock_tests_confused_with_provider_device_deploy_or_user_evidence
   mitigation: report_each_evidence_layer_separately_and_keep_unverified_explicit
