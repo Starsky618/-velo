@@ -7,7 +7,6 @@ const MAX_SAVE_POINTS = 5000
 const MAX_DISPLAY_POINTS = 500
 const TOUCH_SAMPLE_INTERVAL_MS = 32
 const TOUCH_SAMPLE_DISTANCE_PX = 6
-const SKETCH_RENDER_EVERY_POINTS = 4
 const SKETCH_AUTO_FINISH_MS = 900
 const SKETCH_PREPARE_TIMEOUT_MS = 800
 const ELEVATION_PREVIEW_DEBOUNCE_MS = 800
@@ -17,7 +16,9 @@ const RAW_COLOR = '#FC4C02'
 const PREVIEW_COLOR = '#8E8E93'
 const PENDING_SAVE_STORAGE_PREFIX = 'route_draw_pending_save_v1:'
 const MAX_PENDING_SAVE_BYTES = 256 * 1024
-const MARKER_PLACEHOLDER_ICON = '/assets/icons/explore.png'
+const START_MARKER_ICON = '/assets/route-marker-start.png'
+const WAYPOINT_MARKER_ICON = '/assets/route-marker-waypoint.png'
+const END_MARKER_ICON = '/assets/route-marker-end.png'
 
 var memoryPendingSave = null
 
@@ -653,28 +654,15 @@ function buildMarkers(actions) {
     var isStart = index === 0
     var isEnd = index === markerPoints.length - 1 && markerPoints.length > 1
     var isEndpoint = isStart || isEnd
+    var markerSize = isEndpoint ? 20 : 14
     return {
       id: index + 1,
       longitude: point[0],
       latitude: point[1],
-      // 1px 本地图只负责压掉腾讯默认红色导航针；真正可见的是下面的小圆点 label。
-      iconPath: MARKER_PLACEHOLDER_ICON,
-      width: 1,
-      height: 1,
+      iconPath: isEnd ? END_MARKER_ICON : (isStart ? START_MARKER_ICON : WAYPOINT_MARKER_ICON),
+      width: markerSize,
+      height: markerSize,
       anchor: { x: 0.5, y: 0.5 },
-      label: {
-        content: ' ',
-        color: isEnd ? '#0F766E' : '#FFFFFF',
-        fontSize: 1,
-        borderRadius: isEndpoint ? 8 : 6,
-        bgColor: isEnd ? '#0F766E' : '#FFFFFF',
-        borderColor: isEnd ? '#FFFFFF' : '#FC4C02',
-        borderWidth: 2,
-        padding: isEndpoint ? 5 : 3,
-        textAlign: 'center',
-        anchorX: isEndpoint ? -6 : -4,
-        anchorY: isEndpoint ? -6 : -4,
-      },
       callout: {
         content: isStart ? '起点' : (isEnd ? '终点' : '途经点 ' + (index + 1)),
         color: '#1C1C1E',
@@ -1155,7 +1143,10 @@ Page({
     this._snapSeq = (this._snapSeq || 0) + 1
     this._drawSeq = (this._drawSeq || 0) + 1
     this._rawSegmentPoints = []
+    this._sketchScreenPoints = []
+    this._sketchStrokeActive = false
     this._sketchViewport = null
+    this.releaseSketchCanvas()
     this.applyDraftState(this._routeActions || [], null, {
       builderMode: 'sketch',
       modeTitle: modeTitle('sketch'),
@@ -1228,10 +1219,15 @@ Page({
       that.setData({
         latitude: that._sketchLockedCenter.latitude,
         longitude: that._sketchLockedCenter.longitude,
-        sketchViewportReady: true,
-        statusText: '用手指画出你的路线',
       })
-      return true
+      return that.prepareSketchCanvas().then(function () {
+        if (prepareSeq !== that._sketchPrepareSeq || that.data.builderMode !== 'sketch') return false
+        that.setData({
+          sketchViewportReady: true,
+          statusText: '用手指画出你的路线',
+        })
+        return true
+      })
     }).catch(function () {
       if (prepareSeq === that._sketchPrepareSeq && that.data.builderMode === 'sketch') {
         that.markGestureUnsupported()
@@ -1244,6 +1240,75 @@ Page({
     var center = this._sketchLockedCenter
     if (!center) return
     this.setData({ latitude: center.latitude, longitude: center.longitude })
+  },
+
+  prepareSketchCanvas: function () {
+    var that = this
+    this.releaseSketchCanvas()
+    if (typeof wx.createSelectorQuery !== 'function') return Promise.resolve(false)
+    return new Promise(function (resolve) {
+      var query = wx.createSelectorQuery()
+      if (query && typeof query.in === 'function') query = query.in(that)
+      if (!query || typeof query.select !== 'function') {
+        resolve(false)
+        return
+      }
+      var selected = query.select('#routeSketchCanvas')
+      if (!selected || typeof selected.fields !== 'function') {
+        resolve(false)
+        return
+      }
+      selected.fields({ node: true, size: true }).exec(function (results) {
+        var result = results && results[0]
+        var canvas = result && result.node
+        var width = Number(result && result.width)
+        var height = Number(result && result.height)
+        if (!canvas || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+          resolve(false)
+          return
+        }
+        var context = canvas.getContext('2d')
+        var windowInfo = typeof wx.getWindowInfo === 'function'
+          ? wx.getWindowInfo()
+          : (typeof wx.getSystemInfoSync === 'function' ? wx.getSystemInfoSync() : {})
+        var dpr = Math.max(1, Number(windowInfo && windowInfo.pixelRatio) || 1)
+        canvas.width = Math.round(width * dpr)
+        canvas.height = Math.round(height * dpr)
+        context.scale(dpr, dpr)
+        context.strokeStyle = RAW_COLOR
+        context.lineWidth = 4
+        context.lineJoin = 'round'
+        context.lineCap = 'round'
+        that._sketchCanvas = canvas
+        that._sketchCanvasContext = context
+        that._sketchCanvasSize = { width: width, height: height }
+        resolve(true)
+      })
+    })
+  },
+
+  releaseSketchCanvas: function () {
+    this._sketchCanvas = null
+    this._sketchCanvasContext = null
+    this._sketchCanvasSize = null
+  },
+
+  clearSketchCanvas: function () {
+    var context = this._sketchCanvasContext
+    var size = this._sketchCanvasSize
+    if (context && size) context.clearRect(0, 0, size.width, size.height)
+  },
+
+  drawSketchInkPoint: function (screenPoint) {
+    var context = this._sketchCanvasContext
+    var viewport = this._sketchViewport
+    var screenPoints = this._sketchScreenPoints || []
+    if (!context || !viewport || screenPoints.length < 2) return
+    var previous = screenPoints[screenPoints.length - 2]
+    context.beginPath()
+    context.moveTo(previous.x - viewport.left, previous.y - viewport.top)
+    context.lineTo(screenPoint.x - viewport.left, screenPoint.y - viewport.top)
+    context.stroke()
   },
 
   onDrawTouchStart: function (event) {
@@ -1260,30 +1325,25 @@ Page({
     this.clearSketchAutoFinish()
     this._drawSeq = (this._drawSeq || 0) + 1
     this._rawSegmentPoints = []
+    this._sketchScreenPoints = []
     this._lastScreenPoint = null
     this._lastCaptureAt = 0
-    this.applyDraftState(this._routeActions || [], null, {
-      requestStatus: 'idle',
-      statusText: '继续画，松手后自动贴路',
-      errorMessage: '',
-      showSketchLayer: true,
-      isSketching: true,
-      mapScrollEnabled: false,
-    })
+    this._sketchStrokeActive = true
+    this.clearSketchCanvas()
     this.captureTouchLocation(event, true)
     this.armSketchAutoFinish()
   },
 
   onDrawTouchMove: function (event) {
     if (this.data.pendingSaveLocked) return
-    if (this.data.builderMode !== 'sketch' || !this.data.isSketching) return
+    if (this.data.builderMode !== 'sketch' || !this._sketchStrokeActive) return
     this.captureTouchLocation(event, false)
     this.armSketchAutoFinish()
   },
 
   onDrawTouchEnd: function (event) {
     if (this.data.pendingSaveLocked) return
-    if (this.data.builderMode !== 'sketch' || !this.data.isSketching) return
+    if (this.data.builderMode !== 'sketch' || !this._sketchStrokeActive) return
     this.clearSketchAutoFinish()
     this.captureTouchLocation(event, true)
     this.finishSketchSegment()
@@ -1294,7 +1354,7 @@ Page({
     this.clearSketchAutoFinish()
     this._sketchAutoFinishTimer = setTimeout(function () {
       that._sketchAutoFinishTimer = null
-      if (that.data.builderMode === 'sketch' && that.data.isSketching) that.finishSketchSegment()
+      if (that.data.builderMode === 'sketch' && that._sketchStrokeActive) that.finishSketchSegment()
     }, SKETCH_AUTO_FINISH_MS)
   },
 
@@ -1302,19 +1362,6 @@ Page({
     if (this._sketchAutoFinishTimer === undefined || this._sketchAutoFinishTimer === null) return
     clearTimeout(this._sketchAutoFinishTimer)
     this._sketchAutoFinishTimer = null
-  },
-
-  renderSketchInk: function (rawPoints) {
-    var raw = cloneLonLatPoints(rawPoints)
-    this._routePending = {
-      mode: 'freehand',
-      rawPoints: raw,
-      previewPoints: [],
-      warnings: [],
-    }
-    this.setData({
-      drawPolylines: buildDrawPolylines(this._displayConfirmedPoints || [], raw, []),
-    })
   },
 
   captureTouchLocation: function (event, force) {
@@ -1326,33 +1373,38 @@ Page({
     }
     this._lastCaptureAt = now
     this._lastScreenPoint = screenPoint
-    var point = mapPointFromSketchViewport(screenPoint, this._sketchViewport)
-    if (!point) return
-    var raw = this._rawSegmentPoints || []
-    if (raw.length >= MAX_SNAP_POINTS * 2) return
-    if (!raw.length || !samePoint(raw[raw.length - 1], point)) raw.push(point)
-    this._rawSegmentPoints = raw
-    if (force || raw.length % SKETCH_RENDER_EVERY_POINTS === 0) this.renderSketchInk(raw)
+    var screenPoints = this._sketchScreenPoints || []
+    if (screenPoints.length >= MAX_SNAP_POINTS * 2) return
+    if (screenPoints.length && screenDistance(screenPoints[screenPoints.length - 1], screenPoint) < 0.5) return
+    screenPoints.push(screenPoint)
+    this._sketchScreenPoints = screenPoints
+    this.drawSketchInkPoint(screenPoint)
   },
 
   finishSketchSegment: function () {
     if (!this.ensureLoggedIn()) return
     if (this.data.builderMode !== 'sketch') return
     this.clearSketchAutoFinish()
+    this._sketchStrokeActive = false
 
-    var raw = normalizeLonLatPoints(this._rawSegmentPoints || (this._routePending && this._routePending.rawPoints))
+    var screenPoints = this._sketchScreenPoints || []
+    var raw = screenPoints.map(function (screenPoint) {
+      return mapPointFromSketchViewport(screenPoint, this._sketchViewport)
+    }, this).filter(Boolean)
+    this._rawSegmentPoints = raw
     var lastPoint = this.lastConfirmedPoint()
     if (lastPoint && raw.length && !samePoint(lastPoint, raw[0])) {
       raw = [lastPoint].concat(raw)
     }
 
-    if (raw.length < 2 || distanceOf(raw) < 5) {
+    if (screenPoints.length < 3 || raw.length < 2 || distanceOf(raw) < 5) {
+      this.clearSketchCanvas()
       this.applyDraftState(this._routeActions || [], null, {
         builderMode: 'sketch',
         modeTitle: modeTitle('sketch'),
         modeHelp: modeHelp('sketch'),
         requestStatus: 'idle',
-        statusText: '这段太短了，再画长一点',
+        statusText: '请按住地图并连续拖动画线',
         showSketchLayer: true,
         isSketching: false,
         mapScrollEnabled: false,
@@ -1372,6 +1424,9 @@ Page({
     })
     this._sketchViewport = null
     this._sketchLockedCenter = null
+    this._sketchScreenPoints = []
+    this.clearSketchCanvas()
+    this.releaseSketchCanvas()
     this.commitSegmentAction({
       mode: 'freehand',
       rawPoints: raw,
@@ -1386,8 +1441,12 @@ Page({
     this._drawSeq = (this._drawSeq || 0) + 1
     this._sketchPrepareSeq = (this._sketchPrepareSeq || 0) + 1
     this._rawSegmentPoints = []
+    this._sketchScreenPoints = []
+    this._sketchStrokeActive = false
     this._sketchViewport = null
     this._sketchLockedCenter = null
+    this.clearSketchCanvas()
+    this.releaseSketchCanvas()
     this.applyDraftState(this._routeActions || [], null, {
       builderMode: 'smart',
       modeTitle: modeTitle('smart'),

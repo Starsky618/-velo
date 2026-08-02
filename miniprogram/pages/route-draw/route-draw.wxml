@@ -33,14 +33,17 @@
       <cover-view class="mode-tool {{actionCount ? '' : 'is-disabled'}}" catchtap="onTapUndoAction">撤销</cover-view>
     </cover-view>
 
-    <cover-view
+    <canvas
       wx:if="{{showSketchLayer}}"
+      type="2d"
+      id="routeSketchCanvas"
       class="route-draw-touch-layer"
+      disable-scroll="{{true}}"
       catchtouchstart="onDrawTouchStart"
       catchtouchmove="onDrawTouchMove"
       catchtouchend="onDrawTouchEnd"
       catchtouchcancel="onDrawTouchEnd">
-    </cover-view>
+    </canvas>
 
     <cover-view wx:if="{{showSketchLayer}}" class="sketch-cancel-wrap">
       <cover-view class="sketch-cancel-button" catchtap="onTapCancelSketch">取消手绘</cover-view>

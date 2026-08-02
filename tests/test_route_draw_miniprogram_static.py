@@ -49,6 +49,10 @@ def test_route_draw_page_uses_map_tap_as_default_input_and_sketch_only_touch_lay
     assert "enableZoom: Boolean(enabled)" in js
     assert 'class="route-draw-touch-layer"' in wxml
     assert 'wx:if="{{showSketchLayer}}"' in wxml
+    assert '<canvas' in wxml
+    assert 'type="2d"' in wxml
+    assert 'id="routeSketchCanvas"' in wxml
+    assert 'disable-scroll="{{true}}"' in wxml
     assert "wx.createMapContext('route-draw-map'" in js
     assert ".getRegion" in js
     assert "sketchViewportFromParts" in js
@@ -199,7 +203,7 @@ def test_first_marker_moves_to_the_confirmed_snapped_start():
     assert markers[-1]["callout"]["content"] == "终点"
 
 
-def test_route_draw_uses_small_circle_labels_instead_of_default_red_map_pins():
+def test_route_draw_uses_centered_circle_assets_instead_of_offset_labels_or_default_pins():
     result = subprocess.run(
         [
             "node",
@@ -230,12 +234,13 @@ def test_route_draw_uses_small_circle_labels_instead_of_default_red_map_pins():
     markers = json.loads(result.stdout)
 
     assert len(markers) == 2
-    assert all(marker["iconPath"].startswith("/assets/icons/") for marker in markers)
-    assert all(marker["width"] == 1 and marker["height"] == 1 for marker in markers)
-    assert all(marker["label"]["content"].strip() == "" for marker in markers)
-    assert all(marker["label"]["borderRadius"] >= 8 for marker in markers)
-    assert markers[0]["label"]["borderColor"] == "#FC4C02"
-    assert markers[-1]["label"]["bgColor"] == "#0F766E"
+    assert markers[0]["iconPath"] == "/assets/route-marker-start.png"
+    assert markers[-1]["iconPath"] == "/assets/route-marker-end.png"
+    assert all(marker["width"] == 20 and marker["height"] == 20 for marker in markers)
+    assert all(marker["anchor"] == {"x": 0.5, "y": 0.5} for marker in markers)
+    assert all("label" not in marker for marker in markers)
+    for asset in ("route-marker-start.png", "route-marker-waypoint.png", "route-marker-end.png"):
+        assert (MINI / "assets" / asset).exists()
 
 
 def test_route_draw_exposes_smart_tap_and_true_manual_pencil_modes():
@@ -280,6 +285,8 @@ def test_sketch_pencil_temporarily_takes_over_touch_and_then_restores_map():
     assert "restoreSketchMapPosition" in js
     assert ".moveToLocation" not in start_block
     assert "prepareSketchViewport" in js
+    assert "prepareSketchCanvas" in js
+    assert "drawSketchInkPoint" in js
     assert "mapPointFromSketchViewport" in js
     assert "sketchViewportReady" in js
     assert "showSketchLayer: false" in finish_block
@@ -291,6 +298,104 @@ def test_sketch_pencil_temporarily_takes_over_touch_and_then_restores_map():
     assert "this.armSketchAutoFinish()" in js
     assert "this.clearSketchAutoFinish()" in js
     assert "fromScreenLocation" not in js
+
+
+def test_sketch_draws_in_screen_space_without_rerendering_the_native_map_on_every_move():
+    js = _read(PAGE_DIR / "route-draw.js")
+    start_block = js.split("onDrawTouchStart: function", 1)[1].split("onDrawTouchMove", 1)[0]
+    move_block = js.split("onDrawTouchMove: function", 1)[1].split("onDrawTouchEnd", 1)[0]
+    capture_block = js.split("captureTouchLocation: function", 1)[1].split("finishSketchSegment", 1)[0]
+    finish_block = js.split("finishSketchSegment: function", 1)[1].split("finishSketchMode", 1)[0]
+
+    assert "applyDraftState" not in start_block
+    assert "setData" not in move_block
+    assert "drawSketchInkPoint" in capture_block
+    assert "buildDrawPolylines" not in capture_block
+    assert "mapPointFromSketchViewport" not in capture_block
+    assert "screenPoints.map" in finish_block
+    assert "mapPointFromSketchViewport" in finish_block
+    assert "screenPoints.length < 3" in finish_block
+    assert "renderSketchInk" not in js
+
+
+def test_sketch_tap_does_not_fall_back_to_selecting_a_straight_line_endpoint():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                ;(async function () {
+                  let pageConfig
+                  global.getApp = function () {
+                    return { globalData: { token: 'token-for-test' } }
+                  }
+                  global.wx = {
+                    createMapContext: function () {
+                      return {
+                        getRegion: function (options) {
+                          options.success({
+                            southwest: { longitude: 112.5, latitude: 37.8 },
+                            northeast: { longitude: 112.6, latitude: 37.9 },
+                          })
+                        },
+                      }
+                    },
+                    createSelectorQuery: function () {
+                      const query = {
+                        in: function () { return query },
+                        select: function () {
+                          return {
+                            boundingClientRect: function (callback) {
+                              callback({ left: 0, top: 0, width: 100, height: 100 })
+                            },
+                          }
+                        },
+                        exec: function () {},
+                      }
+                      return query
+                    },
+                    showToast: function () {},
+                  }
+                  global.Page = function (config) { pageConfig = config }
+                  require('./miniprogram/pages/route-draw/route-draw.js')
+                  const page = Object.assign({}, pageConfig, {
+                    data: JSON.parse(JSON.stringify(pageConfig.data)),
+                    setData: function (patch) {
+                      this.data = Object.assign({}, this.data, patch)
+                    },
+                  })
+                  page.onReady()
+                  page.commitAnchorAction([112.5, 37.8])
+                  await page.onTapStartSketch()
+                  page.onDrawTouchStart({ touches: [{ clientX: 10, clientY: 90 }] })
+                  page.onDrawTouchEnd({ changedTouches: [{ clientX: 90, clientY: 10 }] })
+                  process.stdout.write(JSON.stringify({
+                    builderMode: page.data.builderMode,
+                    actionCount: page.data.actionCount,
+                    confirmedPointCount: page.data.confirmedPointCount,
+                    statusText: page.data.statusText,
+                  }))
+                })().catch(function (err) {
+                  console.error(err && err.stack ? err.stack : err)
+                  process.exit(1)
+                })
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    rows = json.loads(result.stdout)
+
+    assert rows == {
+        "builderMode": "sketch",
+        "actionCount": 1,
+        "confirmedPointCount": 1,
+        "statusText": "请按住地图并连续拖动画线",
+    }
 
 
 def test_sketch_locks_native_map_one_render_turn_before_showing_touch_layer():
@@ -1485,6 +1590,7 @@ def test_route_draw_sketch_auto_finish_restores_map_when_touchend_is_lost():
                   page.commitAnchorAction([112.5, 37.8])
                   await page.onTapStartSketch()
                   page.onDrawTouchStart({ touches: [{ clientX: 0, clientY: 100 }] })
+                  page.onDrawTouchMove({ touches: [{ clientX: 50, clientY: 100 }] })
                   page.onDrawTouchMove({ touches: [{ clientX: 100, clientY: 100 }] })
                   for (let i = 0; i < 8; i += 1) await Promise.resolve()
                   timers.filter(function (timer) {
