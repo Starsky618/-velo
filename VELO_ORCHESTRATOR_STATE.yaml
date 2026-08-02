@@ -1,0 +1,398 @@
+schema_version: 1
+project: VELO
+orchestrator_mode: chatgpt_controls_codex
+updated_at: '2026-08-02T21:46:06+08:00'
+status: active
+authority:
+  order:
+  - current_user_instruction
+  - repository_code_tests_ci_runtime
+  - orchestrator_control_pack_and_state
+  - product_domain_constitution
+  - agent_first_architecture
+  - long_term_world_model_blueprint
+  - current_repository_docs
+  - historical_docs_and_chat
+source_documents:
+- name: VELO_路线认知基础设施_v0.1.md
+  path: docs/agent-first/source/VELO_路线认知基础设施_v0.1.md
+  sha256: 2dd16330905664fb126daf2cb685e02d4d1897675df6de82c9b3b5c8f3b3bdb1
+  role: product_and_domain_constitution
+  status: authoritative
+- name: VELO_目标领域架构与渐进式迁移蓝图_v1.0.md
+  path: docs/agent-first/source/VELO_目标领域架构与渐进式迁移蓝图_v1.0.md
+  sha256: b7fd39deba4c3f802c03ee0d76696c35ac0d488ec65bb61792ea9b47a1768e4a
+  role: long_term_world_model_map
+  status: proposed_long_term
+- name: VELO_Agent_First_架构研究与系统设计_v0.1.md
+  path: docs/agent-first/source/VELO_Agent_First_架构研究与系统设计_v0.1.md
+  sha256: 526fa8d1c154f5fd702b16ddacf35c5c1d9c90299bf60bf0e17e83d144ee0b17
+  role: agent_runtime_architecture
+  status: proposed_requires_eval
+- name: VELO_Orchestrator_Control_Pack_v1.0.md
+  path: docs/agent-first/VELO_Orchestrator_Control_Pack_v1.0.md
+  sha256: e90c88641ae48f04ed070623778ca04bf3833c31e6524e664ff9524d9b7685b2
+  role: execution_control
+  status: authoritative_for_orchestration
+repository:
+  github: Starsky618/-velo
+  local_path_expected: null
+  canonical_truth_source: remote_github_only
+  local_repository_trusted: false
+  local_repository_policy: ignore_all_previously_claimed_local_repositories_unless_user_reauthorizes
+  baseline_commit_from_prior_audit: 433ec012ac44592688e95cc681be6d630f3a51c2
+  baseline_must_be_reverified: true
+  last_verified_main_commit_before_a0c_merge: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
+  last_verified_main_commit_before_a0c_merge_time_utc: '2026-08-02T09:48:14Z'
+  a0c_delivery_head: bc7d458dfc10474ee0626c6271e418128d74d37c
+  last_verified_main_commit: null
+  last_verified_main_commit_status: pending_post_merge_reverification
+  last_verified_at: null
+  verified_via: pending_post_merge_remote_main_reverification
+  must_reverify_at_each_task_start: true
+  original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
+  r1_evidence_branch: codex/agent-first-a0
+  a0c_delivery_branch: codex/agent-first-a0-docs
+  a0c_delivery_base_commit: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
+  a0c_delivery_merge_base_with_origin_main: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
+  a0c_delivery_branch_relation_to_origin_main: based_directly_on_start_of_task_origin_main
+  a0c_delivery_worktree_initial_status: clean
+  original_authoring_worktree_status_at_a0c_start: dirty_with_reviewed_a0_files_preserved
+  dirty_workspace_policy: preserve_all_user_changes
+  git_write_permission: false
+  merge_permission: false
+  deploy_permission: false
+  a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
+  main_branch_role: remote_authority_baseline_and_pr_target_only
+  git_write_scope: none_until_next_orchestrator_task_packet
+current_phase:
+  id: A
+  name: architecture_contracts_eval_first
+  status: in_progress
+  goal: Convert the Agent-First architecture from a design hypothesis into explicit
+    ADRs, typed contracts, VeloBench v0, and a deterministic fake environment.
+  exit_criteria:
+  - at_least_30_repeatable_cases
+  - every_case_has_expected_end_state
+  - every_case_has_forbidden_actions
+  - every_case_has_code_grader
+  - no_real_tencent_network_call
+  - no_production_database_required
+  - provider_success_timeout_ambiguity_no_result_disconnect_and_hard_fail_are_simulatable
+  - raw_provider_orm_public_publish_and_real_export_are_unreachable
+next_task:
+  id: A1
+  name: architecture_adrs
+  status: ready_to_specify
+  objective: Resolve and record the five Phase A architecture boundaries before any
+    Agent runtime or contract implementation.
+  execution_authorized: false
+  requires_new_orchestrator_task_packet: true
+  non_goals:
+  - implement_runtime
+  - implement_contracts
+  - modify_database
+  - modify_api
+  - modify_miniprogram
+  - call_real_provider
+  - create_real_export
+  - deploy
+subsequent_tasks:
+- id: A2
+  name: agent_v0_contracts
+  status: blocked
+  blocked_by: A1
+- id: A3
+  name: velobench_cases_fixtures_graders
+  status: blocked
+  blocked_by: A2
+- id: A4
+  name: deterministic_fake_environment
+  status: blocked
+  blocked_by: A2
+- id: A5
+  name: phase_b_shadow_spec
+  status: blocked
+  blocked_by:
+  - A3
+  - A4
+first_vertical_slice:
+  name: taiyuan_tianlongshan_door_to_door_shadow
+  description: User selects an origin, rides the existing official Tianlongshan core
+    route, and returns to the origin with minimal urban exposure.
+  required_legs:
+  - access
+  - core
+  - return
+  real_export_allowed: false
+  production_traffic_allowed: false
+  scheduled_phase: B
+second_vertical_slice:
+  name: fenhe_dual_bank_loop
+  scheduled_after: first_vertical_slice
+  extra_concepts:
+  - dual_bank_loop_pattern
+  - multiple_entries
+  - turnaround
+  - outbound_return_bank_exclusion
+  - swap_bank_direction
+orchestration_policy:
+  chatgpt_role: sole_orchestrator
+  codex_role: sole_writer
+  read_only_parallel_reviews_allowed: true
+  parallel_writers_allowed: false
+  one_minimal_task_per_loop: true
+  loop:
+  - orient
+  - select
+  - specify
+  - execute
+  - evidence
+  - review
+  - decide
+  - update
+  decisions:
+  - PASS
+  - REVISE
+  - HARD_BLOCK
+  - DEFER
+hard_invariants:
+- preserve_dirty_workspace
+- no_agent_orm_import
+- no_agent_raw_tencent_access
+- deterministic_validator_cannot_be_bypassed
+- no_llm_generated_coordinate_route
+- no_unconfirmed_precise_home_location_storage
+- no_public_route_publish_permission_for_planning_agent
+- no_real_export_before_user_selection_and_phase_permission
+- workflow_controls_fixed_steps
+- single_bounded_main_agent
+- world_facts_are_not_agent_memory
+- evaluation_checks_end_state_not_only_language
+open_questions:
+- id: Q1
+  question: final_typescript_runtime_choice
+  status: defer_until_phase_a_contracts_and_velobench
+- id: Q2
+  question: openai_agents_sdk_vs_plain_runtime
+  status: defer_until_shadow_prototype
+- id: Q3
+  question: exact_traversal_schema
+  status: defer_until_first_vertical_slice_failure_analysis
+- id: Q4
+  question: full_road_graph_need
+  status: defer_until_curated_traversal_plus_provider_demand_gap
+- id: Q5
+  question: long_term_inferred_memory
+  status: defer_until_explicit_memory_and_eval_baseline
+evidence_log:
+- id: E-20260802-A0-REPO
+  type: repository_baseline
+  status: verified_with_historical_authoring_head_and_clean_delivery_base
+  evidence:
+    repository: Starsky618/-velo
+    default_and_authority_branch: main
+    original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
+    r1_evidence_branch: codex/agent-first-a0
+    a0c_delivery_branch: codex/agent-first-a0-docs
+    origin_main: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
+    origin_main_time_utc: '2026-08-02T09:48:14Z'
+    a0c_base_and_merge_base: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
+    a0c_initial_worktree: clean
+    note: original_authoring_head_contained_unrelated_route_draw_commit_and_was_preserved_untouched
+- id: E-20260802-A0-SOURCE-HASHES
+  type: document_integrity
+  status: verified
+  evidence:
+    exact_hash_match_count: 4
+    source_documents_edited: false
+- id: E-20260802-A0-LEGACY-AGENT
+  type: code_fact
+  status: verified
+  evidence:
+    finding: legacy_segment_draft_generation_with_rq_direct_orm_and_external_llm_not_agent_runtime
+    files:
+    - app/agent/segment_writer.py
+    - app/agent/tasks.py
+    - app/admin/service.py
+    - app/queue.py
+    - worker.py
+- id: E-20260802-A0-ROUTE-FOUNDATION
+  type: code_fact
+  status: verified
+  evidence:
+    finding: routebook_routeversion_tencent_snap_glo30_elevation_real_gpx_tcx_export_and_internal_route_cognition_writers_exist
+    real_side_effects:
+    - external_network
+    - database
+    - storage_export_artifact
+- id: E-20260802-A0-CONTRACT-ABSENCE
+  type: search_fact
+  status: verified
+  evidence:
+    implementation_scope: runtime_test_and_workflow_paths
+    finding: no_agent_v0_runtime_test_implementation_tool_registry_trace_replay_velobench_harness_or_fake_environment
+    design_reference_scope:
+    - docs/agent-first/source
+    - docs/agent-first_A0_planning_docs
+    design_reference_classification: proposed_concepts_not_implementation_evidence
+- id: E-20260802-A0-PRODUCT-CONFLICT
+  type: document_conflict
+  status: verified
+  evidence:
+    finding: INV-P03_D-P04_wording_conflicts_with_D-P07_ADR-010_and_current_static_route_planning
+    decision_owner: A1_ADR
+- id: E-20260802-A0-ALEMBIC
+  type: migration_baseline
+  status: verified_with_command_note
+  evidence:
+    required_command: python -m alembic heads
+    required_command_result: failed_exit_127_python_not_installed
+    fallback_command: python3 -m alembic heads
+    fallback_result: 20260718_meetup_route_snap_head
+- id: E-20260802-A0-LOCAL-TEST
+  type: local_test
+  status: passed
+  evidence:
+    command: pytest -q tests/test_agent_segment_writer.py
+    result: 6_passed_7_warnings_0_skipped
+- id: E-20260802-A0-CI-BASELINE
+  type: ci_baseline
+  status: verified_with_scope_limit
+  evidence:
+    workflow_run_id: 30742485347
+    job_id: 91482253170
+    tested_head: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
+    result: success
+    tests_passed: 2074
+    warnings: 814
+    skipped: 0
+    fresh_alembic_upgrade: true
+    proves_a0_diff: false
+- id: E-20260802-A0-CI-DIFF
+  type: ci_for_a0_diff
+  status: tracked_externally_on_a0c_draft_pr
+  evidence:
+    rule: current_pull_request_head_run_is_authoritative
+- id: E-20260802-A0-PRODUCTION
+  type: deploy_and_real_use
+  status: UNVERIFIED
+  evidence:
+    production_deploy: not_run_not_authorized
+    real_tencent_or_dem: not_run_by_a0
+    real_export: not_run_by_a0
+    wechat_devtools_or_device: not_run_by_a0
+- id: E-20260802-A0-R2-REVIEW
+  type: orchestrator_review
+  status: PASS
+  evidence:
+    bundle: VELO_A0_REVIEW_BUNDLE_R1.zip
+    bundle_sha256: 1da2f2073671f24d0c66773df116495fa09123d8744c971c1371e3d6ff26884d
+    manifest_integrity: passed
+    eight_file_allowlist: passed
+    source_hashes: byte_identical
+    protected_paths: zero_diff
+    clean_room_origin_main_apply: passed
+    decision: A0_content_passed_delivery_pending
+- id: E-20260802-BRANCH-POLICY
+  type: orchestration_correction
+  status: accepted
+  evidence:
+    decision: development_and_delivery_use_independent_feature_branch
+    main_role: read_only_baseline_and_pr_target
+    existing_worktree_and_branches: preserve_untouched
+    clean_delivery_branch_required: codex/agent-first-a0-docs
+- id: E-20260802-A0C-ORCHESTRATOR-REVIEW-R1
+  type: orchestrator_pr_review
+  status: REVISE
+  evidence:
+    pr: 35
+    reviewed_head: 7b00a7f114c403fff1924bc4a06a1d03cda66abf
+    branch_scope: exact_eight_files
+    branch_ci: success
+    merge_ref_ci: success
+    blocking_finding: docs_agent_first_readme_stale_A0_status_and_git_permission
+    allowed_fix_files:
+    - docs/agent-first/README.md
+    - VELO_ORCHESTRATOR_STATE.yaml
+- id: E-20260802-A0C-ORCHESTRATOR-REVIEW-R2
+  type: orchestrator_pr_re_review
+  status: PASS
+  evidence:
+    pr: 35
+    reviewed_head: bc7d458dfc10474ee0626c6271e418128d74d37c
+    mergeable: true
+    changed_files: 8
+    review_threads: 0
+    readme_state_synchronized: true
+    branch_ci_run: 30748666047
+    merge_ref_ci_run: 30748667466
+    branch_ci_result: 2074_passed_0_skipped_814_warnings
+    merge_ref_ci_result: 2074_passed_0_skipped_814_warnings
+    fresh_postgis_migration: true
+    decision: PASS
+- id: E-20260802-A0C-DELIVERY
+  type: clean_branch_delivery
+  status: PASS_approved_for_merge
+  evidence:
+    branch: codex/agent-first-a0-docs
+    base: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
+    changed_path_scope: exact_eight_file_allowlist
+    source_hashes: byte_identical
+    protected_paths: zero_diff
+    merge_authorized_by_task_packet: true
+    deploy: not_authorized_not_run
+    A1: not_started
+    revision_status: completed_and_re_reviewed_PASS
+completed_tasks:
+- id: A0
+  name: repository_intake_and_phase_a_implementation_spec
+  decision: PASS
+  passed_at: '2026-08-02T04:51:58-07:00'
+  evidence_bundle: VELO_A0_REVIEW_BUNDLE_R1.zip
+  evidence_bundle_sha256: 1da2f2073671f24d0c66773df116495fa09123d8744c971c1371e3d6ff26884d
+  delivery_status: delivered_via_a0c_pr35
+- id: A0C
+  name: publish_a0_from_clean_independent_branch
+  decision: PASS
+  passed_at: '2026-08-02T21:46:06+08:00'
+  pr: 35
+  reviewed_head: bc7d458dfc10474ee0626c6271e418128d74d37c
+  orchestrator_review_round: A0C_R2
+  branch_ci_run: 30748666047
+  merge_ref_ci_run: 30748667466
+  tests_passed: 2074
+  skipped: 0
+  fresh_postgis_migration: true
+  merge_authorized_by_task_packet: true
+risks:
+- id: R1
+  description: main_moves_during_orchestration_or_execution
+  mitigation: reverify_origin_main_before_review_and_record_exact_sha
+- id: R2
+  description: old_app_agent_rq_string_and_queued_jobs_break_on_direct_rename
+  mitigation: new_segment_draft_ai_module_plus_old_path_shim_and_queue_drain_gate
+- id: R3
+  description: routebook_misused_as_long_term_world_model_center
+  mitigation: preserve_routebook_business_boundary_and_use_versioned_contract_references
+- id: R4
+  description: typescript_or_framework_selected_before_contract_and_eval_evidence
+  mitigation: keep_runtime_choice_deferred_through_A2_A4
+- id: R5
+  description: fake_environment_drifts_from_real_high_level_tool_contracts
+  mitigation: contract_fixtures_and_reopen_on_real_failure_shape_mismatch
+- id: R6
+  description: grader_scores_language_but_misses_state_or_forbidden_side_effects
+  mitigation: mandatory_expected_end_state_forbidden_actions_code_grader_and_ledgers
+- id: R7
+  description: A0_docs_misread_as_runtime_schema_or_production_authorization
+  mitigation: keep_A0_A0C_PASS_A1_ready_to_specify_not_started_A2_A5_blocked_and_deploy_false
+- id: R8
+  description: baseline_ci_or_mock_tests_confused_with_provider_device_deploy_or_user_evidence
+  mitigation: report_each_evidence_layer_separately_and_keep_unverified_explicit
+- id: R9
+  description: original_A0_authoring_head_contains_unrelated_route_draw_commit
+  mitigation: publish_A0_from_new_worktree_and_clean_branch_based_directly_on_latest_origin_main
+- id: R10
+  description: branch_metadata_or_contract_absence_wording_becomes_stale_or_overbroad
+  mitigation: A0C_allows_only_mechanical_branch_fact_and_design_reference_vs_implementation_corrections

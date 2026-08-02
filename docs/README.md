@@ -110,6 +110,7 @@ docs/                产品、规格、架构、运行规则和历史档案
 | [agent-rules/product-decisions.md](agent-rules/product-decisions.md) | 新功能、商业化或用户范围变化时按需核对的产品决策记录 |
 | [agent-rules/agent-collaboration.md](agent-rules/agent-collaboration.md) | 历史协作手册；只有当前任务明确引用时才加载 |
 | [agent-rules/deploy-sop.md](agent-rules/deploy-sop.md) | 部署唯一执行入口；`commit ≠ ship` |
+| [agent-first/README.md](agent-first/README.md) | Agent-First / Orchestrator 文档入口；用于区分领域权威、架构提案、长期蓝图与唯一执行状态，不代表生产实现或发布授权 |
 
 ### B. 当前路线工作
 
