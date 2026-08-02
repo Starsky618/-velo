@@ -1,6 +1,6 @@
 # VELO Phase A 文件级实施规格
 
-> A0 内容决定：`PASS`；A0C 交付状态：`in_review`。本文只记录执行时仓库事实与 A1–A5 候选任务边界，不实现 Agent Runtime，不改变生产行为，也不构成合并、部署或阶段推进授权。
+> A0/A0C 与 A1.1：`PASS`；A1 parent 保持 `in_progress`。ADR-013 已 Accepted 并 clarifies ADR-010；A1.2 仅为 `ready_to_specify`，尚未开始且无执行授权。本文不实现 Agent Runtime，不改变生产行为，也不构成部署或后续子任务授权。
 
 ## 2.1 Repository Fact Baseline
 
@@ -18,12 +18,15 @@
 
 这里的“原始编写 HEAD”、“R1 证据分支”、“GitHub 权威基线”和“A0C 交付分支”是四个事实，不能合并叙述。A0C 只把已通过审查的 A0 文档应用到直接基于 `origin/main@2d58fe2d…` 的干净独立分支，不要求改变现有本地 `main` 或原始编写工作树。
 
+> 上表保留 A0/A0C 执行时基线。A1.1 开始前已重新 fetch 并核实当前权威基线为 `origin/main@88dd16562d777e896859c0955920f7a52b7dd50e`；本轮独立分支直接从该提交创建。
+
 ### Migration 与 CI 基线
 
 - 当前 Alembic 唯一 head：`20260718_meetup_route_snap (head)`。任务包要求的 `python -m alembic heads` 因本机无 `python` 命令而退出 127；等价的 `python3 -m alembic heads` 退出 0。迁移目录和 `down_revision` 搜索显示单链，远端 CI 进一步验证从空 PostgreSQL/PostGIS 升级到该 head。
 - 当前工作流唯一入口为 [`.github/workflows/test.yml`](../../.github/workflows/test.yml)：PostgreSQL 16/PostGIS 3.4、Redis 7、fresh `alembic upgrade head`、完整 pytest，并拒绝任何 skip；没有部署步骤。
 - 最新 `origin/main@2d58fe2d…` GitHub Actions run 为 `30742485347`，job `91482253170`，结论 `success`；日志为 `2074 passed, 814 warnings in 71.93s`，0 skip，fresh migration 成功。
 - 该 run 只证明远端基线，不覆盖 R1 未提交的 A0 diff；A0C 专用分支的 CI 以 Draft PR 当前 head run 为准，不能用 baseline run 冒充交付 CI。两者都不证明真实腾讯/DEM、生产数据库、微信开发者工具/真机、部署或用户可用。
+- A0C 合并后的 `main@88dd1656…` 已由 workflow run `30751066756` 验证：fresh PostGIS migration 成功，`2074 passed`、`0 skipped`、`814 warnings`；这是 A1.1 的远端起点，不代替本任务分支和 merge-ref CI。
 
 ### 证据分层
 
@@ -82,21 +85,23 @@
 
 ## 2.4 Static Planning vs Realtime Navigation Conflict Report
 
-| 冲突文字 | 当前真实行为 | A1 候选裁决 |
+**A1.1 status**：Orchestrator 已判定 `PASS / completed`，并由 Accepted [ADR-013](../adr/013-为什么区分骑前静态规划与骑中实时导航.md) 编码；该 ADR clarifies ADR-010、does not supersede ADR-010，运行时行为没有改变。
+
+| 冲突文字 | 当前真实行为 | A1.1 处理结果 |
 |---|---|---|
 | [AGENTS.md](../../AGENTS.md) 禁止实时导航/动态改路，同时允许静态路线、GPX 和外部地图跳转 | 项目级产品边界本身已区分骑前静态交付与骑中动态行为 | 保持该不变量，并让下列产品决策与它使用同一边界 |
-| [product-decisions.md](../../docs/agent-rules/product-decisions.md) `INV-P03` / `D-P04` 将“路径规划/路线生成”整体写成不做 | Route Draw 已通过腾讯 bicycling 生成骑前静态路径，并允许明确失败后的本地手画绕行 | 将禁令收窄到“骑中实时导航、语音、偏航重规划和自建全国路由”；明确允许骑前静态 Ride Plan 编译与受控 Provider 连接段 |
+| A0 基线中的 [product-decisions.md](../../docs/agent-rules/product-decisions.md) `INV-P03` / `D-P04` 将“路径规划/路线生成”整体写成不做 | Route Draw 已通过腾讯 bicycling 生成骑前静态路径，并允许明确失败后的本地手画绕行 | A1.1 已将禁令收窄到“骑中实时导航、语音、偏航动态重规划和自建全国路由”，并明确允许骑前静态 Ride Plan 编译与受控 Provider 连接段 |
 | 同文档 `D-P07` 要求路线生成由确定性服务负责 | [tencent_direction.py](../../app/route_book/tencent_direction.py)、draw snap、elevation、export 正是确定性服务 | 保留并强化：LLM 只表达意图/选择，不产坐标、距离、爬升、验证或导出 |
 | [ADR-010](../../docs/adr/010-为什么不做实时导航.md) 禁止实时导航，但明确允许骑前规划和 GPX | 现有静态 Route Draw/GPX 与 ADR-010 一致 | 使 INV-P03/D-P04、AGENTS、架构总览与 ADR-010 用词对齐 |
-| [architecture-guide.md](../../docs/architecture-guide.md) 仍写“骑行路线算法生成（只推荐历史轨迹）” | 代码已有真实腾讯骑行规划 | 将其标为过时基线并在 A1 更新当前能力；不能以旧文档否定现有代码 |
+| A0 基线中的 [architecture-guide.md](../../docs/architecture-guide.md) 写“骑行路线算法生成（只推荐历史轨迹）” | 代码已有真实腾讯骑行规划 | A1.1 已用骑前静态能力和骑中实时排除项替换旧描述；不能以历史文档否定现有代码 |
 
-**candidate A1 decision boundary**：允许讨论和定义骑前静态 `RidePlan` 编译、官方核心路线的 access/core/return 拼接、受控腾讯 Provider 接入段、确定性校验及用户选择后的静态 GPX/TCX；继续禁止骑中 GPS 跟随、语音导航、偏航重规划、自建全国路由和 LLM 生成坐标。
+**A1.1 decision boundary**：允许骑前静态 `RidePlan` 编译、已审核核心路线的 access/core/connector/return 拼接、受控 Provider 生成、确定性校验、静态预览，以及未来获得阶段与任务授权后的用户确认导出；继续禁止骑中 GPS 跟随、语音导航、偏航动态重规划、自建全国路由和 LLM 生成坐标或几何。
 
-**A1 may change**：`AGENTS.md`、`docs/agent-rules/product-decisions.md`、`docs/adr/README.md`、新增的 Agent-First ADR、`docs/architecture-guide.md`、`docs/agent-first/README.md`、`docs/agent-first/phase-a-implementation-spec.md`、`VELO_ORCHESTRATOR_STATE.yaml`。最终 ADR 编号以 A1 开始时的 `docs/adr/` 为准（当前最高为 012）。
+**A1.1 may change**：`docs/adr/013-为什么区分骑前静态规划与骑中实时导航.md`、`docs/adr/README.md`、`docs/agent-rules/product-decisions.md`、`docs/architecture-guide.md`、`docs/agent-first/README.md`、本文件与 `VELO_ORCHESTRATOR_STATE.yaml`。
 
-**A1 must not change**：`app/`、`miniprogram/`、`migrations/`、`tests/`、依赖、workflow、compose、生产配置、Route Draw/Export API/交互/schema；也不改写三份 source 文档原文。
+**A1.1 must not change**：`AGENTS.md`、ADR-010、`app/`、`miniprogram/`、`migrations/`、`tests/`、依赖、workflow、compose、生产配置、Route Draw/Export API/交互/schema，以及三份 source 文档与 Control Pack 原文。
 
-**A1 open questions**：产品文案是否保留“路径规划”统称，还是统一为“骑前静态规划”；官方核心路线允许被拼接到什么程度；用户选择前是否只能生成 draft、选择后何时可触发真实导出；这些由 A1 ADR 裁决，A0 不替 Tim 决定。
+**A1.1 resolved terminology**：当前文档使用“骑前静态规划”“骑中实时导航”“动态重规划”，避免无时间边界地单独使用“路径规划”。真实导出仍需用户确认、未来阶段许可和新的 Task Packet。
 
 ## 2.5 Phase A File-Level Breakdown
 
@@ -105,8 +110,18 @@
 ### A1 — Architecture ADRs
 
 - **目标**：裁决五个边界：骑前静态规划/骑中导航；单一有界主 Agent/确定性 Workflow；World Fact/Session/Run/Memory；Capability/Approval/副作用；旧 `app/agent` 命名迁移。
-- **前置**：A0 经 Orchestrator `PASS`；当前代码与产品裁决重新核对。
-- **允许文件**：`docs/adr/README.md`；建议新增 `docs/adr/013-骑前静态规划与骑中导航边界.md`、`014-agent-runtime与确定性工作流边界.md`、`015-world-session-run-memory边界.md`、`016-agent-tool权限与副作用边界.md`、`017-旧-app-agent-命名迁移.md`（若编号已占用则顺延）；以及 2.4 的 `A1 may change` 文档和根 State。
+- **前置**：A0/A0C 经 Orchestrator `PASS`；每个子任务开始时重新核对代码、产品裁决和 `origin/main`。
+- **执行方式**：五个子任务串行推进，每项都需要独立 Task Packet 和 Orchestrator 判定；A1.1 不授权后续子任务。
+
+| 子任务 | 决策边界 | 当前状态 | 依赖 |
+|---|---|---|---|
+| A1.1 | static planning vs realtime navigation | `completed / PASS` | A0C |
+| A1.2 | bounded Agent vs deterministic Workflow | `ready_to_specify` | A1.1 |
+| A1.3 | World Fact / Session / Run / Memory | `blocked` | A1.2 |
+| A1.4 | Capability / Approval / Side Effect | `blocked` | A1.3 |
+| A1.5 | legacy `app/agent` naming migration | `blocked` | A1.4 |
+
+- **A1.1 结果**：七文件 allowlist 内的文档裁决已完成，ADR-013 为 Accepted；A1.2 仅可等待新 Task Packet 进行规格化，不得在本文设计或实现。
 - **禁止范围**：运行代码、合同、schema/migration、API、小程序、依赖、队列和部署。
 - **最小测试**：Markdown 链接/路径检查；冲突词搜索；`git diff --check`；受保护路径零 diff；每个 ADR 都含状态、事实、决策、后果、非目标和撤回条件。
 - **退出门槛**：五项均有唯一裁决；INV-P03/D-P04/D-P07/ADR-010 不再矛盾；旧命名采用或拒绝 2.3 推荐方案；不偷偷选 Runtime 框架。
@@ -174,7 +189,7 @@
 | 过早选择 TypeScript/框架 | A2 先做语言中立 JSON Schema，A3/A4 用评测暴露需求；SDK/TS/LangGraph 延后 | 合同和 30 case 稳定后，现有 Python 无法满足明确的隔离/吞吐/工具需求 |
 | Fake 过度 mock，与真实高层合同不一致 | Fake 只模拟已定义的高层 tool contract；用真实代码的 schema/错误样例做 contract fixture，不复制底层算法 | 真实 Route Draw/Tencent/elevation/export 出现 Fake 无法表达的返回或失败语义 |
 | grader 只评语言，不评状态 | 必填 expected_end_state/forbidden_actions/code grader；做 mutation 测试并核对 ledger/trace | 漂亮回答能在错误状态或发生禁用副作用时通过 |
-| A0 文档被误读为生产授权 | README/State/spec 明写 A0 `PASS`、A0C `in_review`、A1–A5 blocked、deploy false；未来对象不等于 migration 授权 | 有人以 source/spec 为由改 runtime/schema、调用真实 Provider、导出或部署 |
+| Agent-First 文档被误读为生产授权 | README/State/spec 明写 A0/A0C/A1.1 `PASS`、A1.2 仅 `ready_to_specify` 且无执行授权、后续任务 blocked、deploy false；未来对象不等于 migration 授权 | 有人以 source/spec/Accepted ADR 为由改 runtime/schema、调用真实 Provider、导出或部署 |
 | 测试/CI 被误当 Provider/真机/部署证据 | 汇报强制分为本地、baseline CI、A0 diff CI、部署、线上真用；未验证写 `UNVERIFIED` | 用 mock/CI success 宣称腾讯可用、微信可用、已部署或用户可用 |
 | 原始 A0 编写 HEAD 含无关 route-draw commit | 保持原工作树与现有本地 `main` 不变；A0C 在直接基于最新 `origin/main` 的干净独立分支交付八个文件 | 交付分支的 merge-base 不再是任务开始时的 `origin/main`，或出现 allowlist 外改动 |
 | RouteVersion 当前可被海拔 backfill 原位更新，导出存在 stale/hash 门禁 | A2 只引用 version/revision/hash；不得绕过 export workflow；A5 把变更后重验写进 stop condition | Agent draft 持有的 version/hash 在验证或导出前已变化 |
