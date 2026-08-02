@@ -44,6 +44,9 @@ def test_route_draw_page_uses_map_tap_as_default_input_and_sketch_only_touch_lay
     assert "mapScrollEnabled: true" in js
     assert 'enable-scroll="{{mapScrollEnabled}}"' in wxml
     assert 'enable-zoom="{{mapScrollEnabled}}"' in wxml
+    assert 'setting="{{mapInteractionSettings}}"' in wxml
+    assert "enableScroll: Boolean(enabled)" in js
+    assert "enableZoom: Boolean(enabled)" in js
     assert 'class="route-draw-touch-layer"' in wxml
     assert 'wx:if="{{showSketchLayer}}"' in wxml
     assert "wx.createMapContext('route-draw-map'" in js
@@ -193,6 +196,46 @@ def test_first_marker_moves_to_the_confirmed_snapped_start():
 
     assert [markers[0]["longitude"], markers[0]["latitude"]] == [112.5003, 37.8002]
     assert markers[0]["callout"]["content"] == "起点"
+    assert markers[-1]["callout"]["content"] == "终点"
+
+
+def test_route_draw_uses_small_circle_labels_instead_of_default_red_map_pins():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                global.Page = function () {}
+                const helpers = require('./miniprogram/pages/route-draw/route-draw.js')
+                const markers = helpers.buildMarkers([
+                  { kind: 'anchor', point: [112.5, 37.8] },
+                  {
+                    kind: 'segment',
+                    mode: 'snap',
+                    points: [[112.5, 37.8], [112.55, 37.85]],
+                    rawPoints: [[112.5, 37.8], [112.55, 37.85]],
+                    warnings: [],
+                  },
+                ])
+                process.stdout.write(JSON.stringify(markers))
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    markers = json.loads(result.stdout)
+
+    assert len(markers) == 2
+    assert all(marker["iconPath"].startswith("/assets/icons/") for marker in markers)
+    assert all(marker["width"] == 1 and marker["height"] == 1 for marker in markers)
+    assert all(marker["label"]["content"].strip() == "" for marker in markers)
+    assert all(marker["label"]["borderRadius"] >= 8 for marker in markers)
+    assert markers[0]["label"]["borderColor"] == "#FC4C02"
+    assert markers[-1]["label"]["bgColor"] == "#0F766E"
 
 
 def test_route_draw_exposes_smart_tap_and_true_manual_pencil_modes():
@@ -230,8 +273,12 @@ def test_sketch_pencil_temporarily_takes_over_touch_and_then_restores_map():
 
     assert 'wx:if="{{showSketchLayer}}"' in wxml
     assert "builderMode: 'sketch'" in start_block
-    assert "showSketchLayer: true" in start_block
+    assert "showSketchLayer: false" in start_block
     assert "mapScrollEnabled: false" in start_block
+    assert "wx.nextTick" in start_block
+    assert "revealSketchLayer" in start_block
+    assert "restoreSketchMapPosition" in js
+    assert ".moveToLocation" not in start_block
     assert "prepareSketchViewport" in js
     assert "mapPointFromSketchViewport" in js
     assert "sketchViewportReady" in js
@@ -244,6 +291,103 @@ def test_sketch_pencil_temporarily_takes_over_touch_and_then_restores_map():
     assert "this.armSketchAutoFinish()" in js
     assert "this.clearSketchAutoFinish()" in js
     assert "fromScreenLocation" not in js
+
+
+def test_sketch_locks_native_map_one_render_turn_before_showing_touch_layer():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                ;(async function () {
+                  let pageConfig
+                  let nextTickCallback = null
+                  let patches = []
+                  global.getApp = function () {
+                    return { globalData: { token: 'token-for-test' } }
+                  }
+                  global.wx = {
+                    nextTick: function (callback) { nextTickCallback = callback },
+                    createMapContext: function () {
+                      return {
+                        getRegion: function (options) {
+                          options.success({
+                            southwest: { longitude: 112.5, latitude: 37.8 },
+                            northeast: { longitude: 112.6, latitude: 37.9 },
+                          })
+                        },
+                      }
+                    },
+                    createSelectorQuery: function () {
+                      const query = {
+                        in: function () { return query },
+                        select: function () {
+                          return {
+                            boundingClientRect: function (callback) {
+                              callback({ left: 0, top: 0, width: 100, height: 100 })
+                            },
+                          }
+                        },
+                        exec: function () {},
+                      }
+                      return query
+                    },
+                  }
+                  global.Page = function (config) { pageConfig = config }
+                  require('./miniprogram/pages/route-draw/route-draw.js')
+                  const page = Object.assign({}, pageConfig, {
+                    data: JSON.parse(JSON.stringify(pageConfig.data)),
+                    setData: function (patch, callback) {
+                      patches.push(patch)
+                      this.data = Object.assign({}, this.data, patch)
+                      if (callback) callback()
+                    },
+                  })
+                  page.onReady()
+                  const startPromise = page.onTapStartSketch()
+                  const beforeReveal = {
+                    scroll: page.data.mapScrollEnabled,
+                    settingScroll: page.data.mapInteractionSettings.enableScroll,
+                    settingZoom: page.data.mapInteractionSettings.enableZoom,
+                    layer: page.data.showSketchLayer,
+                  }
+                  nextTickCallback()
+                  await startPromise
+                  const patchCountBeforeGuard = patches.length
+                  page.onMapRegionChange({ type: 'begin', causedBy: 'gesture' })
+                  process.stdout.write(JSON.stringify({
+                    beforeReveal,
+                    afterReveal: {
+                      scroll: page.data.mapScrollEnabled,
+                      layer: page.data.showSketchLayer,
+                      ready: page.data.sketchViewportReady,
+                    },
+                    guardPatch: patches[patchCountBeforeGuard],
+                  }))
+                })().catch(function (err) {
+                  console.error(err && err.stack ? err.stack : err)
+                  process.exit(1)
+                })
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    rows = json.loads(result.stdout)
+
+    assert rows["beforeReveal"] == {
+        "scroll": False,
+        "settingScroll": False,
+        "settingZoom": False,
+        "layer": False,
+    }
+    assert rows["afterReveal"] == {"scroll": False, "layer": True, "ready": True}
+    assert isinstance(rows["guardPatch"]["latitude"], float)
+    assert isinstance(rows["guardPatch"]["longitude"], float)
 
 
 def test_route_draw_undo_is_action_based_and_invalidates_stale_snap_response():

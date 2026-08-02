@@ -17,12 +17,22 @@ const RAW_COLOR = '#FC4C02'
 const PREVIEW_COLOR = '#8E8E93'
 const PENDING_SAVE_STORAGE_PREFIX = 'route_draw_pending_save_v1:'
 const MAX_PENDING_SAVE_BYTES = 256 * 1024
+const MARKER_PLACEHOLDER_ICON = '/assets/icons/explore.png'
 
 var memoryPendingSave = null
 
 function finiteNumber(value, fallback) {
   var n = Number(value)
   return Number.isFinite(n) ? n : fallback
+}
+
+function buildMapInteractionSettings(enabled) {
+  return {
+    enableZoom: Boolean(enabled),
+    enableScroll: Boolean(enabled),
+    enableRotate: false,
+    enableOverlooking: false,
+  }
 }
 
 function normalizeLonLatPoint(point) {
@@ -426,6 +436,14 @@ function sketchViewportFromParts(rect, region) {
   }
 }
 
+function sketchCenterFromViewport(viewport) {
+  if (!viewport) return null
+  var longitude = (Number(viewport.west) + Number(viewport.east)) / 2
+  var latitude = inverseMercatorY((Number(viewport.southMercator) + Number(viewport.northMercator)) / 2)
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null
+  return { longitude: longitude, latitude: latitude }
+}
+
 function mapPointFromSketchViewport(screenPoint, viewport) {
   if (!screenPoint || !viewport) return null
   var xRatio = (screenPoint.x - viewport.left) / viewport.width
@@ -634,28 +652,31 @@ function buildMarkers(actions) {
   return markerPoints.map(function (point, index) {
     var isStart = index === 0
     var isEnd = index === markerPoints.length - 1 && markerPoints.length > 1
+    var isEndpoint = isStart || isEnd
     return {
       id: index + 1,
       longitude: point[0],
       latitude: point[1],
-      width: 18,
-      height: 18,
+      // 1px 本地图只负责压掉腾讯默认红色导航针；真正可见的是下面的小圆点 label。
+      iconPath: MARKER_PLACEHOLDER_ICON,
+      width: 1,
+      height: 1,
+      anchor: { x: 0.5, y: 0.5 },
       label: {
-        content: isStart ? '起' : (isEnd ? '终' : String(index + 1)),
-        color: isEnd ? '#FFFFFF' : '#FC4C02',
-        fontSize: 11,
-        fontWeight: 'bold',
-        borderRadius: 12,
-        bgColor: isEnd ? '#FC4C02' : '#FFFFFF',
-        borderColor: '#FC4C02',
+        content: ' ',
+        color: isEnd ? '#0F766E' : '#FFFFFF',
+        fontSize: 1,
+        borderRadius: isEndpoint ? 8 : 6,
+        bgColor: isEnd ? '#0F766E' : '#FFFFFF',
+        borderColor: isEnd ? '#FFFFFF' : '#FC4C02',
         borderWidth: 2,
-        padding: 4,
+        padding: isEndpoint ? 5 : 3,
         textAlign: 'center',
-        anchorX: -10,
-        anchorY: -10,
+        anchorX: isEndpoint ? -6 : -4,
+        anchorY: isEndpoint ? -6 : -4,
       },
       callout: {
-        content: index === 0 ? '起点' : String(index + 1),
+        content: isStart ? '起点' : (isEnd ? '终点' : '途经点 ' + (index + 1)),
         color: '#1C1C1E',
         fontSize: 12,
         borderRadius: 6,
@@ -727,6 +748,7 @@ Page({
     latitude: DEFAULT_CENTER.latitude,
     longitude: DEFAULT_CENTER.longitude,
     mapScrollEnabled: true,
+    mapInteractionSettings: buildMapInteractionSettings(true),
     showSketchLayer: false,
     isSketching: false,
     sketchViewportReady: false,
@@ -820,7 +842,10 @@ Page({
   },
 
   applyDraftState: function (actions, pending, extraPatch) {
-    var patch = extraPatch || {}
+    var patch = Object.assign({}, extraPatch || {})
+    if (patch.mapScrollEnabled !== undefined && patch.mapInteractionSettings === undefined) {
+      patch.mapInteractionSettings = buildMapInteractionSettings(patch.mapScrollEnabled)
+    }
     var view = deriveDraftView(actions, pending)
     var displayConfirmedPoints = simplifyForDisplay(view.confirmedDisplayPoints)
     this._routeActions = view.actions
@@ -937,7 +962,13 @@ Page({
   },
 
   onMapRegionChange: function (event) {
-    if (this.data.builderMode === 'sketch') return
+    if (this.data.builderMode === 'sketch') {
+      var sketchCause = event && (event.causedBy || (event.detail && event.detail.causedBy) || '')
+      if (event && (event.type === 'begin' || event.type === 'end') && (!sketchCause || sketchCause === 'gesture' || sketchCause === 'scale')) {
+        this.restoreSketchMapPosition()
+      }
+      return
+    }
     if (!event) return
     var cause = event.causedBy || (event.detail && event.detail.causedBy) || ''
     if (event.type === 'begin') {
@@ -1132,12 +1163,24 @@ Page({
       requestStatus: 'idle',
       statusText: '正在准备手绘区域',
       errorMessage: '',
-      showSketchLayer: true,
+      // 先把原生地图的手势关掉，下一渲染帧再盖绘图层，避免 iOS 把同一次落笔交给地图拖拽。
+      showSketchLayer: false,
       isSketching: false,
       sketchViewportReady: false,
       mapScrollEnabled: false,
     })
-    return this.prepareSketchViewport()
+    var that = this
+    var revealSketchLayer = function () {
+      if (that.data.builderMode !== 'sketch') return Promise.resolve(false)
+      that.setData({ showSketchLayer: true })
+      return that.prepareSketchViewport()
+    }
+    if (typeof wx.nextTick === 'function') {
+      return new Promise(function (resolve) {
+        wx.nextTick(function () { resolve(revealSketchLayer()) })
+      })
+    }
+    return revealSketchLayer()
   },
 
   prepareSketchViewport: function () {
@@ -1181,7 +1224,10 @@ Page({
       var viewport = sketchViewportFromParts(parts[0], parts[1])
       if (!viewport) throw new Error('invalid sketch viewport')
       that._sketchViewport = viewport
+      that._sketchLockedCenter = sketchCenterFromViewport(viewport)
       that.setData({
+        latitude: that._sketchLockedCenter.latitude,
+        longitude: that._sketchLockedCenter.longitude,
         sketchViewportReady: true,
         statusText: '用手指画出你的路线',
       })
@@ -1192,6 +1238,12 @@ Page({
       }
       return false
     })
+  },
+
+  restoreSketchMapPosition: function () {
+    var center = this._sketchLockedCenter
+    if (!center) return
+    this.setData({ latitude: center.latitude, longitude: center.longitude })
   },
 
   onDrawTouchStart: function (event) {
@@ -1319,6 +1371,7 @@ Page({
       mapScrollEnabled: true,
     })
     this._sketchViewport = null
+    this._sketchLockedCenter = null
     this.commitSegmentAction({
       mode: 'freehand',
       rawPoints: raw,
@@ -1334,6 +1387,7 @@ Page({
     this._sketchPrepareSeq = (this._sketchPrepareSeq || 0) + 1
     this._rawSegmentPoints = []
     this._sketchViewport = null
+    this._sketchLockedCenter = null
     this.applyDraftState(this._routeActions || [], null, {
       builderMode: 'smart',
       modeTitle: modeTitle('smart'),
@@ -1843,6 +1897,7 @@ if (typeof module !== 'undefined') {
   module.exports = {
     buildDrawPolylines: buildDrawPolylines,
     buildMarkers: buildMarkers,
+    buildMapInteractionSettings: buildMapInteractionSettings,
     buildRouteStats: buildRouteStats,
     geometryKey: geometryKey,
     mapPointFromSketchViewport: mapPointFromSketchViewport,
