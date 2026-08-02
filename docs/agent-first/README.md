@@ -1,6 +1,6 @@
 # VELO Agent-First / Orchestrator 文档入口
 
-> 当前状态：Phase A `in_progress`；A0/A0C 与 A1.1 已由 Orchestrator `PASS`，A1 parent 保持 `in_progress`。A1.2 已形成 Proposed [ADR-014](../adr/014-为什么在线规划采用单一有界主Agent与确定性工作流.md)，状态为 `in_review`，等待 Orchestrator 审查；A1.3–A1.5 与 A2–A5 继续 `blocked`。本轮只完成候选文档裁决，不代表生产实现授权。
+> 当前状态：Phase A `in_progress`；A0/A0C/A1.1/A1.2 已由 Orchestrator `PASS / completed`，A1 parent 保持 `in_progress`。A1.3 为 `ready_to_specify`，尚未开始且无执行授权；A1.4–A1.5 与 A2–A5 继续 `blocked`。A1.2 只完成控制权文档裁决，不代表生产实现授权。
 
 ## 1. 文档角色与权威顺序
 
@@ -17,15 +17,15 @@
 
 源文档保持随包原文和原始哈希，不在本目录中“顺手统一”彼此措辞。发现冲突时，先以当前代码确定现状，再由 ADR 和 State 记录裁决；历史本地仓库路径不构成事实来源。
 
-## 2. 当前 Phase A、已完成 A0/A0C/A1.1 与审查中的 A1.2
+## 2. 当前 Phase A、已完成 A0/A0C/A1.1/A1.2 与待规格化的 A1.3
 
 - Phase A 目标是先建立 ADR、语言中立合同、VeloBench v0 和确定性 Fake Environment，再决定 Runtime 技术栈。
 - A0 已完成 Repository Intake、来源文档安置和 [Phase A 文件级实施规格](phase-a-implementation-spec.md)，并经 Orchestrator `PASS`。
 - A0C 已完成 clean-branch delivery，通过 PR #35 将经审查的八个文档/State 文件交付到权威主线，并经 Orchestrator `PASS`。
 - A1 parent 按五个串行子任务逐项裁决；A1.1 已由 Accepted [ADR-013](../adr/013-为什么区分骑前静态规划与骑中实时导航.md) 编码并以 `PASS / completed` 收口。
 - A1.1 已通过 PR #36 合并为 `main@aa955edc67694fc2cbb628ec3f5caacc80e6d60c`，post-merge CI run `30754762304` 为 `2074 passed / 0 skipped` 且 fresh migration 成功。
-- A1.2 已获得一次性 Task Packet，在五文件 allowlist 内提出“单一有界主 Agent + 确定性工作流”：模型只提议 typed action，代码掌控状态、门禁、校验、持久化、预算和停止；Framework choice 保持 `DEFERRED`。
-- A1.2 当前只是 `in_review / READY_FOR_REVIEW`，ADR-014 仍为 Proposed；A1.3–A1.5 按顺序继续 `blocked`，A2–A5 仍受仓库根 State 阻塞。
+- A1.2 已由 Accepted [ADR-014](../adr/014-为什么在线规划采用单一有界主Agent与确定性工作流.md) 编码并以 `PASS / completed` 收口：模型只提议 typed action，代码掌控状态、门禁、校验、持久化、预算和停止；Framework choice 保持 `DEFERRED`。
+- A1.3 仅为 `ready_to_specify`，尚未开始且无执行授权，必须等待新的 Orchestrator Task Packet；A1.4–A1.5 与 A2–A5 继续 `blocked`。
 - 不可变的 Control Pack v1.0 §11 中“当前唯一下一任务 A0”是 v1.0 创建时的 bootstrap snapshot，不是持续更新的 live state；不得为同步状态而修改 Control Pack 原文或哈希。
 - 当前阶段、下一任务和执行授权始终以仓库根 [`VELO_ORCHESTRATOR_STATE.yaml`](../../VELO_ORCHESTRATOR_STATE.yaml) 为准。
 - 后续文档提到的 `AgentSession`、`RidePlan`、`Traversal`、`RoadNode`、`RoadEdge`、合同或表，只是候选设计对象，不是当前 schema、migration、API 或实现授权。
@@ -36,4 +36,4 @@
 
 当前没有以下授权：生产 Agent、LangGraph、multi-agent、长期推断 Memory、向量数据库、完整 road graph、真实腾讯/DEM、真实导出、公开发布、生产流量、部署或 A1.3–A1.5 实现。未来设计对象不等于 schema、migration、API 或 runtime 授权；任何实现必须由 Orchestrator 另发单一 Task Packet，并继续遵守 Agent 不直连 ORM/SQL/原始 Provider/公共发布/真实导出的硬边界。
 
-A1.2 Task Packet 只允许专用分支上的五文件文档/State 写入、正常 push 和 Draft PR；push 后 `git_write_permission: false`。它不授权 Ready for Review、merge 或 deploy，也不授权开始 A1.3；`main` 继续只作为远程权威基线与 PR 目标。
+A1.2-M Task Packet 的一次性 squash merge 授权不构成长期权限；合并后仍无新的代码/文档写入、merge 或 deploy 授权，也不授权开始 A1.3。`main` 继续只作为远程权威基线与 PR 目标。

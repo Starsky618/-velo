@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-03T00:12:40+08:00'
+updated_at: '2026-08-03T00:39:09+08:00'
 status: active
 authority:
   order:
@@ -47,10 +47,13 @@ repository:
   a0c_delivery_head: bc7d458dfc10474ee0626c6271e418128d74d37c
   last_verified_main_commit_before_a1_1_merge: 88dd16562d777e896859c0955920f7a52b7dd50e
   a1_1_reviewed_head: b101d6b4b23e32cf94cdad62c3e3cb0396599b7a
-  last_verified_main_commit: aa955edc67694fc2cbb628ec3f5caacc80e6d60c
-  last_verified_main_commit_status: verified_at_a1_2_start
-  last_verified_at: '2026-08-03T00:12:40+08:00'
-  verified_via: git_fetch_origin_and_git_show_origin_main
+  last_verified_main_commit_before_a1_2_merge: aa955edc67694fc2cbb628ec3f5caacc80e6d60c
+  a1_2_reviewed_head: f6441184f8d79823d5ae88bb5f305c7676289dd6
+  a1_2_reviewed_merge_ref: 70b3b560b404a04107a030b3df44cfeb6dcf7250
+  last_verified_main_commit: null
+  last_verified_main_commit_status: pending_post_merge_reverification
+  last_verified_at: null
+  verified_via: pending_post_merge_remote_main_reverification
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
@@ -76,7 +79,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: none_until_orchestrator_review
+  git_write_scope: none_until_next_orchestrator_task_packet
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -97,23 +100,12 @@ a1_parent:
   name: architecture_adrs
   status: in_progress
 next_task:
-  id: A1.2
+  id: A1.3
   parent: A1
-  name: bounded_agent_runtime_vs_deterministic_workflow
-  status: in_review
-  objective: define_single_bounded_main_agent_and_deterministic_workflow_boundary_without_runtime
-  orchestrator_decision: SELECTED
-  codex_result: READY_FOR_REVIEW
-  artifact: docs/adr/014-为什么在线规划采用单一有界主Agent与确定性工作流.md
+  name: world_fact_session_run_memory_boundary
+  status: ready_to_specify
   execution_authorized: false
-  requires_orchestrator_review: true
-  non_goals:
-  - runtime implementation
-  - contract implementation
-  - database/API/Mini Program changes
-  - Provider calls
-  - real export
-  - deployment
+  requires_new_orchestrator_task_packet: true
 a1_subtasks:
 - id: A1.1
   name: static_planning_vs_realtime_navigation_boundary
@@ -124,14 +116,15 @@ a1_subtasks:
   pr: 36
 - id: A1.2
   name: bounded_agent_runtime_vs_deterministic_workflow
-  status: in_review
+  status: completed
+  decision: PASS
   adr: docs/adr/014-为什么在线规划采用单一有界主Agent与确定性工作流.md
-  adr_status: Proposed
-  execution_authorized: false
+  adr_status: Accepted
+  pr: 37
 - id: A1.3
   name: world_fact_session_run_memory_boundary
-  status: blocked
-  blocked_by: A1.2
+  status: ready_to_specify
+  execution_authorized: false
 - id: A1.4
   name: capability_approval_side_effect_boundary
   status: blocked
@@ -453,6 +446,22 @@ evidence_log:
     deploy_authorized: false
     a1_3_through_a1_5: blocked
     a2_through_a5: blocked
+- id: E-20260803-A1-2-ORCHESTRATOR-REVIEW-R1
+  type: architecture_decision_review
+  status: PASS
+  evidence:
+    pr: 37
+    reviewed_base: aa955edc67694fc2cbb628ec3f5caacc80e6d60c
+    reviewed_head: f6441184f8d79823d5ae88bb5f305c7676289dd6
+    reviewed_merge_ref: 70b3b560b404a04107a030b3df44cfeb6dcf7250
+    changed_files: 5
+    review_threads: 0
+    branch_ci_run: 30756316793
+    merge_ref_ci_run: 30756331695
+    branch_ci_result: 2074_passed_0_skipped_814_warnings
+    merge_ref_ci_result: 2074_passed_0_skipped_814_warnings
+    runtime_behavior_changed: false
+    decision: PASS
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec
@@ -494,6 +503,22 @@ completed_tasks:
   main_ci_run: 30754762304
   main_ci_tests_passed: 2074
   main_ci_skipped: 0
+- id: A1.2
+  parent: A1
+  name: bounded_agent_runtime_vs_deterministic_workflow
+  decision: PASS
+  passed_at: '2026-08-03T00:39:09+08:00'
+  pr: 37
+  reviewed_head: f6441184f8d79823d5ae88bb5f305c7676289dd6
+  reviewed_merge_ref: 70b3b560b404a04107a030b3df44cfeb6dcf7250
+  adr: docs/adr/014-为什么在线规划采用单一有界主Agent与确定性工作流.md
+  adr_status: Accepted
+  branch_ci_run: 30756316793
+  merge_ref_ci_run: 30756331695
+  tests_passed: 2074
+  skipped: 0
+  fresh_postgis_migration: true
+  merge_authorized_by_current_task_packet: true
 risks:
 - id: R1
   description: main_moves_during_orchestration_or_execution
@@ -515,7 +540,7 @@ risks:
   mitigation: mandatory_expected_end_state_forbidden_actions_code_grader_and_ledgers
 - id: R7
   description: A0_docs_misread_as_runtime_schema_or_production_authorization
-  mitigation: keep_A0_A0C_A1_1_PASS_A1_2_in_review_with_ADR_014_Proposed_later_tasks_blocked_and_runtime_merge_deploy_unauthorized
+  mitigation: keep_A0_A0C_A1_1_A1_2_PASS_A1_3_ready_to_specify_but_unauthorized_later_tasks_blocked_and_runtime_merge_deploy_unauthorized
 - id: R8
   description: baseline_ci_or_mock_tests_confused_with_provider_device_deploy_or_user_evidence
   mitigation: report_each_evidence_layer_separately_and_keep_unverified_explicit

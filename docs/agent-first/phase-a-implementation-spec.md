@@ -1,6 +1,6 @@
 # VELO Phase A 文件级实施规格
 
-> A0/A0C 与 A1.1：`PASS`；A1 parent 保持 `in_progress`。ADR-013 已 Accepted 并 clarifies ADR-010；A1.2 已由 Proposed [ADR-014](../adr/014-为什么在线规划采用单一有界主Agent与确定性工作流.md) 编码，当前 `in_review`，等待 Orchestrator 审查。本文不实现 Agent Runtime，不改变生产行为，也不构成部署或后续子任务授权。
+> A0/A0C/A1.1/A1.2：`PASS / completed`；A1 parent 保持 `in_progress`。ADR-013 与 ADR-014 均已 Accepted；A1.3 仅为 `ready_to_specify`，尚未开始且无执行授权。本文不实现 Agent Runtime，不改变生产行为，也不构成部署或后续子任务授权。
 
 ## 2.1 Repository Fact Baseline
 
@@ -107,7 +107,7 @@
 
 ### A1.2 单一有界主 Agent / 确定性 Workflow 决策边界
 
-**A1.2 status**：Proposed ADR-014 已形成，当前为 `in_review / READY_FOR_REVIEW`，只等待 Orchestrator 审查；不得写成 `PASS` 或 Accepted。
+**A1.2 status**：Orchestrator 已判定 `PASS / completed`，并由 Accepted [ADR-014](../adr/014-为什么在线规划采用单一有界主Agent与确定性工作流.md) 编码；这只完成控制权文档裁决，不授权 Runtime 或 A1.3 实现。
 
 **选定候选**：一次在线骑前规划 run 采用一个逻辑主 Agent 和一个确定性 run controller。模型路由或降级不创建第二个权威；不允许 peer agent、subagent 或 multi-agent planning。
 
@@ -138,13 +138,13 @@
 | 子任务 | 决策边界 | 当前状态 | 依赖 |
 |---|---|---|---|
 | A1.1 | static planning vs realtime navigation | `completed / PASS` | A0C |
-| A1.2 | bounded Agent vs deterministic Workflow | `in_review / READY_FOR_REVIEW` | A1.1 |
-| A1.3 | World Fact / Session / Run / Memory | `blocked` | A1.2 |
+| A1.2 | bounded Agent vs deterministic Workflow | `completed / PASS` | A1.1 |
+| A1.3 | World Fact / Session / Run / Memory | `ready_to_specify` | A1.2 |
 | A1.4 | Capability / Approval / Side Effect | `blocked` | A1.3 |
 | A1.5 | legacy `app/agent` naming migration | `blocked` | A1.4 |
 
 - **A1.1 结果**：七文件 allowlist 内的文档裁决已完成，ADR-013 为 Accepted。
-- **A1.2 候选结果**：五文件 allowlist 内已完成候选裁决，ADR-014 为 Proposed；只有 Orchestrator 可将其判为 `PASS/REVISE/HARD_BLOCK/DEFER`。本轮不得开始 A1.3、切 Ready、合并或部署。
+- **A1.2 结果**：五文件 allowlist 内的控制权裁决已由 Orchestrator 判定 `PASS`，ADR-014 为 Accepted。A1.3 只进入 `ready_to_specify`，仍须等待新 Task Packet；不得实现或部署。
 - **禁止范围**：运行代码、合同、schema/migration、API、小程序、依赖、队列和部署。
 - **最小测试**：Markdown 链接/路径检查；冲突词搜索；`git diff --check`；受保护路径零 diff；每个 ADR 都含状态、事实、决策、后果、非目标和撤回条件。
 - **退出门槛**：五项均有唯一裁决；INV-P03/D-P04/D-P07/ADR-010 不再矛盾；旧命名采用或拒绝 2.3 推荐方案；不偷偷选 Runtime 框架。
@@ -212,7 +212,7 @@
 | 过早选择 TypeScript/框架 | A2 先做语言中立 JSON Schema，A3/A4 用评测暴露需求；SDK/TS/LangGraph 延后 | 合同和 30 case 稳定后，现有 Python 无法满足明确的隔离/吞吐/工具需求 |
 | Fake 过度 mock，与真实高层合同不一致 | Fake 只模拟已定义的高层 tool contract；用真实代码的 schema/错误样例做 contract fixture，不复制底层算法 | 真实 Route Draw/Tencent/elevation/export 出现 Fake 无法表达的返回或失败语义 |
 | grader 只评语言，不评状态 | 必填 expected_end_state/forbidden_actions/code grader；做 mutation 测试并核对 ledger/trace | 漂亮回答能在错误状态或发生禁用副作用时通过 |
-| Agent-First 文档被误读为生产授权 | README/State/spec 明写 A0/A0C/A1.1 `PASS`、A1.2 仅 `in_review` 且 ADR-014 Proposed、后续任务 blocked、merge/deploy false；未来对象不等于 migration 授权 | 有人以 source/spec/Proposed ADR 为由改 runtime/schema、调用真实 Provider、导出、开始 A1.3 或部署 |
+| Agent-First 文档被误读为生产授权 | README/State/spec 明写 A0/A0C/A1.1/A1.2 `PASS` 只代表文档裁决，A1.3 未启动且无授权，后续任务 blocked、merge/deploy false；未来对象不等于 migration 授权 | 有人以 source/spec/Accepted ADR 为由改 runtime/schema、调用真实 Provider、导出、开始 A1.3 或部署 |
 | 测试/CI 被误当 Provider/真机/部署证据 | 汇报强制分为本地、baseline CI、A0 diff CI、部署、线上真用；未验证写 `UNVERIFIED` | 用 mock/CI success 宣称腾讯可用、微信可用、已部署或用户可用 |
 | 原始 A0 编写 HEAD 含无关 route-draw commit | 保持原工作树与现有本地 `main` 不变；A0C 在直接基于最新 `origin/main` 的干净独立分支交付八个文件 | 交付分支的 merge-base 不再是任务开始时的 `origin/main`，或出现 allowlist 外改动 |
 | RouteVersion 当前可被海拔 backfill 原位更新，导出存在 stale/hash 门禁 | A2 只引用 version/revision/hash；不得绕过 export workflow；A5 把变更后重验写进 stop condition | Agent draft 持有的 version/hash 在验证或导出前已变化 |

@@ -1,6 +1,6 @@
 # ADR-014: 为什么在线规划采用单一有界主 Agent 与确定性工作流
 
-> **状态：Proposed — A1.2，等待 Orchestrator 审查**
+> **状态：Accepted (2026-08-03)**
 >
 > **一句话核心决策：在线骑前规划采用“单一有界主 Agent + 确定性工作流”，模型只拥有受类型约束的动作提议权，代码始终拥有状态推进、工具门禁、领域事实、校验、持久化与停止权。**
 
@@ -133,7 +133,7 @@ A1.2 不选择 Python/TypeScript Runtime，也不采用 OpenAI Agents SDK、Lang
 - A1.5 决定旧 `app/agent` 命名迁移，不把当前文案生成模块误称为本 ADR 的 Runtime。
 - A2 定义可机器验证的语言中立合同；A3/A4 用评测和 Fake Environment 验证边界。
 
-在 Orchestrator 接受本 ADR 前，A1.2 仍为 `in_review`；A1.3–A1.5 与 A2–A5 继续 blocked。
+A1.2 已由 Orchestrator 判定 `PASS / completed`；A1.3 尚未开始且无执行授权，A1.4–A1.5 与 A2–A5 继续 blocked。
 
 ## 11. Trade-off 与后果
 
@@ -149,7 +149,7 @@ A1.2 不选择 Python/TypeScript Runtime，也不采用 OpenAI Agents SDK、Lang
 - 不修改腾讯、Route Draw、海拔、RouteBook、导出或存储代码。
 - 不调用真实 Provider，不生成真实导出，不接生产流量。
 - 不决定 Memory 生命周期、approval taxonomy 或旧目录迁移。
-- 不开始 A1.3，不把 ADR Proposed 写成 PASS/Accepted。
+- 不开始 A1.3；Accepted 只表示本 ADR 的控制权裁决已完成，不代表 Runtime 已实现。
 - 不把 Draft PR 切换为 Ready for Review，不合并，也不授权部署。
 
 ## 13. 触发重评估的条件
