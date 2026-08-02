@@ -1,0 +1,25 @@
+<!-- 账号与数据：把低频、不可逆操作从设置首页下沉，但保持入口清晰可达。 -->
+<view class="account-page">
+  <view class="section-title">登录状态</view>
+  <view class="account-group">
+    <view class="account-row tappable" bindtap="onLogout">
+      <view class="account-copy">
+        <text class="account-title">退出登录</text>
+        <text class="account-subtitle">保留账号与云端骑行数据</text>
+      </view>
+      <text class="row-arrow">›</text>
+    </view>
+  </view>
+
+  <view class="section-title danger-title">危险操作</view>
+  <view class="account-group">
+    <view class="account-row tappable" bindtap="onDeleteAccount">
+      <view class="account-copy">
+        <text class="account-title danger-text">注销账号</text>
+        <text class="account-subtitle">永久删除账号及相关骑行数据</text>
+      </view>
+      <text class="row-arrow">›</text>
+    </view>
+  </view>
+  <view class="section-foot">注销不可撤销。点击后会先说明删除与保留范围，并要求再次确认。</view>
+</view>

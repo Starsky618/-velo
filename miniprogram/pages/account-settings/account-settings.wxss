@@ -1,0 +1,77 @@
+page {
+  background: #f2f2f7;
+}
+
+.account-page {
+  min-height: 100vh;
+  padding: 20rpx 24rpx 72rpx;
+  box-sizing: border-box;
+}
+
+.section-title {
+  margin: 30rpx 28rpx 12rpx;
+  font-size: 25rpx;
+  line-height: 36rpx;
+  color: #8a8a8e;
+}
+
+.danger-title {
+  margin-top: 46rpx;
+}
+
+.account-group {
+  overflow: hidden;
+  background: #fff;
+  border-radius: 28rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  min-height: 124rpx;
+  padding: 20rpx 30rpx;
+  box-sizing: border-box;
+}
+
+.account-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.account-title {
+  font-size: 29rpx;
+  line-height: 40rpx;
+  color: #1c1c1e;
+  font-weight: 500;
+}
+
+.danger-text {
+  color: #ff3b30;
+}
+
+.account-subtitle {
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #8a8a8e;
+}
+
+.row-arrow {
+  flex: 0 0 auto;
+  font-size: 38rpx;
+  line-height: 1;
+  color: #c5c5c7;
+  font-weight: 600;
+}
+
+.section-foot {
+  margin: 14rpx 28rpx 0;
+  font-size: 24rpx;
+  line-height: 36rpx;
+  color: #8a8a8e;
+}

@@ -1,10 +1,9 @@
 /**
- * 设置页 — 用户的"控制台"（Sprint 6 task-5 大幅扩写）
+ * 设置页 — 骑手资料与训练基线
  *
  * 干啥用：
- *   把用户每天不点 / 但关键时刻一定要能点到的事集中管理：
- *   1. 改 FTP（账号资料 / 后续可扩 weight / 车辆等）
- *   2. 退出登录 / 注销账号（清 token，或删除账号数据并去标识保留路书等内容）
+ *   先让骑手确认自己的身份、目标与训练基线，再把帮助和账号管理放在后面。
+ *   退出登录与注销账号迁入 account-settings 二级页，首页只保留中性入口。
  *
  * 类比：
  *   手机系统设置——平时不进，要换号/退账/改重要参数时第一时间能找到入口。
@@ -12,17 +11,15 @@
  * 数据流：
  *   - onShow：拉 GET /api/user/profile（FTP / 体重 / 车型 / 设置项）
  *   - 改 FTP：wx.showModal editable → PUT /api/user/profile { ftp }
- *   - 退出：wx.showModal confirm → app.logout() + wx.reLaunch /profile（清页面栈重建，profile 必重判登录态显示一键登录）
+ *   - 账号操作：navigateTo /pages/account-settings/account-settings
  *
  * 红线（v0.2/v0.3 task 卡 / 永久规则）：
- *   - 退出 / 注销**强制二次确认**（wx.showModal confirm）
  *   - FTP 范围 50-500 前后双重校验（前端拒收 + 后端 422）
  *   - "-" 占位符永久规则：FTP 未设时显示 "未设置"（不是 "-"）
  *
  * 注意事项：
  *   - 进入设置页前已要求登录态（"我的"页设置 icon 仅登录后显示 / task-4）
  *     兜底仍判 app.globalData.token —— 防 deep link 或缓存异常情况
- *   - 二次确认按钮颜色：confirmColor #e64340 (system red) 高对比 / 防误点
  *   - Strava 提审前暂时隐藏，避免 web-view 业务域名未配置导致审核员点进失败
  */
 
@@ -38,8 +35,12 @@ const BIKE_TYPES = [
 
 Page({
   data: {
-    // —— 个人资料组（2026-06-12 重构新增）——
-    bio: '',                       // 骑行宣言（≤30 字单行 / 编辑入口从 profile 页移来）
+    // —— 骑手身份摘要 ——
+    nickname: '',
+    avatarUrl: '',
+    city: '',
+    regionArr: [],
+    bio: '',                       // 个人简介（≤30 字单行 / 编辑入口从 profile 页移来）
     weeklyGoal: null,              // 每周目标（km / 10-2000）
     bikeType: null,                // 车型枚举值 road/gravel/mtb
     bikeTypeLabel: '',             // 车型中文展示
@@ -96,14 +97,65 @@ Page({
     }
   },
 
+  /** 修改昵称：与“我的”页共用 PUT /api/user/profile 合同。 */
+  onEditNickname() {
+    wx.showModal({
+      title: '编辑昵称',
+      editable: true,
+      placeholderText: '请输入昵称',
+      content: this.data.nickname || '',
+      success: (res) => {
+        if (!res.confirm) return
+        const newName = (res.content || '').trim()
+        if (!newName) {
+          wx.showToast({ title: '昵称不能为空', icon: 'none' })
+          return
+        }
+        api.put('/api/user/profile', { nickname: newName })
+          .then(() => {
+            this.setData({ nickname: newName })
+            app.globalData.userInfo = Object.assign({}, app.globalData.userInfo || {}, { nickname: newName })
+            wx.showToast({ title: '已保存', icon: 'success' })
+          })
+          .catch((err) => {
+            console.error('[settings] update nickname failed', err)
+            wx.showToast({ title: '保存失败', icon: 'none' })
+          })
+      },
+    })
+  },
+
+  /** 修改家乡：region picker 返回省/市/区，展示值保持“省-市”短标签。 */
+  onRegionChange(e) {
+    const region = e && e.detail && e.detail.value
+    if (!region || region.length < 2) return
+    const stripSuffix = (value) => (value || '').replace(/市$|省$|自治区$|特别行政区$/, '')
+    const province = stripSuffix(region[0])
+    const city = stripSuffix(region[1])
+    const cityLabel = city && city !== province ? province + '-' + city : province
+    if (!cityLabel || cityLabel.length > 32) {
+      wx.showToast({ title: '家乡标签太长', icon: 'none' })
+      return
+    }
+    api.patch('/api/user/me', { city: cityLabel })
+      .then(() => {
+        this.setData({ city: cityLabel, regionArr: region })
+        wx.showToast({ title: '家乡已更新', icon: 'success' })
+      })
+      .catch((err) => {
+        console.error('[settings] update city failed', err)
+        wx.showToast({ title: '更新失败', icon: 'none' })
+      })
+  },
+
   /**
-   * 骑行宣言编辑（2026-06-12 从 profile 页移来——我的页只展示，设置页才能改）。
+   * 个人简介编辑（2026-06-12 从 profile 页移来——我的页只展示，设置页才能改）。
    * 走 PATCH /api/user/me（bio 专属端点，≤30 字单行，后端 422 兜底）。
    */
   onEditBio() {
     const that = this
     wx.showModal({
-      title: '编辑骑行宣言',
+      title: '编辑个人简介',
       editable: true,
       placeholderText: '不超过 30 字',
       content: this.data.bio || '',
@@ -192,6 +244,10 @@ Page({
     })
   },
 
+  onOpenAccountSettings() {
+    wx.navigateTo({ url: '/pages/account-settings/account-settings' })
+  },
+
   /**
    * 拉当前用户 profile（取 FTP 字段）
    * 失败静默处理：进入设置页不应因网络问题阻断主流程 / FTP 显示"未设置"即可
@@ -214,6 +270,9 @@ Page({
           }
         })
         this.setData({
+          nickname: p.nickname || '',
+          avatarUrl: p.avatar_url || '',
+          city: p.city || '',
           ftp: p.ftp != null ? p.ftp : null,
           weight: p.weight != null ? p.weight : null,
           birthYear: birthYear,
@@ -636,104 +695,5 @@ Page({
    */
   onCloseBreakthrough() {
     this.setData({ breakthroughModal: false, breakthroughEvent: null })
-  },
-
-  /**
-   * 退出登录——强制二次确认（红线）
-   *
-   * 流程：
-   *   1. wx.showModal confirm（confirmColor 红色 / 提示后果）
-   *   2. 用户确认 → app.logout()（清 token / userId / userInfo）
-   *   3. wx.reLaunch 跳回 profile 页（清栈重建，profile onShow 必重判登录态）
-   *
-   * 注意：必须用 switchTab 或 reLaunch，不能用 navigateTo / redirectTo：
-   *   - profile 在 tabBar 里，微信硬规则——navigateTo/redirectTo 跳 tabBar 页直接 fail、
-   *     页面纹丝不动（2026-06-13 全模块走查实证）；switchTab/reLaunch 跳 tabBar 都合法
-   *   - 退出登录这里选 reLaunch（不是 switchTab）：清掉整个页面栈重建，回退按钮回不到
-   *     已退出的 settings，且 profile 全新初始化必重判登录态显示"微信登录"（2026-06-13
-   *     实证：switchTab 回 profile 时 onShow 刷登录态偶尔不生效、停在旧态没登录按钮）
-   */
-  onLogout() {
-    wx.showModal({
-      title: '退出登录',
-      content: '退出后需要重新登录才能查看个人数据。',
-      confirmText: '退出',
-      confirmColor: '#e64340',
-      cancelText: '取消',
-      success: function (res) {
-        if (!res.confirm) return
-        if (app && typeof app.logout === 'function') {
-          app.logout()                    // 清 globalData.token / userId / userInfo + storage
-        } else {
-          // 兜底：app.logout 不存在时手动清（防 app.js 未来重构丢失方法）
-          wx.removeStorageSync('token')
-          wx.removeStorageSync('userId')
-          if (app) {
-            app.globalData.token = null
-            app.globalData.userId = 0
-            app.globalData.userInfo = null
-          }
-        }
-        wx.reLaunch({ url: '/pages/profile/profile' })
-      },
-    })
-  },
-
-  /**
-   * 注销账号——删除账号与私有数据，创建的路书等内容去标识保留（不可逆 / 两步确认）。
-   *
-   * 流程：
-   *   1. 第一道 modal：列明删除数据与去标识保留范围 → 用户点"继续"
-   *   2. 第二道 modal：提示先处理共享内容 + 最终确认不可撤销 → 用户点"确认注销"
-   *   3. 调 api.deleteAccount()（DELETE /api/user/me）→ 成功后 app.logout() 清 token + 跳回 profile
-   *   4. 失败 toast 提示、不清本地状态（账号还在 / 可重试）
-   */
-  onDeleteAccount() {
-    wx.showModal({
-      title: '注销账号',
-      content: '将永久删除账号、骑行、赛段成绩、功率、训练与授权数据。你创建的路书都会解除关联后保留；已开放约骑会取消并解除关联后保留。确定继续吗？',
-      confirmText: '继续',
-      confirmColor: '#e64340',
-      cancelText: '取消',
-      success: function (res) {
-        if (!res.confirm) return
-        wx.showModal({
-          title: '最后确认',
-          content: '注销无法撤销。请先处理可自助删除的内容；需删除已开放约骑，请通过官网隐私邮箱申请。',
-          confirmText: '确认注销',
-          confirmColor: '#e64340',
-          cancelText: '再想想',
-          success: function (res2) {
-            if (!res2.confirm) return
-            wx.showLoading({ title: '注销中', mask: true })
-            api.deleteAccount()
-              .then(function () {
-                wx.hideLoading()
-                // 复用退出登录的清理（清 token / userId / userInfo + storage），兜底手动清防 app.logout 缺失
-                if (app && typeof app.logout === 'function') {
-                  app.logout()
-                } else {
-                  wx.removeStorageSync('token')
-                  wx.removeStorageSync('userId')
-                  if (app) {
-                    app.globalData.token = null
-                    app.globalData.userId = 0
-                    app.globalData.userInfo = null
-                  }
-                }
-                wx.showToast({ title: '账号已注销', icon: 'success' })
-                // 稍等让 toast 可见，再跳回 profile（未登录态显示"微信一键登录"）
-                setTimeout(function () {
-                  wx.reLaunch({ url: '/pages/profile/profile' })
-                }, 800)
-              })
-              .catch(function (err) {
-                wx.hideLoading()
-                wx.showToast({ title: (err && err.message) || '注销失败，请重试', icon: 'none' })
-              })
-          },
-        })
-      },
-    })
   },
 })
