@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-02T21:46:06+08:00'
+updated_at: '2026-08-02T22:44:05+08:00'
 status: active
 authority:
   order:
@@ -45,10 +45,10 @@ repository:
   last_verified_main_commit_before_a0c_merge: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
   last_verified_main_commit_before_a0c_merge_time_utc: '2026-08-02T09:48:14Z'
   a0c_delivery_head: bc7d458dfc10474ee0626c6271e418128d74d37c
-  last_verified_main_commit: null
-  last_verified_main_commit_status: pending_post_merge_reverification
-  last_verified_at: null
-  verified_via: pending_post_merge_remote_main_reverification
+  last_verified_main_commit: 88dd16562d777e896859c0955920f7a52b7dd50e
+  last_verified_main_commit_status: verified_at_a1_1_start
+  last_verified_at: '2026-08-02T22:44:05+08:00'
+  verified_via: git_fetch_origin_and_git_show_origin_main
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
@@ -57,6 +57,10 @@ repository:
   a0c_delivery_merge_base_with_origin_main: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
   a0c_delivery_branch_relation_to_origin_main: based_directly_on_start_of_task_origin_main
   a0c_delivery_worktree_initial_status: clean
+  a1_1_baseline_commit: 88dd16562d777e896859c0955920f7a52b7dd50e
+  a1_1_execution_branch: codex/agent-first-a1-static-planning-boundary
+  a1_1_worktree_initial_status: clean
+  a1_1_adr_path: docs/adr/013-为什么区分骑前静态规划与骑中实时导航.md
   original_authoring_worktree_status_at_a0c_start: dirty_with_reviewed_a0_files_preserved
   dirty_workspace_policy: preserve_all_user_changes
   git_write_permission: false
@@ -64,7 +68,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: none_until_next_orchestrator_task_packet
+  git_write_scope: none_until_orchestrator_review
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -80,14 +84,22 @@ current_phase:
   - no_production_database_required
   - provider_success_timeout_ambiguity_no_result_disconnect_and_hard_fail_are_simulatable
   - raw_provider_orm_public_publish_and_real_export_are_unreachable
-next_task:
+a1_parent:
   id: A1
   name: architecture_adrs
-  status: ready_to_specify
-  objective: Resolve and record the five Phase A architecture boundaries before any
-    Agent runtime or contract implementation.
+  status: in_progress
+next_task:
+  id: A1.1
+  parent: A1
+  name: static_planning_vs_realtime_navigation_boundary
+  status: in_review
+  objective: Clarify pre-ride static planning versus in-ride realtime navigation
+    without changing runtime behavior.
+  orchestrator_decision: SELECTED
+  codex_result: READY_FOR_REVIEW
+  artifact: docs/adr/013-为什么区分骑前静态规划与骑中实时导航.md
   execution_authorized: false
-  requires_new_orchestrator_task_packet: true
+  requires_orchestrator_review: true
   non_goals:
   - implement_runtime
   - implement_contracts
@@ -97,11 +109,31 @@ next_task:
   - call_real_provider
   - create_real_export
   - deploy
+a1_subtasks:
+- id: A1.1
+  name: static_planning_vs_realtime_navigation_boundary
+  status: in_review
+- id: A1.2
+  name: bounded_agent_runtime_vs_deterministic_workflow
+  status: blocked
+  blocked_by: A1.1
+- id: A1.3
+  name: world_fact_session_run_memory_boundary
+  status: blocked
+  blocked_by: A1.2
+- id: A1.4
+  name: capability_approval_side_effect_boundary
+  status: blocked
+  blocked_by: A1.3
+- id: A1.5
+  name: legacy_app_agent_naming_migration_decision
+  status: blocked
+  blocked_by: A1.4
 subsequent_tasks:
 - id: A2
   name: agent_v0_contracts
   status: blocked
-  blocked_by: A1
+  blocked_by: A1.5
 - id: A3
   name: velobench_cases_fixtures_graders
   status: blocked
@@ -344,6 +376,22 @@ evidence_log:
     deploy: not_authorized_not_run
     A1: not_started
     revision_status: completed_and_re_reviewed_PASS
+- id: E-20260802-A1-1-CODEX-DELIVERY
+  type: architecture_decision_delivery
+  status: READY_FOR_REVIEW
+  evidence:
+    parent_task: A1
+    task: A1.1
+    orchestrator_decision: SELECTED
+    baseline_main: 88dd16562d777e896859c0955920f7a52b7dd50e
+    execution_branch: codex/agent-first-a1-static-planning-boundary
+    adr_path: docs/adr/013-为什么区分骑前静态规划与骑中实时导航.md
+    adr_status: Proposed
+    changed_path_scope: exact_seven_file_allowlist
+    runtime_behavior_changed: false
+    merge_authorized: false
+    deploy_authorized: false
+    a1_2_through_a1_5: blocked
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec
@@ -386,7 +434,7 @@ risks:
   mitigation: mandatory_expected_end_state_forbidden_actions_code_grader_and_ledgers
 - id: R7
   description: A0_docs_misread_as_runtime_schema_or_production_authorization
-  mitigation: keep_A0_A0C_PASS_A1_ready_to_specify_not_started_A2_A5_blocked_and_deploy_false
+  mitigation: keep_A0_A0C_PASS_A1_1_in_review_later_tasks_blocked_and_runtime_merge_deploy_unauthorized
 - id: R8
   description: baseline_ci_or_mock_tests_confused_with_provider_device_deploy_or_user_evidence
   mitigation: report_each_evidence_layer_separately_and_keep_unverified_explicit
