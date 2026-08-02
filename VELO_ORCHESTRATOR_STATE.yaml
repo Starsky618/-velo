@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-02T20:11:18+08:00'
+updated_at: '2026-08-02T20:46:44+08:00'
 status: active
 authority:
   order:
@@ -44,8 +44,8 @@ repository:
   baseline_must_be_reverified: false
   last_verified_main_commit: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
   last_verified_main_commit_time_utc: '2026-08-02T09:48:14Z'
-  last_verified_at: '2026-08-02T20:11:18+08:00'
-  verified_via: git_fetch_origin_and_clean_delivery_branch_creation
+  last_verified_at: '2026-08-02T20:46:44+08:00'
+  verified_via: git_fetch_origin_and_pr35_review_head_verification
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
@@ -53,13 +53,15 @@ repository:
   execution_base_commit: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
   execution_merge_base_with_origin_main: 2d58fe2d10b1dda2e67f26375bd82c2243df9597
   execution_branch_relation_to_origin_main: based_directly_on_start_of_task_origin_main
-  initial_worktree_status: clean
+  a0c_delivery_worktree_initial_status: clean
+  original_authoring_worktree_status_at_a0c_start: dirty_with_reviewed_a0_files_preserved
   dirty_workspace_policy: preserve_all_user_changes
   git_write_permission: true
+  merge_permission: false
   deploy_permission: false
   execution_branch_role: clean_delivery_branch
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: A0C_new_branch_commit_push_and_draft_pr_only
+  git_write_scope: A0C_existing_feature_branch_review_fixes_commit_and_normal_push_only
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -79,19 +81,21 @@ next_task:
   id: A0C
   name: publish_a0_from_clean_independent_branch
   status: in_review
-  objective: Create an isolated worktree and feature branch directly from the latest
-    origin/main, apply the reviewed eight A0 files, make only factual branch/absence
-    wording corrections, commit, push, open a draft PR, and collect CI evidence without
-    merging or deploying.
+  objective: Synchronize the Agent-First entry README with root State on the existing
+    feature branch, update Draft PR 35, and collect new CI evidence without merging,
+    deploying, or starting A1.
   required_branch: codex/agent-first-a0-docs
   base: latest_origin_main
   original_worktree_must_remain_untouched: true
+  review_round: A0C_R1
+  last_orchestrator_decision: REVISE
+  revision_required:
+  - synchronize_docs_agent_first_readme_with_root_state
+  revision_status: applied_waiting_orchestrator_re_review
   allowed_git_actions:
-  - create_worktree
-  - create_branch
-  - commit
-  - push
-  - open_draft_pr
+  - edit_reviewed_files
+  - commit_review_fix
+  - normal_push_existing_branch
   forbidden_git_actions:
   - modify_local_main
   - rebase_existing_branch
@@ -317,6 +321,19 @@ evidence_log:
     main_role: read_only_baseline_and_pr_target
     existing_worktree_and_branches: preserve_untouched
     clean_delivery_branch_required: codex/agent-first-a0-docs
+- id: E-20260802-A0C-ORCHESTRATOR-REVIEW-R1
+  type: orchestrator_pr_review
+  status: REVISE
+  evidence:
+    pr: 35
+    reviewed_head: 7b00a7f114c403fff1924bc4a06a1d03cda66abf
+    branch_scope: exact_eight_files
+    branch_ci: success
+    merge_ref_ci: success
+    blocking_finding: docs_agent_first_readme_stale_A0_status_and_git_permission
+    allowed_fix_files:
+    - docs/agent-first/README.md
+    - VELO_ORCHESTRATOR_STATE.yaml
 - id: E-20260802-A0C-DELIVERY
   type: clean_branch_delivery
   status: in_review
@@ -329,6 +346,7 @@ evidence_log:
     merge: not_authorized_not_run
     deploy: not_authorized_not_run
     A1: not_started
+    revision_status: applied_waiting_orchestrator_re_review
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec
