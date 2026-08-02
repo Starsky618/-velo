@@ -1,30 +1,40 @@
-<!--
-  设置页 —— iOS 设置语言重构（2026-06-12 Tim 拍："像普通软件一样设计设置页"）。
-
-  信息架构（四组 inset-grouped，每组一张白卡、行间 hairline、行点击编辑）：
-  1. 个人资料：骑行宣言（从 profile 页移来——我的页只展示，设置页才能改）/ 每周目标 / 车型
-  2. 训练参数：FTP（手动/估算）/ 体重 / 年龄 / 最大心率（原有逻辑全保留）
-  3. 通用：意见反馈 / 关于 VELO（版本号）
-  4. 账号操作：退出登录 / 注销账号——iOS 惯例"居中红字行"（替代旧全宽大红按钮，防误触；
-     二次确认红线全保留：退出 1 道 / 注销 2 道）
-
-  红线（沿袭 v0.2/v0.3 + 永久规则）：
-  - 退出 / 注销必须二次确认（wx.showModal confirm）
-  - 未设置显示"未设置"，永不显示 "-"
-  - Strava 入口正式提审前暂时隐藏，避免 web-view 业务域名未配置导致审核员点进失败
--->
+<!-- 设置页：骑手身份摘要 → 骑行资料 → 训练基线 → 支持与关于 → 账号与数据。 -->
 <view class="settings-page">
 
-  <!-- 组 1：个人资料 -->
-  <view class="group-title">个人资料</view>
-  <view class="group">
-    <view class="row tappable" bindtap="onEditBio">
-      <text class="row-label">骑行宣言</text>
-      <view class="row-right">
-        <text class="row-value {{bio ? '' : 'muted'}}">{{bio || '未设置'}}</text>
-        <text class="row-arrow">›</text>
+  <!-- 骑手身份摘要：真实头像 / 昵称 / 城市 / 车型 / 个人简介，字段都可原地编辑。 -->
+  <view class="identity-card">
+    <view class="identity-avatar-wrap">
+      <image
+        wx:if="{{avatarUrl}}"
+        class="identity-avatar"
+        src="{{avatarUrl}}"
+        mode="aspectFill"
+      />
+      <view wx:else class="identity-avatar identity-avatar-letter">
+        <text class="identity-avatar-initial">{{nickname ? nickname[0] : '骑'}}</text>
       </view>
     </view>
+    <view class="identity-main">
+      <view class="identity-name-row tappable" bindtap="onEditNickname">
+        <text class="identity-name">{{nickname || '设置昵称'}}</text>
+        <text class="identity-edit-arrow">›</text>
+      </view>
+      <picker class="identity-region-picker" mode="region" bindchange="onRegionChange" value="{{regionArr}}">
+        <view class="identity-meta tappable">
+          <image class="identity-pin" src="/assets/icons/map-pin.svg" mode="aspectFit" />
+          <text>{{city || '选择家乡'}}</text>
+          <text wx:if="{{bikeTypeLabel}}">·</text>
+          <text wx:if="{{bikeTypeLabel}}">{{bikeTypeLabel}}</text>
+        </view>
+      </picker>
+      <view class="identity-bio tappable" bindtap="onEditBio">
+        <text class="identity-bio-text {{bio ? '' : 'muted'}}">{{bio || '添加个人简介'}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="group-title">骑行资料</view>
+  <view class="group">
     <view class="row tappable" bindtap="onEditWeeklyGoal">
       <text class="row-label">每周目标</text>
       <view class="row-right">
@@ -32,8 +42,8 @@
         <text class="row-arrow">›</text>
       </view>
     </view>
-    <picker mode="selector" range="{{bikeTypeOptions}}" range-key="label" value="{{bikeTypeIndex}}" bindchange="onBikeTypeChange">
-      <view class="row">
+    <picker class="row-picker" mode="selector" range="{{bikeTypeOptions}}" range-key="label" value="{{bikeTypeIndex}}" bindchange="onBikeTypeChange">
+      <view class="row row-divider">
         <text class="row-label">车型</text>
         <view class="row-right">
           <text class="row-value {{bikeTypeLabel ? '' : 'muted'}}">{{bikeTypeLabel || '未设置'}}</text>
@@ -43,8 +53,7 @@
     </picker>
   </view>
 
-  <!-- 组 2：训练参数 -->
-  <view class="group-title">训练参数</view>
+  <view class="group-title">训练基线</view>
   <view class="group">
     <view class="row tappable" bindtap="onEditFtp">
       <text class="row-label">FTP</text>
@@ -53,7 +62,7 @@
         <text class="row-arrow">›</text>
       </view>
     </view>
-    <view class="row tappable" bindtap="onEditWeight">
+    <view class="row row-divider tappable" bindtap="onEditWeight">
       <text class="row-label">体重</text>
       <view class="row-right">
         <text class="row-value {{weight ? '' : 'muted'}}">{{weight ? weight + ' kg' : '未设置'}}</text>
@@ -61,11 +70,12 @@
       </view>
     </view>
     <picker
+      class="row-picker"
       mode="selector"
       range="{{birthYearOptions}}"
       value="{{birthYearIndex}}"
       bindchange="onBirthYearPickerChange">
-      <view class="row">
+      <view class="row row-divider">
         <text class="row-label">年龄</text>
         <view class="row-right">
           <text class="row-value {{displayAge ? '' : 'muted'}}">{{displayAge ? displayAge + ' 岁' : '未设置'}}</text>
@@ -73,7 +83,7 @@
         </view>
       </view>
     </picker>
-    <view class="row tappable" bindtap="onEditMaxHr">
+    <view class="row row-divider tappable" bindtap="onEditMaxHr">
       <text class="row-label">最大心率</text>
       <view class="row-right">
         <text class="row-value {{maxHr ? '' : 'muted'}}">{{maxHr ? maxHr + ' bpm' : '未设置'}}</text>
@@ -81,22 +91,27 @@
       </view>
     </view>
   </view>
-  <view class="group-foot">FTP 影响功率区间与训练强度计算；点 FTP 可选"让系统估算"，最大心率与年龄用于估算时的心率门槛。</view>
+  <view class="group-foot">用于功率区间、训练强度与心率门槛计算；FTP 可选择让系统估算。</view>
 
-  <!-- 组 3：通用（调研定稿：缓存清理不做——小程序 storage 微信统管且本项目只存登录态；
-       单位/多语言/深色模式不做——纯国内公制用户 + 系统级设置已足够）-->
-  <view class="group-title">通用</view>
+  <view class="group-title">支持与关于</view>
   <view class="group">
-    <!-- 整行即 button（open-type=contact 拉起微信客服会话，零后端的真反馈通道）；
-         无兄弟元素，不踩"button 嵌 flex 行拦截兄弟 tap"陷阱 -->
-    <button class="row row-button tappable" open-type="contact">
-      <text class="row-label">意见反馈</text>
-      <view class="row-right">
-        <text class="row-arrow">›</text>
+    <view class="contact-row">
+      <view class="row">
+        <view class="row-leading">
+          <image class="row-icon" src="/assets/icons/message-circle.svg" mode="aspectFit" />
+          <text class="row-label">意见反馈</text>
+        </view>
+        <view class="row-right">
+          <text class="row-arrow">›</text>
+        </view>
       </view>
-    </button>
-    <view class="row tappable" bindtap="onAbout">
-      <text class="row-label">关于 VELO</text>
+      <button class="contact-hit-target" open-type="contact" aria-label="意见反馈"></button>
+    </view>
+    <view class="row row-divider tappable" bindtap="onAbout">
+      <view class="row-leading">
+        <image class="row-icon" src="/assets/icons/info.svg" mode="aspectFit" />
+        <text class="row-label">关于 VELO</text>
+      </view>
       <view class="row-right">
         <text class="row-value muted" wx:if="{{versionText}}">{{versionText}}</text>
         <text class="row-arrow">›</text>
@@ -104,18 +119,17 @@
     </view>
   </view>
 
-  <!-- 组 4：账号操作（iOS 惯例：居中红字行 + 各自独立成卡，防误触）-->
-  <view class="group group-spaced">
-    <view class="row row-center tappable" bindtap="onLogout">
-      <text class="row-danger">退出登录</text>
+  <view class="group-title">账号与数据</view>
+  <view class="group account-entry-group">
+    <view class="account-entry tappable" bindtap="onOpenAccountSettings">
+      <image class="account-entry-icon" src="/assets/icons/user-round.svg" mode="aspectFit" />
+      <view class="account-entry-main">
+        <text class="account-entry-title">账号与数据</text>
+        <text class="account-entry-subtitle">退出登录、注销账号</text>
+      </view>
+      <text class="row-arrow">›</text>
     </view>
   </view>
-  <view class="group group-spaced">
-    <view class="row row-center tappable" bindtap="onDeleteAccount">
-      <text class="row-danger">注销账号</text>
-    </view>
-  </view>
-  <view class="group-foot">注销会永久删除账号与骑行数据；你创建的路书都会去关联保留，已开放约骑会取消并去关联保留。</view>
 
   <!-- Sprint 9 task-6：FTP 估算结果弹窗（手写 modal / 不用 wx.showModal 因为要展示富内容） -->
   <view class="modal-mask" wx:if="{{ftpEstimateModal}}" bindtap="onCloseEstimateModal">

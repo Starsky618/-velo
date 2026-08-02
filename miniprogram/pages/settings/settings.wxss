@@ -1,7 +1,4 @@
-/* 设置页 —— 苹果方案（MASTER v0.4）iOS 设置语言：
-   inset-grouped 多组白卡 + 组标题/组脚注 + 行式编辑（label 左 / 值+chevron 右）。
-   危险操作（退出/注销）= 居中红字行（iOS 惯例，替代旧全宽大红按钮防误触）。
-   中文字重 ≤600；数据数字 tabular-nums；hairline #e5e5ea。 */
+/* 设置页 —— 骑手身份摘要 + iOS inset-grouped 设置组。 */
 
 page {
   background: #f2f2f7;
@@ -9,15 +6,124 @@ page {
 
 .settings-page {
   min-height: 100vh;
-  padding: 12rpx 24rpx 60rpx;
+  padding: 20rpx 24rpx 72rpx;
   box-sizing: border-box;
 }
 
-/* 组标题：iOS 设置组眉（小号灰字，卡外左上）*/
+/* ── 骑手身份摘要 ── */
+.identity-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  min-height: 204rpx;
+  padding: 16rpx 30rpx;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 28rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
+}
+
+.identity-avatar-wrap {
+  flex: 0 0 auto;
+}
+
+.identity-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 116rpx;
+  height: 116rpx;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #f2f2f7;
+}
+
+.identity-avatar-initial {
+  font-size: 46rpx;
+  line-height: 1;
+  color: #8a8a8e;
+  font-weight: 600;
+}
+
+.identity-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.identity-name-row {
+  display: flex;
+  min-height: 44px;
+  width: 100%;
+  max-width: 100%;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.identity-name {
+  max-width: 360rpx;
+  overflow: hidden;
+  font-size: 38rpx;
+  line-height: 50rpx;
+  color: #1c1c1e;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity-edit-arrow {
+  flex: 0 0 auto;
+  font-size: 34rpx;
+  line-height: 1;
+  color: #c5c5c7;
+  font-weight: 600;
+}
+
+.identity-meta {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-height: 44px;
+  overflow: hidden;
+  font-size: 26rpx;
+  line-height: 36rpx;
+  color: #8a8a8e;
+  white-space: nowrap;
+}
+
+.identity-pin {
+  flex: 0 0 auto;
+  width: 27rpx;
+  height: 27rpx;
+  opacity: 0.58;
+}
+
+.identity-bio {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  overflow: hidden;
+  font-size: 27rpx;
+  line-height: 38rpx;
+  color: #5f636d;
+}
+
+.identity-bio-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity-bio .muted {
+  color: #aeaeb2;
+}
+
+/* 组标题：iOS 设置组眉（小号灰字，卡外左上）。 */
 .group-title {
-  margin: 28rpx 30rpx 12rpx;
-  font-size: 24rpx;
-  line-height: 32rpx;
+  margin: 36rpx 28rpx 12rpx;
+  font-size: 25rpx;
+  line-height: 36rpx;
   color: #8a8a8e;
 }
 
@@ -29,15 +135,11 @@ page {
   box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 
-.group-spaced {
-  margin-top: 28rpx;
-}
-
 /* 组脚注：iOS footer 说明文字（卡外小灰字）*/
 .group-foot {
-  margin: 12rpx 30rpx 0;
-  font-size: 22rpx;
-  line-height: 32rpx;
+  margin: 14rpx 28rpx 0;
+  font-size: 24rpx;
+  line-height: 36rpx;
   color: #8a8a8e;
 }
 
@@ -47,31 +149,33 @@ page {
   align-items: center;
   justify-content: space-between;
   gap: 20rpx;
-  min-height: 100rpx;
-  padding: 16rpx 30rpx;
+  min-height: 108rpx;
+  padding: 18rpx 30rpx;
   box-sizing: border-box;
 }
 
-.row + .row,
-picker + .row,
-.row + picker .row,
-picker + picker .row,
-.row-button + .row {
+.row-divider {
   border-top: 1rpx solid #e5e5ea;
 }
 
-/* 整行型 button（意见反馈 open-type=contact）：重置微信 button 默认样式成普通行 */
-.row-button {
-  width: 100%;
-  margin: 0;
-  border-radius: 0;
-  background: #fff;
-  font-weight: 400;
-  text-align: left;
-  line-height: inherit;
+/* open-type=contact 必须使用原生 button；用透明点击层覆盖标准 row，避免原生 button 改写可见布局。 */
+.contact-row {
+  position: relative;
 }
 
-.row-button::after {
+.contact-hit-target {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  opacity: 0;
+}
+
+.contact-hit-target::after {
   border: none;
 }
 
@@ -80,6 +184,19 @@ picker + picker .row,
   font-size: 29rpx;
   line-height: 40rpx;
   color: #1c1c1e;
+}
+
+.row-leading {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
+  min-width: 0;
+}
+
+.row-icon {
+  flex: 0 0 auto;
+  width: 38rpx;
+  height: 38rpx;
 }
 
 .row-right {
@@ -113,16 +230,41 @@ picker + picker .row,
   line-height: 1;
 }
 
-/* 危险操作行：居中红字（iOS 设置页"退出登录"惯例）*/
-.row-center {
-  justify-content: center;
+/* ── 中性账号入口：危险操作只在二级页出现。 ── */
+.account-entry {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
+  min-height: 126rpx;
+  padding: 20rpx 30rpx;
+  box-sizing: border-box;
 }
 
-.row-danger {
+.account-entry-icon {
+  flex: 0 0 auto;
+  width: 42rpx;
+  height: 42rpx;
+}
+
+.account-entry-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5rpx;
+}
+
+.account-entry-title {
   font-size: 29rpx;
   line-height: 40rpx;
-  color: #ff3b30;
+  color: #1c1c1e;
   font-weight: 500;
+}
+
+.account-entry-subtitle {
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #8a8a8e;
 }
 
 /* ═══════ FTP 估算 / Breakthrough 弹窗（手写 modal，逻辑沿袭 Sprint 9）═══════ */
