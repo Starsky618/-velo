@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-03T00:39:09+08:00'
+updated_at: '2026-08-03T01:29:03+08:00'
 status: active
 authority:
   order:
@@ -50,10 +50,10 @@ repository:
   last_verified_main_commit_before_a1_2_merge: aa955edc67694fc2cbb628ec3f5caacc80e6d60c
   a1_2_reviewed_head: f6441184f8d79823d5ae88bb5f305c7676289dd6
   a1_2_reviewed_merge_ref: 70b3b560b404a04107a030b3df44cfeb6dcf7250
-  last_verified_main_commit: null
-  last_verified_main_commit_status: pending_post_merge_reverification
-  last_verified_at: null
-  verified_via: pending_post_merge_remote_main_reverification
+  last_verified_main_commit: 2b6538ca01f45593ac8a2d4aecd8f7e8f95265a4
+  last_verified_main_commit_status: verified_at_a1_3_start
+  last_verified_at: '2026-08-03T01:29:03+08:00'
+  verified_via: git_fetch_origin_and_exact_remote_main_read
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
@@ -72,6 +72,12 @@ repository:
   a1_2_execution_branch: codex/agent-first-a1-bounded-agent-workflow
   a1_2_worktree_initial_status: clean
   a1_2_adr_path: docs/adr/014-为什么在线规划采用单一有界主Agent与确定性工作流.md
+  a1_2_merge_commit: 2b6538ca01f45593ac8a2d4aecd8f7e8f95265a4
+  a1_2_post_merge_ci_run: 30757438481
+  a1_3_baseline_commit: 2b6538ca01f45593ac8a2d4aecd8f7e8f95265a4
+  a1_3_execution_branch: codex/agent-first-a1-state-memory-boundary
+  a1_3_worktree_initial_status: clean
+  a1_3_adr_path: docs/adr/015-为什么世界事实会话运行与长期记忆必须分离.md
   original_authoring_worktree_status_at_a0c_start: dirty_with_reviewed_a0_files_preserved
   dirty_workspace_policy: preserve_all_user_changes
   git_write_permission: false
@@ -79,7 +85,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: none_until_next_orchestrator_task_packet
+  git_write_scope: none_until_orchestrator_review
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -103,9 +109,11 @@ next_task:
   id: A1.3
   parent: A1
   name: world_fact_session_run_memory_boundary
-  status: ready_to_specify
+  status: in_review
+  orchestrator_decision: SELECTED
+  codex_result: READY_FOR_REVIEW
   execution_authorized: false
-  requires_new_orchestrator_task_packet: true
+  requires_orchestrator_review: true
 a1_subtasks:
 - id: A1.1
   name: static_planning_vs_realtime_navigation_boundary
@@ -123,8 +131,10 @@ a1_subtasks:
   pr: 37
 - id: A1.3
   name: world_fact_session_run_memory_boundary
-  status: ready_to_specify
+  status: in_review
   execution_authorized: false
+  adr: docs/adr/015-为什么世界事实会话运行与长期记忆必须分离.md
+  adr_status: Proposed
 - id: A1.4
   name: capability_approval_side_effect_boundary
   status: blocked
@@ -220,7 +230,7 @@ open_questions:
   status: defer_until_curated_traversal_plus_provider_demand_gap
 - id: Q5
   question: long_term_inferred_memory
-  status: defer_until_explicit_memory_and_eval_baseline
+  status: deferred_until_explicit_memory_contract_and_A3_A4_evidence
 evidence_log:
 - id: E-20260802-A0-REPO
   type: repository_baseline
@@ -462,6 +472,44 @@ evidence_log:
     merge_ref_ci_result: 2074_passed_0_skipped_814_warnings
     runtime_behavior_changed: false
     decision: PASS
+- id: E-20260803-A1-2-POST-MERGE
+  type: post_merge_verification
+  status: PASS
+  evidence:
+    pr: 37
+    merge_commit: 2b6538ca01f45593ac8a2d4aecd8f7e8f95265a4
+    main_ci_run: 30757438481
+    main_ci_result: 2074_passed_0_skipped
+    tests_passed: 2074
+    skipped: 0
+    fresh_postgis_migration: true
+    deploy: not_authorized_not_run
+- id: E-20260803-A1-3-CODEX-DELIVERY
+  type: architecture_decision_delivery
+  status: READY_FOR_REVIEW
+  evidence:
+    parent_task: A1
+    task: A1.3
+    orchestrator_decision: SELECTED
+    baseline_main: 2b6538ca01f45593ac8a2d4aecd8f7e8f95265a4
+    execution_branch: codex/agent-first-a1-state-memory-boundary
+    adr_path: docs/adr/015-为什么世界事实会话运行与长期记忆必须分离.md
+    adr_status: Proposed
+    selected_boundary: distinct_world_user_session_run_memory_trace_owners
+    one_session_many_runs: true
+    context_is_compiled_projection: true
+    explicit_memory_only_v0: true
+    inferred_memory: DEFERRED
+    judgment_run_is_online_agent_run: false
+    changed_path_scope: exact_five_file_allowlist
+    schema_framework_vector_database_decided: false
+    runtime_behavior_changed: false
+    merge_authorized: false
+    deploy_authorized: false
+    a1_4_through_a1_5: blocked
+    a2_through_a5: blocked
+    ci_evidence: tracked_externally_on_current_draft_pr
+    ci_rule: exact_current_pull_request_head_and_merge_ref_runs_are_authoritative
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec
@@ -519,6 +567,10 @@ completed_tasks:
   skipped: 0
   fresh_postgis_migration: true
   merge_authorized_by_current_task_packet: true
+  merge_commit: 2b6538ca01f45593ac8a2d4aecd8f7e8f95265a4
+  main_ci_run: 30757438481
+  main_ci_tests_passed: 2074
+  main_ci_skipped: 0
 risks:
 - id: R1
   description: main_moves_during_orchestration_or_execution
@@ -540,7 +592,7 @@ risks:
   mitigation: mandatory_expected_end_state_forbidden_actions_code_grader_and_ledgers
 - id: R7
   description: A0_docs_misread_as_runtime_schema_or_production_authorization
-  mitigation: keep_A0_A0C_A1_1_A1_2_PASS_A1_3_ready_to_specify_but_unauthorized_later_tasks_blocked_and_runtime_merge_deploy_unauthorized
+  mitigation: keep_A0_A0C_A1_1_A1_2_PASS_A1_3_Proposed_in_review_but_implementation_unauthorized_later_tasks_blocked_and_runtime_merge_deploy_unauthorized
 - id: R8
   description: baseline_ci_or_mock_tests_confused_with_provider_device_deploy_or_user_evidence
   mitigation: report_each_evidence_layer_separately_and_keep_unverified_explicit
