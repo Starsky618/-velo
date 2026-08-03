@@ -246,12 +246,13 @@ Accepted [ADR-017](../adr/017-为什么旧app-agent必须迁出并保留RQ兼容
 
 #### A2.1 合同基础（当前 Task Packet）
 
+- **当前状态**：`in_review`。A2.1-R1 已按 `REVISE` 裁决返修，仍等待 Orchestrator re-review；不是 `PASS`、`completed` 或已冻结合同。
 - **五份 schema**：[`common.schema.json`](../../contracts/agent_v0/common.schema.json)、[`predicate_registry.schema.json`](../../contracts/agent_v0/predicate_registry.schema.json)、[`rider_context_packet.schema.json`](../../contracts/agent_v0/rider_context_packet.schema.json)、[`world_fact_packet.schema.json`](../../contracts/agent_v0/world_fact_packet.schema.json)、[`context_manifest.schema.json`](../../contracts/agent_v0/context_manifest.schema.json)；版本均为 `0.1.0`，稳定 `$id` 使用 `https://schemas.velo.invalid/agent_v0/` 前缀，正式对象默认 strict。
-- **Registry**：[`predicate_registry.v0.json`](../../contracts/agent_v0/predicate_registry.v0.json) 首批定义 22 个 computed/static/directional/local-consensus/dynamic/relation Predicate；它不是全国路线字段全集。新特征优先增加版本化 Predicate，不能藏入任意 metadata 或 prose blob。
-- **三个边界**：`RiderContextPacket` 是一次模型调用被授权看到的最小骑手投影；`WorldFactPacket` 是带 revision/scope/provenance-or-calculation/freshness/quality 的最小世界事实投影，并隔离 unverified advisory；`ContextManifest` 是一次 model call 的来源版本、包含/省略、隐私删减和 token 账单，不是 Session、Memory 或事实来源。
+- **Registry**：[`predicate_registry.v0.json`](../../contracts/agent_v0/predicate_registry.v0.json) 当前定义 21 个 computed/static/directional/local-consensus/dynamic 事实／动态 Predicate；它不是全国路线字段全集。正式对象关系由独立的 Relation query 合同面表达，`route.exit_option` 不再作为 Predicate，退出关系使用 `exit_to`。新特征优先增加版本化 Predicate，不能藏入任意 metadata 或 prose blob。
+- **三个边界**：`RiderContextPacket` 是一次模型调用被授权看到的最小骑手投影；`WorldFactPacket` 是带 revision/scope/provenance-or-calculation/freshness/quality 的最小世界事实投影，并隔离 typed/fresh advisory、Predicate/Relation request 与 explicit unknown；`ContextManifest` 是一次 model call 的来源版本、包含/省略、隐私删减和 token 账单，不是 Session、Memory 或事实来源。
 - **依赖裁决**：只在 `requirements.txt` 测试依赖区固定 `jsonschema==4.26.0`；复用其 `referencing.Registry` / `Resource` 做离线 `$ref` 解析，不增加 Runtime、codegen、数据库或网络依赖。
 - **fixture**：一个 Rider、两个 synthetic World（天龙山 `linear_climb`、汾河双岸 `corridor`）和一个 Manifest valid fixture；六个 invalid fixture分别锁定精确坐标、无 provenance、unverified 混入 facts、动态缺 validity/freshness、Manifest 缺 revision 与重复 Predicate ID。合成名称/数值不是已核验产品数据，也不是 Gold Package。
-- **本地验证**：`tests/contracts/test_agent_v0_context_contracts.py` 对 schema 自校验、唯一 `$id`/Predicate、全部正反 fixture、Registry 的 unit/value/freshness 语义、section authorization、scope/provenance、跨对象 identity/reference、隐私 key、explicit unknown、Manifest source revision/content hash/token accounting 及零网络解析做确定性检查。
+- **本地验证**：`tests/contracts/test_agent_v0_context_contracts.py` 对 schema 自校验、唯一 `$id`/Predicate、全部正反 fixture、Registry 的 unit/value/freshness 语义、Predicate/Relation 请求完整响应、route-shape focus、advisory typed value/freshness、范围与带时区时间顺序、environment 组合、section authorization、scope/provenance、跨对象 identity/reference、隐私 key、explicit unknown、Manifest source revision/content hash/token accounting 及零网络解析做确定性检查。JSON Schema shape validation 不替代这些 semantic conformance 不变量。
 - **明确非目标**：没有 Runtime、生产 Context Compiler、数据库迁移、真实 Provider/DEM、真实 export、VeloBench、Fake Environment、A2.2 或部署；不实施 M1/M2/M3。
 
 #### A2 后续字段路由（保留，不提前实现）

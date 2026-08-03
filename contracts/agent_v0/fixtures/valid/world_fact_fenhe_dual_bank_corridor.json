@@ -15,9 +15,13 @@
     "requested_predicate_ids": [
       "metric.distance_m",
       "route.traffic_exposure",
-      "route.exit_option",
       "route.group_ride_suitability",
       "dynamic.surface_damage"
+    ],
+    "requested_relation_types": [
+      "exit_to",
+      "turnaround_at",
+      "parallel_bank_of"
     ],
     "synthetic_fixture_data": true
   },
@@ -46,8 +50,7 @@
         "revision": "fixture-section-r1"
       },
       "display_name": "东岸段（合成测试对象）",
-      "aliases": [],
-      "route_shape": "corridor"
+      "aliases": []
     },
     {
       "object_ref": { "object_id": "section.fenhe-west-bank-001", "object_type": "road_section" },
@@ -56,8 +59,7 @@
         "revision": "fixture-section-r1"
       },
       "display_name": "西岸段（合成测试对象）",
-      "aliases": [],
-      "route_shape": "corridor"
+      "aliases": []
     },
     {
       "object_ref": { "object_id": "destination.fenhe-entry-south", "object_type": "destination" },
@@ -66,8 +68,7 @@
         "revision": "fixture-anchor-r1"
       },
       "display_name": "南侧入口（合成测试对象）",
-      "aliases": [],
-      "route_shape": "destination_ride"
+      "aliases": []
     },
     {
       "object_ref": { "object_id": "destination.fenhe-turnaround-north", "object_type": "destination" },
@@ -76,8 +77,7 @@
         "revision": "fixture-anchor-r1"
       },
       "display_name": "北侧折返点（合成测试对象）",
-      "aliases": [],
-      "route_shape": "destination_ride"
+      "aliases": []
     },
     {
       "object_ref": { "object_id": "destination.fenhe-exit-mid", "object_type": "destination" },
@@ -86,8 +86,7 @@
         "revision": "fixture-anchor-r1"
       },
       "display_name": "中段退出点（合成测试对象）",
-      "aliases": [],
-      "route_shape": "destination_ride"
+      "aliases": []
     }
   ],
   "traversals": [
@@ -241,15 +240,27 @@
     {
       "advisory_id": "advisory.fenhe-west-surface-report",
       "advisory_type": "dynamic.surface_damage",
+      "reported_value": { "value_kind": "enum", "enum_value": "moderate" },
       "scope": {
         "subject_ref": { "object_id": "section.fenhe-west-bank-001", "object_type": "road_section" },
         "spatial_interval": {
           "interval_ref": { "object_id": "section.fenhe-west-bank-001", "object_type": "road_section" },
           "from_fraction": 0.4,
           "to_fraction": 0.6
+        },
+        "time_window": {
+          "start": "2026-08-02T08:00:00+08:00",
+          "end": "2026-08-05T08:00:00+08:00"
         }
       },
       "observed_at": "2026-08-02T08:00:00+08:00",
+      "freshness": {
+        "freshness_status": "current",
+        "observed_at": "2026-08-02T08:00:00+08:00",
+        "valid_from": "2026-08-02T08:00:00+08:00",
+        "valid_until": "2026-08-05T08:00:00+08:00",
+        "policy_ref": "freshness.dynamic_72h.v1"
+      },
       "verification_status": "unverified",
       "usage_policy": "unknown_only",
       "contribution_ref": "contribution.fixture-fenhe-report-001",
@@ -267,6 +278,7 @@
       "user_safe_summary": "西岸中段补给可用性没有可靠信息。"
     }
   ],
+  "request_omissions": [],
   "provenance_index": [
     {
       "provenance_id": "provenance.fixture-fenhe-source",

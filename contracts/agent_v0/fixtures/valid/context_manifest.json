@@ -25,14 +25,14 @@
       "packet_id": "world-fact.fixture.tianlongshan-linear-climb.1",
       "schema_version": "0.1.0",
       "source_revision": "fixture-world-r1",
-      "content_hash": "9823eabc809d673b09f0fac5df90b596946d5dbaf2bd7bed3e631eb540ad4856"
+      "content_hash": "fc7e89a3574d99bad983c8f34471453405e1078486e029ff1bd1cf9ca25f4b0f"
     },
     {
       "packet_type": "world_fact_packet",
       "packet_id": "world-fact.fixture.fenhe-dual-bank.1",
       "schema_version": "0.1.0",
       "source_revision": "fixture-world-r1",
-      "content_hash": "a29966de1f384bd4b555cc7f11a517ae8455b6f4c0779a8f9afd23b32b7ecba9"
+      "content_hash": "b578d9b1705a3d2fd6edb2104338f9c50eb2bd4365690c83d922087b18da3052"
     }
   ],
   "memory_item_refs": ["memory.fixture-001"],

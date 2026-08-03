@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-03T20:30:00+08:00'
+updated_at: '2026-08-03T22:03:17+08:00'
 status: active
 authority:
   order:
@@ -111,7 +111,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: none_until_orchestrator_review
+  git_write_scope: none_waiting_orchestrator_re_review
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -150,8 +150,11 @@ next_task:
   parent: A2
   name: context_packet_and_predicate_contracts
   status: in_review
-  orchestrator_decision: SELECTED
-  codex_result: READY_FOR_REVIEW
+  review_round: A2_1_R1
+  last_orchestrator_decision: REVISE
+  revision_status: applied_waiting_orchestrator_re_review
+  orchestrator_decision: REVISE
+  codex_result: revision_applied_waiting_orchestrator_re_review
   execution_authorized: false
   requires_orchestrator_review: true
 a1_subtasks:
@@ -196,6 +199,8 @@ a2_subtasks:
 - id: A2.1
   name: context_packet_and_predicate_contracts
   status: in_review
+  orchestrator_decision: REVISE
+  revision_status: applied_waiting_orchestrator_re_review
 - id: A2.2
   name: session_run_map_and_action_contracts
   status: blocked
@@ -855,6 +860,32 @@ evidence_log:
     deploy_authorized: false
     ci_evidence: tracked_externally_on_current_draft_pr
     ci_rule: exact_current_pull_request_head_and_merge_ref_runs_are_authoritative
+- id: E-20260803-A2-1-R1-CODEX-REVISION
+  type: contract_revision_delivery
+  status: applied_waiting_orchestrator_re_review
+  evidence:
+    parent_task: A2
+    task: A2.1
+    review_round: A2_1_R1
+    last_orchestrator_decision: REVISE
+    previous_head: 62c0ca13311bccb48a62083fce02383898cd162e
+    schema_version: 0.1.0
+    predicate_count: 21
+    revision_findings_applied:
+    - explicit_unknown_only_for_missing_fact_values
+    - route_shape_focus_and_owner_boundary
+    - advisory_typed_value_scope_and_freshness
+    - independent_relation_requests_and_complete_responses
+    - ordered_ranges_times_and_environment_combinations
+    local_contract_test_result: 48_passed_0_skipped
+    orchestrator_re_review: pending
+    a2_1_status: in_review
+    a2_2_through_a2_4: blocked
+    a3_through_a5: blocked
+    execution_authorized: false
+    git_write_permission_after_delivery: false
+    merge_authorized: false
+    deploy_authorized: false
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec

@@ -88,8 +88,7 @@
               "static",
               "current",
               "stale",
-              "expired",
-              "unknown"
+              "expired"
             ]
           },
           "minItems": 1,
@@ -136,8 +135,7 @@
             "static_curated_fact",
             "directional_experience",
             "subjective_local_consensus",
-            "time_bound_dynamic_state",
-            "relation"
+            "time_bound_dynamic_state"
           ]
         },
         "allowed_subject_types": {
@@ -175,7 +173,8 @@
           "items": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 80
+            "maxLength": 80,
+            "not": { "const": "unknown" }
           },
           "minItems": 1,
           "uniqueItems": true

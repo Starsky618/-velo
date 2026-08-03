@@ -1,6 +1,7 @@
 import hashlib
 import json
 from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -42,13 +43,20 @@ REQUIRED_WORLD_PREDICATES = {
     "route.wind_exposure",
     "route.night_suitability",
     "route.group_ride_suitability",
-    "route.exit_option",
     "route.local_name",
     "route.scenic_character",
     "dynamic.closure",
     "dynamic.construction",
     "dynamic.surface_damage",
     "dynamic.supply_closed",
+}
+
+ROUTE_SHAPE_OWNER_TYPES = {
+    "cycling_area",
+    "named_route",
+    "named_line",
+    "climb",
+    "classic_ride",
 }
 
 FORBIDDEN_COORDINATE_KEYS = {
@@ -177,6 +185,84 @@ def typed_value_unit(value):
     return None
 
 
+def relation_type_values():
+    schema = load_json(CONTRACT_DIR / SCHEMA_FILES["world_fact"])
+    return set(schema["$defs"]["relation_type"]["enum"])
+
+
+def assert_registry_semantics(registry_document):
+    assert_unique_predicate_ids(registry_document)
+    for definition in registry_document["predicates"]:
+        assert definition["predicate_id"] != "route.exit_option"
+        assert definition["category"] != "relation"
+        assert "unknown" not in definition.get("enum_values", [])
+        assert "unknown" not in definition["freshness_policy"]["expected_statuses"]
+
+
+def parse_rfc3339_timestamp(value):
+    assert isinstance(value, str) and "T" in value
+    normalized = f"{value[:-1]}+00:00" if value.endswith("Z") else value
+    parsed = datetime.fromisoformat(normalized)
+    assert parsed.tzinfo is not None and parsed.utcoffset() is not None
+    return parsed
+
+
+def assert_time_window_ordered(time_window):
+    assert parse_rfc3339_timestamp(time_window["start"]) < parse_rfc3339_timestamp(
+        time_window["end"]
+    )
+
+
+def assert_validity_ordered(value, *, require_both=False):
+    if require_both:
+        assert "valid_from" in value and "valid_until" in value
+    if "valid_from" in value and "valid_until" in value:
+        assert parse_rfc3339_timestamp(value["valid_from"]) < parse_rfc3339_timestamp(
+            value["valid_until"]
+        )
+
+
+def assert_typed_value_semantics(value, definition, *, forbid_unknown_enum=False):
+    assert value["value_kind"] == definition["value_kind"]
+    if value["value_kind"] == "enum":
+        if forbid_unknown_enum:
+            assert value["enum_value"] != "unknown"
+        assert value["enum_value"] in definition["enum_values"]
+    unit_code = typed_value_unit(value)
+    if unit_code is not None:
+        assert unit_code in definition["unit_codes"]
+    if value["value_kind"] == "number_range":
+        number_range = value["number_range_value"]
+        assert number_range["minimum"] <= number_range["maximum"]
+
+
+def assert_scope_requirements(scope, definition):
+    requirements = definition["scope_requirements"]
+    if requirements["traversal_scope"]:
+        assert "traversal_ref" in scope
+    if requirements["direction_scope"]:
+        assert "direction" in scope
+    if requirements["spatial_scope"] == "required":
+        assert "spatial_interval" in scope
+    if requirements["time_window"] == "required":
+        assert "time_window" in scope
+
+
+def focus_route_shapes(world_packet):
+    objects_by_ref = {
+        (item["object_ref"]["object_id"], item["object_ref"]["object_type"]): item
+        for item in world_packet["objects"]
+    }
+    shapes = set()
+    for focus_ref in world_packet["query_context"]["focus_refs"]:
+        focus_key = (focus_ref["object_id"], focus_ref["object_type"])
+        if focus_ref["object_type"] in ROUTE_SHAPE_OWNER_TYPES:
+            assert focus_key in objects_by_ref
+            assert "route_shape" in objects_by_ref[focus_key]
+            shapes.add(objects_by_ref[focus_key]["route_shape"])
+    return shapes
+
+
 def assert_rider_semantics(packet, definitions):
     assert packet["source_revision"]
     assert all(
@@ -196,13 +282,23 @@ def assert_rider_semantics(packet, definitions):
 
 
 def assert_world_semantics(world_packet, definitions):
+    relation_types = relation_type_values()
+    query_context = world_packet["query_context"]
+    if world_packet["packet_environment"] == "test":
+        assert world_packet["fixture_only"] is True
+        assert query_context["synthetic_fixture_data"] is True
+    else:
+        assert world_packet["fixture_only"] is False
+        assert query_context["synthetic_fixture_data"] is False
+
     assert all(
         object_ref["object_type"] != "rider"
         for object_ref in walk_object_refs(world_packet)
     )
-    assert set(world_packet["query_context"]["requested_predicate_ids"]) <= set(
-        definitions
-    )
+    assert set(query_context["requested_predicate_ids"]) <= set(definitions)
+    assert set(query_context["requested_relation_types"]) <= relation_types
+    if "time_window" in query_context:
+        assert_time_window_ordered(query_context["time_window"])
     assert_unique_values(world_packet["objects"], "object_ref")
     assert_unique_values(world_packet["traversals"], "traversal_ref")
     assert_unique_values(world_packet["relations"], "relation_id")
@@ -211,6 +307,11 @@ def assert_world_semantics(world_packet, definitions):
     assert_unique_values(world_packet["advisories"], "advisory_id")
     assert_unique_values(world_packet["unknowns"], "unknown_id")
     assert_unique_values(world_packet["provenance_index"], "provenance_id")
+    omission_keys = [
+        (item["request_kind"], item["request_id"])
+        for item in world_packet["request_omissions"]
+    ]
+    assert len(omission_keys) == len(set(omission_keys))
 
     provenance_ids = {
         item["provenance_id"] for item in world_packet["provenance_index"]
@@ -230,12 +331,20 @@ def assert_world_semantics(world_packet, definitions):
         )
         for item in world_packet["traversals"]
     }
+    traversal_directions = {
+        (
+            item["traversal_ref"]["object_id"],
+            item["traversal_ref"]["object_type"],
+        ): item["direction"]
+        for item in world_packet["traversals"]
+    }
     known_refs = object_refs | traversal_refs
     fact_ids = {item["fact_id"] for item in world_packet["facts"]}
 
     for focus_ref in world_packet["query_context"]["focus_refs"]:
         assert focus_ref["object_type"] != "rider"
         assert (focus_ref["object_id"], focus_ref["object_type"]) in known_refs
+    focus_route_shapes(world_packet)
 
     for item in (
         world_packet["relations"]
@@ -248,20 +357,29 @@ def assert_world_semantics(world_packet, definitions):
         assert (subject_ref["object_id"], subject_ref["object_type"]) in known_refs
         if "traversal_ref" in scope:
             traversal_ref = scope["traversal_ref"]
-            assert (
+            traversal_key = (
                 traversal_ref["object_id"],
                 traversal_ref["object_type"],
-            ) in traversal_refs
+            )
+            assert traversal_key in traversal_refs
+            if "direction" in scope:
+                assert scope["direction"] == traversal_directions[traversal_key]
         if "spatial_interval" in scope:
-            interval_ref = scope["spatial_interval"]["interval_ref"]
+            spatial_interval = scope["spatial_interval"]
+            interval_ref = spatial_interval["interval_ref"]
             assert (
                 interval_ref["object_id"],
                 interval_ref["object_type"],
             ) in object_refs
+            assert spatial_interval["from_fraction"] <= spatial_interval["to_fraction"]
+        if "time_window" in scope:
+            assert_time_window_ordered(scope["time_window"])
 
     for item in world_packet["objects"]:
         assert item["object_ref"]["object_type"] != "rider"
         assert item["object_ref"] == item["revision_ref"]["object_ref"]
+        if item["object_ref"]["object_type"] not in ROUTE_SHAPE_OWNER_TYPES:
+            assert "route_shape" not in item
 
     for item in world_packet["traversals"]:
         assert item["traversal_ref"]["object_type"] == "traversal"
@@ -286,23 +404,10 @@ def assert_world_semantics(world_packet, definitions):
         )
         assert subject_key in known_refs
         assert item["subject_ref"]["object_type"] in definition["allowed_subject_types"]
-        assert item["value"]["value_kind"] == definition["value_kind"]
-
-        if definition["value_kind"] == "enum":
-            assert item["value"]["enum_value"] in definition["enum_values"]
-        unit_code = typed_value_unit(item["value"])
-        if unit_code is not None:
-            assert unit_code in definition["unit_codes"]
-
-        requirements = definition["scope_requirements"]
-        if requirements["traversal_scope"]:
-            assert "traversal_ref" in item["scope"]
-        if requirements["direction_scope"]:
-            assert "direction" in item["scope"]
-        if requirements["spatial_scope"] == "required":
-            assert "spatial_interval" in item["scope"]
-        if requirements["time_window"] == "required":
-            assert "time_window" in item["scope"]
+        assert_typed_value_semantics(
+            item["value"], definition, forbid_unknown_enum=True
+        )
+        assert_scope_requirements(item["scope"], definition)
         if "traversal_ref" in item["scope"]:
             traversal_key = (
                 item["scope"]["traversal_ref"]["object_id"],
@@ -312,12 +417,14 @@ def assert_world_semantics(world_packet, definitions):
 
         assert item["claim_kind"] == definition["category"]
         assert item["fact_status"] in definition["allowed_fact_statuses"]
+        assert item["freshness"]["freshness_status"] != "unknown"
         assert item["freshness"]["policy_ref"] == definition["freshness_policy"][
             "policy_ref"
         ]
         assert item["freshness"]["freshness_status"] in definition[
             "freshness_policy"
         ]["expected_statuses"]
+        assert_validity_ordered(item["freshness"])
         requirement = definition["evidence_requirement"]
         if requirement == "calculation_required":
             assert item.get("calculation_run_ref") in provenance_ids
@@ -336,6 +443,7 @@ def assert_world_semantics(world_packet, definitions):
             assert provenance_types[provenance_ref] == "evidence"
 
     for item in world_packet["dynamic_states"]:
+        assert item["state_type"] in definitions
         definition = definitions[item["state_type"]]
         subject_ref = item["scope"]["subject_ref"]
         subject_key = (subject_ref["object_id"], subject_ref["object_type"])
@@ -348,15 +456,12 @@ def assert_world_semantics(world_packet, definitions):
         assert item["freshness"]["freshness_status"] in definition[
             "freshness_policy"
         ]["expected_statuses"]
-        requirements = definition["scope_requirements"]
-        if requirements["traversal_scope"]:
-            assert "traversal_ref" in item["scope"]
-        if requirements["direction_scope"]:
-            assert "direction" in item["scope"]
-        if requirements["spatial_scope"] == "required":
-            assert "spatial_interval" in item["scope"]
-        if requirements["time_window"] == "required":
-            assert "time_window" in item["scope"]
+        assert_scope_requirements(item["scope"], definition)
+        assert_validity_ordered(item)
+        assert_validity_ordered(
+            item["freshness"],
+            require_both=definition["freshness_policy"]["time_bound"],
+        )
         if "traversal_ref" in item["scope"]:
             traversal_key = (
                 item["scope"]["traversal_ref"]["object_id"],
@@ -368,6 +473,7 @@ def assert_world_semantics(world_packet, definitions):
             assert provenance_types[evidence_ref] == "evidence"
 
     for relation in world_packet["relations"]:
+        assert relation["relation_type"] in relation_types
         relation_subject = relation["scope"]["subject_ref"]
         assert (
             relation_subject["object_id"],
@@ -386,6 +492,19 @@ def assert_world_semantics(world_packet, definitions):
         subject_ref = advisory["scope"]["subject_ref"]
         assert (subject_ref["object_id"], subject_ref["object_type"]) in known_refs
         assert subject_ref["object_type"] in definition["allowed_subject_types"]
+        assert_typed_value_semantics(advisory["reported_value"], definition)
+        assert_scope_requirements(advisory["scope"], definition)
+        assert advisory["freshness"]["policy_ref"] == definition[
+            "freshness_policy"
+        ]["policy_ref"]
+        assert advisory["freshness"]["freshness_status"] in definition[
+            "freshness_policy"
+        ]["expected_statuses"]
+        assert advisory["observed_at"] == advisory["freshness"]["observed_at"]
+        assert_validity_ordered(
+            advisory["freshness"],
+            require_both=definition["freshness_policy"]["time_bound"],
+        )
         assert advisory["verification_status"] in {"unverified", "reported", "contested"}
         assert advisory["usage_policy"] in {"advisory_only", "unknown_only"}
         assert any(
@@ -402,9 +521,47 @@ def assert_world_semantics(world_packet, definitions):
             assert provenance_ref in provenance_ids
 
     for item in world_packet["unknowns"]:
-        assert item["predicate_id"] in definitions
+        has_predicate = "predicate_id" in item
+        has_relation = "relation_type" in item
+        assert has_predicate is not has_relation
+        if has_predicate:
+            assert item["predicate_id"] in definitions
+        else:
+            assert item["relation_type"] in relation_types
         subject_ref = item["subject_ref"]
         assert (subject_ref["object_id"], subject_ref["object_type"]) in known_refs
+
+    requested_predicates = set(query_context["requested_predicate_ids"])
+    requested_relations = set(query_context["requested_relation_types"])
+    predicate_responses = {
+        item["predicate_id"] for item in world_packet["facts"]
+    } | {item["state_type"] for item in world_packet["dynamic_states"]} | {
+        item["advisory_type"] for item in world_packet["advisories"]
+    } | {
+        item["predicate_id"]
+        for item in world_packet["unknowns"]
+        if "predicate_id" in item
+    }
+    relation_responses = {
+        item["relation_type"] for item in world_packet["relations"]
+    } | {
+        item["relation_type"]
+        for item in world_packet["unknowns"]
+        if "relation_type" in item
+    }
+    omitted_predicates = set()
+    omitted_relations = set()
+    for omission in world_packet["request_omissions"]:
+        if omission["request_kind"] == "predicate":
+            assert omission["request_id"] in requested_predicates
+            assert omission["request_id"] not in predicate_responses
+            omitted_predicates.add(omission["request_id"])
+        else:
+            assert omission["request_id"] in requested_relations
+            assert omission["request_id"] not in relation_responses
+            omitted_relations.add(omission["request_id"])
+    assert requested_predicates <= predicate_responses | omitted_predicates
+    assert requested_relations <= relation_responses | omitted_relations
 
     limits = world_packet["packet_limits"]
     assert limits["facts_included"] == len(world_packet["facts"])
@@ -459,7 +616,7 @@ def test_predicate_registry_is_valid_unique_and_complete(schemas, local_registry
     validator_for("predicate_registry", schemas, local_registry).validate(registry_document)
     assert registry_document["schema_version"] == "0.1.0"
     assert registry_document["registry_version"] == "0.1.0"
-    assert_unique_predicate_ids(registry_document)
+    assert_registry_semantics(registry_document)
 
     definitions = predicate_map(registry_document)
     assert set(definitions) == REQUIRED_WORLD_PREDICATES
@@ -472,6 +629,52 @@ def test_predicate_registry_is_valid_unique_and_complete(schemas, local_registry
             assert definition["scope_requirements"]["time_window"] == "required"
             assert definition["freshness_policy"]["time_bound"] is True
             assert definition["freshness_policy"]["max_age_s"] is not None
+
+
+def test_registry_rejects_unknown_enum_and_freshness_regressions(
+    schemas, local_registry
+):
+    registry_document = load_json(CONTRACT_DIR / "predicate_registry.v0.json")
+
+    enum_unknown = deepcopy(registry_document)
+    predicate_map(enum_unknown)["route.surface_type"]["enum_values"].append("unknown")
+    assert validation_errors(
+        "predicate_registry", enum_unknown, schemas, local_registry
+    )
+    with pytest.raises(AssertionError):
+        assert_registry_semantics(enum_unknown)
+
+    freshness_unknown = deepcopy(registry_document)
+    predicate_map(freshness_unknown)["route.surface_type"]["freshness_policy"][
+        "expected_statuses"
+    ].append("unknown")
+    assert validation_errors(
+        "predicate_registry", freshness_unknown, schemas, local_registry
+    )
+    with pytest.raises(AssertionError):
+        assert_registry_semantics(freshness_unknown)
+
+
+def test_registry_rejects_relation_category_and_exit_option_regressions(
+    schemas, local_registry
+):
+    registry_document = load_json(CONTRACT_DIR / "predicate_registry.v0.json")
+
+    relation_category = deepcopy(registry_document)
+    relation_category["predicates"][0]["category"] = "relation"
+    assert validation_errors(
+        "predicate_registry", relation_category, schemas, local_registry
+    )
+    with pytest.raises(AssertionError):
+        assert_registry_semantics(relation_category)
+
+    exit_option = deepcopy(registry_document)
+    exit_definition = deepcopy(predicate_map(exit_option)["route.local_name"])
+    exit_definition["predicate_id"] = "route.exit_option"
+    exit_option["predicates"].append(exit_definition)
+    validator_for("predicate_registry", schemas, local_registry).validate(exit_option)
+    with pytest.raises(AssertionError):
+        assert_registry_semantics(exit_option)
 
 
 @pytest.mark.parametrize(
@@ -634,11 +837,106 @@ def test_world_packets_use_registry_predicates_scopes_and_provenance():
         assert packet["unknowns"], f"{fixture_path.name} must expose missing information"
         assert_world_semantics(packet, definitions)
 
-    primary_shapes = {
-        load_json(fixture_path)["objects"][0]["route_shape"]
-        for fixture_path in world_paths
-    }
+    primary_shapes = set().union(
+        *(focus_route_shapes(load_json(fixture_path)) for fixture_path in world_paths)
+    )
     assert primary_shapes == {"linear_climb", "corridor"}
+
+
+def test_formal_facts_cannot_encode_missing_values_as_unknown(
+    schemas, local_registry
+):
+    packet = load_json(VALID_FIXTURES / "world_fact_tianlongshan_linear_climb.json")
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+    fact_index = next(
+        index
+        for index, fact in enumerate(packet["facts"])
+        if fact["predicate_id"] == "route.climb_rhythm"
+    )
+
+    enum_unknown = deepcopy(packet)
+    enum_unknown["facts"][fact_index]["value"]["enum_value"] = "unknown"
+    definitions_with_unknown = deepcopy(definitions)
+    definitions_with_unknown["route.climb_rhythm"]["enum_values"].append("unknown")
+    assert validation_errors("world_fact", enum_unknown, schemas, local_registry)
+    with pytest.raises(AssertionError):
+        assert_world_semantics(enum_unknown, definitions_with_unknown)
+
+    freshness_unknown = deepcopy(packet)
+    freshness_unknown["facts"][fact_index]["freshness"][
+        "freshness_status"
+    ] = "unknown"
+    definitions_with_unknown = deepcopy(definitions)
+    definitions_with_unknown["route.climb_rhythm"]["freshness_policy"][
+        "expected_statuses"
+    ].append("unknown")
+    assert validation_errors("world_fact", freshness_unknown, schemas, local_registry)
+    with pytest.raises(AssertionError):
+        assert_world_semantics(freshness_unknown, definitions_with_unknown)
+
+
+def test_missing_fact_can_be_represented_by_explicit_unknown(schemas, local_registry):
+    packet = load_json(VALID_FIXTURES / "world_fact_tianlongshan_linear_climb.json")
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+    missing_fact = deepcopy(packet)
+    missing_fact["facts"] = [
+        fact
+        for fact in missing_fact["facts"]
+        if fact["predicate_id"] != "route.climb_rhythm"
+    ]
+    missing_fact["packet_limits"]["facts_included"] -= 1
+    missing_fact["unknowns"].append(
+        {
+            "unknown_id": "unknown.tianlongshan-climb-rhythm",
+            "subject_ref": {
+                "object_id": "climb.tianlongshan-main-001",
+                "object_type": "climb",
+            },
+            "predicate_id": "route.climb_rhythm",
+            "reason_code": "no_reliable_value",
+            "blocking": False,
+            "user_safe_summary": "当前没有可靠的爬坡节奏事实。",
+        }
+    )
+    validator_for("world_fact", schemas, local_registry).validate(missing_fact)
+    assert_world_semantics(missing_fact, definitions)
+
+
+def test_focus_route_shape_is_required_independent_of_object_order(
+    schemas, local_registry
+):
+    packet = load_json(VALID_FIXTURES / "world_fact_fenhe_dual_bank_corridor.json")
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+
+    missing_focus_shape = deepcopy(packet)
+    del missing_focus_shape["objects"][0]["route_shape"]
+    validator_for("world_fact", schemas, local_registry).validate(missing_focus_shape)
+    with pytest.raises(AssertionError):
+        assert_world_semantics(missing_focus_shape, definitions)
+
+    reordered = deepcopy(packet)
+    reordered["objects"].reverse()
+    validator_for("world_fact", schemas, local_registry).validate(reordered)
+    assert_world_semantics(reordered, definitions)
+    assert focus_route_shapes(reordered) == {"corridor"}
+
+
+@pytest.mark.parametrize("object_type", ["road_section", "destination"])
+def test_non_route_shape_owners_reject_route_shape(
+    object_type, schemas, local_registry
+):
+    packet = load_json(VALID_FIXTURES / "world_fact_fenhe_dual_bank_corridor.json")
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+    invalid_owner = deepcopy(packet)
+    target = next(
+        item
+        for item in invalid_owner["objects"]
+        if item["object_ref"]["object_type"] == object_type
+    )
+    target["route_shape"] = "corridor"
+    assert validation_errors("world_fact", invalid_owner, schemas, local_registry)
+    with pytest.raises(AssertionError):
+        assert_world_semantics(invalid_owner, definitions)
 
 
 def test_tianlongshan_and_fenhe_fixtures_cover_distinct_world_structures():
@@ -656,6 +954,7 @@ def test_tianlongshan_and_fenhe_fixtures_cover_distinct_world_structures():
     assert {fact["predicate_id"] for fact in tianlongshan["facts"]} >= {
         "metric.distance_m",
         "metric.climb_m",
+        "metric.moving_time_range_s",
         "route.climb_rhythm",
     }
 
@@ -679,6 +978,333 @@ def test_unverified_rider_report_is_advisory_not_canonical_fact():
         and advisory["usage_policy"] == "advisory_only"
         for advisory in packet["advisories"]
     )
+
+
+@pytest.mark.parametrize("missing_field", ["reported_value", "freshness"])
+def test_advisory_requires_typed_value_and_freshness(
+    missing_field, schemas, local_registry
+):
+    packet = load_json(VALID_FIXTURES / "world_fact_tianlongshan_linear_climb.json")
+    invalid = deepcopy(packet)
+    del invalid["advisories"][0][missing_field]
+    errors = validation_errors("world_fact", invalid, schemas, local_registry)
+    assert any(
+        path_text(error) == "advisories/0" and error.validator == "required"
+        for error in errors
+    )
+
+
+def test_advisory_registry_value_and_scope_mutations_are_rejected():
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+    tianlongshan = load_json(
+        VALID_FIXTURES / "world_fact_tianlongshan_linear_climb.json"
+    )
+    fenhe = load_json(VALID_FIXTURES / "world_fact_fenhe_dual_bank_corridor.json")
+
+    bad_enum = deepcopy(tianlongshan)
+    bad_enum["advisories"][0]["reported_value"]["enum_value"] = "banana"
+    with pytest.raises(AssertionError):
+        assert_world_semantics(bad_enum, definitions)
+
+    bad_unit = deepcopy(tianlongshan)
+    advisory = bad_unit["advisories"][0]
+    advisory["advisory_type"] = "metric.distance_m"
+    advisory["reported_value"] = {
+        "value_kind": "number",
+        "number_value": 42,
+        "unit_code": "km",
+    }
+    advisory["freshness"] = {
+        "freshness_status": "static",
+        "observed_at": advisory["observed_at"],
+        "policy_ref": "freshness.computed_revision.v1",
+    }
+    with pytest.raises(AssertionError):
+        assert_world_semantics(bad_unit, definitions)
+
+    missing_traversal = deepcopy(tianlongshan)
+    del missing_traversal["advisories"][0]["scope"]["traversal_ref"]
+    with pytest.raises(AssertionError):
+        assert_world_semantics(missing_traversal, definitions)
+
+    missing_direction = deepcopy(tianlongshan)
+    del missing_direction["advisories"][0]["scope"]["direction"]
+    with pytest.raises(AssertionError):
+        assert_world_semantics(missing_direction, definitions)
+
+    missing_spatial_scope = deepcopy(fenhe)
+    del missing_spatial_scope["advisories"][0]["scope"]["spatial_interval"]
+    with pytest.raises(AssertionError):
+        assert_world_semantics(missing_spatial_scope, definitions)
+
+    missing_time_scope = deepcopy(fenhe)
+    del missing_time_scope["advisories"][0]["scope"]["time_window"]
+    with pytest.raises(AssertionError):
+        assert_world_semantics(missing_time_scope, definitions)
+
+
+def test_advisory_freshness_mutations_are_rejected():
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+    tianlongshan = load_json(
+        VALID_FIXTURES / "world_fact_tianlongshan_linear_climb.json"
+    )
+    fenhe = load_json(VALID_FIXTURES / "world_fact_fenhe_dual_bank_corridor.json")
+
+    wrong_policy = deepcopy(tianlongshan)
+    wrong_policy["advisories"][0]["freshness"]["policy_ref"] = (
+        "freshness.dynamic_72h.v1"
+    )
+    with pytest.raises(AssertionError):
+        assert_world_semantics(wrong_policy, definitions)
+
+    wrong_status = deepcopy(tianlongshan)
+    wrong_status["advisories"][0]["freshness"]["freshness_status"] = "current"
+    with pytest.raises(AssertionError):
+        assert_world_semantics(wrong_status, definitions)
+
+    missing_validity = deepcopy(fenhe)
+    del missing_validity["advisories"][0]["freshness"]["valid_until"]
+    with pytest.raises(AssertionError):
+        assert_world_semantics(missing_validity, definitions)
+
+    reversed_validity = deepcopy(fenhe)
+    reversed_validity["advisories"][0]["freshness"]["valid_from"] = (
+        "2026-08-06T08:00:00+08:00"
+    )
+    with pytest.raises(AssertionError):
+        assert_world_semantics(reversed_validity, definitions)
+
+    mismatched_observation = deepcopy(tianlongshan)
+    mismatched_observation["advisories"][0]["observed_at"] = (
+        "2026-07-29T09:00:00+08:00"
+    )
+    with pytest.raises(AssertionError):
+        assert_world_semantics(mismatched_observation, definitions)
+
+
+def test_relation_type_has_one_schema_definition():
+    schema = load_json(CONTRACT_DIR / "world_fact_packet.schema.json")
+    relation_ref = {"$ref": "#/$defs/relation_type"}
+    assert schema["$defs"]["query_context"]["properties"][
+        "requested_relation_types"
+    ]["items"] == relation_ref
+    assert schema["$defs"]["relation"]["properties"]["relation_type"] == relation_ref
+    assert schema["$defs"]["world_unknown_item"]["properties"][
+        "relation_type"
+    ] == relation_ref
+
+
+def test_requested_predicate_and_relation_need_explicit_responses():
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+    packet = load_json(VALID_FIXTURES / "world_fact_fenhe_dual_bank_corridor.json")
+
+    missing_predicate_response = deepcopy(packet)
+    missing_predicate_response["facts"] = [
+        fact
+        for fact in missing_predicate_response["facts"]
+        if fact["predicate_id"] != "route.group_ride_suitability"
+    ]
+    missing_predicate_response["packet_limits"]["facts_included"] -= 1
+    with pytest.raises(AssertionError):
+        assert_world_semantics(missing_predicate_response, definitions)
+
+    missing_relation_response = deepcopy(packet)
+    missing_relation_response["relations"] = [
+        relation
+        for relation in missing_relation_response["relations"]
+        if relation["relation_type"] != "exit_to"
+    ]
+    with pytest.raises(AssertionError):
+        assert_world_semantics(missing_relation_response, definitions)
+
+
+def test_relation_request_accepts_typed_unknown_or_typed_omission(
+    schemas, local_registry
+):
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+    packet = load_json(VALID_FIXTURES / "world_fact_fenhe_dual_bank_corridor.json")
+
+    relation_unknown = deepcopy(packet)
+    relation_unknown["relations"] = [
+        relation
+        for relation in relation_unknown["relations"]
+        if relation["relation_type"] != "exit_to"
+    ]
+    relation_unknown["unknowns"].append(
+        {
+            "unknown_id": "unknown.fenhe-exit-relation",
+            "subject_ref": {
+                "object_id": "route.fenhe-dual-bank-001",
+                "object_type": "named_route",
+            },
+            "relation_type": "exit_to",
+            "reason_code": "no_reliable_relation",
+            "blocking": False,
+            "user_safe_summary": "当前没有可靠的退出关系。",
+        }
+    )
+    validator_for("world_fact", schemas, local_registry).validate(relation_unknown)
+    assert_world_semantics(relation_unknown, definitions)
+
+    relation_omission = deepcopy(packet)
+    relation_omission["relations"] = [
+        relation
+        for relation in relation_omission["relations"]
+        if relation["relation_type"] != "exit_to"
+    ]
+    relation_omission["request_omissions"].append(
+        {
+            "request_kind": "relation",
+            "request_id": "exit_to",
+            "reason": "token_budget",
+            "user_safe_summary": "受 token 预算限制，本次未投影退出关系。",
+        }
+    )
+    validator_for("world_fact", schemas, local_registry).validate(relation_omission)
+    assert_world_semantics(relation_omission, definitions)
+
+
+def test_request_omission_and_world_unknown_are_fail_closed(
+    schemas, local_registry
+):
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+    packet = load_json(VALID_FIXTURES / "world_fact_fenhe_dual_bank_corridor.json")
+
+    unrequested_omission = deepcopy(packet)
+    unrequested_omission["request_omissions"].append(
+        {
+            "request_kind": "predicate",
+            "request_id": "route.local_name",
+            "reason": "privacy",
+            "user_safe_summary": "未请求项不能声明 omission。",
+        }
+    )
+    validator_for("world_fact", schemas, local_registry).validate(
+        unrequested_omission
+    )
+    with pytest.raises(AssertionError):
+        assert_world_semantics(unrequested_omission, definitions)
+
+    response_and_omission = deepcopy(packet)
+    response_and_omission["request_omissions"].append(
+        {
+            "request_kind": "relation",
+            "request_id": "exit_to",
+            "reason": "token_budget",
+            "user_safe_summary": "已有响应的请求不能同时声明完整 omission。",
+        }
+    )
+    validator_for("world_fact", schemas, local_registry).validate(
+        response_and_omission
+    )
+    with pytest.raises(AssertionError):
+        assert_world_semantics(response_and_omission, definitions)
+
+    both_unknown_kinds = deepcopy(packet)
+    both_unknown_kinds["unknowns"][0]["relation_type"] = "exit_to"
+    assert validation_errors(
+        "world_fact", both_unknown_kinds, schemas, local_registry
+    )
+    with pytest.raises(AssertionError):
+        assert_world_semantics(both_unknown_kinds, definitions)
+
+    neither_unknown_kind = deepcopy(packet)
+    del neither_unknown_kind["unknowns"][0]["predicate_id"]
+    assert validation_errors(
+        "world_fact", neither_unknown_kind, schemas, local_registry
+    )
+    with pytest.raises(AssertionError):
+        assert_world_semantics(neither_unknown_kind, definitions)
+
+
+def test_number_spatial_and_time_order_mutations_are_rejected():
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+    packet = load_json(VALID_FIXTURES / "world_fact_tianlongshan_linear_climb.json")
+
+    reversed_number_range = deepcopy(packet)
+    moving_time_fact = next(
+        fact
+        for fact in reversed_number_range["facts"]
+        if fact["predicate_id"] == "metric.moving_time_range_s"
+    )
+    moving_time_fact["value"]["number_range_value"]["minimum"] = 10801
+    moving_time_fact["value"]["number_range_value"]["maximum"] = 7200
+    with pytest.raises(AssertionError):
+        assert_world_semantics(reversed_number_range, definitions)
+
+    reversed_spatial_interval = deepcopy(packet)
+    spatial_interval = reversed_spatial_interval["dynamic_states"][0]["scope"][
+        "spatial_interval"
+    ]
+    spatial_interval["from_fraction"] = 0.8
+    spatial_interval["to_fraction"] = 0.2
+    with pytest.raises(AssertionError):
+        assert_world_semantics(reversed_spatial_interval, definitions)
+
+    equal_time_window = deepcopy(packet)
+    time_window = equal_time_window["dynamic_states"][0]["scope"]["time_window"]
+    time_window["end"] = time_window["start"]
+    with pytest.raises(AssertionError):
+        assert_world_semantics(equal_time_window, definitions)
+
+    reversed_time_window = deepcopy(packet)
+    time_window = reversed_time_window["dynamic_states"][0]["scope"]["time_window"]
+    time_window["start"] = "2026-08-05T00:00:00+08:00"
+    with pytest.raises(AssertionError):
+        assert_world_semantics(reversed_time_window, definitions)
+
+    equal_dynamic_validity = deepcopy(packet)
+    dynamic_state = equal_dynamic_validity["dynamic_states"][0]
+    dynamic_state["valid_until"] = dynamic_state["valid_from"]
+    with pytest.raises(AssertionError):
+        assert_world_semantics(equal_dynamic_validity, definitions)
+
+    reversed_dynamic_validity = deepcopy(packet)
+    reversed_dynamic_validity["dynamic_states"][0]["valid_from"] = (
+        "2026-08-05T00:00:00+08:00"
+    )
+    with pytest.raises(AssertionError):
+        assert_world_semantics(reversed_dynamic_validity, definitions)
+
+
+def test_time_order_uses_timezone_aware_rfc3339_comparison():
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+    packet = load_json(VALID_FIXTURES / "world_fact_tianlongshan_linear_climb.json")
+    timezone_crossing = deepcopy(packet)
+    timezone_crossing["query_context"]["time_window"] = {
+        "start": "2026-08-03T23:00:00+08:00",
+        "end": "2026-08-03T16:30:00+00:00",
+    }
+    assert_world_semantics(timezone_crossing, definitions)
+
+
+@pytest.mark.parametrize(
+    ("packet_environment", "fixture_only", "synthetic_fixture_data"),
+    [
+        ("production", True, False),
+        ("production", False, True),
+        ("shadow", True, False),
+        ("shadow", False, True),
+        ("test", False, True),
+        ("test", True, False),
+    ],
+)
+def test_packet_environment_combinations_fail_closed(
+    packet_environment,
+    fixture_only,
+    synthetic_fixture_data,
+    schemas,
+    local_registry,
+):
+    definitions = predicate_map(load_json(CONTRACT_DIR / "predicate_registry.v0.json"))
+    packet = load_json(VALID_FIXTURES / "world_fact_tianlongshan_linear_climb.json")
+    invalid = deepcopy(packet)
+    invalid["packet_environment"] = packet_environment
+    invalid["fixture_only"] = fixture_only
+    invalid["query_context"]["synthetic_fixture_data"] = synthetic_fixture_data
+    assert validation_errors("world_fact", invalid, schemas, local_registry)
+    with pytest.raises(AssertionError):
+        assert_world_semantics(invalid, definitions)
 
 
 def test_context_manifest_records_revisions_omissions_and_token_budget():

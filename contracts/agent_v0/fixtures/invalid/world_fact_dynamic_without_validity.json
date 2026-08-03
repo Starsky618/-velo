@@ -11,6 +11,7 @@
     "task_mode": "understand",
     "focus_refs": [],
     "requested_predicate_ids": ["dynamic.closure"],
+    "requested_relation_types": [],
     "synthetic_fixture_data": true
   },
   "objects": [],
@@ -40,6 +41,7 @@
   ],
   "advisories": [],
   "unknowns": [],
+  "request_omissions": [],
   "provenance_index": [
     {
       "provenance_id": "provenance.fixture-dynamic-source",
