@@ -1,45 +1,39 @@
 {
-  "fixture_version": "tianlongshan-recorded-v1",
+  "fixture_version": "tianlongshan-repository-scan-2026-08-04",
   "origins": {
-    "太原站附近": {"ref": "origin:ty-rail-neighborhood", "revision": "origin-r1"},
-    "太原站东广场": {"ref": "origin:ty-rail-east-square", "revision": "origin-r1"}
-  },
-  "candidate_plans": [
-    {
-      "name": "晋祠低城区暴露环线",
-      "access": {"path_ref": "path:access-jinci-r1", "summary": "站区外缘至晋祠"},
-      "core": {"path_ref": "path:tianlongshan-climb-west-r3", "summary": "天龙山主爬升与山顶折返"},
-      "return": {"path_ref": "path:return-jinci-r2", "summary": "晋祠方向返回站区"},
-      "total_distance_km": 82.4,
-      "total_climb_m": 980,
-      "estimated_minutes": 225,
-      "urban_exposure": "low",
-      "risk": "长下坡与周末景区车流",
-      "unknowns": []
+    "太原站附近": {
+      "ref": "origin:ty-rail-neighborhood",
+      "revision": "origin-r1",
+      "anchor_ref": "anchor:ty-rail-neighborhood"
     },
-    {
-      "name": "蒙山补给环线",
-      "access": {"path_ref": "path:access-mengshan-r1", "summary": "站区外缘经蒙山补给点"},
-      "core": {"path_ref": "path:tianlongshan-climb-east-r2", "summary": "天龙山东侧爬升与折返"},
-      "return": {"path_ref": "path:return-mengshan-r1", "summary": "蒙山外缘返回站区"},
-      "total_distance_km": 76.1,
-      "total_climb_m": 860,
-      "estimated_minutes": 210,
-      "urban_exposure": "low",
-      "risk": "补给点后路段服务稀少",
-      "unknowns": []
-    },
-    {
-      "name": "城区直达强度线",
-      "access": {"path_ref": "path:access-urban-direct-r1", "summary": "城区主干道直达景区"},
-      "core": {"path_ref": "path:tianlongshan-full-climb-r1", "summary": "全程主爬升"},
-      "return": {"path_ref": "path:return-urban-direct-r1", "summary": "城区主干道返回"},
-      "total_distance_km": 91.0,
-      "total_climb_m": 1460,
-      "estimated_minutes": 285,
-      "urban_exposure": "high",
-      "risk": "城区混行和长距离下坡",
-      "unknowns": []
+    "太原站东广场": {
+      "ref": "origin:ty-rail-east-square",
+      "revision": "origin-r1",
+      "anchor_ref": "anchor:ty-rail-east-square"
     }
-  ]
+  },
+  "repository_scan": {
+    "route_content": {
+      "source_object_ref": "content-route:tianlongshan",
+      "track_ref": "content/routes/tianlongshan/track.gpx",
+      "track_git_blob": "a3d9a919b430a9a4fe61059bb8f13394a1111ac2",
+      "track_point_count": 411,
+      "track_elevation_point_count": 0,
+      "meta_ref": "content/routes/tianlongshan/meta.json",
+      "meta_git_blob": "9ca31948c51fa8bd11373a2cb6af6e44bbfcbfc1",
+      "route_version_ref": null,
+      "activity_refs": [],
+      "accepted_evidence_refs": [],
+      "bicycle_access": "unknown",
+      "closure_status": "unknown",
+      "metrics_calculation_source_refs": []
+    },
+    "route_cognition": {
+      "accepted_tianlongshan_route_segment_refs": [],
+      "accepted_tianlongshan_evidence_refs": []
+    },
+    "diagnosis": "Content and geometry files exist, but no current RouteVersion, bound Activity, accepted evidence, bicycle-access fact, closure fact, or metrics calculation provenance is stored in the repository."
+  },
+  "current_revisions": {},
+  "traversals": []
 }
