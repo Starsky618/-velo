@@ -1,0 +1,57 @@
+{
+  "schema_version": "0.1.0",
+  "packet_id": "world-fact.fixture.invalid-unverified-fact",
+  "packet_environment": "test",
+  "fixture_only": true,
+  "generated_at": "2026-08-03T19:45:00+08:00",
+  "source_revision": "fixture-invalid-r1",
+  "region_ref": "region.fixture-invalid",
+  "predicate_registry_version": "0.1.0",
+  "query_context": {
+    "task_mode": "understand",
+    "focus_refs": [],
+    "requested_predicate_ids": ["route.surface_type"],
+    "requested_relation_types": [],
+    "synthetic_fixture_data": true
+  },
+  "objects": [],
+  "traversals": [],
+  "relations": [],
+  "facts": [
+    {
+      "fact_id": "fact.fixture-invalid-unverified",
+      "subject_ref": { "object_id": "route.fixture-invalid", "object_type": "named_route" },
+      "predicate_id": "route.surface_type",
+      "claim_kind": "static_curated_fact",
+      "value": { "value_kind": "enum", "enum_value": "asphalt" },
+      "scope": { "subject_ref": { "object_id": "route.fixture-invalid", "object_type": "named_route" } },
+      "fact_status": "unverified",
+      "freshness": {
+        "freshness_status": "current",
+        "observed_at": "2026-08-03T12:00:00+08:00",
+        "policy_ref": "freshness.route-characteristic-90d"
+      },
+      "quality": {
+        "source_quality_level": "low",
+        "corroboration_level": "single_source",
+        "human_confirmation_state": "unreviewed"
+      },
+      "evidence_refs": ["provenance.fixture-rider-report"]
+    }
+  ],
+  "dynamic_states": [],
+  "advisories": [],
+  "unknowns": [],
+  "request_omissions": [],
+  "provenance_index": [
+    {
+      "provenance_id": "provenance.fixture-rider-report",
+      "provenance_type": "contribution",
+      "source_revision": "fixture-report-r1",
+      "summary": "An unverified report belongs in advisories, not facts."
+    }
+  ],
+  "omitted_sections": [],
+  "packet_limits": { "fact_limit": 10, "facts_included": 1, "facts_omitted": 0, "truncated": false },
+  "metadata": { "x-fixture": true }
+}

@@ -1,0 +1,369 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/rider_context_packet.schema.json",
+  "title": "VELO Rider Context Packet v0",
+  "description": "A purpose-bounded, privacy-safe projection of rider context for one Agent task. It is not a user database or long-term memory store.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "packet_id",
+    "packet_environment",
+    "generated_at",
+    "source_revision",
+    "session_id",
+    "user_ref",
+    "authorization",
+    "current_request",
+    "bike_profiles",
+    "performance_context",
+    "saved_place_handles",
+    "familiarity",
+    "explicit_preferences",
+    "relevant_history_summaries",
+    "explicit_memory_items",
+    "unknowns",
+    "omitted_sections",
+    "privacy",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "packet_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "packet_environment": {
+      "type": "string",
+      "enum": ["test", "shadow", "production"]
+    },
+    "generated_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "source_revision": { "$ref": "common.schema.json#/$defs/revision" },
+    "session_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "user_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "authorization": { "$ref": "#/$defs/authorization" },
+    "current_request": { "$ref": "#/$defs/current_request" },
+    "bike_profiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/bike_profile" },
+      "maxItems": 20
+    },
+    "performance_context": { "$ref": "#/$defs/performance_context" },
+    "saved_place_handles": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/location_handle" },
+      "maxItems": 50
+    },
+    "familiarity": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/familiarity_item" },
+      "maxItems": 100
+    },
+    "explicit_preferences": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/preference_item" },
+      "maxItems": 100
+    },
+    "relevant_history_summaries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/history_summary" },
+      "maxItems": 50
+    },
+    "explicit_memory_items": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/explicit_memory_item" },
+      "maxItems": 50
+    },
+    "unknowns": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/unknown_item" },
+      "maxItems": 100
+    },
+    "omitted_sections": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/omitted_section" },
+      "maxItems": 50
+    },
+    "privacy": { "$ref": "#/$defs/privacy" },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "bike_profiles": { "minItems": 1 } } },
+      "then": {
+        "properties": {
+          "authorization": {
+            "properties": {
+              "allowed_sections": { "contains": { "const": "bike_profiles" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "performance_context": { "minProperties": 1 } } },
+      "then": {
+        "properties": {
+          "authorization": {
+            "properties": {
+              "allowed_sections": { "contains": { "const": "performance_context" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "saved_place_handles": { "minItems": 1 } } },
+      "then": {
+        "properties": {
+          "authorization": {
+            "properties": {
+              "allowed_sections": { "contains": { "const": "saved_place_handles" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "familiarity": { "minItems": 1 } } },
+      "then": {
+        "properties": {
+          "authorization": {
+            "properties": {
+              "allowed_sections": { "contains": { "const": "familiarity" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "explicit_preferences": { "minItems": 1 } } },
+      "then": {
+        "properties": {
+          "authorization": {
+            "properties": {
+              "allowed_sections": { "contains": { "const": "explicit_preferences" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "relevant_history_summaries": { "minItems": 1 } } },
+      "then": {
+        "properties": {
+          "authorization": {
+            "properties": {
+              "allowed_sections": { "contains": { "const": "relevant_history_summaries" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "explicit_memory_items": { "minItems": 1 } } },
+      "then": {
+        "properties": {
+          "authorization": {
+            "properties": {
+              "allowed_sections": { "contains": { "const": "explicit_memory_items" } }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "purpose",
+        "task_mode",
+        "allowed_sections",
+        "data_scope_refs",
+        "sensitive_location_policy"
+      ],
+      "properties": {
+        "purpose": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "task_mode": {
+          "type": "string",
+          "enum": ["discover", "understand", "compare", "revise", "execute"]
+        },
+        "allowed_sections": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "bike_profiles",
+              "performance_context",
+              "saved_place_handles",
+              "familiarity",
+              "explicit_preferences",
+              "relevant_history_summaries",
+              "explicit_memory_items"
+            ]
+          }
+        },
+        "data_scope_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" }
+        },
+        "sensitive_location_policy": {
+          "const": "opaque_ref_only"
+        }
+      }
+    },
+    "current_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_summary"],
+      "properties": {
+        "request_summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "time_budget_s": { "type": "integer", "minimum": 60 },
+        "return_to_origin": { "type": "boolean" },
+        "selected_bike_profile_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "companion_summary": { "type": "string", "minLength": 1, "maxLength": 300 }
+      }
+    },
+    "bike_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_ref", "bike_type", "surface_capabilities"],
+      "properties": {
+        "profile_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "bike_type": {
+          "type": "string",
+          "enum": ["road", "gravel", "mountain", "city", "other"]
+        },
+        "surface_capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["paved", "compact_gravel", "loose_gravel", "trail", "unknown"]
+          }
+        }
+      }
+    },
+    "performance_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ftp_watts": { "type": "number", "exclusiveMinimum": 0 },
+        "weight_kg": { "type": "number", "exclusiveMinimum": 0 },
+        "speed_model_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "climb_model_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+      }
+    },
+    "familiarity_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject_ref",
+        "level",
+        "ride_count_summary",
+        "source_activity_refs"
+      ],
+      "properties": {
+        "subject_ref": { "$ref": "common.schema.json#/$defs/object_ref" },
+        "traversal_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "level": {
+          "type": "string",
+          "enum": ["unfamiliar", "seen", "ridden_once", "familiar", "unknown"]
+        },
+        "ride_count_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["completed_rides", "summary"],
+          "properties": {
+            "completed_rides": { "type": "integer", "minimum": 0 },
+            "summary": { "type": "string", "minLength": 1, "maxLength": 300 }
+          }
+        },
+        "last_ridden_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "source_activity_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" }
+        }
+      }
+    },
+    "preference_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preference_id",
+        "predicate_id",
+        "value",
+        "source_kind",
+        "confirmed_at",
+        "relevance_reason"
+      ],
+      "properties": {
+        "preference_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "predicate_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "value": { "$ref": "common.schema.json#/$defs/typed_value" },
+        "source_kind": {
+          "type": "string",
+          "enum": ["product_field", "user_statement", "user_confirmation"]
+        },
+        "confirmed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "relevance_reason": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "history_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary_id", "source_activity_refs", "summary", "relevance_reason"],
+      "properties": {
+        "summary_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "source_activity_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" }
+        },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "relevance_reason": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "explicit_memory_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memory_id",
+        "source_kind",
+        "confirmed_at",
+        "relevance_reason",
+        "content_summary",
+        "user_control_state"
+      ],
+      "properties": {
+        "memory_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "source_kind": { "const": "explicit_memory" },
+        "confirmed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "relevance_reason": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "content_summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "user_control_state": {
+          "type": "string",
+          "enum": ["active", "hidden", "pending_deletion"]
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exact_coordinates_included",
+        "raw_activity_tracks_included",
+        "full_chat_transcript_included"
+      ],
+      "properties": {
+        "exact_coordinates_included": { "const": false },
+        "raw_activity_tracks_included": { "const": false },
+        "full_chat_transcript_included": { "const": false }
+      }
+    }
+  }
+}

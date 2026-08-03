@@ -36,3 +36,4 @@ scipy>=1.11
 
 # 测试依赖
 pytest==9.0.2
+jsonschema==4.26.0

@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-03T19:03:22+08:00'
+updated_at: '2026-08-03T22:28:27+08:00'
 status: active
 authority:
   order:
@@ -59,10 +59,10 @@ repository:
   last_verified_main_commit_before_a1_5_merge: cae88a4d4d1e365baddd394d196444f4ee6d1e8f
   a1_5_reviewed_head: 91297fd544964bef7d6a2224af210c7272975468
   a1_5_reviewed_merge_ref: 4f436c9c08b05eff3ba79032bb8aaf8870e26bdf
-  last_verified_main_commit: null
-  last_verified_main_commit_status: pending_post_merge_reverification
-  last_verified_at: null
-  verified_via: pending_post_merge_remote_main_reverification
+  last_verified_main_commit: ba0a95d51291d64c905f55e8baa2ed6812991ac4
+  last_verified_main_commit_status: verified_at_a2_1_start
+  last_verified_at: '2026-08-03T20:00:00+08:00'
+  verified_via: git_fetch_and_rev_parse_origin_main_at_a2_1_start
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
@@ -99,6 +99,15 @@ repository:
   a1_5_execution_branch: codex/agent-first-a1-legacy-agent-rename
   a1_5_worktree_initial_status: clean
   a1_5_adr_path: docs/adr/017-为什么旧app-agent必须迁出并保留RQ兼容路径.md
+  a1_5_merge_commit: ba0a95d51291d64c905f55e8baa2ed6812991ac4
+  a1_5_post_merge_ci_run: 30808510357
+  a2_1_baseline_commit: ba0a95d51291d64c905f55e8baa2ed6812991ac4
+  a2_1_execution_branch: codex/agent-first-a2-context-packets
+  a2_1_worktree_initial_status: clean
+  a2_1_reviewed_head: 976a330fe21c1b1d92efe3d9c5974a182959d119
+  a2_1_reviewed_merge_ref: 52ace981cfaa741ee155748958dc1714f6a0c832
+  a2_1_branch_ci_run: 30821046594
+  a2_1_merge_ref_ci_run: 30821050482
   original_authoring_worktree_status_at_a0c_start: dirty_with_reviewed_a0_files_preserved
   dirty_workspace_policy: preserve_all_user_changes
   git_write_permission: false
@@ -106,7 +115,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: none_until_next_orchestrator_task_packet
+  git_write_scope: none_after_a2_1_closeout
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -122,14 +131,28 @@ current_phase:
   - no_production_database_required
   - provider_success_timeout_ambiguity_no_result_disconnect_and_hard_fail_are_simulatable
   - raw_provider_orm_public_publish_and_real_export_are_unreachable
+  - at_least_10_versioned_gold_world_packages
+  - gold_world_packages_cover_at_least_6_route_shapes
+  - every_exposed_world_fact_has_scope
+  - every_exposed_world_fact_has_provenance_or_calculation
+  - every_exposed_world_fact_has_freshness
+  - missing_information_is_explicit_unknown
+  - context_manifest_records_omissions_and_token_budget
+  - at_least_30_velobench_cases_consume_versioned_world_packages
+  - unverified_rider_reports_never_silently_become_canonical_facts
 a1_parent:
   id: A1
   name: architecture_adrs
   status: completed
   decision: PASS
-next_task:
+a2_parent:
   id: A2
   name: agent_v0_contracts
+  status: in_progress
+next_task:
+  id: A2.2
+  parent: A2
+  name: session_run_map_and_action_contracts
   status: ready_to_specify
   execution_authorized: false
   requires_new_orchestrator_task_packet: true
@@ -171,6 +194,48 @@ a1_subtasks:
   adr: docs/adr/017-为什么旧app-agent必须迁出并保留RQ兼容路径.md
   adr_status: Accepted
   pr: 40
+a2_subtasks:
+- id: A2.1
+  name: context_packet_and_predicate_contracts
+  status: completed
+  decision: PASS
+  orchestrator_decision: PASS
+  revision_status: resolved
+  pr: 41
+  execution_authorized: false
+- id: A2.2
+  name: session_run_map_and_action_contracts
+  status: ready_to_specify
+  execution_authorized: false
+- id: A2.3
+  name: tool_approval_effect_plan_and_validation_contracts
+  status: blocked
+  blocked_by: A2.2
+- id: A2.4
+  name: trace_error_contribution_and_contract_freeze
+  status: blocked
+  blocked_by: A2.3
+agent_v0_contract_policy:
+  json_schema_draft: 2020-12
+  contract_directory: contracts/agent_v0
+  current_schema_version: 0.1.0
+  schema_id_prefix: https://schemas.velo.invalid/agent_v0/
+  language_neutral: true
+  strict_objects: true
+  local_ref_resolution_only: true
+  metadata_is_not_authoritative: true
+  runtime_choice: deferred
+  database_schema_implied: false
+  vector_database_implied: false
+  gold_world_package_route_shapes:
+  - linear_climb
+  - corridor
+  - area_network
+  - loop
+  - destination_ride
+  - classic_composition
+  gold_world_packages_created_in_a2_1: 0
+  synthetic_contract_world_fixtures_created_in_a2_1: 2
 legacy_agent_namespace_policy:
   decision_status: Accepted
   architecture_task: A1.5
@@ -197,11 +262,11 @@ subsequent_tasks:
 - id: A3
   name: velobench_cases_fixtures_graders
   status: blocked
-  blocked_by: A2
+  blocked_by: A2.4
 - id: A4
   name: deterministic_fake_environment
   status: blocked
-  blocked_by: A2
+  blocked_by: A2.4
 - id: A5
   name: phase_b_shadow_spec
   status: blocked
@@ -759,6 +824,98 @@ evidence_log:
     a2_status: ready_to_specify
     a2_execution_authorized: false
     a3_through_a5: blocked
+- id: E-20260803-A2-1-CODEX-DELIVERY
+  type: contract_foundation_delivery
+  status: READY_FOR_REVIEW
+  evidence:
+    parent_task: A2
+    task: A2.1
+    orchestrator_decision: SELECTED
+    baseline_main: ba0a95d51291d64c905f55e8baa2ed6812991ac4
+    baseline_main_post_merge_ci_run: 30808510357
+    execution_branch: codex/agent-first-a2-context-packets
+    initial_worktree: clean
+    dependency_decision: jsonschema_4_26_0_used_by_contract_tests_only
+    schema_version: 0.1.0
+    json_schema_draft: 2020-12
+    schemas:
+    - common.schema.json
+    - predicate_registry.schema.json
+    - rider_context_packet.schema.json
+    - world_fact_packet.schema.json
+    - context_manifest.schema.json
+    predicate_count: 22
+    valid_fixture_count: 4
+    invalid_fixture_count: 6
+    synthetic_world_fixture_count: 2
+    local_contract_test_result: 25_passed_0_skipped
+    local_refs_only: true
+    runtime_code_changed: false
+    database_migration_changed: false
+    runtime_framework_decided: false
+    production_context_compiler_exists: false
+    real_provider_or_export_run: false
+    a2_1_status: in_review
+    a2_2_through_a2_4: blocked
+    a3_through_a5: blocked
+    merge_authorized: false
+    deploy_authorized: false
+    ci_evidence: tracked_externally_on_current_draft_pr
+    ci_rule: exact_current_pull_request_head_and_merge_ref_runs_are_authoritative
+- id: E-20260803-A2-1-R1-CODEX-REVISION
+  type: contract_revision_delivery
+  status: applied_waiting_orchestrator_re_review
+  evidence:
+    parent_task: A2
+    task: A2.1
+    review_round: A2_1_R1
+    last_orchestrator_decision: REVISE
+    previous_head: 62c0ca13311bccb48a62083fce02383898cd162e
+    schema_version: 0.1.0
+    predicate_count: 21
+    revision_findings_applied:
+    - explicit_unknown_only_for_missing_fact_values
+    - route_shape_focus_and_owner_boundary
+    - advisory_typed_value_scope_and_freshness
+    - independent_relation_requests_and_complete_responses
+    - ordered_ranges_times_and_environment_combinations
+    local_contract_test_result: 48_passed_0_skipped
+    orchestrator_re_review: pending
+    a2_1_status: in_review
+    a2_2_through_a2_4: blocked
+    a3_through_a5: blocked
+    execution_authorized: false
+    git_write_permission_after_delivery: false
+    merge_authorized: false
+    deploy_authorized: false
+- id: E-20260803-A2-1-ORCHESTRATOR-PASS
+  type: orchestrator_contract_review
+  status: PASS
+  evidence:
+    pr: 41
+    reviewed_base: ba0a95d51291d64c905f55e8baa2ed6812991ac4
+    reviewed_head: 976a330fe21c1b1d92efe3d9c5974a182959d119
+    reviewed_merge_ref: 52ace981cfaa741ee155748958dc1714f6a0c832
+    changed_files: 22
+    comments: 0
+    review_threads: 0
+    targeted_contract_result: 48_passed_0_skipped
+    branch_ci_run: 30821046594
+    merge_ref_ci_run: 30821050482
+    branch_ci_result: 2122_passed_0_skipped
+    merge_ref_ci_result: 2122_passed_0_skipped
+    fresh_postgis_migration: true
+    resolved_findings:
+    - formal_facts_cannot_encode_missing_values_as_unknown
+    - route_shape_is_bound_to_focus_and_allowed_owner_types
+    - advisories_have_registry_aligned_typed_values_scope_and_freshness
+    - predicate_and_relation_requests_have_explicit_complete_responses
+    - ranges_times_and_environment_combinations_fail_closed
+    decision: PASS
+    merge_authorized: true
+    deploy_authorized: false
+    a2_2_status: ready_to_specify
+    a2_2_execution_authorized: false
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec
@@ -880,6 +1037,21 @@ completed_tasks:
   M3_authorized: false
   merge_authorized_by_current_task_packet: true
   deploy_authorized: false
+- id: A2.1
+  parent: A2
+  name: context_packet_and_predicate_contracts
+  decision: PASS
+  passed_at: '2026-08-03T22:28:27+08:00'
+  pr: 41
+  reviewed_head: 976a330fe21c1b1d92efe3d9c5974a182959d119
+  reviewed_merge_ref: 52ace981cfaa741ee155748958dc1714f6a0c832
+  branch_ci_run: 30821046594
+  merge_ref_ci_run: 30821050482
+  tests_passed: 2122
+  skipped: 0
+  fresh_postgis_migration: true
+  merge_authorized_by_current_task_packet: true
+  deploy_authorized: false
 risks:
 - id: R1
   description: main_moves_during_orchestration_or_execution
@@ -901,7 +1073,7 @@ risks:
   mitigation: mandatory_expected_end_state_forbidden_actions_code_grader_and_ledgers
 - id: R7
   description: A0_docs_misread_as_runtime_schema_or_production_authorization
-  mitigation: keep_A0_through_A1_5_PASS_as_architecture_only_A1_completed_A2_ready_to_specify_but_unauthorized_M1_M2_M3_and_deploy_forbidden_and_A3_to_A5_blocked
+  mitigation: keep_A0_through_A1_5_PASS_as_architecture_only_A2_1_PASS_as_contract_only_A2_2_ready_to_specify_but_unauthorized_A2_3_through_A5_blocked_M1_M2_M3_and_deploy_forbidden
 - id: R8
   description: baseline_ci_or_mock_tests_confused_with_provider_device_deploy_or_user_evidence
   mitigation: report_each_evidence_layer_separately_and_keep_unverified_explicit

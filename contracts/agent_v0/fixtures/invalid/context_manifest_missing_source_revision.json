@@ -1,0 +1,41 @@
+{
+  "schema_version": "0.1.0",
+  "manifest_id": "context-manifest.fixture-missing-revision",
+  "packet_environment": "test",
+  "session_id": "planning-session.fixture-invalid",
+  "run_id": "agent-run.fixture-invalid",
+  "model_call_id": "model-call.fixture-invalid",
+  "compiled_at": "2026-08-03T19:40:00+08:00",
+  "task_mode": "discover",
+  "prompt_policy_version": "prompt-policy.v0.1.0",
+  "playbook_version": "planning-playbook.v0.1.0",
+  "tool_registry_version": "tool-registry.unimplemented-v0",
+  "predicate_registry_version": "0.1.0",
+  "session_revision": 1,
+  "source_packet_refs": [
+    {
+      "packet_type": "world_fact_packet",
+      "packet_id": "world-fact.fixture.tianlongshan-linear-climb.1",
+      "schema_version": "0.1.0",
+      "content_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  ],
+  "memory_item_refs": [],
+  "plan_revision_refs": [],
+  "included_sections": ["world.facts"],
+  "omitted_sections": [],
+  "privacy_redactions": [],
+  "token_budget": {
+    "budget": 1000,
+    "used": 100,
+    "reserved_for_response": 900
+  },
+  "token_counts": [
+    { "section": "world.facts", "tokens": 100 }
+  ],
+  "context_content_hash": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  "source_of_truth": false,
+  "metadata": {
+    "x-fixture": true
+  }
+}
