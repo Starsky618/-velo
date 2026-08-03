@@ -1,6 +1,6 @@
-# VELO Agent v0 context contracts
+# VELO Agent v0 language-neutral contracts
 
-本目录是 A2.1 的语言中立 JSON Schema 合同基础。它定义一次模型调用可接收的最小、版本化投影，不是数据库 schema，不选择 Python、TypeScript 或 Agent Runtime，也不证明生产 Context Compiler 已存在。
+本目录包含 A2.1 Context contracts 与 A2.2 Session/Run/Map/Action contracts。它们固定语言中立、版本化的 shape 与 semantic conformance，不是数据库 schema，不选择 Python、TypeScript 或 Agent Runtime，也不证明生产 Context Compiler、reducer 或持久化服务已存在。
 
 ## 当前包含
 
@@ -9,13 +9,13 @@
 - RiderContextPacket
 - WorldFactPacket
 - ContextManifest
-
-## 当前不包含
-
 - SessionState
 - AgentRun
 - MapEvent / MapAction
 - AgentAction
+
+## 当前不包含
+
 - ToolCall / ToolResult
 - Approval / SideEffect
 - RidePlanDraft / ValidationResult
@@ -30,6 +30,23 @@
 | `RiderContextPacket` | 仅投影当前任务已授权且相关的骑手资料、opaque saved-place ref、结构化 familiarity、明确偏好/记忆、unknown 与省略项。 |
 | `WorldFactPacket` | 仅投影当前任务需要的版本化路线对象、Traversal、关系、带 scope/provenance/freshness 的事实、时效动态、隔离 advisory 与 explicit unknown。 |
 | `ContextManifest` | 记录一次 model call 使用的 source revision、选择/省略、隐私删减与 token 预算，使编译输入可审计和可重放；它不是事实来源。 |
+| `SessionState` | 一次可恢复骑行决策的 working state；保存 intent/focus/candidate/map/unknown/用户决策引用，不保存 transcript、Run checkpoint、World Fact 副本或长期 Memory。 |
+| `AgentRun` | 确定性 Run Controller 的一次有界执行；一个 Session 可以有多个 Run，每个 Run 固定绑定一个 committed Session revision，预算在 resume lineage 中只能单调消耗。 |
+| `MapEvent` | 用户从共享地图产生的 typed input；pin 只携带 opaque location handle，candidate switch 不等于最终 Plan selection。 |
+| `MapAction` | 必须经过 deterministic gate/reducer 的声明式地图动作；不允许 JS command、CSS/style JSON 或坐标 payload。 |
+| `AgentAction` | 单一主 Agent 在一次 model turn 中提出的单个 typed proposal；不能直接改 Session、选择 Plan、调用 raw Provider 或制造外部副作用。 |
+
+## Session、Run 与地图动作边界
+
+- `SessionState` 是 deterministic interaction service 拥有的 working state，不是完整聊天记录。one Session can have many Runs；Run 与 Session 分离，Run/AgentAction/MapAction 都绑定 `base_session_revision`，stale proposal 不能覆盖新版 Session。
+- `AgentRun` 的 created 状态不含任何执行引用或预算消耗，且不能提交 Session；每个实际 model turn 必须恰好对应一个 `ContextManifest`。running Run 也不能提前声称最终 commit，deadline 必须严格晚于 started time。resume 使用新 `run_id`，继承同一 lineage 与单调预算，并绑定 parent 已提交后的 current Session revision。
+- `MapEvent` 和 `MapAction` 都必须经过 deterministic reducer；地图状态不能从自然语言回复反推。用户切换 active candidate 只改变当前关注项，只有 `plan_confirmed` 用户事件或未来等价明确事件才能产生 `selected_plan`。
+- Session 的地图状态只保存 deterministic boundary 已解析的 opaque `available_bounds_refs`。`fit_bounds` 可以把 viewport 从当前 bounds 改到其中另一个已知 ref；viewport 用 `source_kind/source_ref` 区分 initial、MapEvent 与 MapAction 来源，仍禁止 bbox、坐标、WKT 或 GeoJSON。
+- active、switch、leg selection 与最终 selection 不能引用 hidden candidate，且必须 current 并携带 validation ref。`selected_plan` 必须由真实 user `plan_confirmed` MapEvent 对齐 candidate、Plan revision、前一 Session revision 与时间，不能只保存一个看似事件的字符串。
+- Session 合法拥有 0–3 个 candidate；0 个候选是正式状态，Agent 应返回 typed `no_result`，不能强凑三条或用空 `present_valid_candidates` 伪装成功。
+- 起点或目的地改变后，旧 candidate/selection 必须失效；resume Run 不能重置已消费预算；stale Run、AgentAction、MapAction 与 MapEvent 都必须 fail closed。
+- 地图 pin 先由确定性 interaction adapter 转为 opaque place/location ref。A2.2 合同只允许粗粒度 label 与 `exact_coordinates_exposed=false`，不传精确坐标、bbox、WKT/GeoJSON 或 raw track。
+- `AgentAction` 永远 `proposal_only=true`。ToolCall/ToolResult、Capability/Approval/Effect、RidePlanDraft/ValidationResult 仍属于 A2.3；Trace/Error/Contribution 与完整 Agent v0 freeze 属于 A2.4。
 
 ## Agent 不能看到什么
 
@@ -51,7 +68,7 @@ Registry v0 不是全国路线字段全集。新增路线特征时优先增加�
 
 Predicate request 与 Relation request 是两条独立合同面。每个 requested Predicate 必须由 Fact、Dynamic State、Advisory、predicate unknown 或 typed request omission 明确响应；每个 requested Relation 必须由正式 `relations[]`、relation unknown 或 typed request omission 明确响应。`route.exit_option` 已从 Registry 删除，正式退出关系只使用 `exit_to`，不得双写成 Fact。
 
-需要过滤、校验、追踪、比较或作为事实使用的数据，必须提升为正式字段或 Predicate，不得塞入 `metadata`。`metadata` 仅允许 `x-` namespaced 的显示/调试标量，不能保存路线事实、精确位置、approval、validation、provenance 或 freshness，Agent 也不能依赖它做硬判断。禁止用任意 prose blob 规避正式建模。
+需要过滤、校验、追踪、比较或作为事实使用的数据，必须提升为正式字段或 Predicate，不得塞入 `metadata`。`metadata` 仅允许 `x-` namespaced 的显示/调试标量，不能保存路线事实、Session 状态真相、精确位置、tool payload、approval、validation、provenance、freshness 或 side effect，Agent 也不能依赖它做硬判断。禁止用任意 prose blob 规避正式建模。
 
 ## 版本与验证
 
@@ -61,11 +78,20 @@ Predicate request 与 Relation request 是两条独立合同面。每个 request
 - `$id` 前缀：`https://schemas.velo.invalid/agent_v0/`
 - 同主版本只允许兼容性新增可选字段；破坏性变更使用新目录或新主版本。
 - fixture 固定 `schema_version`，World fixture 均为 `packet_environment=test`、`fixture_only=true` 的合成合同数据，不是已核验产品事实。
+- A2.2 fixture 均为 `environment=test`、`fixture_only=true` 的 synthetic interaction scenario，不是生产 Session、真实 Plan、Provider 结果或持久化记录。
 - 所有 `$ref` 必须由本地 `referencing.Registry` 解析；合同测试不得联网、访问数据库、Redis 或真实 filesystem storage。
-- JSON Schema 负责语言中立的 shape validation，但不等于 semantic conformance。Registry unit/value/freshness、request 完整响应、route-shape focus、范围顺序、带时区时间顺序、environment/fixture 组合、section authorization、跨对象 identity/reference、Manifest source hash 与 token accounting 等跨字段不变量由同一 conformance suite 固定。未来任何语言的消费者都必须实现并通过这些不变量，不能只跑 schema shape validation。
+- JSON Schema 负责语言中立的 shape validation，但不等于 semantic conformance。Registry unit/value/freshness、request 完整响应、route-shape focus、范围顺序、带时区时间顺序、跨合同 environment/fixture/time、Session/Run revision、resume budget/current Session、candidate/selection provenance、viewport Event/Action transition、MapEvent/MapAction target identity、Manifest binding 与 token accounting 等跨字段不变量由 conformance suite 固定。未来任何语言的消费者都必须实现并通过这些不变量，不能只跑 schema shape validation。
+
+## Python / TypeScript 与 Runtime 边界
+
+- A2 合同是 language-neutral JSON Schema。当前 Python pytest 只利用既有 Python 仓库与 CI 执行 semantic conformance，不代表选择 Python Agent Runtime。
+- Proposed Agent-First research 中，Agent Control Plane 的优先候选仍是独立 TypeScript Shadow Service；这是候选方向，不是 Accepted Runtime 语言或框架决策。
+- Runtime 选择继续 deferred。第一个 Runtime implementation Task Packet 之前必须完成正式技术栈决策，不能由 conformance test 的实现语言偷渡决定；当前 Runtime implementation 未授权。
+- 现有 Python/FastAPI Deterministic Domain Plane 继续保留，不因未来可能采用 TypeScript Agent Control Plane 而重写。
 
 安装 `requirements.txt` 中固定的测试依赖后运行：
 
 ```bash
 pytest -q tests/contracts/test_agent_v0_context_contracts.py
+pytest -q tests/contracts/test_agent_v0_session_run_map_action_contracts.py
 ```

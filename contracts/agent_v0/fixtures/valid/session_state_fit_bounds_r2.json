@@ -1,0 +1,128 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "session_id": "planning-session.fixture-002",
+  "session_revision": 2,
+  "state_owner": "deterministic_interaction_service",
+  "status": "open",
+  "created_at": "2026-08-03T20:00:00+08:00",
+  "updated_at": "2026-08-03T20:08:30+08:00",
+  "expires_at": "2026-08-03T23:00:00+08:00",
+  "task_mode": "compare",
+  "rider_ref": {
+    "object_id": "rider.fixture-002",
+    "object_type": "rider"
+  },
+  "active_intent_ref": "intent.fixture-candidates-002",
+  "last_user_turn_ref": "user-turn.fixture-010",
+  "focused_world_refs": [
+    {
+      "object_id": "route.fixture-plan-focus-a",
+      "object_type": "named_route"
+    },
+    {
+      "object_id": "route.fixture-plan-focus-b",
+      "object_type": "named_route"
+    }
+  ],
+  "candidate_plans": [
+    {
+      "candidate_ref": "candidate.fixture-a",
+      "plan_revision_ref": {
+        "object_ref": {
+          "object_id": "ride-plan.fixture-a",
+          "object_type": "ride_plan"
+        },
+        "revision": 1
+      },
+      "session_fit_status": "current",
+      "presentation_state": "hidden",
+      "display_order": 1,
+      "validation_result_ref": "validation.fixture-a-r1",
+      "tradeoff_summary_ref": "tradeoff.fixture-a"
+    },
+    {
+      "candidate_ref": "candidate.fixture-b",
+      "plan_revision_ref": {
+        "object_ref": {
+          "object_id": "ride-plan.fixture-b",
+          "object_type": "ride_plan"
+        },
+        "revision": 1
+      },
+      "session_fit_status": "current",
+      "presentation_state": "hidden",
+      "display_order": 2,
+      "validation_result_ref": "validation.fixture-b-r1",
+      "tradeoff_summary_ref": "tradeoff.fixture-b"
+    }
+  ],
+  "map_state": {
+    "anchors": [
+      {
+        "anchor_ref": "anchor.fixture-origin-002",
+        "anchor_role": "origin",
+        "location_handle": {
+          "place_ref": "place.fixture-origin-coarse-002",
+          "display_label": "河西集合区域",
+          "precision": "point_ref_hidden",
+          "exact_coordinates_exposed": false
+        },
+        "source_event_ref": "map-event.fixture-origin-002"
+      },
+      {
+        "anchor_ref": "anchor.fixture-destination-002",
+        "anchor_role": "destination",
+        "location_handle": {
+          "place_ref": "place.fixture-destination-coarse-002",
+          "display_label": "北部返程区域",
+          "precision": "point_ref_hidden",
+          "exact_coordinates_exposed": false
+        },
+        "source_event_ref": "map-event.fixture-destination-002"
+      }
+    ],
+    "available_bounds_refs": [
+      "bounds.fixture-candidate-area-002",
+      "bounds.fixture-candidate-detail-002"
+    ],
+    "viewport": {
+      "bounds_ref": "bounds.fixture-candidate-detail-002",
+      "zoom_level": 10,
+      "source_kind": "map_action",
+      "source_ref": "map-action.fixture-fit-bounds-001"
+    },
+    "presentation": {
+      "shown_area_refs": [],
+      "highlighted_targets": [],
+      "visible_candidate_refs": [],
+      "dimmed_targets": [],
+      "warning_scope_refs": [],
+      "last_map_action_refs": [
+        "map-action.fixture-fit-bounds-001"
+      ]
+    }
+  },
+  "assumptions": [
+    {
+      "assumption_id": "assumption.fixture-tradeoff-002",
+      "assumption_kind": "plan_tradeoff",
+      "status": "user_confirmed",
+      "source_ref": "user-turn.fixture-010",
+      "user_safe_summary": "骑友愿意在风景和爬升强度之间做比较。"
+    }
+  ],
+  "unknowns": [
+    {
+      "unknown_id": "unknown.fixture-user-choice-002",
+      "unknown_kind": "user_choice",
+      "blocking": false,
+      "user_safe_summary": "两个可行候选尚未由骑友选择。"
+    }
+  ],
+  "metadata": {
+    "x-fixture": true,
+    "x-synthetic": true
+  }
+}

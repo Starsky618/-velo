@@ -1,0 +1,331 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/agent_run.schema.json",
+  "title": "VELO Agent Run State v0",
+  "description": "One bounded deterministic Run Controller execution bound to one committed Planning Session revision.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "environment",
+    "fixture_only",
+    "run_id",
+    "session_id",
+    "state_owner",
+    "run_lineage_ref",
+    "base_session_revision",
+    "trigger",
+    "run_status",
+    "current_step",
+    "budget",
+    "context_manifest_refs",
+    "action_proposal_refs",
+    "tool_call_refs",
+    "observation_refs",
+    "session_commit",
+    "started_at",
+    "last_checkpoint_at",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "environment": { "$ref": "session_state.schema.json#/$defs/environment" },
+    "fixture_only": { "type": "boolean" },
+    "run_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "session_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "state_owner": { "const": "deterministic_run_controller" },
+    "run_lineage_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "base_session_revision": { "type": "integer", "minimum": 1 },
+    "trigger": { "$ref": "#/$defs/trigger" },
+    "run_status": {
+      "type": "string",
+      "enum": ["created", "running", "paused", "stopped"]
+    },
+    "stop_reason": {
+      "type": "string",
+      "enum": [
+        "waiting_for_user",
+        "approval_required",
+        "completed",
+        "no_result",
+        "budget_exceeded",
+        "deterministic_error",
+        "cancelled"
+      ]
+    },
+    "current_step": {
+      "type": "string",
+      "enum": [
+        "receive_event",
+        "load_state",
+        "compile_context",
+        "model_decide",
+        "gate",
+        "execute_tool",
+        "apply_observation",
+        "reduce_state",
+        "validate",
+        "persist",
+        "trace",
+        "respond_or_stop"
+      ]
+    },
+    "pending_gate": { "$ref": "#/$defs/pending_gate" },
+    "budget": { "$ref": "#/$defs/budget" },
+    "context_manifest_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+      "maxItems": 100
+    },
+    "action_proposal_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+      "maxItems": 100
+    },
+    "tool_call_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+      "maxItems": 100
+    },
+    "observation_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+      "maxItems": 100
+    },
+    "session_commit": { "$ref": "#/$defs/session_commit" },
+    "started_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "last_checkpoint_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "ended_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "allOf": [
+    { "$ref": "session_state.schema.json#/$defs/environment_fixture_rule" },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "run_status": { "const": "created" },
+            "current_step": { "const": "receive_event" },
+            "budget": {
+              "properties": {
+                "consumed": {
+                  "properties": {
+                    "model_turns": { "const": 0 },
+                    "tool_calls": { "const": 0 },
+                    "plan_generations": { "const": 0 },
+                    "tokens": { "const": 0 },
+                    "cost_micros": { "const": 0 }
+                  }
+                },
+                "tool_retry_counters": { "maxItems": 0 }
+              }
+            },
+            "context_manifest_refs": { "maxItems": 0 },
+            "action_proposal_refs": { "maxItems": 0 },
+            "tool_call_refs": { "maxItems": 0 },
+            "observation_refs": { "maxItems": 0 },
+            "session_commit": {
+              "properties": { "commit_status": { "const": "not_attempted" } }
+            }
+          },
+          "required": ["run_status"],
+          "not": {
+            "anyOf": [
+              { "required": ["stop_reason"] },
+              { "required": ["pending_gate"] },
+              { "required": ["ended_at"] }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "run_status": { "const": "running" },
+            "session_commit": {
+              "properties": { "commit_status": { "const": "not_attempted" } }
+            }
+          },
+          "required": ["run_status"],
+          "not": {
+            "anyOf": [
+              { "required": ["stop_reason"] },
+              { "required": ["pending_gate"] },
+              { "required": ["ended_at"] }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "run_status": { "const": "paused" },
+            "stop_reason": { "enum": ["waiting_for_user", "approval_required"] }
+          },
+          "required": ["run_status", "stop_reason", "pending_gate"],
+          "not": { "required": ["ended_at"] }
+        },
+        {
+          "properties": {
+            "run_status": { "const": "stopped" },
+            "stop_reason": {
+              "enum": [
+                "completed",
+                "no_result",
+                "budget_exceeded",
+                "deterministic_error",
+                "cancelled"
+              ]
+            }
+          },
+          "required": ["run_status", "stop_reason", "ended_at"],
+          "not": { "required": ["pending_gate"] }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "trigger": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["trigger_type", "trigger_ref"],
+          "properties": {
+            "trigger_type": { "enum": ["user_turn", "map_event", "system"] },
+            "trigger_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["trigger_type", "trigger_ref", "resumed_from_run_ref"],
+          "properties": {
+            "trigger_type": { "const": "resume" },
+            "trigger_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+            "resumed_from_run_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+          }
+        }
+      ]
+    },
+    "pending_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate_kind", "gate_ref", "created_at"],
+      "properties": {
+        "gate_kind": {
+          "type": "string",
+          "enum": [
+            "user_input",
+            "approval",
+            "tool_policy",
+            "deterministic_validation",
+            "reconciliation"
+          ]
+        },
+        "gate_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "created_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      }
+    },
+    "budget_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_model_turns",
+        "max_tool_calls",
+        "max_plan_generations",
+        "max_same_tool_retries",
+        "wall_clock_deadline"
+      ],
+      "properties": {
+        "max_model_turns": { "type": "integer", "minimum": 0 },
+        "max_tool_calls": { "type": "integer", "minimum": 0 },
+        "max_plan_generations": { "type": "integer", "minimum": 0 },
+        "max_same_tool_retries": { "type": "integer", "minimum": 0 },
+        "wall_clock_deadline": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "token_limit": { "type": "integer", "minimum": 0 },
+        "cost_limit_micros": { "type": "integer", "minimum": 0 }
+      },
+      "anyOf": [{ "required": ["token_limit"] }, { "required": ["cost_limit_micros"] }]
+    },
+    "budget_consumed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_turns", "tool_calls", "plan_generations"],
+      "properties": {
+        "model_turns": { "type": "integer", "minimum": 0 },
+        "tool_calls": { "type": "integer", "minimum": 0 },
+        "plan_generations": { "type": "integer", "minimum": 0 },
+        "tokens": { "type": "integer", "minimum": 0 },
+        "cost_micros": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "tool_retry_counter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool_name", "retries"],
+      "properties": {
+        "tool_name": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "retries": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["limits", "consumed", "tool_retry_counters"],
+      "properties": {
+        "limits": { "$ref": "#/$defs/budget_limits" },
+        "consumed": { "$ref": "#/$defs/budget_consumed" },
+        "tool_retry_counters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tool_retry_counter" },
+          "maxItems": 100
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "limits": { "required": ["token_limit"] } },
+            "required": ["limits"]
+          },
+          "then": {
+            "properties": { "consumed": { "required": ["tokens"] } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "limits": { "required": ["cost_limit_micros"] } },
+            "required": ["limits"]
+          },
+          "then": {
+            "properties": { "consumed": { "required": ["cost_micros"] } }
+          }
+        }
+      ]
+    },
+    "session_commit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit_status", "expected_base_revision"],
+      "properties": {
+        "commit_status": {
+          "type": "string",
+          "enum": ["not_attempted", "committed", "rejected_stale"]
+        },
+        "expected_base_revision": { "type": "integer", "minimum": 1 },
+        "committed_revision": { "type": "integer", "minimum": 2 }
+      },
+      "oneOf": [
+        {
+          "properties": { "commit_status": { "const": "committed" } },
+          "required": ["commit_status", "committed_revision"]
+        },
+        {
+          "properties": { "commit_status": { "enum": ["not_attempted", "rejected_stale"] } },
+          "required": ["commit_status"],
+          "not": { "required": ["committed_revision"] }
+        }
+      ]
+    }
+  }
+}

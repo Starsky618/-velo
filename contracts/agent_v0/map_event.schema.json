@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/map_event.schema.json",
+  "title": "VELO Map Event v0",
+  "description": "A typed user input from the shared map surface. It is not an AgentAction or arbitrary frontend event bus message.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "environment",
+    "fixture_only",
+    "event_id",
+    "client_event_id",
+    "session_id",
+    "base_session_revision",
+    "event_sequence",
+    "occurred_at",
+    "actor",
+    "source_surface",
+    "event_type",
+    "payload",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "environment": { "$ref": "session_state.schema.json#/$defs/environment" },
+    "fixture_only": { "type": "boolean" },
+    "event_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "client_event_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "session_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "base_session_revision": { "type": "integer", "minimum": 1 },
+    "event_sequence": { "type": "integer", "minimum": 1 },
+    "occurred_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "actor": { "const": "user" },
+    "source_surface": {
+      "type": "string",
+      "enum": ["chat_map", "route_map", "candidate_panel", "elevation_panel"]
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "origin_pinned",
+        "destination_pinned",
+        "ride_object_selected",
+        "candidate_switched",
+        "leg_selected",
+        "elevation_range_selected",
+        "viewport_changed",
+        "anchor_removed",
+        "plan_confirmed"
+      ]
+    },
+    "payload": { "type": "object" },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "allOf": [
+    { "$ref": "session_state.schema.json#/$defs/environment_fixture_rule" },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "event_type": { "const": "origin_pinned" },
+            "payload": { "$ref": "#/$defs/origin_pinned_payload" }
+          },
+          "required": ["event_type", "payload"]
+        },
+        {
+          "properties": {
+            "event_type": { "const": "destination_pinned" },
+            "payload": { "$ref": "#/$defs/destination_pinned_payload" }
+          },
+          "required": ["event_type", "payload"]
+        },
+        {
+          "properties": {
+            "event_type": { "const": "ride_object_selected" },
+            "payload": { "$ref": "#/$defs/ride_object_selected_payload" }
+          },
+          "required": ["event_type", "payload"]
+        },
+        {
+          "properties": {
+            "event_type": { "const": "candidate_switched" },
+            "payload": { "$ref": "#/$defs/candidate_payload" }
+          },
+          "required": ["event_type", "payload"]
+        },
+        {
+          "properties": {
+            "event_type": { "const": "leg_selected" },
+            "payload": { "$ref": "#/$defs/leg_selected_payload" }
+          },
+          "required": ["event_type", "payload"]
+        },
+        {
+          "properties": {
+            "event_type": { "const": "elevation_range_selected" },
+            "payload": { "$ref": "#/$defs/elevation_range_payload" }
+          },
+          "required": ["event_type", "payload"]
+        },
+        {
+          "properties": {
+            "event_type": { "const": "viewport_changed" },
+            "payload": { "$ref": "#/$defs/viewport_payload" }
+          },
+          "required": ["event_type", "payload"]
+        },
+        {
+          "properties": {
+            "event_type": { "const": "anchor_removed" },
+            "payload": { "$ref": "#/$defs/anchor_removed_payload" }
+          },
+          "required": ["event_type", "payload"]
+        },
+        {
+          "properties": {
+            "event_type": { "const": "plan_confirmed" },
+            "payload": { "$ref": "#/$defs/candidate_payload" }
+          },
+          "required": ["event_type", "payload"]
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "origin_anchor": {
+      "allOf": [
+        { "$ref": "session_state.schema.json#/$defs/map_anchor" },
+        {
+          "properties": { "anchor_role": { "const": "origin" } },
+          "required": ["anchor_role"]
+        }
+      ]
+    },
+    "destination_anchor": {
+      "allOf": [
+        { "$ref": "session_state.schema.json#/$defs/map_anchor" },
+        {
+          "properties": { "anchor_role": { "const": "destination" } },
+          "required": ["anchor_role"]
+        }
+      ]
+    },
+    "origin_pinned_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor"],
+      "properties": {
+        "anchor": { "$ref": "#/$defs/origin_anchor" },
+        "replaces_anchor_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+      }
+    },
+    "destination_pinned_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor"],
+      "properties": {
+        "anchor": { "$ref": "#/$defs/destination_anchor" },
+        "replaces_anchor_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+      }
+    },
+    "ride_object_selected_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_ref", "revision_ref", "selection_source"],
+      "properties": {
+        "object_ref": { "$ref": "common.schema.json#/$defs/object_ref" },
+        "revision_ref": { "$ref": "common.schema.json#/$defs/revision_ref" },
+        "selection_source": {
+          "type": "string",
+          "enum": ["map", "search", "route_list", "agent_presentation"]
+        }
+      }
+    },
+    "candidate_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_ref", "plan_revision_ref"],
+      "properties": {
+        "candidate_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "plan_revision_ref": { "$ref": "session_state.schema.json#/$defs/plan_revision_ref" }
+      }
+    },
+    "leg_selected_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_ref", "plan_revision_ref", "leg_ref"],
+      "properties": {
+        "candidate_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "plan_revision_ref": { "$ref": "session_state.schema.json#/$defs/plan_revision_ref" },
+        "leg_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+      }
+    },
+    "elevation_range_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_kind", "target_ref", "from_fraction", "to_fraction"],
+      "properties": {
+        "target_kind": { "type": "string", "enum": ["traversal", "plan_leg"] },
+        "target_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "from_fraction": { "type": "number", "minimum": 0, "maximum": 1 },
+        "to_fraction": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "viewport_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bounds_ref", "zoom_level"],
+      "properties": {
+        "bounds_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "zoom_level": { "type": "number", "minimum": 0, "maximum": 24 }
+      }
+    },
+    "anchor_removed_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor_ref", "anchor_role"],
+      "properties": {
+        "anchor_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "anchor_role": {
+          "type": "string",
+          "enum": ["origin", "destination", "waypoint", "turnaround", "exit"]
+        }
+      }
+    }
+  }
+}

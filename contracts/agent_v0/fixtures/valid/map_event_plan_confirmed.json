@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "event_id": "map-event.fixture-plan-confirmed-002",
+  "client_event_id": "client-event.fixture-plan-confirmed-002",
+  "session_id": "planning-session.fixture-002",
+  "base_session_revision": 2,
+  "event_sequence": 8,
+  "occurred_at": "2026-08-03T20:14:00+08:00",
+  "actor": "user",
+  "source_surface": "candidate_panel",
+  "event_type": "plan_confirmed",
+  "payload": {
+    "candidate_ref": "candidate.fixture-b",
+    "plan_revision_ref": {
+      "object_ref": {
+        "object_id": "ride-plan.fixture-b",
+        "object_type": "ride_plan"
+      },
+      "revision": 1
+    }
+  },
+  "metadata": {
+    "x-fixture": true,
+    "x-synthetic": true
+  }
+}

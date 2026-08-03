@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "map_action_id": "map-action.invalid-frontend-command",
+  "session_id": "planning-session.fixture-002",
+  "base_session_revision": 1,
+  "source_agent_action_ref": "agent-action.invalid-frontend-command",
+  "sequence": 1,
+  "issued_at": "2026-08-03T20:10:00+08:00",
+  "reducer_required": true,
+  "action_type": "run_frontend_command",
+  "payload": {
+    "command": "setMapStyleAndExecute"
+  },
+  "metadata": {
+    "x-fixture": true,
+    "x-intentionally-invalid": true
+  }
+}

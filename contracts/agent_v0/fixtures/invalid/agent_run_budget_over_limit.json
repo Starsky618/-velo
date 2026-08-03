@@ -1,0 +1,51 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "run_id": "agent-run.invalid-budget",
+  "session_id": "planning-session.invalid-budget",
+  "state_owner": "deterministic_run_controller",
+  "run_lineage_ref": "run-lineage.invalid-budget",
+  "base_session_revision": 1,
+  "trigger": {
+    "trigger_type": "system",
+    "trigger_ref": "system-trigger.invalid-budget"
+  },
+  "run_status": "stopped",
+  "stop_reason": "budget_exceeded",
+  "current_step": "respond_or_stop",
+  "budget": {
+    "limits": {
+      "max_model_turns": 4,
+      "max_tool_calls": 2,
+      "max_plan_generations": 1,
+      "max_same_tool_retries": 1,
+      "wall_clock_deadline": "2026-08-03T20:30:00+08:00",
+      "token_limit": 1000
+    },
+    "consumed": {
+      "model_turns": 5,
+      "tool_calls": 0,
+      "plan_generations": 0,
+      "tokens": 500
+    },
+    "tool_retry_counters": []
+  },
+  "context_manifest_refs": [
+    "context-manifest.invalid-budget"
+  ],
+  "action_proposal_refs": [],
+  "tool_call_refs": [],
+  "observation_refs": [],
+  "session_commit": {
+    "commit_status": "not_attempted",
+    "expected_base_revision": 1
+  },
+  "started_at": "2026-08-03T20:00:00+08:00",
+  "last_checkpoint_at": "2026-08-03T20:05:00+08:00",
+  "ended_at": "2026-08-03T20:05:00+08:00",
+  "metadata": {
+    "x-fixture": true,
+    "x-intentionally-invalid": true
+  }
+}
