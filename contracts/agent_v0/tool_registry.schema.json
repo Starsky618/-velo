@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/tool_registry.schema.json",
+  "title": "VELO Agent v0 Tool Registry",
+  "description": "The deterministic control plane owned deny-by-default allowlist for online static planning tools.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "registry_id",
+    "registry_version",
+    "registry_scope",
+    "default_decision",
+    "created_at",
+    "state_owner",
+    "environment_policy",
+    "tools",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "registry_id": { "const": "tool-registry.agent-v0" },
+    "registry_version": { "const": "0.1.0" },
+    "registry_scope": { "const": "online_static_planning" },
+    "default_decision": { "const": "DENY" },
+    "created_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "state_owner": { "const": "deterministic_control_plane" },
+    "environment_policy": { "$ref": "#/$defs/environment_policy" },
+    "tools": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/tool_definition" }
+    },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "$defs": {
+    "environment_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["test", "shadow", "production"],
+      "properties": {
+        "test": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "execution_mode",
+            "real_network_allowed",
+            "real_external_effect_allowed"
+          ],
+          "properties": {
+            "execution_mode": { "const": "FAKE_ONLY" },
+            "real_network_allowed": { "const": false },
+            "real_external_effect_allowed": { "const": false }
+          }
+        },
+        "shadow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "execution_mode",
+            "real_network_allowed",
+            "real_external_effect_allowed"
+          ],
+          "properties": {
+            "execution_mode": { "const": "RECORDED_OR_FAKE_ONLY" },
+            "real_network_allowed": { "const": false },
+            "real_external_effect_allowed": { "const": false }
+          }
+        },
+        "production": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "execution_mode",
+            "agent_direct_network_allowed",
+            "agent_direct_database_allowed",
+            "agent_direct_storage_allowed"
+          ],
+          "properties": {
+            "execution_mode": { "const": "DETERMINISTIC_DOMAIN_SERVICE_ONLY" },
+            "agent_direct_network_allowed": { "const": false },
+            "agent_direct_database_allowed": { "const": false },
+            "agent_direct_storage_allowed": { "const": false }
+          }
+        }
+      }
+    },
+    "request_deduplication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "identity_field", "same_tool_call_id_required_for_retry"],
+      "properties": {
+        "mode": { "enum": ["REQUIRED_FOR_RETRY", "OPTIONAL"] },
+        "identity_field": { "const": "tool_call_id" },
+        "same_tool_call_id_required_for_retry": { "type": "boolean" }
+      }
+    },
+    "model_exposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "opaque_input_refs_only",
+        "typed_observation_only",
+        "raw_provider_payload_exposed",
+        "exact_coordinates_exposed",
+        "direct_database_handle_exposed",
+        "direct_storage_handle_exposed"
+      ],
+      "properties": {
+        "opaque_input_refs_only": { "const": true },
+        "typed_observation_only": { "const": true },
+        "raw_provider_payload_exposed": { "const": false },
+        "exact_coordinates_exposed": { "const": false },
+        "direct_database_handle_exposed": { "const": false },
+        "direct_storage_handle_exposed": { "const": false }
+      }
+    },
+    "timeout_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "bounded_by_run_deadline"],
+      "properties": {
+        "owner": { "const": "deterministic_run_controller" },
+        "bounded_by_run_deadline": { "const": true }
+      }
+    },
+    "retry_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "bounded_by_run_budget", "model_may_extend"],
+      "properties": {
+        "owner": { "const": "deterministic_run_controller" },
+        "bounded_by_run_budget": { "const": true },
+        "model_may_extend": { "const": false }
+      }
+    },
+    "effect_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "produces_external_artifact",
+        "writes_canonical_world",
+        "writes_personal_asset",
+        "produces_session_artifact"
+      ],
+      "properties": {
+        "produces_external_artifact": { "const": false },
+        "writes_canonical_world": { "const": false },
+        "writes_personal_asset": { "const": false },
+        "produces_session_artifact": { "type": "boolean" }
+      }
+    },
+    "tool_definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_name",
+        "tool_version",
+        "capability_id",
+        "purpose_code",
+        "input_kind",
+        "observation_kind",
+        "effect_scope",
+        "approval_mode",
+        "execution_owner",
+        "provider_access",
+        "request_deduplication",
+        "reversibility",
+        "data_classifications",
+        "model_exposure",
+        "timeout_policy",
+        "retry_policy",
+        "effect_contract"
+      ],
+      "properties": {
+        "tool_name": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "tool_version": { "const": "0.1.0" },
+        "capability_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "purpose_code": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "input_kind": {
+          "enum": [
+            "ride_object_resolution_request",
+            "rider_context_request",
+            "world_context_request",
+            "candidate_plan_generation_request",
+            "ride_plan_revision_request",
+            "ride_plan_validation_request",
+            "plan_comparison_request",
+            "export_preview_request"
+          ]
+        },
+        "observation_kind": {
+          "enum": [
+            "ride_object_resolution",
+            "rider_context_packet",
+            "world_fact_packet",
+            "candidate_plan_set",
+            "ride_plan_revision",
+            "plan_validation",
+            "plan_comparison",
+            "export_preview"
+          ]
+        },
+        "effect_scope": { "enum": ["READ", "PROVIDER_QUERY", "SESSION"] },
+        "approval_mode": { "enum": ["NONE", "EXPLICIT_INTENT"] },
+        "execution_owner": { "const": "deterministic_domain_plane" },
+        "provider_access": { "enum": ["NONE", "DOMAIN_MEDIATED"] },
+        "request_deduplication": { "$ref": "#/$defs/request_deduplication" },
+        "reversibility": { "const": "NON_EFFECTFUL_REQUEST" },
+        "data_classifications": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "OPAQUE_REFERENCE",
+              "AUTHORIZED_RIDER_CONTEXT",
+              "WORLD_CONTEXT",
+              "SESSION_PLAN",
+              "EXPORT_PREVIEW"
+            ]
+          },
+          "maxItems": 5
+        },
+        "model_exposure": { "$ref": "#/$defs/model_exposure" },
+        "timeout_policy": { "$ref": "#/$defs/timeout_policy" },
+        "retry_policy": { "$ref": "#/$defs/retry_policy" },
+        "effect_contract": { "$ref": "#/$defs/effect_contract" }
+      }
+    }
+  }
+}

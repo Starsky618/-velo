@@ -1,0 +1,36 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "observation_id": "observation.fixture-export-preview-001",
+  "tool_call_id": "tool-call.fixture-prepare-export-001",
+  "run_id": "agent-run.fixture-outcome-001",
+  "session_id": "planning-session.fixture-outcome-001",
+  "base_session_revision": 1,
+  "tool_registry_id": "tool-registry.agent-v0",
+  "tool_registry_version": "0.1.0",
+  "tool_name": "planning.prepare_export",
+  "tool_version": "0.1.0",
+  "capability_id": "export.prepare",
+  "observation_kind": "export_preview",
+  "result_status": "succeeded",
+  "result_code": "TOOL_SUCCEEDED",
+  "observed_at": "2026-08-03T20:10:00+08:00",
+  "observation_only": true,
+  "raw_provider_payload_exposed": false,
+  "exact_coordinates_exposed": false,
+  "canonical_fact_claimed": false,
+  "result_refs": [
+    {
+      "contract_kind": "export_preview",
+      "contract_id": "export-preview.fixture-001",
+      "contract_revision": 1,
+      "schema_version": "0.1.0"
+    }
+  ],
+  "warning_refs": [],
+  "unknown_refs": [],
+  "retry_disposition": "NOT_APPLICABLE",
+  "user_safe_summary": "已准备导出预览和精确确认摘要，未创建任何外部文件。",
+  "metadata": {"x-fixture": true, "x-synthetic": true}
+}

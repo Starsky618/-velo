@@ -24,35 +24,31 @@
       "token_limit": 12000
     },
     "consumed": {
-      "model_turns": 1,
-      "tool_calls": 2,
+      "model_turns": 2,
+      "tool_calls": 1,
       "plan_generations": 1,
       "tokens": 2400
     },
     "tool_retry_counters": [
       {
-        "tool_name": "planning.generate_candidates",
-        "retries": 0
-      },
-      {
-        "tool_name": "planning.validate_candidates",
+        "tool_name": "planning.generate_candidate_plans",
         "retries": 0
       }
     ]
   },
   "context_manifest_refs": [
-    "context-manifest.fixture-run-002"
+    "context-manifest.fixture-run-002-turn-1",
+    "context-manifest.fixture-run-002-turn-2"
   ],
   "action_proposal_refs": [
+    "agent-action.fixture-propose-tool-call-001",
     "agent-action.fixture-present-candidates-001"
   ],
   "tool_call_refs": [
-    "tool-call.fixture-generate-002",
-    "tool-call.fixture-validate-002"
+    "tool-call.fixture-generate-002"
   ],
   "observation_refs": [
-    "observation.fixture-candidates-002",
-    "observation.fixture-validation-002"
+    "observation.fixture-candidates-002"
   ],
   "session_commit": {
     "commit_status": "committed",

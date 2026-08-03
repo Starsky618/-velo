@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.1.0",
+  "registry_id": "tool-registry.agent-v0",
+  "registry_version": "0.1.0",
+  "registry_scope": "online_static_planning",
+  "default_decision": "DENY",
+  "created_at": "2026-08-04T10:00:00+08:00",
+  "state_owner": "deterministic_control_plane",
+  "environment_policy": {},
+  "tools": [
+    {"tool_name": "raw_tencent_api"}
+  ],
+  "metadata": {}
+}

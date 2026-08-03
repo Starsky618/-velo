@@ -46,6 +46,7 @@ VALID_FIXTURE_SCHEMAS = {
     "map_action_fit_bounds.json": "map_action",
     "session_state_fit_bounds_r2.json": "session_state",
     "map_action_show_candidate_set.json": "map_action",
+    "agent_action_propose_tool_call.json": "agent_action",
     "agent_action_present_candidates.json": "agent_action",
     "agent_run_candidate_completed.json": "agent_run",
     "session_state_candidates_presented.json": "session_state",
@@ -367,7 +368,10 @@ def assert_run_semantics(run):
         item["retries"] <= limits["max_same_tool_retries"]
         for item in retry_counters
     )
-    assert len(run["action_proposal_refs"]) <= consumed["model_turns"]
+    if run["trigger"]["trigger_type"] == "resume":
+        assert len(run["action_proposal_refs"]) <= consumed["model_turns"]
+    else:
+        assert len(run["action_proposal_refs"]) == consumed["model_turns"]
     assert len(run["tool_call_refs"]) <= consumed["tool_calls"]
     assert len(run["context_manifest_refs"]) == consumed["model_turns"]
 
@@ -452,6 +456,10 @@ def assert_resume_semantics(parent, child, current_session, child_action=None):
         assert child_action["run_id"] == child["run_id"]
         assert child_action["base_session_revision"] == child["base_session_revision"]
         assert_agent_action_semantics(child_action, child, current_session)
+    assert (
+        len(parent["action_proposal_refs"]) + len(child["action_proposal_refs"])
+        == child["budget"]["consumed"]["model_turns"]
+    )
 
 
 def assert_event_semantics(event, session):
@@ -564,8 +572,7 @@ def assert_agent_action_semantics(action, run, session, selection_event=None):
     assert proposed_at <= parse_rfc3339(run["last_checkpoint_at"])
     if action["action_type"] == "ask_clarifying_question" and "choices" in action["payload"]:
         assert_unique(action["payload"]["choices"], "choice_id")
-    if action["action_type"] == "call_approved_tool":
-        assert action["payload"]["tool_name"] not in FORBIDDEN_TOOL_NAMES
+    if action["action_type"] == "propose_tool_call":
         assert not action["map_actions"]
     if action["action_type"] in {"ask_clarifying_question", "no_result"}:
         unknown_refs = {item["unknown_id"] for item in session["unknowns"]}
@@ -826,8 +833,8 @@ def test_shadow_and_production_non_fixture_shapes_are_allowed(
 
 def test_context_manifest_session_and_run_are_cross_bound():
     manifest = load_json(VALID_FIXTURES / "context_manifest.json")
-    session = load_valid("session_state_clarification_r3.json")
-    run = load_valid("agent_run_clarification_paused.json")
+    session = load_valid("session_state_candidates_before.json")
+    run = load_valid("agent_run_candidate_completed.json")
     assert manifest["session_id"] == session["session_id"] == run["session_id"]
     assert manifest["session_revision"] == session["session_revision"]
     assert manifest["session_revision"] == run["base_session_revision"]
@@ -1187,7 +1194,7 @@ def test_run_budget_and_reference_counts_fail_closed(mutation):
     elif mutation == "action_ref_count":
         run["budget"]["consumed"]["model_turns"] = 0
     else:
-        run["budget"]["consumed"]["tool_calls"] = 1
+        run["budget"]["consumed"]["tool_calls"] = 0
     with pytest.raises(AssertionError):
         assert_run_semantics(run)
 
@@ -1890,41 +1897,12 @@ def test_no_result_is_valid_and_not_an_empty_candidate_success(
     assert_agent_action_semantics(action, run, session)
 
 
-@pytest.mark.parametrize("tool_name", sorted(FORBIDDEN_TOOL_NAMES))
-def test_raw_or_canonical_tools_are_semantically_unreachable(tool_name):
-    action = load_valid("agent_action_ask_clarification.json")
-    action["action_type"] = "call_approved_tool"
-    action["payload"] = {
-        "tool_request_ref": "tool-request.fixture-forbidden",
-        "tool_name": tool_name,
-        "tool_version": "v1",
-        "input_ref": "tool-input.fixture-forbidden",
-        "purpose_code": "retrieve_world_context",
-        "expected_observation_kind": "observation.fixture-forbidden",
-    }
-    action["map_actions"] = []
-    run = load_valid("agent_run_clarification_paused.json")
-    session = load_valid("session_state_clarification_r3.json")
-    with pytest.raises(AssertionError):
-        assert_agent_action_semantics(action, run, session)
-
-
-def test_call_approved_tool_is_proposal_and_cannot_embed_arguments(
+def test_propose_tool_call_is_ref_only_and_cannot_embed_tool_identity(
     schemas, local_registry
 ):
-    action = load_valid("agent_action_ask_clarification.json")
-    action["action_type"] = "call_approved_tool"
-    action["payload"] = {
-        "tool_request_ref": "tool-request.fixture-safe",
-        "tool_name": "planning.retrieve_world_context",
-        "tool_version": "v1",
-        "input_ref": "tool-input.fixture-safe",
-        "purpose_code": "retrieve_world_context",
-        "expected_observation_kind": "world-context-projection",
-    }
-    action["map_actions"] = []
+    action = load_valid("agent_action_propose_tool_call.json")
     assert not validation_errors("agent_action", action, schemas, local_registry)
-    action["payload"]["arguments"] = {"query": "raw"}
+    action["payload"]["tool_name"] = "planning.retrieve_world_context"
     assert validation_errors("agent_action", action, schemas, local_registry)
 
 

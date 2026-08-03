@@ -6,7 +6,7 @@
   "run_id": "agent-run.fixture-002",
   "session_id": "planning-session.fixture-002",
   "base_session_revision": 1,
-  "model_turn_index": 1,
+  "model_turn_index": 2,
   "proposed_at": "2026-08-03T20:10:00+08:00",
   "proposal_only": true,
   "action_type": "present_valid_candidates",

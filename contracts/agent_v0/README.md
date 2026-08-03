@@ -1,6 +1,6 @@
 # VELO Agent v0 language-neutral contracts
 
-本目录包含 A2.1 Context contracts 与 A2.2 Session/Run/Map/Action contracts。它们固定语言中立、版本化的 shape 与 semantic conformance，不是数据库 schema，不选择 Python、TypeScript 或 Agent Runtime，也不证明生产 Context Compiler、reducer 或持久化服务已存在。
+本目录包含 A2.1 Context contracts、A2.2 Session/Run/Map/Action contracts，以及处于 Orchestrator 审查中的 A2.3a Tool Registry/ToolCall/ToolResult contracts。它们固定语言中立、版本化的 shape 与 semantic conformance，不是数据库 schema，不选择 Python、TypeScript 或 Agent Runtime，也不证明生产 Context Compiler、Tool Gateway、reducer 或持久化服务已存在。
 
 ## 当前包含
 
@@ -13,11 +13,13 @@
 - AgentRun
 - MapEvent / MapAction
 - AgentAction
+- Tool Registry v0
+- ToolCall / ToolResult
 
 ## 当前不包含
 
-- ToolCall / ToolResult
 - Approval / SideEffect
+- IntentSnapshot / PlanConstraintSet
 - RidePlanDraft / ValidationResult
 - TraceEvent / Error
 - Contribution contract
@@ -34,7 +36,10 @@
 | `AgentRun` | 确定性 Run Controller 的一次有界执行；一个 Session 可以有多个 Run，每个 Run 固定绑定一个 committed Session revision，预算在 resume lineage 中只能单调消耗。 |
 | `MapEvent` | 用户从共享地图产生的 typed input；pin 只携带 opaque location handle，candidate switch 不等于最终 Plan selection。 |
 | `MapAction` | 必须经过 deterministic gate/reducer 的声明式地图动作；不允许 JS command、CSS/style JSON 或坐标 payload。 |
-| `AgentAction` | 单一主 Agent 在一次 model turn 中提出的单个 typed proposal；不能直接改 Session、选择 Plan、调用 raw Provider 或制造外部副作用。 |
+| `AgentAction` | 单一主 Agent 在一次 model turn 中提出的单个 typed proposal；`propose_tool_call` 只携带 `tool_call_ref`，不能直接改 Session、选择 Plan、调用 raw Provider 或制造外部副作用。 |
+| `Tool Registry` | `deterministic_control_plane` 拥有的版本化 deny-by-default allowlist；v0 恰好注册 8 个在线静态规划高层工具。 |
+| `ToolCall` | Agent 提出的 immutable request proposal；只携带 opaque input envelope，不是 approval、execution、provider request 或副作用。 |
+| `ToolResult` | `deterministic_domain_plane` 返回的 typed observation；不是 canonical fact、ValidationResult 本体、Session mutation 或 effect receipt。 |
 
 ## Session、Run 与地图动作边界
 
@@ -46,7 +51,17 @@
 - Session 合法拥有 0–3 个 candidate；0 个候选是正式状态，Agent 应返回 typed `no_result`，不能强凑三条或用空 `present_valid_candidates` 伪装成功。
 - 起点或目的地改变后，旧 candidate/selection 必须失效；resume Run 不能重置已消费预算；stale Run、AgentAction、MapAction 与 MapEvent 都必须 fail closed。
 - 地图 pin 先由确定性 interaction adapter 转为 opaque place/location ref。A2.2 合同只允许粗粒度 label 与 `exact_coordinates_exposed=false`，不传精确坐标、bbox、WKT/GeoJSON 或 raw track。
-- `AgentAction` 永远 `proposal_only=true`。ToolCall/ToolResult、Capability/Approval/Effect、RidePlanDraft/ValidationResult 仍属于 A2.3；Trace/Error/Contribution 与完整 Agent v0 freeze 属于 A2.4。
+- `AgentAction` 永远 `proposal_only=true`。旧的 `call_approved_tool` 已删除，不保留 compatibility alias；`propose_tool_call` 只引用独立 `ToolCall`，模型无权把静态 approval policy 说成某次请求已批准。
+
+## A2.3a Tool Registry / ToolCall / ToolResult 边界
+
+- Registry 默认 `DENY`，Owner 是 `deterministic_control_plane`；执行 Owner 固定为 `deterministic_domain_plane`。Run Controller 继续掌控 environment/Registry/revision/validation/retry/deadline gate。模型只有 proposal 权。
+- v0 恰好允许 8 个工具：`planning.resolve_ride_object`、`planning.retrieve_rider_context`、`planning.retrieve_world_context`、`planning.generate_candidate_plans`、`planning.revise_plan`、`planning.validate_plan`、`planning.compare_plans`、`planning.prepare_export`。`planning.select_plan`、`export.commit`、Contribution/Memory/个人资产写入与 canonical world writer 均不可达。
+- `planning.generate_candidate_plans` 的 `DOMAIN_MEDIATED` 只表示 production Domain Plane 可在自身边界内查询 Provider；Agent 不获得 raw Provider、URL、HTTP、SQL、ORM、shell、database/storage handle、坐标或 polyline。
+- `ToolCall.input` 只有 `input_kind/input_ref/input_revision/input_schema_version/target_revision_refs`；不复制 payload，不允许 `arguments`、`params`、prompt prose、坐标、Provider request 或数据库命令。`tool_call_id` 是唯一 request identity；A2.3a 不建立 effect identity、idempotency key、approval consumption、reservation 或 ledger。
+- `ToolResult` 用 `observation_id` 与 `AgentRun.observation_refs` 对齐，只返回 packet/revision/contract artifact typed refs。status/code/retry/ref 组合 fail closed；失败不携带假成功 artifact。`planning.validate_plan` 只能引用未来 typed `plan_validation`，不能自行写 pass；`planning.prepare_export` 只能引用 `export_preview`，零 artifact、零 storage、零外部交付。
+- candidate synthetic scenario 是两轮：turn 1 `propose_tool_call` → generate → typed observation；deterministic mandatory validation gate 不伪装成第二个 Agent ToolCall；turn 2 才 `present_valid_candidates`。每个非-resume Run 已消费 model turn 恰好对应一个 typed AgentAction proposal ref；resume lineage 的累计计数由 parent+child refs 共同核对。
+- A2.3b Approval/SideEffect 与 A2.3c IntentSnapshot/PlanConstraintSet/RidePlanDraft/ValidationResult 均未开始。A2.3c 只记录裁决：opaque intent ref 单独不足，preference 必须由 deterministic compiler 转成带来源的 `hard/soft/advisory` constraint，`unknown` 不能当 `pass`。
 
 ## Agent 不能看到什么
 
@@ -79,6 +94,7 @@ Predicate request 与 Relation request 是两条独立合同面。每个 request
 - 同主版本只允许兼容性新增可选字段；破坏性变更使用新目录或新主版本。
 - fixture 固定 `schema_version`，World fixture 均为 `packet_environment=test`、`fixture_only=true` 的合成合同数据，不是已核验产品事实。
 - A2.2 fixture 均为 `environment=test`、`fixture_only=true` 的 synthetic interaction scenario，不是生产 Session、真实 Plan、Provider 结果或持久化记录。
+- A2.3a ToolCall/ToolResult fixture 同样是 `environment=test`、`fixture_only=true` 的合成 observation；没有真实网络、Provider、export、数据库、storage 或外部 effect。
 - 所有 `$ref` 必须由本地 `referencing.Registry` 解析；合同测试不得联网、访问数据库、Redis 或真实 filesystem storage。
 - JSON Schema 负责语言中立的 shape validation，但不等于 semantic conformance。Registry unit/value/freshness、request 完整响应、route-shape focus、范围顺序、带时区时间顺序、跨合同 environment/fixture/time、Session/Run revision、resume budget/current Session、candidate/selection provenance、viewport Event/Action transition、MapEvent/MapAction target identity、Manifest binding 与 token accounting 等跨字段不变量由 conformance suite 固定。未来任何语言的消费者都必须实现并通过这些不变量，不能只跑 schema shape validation。
 
@@ -94,4 +110,5 @@ Predicate request 与 Relation request 是两条独立合同面。每个 request
 ```bash
 pytest -q tests/contracts/test_agent_v0_context_contracts.py
 pytest -q tests/contracts/test_agent_v0_session_run_map_action_contracts.py
+pytest -q tests/contracts/test_agent_v0_tool_contracts.py
 ```

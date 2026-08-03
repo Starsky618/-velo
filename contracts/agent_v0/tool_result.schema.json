@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/tool_result.schema.json",
+  "title": "VELO Agent v0 Tool Result Observation",
+  "description": "A typed deterministic Domain Plane observation. It is not a canonical fact, validation truth, approval, session mutation, or external effect receipt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "environment",
+    "fixture_only",
+    "observation_id",
+    "tool_call_id",
+    "run_id",
+    "session_id",
+    "base_session_revision",
+    "tool_registry_id",
+    "tool_registry_version",
+    "tool_name",
+    "tool_version",
+    "capability_id",
+    "observation_kind",
+    "result_status",
+    "result_code",
+    "observed_at",
+    "observation_only",
+    "raw_provider_payload_exposed",
+    "exact_coordinates_exposed",
+    "canonical_fact_claimed",
+    "result_refs",
+    "warning_refs",
+    "unknown_refs",
+    "retry_disposition",
+    "user_safe_summary",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "environment": { "$ref": "session_state.schema.json#/$defs/environment" },
+    "fixture_only": { "type": "boolean" },
+    "observation_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "tool_call_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "run_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "session_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "base_session_revision": { "type": "integer", "minimum": 1 },
+    "tool_registry_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "tool_registry_version": { "$ref": "common.schema.json#/$defs/revision" },
+    "tool_name": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "tool_version": { "$ref": "common.schema.json#/$defs/revision" },
+    "capability_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "observation_kind": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "result_status": {
+      "enum": ["succeeded", "no_result", "ambiguous", "timed_out", "disconnected", "failed"]
+    },
+    "result_code": {
+      "enum": [
+        "TOOL_SUCCEEDED",
+        "TOOL_NO_RESULT",
+        "TOOL_AMBIGUOUS",
+        "TOOL_TIMEOUT",
+        "TOOL_DISCONNECTED",
+        "TOOL_HARD_FAIL"
+      ]
+    },
+    "domain_reason_code": {
+      "enum": [
+        "NO_MATCHING_RESULT",
+        "INSUFFICIENT_WORLD_DATA",
+        "REQUEST_DEADLINE_EXCEEDED",
+        "DOMAIN_SERVICE_DISCONNECTED",
+        "DETERMINISTIC_VALIDATION_REJECTED",
+        "DOMAIN_SERVICE_FAILURE"
+      ]
+    },
+    "observed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "observation_only": { "const": true },
+    "raw_provider_payload_exposed": { "const": false },
+    "exact_coordinates_exposed": { "const": false },
+    "canonical_fact_claimed": { "const": false },
+    "result_refs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/result_ref" },
+      "uniqueItems": true,
+      "maxItems": 20
+    },
+    "warning_refs": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+      "uniqueItems": true,
+      "maxItems": 20
+    },
+    "unknown_refs": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+      "uniqueItems": true,
+      "maxItems": 20
+    },
+    "retry_disposition": {
+      "enum": [
+        "NOT_APPLICABLE",
+        "DO_NOT_RETRY",
+        "RETRY_SAME_CALL",
+        "REVISE_REQUEST",
+        "ASK_USER",
+        "DEFER"
+      ]
+    },
+    "user_safe_summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "allOf": [
+    { "$ref": "session_state.schema.json#/$defs/environment_fixture_rule" },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "result_status": { "const": "succeeded" },
+            "result_code": { "const": "TOOL_SUCCEEDED" },
+            "result_refs": { "minItems": 1 },
+            "retry_disposition": { "const": "NOT_APPLICABLE" }
+          },
+          "required": ["result_status", "result_code", "result_refs", "retry_disposition"],
+          "not": { "required": ["domain_reason_code"] }
+        },
+        {
+          "properties": {
+            "result_status": { "const": "ambiguous" },
+            "result_code": { "const": "TOOL_AMBIGUOUS" },
+            "result_refs": { "minItems": 2 },
+            "retry_disposition": { "const": "ASK_USER" }
+          },
+          "required": ["result_status", "result_code", "result_refs", "retry_disposition"]
+        },
+        {
+          "properties": {
+            "result_status": { "const": "no_result" },
+            "result_code": { "const": "TOOL_NO_RESULT" },
+            "result_refs": { "maxItems": 0 },
+            "retry_disposition": { "enum": ["DO_NOT_RETRY", "REVISE_REQUEST"] }
+          },
+          "required": ["result_status", "result_code", "domain_reason_code", "result_refs", "retry_disposition"]
+        },
+        {
+          "properties": {
+            "result_status": { "const": "timed_out" },
+            "result_code": { "const": "TOOL_TIMEOUT" },
+            "result_refs": { "maxItems": 0 },
+            "retry_disposition": { "enum": ["RETRY_SAME_CALL", "DO_NOT_RETRY", "DEFER"] }
+          },
+          "required": ["result_status", "result_code", "domain_reason_code", "result_refs", "retry_disposition"]
+        },
+        {
+          "properties": {
+            "result_status": { "const": "disconnected" },
+            "result_code": { "const": "TOOL_DISCONNECTED" },
+            "result_refs": { "maxItems": 0 },
+            "retry_disposition": { "enum": ["RETRY_SAME_CALL", "DO_NOT_RETRY", "DEFER"] }
+          },
+          "required": ["result_status", "result_code", "domain_reason_code", "result_refs", "retry_disposition"]
+        },
+        {
+          "properties": {
+            "result_status": { "const": "failed" },
+            "result_code": { "const": "TOOL_HARD_FAIL" },
+            "result_refs": { "maxItems": 0 },
+            "retry_disposition": { "enum": ["DO_NOT_RETRY", "REVISE_REQUEST"] }
+          },
+          "required": ["result_status", "result_code", "domain_reason_code", "result_refs", "retry_disposition"]
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "packet_result_ref": {
+      "allOf": [
+        { "$ref": "common.schema.json#/$defs/packet_ref" },
+        {
+          "properties": {
+            "packet_type": { "enum": ["rider_context_packet", "world_fact_packet"] }
+          }
+        }
+      ]
+    },
+    "contract_artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_kind", "contract_id", "contract_revision", "schema_version"],
+      "properties": {
+        "contract_kind": {
+          "enum": [
+            "ride_object_resolution",
+            "candidate_plan_set",
+            "plan_validation",
+            "plan_comparison",
+            "export_preview"
+          ]
+        },
+        "contract_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "contract_revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" }
+      }
+    },
+    "result_ref": {
+      "oneOf": [
+        { "$ref": "#/$defs/packet_result_ref" },
+        { "$ref": "common.schema.json#/$defs/revision_ref" },
+        { "$ref": "#/$defs/contract_artifact_ref" }
+      ]
+    }
+  }
+}

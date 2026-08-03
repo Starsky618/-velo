@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/tool_call.schema.json",
+  "title": "VELO Agent v0 Tool Call Proposal",
+  "description": "An immutable Agent proposed request. Deterministic gates still own lookup, authorization, execution, deadlines, retry budget, and validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "environment",
+    "fixture_only",
+    "tool_call_id",
+    "run_id",
+    "session_id",
+    "base_session_revision",
+    "model_turn_index",
+    "requested_by_agent_action_ref",
+    "tool_registry_id",
+    "tool_registry_version",
+    "tool_name",
+    "tool_version",
+    "capability_id",
+    "purpose_code",
+    "input",
+    "expected_observation_kind",
+    "proposed_at",
+    "proposal_only",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "environment": { "$ref": "session_state.schema.json#/$defs/environment" },
+    "fixture_only": { "type": "boolean" },
+    "tool_call_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "run_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "session_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "base_session_revision": { "type": "integer", "minimum": 1 },
+    "model_turn_index": { "type": "integer", "minimum": 1 },
+    "requested_by_agent_action_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "tool_registry_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "tool_registry_version": { "$ref": "common.schema.json#/$defs/revision" },
+    "tool_name": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "tool_version": { "$ref": "common.schema.json#/$defs/revision" },
+    "capability_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "purpose_code": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "input": { "$ref": "#/$defs/input_envelope" },
+    "expected_observation_kind": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "proposed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "proposal_only": { "const": true },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "allOf": [
+    { "$ref": "session_state.schema.json#/$defs/environment_fixture_rule" }
+  ],
+  "$defs": {
+    "input_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_kind",
+        "input_ref",
+        "input_revision",
+        "input_schema_version",
+        "target_revision_refs"
+      ],
+      "properties": {
+        "input_kind": {
+          "enum": [
+            "ride_object_resolution_request",
+            "rider_context_request",
+            "world_context_request",
+            "candidate_plan_generation_request",
+            "ride_plan_revision_request",
+            "ride_plan_validation_request",
+            "plan_comparison_request",
+            "export_preview_request"
+          ]
+        },
+        "input_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "input_revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "input_schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+        "target_revision_refs": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/revision_ref" },
+          "uniqueItems": true,
+          "maxItems": 20
+        }
+      }
+    }
+  }
+}
