@@ -1,6 +1,6 @@
 # VELO Phase A 文件级实施规格
 
-> A0/A0C/A1.1–A1.5：`PASS / completed`；A1 parent 已 `completed / PASS`，ADR-013–017 均已 Accepted。A2 parent 为 `in_progress`，A2.1 合同基础为 `in_review`，A2.2–A2.4 与 A3–A5 均为 `blocked`。本文不实施 `app/agent` 代码迁移、M1/M2/M3、Agent Runtime、生产 Context Compiler、Session/Run Runtime、数据库迁移、Capability Engine、Approval UI、Side-effect Ledger 或 Contribution，不改变生产行为，也不构成合并、部署或后续子任务授权。
+> A0/A0C/A1.1–A1.5 与 A2.1：`PASS / completed`；A1 parent 已 `completed / PASS`，ADR-013–017 均已 Accepted。A2 parent 为 `in_progress`；PR #41 获准完成状态收口和 squash merge。A2.2 为 `ready_to_specify` 但 execution unauthorized，A2.3–A2.4 与 A3–A5 均为 `blocked`，Agent v0 尚未 freeze。本文不实施 `app/agent` 代码迁移、M1/M2/M3、Agent Runtime、生产 Context Compiler、Session/Run Runtime、数据库、API、UI、真实 Provider/export、Capability Engine、Approval UI、Side-effect Ledger、Contribution 或部署，不改变生产行为，也不构成后续子任务执行授权。
 
 ## 2.1 Repository Fact Baseline
 
@@ -199,7 +199,7 @@ Accepted [ADR-017](../adr/017-为什么旧app-agent必须迁出并保留RQ兼容
 
 **核心决策**：现有赛段文案/AI 草稿实现未来唯一 canonical package 为 `app.segment_draft_ai`；`app.agent` 只能作为默认长期保留的 compatibility tombstone，用无业务副作用的极薄 wrapper 支持旧 import 和 `app.agent.tasks.generate_segment_draft_task` serialized RQ path。`app.agent` 永久禁止被未来 Planning Runtime 复用。
 
-**与后续任务的关系**：A1 已收口 `completed / PASS`；随后独立 Task Packet 已启动 A2.1，A2 parent 当前为 `in_progress`、A2.1 为 `in_review`，A2.2–A2.4 未获授权。实际 M1/M2 不阻塞 A2 contracts、A3 VeloBench 或 A4 Fake Environment；但 M1 必须在第一个生产 Planning Agent Runtime 或 Phase B live Agent integration 前完成。M2 必须拆为带实际 worker 兼容证据和独立部署授权的任务。
+**与后续任务的关系**：A1 与 A2.1 已收口 `completed / PASS`，A2 parent 继续 `in_progress`。A2.2 仅为 `ready_to_specify` 且 execution unauthorized，A2.3–A2.4 未获授权；Agent v0 freeze 仍属于 A2.4。实际 M1/M2 不阻塞 A2 contracts、A3 VeloBench 或 A4 Fake Environment；但 M1 必须在第一个生产 Planning Agent Runtime 或 Phase B live Agent integration 前完成。M2 必须拆为带实际 worker 兼容证据和独立部署授权的任务。
 
 **本轮 allowlist**：ADR-017、ADR index、Agent-First README、本文件与根 State，共五个文件。本轮不移动/修改 `app/agent`，不创建 `app/segment_draft_ai`，不切 producer，不改 worker/queue/compose/test/schema/migration/API/DB，不部署，不开始 A2。
 
@@ -225,7 +225,7 @@ Accepted [ADR-017](../adr/017-为什么旧app-agent必须迁出并保留RQ兼容
 - **A1.2 结果**：五文件 allowlist 内的控制权裁决已由 Orchestrator 判定 `PASS`，ADR-014 为 Accepted；PR #37 的 post-merge CI 已通过。
 - **A1.3 结果**：五文件 allowlist 内的状态与记忆边界已由 Orchestrator 判定 `PASS`，ADR-015 为 Accepted，PR #38 与 post-merge CI 已完成；无 Session/Run/Memory/Context、schema、runtime 或部署授权。随后新的独立 Task Packet 才选择 A1.4。
 - **A1.4 结果**：五文件 allowlist 内的 ADR-016 已由 Orchestrator 判定 `PASS` 并转为 Accepted；PR #39 已 squash merge，post-merge CI run `30804485326` 为 `2074 passed / 0 skipped` 且 fresh PostGIS migration 成功。无 Capability Engine、Approval UI、Side-effect Ledger、Contribution、schema、runtime 或部署授权。
-- **A1.5 结果**：五文件 allowlist 内的 ADR-017 已由 Orchestrator 判定 `PASS` 并转为 Accepted，决定 `app.segment_draft_ai` canonical owner、`app.agent` 长期 compatibility tombstone、shim 删除非完成条件、M1/M2/M3 序列与永久禁止 Runtime 复用旧 namespace。A1 parent 已 `completed / PASS`；后续独立任务只启动 A2.1 合同基础并进入 `in_review`，仍无代码迁移、Runtime 或部署授权。
+- **A1.5 结果**：五文件 allowlist 内的 ADR-017 已由 Orchestrator 判定 `PASS` 并转为 Accepted，决定 `app.segment_draft_ai` canonical owner、`app.agent` 长期 compatibility tombstone、shim 删除非完成条件、M1/M2/M3 序列与永久禁止 Runtime 复用旧 namespace。A1 parent 已 `completed / PASS`；随后 A2.1 Context contracts 也已由 Orchestrator 判定 `PASS / completed`。A2.2 仅 `ready_to_specify` 且 execution unauthorized，仍无代码迁移、Runtime 或部署授权。
 - **禁止范围**：运行代码、合同、schema/migration、API、小程序、依赖、队列和部署。
 - **最小测试**：Markdown 链接/路径检查；冲突词搜索；`git diff --check`；受保护路径零 diff；每个 ADR 都含状态、事实、决策、后果、非目标和撤回条件。
 - **退出门槛**：五项均有唯一裁决；INV-P03/D-P04/D-P07/ADR-010 不再矛盾；旧命名采用或拒绝 2.3 推荐方案；不偷偷选 Runtime 框架。
@@ -239,21 +239,21 @@ Accepted [ADR-017](../adr/017-为什么旧app-agent必须迁出并保留RQ兼容
 
 | 子任务 | 合同范围 | 当前状态 | 依赖 |
 |---|---|---|---|
-| A2.1 | Common / Predicate Registry / RiderContextPacket / WorldFactPacket / ContextManifest | `in_review` | A1 |
-| A2.2 | SessionState / AgentRun / MapEvent / MapAction / AgentAction | `blocked` | A2.1 |
+| A2.1 | Common / Predicate Registry / RiderContextPacket / WorldFactPacket / ContextManifest | `completed / PASS` | A1 |
+| A2.2 | SessionState / AgentRun / MapEvent / MapAction / AgentAction | `ready_to_specify / execution unauthorized` | A2.1 |
 | A2.3 | ToolCall / ToolResult / Approval / SideEffect / RidePlanDraft / ValidationResult | `blocked` | A2.2 |
 | A2.4 | TraceEvent / Error / Contribution + 全量交叉验证与 Agent v0 freeze | `blocked` | A2.3 |
 
 #### A2.1 合同基础（当前 Task Packet）
 
-- **当前状态**：`in_review`。A2.1-R1 已按 `REVISE` 裁决返修，仍等待 Orchestrator re-review；不是 `PASS`、`completed` 或已冻结合同。
+- **当前状态**：Orchestrator 已判定 A2.1 `PASS / completed`，PR #41 获准完成状态收口和 squash merge。该结论只覆盖 Context contracts；完整 Agent v0 freeze 仍属于 A2.4。
 - **五份 schema**：[`common.schema.json`](../../contracts/agent_v0/common.schema.json)、[`predicate_registry.schema.json`](../../contracts/agent_v0/predicate_registry.schema.json)、[`rider_context_packet.schema.json`](../../contracts/agent_v0/rider_context_packet.schema.json)、[`world_fact_packet.schema.json`](../../contracts/agent_v0/world_fact_packet.schema.json)、[`context_manifest.schema.json`](../../contracts/agent_v0/context_manifest.schema.json)；版本均为 `0.1.0`，稳定 `$id` 使用 `https://schemas.velo.invalid/agent_v0/` 前缀，正式对象默认 strict。
 - **Registry**：[`predicate_registry.v0.json`](../../contracts/agent_v0/predicate_registry.v0.json) 当前定义 21 个 computed/static/directional/local-consensus/dynamic 事实／动态 Predicate；它不是全国路线字段全集。正式对象关系由独立的 Relation query 合同面表达，`route.exit_option` 不再作为 Predicate，退出关系使用 `exit_to`。新特征优先增加版本化 Predicate，不能藏入任意 metadata 或 prose blob。
 - **三个边界**：`RiderContextPacket` 是一次模型调用被授权看到的最小骑手投影；`WorldFactPacket` 是带 revision/scope/provenance-or-calculation/freshness/quality 的最小世界事实投影，并隔离 typed/fresh advisory、Predicate/Relation request 与 explicit unknown；`ContextManifest` 是一次 model call 的来源版本、包含/省略、隐私删减和 token 账单，不是 Session、Memory 或事实来源。
 - **依赖裁决**：只在 `requirements.txt` 测试依赖区固定 `jsonschema==4.26.0`；复用其 `referencing.Registry` / `Resource` 做离线 `$ref` 解析，不增加 Runtime、codegen、数据库或网络依赖。
 - **fixture**：一个 Rider、两个 synthetic World（天龙山 `linear_climb`、汾河双岸 `corridor`）和一个 Manifest valid fixture；六个 invalid fixture分别锁定精确坐标、无 provenance、unverified 混入 facts、动态缺 validity/freshness、Manifest 缺 revision 与重复 Predicate ID。合成名称/数值不是已核验产品数据，也不是 Gold Package。
 - **本地验证**：`tests/contracts/test_agent_v0_context_contracts.py` 对 schema 自校验、唯一 `$id`/Predicate、全部正反 fixture、Registry 的 unit/value/freshness 语义、Predicate/Relation 请求完整响应、route-shape focus、advisory typed value/freshness、范围与带时区时间顺序、environment 组合、section authorization、scope/provenance、跨对象 identity/reference、隐私 key、explicit unknown、Manifest source revision/content hash/token accounting 及零网络解析做确定性检查。JSON Schema shape validation 不替代这些 semantic conformance 不变量。
-- **明确非目标**：没有 Runtime、生产 Context Compiler、数据库迁移、真实 Provider/DEM、真实 export、VeloBench、Fake Environment、A2.2 或部署；不实施 M1/M2/M3。
+- **明确非目标**：没有 Runtime、生产 Context Compiler、数据库、API、UI、真实 Provider/DEM、真实 export、VeloBench、Fake Environment、A2.2 execution 或部署；不实施 M1/M2/M3。
 
 #### A2 后续字段路由（保留，不提前实现）
 
@@ -278,7 +278,7 @@ Accepted [ADR-017](../adr/017-为什么旧app-agent必须迁出并保留RQ兼容
 
 - **A2 整体禁止范围**：Agent Runtime、网络工具、ORM、生产 DB、真实腾讯/导出、Runtime 框架或把长期 World Model 数据库偷渡进投影合同。
 - **失败回滚**：只回退对应子任务新增的合同/测试/路由文档；没有运行数据迁移。
-- **Orchestrator 判定**：A2.1 当前只可 `PASS/REVISE/HARD_BLOCK/DEFER`，Codex 不自行判定；后续每一项必须由新的 Task Packet 单独授权。
+- **Orchestrator 判定**：A2.1 已 `PASS / completed`；A2.2 只可由新的 Orchestrator Task Packet 规格化和授权，当前不得执行。
 
 ### A3 — VeloBench v0
 
@@ -327,7 +327,7 @@ Accepted [ADR-017](../adr/017-为什么旧app-agent必须迁出并保留RQ兼容
 | 过早选择 TypeScript/框架 | A2 先做语言中立 JSON Schema，A3/A4 用评测暴露需求；SDK/TS/LangGraph 延后 | 合同和 30 case 稳定后，现有 Python 无法满足明确的隔离/吞吐/工具需求 |
 | Fake 过度 mock，与真实高层合同不一致 | Fake 只模拟已定义的高层 tool contract；用真实代码的 schema/错误样例做 contract fixture，不复制底层算法 | 真实 Route Draw/Tencent/elevation/export 出现 Fake 无法表达的返回或失败语义 |
 | grader 只评语言，不评状态 | 必填 expected_end_state/forbidden_actions/code grader；做 mutation 测试并核对 ledger/trace | 漂亮回答能在错误状态或发生禁用副作用时通过 |
-| Agent-First 文档被误读为生产授权 | README/State/spec 明写 A0/A0C/A1.1–A1.5 `PASS` 只代表架构裁决；Accepted ADR-016/017 不授权 Runtime 或 M1/M2/M3。A2.1 `in_review` 只代表语言中立投影合同，A2.2–A2.4 与 A3–A5 blocked、deploy false | 有人以 source/spec/ADR/schema 为由改 runtime/UI、搬迁 `app.agent`、切 producer、调用真实 Provider、生成导出、实施后续任务或部署 |
+| Agent-First 文档被误读为生产授权 | README/State/spec 明写 A0/A0C/A1.1–A1.5 `PASS` 只代表架构裁决；Accepted ADR-016/017 不授权 Runtime 或 M1/M2/M3。A2.1 `PASS` 只代表 Context contracts 通过，不代表 Agent v0 freeze；A2.2 仅 ready to specify 且 unauthorized，A2.3–A2.4 与 A3–A5 blocked、deploy false | 有人以 source/spec/ADR/schema 为由改 runtime/UI、搬迁 `app.agent`、切 producer、调用真实 Provider、生成导出、实施后续任务或部署 |
 | 测试/CI 被误当 Provider/真机/部署证据 | 汇报强制分为本地、baseline CI、A0 diff CI、部署、线上真用；未验证写 `UNVERIFIED` | 用 mock/CI success 宣称腾讯可用、微信可用、已部署或用户可用 |
 | 原始 A0 编写 HEAD 含无关 route-draw commit | 保持原工作树与现有本地 `main` 不变；A0C 在直接基于最新 `origin/main` 的干净独立分支交付八个文件 | 交付分支的 merge-base 不再是任务开始时的 `origin/main`，或出现 allowlist 外改动 |
 | RouteVersion 当前可被海拔 backfill 原位更新，导出存在 stale/hash 门禁 | A2 只引用 version/revision/hash；不得绕过 export workflow；A5 把变更后重验写进 stop condition | Agent draft 持有的 version/hash 在验证或导出前已变化 |
