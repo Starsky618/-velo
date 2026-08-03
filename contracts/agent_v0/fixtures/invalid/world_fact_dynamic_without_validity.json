@@ -1,0 +1,54 @@
+{
+  "schema_version": "0.1.0",
+  "packet_id": "world-fact.fixture.invalid-dynamic-validity",
+  "packet_environment": "test",
+  "fixture_only": true,
+  "generated_at": "2026-08-03T19:45:00+08:00",
+  "source_revision": "fixture-invalid-r1",
+  "region_ref": "region.fixture-invalid",
+  "predicate_registry_version": "0.1.0",
+  "query_context": {
+    "task_mode": "understand",
+    "focus_refs": [],
+    "requested_predicate_ids": ["dynamic.closure"],
+    "synthetic_fixture_data": true
+  },
+  "objects": [],
+  "traversals": [],
+  "relations": [],
+  "facts": [],
+  "dynamic_states": [
+    {
+      "state_id": "dynamic-state.fixture-invalid",
+      "state_type": "dynamic.closure",
+      "status": "closed",
+      "severity": "major",
+      "scope": {
+        "subject_ref": { "object_id": "route.fixture-invalid", "object_type": "named_route" },
+        "spatial_interval": {
+          "interval_ref": { "object_id": "route.fixture-invalid", "object_type": "named_route" },
+          "from_fraction": 0,
+          "to_fraction": 1
+        },
+        "time_window": {
+          "start": "2026-08-03T00:00:00+08:00",
+          "end": "2026-08-04T00:00:00+08:00"
+        }
+      },
+      "evidence_refs": ["provenance.fixture-dynamic-source"]
+    }
+  ],
+  "advisories": [],
+  "unknowns": [],
+  "provenance_index": [
+    {
+      "provenance_id": "provenance.fixture-dynamic-source",
+      "provenance_type": "evidence",
+      "source_revision": "fixture-dynamic-r1",
+      "summary": "Synthetic time-bound observation."
+    }
+  ],
+  "omitted_sections": [],
+  "packet_limits": { "fact_limit": 10, "facts_included": 0, "facts_omitted": 0, "truncated": false },
+  "metadata": { "x-fixture": true }
+}

@@ -1,6 +1,6 @@
 # VELO Agent-First / Orchestrator 文档入口
 
-> 当前状态：Phase A `in_progress`；A0/A0C/A1.1/A1.2/A1.3/A1.4/A1.5 均已由 Orchestrator `PASS / completed`，A1 parent 已 `completed / PASS`，ADR-013–017 均已 Accepted。A2 仅为 `ready_to_specify / not started / execution unauthorized`，A3–A5 继续 `blocked`。当前不授权代码迁移、Runtime、schema、UI、Provider、真实 export 或部署。
+> 当前状态：Phase A `in_progress`；A0/A0C/A1.1–A1.5 均已由 Orchestrator `PASS / completed`，A1 parent 已 `completed / PASS`，ADR-013–017 均已 Accepted。A2 parent 为 `in_progress`，A2.1 合同基础为 `in_review`，A2.2–A2.4 与 A3–A5 均为 `blocked`。当前不授权代码迁移、Agent Runtime、生产 Context Compiler、数据库迁移、UI、真实 Provider/export 或部署。
 
 ## 1. 文档角色与权威顺序
 
@@ -17,7 +17,7 @@
 
 源文档保持随包原文和原始哈希，不在本目录中“顺手统一”彼此措辞。发现冲突时，先以当前代码确定现状，再由 ADR 和 State 记录裁决；历史本地仓库路径不构成事实来源。
 
-## 2. 当前 Phase A、已完成的 A1 与待规格化的 A2
+## 2. 当前 Phase A、已完成的 A1 与审查中的 A2.1
 
 - Phase A 目标是先建立 ADR、语言中立合同、VeloBench v0 和确定性 Fake Environment，再决定 Runtime 技术栈。
 - A0 已完成 Repository Intake、来源文档安置和 [Phase A 文件级实施规格](phase-a-implementation-spec.md)，并经 Orchestrator `PASS`。
@@ -33,7 +33,9 @@
 - A1.4 已通过 PR #39 squash merge 为 `main@cae88a4d4d1e365baddd394d196444f4ee6d1e8f`；post-merge CI run `30804485326` 完成 fresh PostGIS migration，结果为 `2074 passed / 0 skipped`。
 - A1.5 已由 Accepted [ADR-017](../adr/017-为什么旧app-agent必须迁出并保留RQ兼容路径.md) 编码并以 `PASS / completed` 收口：`app.segment_draft_ai` 是未来赛段草稿实现的唯一 canonical package；`app.agent` 只能作为默认长期保留的 compatibility tombstone，并永久禁止被 Planning Runtime 复用。
 - `app/agent` 当前仍未迁移，`app/segment_draft_ai` 仍未创建，M1/M2/M3 均未实施或获授权。实际 M1/M2 不阻塞 A2–A4，但 M1 必须在首个生产 Planning Runtime 或 Phase B live Agent 集成前完成。
-- A2 当前只是 `ready_to_specify / not started / execution unauthorized`，必须等待新的 Orchestrator Task Packet；A3–A5 继续 `blocked`。
+- A2 parent 已进入 `in_progress`，但不是整体完成：A2.1 只建立 [`contracts/agent_v0`](../../contracts/agent_v0/README.md) 中的 Common definitions、Predicate Registry、`RiderContextPacket`、`WorldFactPacket` 与 `ContextManifest`，当前为 `in_review`，不得自行判定 `PASS`。
+- A2.2（Session/Run/Map/Action）、A2.3（Tool/Approval/Effect/Plan/Validation）和 A2.4（Trace/Error/Contribution/全量交叉验证与 v0 freeze）继续逐项 `blocked`；A3–A5 继续 `blocked`。
+- A2.1 新增的是 Agent-facing projection contract 和合成 fixture，不是生产 Context Compiler、数据库 schema、Runtime、真实路线事实或部署。两个 World fixture 只覆盖 `linear_climb` 与 `corridor` 的合同结构；Phase A 仍需至少 10 个版本化 Gold World Package、覆盖至少 6 种 route shape，并由至少 30 个 VeloBench case 消费。
 - 不可变的 Control Pack v1.0 §11 中“当前唯一下一任务 A0”是 v1.0 创建时的 bootstrap snapshot，不是持续更新的 live state；不得为同步状态而修改 Control Pack 原文或哈希。
 - 当前阶段、下一任务和执行授权始终以仓库根 [`VELO_ORCHESTRATOR_STATE.yaml`](../../VELO_ORCHESTRATOR_STATE.yaml) 为准。
 - 后续文档提到的 `AgentSession`、`RidePlan`、`Traversal`、`RoadNode`、`RoadEdge`、合同或表，只是候选设计对象，不是当前 schema、migration、API 或实现授权。
@@ -42,6 +44,6 @@
 
 唯一可变执行状态位于仓库根目录 [`VELO_ORCHESTRATOR_STATE.yaml`](../../VELO_ORCHESTRATOR_STATE.yaml)。本 README、Control Pack、来源文档和实施规格都不能替代 State，也不能单独推动阶段。
 
-当前没有以下授权：A1.5 代码迁移 M1/M2/M3、A2 实施、生产 Agent、Session/Run/Memory/Context Compiler、Capability Engine、Approval UI、Side-effect Ledger、Contribution、LangGraph、multi-agent、长期推断 Memory、向量数据库、完整 road graph、真实腾讯/DEM、真实导出、公开发布、生产流量或部署。Accepted ADR-017 只代表 namespace/RQ 兼容迁移边界完成，不代表任何实施或部署授权；任何实现必须由 Orchestrator 另发单一 Task Packet。
+当前没有以下授权：A1.5 代码迁移 M1/M2/M3、A2.2–A2.4、生产 Agent、Session/Run/Memory/Context Compiler、Capability Engine、Approval UI、Side-effect Ledger、Contribution、LangGraph、multi-agent、长期推断 Memory、向量数据库、完整 road graph、真实腾讯/DEM、真实导出、公开发布、生产流量或部署。Accepted ADR-017 只代表 namespace/RQ 兼容迁移边界完成；A2.1 也只代表合同工程进入 Orchestrator 审查，不代表 Runtime、数据库或生产数据已经实现。
 
-A1.5 finalization Task Packet 的一次性授权只用于五文件状态收口、精确 CI 与 PR #40 squash merge；不授权 deploy、M1/M2/M3 或开始 A2。合并后 git write、merge 与 deploy 常驻权限为 false，`main` 继续只作为远程权威基线。
+A2.1 Task Packet 的一次性授权只用于允许清单内的 schema、Registry、fixture、合同测试、测试依赖和必要文档/State，并创建保持 Draft 的 PR；不授权 merge、deploy、M1/M2/M3、A2.2、VeloBench 或 Fake Environment。交付后 git write、merge 与 deploy 常驻权限恢复为 false，`main` 继续只作为远程权威基线。

@@ -1,0 +1,314 @@
+{
+  "schema_version": "0.1.0",
+  "packet_id": "world-fact.fixture.fenhe-dual-bank.1",
+  "packet_environment": "test",
+  "fixture_only": true,
+  "generated_at": "2026-08-03T19:36:00+08:00",
+  "source_revision": "fixture-world-r1",
+  "region_ref": "region.fixture-taiyuan",
+  "predicate_registry_version": "0.1.0",
+  "query_context": {
+    "task_mode": "compare",
+    "focus_refs": [
+      { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" }
+    ],
+    "requested_predicate_ids": [
+      "metric.distance_m",
+      "route.traffic_exposure",
+      "route.exit_option",
+      "route.group_ride_suitability",
+      "dynamic.surface_damage"
+    ],
+    "synthetic_fixture_data": true
+  },
+  "objects": [
+    {
+      "object_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+      "revision_ref": {
+        "object_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+        "revision": "fixture-route-r1",
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "display_name": "汾河双岸走廊（合成测试对象）",
+      "aliases": ["双岸 corridor fixture"],
+      "route_shape": "corridor",
+      "geometry_ref": {
+        "geometry_id": "geometry.fixture.fenhe-dual-bank-v1",
+        "geometry_kind": "path",
+        "geometry_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "coordinate_system": "WGS84"
+      }
+    },
+    {
+      "object_ref": { "object_id": "section.fenhe-east-bank-001", "object_type": "road_section" },
+      "revision_ref": {
+        "object_ref": { "object_id": "section.fenhe-east-bank-001", "object_type": "road_section" },
+        "revision": "fixture-section-r1"
+      },
+      "display_name": "东岸段（合成测试对象）",
+      "aliases": [],
+      "route_shape": "corridor"
+    },
+    {
+      "object_ref": { "object_id": "section.fenhe-west-bank-001", "object_type": "road_section" },
+      "revision_ref": {
+        "object_ref": { "object_id": "section.fenhe-west-bank-001", "object_type": "road_section" },
+        "revision": "fixture-section-r1"
+      },
+      "display_name": "西岸段（合成测试对象）",
+      "aliases": [],
+      "route_shape": "corridor"
+    },
+    {
+      "object_ref": { "object_id": "destination.fenhe-entry-south", "object_type": "destination" },
+      "revision_ref": {
+        "object_ref": { "object_id": "destination.fenhe-entry-south", "object_type": "destination" },
+        "revision": "fixture-anchor-r1"
+      },
+      "display_name": "南侧入口（合成测试对象）",
+      "aliases": [],
+      "route_shape": "destination_ride"
+    },
+    {
+      "object_ref": { "object_id": "destination.fenhe-turnaround-north", "object_type": "destination" },
+      "revision_ref": {
+        "object_ref": { "object_id": "destination.fenhe-turnaround-north", "object_type": "destination" },
+        "revision": "fixture-anchor-r1"
+      },
+      "display_name": "北侧折返点（合成测试对象）",
+      "aliases": [],
+      "route_shape": "destination_ride"
+    },
+    {
+      "object_ref": { "object_id": "destination.fenhe-exit-mid", "object_type": "destination" },
+      "revision_ref": {
+        "object_ref": { "object_id": "destination.fenhe-exit-mid", "object_type": "destination" },
+        "revision": "fixture-anchor-r1"
+      },
+      "display_name": "中段退出点（合成测试对象）",
+      "aliases": [],
+      "route_shape": "destination_ride"
+    }
+  ],
+  "traversals": [
+    {
+      "traversal_ref": { "object_id": "traversal.fenhe-clockwise-001", "object_type": "traversal" },
+      "parent_object_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+      "direction": "clockwise",
+      "start_anchor_ref": "anchor.fixture.fenhe-south",
+      "end_anchor_ref": "anchor.fixture.fenhe-south",
+      "metric_fact_refs": ["fact.fenhe.distance-clockwise"]
+    },
+    {
+      "traversal_ref": { "object_id": "traversal.fenhe-counterclockwise-001", "object_type": "traversal" },
+      "parent_object_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+      "direction": "counterclockwise",
+      "start_anchor_ref": "anchor.fixture.fenhe-south",
+      "end_anchor_ref": "anchor.fixture.fenhe-south",
+      "metric_fact_refs": []
+    }
+  ],
+  "relations": [
+    {
+      "relation_id": "relation.fenhe-contains-east-bank",
+      "from_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+      "to_ref": { "object_id": "section.fenhe-east-bank-001", "object_type": "road_section" },
+      "relation_type": "contains",
+      "scope": { "subject_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" } },
+      "provenance_refs": ["provenance.fixture-fenhe-source"]
+    },
+    {
+      "relation_id": "relation.fenhe-contains-west-bank",
+      "from_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+      "to_ref": { "object_id": "section.fenhe-west-bank-001", "object_type": "road_section" },
+      "relation_type": "contains",
+      "scope": { "subject_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" } },
+      "provenance_refs": ["provenance.fixture-fenhe-source"]
+    },
+    {
+      "relation_id": "relation.fenhe-east-parallel-west",
+      "from_ref": { "object_id": "section.fenhe-east-bank-001", "object_type": "road_section" },
+      "to_ref": { "object_id": "section.fenhe-west-bank-001", "object_type": "road_section" },
+      "relation_type": "parallel_bank_of",
+      "scope": { "subject_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" } },
+      "provenance_refs": ["provenance.fixture-fenhe-source"]
+    },
+    {
+      "relation_id": "relation.fenhe-starts-south",
+      "from_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+      "to_ref": { "object_id": "destination.fenhe-entry-south", "object_type": "destination" },
+      "relation_type": "starts_at",
+      "scope": { "subject_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" } },
+      "provenance_refs": ["provenance.fixture-fenhe-source"]
+    },
+    {
+      "relation_id": "relation.fenhe-turnaround-north",
+      "from_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+      "to_ref": { "object_id": "destination.fenhe-turnaround-north", "object_type": "destination" },
+      "relation_type": "turnaround_at",
+      "scope": { "subject_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" } },
+      "provenance_refs": ["provenance.fixture-fenhe-source"]
+    },
+    {
+      "relation_id": "relation.fenhe-exit-mid",
+      "from_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+      "to_ref": { "object_id": "destination.fenhe-exit-mid", "object_type": "destination" },
+      "relation_type": "exit_to",
+      "scope": { "subject_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" } },
+      "provenance_refs": ["provenance.fixture-fenhe-source"]
+    }
+  ],
+  "facts": [
+    {
+      "fact_id": "fact.fenhe.distance-clockwise",
+      "subject_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+      "predicate_id": "metric.distance_m",
+      "claim_kind": "computed_metric",
+      "value": { "value_kind": "number", "number_value": 56000, "unit_code": "m" },
+      "scope": {
+        "subject_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+        "traversal_ref": { "object_id": "traversal.fenhe-clockwise-001", "object_type": "traversal" },
+        "direction": "clockwise"
+      },
+      "fact_status": "computed",
+      "freshness": {
+        "freshness_status": "static",
+        "calculated_at": "2026-08-03T18:00:00+08:00",
+        "policy_ref": "freshness.computed_revision.v1"
+      },
+      "quality": {
+        "source_quality_level": "primary",
+        "corroboration_level": "not_applicable",
+        "human_confirmation_state": "not_required"
+      },
+      "calculation_run_ref": "calculation.fixture-fenhe-v1"
+    },
+    {
+      "fact_id": "fact.fenhe.traffic-east-bank",
+      "subject_ref": { "object_id": "section.fenhe-east-bank-001", "object_type": "road_section" },
+      "predicate_id": "route.traffic_exposure",
+      "claim_kind": "directional_experience",
+      "value": { "value_kind": "enum", "enum_value": "low" },
+      "scope": {
+        "subject_ref": { "object_id": "section.fenhe-east-bank-001", "object_type": "road_section" },
+        "traversal_ref": { "object_id": "traversal.fenhe-clockwise-001", "object_type": "traversal" },
+        "direction": "clockwise",
+        "spatial_interval": {
+          "interval_ref": { "object_id": "section.fenhe-east-bank-001", "object_type": "road_section" },
+          "from_fraction": 0,
+          "to_fraction": 1
+        }
+      },
+      "fact_status": "accepted",
+      "freshness": {
+        "freshness_status": "current",
+        "observed_at": "2026-07-30T07:00:00+08:00",
+        "policy_ref": "freshness.traffic_exposure.v1"
+      },
+      "quality": {
+        "source_quality_level": "high",
+        "corroboration_level": "multiple_sources",
+        "human_confirmation_state": "confirmed"
+      },
+      "evidence_refs": ["provenance.fixture-fenhe-review"]
+    },
+    {
+      "fact_id": "fact.fenhe.group-suitability",
+      "subject_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+      "predicate_id": "route.group_ride_suitability",
+      "claim_kind": "subjective_local_consensus",
+      "value": { "value_kind": "enum", "enum_value": "conditional" },
+      "scope": {
+        "subject_ref": { "object_id": "route.fenhe-dual-bank-001", "object_type": "named_route" },
+        "direction": "both"
+      },
+      "fact_status": "accepted",
+      "freshness": {
+        "freshness_status": "current",
+        "observed_at": "2026-07-30T07:00:00+08:00",
+        "policy_ref": "freshness.local_consensus.v1"
+      },
+      "quality": {
+        "source_quality_level": "medium",
+        "corroboration_level": "multiple_sources",
+        "human_confirmation_state": "confirmed"
+      },
+      "evidence_refs": ["provenance.fixture-fenhe-review"]
+    }
+  ],
+  "dynamic_states": [],
+  "advisories": [
+    {
+      "advisory_id": "advisory.fenhe-west-surface-report",
+      "advisory_type": "dynamic.surface_damage",
+      "scope": {
+        "subject_ref": { "object_id": "section.fenhe-west-bank-001", "object_type": "road_section" },
+        "spatial_interval": {
+          "interval_ref": { "object_id": "section.fenhe-west-bank-001", "object_type": "road_section" },
+          "from_fraction": 0.4,
+          "to_fraction": 0.6
+        }
+      },
+      "observed_at": "2026-08-02T08:00:00+08:00",
+      "verification_status": "unverified",
+      "usage_policy": "unknown_only",
+      "contribution_ref": "contribution.fixture-fenhe-report-001",
+      "provenance_refs": ["provenance.fixture-fenhe-report"],
+      "user_safe_summary": "西岸中段有一条未核验路面损坏报告，只能作为未知提示。"
+    }
+  ],
+  "unknowns": [
+    {
+      "unknown_id": "unknown.fenhe-west-exit",
+      "subject_ref": { "object_id": "section.fenhe-west-bank-001", "object_type": "road_section" },
+      "predicate_id": "route.supply_availability",
+      "reason_code": "source_not_available_for_fixture",
+      "blocking": false,
+      "user_safe_summary": "西岸中段补给可用性没有可靠信息。"
+    }
+  ],
+  "provenance_index": [
+    {
+      "provenance_id": "provenance.fixture-fenhe-source",
+      "provenance_type": "source",
+      "source_revision": "fixture-route-r1",
+      "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "summary": "Synthetic dual-bank route source."
+    },
+    {
+      "provenance_id": "provenance.fixture-fenhe-review",
+      "provenance_type": "evidence",
+      "source_revision": "fixture-review-r1",
+      "content_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "summary": "Synthetic reviewed corridor characterization."
+    },
+    {
+      "provenance_id": "provenance.fixture-fenhe-report",
+      "provenance_type": "contribution",
+      "source_revision": "fixture-report-r1",
+      "content_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "summary": "Synthetic unverified surface report."
+    },
+    {
+      "provenance_id": "calculation.fixture-fenhe-v1",
+      "provenance_type": "calculation_run",
+      "source_revision": "fixture-calculation-r1",
+      "content_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "summary": "Synthetic route metric calculation."
+    }
+  ],
+  "omitted_sections": [
+    { "section": "exact_geometry", "reason": "privacy" },
+    { "section": "live_construction", "reason": "unavailable" }
+  ],
+  "packet_limits": {
+    "fact_limit": 100,
+    "facts_included": 3,
+    "facts_omitted": 0,
+    "truncated": false
+  },
+  "metadata": {
+    "x-fixture": true,
+    "x-data-origin": "synthetic-not-production"
+  }
+}
