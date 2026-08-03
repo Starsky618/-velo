@@ -37,25 +37,34 @@ Proposed 不授权 Capability Engine、Approval UI、Side-effect Ledger、Contri
 
 ### 方案 D：Capability + effect scope + approval + ledger
 
-把“能力能否触达”“身份/数据能否访问”“领域结果是否合法”“用户是否批准这次 effect”分开，由代码按固定顺序执行，并对有副作用的结果做幂等与 ledger。选择此方案。
+把“能力能否触达”“身份/数据能否访问”“领域结果是否合法”“用户是否批准这次 effect”分开，由代码按分阶段门禁执行，并对有副作用的结果做幂等与 ledger。选择此方案。
 
 ## 4. 正式决策与门禁顺序
 
-所有在线 Agent 动作采用以下固定顺序：
+所有在线 Agent 动作先经过能力与访问门禁；需要幂等 key / ledger 的 effect 在新批准前先查询已有 effect，再对首次执行做最终原子占位：
 
 ```text
 environment allowlist
 → capability registry
 → user + service identity / data-scope authorization
-→ schema + stale revision check
-→ deterministic domain validation
-→ user approval when required
-→ idempotency / duplicate check
-→ execute
-→ side-effect ledger + Trace
+→ normalize exact effect identity
+→ preflight idempotency lookup
+    same key + same exact effect + committed
+      → return prior result / artifact ref; no fresh approval or execute
+    same key + same exact effect + started | outcome_unknown | reconciliation_required
+      → reconcile or return pending/unknown; no execute
+    same key + different effect identity
+      → IDEMPOTENCY_CONFLICT; fail closed
+    no prior effect
+      → schema + stale revision check
+      → deterministic domain validation
+      → user approval when required
+      → atomic reservation / final duplicate guard
+      → execute
+      → side-effect ledger + Trace
 ```
 
-任何未注册能力、环境不允许的工具、越过用户或服务 scope 的请求都 fail closed。批准不能补救前置门禁失败，执行也不能先发生再补 ledger。
+exact effect identity 至少包含 capability、tool name/version、effect scope、targets、payload hash、相关 Session/Plan/asset revisions、disclosure summary 与 idempotency key。任何未注册能力、环境不允许的工具、越过用户或服务 scope 的请求都 fail closed。批准不能补救前置门禁失败；atomic reservation 必须在批准后、execute 前完成，关闭并发请求同时通过 preflight 的竞态。
 
 ## 5. 四类门禁必须分开
 
@@ -116,10 +125,10 @@ environment allowlist
 
 ## 10. Exact Approval Grant 的绑定与失效
 
-一次 Approval Grant 只授权 **single exact effect**，有 expiry，默认 single-use，并绑定：
+一次 Approval Grant 只授权 **single exact effect**，有 expiry，默认 single-use。授权对象的稳定锚点是 `approval_request_id` 或 `proposed_effect_id`，不是最初提出请求的 Run；这允许同一 Planning Session 中 Run A 提议并停在 `APPROVAL_REQUIRED`，随后用户事件触发 Run B 恢复并消费同一 pending effect。授权绑定：
 
 - user identity 与 service identity；
-- Session、Run；
+- Session 与 `approval_request_id` / `proposed_effect_id`；
 - capability、tool name/version、effect scope；
 - target refs 与 request/payload hash；
 - base Session revision 与相关 Plan/asset revision；
@@ -127,20 +136,31 @@ environment allowlist
 - expiry、single-use 或明确 retry scope；
 - idempotency key。
 
+批准记录保留 `requested_by_run_id` 作为提议 provenance、`decided_by_user_event_ref` 与 `decision_recorded_at` 作为用户决定证据，并在首次真实消费时写入 `consumed_by_run_id`。只有同一 Session、同一 pending approval request/effect、相同 capability/tool/effect scope、targets/hash/revisions，且未过期、未撤销、未被其他 effect 消费时，后续 Run 才能恢复和消费；无关 Run 不能借用批准。Run ID 继续用于 provenance，不充当授权对象。
+
 payload、target、revision、capability/tool 或 disclosure 任一变化，批准立即失效；过期或用户撤销同样失效。沉默不是批准；自然语言“是/可以”只有在当前恰好一个 pending approval 且 exact summary 已展示时才有效。
 
 批准不能覆盖未来未定义的一串操作，也不能绕过领域校验。直接 UI 手势可以同时构成批准，只要用户看到的是这次准确 effect；不得为形式合规强制无价值二次弹窗。
 
 ## 11. Idempotency 与 Side-effect Ledger
 
-`PROVIDER_QUERY` 的外部披露、`PERSONAL`、`CONTRIBUTION`、`EXTERNAL_DELIVERY` 与 `CANONICAL` 必须进入确定性 ledger。概念状态至少包括：
+`PROVIDER_QUERY` 的外部披露、`PERSONAL`、`CONTRIBUTION`、`EXTERNAL_DELIVERY` 与 `CANONICAL` 必须进入确定性 ledger。概念生命周期至少能表达：
 
 ```text
 proposed → approval_required → approved → started
-→ committed | failed | compensated | withdrawn
+→ committed | failed | outcome_unknown
+outcome_unknown → reconciliation_required → committed | failed | compensated
+proposed | approval_required | approved → withdrawn | cancelled_before_start
 ```
 
-相同 payload 的安全重试只可沿同一 idempotency key 查询或继续同一 effect，不得创建第二份写入、导出或发送。response 丢失但 effect 已 committed 时，按 key/ledger 对账返回原结果；timeout/disconnect 后禁止 late write。
+这些是 A1.4 要求表达的状态语义，不冻结 A2 的精确枚举或 schema。安全重试必须沿同一 idempotency key 与 exact effect identity 查询或继续同一 effect，不得创建第二份写入、导出或发送：
+
+- 已有相同 effect `committed` 时返回原 artifact/ref/result，不重新执行、不要求新批准、不再次消费 approval，并记录 `idempotent_replay_returned_prior_result` 或等价 Trace event；
+- 已有相同 effect `started`、`outcome_unknown` 或 `reconciliation_required` 时，只能按 key/ledger 对账或向用户显示 pending/unknown，不得启动第二个 effect；
+- 相同 key 对应不同 payload、target、revision、tool/capability 或 disclosure 时返回 `IDEMPOTENCY_CONFLICT` 并 fail closed；
+- 尚无 effect 时，只有通过当前 schema/revision、deterministic validation 与 approval 后，才能原子 reserve exact effect；reservation 是 execute 前的最终重复保护。
+
+deadline/cancellation/disconnect 在 `started` 前生效时必须阻止 effect 开始，保持 **zero real effect**。effect 已 `started` 后发生 timeout/disconnect，不能假定外部系统已回滚，也不能据此报告成功或失败；ledger 进入 `outcome_unknown` / `reconciliation_required`，用户状态保持 pending/unknown，并按 idempotency key 对账，最终才收敛为 committed、failed 或 compensated。response 丢失但 effect 已 committed 时属于上述 committed 相同 effect 重试，直接返回原结果。准确不变量是：deadline/disconnect 不得启动新的未 reserve effect，任何 retry 不得制造第二个 effect；系统不承诺已开始的外部 effect 不会在断连后完成。
 
 失败、拒绝或撤回不能包装成成功。approval、effect 和 Trace 必须可关联；精确 schema 延后 A2。
 
@@ -216,7 +236,7 @@ Replay、Eval 与 Shadow 环境必须 **zero real effect**：不得真实查询 
 - ADR-015 回答“状态和记忆属于谁”。
 - ADR-016 回答“哪些能力可执行、怎样批准、怎样记录副作用”。
 - A1.5 继续 blocked，负责旧 `app/agent` 命名迁移，不在本文执行。
-- A2 定义 capability/approval/effect/contribution 的语言中立合同；A3/A4 用 ambiguous consent、stale approval、duplicate retry、disconnect-after-commit 和 zero-effect replay 等案例验证。
+- A2 定义 capability/approval/effect/contribution 的语言中立合同；A3/A4 用 ambiguous consent、stale approval、committed-response-loss retry、idempotency conflict、跨 Run approval resume、disconnect-before/after-start、unknown-outcome reconciliation 和 zero-effect replay 等案例验证。
 
 ## 19. Trade-off 与后果
 

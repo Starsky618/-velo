@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-03T17:07:34+08:00'
+updated_at: '2026-08-03T17:38:20+08:00'
 status: active
 authority:
   order:
@@ -55,8 +55,8 @@ repository:
   a1_3_reviewed_merge_ref: a8b7bb3bf9e87c2f567f2c15adaf7b7a873ff4e9
   last_verified_main_commit: dfef5b693dc06461210c2d065564b42333990143
   last_verified_main_commit_status: verified_at_a1_4_start
-  last_verified_at: '2026-08-03T17:07:34+08:00'
-  verified_via: fetch_origin_and_exact_remote_ref_at_a1_4_start
+  last_verified_at: '2026-08-03T17:38:20+08:00'
+  verified_via: fetch_origin_and_exact_refs_at_a1_4_r1_revision_start
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
@@ -119,8 +119,15 @@ next_task:
   parent: A1
   name: capability_approval_side_effect_boundary
   status: in_review
-  orchestrator_decision: SELECTED
-  codex_result: READY_FOR_REVIEW
+  orchestrator_decision: REVISE
+  last_orchestrator_decision: REVISE
+  review_round: A1_4_R1
+  revision_required:
+  - two_stage_idempotency_before_fresh_approval
+  - approval_request_anchor_across_resume_runs
+  - timeout_disconnect_unknown_outcome_reconciliation
+  revision_status: applied_waiting_orchestrator_re_review
+  codex_result: READY_FOR_ORCHESTRATOR_RE_REVIEW
   execution_authorized: false
   requires_orchestrator_review: true
 a1_subtasks:
@@ -610,6 +617,41 @@ evidence_log:
     a2_through_a5: blocked
     ci_evidence: tracked_externally_on_current_draft_pr
     ci_rule: exact_current_pull_request_head_and_merge_ref_runs_are_authoritative
+- id: E-20260803-A1-4-ORCHESTRATOR-R1
+  type: orchestrator_architecture_review
+  status: REVISE
+  evidence:
+    pr: 39
+    review_round: A1_4_R1
+    reviewed_base: dfef5b693dc06461210c2d065564b42333990143
+    reviewed_head: 92c88785aacb9d7c3718efbbc0f34b702e299965
+    reviewed_merge_ref: 5d544f7cb9c345ab26c22d80a2b53047c576d870
+    branch_ci_run: 30800185778
+    merge_ref_ci_run: 30800216970
+    decision: REVISE
+    accepted_body_decisions:
+    - deny_by_default_capability_registry
+    - resource_permission_validation_and_approval_are_distinct
+    - seven_effect_scopes_and_five_approval_modes
+    - online_raw_canonical_and_admin_capabilities_unreachable
+    - high_level_provider_query_and_minimal_disclosure
+    - export_prepare_zero_artifact_and_export_commit_effectful
+    - personal_memory_and_saved_place_require_explicit_intent_or_exact_confirmation
+    - contribution_is_attributable_proposal_or_evidence_not_canonical_truth
+    - visible_contribution_status_feedback_credit_and_appeal
+    - replay_and_shadow_have_zero_real_effect
+    blocking_findings:
+    - two_stage_idempotency_before_fresh_approval
+    - approval_request_anchor_across_resume_runs
+    - timeout_disconnect_unknown_outcome_reconciliation
+    allowed_revision_files_count: 3
+    allowed_revision_files:
+    - docs/adr/016-为什么在线Agent的能力审批与副作用必须显式化.md
+    - docs/agent-first/phase-a-implementation-spec.md
+    - VELO_ORCHESTRATOR_STATE.yaml
+    merge_authorized: false
+    deploy_authorized: false
+    a1_5_execution_authorized: false
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec
