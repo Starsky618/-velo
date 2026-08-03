@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-04T04:05:29+08:00'
+updated_at: '2026-08-04T04:47:26+08:00'
 status: active
 authority:
   order:
@@ -1178,6 +1178,66 @@ evidence_log:
     merge_authorized: false
     deploy_authorized: false
     A2_4_and_A3_through_A5: blocked
+- id: E-20260804-A2-3A-ORCHESTRATOR-REVIEW-R2
+  type: orchestrator_contract_review
+  status: REVISE
+  evidence:
+    parent_task: A2.3
+    task: A2.3a
+    review_round: A2_3A_R2
+    pr: 43
+    reviewed_base: 2e2f5e227308b9f2244904f2d7fde32c1ce20a87
+    reviewed_head: 6efe201f2332999ac6ccbe1e239581d62bd963f1
+    reviewed_merge_ref: 4f0e4b81313a7fddc8cc2d5a94b1bea17e2b09cf
+    cumulative_changed_files: 37
+    branch_ci_run: 30849306967
+    merge_ref_ci_run: 30849309843
+    branch_ci_result: 2430_passed_0_skipped
+    merge_ref_ci_result: 2430_passed_0_skipped
+    fresh_postgis_migration: true
+    resolved_r1_findings:
+    - tool_result_retry_attempt_lifecycle
+    - provider_query_irreversible_disclosure_classification
+    - ride_plan_revision_result_type
+    - candidate_presentation_context_plan_binding
+    - status_specific_domain_reason_mapping
+    blocking_findings:
+    - retry_attempt_chain_not_bound_to_agent_run
+    - running_intermediate_positive_case_uses_schema_invalid_agent_run
+    consistency_finding:
+    - intermediate_attempt_timeout_summary_mentions_run_deadline
+    decision: REVISE
+    merge_authorized: false
+    deploy_authorized: false
+- id: E-20260804-A2-3A-R2-CODEX-REVISION
+  type: contract_revision_delivery
+  status: applied_waiting_orchestrator_re_review
+  evidence:
+    parent_task: A2.3
+    task: A2.3a
+    review_round: A2_3A_R2
+    previous_head: 6efe201f2332999ac6ccbe1e239581d62bd963f1
+    last_orchestrator_decision: REVISE
+    revision_findings_applied:
+    - retry_attempt_chain_agent_run_cross_binding
+    - shape_valid_running_intermediate_positive_case
+    - intermediate_timeout_user_summary_alignment
+    clean_head_context_contract_test_result: 48_passed_0_skipped
+    clean_head_session_run_map_action_test_result: 181_passed_0_skipped
+    clean_head_tool_contract_test_result: 135_passed_0_skipped
+    clean_head_combined_targeted_result: 364_passed_0_skipped
+    clean_head_local_full_test_result: 2351_passed_87_skipped_0_failed
+    runtime_implemented: false
+    production_modified: false
+    database_migration_changed: false
+    real_provider_run: false
+    real_export_run: false
+    runtime_choice: deferred
+    A2_3b_started: false
+    A2_3c_started: false
+    orchestrator_re_review: pending
+    merge_authorized: false
+    deploy_authorized: false
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec

@@ -27,6 +27,6 @@
   "warning_refs": ["warning.fixture-request-timeout-001"],
   "unknown_refs": [],
   "retry_disposition": "RETRY_SAME_CALL",
-  "user_safe_summary": "本次请求在 Run 截止时间内没有完成。",
+  "user_safe_summary": "本次路线生成尝试超时，尚未产生候选。",
   "metadata": {"x-fixture": true, "x-synthetic": true}
 }

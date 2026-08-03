@@ -1,6 +1,6 @@
 # VELO Agent v0 language-neutral contracts
 
-本目录包含 A2.1 Context contracts、A2.2 Session/Run/Map/Action contracts，以及首轮 review 为 `REVISE`、已应用 R1 并等待 Orchestrator re-review 的 A2.3a Tool Registry/ToolCall/ToolResult contracts。它们固定语言中立、版本化的 shape 与 semantic conformance，不是数据库 schema，不选择 Python、TypeScript 或 Agent Runtime，也不证明生产 Context Compiler、Tool Gateway、reducer 或持久化服务已存在。
+本目录包含 A2.1 Context contracts、A2.2 Session/Run/Map/Action contracts，以及第二轮 review 为 `REVISE`、已应用 R2 并等待 Orchestrator re-review 的 A2.3a Tool Registry/ToolCall/ToolResult contracts。它们固定语言中立、版本化的 shape 与 semantic conformance，不是数据库 schema，不选择 Python、TypeScript 或 Agent Runtime，也不证明生产 Context Compiler、Tool Gateway、reducer 或持久化服务已存在。
 
 ## 当前包含
 
@@ -60,6 +60,8 @@
 - `planning.generate_candidate_plans` 的 `DOMAIN_MEDIATED` 只表示 production Domain Plane 可在自身边界内查询 Provider；Agent 不获得 raw Provider、URL、HTTP、SQL、ORM、shell、database/storage handle、坐标或 polyline。Provider 查询即使不产出 external artifact，也会产生不可撤回的最小外部数据披露，因此固定为 `IRREVERSIBLE_EXTERNAL_DISCLOSURE / MINIMIZED_DOMAIN_MEDIATED`；精确 effect identity、ledger 与 reconciliation runtime 仍属于未来 A2.3b。
 - `ToolCall.input` 只有 `input_kind/input_ref/input_revision/input_schema_version/target_revision_refs`；不复制 payload，不允许 `arguments`、`params`、prompt prose、坐标、Provider request 或数据库命令。`tool_call_id` 是 immutable request identity；同 ID 的 environment、Run/Session revision、model turn、source action、Registry/tool/capability/purpose、input、expected observation、proposal flag 或 proposed time 任一变化都非法，需要新 ToolCall ID。
 - `ToolResult` 用 `observation_id` 与 `AgentRun.observation_refs` 对齐，每条记录是一次 execution attempt observation。attempt 从 1 连续递增、时间单调不减；同一 ToolCall 可先有 `INTERMEDIATE` timeout/disconnect，再有至多一个且最后出现的 `TERMINAL` Result。stopped Run 的已执行 ToolCall 必须收敛到 terminal；仍 running/paused 且等待确定性 retry 时可暂时只有 intermediate。
+- retry attempt chain 必须与同一 AgentRun 精确交叉绑定：ToolCall 的 run、session、base revision、environment、fixture mode 必须与 Run 一致，每个 ToolResult 再精确绑定该 Call 与 Run；Call/Result 时间必须落在 Run start/checkpoint 边界内，且 Result 不得早于 Call。
+- running/paused Run 只保留 `INTERMEDIATE` observation 时，Run 本身仍必须通过 AgentRun schema；running Run 的 `session_commit.commit_status` 是 `not_attempted`，不存在 `not_committed` 状态。
 - `RETRY_SAME_CALL` 只是 typed retry eligibility，不是执行授权；Run Controller 仍检查 deadline、retry budget、environment、Registry、stale revision，以及未来 A2.3b 的 exact-effect/reconciliation gate。deterministic retry 不自动新增 model turn 或 AgentAction；`AgentRun.budget.consumed.tool_calls` 统计 initial attempt 加 retry attempts，而 `tool_call_refs` 统计唯一 request proposal，因此 `len(tool_call_refs) <= consumed.tool_calls`。
 - ToolResult 的 status/code/finality/retry/domain reason/result refs 作为组合 fail closed；success/ambiguous 不能携带 domain reason，timeout 与 disconnect 不能互换 reason。revision Result 只服务 `planning.revise_plan`，并严格要求 `object_type=ride_plan`；不定义 RidePlanDraft 内容。`planning.validate_plan` 只能引用未来 typed `plan_validation`，不能自行写 pass；`planning.prepare_export` 只能引用 `export_preview`，零 artifact、零 storage、零外部交付。
 - candidate synthetic scenario 是两轮：turn 1 `ContextManifest` → `propose_tool_call` → generate → typed observation；deterministic mandatory validation gate 不伪装成第二个 Agent ToolCall；工具观察后重新编译的 turn 2 `ContextManifest` 必须包含待展示的两个 Plan revisions，turn 2 的 `present_valid_candidates` 不能引用 Manifest 中不存在的 Plan。每个非-resume Run 已消费 model turn 恰好对应一个 ContextManifest 与 typed AgentAction proposal ref；resume lineage 的累计计数由 parent+child refs 共同核对。
@@ -96,7 +98,7 @@ Predicate request 与 Relation request 是两条独立合同面。每个 request
 - 同主版本只允许兼容性新增可选字段；破坏性变更使用新目录或新主版本。
 - fixture 固定 `schema_version`，World fixture 均为 `packet_environment=test`、`fixture_only=true` 的合成合同数据，不是已核验产品事实。
 - A2.2 fixture 均为 `environment=test`、`fixture_only=true` 的 synthetic interaction scenario，不是生产 Session、真实 Plan、Provider 结果或持久化记录。
-- A2.3a ToolCall/ToolResult fixture 同样是 `environment=test`、`fixture_only=true` 的合成 observation；它可以表达 timeout → same-call retry → success 的 attempt chain，但没有执行真实网络、Provider、export、数据库、storage 或外部 effect。
+- A2.3a ToolCall/ToolResult fixture 同样是 `environment=test`、`fixture_only=true` 的合成 observation；它可以表达 timeout → same-call retry → success 的 attempt chain，并由 conformance harness 绑定同一 AgentRun，但没有执行真实网络、Provider、export、数据库、storage 或外部 effect。R2 已应用，当前等待 Orchestrator 再复审；A2.3b/A2.3c 未开始。
 - 所有 `$ref` 必须由本地 `referencing.Registry` 解析；合同测试不得联网、访问数据库、Redis 或真实 filesystem storage。
 - JSON Schema 负责语言中立的 shape validation，但不等于 semantic conformance。Registry unit/value/freshness、request 完整响应、route-shape focus、范围顺序、带时区时间顺序、跨合同 environment/fixture/time、Session/Run revision、resume budget/current Session、candidate/selection provenance、viewport Event/Action transition、MapEvent/MapAction target identity、Manifest binding 与 token accounting 等跨字段不变量由 conformance suite 固定。未来任何语言的消费者都必须实现并通过这些不变量，不能只跑 schema shape validation。
 

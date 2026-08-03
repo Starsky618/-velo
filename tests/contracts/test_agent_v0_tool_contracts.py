@@ -502,9 +502,16 @@ def assert_call_semantics(call, registry, action=None, run=None, session=None):
         )
         assert action["map_actions"] == []
     if run is not None:
+        for field in (
+            "run_id",
+            "session_id",
+            "base_session_revision",
+            "environment",
+        ):
+            assert call[field] == run[field]
+        assert call["fixture_only"] is run["fixture_only"]
         assert call["tool_call_id"] in run["tool_call_refs"]
         assert call["requested_by_agent_action_ref"] in run["action_proposal_refs"]
-        assert call["run_id"] == run["run_id"]
         assert call["model_turn_index"] <= run["budget"]["consumed"]["model_turns"]
         assert parse_rfc3339(run["started_at"]) <= parse_rfc3339(call["proposed_at"])
         assert parse_rfc3339(call["proposed_at"]) <= parse_rfc3339(
@@ -626,7 +633,7 @@ def assert_result_semantics(result, call, registry, run=None, session=None):
 def assert_attempt_chain(call, results, registry, run):
     assert results
     assert call["tool_name"] in tool_map(registry)
-    assert_immutable_tool_call_identity([call])
+    assert_call_semantics(call, registry, run=run)
     assert all(result["tool_call_id"] == call["tool_call_id"] for result in results)
     assert [result["attempt_index"] for result in results] == list(
         range(1, len(results) + 1)
@@ -650,7 +657,7 @@ def assert_attempt_chain(call, results, registry, run):
         assert run["run_status"] in {"running", "paused"}
 
     for result in results:
-        assert_result_semantics(result, call, registry)
+        assert_result_semantics(result, call, registry, run=run)
     assert run["tool_call_refs"] == [call["tool_call_id"]]
     assert run["observation_refs"] == [
         result["observation_id"] for result in results
@@ -1443,6 +1450,37 @@ def assert_retry_scenario(scenario):
     )
 
 
+def running_intermediate_scenario():
+    scenario = retry_scenario()
+    scenario["results"] = scenario["results"][:1]
+    scenario["run"].update(
+        {
+            "run_status": "running",
+            "current_step": "execute_tool",
+            "session_commit": {
+                "commit_status": "not_attempted",
+                "expected_base_revision": 1,
+            },
+        }
+    )
+    for field in ("stop_reason", "pending_gate", "ended_at"):
+        scenario["run"].pop(field, None)
+    scenario["run"]["context_manifest_refs"] = scenario["run"][
+        "context_manifest_refs"
+    ][:1]
+    scenario["run"]["action_proposal_refs"] = scenario["run"][
+        "action_proposal_refs"
+    ][:1]
+    scenario["run"]["observation_refs"] = scenario["run"][
+        "observation_refs"
+    ][:1]
+    scenario["run"]["budget"]["consumed"].update(
+        {"model_turns": 1, "tool_calls": 1, "plan_generations": 1}
+    )
+    scenario["run"]["budget"]["tool_retry_counters"][0]["retries"] = 0
+    return scenario
+
+
 def test_one_immutable_call_can_timeout_then_succeed_on_second_attempt(
     schemas, local_registry
 ):
@@ -1467,6 +1505,55 @@ def test_one_immutable_call_can_timeout_then_succeed_on_second_attempt(
     assert len(scenario["run"]["observation_refs"]) == 2
     assert scenario["run"]["budget"]["consumed"]["model_turns"] == 1
     assert len(scenario["run"]["action_proposal_refs"]) == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "run_id_mismatch",
+        "session_id_mismatch",
+        "base_session_revision_mismatch",
+        "environment_fixture_mismatch",
+        "call_before_run_start",
+        "result_after_run_checkpoint",
+        "result_before_tool_call",
+    ],
+)
+def test_retry_chain_rejects_agent_run_identity_and_time_mismatches(
+    mutation, schemas, local_registry
+):
+    scenario = retry_scenario()
+    if mutation == "run_id_mismatch":
+        scenario["run"]["run_id"] = "agent-run.other"
+    elif mutation == "session_id_mismatch":
+        scenario["run"]["session_id"] = "planning-session.other"
+    elif mutation == "base_session_revision_mismatch":
+        scenario["run"]["base_session_revision"] = 2
+        scenario["run"]["session_commit"]["expected_base_revision"] = 2
+    elif mutation == "environment_fixture_mismatch":
+        scenario["run"]["environment"] = "shadow"
+        scenario["run"]["fixture_only"] = False
+    elif mutation == "call_before_run_start":
+        scenario["call"]["proposed_at"] = "2026-08-03T20:08:59+08:00"
+    elif mutation == "result_after_run_checkpoint":
+        scenario["results"][1]["observed_at"] = "2026-08-03T20:10:41+08:00"
+    elif mutation == "result_before_tool_call":
+        scenario["results"][0]["observed_at"] = "2026-08-03T20:09:29+08:00"
+    else:
+        raise AssertionError(f"unhandled mutation: {mutation}")
+
+    assert not validation_errors(
+        "tool_call", scenario["call"], schemas, local_registry
+    )
+    assert not validation_errors(
+        "agent_run", scenario["run"], schemas, local_registry
+    )
+    for result in scenario["results"]:
+        assert not validation_errors(
+            "tool_result", result, schemas, local_registry
+        )
+    with pytest.raises(AssertionError):
+        assert_retry_scenario(scenario)
 
 
 @pytest.mark.parametrize(
@@ -1533,22 +1620,36 @@ def test_stopped_run_cannot_end_with_only_intermediate_result():
         assert_retry_scenario(scenario)
 
 
-def test_running_run_may_temporarily_wait_with_only_intermediate_result():
-    scenario = retry_scenario()
-    scenario["results"] = scenario["results"][:1]
-    scenario["run"]["run_status"] = "running"
-    scenario["run"].pop("stop_reason")
-    scenario["run"].pop("ended_at")
-    scenario["run"]["session_commit"] = {
-        "commit_status": "not_committed",
-        "expected_base_revision": 1,
-    }
-    scenario["run"]["observation_refs"] = scenario["run"][
-        "observation_refs"
-    ][:1]
-    scenario["run"]["budget"]["consumed"]["tool_calls"] = 1
-    scenario["run"]["budget"]["tool_retry_counters"][0]["retries"] = 0
+def test_running_run_may_temporarily_wait_with_only_intermediate_result(
+    schemas, local_registry
+):
+    scenario = running_intermediate_scenario()
+    run = scenario["run"]
+    assert not validation_errors("agent_run", run, schemas, local_registry)
+    assert run["run_status"] == "running"
+    assert run["current_step"] == "execute_tool"
+    assert run["session_commit"]["commit_status"] == "not_attempted"
+    assert "stop_reason" not in run
+    assert "pending_gate" not in run
+    assert "ended_at" not in run
+    assert len(run["tool_call_refs"]) == 1
+    assert len(run["observation_refs"]) == 1
+    assert run["budget"]["consumed"]["tool_calls"] == 1
+    assert run["budget"]["tool_retry_counters"][0]["retries"] == 0
+    assert run["budget"]["consumed"]["model_turns"] == 1
+    assert len(run["action_proposal_refs"]) == 1
+    assert len(run["context_manifest_refs"]) == 1
     assert_retry_scenario(scenario)
+
+
+def test_running_run_rejects_not_committed_session_commit_status(
+    schemas, local_registry
+):
+    scenario = running_intermediate_scenario()
+    scenario["run"]["session_commit"]["commit_status"] = "not_committed"
+    assert validation_errors(
+        "agent_run", scenario["run"], schemas, local_registry
+    )
 
 
 def test_retry_count_cannot_exceed_run_budget():
