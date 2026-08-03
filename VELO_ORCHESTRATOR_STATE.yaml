@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-04T03:12:55+08:00'
+updated_at: '2026-08-04T03:21:34+08:00'
 status: active
 authority:
   order:
@@ -1099,6 +1099,9 @@ evidence_log:
     local_tool_contract_test_result: 79_passed_0_skipped
     local_combined_targeted_result: 308_passed_0_skipped
     local_full_test_precommit_result: 2281_passed_87_skipped_4_expected_dirty_diff_guard_failures
+    local_full_test_clean_head_result: 2295_passed_87_skipped_0_failed
+    local_full_test_exit_status: success
+    local_postgres_postgis_boundary: deferred_to_github_ci_fresh_service_with_skip_rejection
     runtime_code_changed: false
     production_code_changed: false
     database_migration_changed: false
