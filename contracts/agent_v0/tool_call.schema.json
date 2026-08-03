@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.velo.invalid/agent_v0/tool_call.schema.json",
   "title": "VELO Agent v0 Tool Call Proposal",
-  "description": "An immutable Agent proposed request. Deterministic gates still own lookup, authorization, execution, deadlines, retry budget, and validation.",
+  "description": "An immutable Agent proposed request. tool_call_id is the stable request identity across deterministic retry attempts; changing any authoritative request field requires a new ID. Deterministic gates still own lookup, authorization, execution, deadlines, retry budget, and validation.",
   "type": "object",
   "additionalProperties": false,
   "required": [

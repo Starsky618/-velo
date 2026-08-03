@@ -15,6 +15,8 @@
   "observation_kind": "plan_validation",
   "result_status": "failed",
   "result_code": "TOOL_HARD_FAIL",
+  "attempt_index": 1,
+  "result_finality": "TERMINAL",
   "domain_reason_code": "DETERMINISTIC_VALIDATION_REJECTED",
   "observed_at": "2026-08-03T20:10:00+08:00",
   "observation_only": true,

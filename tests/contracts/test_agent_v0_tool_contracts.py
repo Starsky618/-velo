@@ -32,6 +32,7 @@ A2_3A_SCHEMA_FILES = {
 }
 
 VALID_FIXTURE_SCHEMAS = {
+    "context_manifest_candidate_presentation_turn_2.json": "context_manifest",
     "agent_action_propose_tool_call.json": "agent_action",
     "tool_call_generate_candidate_plans.json": "tool_call",
     "tool_result_generate_candidate_plans_succeeded.json": "tool_result",
@@ -39,19 +40,22 @@ VALID_FIXTURE_SCHEMAS = {
     "tool_result_generate_candidate_plans_no_result.json": "tool_result",
     "tool_result_generate_candidate_plans_timed_out.json": "tool_result",
     "tool_result_generate_candidate_plans_disconnected.json": "tool_result",
+    "tool_result_generate_candidate_plans_retry_succeeded.json": "tool_result",
     "tool_result_validate_plan_succeeded.json": "tool_result",
     "tool_result_validate_plan_failed.json": "tool_result",
     "tool_result_prepare_export_succeeded.json": "tool_result",
+    "tool_result_revise_plan_succeeded.json": "tool_result",
 }
 
 INVALID_SHAPE_FIXTURES = {
-    "tool_registry_forbidden_raw_tool.json": "tool_registry",
     "tool_call_embedded_arguments_or_coordinates.json": "tool_call",
     "tool_call_claims_approval_or_execution.json": "tool_call",
     "tool_result_raw_provider_payload.json": "tool_result",
     "tool_result_success_without_typed_ref.json": "tool_result",
     "tool_result_failure_with_success_ref.json": "tool_result",
     "tool_result_prepare_export_artifact.json": "tool_result",
+    "tool_result_retry_same_call_marked_terminal.json": "tool_result",
+    "tool_result_revise_plan_non_ride_plan_revision.json": "tool_result",
 }
 
 EXPECTED_TOOL_MAPPING = {
@@ -196,6 +200,27 @@ FORBIDDEN_METADATA_FRAGMENTS = {
     "tool-name",
 }
 
+AUTHORITATIVE_CALL_FIELDS = (
+    "schema_version",
+    "environment",
+    "fixture_only",
+    "run_id",
+    "session_id",
+    "base_session_revision",
+    "model_turn_index",
+    "requested_by_agent_action_ref",
+    "tool_registry_id",
+    "tool_registry_version",
+    "tool_name",
+    "tool_version",
+    "capability_id",
+    "purpose_code",
+    "input",
+    "expected_observation_kind",
+    "proposal_only",
+    "proposed_at",
+)
+
 STATUS_RULES = {
     "succeeded": ("TOOL_SUCCEEDED", {"NOT_APPLICABLE"}, 1, None),
     "ambiguous": ("TOOL_AMBIGUOUS", {"ASK_USER"}, 2, None),
@@ -213,6 +238,41 @@ STATUS_RULES = {
         0,
     ),
     "failed": ("TOOL_HARD_FAIL", {"DO_NOT_RETRY", "REVISE_REQUEST"}, 0, 0),
+}
+
+DOMAIN_REASON_RULES = {
+    ("succeeded", "TERMINAL", "NOT_APPLICABLE"): None,
+    ("ambiguous", "TERMINAL", "ASK_USER"): None,
+    ("no_result", "TERMINAL", "DO_NOT_RETRY"): {
+        "NO_MATCHING_RESULT",
+        "INSUFFICIENT_WORLD_DATA",
+    },
+    ("no_result", "TERMINAL", "REVISE_REQUEST"): {
+        "NO_MATCHING_RESULT",
+        "INSUFFICIENT_WORLD_DATA",
+    },
+    ("timed_out", "INTERMEDIATE", "RETRY_SAME_CALL"): {
+        "TOOL_ATTEMPT_TIMEOUT"
+    },
+    ("timed_out", "TERMINAL", "DO_NOT_RETRY"): {"TOOL_ATTEMPT_TIMEOUT"},
+    ("timed_out", "TERMINAL", "DEFER"): {"RUN_DEADLINE_EXCEEDED"},
+    ("disconnected", "INTERMEDIATE", "RETRY_SAME_CALL"): {
+        "DOMAIN_SERVICE_DISCONNECTED"
+    },
+    ("disconnected", "TERMINAL", "DO_NOT_RETRY"): {
+        "DOMAIN_SERVICE_DISCONNECTED"
+    },
+    ("disconnected", "TERMINAL", "DEFER"): {
+        "DOMAIN_SERVICE_DISCONNECTED"
+    },
+    ("failed", "TERMINAL", "DO_NOT_RETRY"): {
+        "DETERMINISTIC_VALIDATION_REJECTED",
+        "DOMAIN_SERVICE_FAILURE",
+    },
+    ("failed", "TERMINAL", "REVISE_REQUEST"): {
+        "DETERMINISTIC_VALIDATION_REJECTED",
+        "DOMAIN_SERVICE_FAILURE",
+    },
 }
 
 
@@ -305,6 +365,7 @@ def assert_registry_semantics(registry):
     assert registry["default_decision"] == "DENY"
     assert registry["state_owner"] == "deterministic_control_plane"
     assert registry["registry_scope"] == "online_static_planning"
+    assert registry["created_at"] == "2026-08-04T03:03:00+08:00"
     tools = registry["tools"]
     names = [tool["tool_name"] for tool in tools]
     identities = [(tool["tool_name"], tool["tool_version"]) for tool in tools]
@@ -339,7 +400,12 @@ def assert_registry_semantics(registry):
             assert tool[field] == value, (tool["tool_name"], field)
         assert tool["execution_owner"] == "deterministic_domain_plane"
         assert tool["tool_version"] == registry["registry_version"]
-        assert tool["reversibility"] == "NON_EFFECTFUL_REQUEST"
+        if tool["tool_name"] == "planning.generate_candidate_plans":
+            assert tool["reversibility"] == "IRREVERSIBLE_EXTERNAL_DISCLOSURE"
+        elif tool["tool_name"] == "planning.revise_plan":
+            assert tool["reversibility"] == "REVERSIBLE_SESSION_ARTIFACT"
+        else:
+            assert tool["reversibility"] == "NO_PERSISTENT_EFFECT"
         assert tool["model_exposure"] == {
             "opaque_input_refs_only": True,
             "typed_observation_only": True,
@@ -356,6 +422,9 @@ def assert_registry_semantics(registry):
             "owner": "deterministic_run_controller",
             "bounded_by_run_budget": True,
             "model_may_extend": False,
+            "effect_reconciliation_required": (
+                tool["tool_name"] == "planning.generate_candidate_plans"
+            ),
         }
         effect = tool["effect_contract"]
         assert effect["produces_external_artifact"] is False
@@ -365,6 +434,22 @@ def assert_registry_semantics(registry):
             tool["tool_name"]
             in {"planning.generate_candidate_plans", "planning.revise_plan"}
         )
+        expected_disclosure = (
+            "MINIMIZED_DOMAIN_MEDIATED"
+            if tool["tool_name"] == "planning.generate_candidate_plans"
+            else "NONE"
+        )
+        assert effect["external_provider_disclosure"] == expected_disclosure
+        if tool["tool_name"] == "planning.generate_candidate_plans":
+            assert (
+                "EXTERNAL_PROVIDER_MINIMIZED_DISCLOSURE"
+                in tool["data_classifications"]
+            )
+        else:
+            assert (
+                "EXTERNAL_PROVIDER_MINIMIZED_DISCLOSURE"
+                not in tool["data_classifications"]
+            )
         dedupe = tool["request_deduplication"]
         assert dedupe["identity_field"] == "tool_call_id"
         if tool["tool_name"] in {
@@ -380,6 +465,7 @@ def assert_registry_semantics(registry):
         "writes_canonical_world": False,
         "writes_personal_asset": False,
         "produces_session_artifact": False,
+        "external_provider_disclosure": "NONE",
     }
     assert_metadata_non_authoritative(registry["metadata"])
 
@@ -433,9 +519,27 @@ def assert_call_semantics(call, registry, action=None, run=None, session=None):
         assert call["fixture_only"] is artifact["fixture_only"]
 
 
+def assert_immutable_tool_call_identity(calls):
+    requests_by_id = {}
+    for call in calls:
+        request = {field: call[field] for field in AUTHORITATIVE_CALL_FIELDS}
+        previous = requests_by_id.setdefault(call["tool_call_id"], request)
+        assert request == previous
+
+
 def result_ref_kinds(result):
     return {
-        ref.get("contract_kind", ref.get("packet_type", "revision_ref"))
+        ref.get(
+            "contract_kind",
+            ref.get(
+                "packet_type",
+                (
+                    "ride_plan_revision"
+                    if ref.get("object_ref", {}).get("object_type") == "ride_plan"
+                    else "non_ride_plan_revision"
+                ),
+            ),
+        )
         for ref in result["result_refs"]
     }
 
@@ -462,6 +566,7 @@ def assert_result_semantics(result, call, registry, run=None, session=None):
     assert result["raw_provider_payload_exposed"] is False
     assert result["exact_coordinates_exposed"] is False
     assert result["canonical_fact_claimed"] is False
+    assert result["attempt_index"] >= 1
     assert_metadata_non_authoritative(result["metadata"])
     assert not (set(walk_keys(result)) & {"provider_payload", "coordinates", "latitude", "longitude", "lat", "lon", "lng", "polyline"})
 
@@ -475,12 +580,29 @@ def assert_result_semantics(result, call, registry, run=None, session=None):
         assert len(result["result_refs"]) <= max_refs
         assert "domain_reason_code" in result
 
+    reason_key = (
+        result["result_status"],
+        result["result_finality"],
+        result["retry_disposition"],
+    )
+    assert reason_key in DOMAIN_REASON_RULES
+    allowed_reasons = DOMAIN_REASON_RULES[reason_key]
+    if allowed_reasons is None:
+        assert "domain_reason_code" not in result
+    else:
+        assert result["domain_reason_code"] in allowed_reasons
+    if result["retry_disposition"] == "RETRY_SAME_CALL":
+        assert result["result_finality"] == "INTERMEDIATE"
+    if result["result_finality"] == "INTERMEDIATE":
+        assert result["result_status"] in {"timed_out", "disconnected"}
+        assert result["retry_disposition"] == "RETRY_SAME_CALL"
+
     allowed_ref_kinds = {
         "ride_object_resolution": {"ride_object_resolution"},
         "rider_context_packet": {"rider_context_packet"},
         "world_fact_packet": {"world_fact_packet"},
         "candidate_plan_set": {"candidate_plan_set"},
-        "ride_plan_revision": {"revision_ref"},
+        "ride_plan_revision": {"ride_plan_revision"},
         "plan_validation": {"plan_validation"},
         "plan_comparison": {"plan_comparison"},
         "export_preview": {"export_preview"},
@@ -499,6 +621,54 @@ def assert_result_semantics(result, call, registry, run=None, session=None):
     if session is not None:
         assert result["session_id"] == session["session_id"]
         assert result["base_session_revision"] == session["session_revision"]
+
+
+def assert_attempt_chain(call, results, registry, run):
+    assert results
+    assert call["tool_name"] in tool_map(registry)
+    assert_immutable_tool_call_identity([call])
+    assert all(result["tool_call_id"] == call["tool_call_id"] for result in results)
+    assert [result["attempt_index"] for result in results] == list(
+        range(1, len(results) + 1)
+    )
+    assert len({result["attempt_index"] for result in results}) == len(results)
+    assert len({result["observation_id"] for result in results}) == len(results)
+    observed_times = [parse_rfc3339(result["observed_at"]) for result in results]
+    assert observed_times == sorted(observed_times)
+
+    terminal_positions = [
+        index
+        for index, result in enumerate(results)
+        if result["result_finality"] == "TERMINAL"
+    ]
+    assert len(terminal_positions) <= 1
+    if terminal_positions:
+        assert terminal_positions == [len(results) - 1]
+    if run["run_status"] == "stopped":
+        assert len(terminal_positions) == 1
+    else:
+        assert run["run_status"] in {"running", "paused"}
+
+    for result in results:
+        assert_result_semantics(result, call, registry)
+    assert run["tool_call_refs"] == [call["tool_call_id"]]
+    assert run["observation_refs"] == [
+        result["observation_id"] for result in results
+    ]
+    assert run["budget"]["consumed"]["tool_calls"] == len(results)
+    assert len(run["tool_call_refs"]) <= run["budget"]["consumed"]["tool_calls"]
+    retry_entries = {
+        item["tool_name"]: item["retries"]
+        for item in run["budget"]["tool_retry_counters"]
+    }
+    assert retry_entries[call["tool_name"]] == len(results) - 1
+    assert (
+        retry_entries[call["tool_name"]]
+        <= run["budget"]["limits"]["max_same_tool_retries"]
+    )
+    assert run["budget"]["consumed"]["tool_calls"] <= run["budget"]["limits"][
+        "max_tool_calls"
+    ]
 
 
 def call_for_result(result, registry):
@@ -535,14 +705,8 @@ def call_for_result(result, registry):
 
 def integrated_scenario():
     manifest_turn_1 = load_valid("context_manifest.json")
-    manifest_turn_2 = deepcopy(manifest_turn_1)
-    manifest_turn_2.update(
-        {
-            "manifest_id": "context-manifest.fixture-run-002-turn-2",
-            "model_call_id": "model-call.fixture-run-002-turn-2",
-            "compiled_at": "2026-08-03T20:09:50+08:00",
-            "task_mode": "compare",
-        }
+    manifest_turn_2 = load_valid(
+        "context_manifest_candidate_presentation_turn_2.json"
     )
     return {
         "registry": load_json(CONTRACT_DIR / "tool_registry.v0.json"),
@@ -555,6 +719,10 @@ def integrated_scenario():
         "result": load_valid("tool_result_generate_candidate_plans_succeeded.json"),
         "presentation": load_valid("agent_action_present_candidates.json"),
     }
+
+
+def revision_ref_keys(refs):
+    return {json.dumps(ref, sort_keys=True) for ref in refs}
 
 
 def assert_integrated_scenario(scenario):
@@ -578,6 +746,7 @@ def assert_integrated_scenario(scenario):
     assert run["budget"]["tool_retry_counters"] == [
         {"tool_name": "planning.generate_candidate_plans", "retries": 0}
     ]
+    assert_attempt_chain(call, [result], registry, run)
 
     for manifest in manifests:
         assert manifest["packet_environment"] == session["environment"]
@@ -594,8 +763,25 @@ def assert_integrated_scenario(scenario):
         candidate["validation_result_ref"]
         for candidate in actions[1]["payload"]["candidates"]
     )
+    presented_plan_refs = [
+        candidate["plan_revision_ref"]
+        for candidate in actions[1]["payload"]["candidates"]
+    ]
+    assert revision_ref_keys(manifests[1]["plan_revision_refs"]) == (
+        revision_ref_keys(presented_plan_refs)
+    )
+    assert manifests[0]["plan_revision_refs"] == []
+    assert {
+        "tool.observation.candidate_plan_set",
+        "plan.candidate_summaries",
+        "plan.validation_summaries",
+    } <= set(manifests[1]["included_sections"])
     assert call["tool_name"] == "planning.generate_candidate_plans"
+    assert len(manifests) == run["budget"]["consumed"]["model_turns"]
     assert parse_rfc3339(run["started_at"]) <= parse_rfc3339(
+        manifests[0]["compiled_at"]
+    )
+    assert parse_rfc3339(manifests[0]["compiled_at"]) <= parse_rfc3339(
         actions[0]["proposed_at"]
     )
     assert parse_rfc3339(actions[0]["proposed_at"]) <= parse_rfc3339(
@@ -605,6 +791,9 @@ def assert_integrated_scenario(scenario):
         result["observed_at"]
     )
     assert parse_rfc3339(result["observed_at"]) <= parse_rfc3339(
+        manifests[1]["compiled_at"]
+    )
+    assert parse_rfc3339(manifests[1]["compiled_at"]) <= parse_rfc3339(
         actions[1]["proposed_at"]
     )
     assert parse_rfc3339(actions[1]["proposed_at"]) <= parse_rfc3339(
@@ -641,6 +830,57 @@ def test_registry_fixture_conforms_and_has_exact_semantics(schemas, local_regist
     registry = load_json(CONTRACT_DIR / "tool_registry.v0.json")
     assert not validation_errors("tool_registry", registry, schemas, local_registry)
     assert_registry_semantics(registry)
+
+
+def test_provider_query_effect_policy_preserves_irreversible_disclosure():
+    tools = tool_map(load_json(CONTRACT_DIR / "tool_registry.v0.json"))
+    generate = tools["planning.generate_candidate_plans"]
+    assert {
+        "effect_scope": generate["effect_scope"],
+        "provider_access": generate["provider_access"],
+        "reversibility": generate["reversibility"],
+        "external_provider_disclosure": generate["effect_contract"][
+            "external_provider_disclosure"
+        ],
+        "effect_reconciliation_required": generate["retry_policy"][
+            "effect_reconciliation_required"
+        ],
+    } == {
+        "effect_scope": "PROVIDER_QUERY",
+        "provider_access": "DOMAIN_MEDIATED",
+        "reversibility": "IRREVERSIBLE_EXTERNAL_DISCLOSURE",
+        "external_provider_disclosure": "MINIMIZED_DOMAIN_MEDIATED",
+        "effect_reconciliation_required": True,
+    }
+    assert generate["effect_contract"]["produces_session_artifact"] is True
+
+    revise = tools["planning.revise_plan"]
+    assert revise["reversibility"] == "REVERSIBLE_SESSION_ARTIFACT"
+    assert revise["effect_contract"]["external_provider_disclosure"] == "NONE"
+    no_persistent_effect = set(tools) - {
+        "planning.generate_candidate_plans",
+        "planning.revise_plan",
+    }
+    assert len(no_persistent_effect) == 6
+    for tool_name in no_persistent_effect:
+        assert tools[tool_name]["reversibility"] == "NO_PERSISTENT_EFFECT"
+        assert (
+            tools[tool_name]["effect_contract"]["external_provider_disclosure"]
+            == "NONE"
+        )
+        assert (
+            tools[tool_name]["retry_policy"]["effect_reconciliation_required"]
+            is False
+        )
+
+
+def test_non_provider_tool_cannot_claim_provider_disclosure():
+    registry = load_json(CONTRACT_DIR / "tool_registry.v0.json")
+    tool_map(registry)["planning.retrieve_world_context"]["effect_contract"][
+        "external_provider_disclosure"
+    ] = "MINIMIZED_DOMAIN_MEDIATED"
+    with pytest.raises(AssertionError):
+        assert_registry_semantics(registry)
 
 
 @pytest.mark.parametrize("fixture_name,schema_name", VALID_FIXTURE_SCHEMAS.items())
@@ -721,6 +961,47 @@ def test_wrong_input_kind_fails_registry_binding():
         assert_integrated_scenario(scenario)
 
 
+@pytest.mark.parametrize(
+    "field_path,value",
+    [
+        (("input", "input_ref"), "candidate-plan-request.fixture-other"),
+        (("input", "input_revision"), 2),
+        (
+            ("input", "target_revision_refs"),
+            [
+                {
+                    "object_ref": {
+                        "object_id": "ride-plan.fixture-other",
+                        "object_type": "ride_plan",
+                    },
+                    "revision": 2,
+                }
+            ],
+        ),
+        (("tool_name",), "planning.compare_plans"),
+        (("capability_id",), "plan.compare"),
+        (("base_session_revision",), 2),
+        (("expected_observation_kind",), "plan_comparison"),
+    ],
+)
+def test_same_tool_call_id_cannot_change_authoritative_request(
+    field_path, value
+):
+    original = load_valid("tool_call_generate_candidate_plans.json")
+    retried = deepcopy(original)
+    target = retried
+    for key in field_path[:-1]:
+        target = target[key]
+    target[field_path[-1]] = value
+    with pytest.raises(AssertionError):
+        assert_immutable_tool_call_identity([original, retried])
+
+
+def test_same_tool_call_id_accepts_identical_request_snapshot():
+    call = load_valid("tool_call_generate_candidate_plans.json")
+    assert_immutable_tool_call_identity([call, deepcopy(call)])
+
+
 def test_action_and_call_bidirectional_ref_mismatch_fails():
     scenario = integrated_scenario()
     scenario["proposal"]["payload"]["tool_call_ref"] = "tool-call.other"
@@ -743,9 +1024,11 @@ def test_unregistered_or_forbidden_raw_tool_fails_closed(tool_name):
 def test_forbidden_raw_registry_tool_is_shape_valid_but_semantically_rejected(
     schemas, local_registry
 ):
-    registry = load_json(CONTRACT_DIR / "tool_registry.v0.json")
-    registry["tools"][0]["tool_name"] = "raw_tencent_api"
+    registry = load_invalid("tool_registry_forbidden_raw_tool.json")
     assert not validation_errors("tool_registry", registry, schemas, local_registry)
+    assert "raw_tencent_api" in {
+        tool["tool_name"] for tool in registry["tools"]
+    }
     with pytest.raises(AssertionError):
         assert_registry_semantics(registry)
 
@@ -753,6 +1036,54 @@ def test_forbidden_raw_registry_tool_is_shape_valid_but_semantically_rejected(
 def test_context_manifest_registry_version_mismatch_fails():
     scenario = integrated_scenario()
     scenario["manifest_turn_2"]["tool_registry_version"] = "0.2.0"
+    with pytest.raises(AssertionError):
+        assert_integrated_scenario(scenario)
+
+
+@pytest.mark.parametrize("candidate_index", [0, 1])
+def test_turn_two_manifest_must_include_each_presented_plan(candidate_index):
+    scenario = integrated_scenario()
+    scenario["manifest_turn_2"]["plan_revision_refs"].pop(candidate_index)
+    with pytest.raises(AssertionError):
+        assert_integrated_scenario(scenario)
+
+
+def test_turn_two_manifest_wrong_plan_revision_fails_closed():
+    scenario = integrated_scenario()
+    scenario["manifest_turn_2"]["plan_revision_refs"][0]["revision"] = 2
+    with pytest.raises(AssertionError):
+        assert_integrated_scenario(scenario)
+
+
+def test_turn_two_manifest_cannot_be_compiled_before_tool_result():
+    scenario = integrated_scenario()
+    scenario["manifest_turn_2"]["compiled_at"] = "2026-08-03T20:09:40+08:00"
+    with pytest.raises(AssertionError):
+        assert_integrated_scenario(scenario)
+
+
+def test_presentation_cannot_reference_plan_absent_from_turn_context():
+    scenario = integrated_scenario()
+    scenario["presentation"]["payload"]["candidates"][0]["plan_revision_ref"][
+        "object_ref"
+    ]["object_id"] = "ride-plan.fixture-not-in-context"
+    with pytest.raises(AssertionError):
+        assert_integrated_scenario(scenario)
+
+
+def test_turn_one_and_turn_two_manifest_order_cannot_be_reversed():
+    scenario = integrated_scenario()
+    scenario["manifest_turn_1"], scenario["manifest_turn_2"] = (
+        scenario["manifest_turn_2"],
+        scenario["manifest_turn_1"],
+    )
+    with pytest.raises(AssertionError):
+        assert_integrated_scenario(scenario)
+
+
+def test_manifest_count_must_equal_consumed_model_turns():
+    scenario = integrated_scenario()
+    scenario["run"]["budget"]["consumed"]["model_turns"] = 3
     with pytest.raises(AssertionError):
         assert_integrated_scenario(scenario)
 
@@ -878,6 +1209,139 @@ def test_invalid_retry_dispositions_fail_shape(
     assert validation_errors("tool_result", result, schemas, local_registry)
 
 
+def test_retry_same_call_cannot_be_terminal(schemas, local_registry):
+    invalid = load_invalid("tool_result_retry_same_call_marked_terminal.json")
+    assert invalid["retry_disposition"] == "RETRY_SAME_CALL"
+    assert invalid["result_finality"] == "TERMINAL"
+    assert validation_errors("tool_result", invalid, schemas, local_registry)
+
+
+def test_succeeded_result_cannot_be_intermediate(schemas, local_registry):
+    result = load_valid("tool_result_generate_candidate_plans_succeeded.json")
+    result["result_finality"] = "INTERMEDIATE"
+    assert validation_errors("tool_result", result, schemas, local_registry)
+
+
+@pytest.mark.parametrize(
+    "fixture_name,bad_reason",
+    [
+        (
+            "tool_result_generate_candidate_plans_succeeded.json",
+            "NO_MATCHING_RESULT",
+        ),
+        (
+            "tool_result_resolve_ride_object_ambiguous.json",
+            "NO_MATCHING_RESULT",
+        ),
+        (
+            "tool_result_generate_candidate_plans_no_result.json",
+            "DOMAIN_SERVICE_FAILURE",
+        ),
+        (
+            "tool_result_generate_candidate_plans_timed_out.json",
+            "DOMAIN_SERVICE_FAILURE",
+        ),
+        (
+            "tool_result_generate_candidate_plans_disconnected.json",
+            "NO_MATCHING_RESULT",
+        ),
+        (
+            "tool_result_validate_plan_failed.json",
+            "TOOL_ATTEMPT_TIMEOUT",
+        ),
+    ],
+)
+def test_domain_reason_is_status_specific_and_fails_closed(
+    fixture_name, bad_reason, schemas, local_registry
+):
+    result = load_valid(fixture_name)
+    result["domain_reason_code"] = bad_reason
+    assert validation_errors("tool_result", result, schemas, local_registry)
+
+
+@pytest.mark.parametrize(
+    "finality,retry_disposition,reason",
+    [
+        ("TERMINAL", "DO_NOT_RETRY", "TOOL_ATTEMPT_TIMEOUT"),
+        ("TERMINAL", "DEFER", "RUN_DEADLINE_EXCEEDED"),
+    ],
+)
+def test_terminal_timeout_reason_depends_on_retry_disposition(
+    finality, retry_disposition, reason, schemas, local_registry
+):
+    result = load_valid("tool_result_generate_candidate_plans_timed_out.json")
+    result.update(
+        {
+            "result_finality": finality,
+            "retry_disposition": retry_disposition,
+            "domain_reason_code": reason,
+        }
+    )
+    assert not validation_errors("tool_result", result, schemas, local_registry)
+
+
+def test_disconnected_retry_must_be_intermediate(schemas, local_registry):
+    result = load_valid(
+        "tool_result_generate_candidate_plans_disconnected.json"
+    )
+    result.update(
+        {
+            "result_finality": "INTERMEDIATE",
+            "retry_disposition": "RETRY_SAME_CALL",
+        }
+    )
+    assert not validation_errors("tool_result", result, schemas, local_registry)
+    result["result_finality"] = "TERMINAL"
+    assert validation_errors("tool_result", result, schemas, local_registry)
+
+
+def test_revise_plan_success_returns_only_ride_plan_revision(
+    schemas, local_registry
+):
+    registry = load_json(CONTRACT_DIR / "tool_registry.v0.json")
+    result = load_valid("tool_result_revise_plan_succeeded.json")
+    assert not validation_errors("tool_result", result, schemas, local_registry)
+    assert result["result_refs"][0]["object_ref"]["object_type"] == "ride_plan"
+    assert_result_semantics(result, call_for_result(result, registry), registry)
+
+
+def test_named_non_ride_plan_revision_fixture_is_rejected(
+    schemas, local_registry
+):
+    result = load_invalid("tool_result_revise_plan_non_ride_plan_revision.json")
+    assert result["result_refs"][0]["object_ref"]["object_type"] == "route_book"
+    assert validation_errors("tool_result", result, schemas, local_registry)
+
+
+@pytest.mark.parametrize(
+    "object_type", ["route_book", "route_version", "rider", "traversal"]
+)
+def test_revise_plan_rejects_other_revision_object_types(
+    object_type, schemas, local_registry
+):
+    result = load_valid("tool_result_revise_plan_succeeded.json")
+    result["result_refs"][0]["object_ref"]["object_type"] = object_type
+    assert validation_errors("tool_result", result, schemas, local_registry)
+
+
+def test_revise_plan_rejects_contract_artifact_kind_mismatch(
+    schemas, local_registry
+):
+    registry = load_json(CONTRACT_DIR / "tool_registry.v0.json")
+    result = load_valid("tool_result_revise_plan_succeeded.json")
+    result["result_refs"] = [
+        {
+            "contract_kind": "plan_validation",
+            "contract_id": "plan-validation.fixture-wrong-for-revision",
+            "contract_revision": 1,
+            "schema_version": "0.1.0",
+        }
+    ]
+    assert not validation_errors("tool_result", result, schemas, local_registry)
+    with pytest.raises(AssertionError):
+        assert_result_semantics(result, call_for_result(result, registry), registry)
+
+
 def test_prepare_export_cannot_return_artifact_or_plan_revision(
     schemas, local_registry
 ):
@@ -931,16 +1395,167 @@ def test_metadata_cannot_override_authoritative_semantics(
         assert_integrated_scenario(scenario)
 
 
-def assert_one_terminal_result_per_call(results):
-    terminal_call_ids = [item["tool_call_id"] for item in results]
-    assert len(terminal_call_ids) == len(set(terminal_call_ids))
+def retry_scenario():
+    registry = load_json(CONTRACT_DIR / "tool_registry.v0.json")
+    timeout = load_valid("tool_result_generate_candidate_plans_timed_out.json")
+    succeeded = load_valid(
+        "tool_result_generate_candidate_plans_retry_succeeded.json"
+    )
+    call = call_for_result(timeout, registry)
+    run = deepcopy(load_valid("agent_run_candidate_completed.json"))
+    run.update(
+        {
+            "run_id": timeout["run_id"],
+            "session_id": timeout["session_id"],
+            "base_session_revision": timeout["base_session_revision"],
+            "context_manifest_refs": ["context-manifest.fixture-retry-turn-1"],
+            "action_proposal_refs": [call["requested_by_agent_action_ref"]],
+            "tool_call_refs": [call["tool_call_id"]],
+            "observation_refs": [
+                timeout["observation_id"],
+                succeeded["observation_id"],
+            ],
+            "started_at": "2026-08-03T20:09:00+08:00",
+            "last_checkpoint_at": "2026-08-03T20:10:40+08:00",
+            "ended_at": "2026-08-03T20:10:40+08:00",
+        }
+    )
+    run["budget"]["consumed"].update(
+        {"model_turns": 1, "tool_calls": 2, "plan_generations": 1}
+    )
+    run["budget"]["tool_retry_counters"] = [
+        {"tool_name": call["tool_name"], "retries": 1}
+    ]
+    return {
+        "registry": registry,
+        "call": call,
+        "results": [timeout, succeeded],
+        "run": run,
+    }
 
 
-def test_one_call_has_at_most_one_terminal_result():
-    result = load_valid("tool_result_generate_candidate_plans_succeeded.json")
-    assert_one_terminal_result_per_call([result])
+def assert_retry_scenario(scenario):
+    assert_attempt_chain(
+        scenario["call"],
+        scenario["results"],
+        scenario["registry"],
+        scenario["run"],
+    )
+
+
+def test_one_immutable_call_can_timeout_then_succeed_on_second_attempt(
+    schemas, local_registry
+):
+    scenario = retry_scenario()
+    for result in scenario["results"]:
+        assert not validation_errors(
+            "tool_result", result, schemas, local_registry
+        )
+    assert not validation_errors(
+        "agent_run", scenario["run"], schemas, local_registry
+    )
+    assert_retry_scenario(scenario)
+    assert [item["attempt_index"] for item in scenario["results"]] == [1, 2]
+    assert [
+        item["result_finality"] for item in scenario["results"]
+    ] == ["INTERMEDIATE", "TERMINAL"]
+    assert scenario["run"]["budget"]["consumed"]["tool_calls"] == 2
+    assert scenario["run"]["budget"]["tool_retry_counters"] == [
+        {"tool_name": "planning.generate_candidate_plans", "retries": 1}
+    ]
+    assert len(scenario["run"]["tool_call_refs"]) == 1
+    assert len(scenario["run"]["observation_refs"]) == 2
+    assert scenario["run"]["budget"]["consumed"]["model_turns"] == 1
+    assert len(scenario["run"]["action_proposal_refs"]) == 1
+
+
+@pytest.mark.parametrize(
+    "first_index,second_index",
+    [(2, 3), (1, 1), (1, 3)],
+    ids=["starts_at_two", "duplicate", "gap"],
+)
+def test_attempt_indices_must_start_at_one_and_be_contiguous(
+    first_index, second_index
+):
+    scenario = retry_scenario()
+    scenario["results"][0]["attempt_index"] = first_index
+    scenario["results"][1]["attempt_index"] = second_index
     with pytest.raises(AssertionError):
-        assert_one_terminal_result_per_call([result, deepcopy(result)])
+        assert_retry_scenario(scenario)
+
+
+def test_attempt_timestamps_cannot_move_backwards():
+    scenario = retry_scenario()
+    scenario["results"][1]["observed_at"] = "2026-08-03T20:09:59+08:00"
+    with pytest.raises(AssertionError):
+        assert_retry_scenario(scenario)
+
+
+def test_one_call_cannot_have_two_terminal_results():
+    scenario = retry_scenario()
+    scenario["results"][0].update(
+        {
+            "result_finality": "TERMINAL",
+            "retry_disposition": "DO_NOT_RETRY",
+        }
+    )
+    with pytest.raises(AssertionError):
+        assert_retry_scenario(scenario)
+
+
+def test_no_result_may_not_follow_a_terminal_result():
+    scenario = retry_scenario()
+    extra = deepcopy(scenario["results"][0])
+    extra.update(
+        {
+            "observation_id": "observation.fixture-illegal-after-terminal-001",
+            "attempt_index": 3,
+            "observed_at": "2026-08-03T20:10:35+08:00",
+        }
+    )
+    scenario["results"].append(extra)
+    scenario["run"]["observation_refs"].append(extra["observation_id"])
+    scenario["run"]["budget"]["consumed"]["tool_calls"] = 3
+    scenario["run"]["budget"]["tool_retry_counters"][0]["retries"] = 2
+    with pytest.raises(AssertionError):
+        assert_retry_scenario(scenario)
+
+
+def test_stopped_run_cannot_end_with_only_intermediate_result():
+    scenario = retry_scenario()
+    scenario["results"] = scenario["results"][:1]
+    scenario["run"]["observation_refs"] = scenario["run"][
+        "observation_refs"
+    ][:1]
+    scenario["run"]["budget"]["consumed"]["tool_calls"] = 1
+    scenario["run"]["budget"]["tool_retry_counters"][0]["retries"] = 0
+    with pytest.raises(AssertionError):
+        assert_retry_scenario(scenario)
+
+
+def test_running_run_may_temporarily_wait_with_only_intermediate_result():
+    scenario = retry_scenario()
+    scenario["results"] = scenario["results"][:1]
+    scenario["run"]["run_status"] = "running"
+    scenario["run"].pop("stop_reason")
+    scenario["run"].pop("ended_at")
+    scenario["run"]["session_commit"] = {
+        "commit_status": "not_committed",
+        "expected_base_revision": 1,
+    }
+    scenario["run"]["observation_refs"] = scenario["run"][
+        "observation_refs"
+    ][:1]
+    scenario["run"]["budget"]["consumed"]["tool_calls"] = 1
+    scenario["run"]["budget"]["tool_retry_counters"][0]["retries"] = 0
+    assert_retry_scenario(scenario)
+
+
+def test_retry_count_cannot_exceed_run_budget():
+    scenario = retry_scenario()
+    scenario["run"]["budget"]["limits"]["max_same_tool_retries"] = 0
+    with pytest.raises(AssertionError):
+        assert_retry_scenario(scenario)
 
 
 def test_all_outcome_fixtures_follow_registry_identity_and_result_rules():

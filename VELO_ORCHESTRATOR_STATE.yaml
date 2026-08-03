@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-04T03:21:34+08:00'
+updated_at: '2026-08-04T04:05:29+08:00'
 status: active
 authority:
   order:
@@ -131,7 +131,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: a2_3a_contract_allowlist_only
+  git_write_scope: none_pending_a2_3a_re_review
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -166,10 +166,10 @@ a2_parent:
   name: agent_v0_contracts
   status: in_progress
 next_task:
-  id: A2.3a-review
+  id: A2.3a-re-review
   parent: A2
-  name: tool_registry_call_and_result_contracts_orchestrator_review
-  status: pending_orchestrator_review
+  name: A2.3a orchestrator re-review
+  status: pending_orchestrator_re_review
   execution_authorized: false
   requires_new_orchestrator_task_packet: true
 a1_subtasks:
@@ -239,7 +239,8 @@ a2_3_subtasks:
 - id: A2.3a
   name: tool_registry_call_and_result_contracts
   status: in_review
-  decision: pending_orchestrator_review
+  decision: pending_orchestrator_re_review
+  revision_status: applied_waiting_orchestrator_re_review
   execution_authorized: false
 - id: A2.3b
   name: approval_and_side_effect_contracts
@@ -1098,7 +1099,6 @@ evidence_log:
     local_session_run_map_action_test_result: 181_passed_0_skipped
     local_tool_contract_test_result: 79_passed_0_skipped
     local_combined_targeted_result: 308_passed_0_skipped
-    local_full_test_precommit_result: 2281_passed_87_skipped_4_expected_dirty_diff_guard_failures
     local_full_test_clean_head_result: 2295_passed_87_skipped_0_failed
     local_full_test_exit_status: success
     local_postgres_postgis_boundary: deferred_to_github_ci_fresh_service_with_skip_rejection
@@ -1113,6 +1113,70 @@ evidence_log:
     merge_authorized: false
     deploy_authorized: false
     A2_3b_and_A2_3c: blocked
+    A2_4_and_A3_through_A5: blocked
+- id: E-20260804-A2-3A-ORCHESTRATOR-REVIEW-R1
+  type: orchestrator_contract_review
+  status: REVISE
+  evidence:
+    parent_task: A2.3
+    task: A2.3a
+    pr: 43
+    reviewed_base: 2e2f5e227308b9f2244904f2d7fde32c1ce20a87
+    reviewed_head: 321b6102a0272f1bcd4822e8e616c5a7b1c93b49
+    reviewed_merge_ref: 3967d81872c67770aafd84a7f8054a80dd03936e
+    changed_files: 32
+    branch_ci_run: 30845566385
+    merge_ref_ci_run: 30845597092
+    branch_ci_result: 2382_passed_0_skipped
+    merge_ref_ci_result: 2382_passed_0_skipped
+    fresh_postgis_migration: true
+    blocking_findings:
+    - tool_result_retry_attempt_lifecycle
+    - provider_query_irreversible_disclosure_classification
+    - ride_plan_revision_result_type
+    - candidate_presentation_context_plan_binding
+    - status_specific_domain_reason_mapping
+    decision: REVISE
+    merge_authorized: false
+    deploy_authorized: false
+- id: E-20260804-A2-3A-R1-CODEX-REVISION
+  type: contract_revision_delivery
+  status: applied_waiting_orchestrator_re_review
+  evidence:
+    parent_task: A2.3
+    task: A2.3a
+    review_round: A2_3A_R1
+    previous_head: 321b6102a0272f1bcd4822e8e616c5a7b1c93b49
+    last_orchestrator_decision: REVISE
+    revision_findings_applied:
+    - tool_result_retry_attempt_lifecycle
+    - provider_query_irreversible_disclosure_classification
+    - ride_plan_revision_result_type
+    - candidate_presentation_context_plan_binding
+    - status_specific_domain_reason_mapping
+    clean_head_context_contract_test_result: 48_passed_0_skipped
+    clean_head_session_run_map_action_test_result: 181_passed_0_skipped
+    clean_head_tool_contract_test_result: 127_passed_0_skipped
+    clean_head_combined_targeted_result: 356_passed_0_skipped
+    clean_head_local_full_test_result: 2343_passed_87_skipped_0_failed
+    local_full_test_exit_status: success
+    runtime_implemented: false
+    production_modified: false
+    database_migration_changed: false
+    real_provider_run: false
+    real_export_run: false
+    runtime_choice: deferred
+    A2_3b_started: false
+    A2_3c_started: false
+    orchestrator_re_review: pending
+    a2_3_status: in_progress
+    a2_3a_status: in_review
+    a2_3a_decision: pending_orchestrator_re_review
+    a2_3a_revision_status: applied_waiting_orchestrator_re_review
+    execution_authorized: false
+    git_write_permission_after_delivery: false
+    merge_authorized: false
+    deploy_authorized: false
     A2_4_and_A3_through_A5: blocked
 completed_tasks:
 - id: A0

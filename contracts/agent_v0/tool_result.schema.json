@@ -22,6 +22,8 @@
     "observation_kind",
     "result_status",
     "result_code",
+    "attempt_index",
+    "result_finality",
     "observed_at",
     "observation_only",
     "raw_provider_payload_exposed",
@@ -66,12 +68,15 @@
       "enum": [
         "NO_MATCHING_RESULT",
         "INSUFFICIENT_WORLD_DATA",
-        "REQUEST_DEADLINE_EXCEEDED",
+        "TOOL_ATTEMPT_TIMEOUT",
+        "RUN_DEADLINE_EXCEEDED",
         "DOMAIN_SERVICE_DISCONNECTED",
         "DETERMINISTIC_VALIDATION_REJECTED",
         "DOMAIN_SERVICE_FAILURE"
       ]
     },
+    "attempt_index": { "type": "integer", "minimum": 1 },
+    "result_finality": { "enum": ["INTERMEDIATE", "TERMINAL"] },
     "observed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
     "observation_only": { "const": true },
     "raw_provider_payload_exposed": { "const": false },
@@ -116,56 +121,104 @@
           "properties": {
             "result_status": { "const": "succeeded" },
             "result_code": { "const": "TOOL_SUCCEEDED" },
+            "result_finality": { "const": "TERMINAL" },
             "result_refs": { "minItems": 1 },
             "retry_disposition": { "const": "NOT_APPLICABLE" }
           },
-          "required": ["result_status", "result_code", "result_refs", "retry_disposition"],
+          "required": ["result_status", "result_code", "result_finality", "result_refs", "retry_disposition"],
           "not": { "required": ["domain_reason_code"] }
         },
         {
           "properties": {
             "result_status": { "const": "ambiguous" },
             "result_code": { "const": "TOOL_AMBIGUOUS" },
+            "result_finality": { "const": "TERMINAL" },
             "result_refs": { "minItems": 2 },
             "retry_disposition": { "const": "ASK_USER" }
           },
-          "required": ["result_status", "result_code", "result_refs", "retry_disposition"]
+          "required": ["result_status", "result_code", "result_finality", "result_refs", "retry_disposition"],
+          "not": { "required": ["domain_reason_code"] }
         },
         {
           "properties": {
             "result_status": { "const": "no_result" },
             "result_code": { "const": "TOOL_NO_RESULT" },
+            "result_finality": { "const": "TERMINAL" },
+            "domain_reason_code": {
+              "enum": ["NO_MATCHING_RESULT", "INSUFFICIENT_WORLD_DATA"]
+            },
             "result_refs": { "maxItems": 0 },
             "retry_disposition": { "enum": ["DO_NOT_RETRY", "REVISE_REQUEST"] }
           },
-          "required": ["result_status", "result_code", "domain_reason_code", "result_refs", "retry_disposition"]
+          "required": ["result_status", "result_code", "result_finality", "domain_reason_code", "result_refs", "retry_disposition"]
         },
         {
           "properties": {
             "result_status": { "const": "timed_out" },
             "result_code": { "const": "TOOL_TIMEOUT" },
+            "result_finality": { "const": "INTERMEDIATE" },
+            "domain_reason_code": { "const": "TOOL_ATTEMPT_TIMEOUT" },
             "result_refs": { "maxItems": 0 },
-            "retry_disposition": { "enum": ["RETRY_SAME_CALL", "DO_NOT_RETRY", "DEFER"] }
+            "retry_disposition": { "const": "RETRY_SAME_CALL" }
           },
-          "required": ["result_status", "result_code", "domain_reason_code", "result_refs", "retry_disposition"]
+          "required": ["result_status", "result_code", "result_finality", "domain_reason_code", "result_refs", "retry_disposition"]
+        },
+        {
+          "properties": {
+            "result_status": { "const": "timed_out" },
+            "result_code": { "const": "TOOL_TIMEOUT" },
+            "result_finality": { "const": "TERMINAL" },
+            "domain_reason_code": { "const": "TOOL_ATTEMPT_TIMEOUT" },
+            "result_refs": { "maxItems": 0 },
+            "retry_disposition": { "const": "DO_NOT_RETRY" }
+          },
+          "required": ["result_status", "result_code", "result_finality", "domain_reason_code", "result_refs", "retry_disposition"]
+        },
+        {
+          "properties": {
+            "result_status": { "const": "timed_out" },
+            "result_code": { "const": "TOOL_TIMEOUT" },
+            "result_finality": { "const": "TERMINAL" },
+            "domain_reason_code": { "const": "RUN_DEADLINE_EXCEEDED" },
+            "result_refs": { "maxItems": 0 },
+            "retry_disposition": { "const": "DEFER" }
+          },
+          "required": ["result_status", "result_code", "result_finality", "domain_reason_code", "result_refs", "retry_disposition"]
         },
         {
           "properties": {
             "result_status": { "const": "disconnected" },
             "result_code": { "const": "TOOL_DISCONNECTED" },
+            "result_finality": { "const": "INTERMEDIATE" },
+            "domain_reason_code": { "const": "DOMAIN_SERVICE_DISCONNECTED" },
             "result_refs": { "maxItems": 0 },
-            "retry_disposition": { "enum": ["RETRY_SAME_CALL", "DO_NOT_RETRY", "DEFER"] }
+            "retry_disposition": { "const": "RETRY_SAME_CALL" }
           },
-          "required": ["result_status", "result_code", "domain_reason_code", "result_refs", "retry_disposition"]
+          "required": ["result_status", "result_code", "result_finality", "domain_reason_code", "result_refs", "retry_disposition"]
+        },
+        {
+          "properties": {
+            "result_status": { "const": "disconnected" },
+            "result_code": { "const": "TOOL_DISCONNECTED" },
+            "result_finality": { "const": "TERMINAL" },
+            "domain_reason_code": { "const": "DOMAIN_SERVICE_DISCONNECTED" },
+            "result_refs": { "maxItems": 0 },
+            "retry_disposition": { "enum": ["DO_NOT_RETRY", "DEFER"] }
+          },
+          "required": ["result_status", "result_code", "result_finality", "domain_reason_code", "result_refs", "retry_disposition"]
         },
         {
           "properties": {
             "result_status": { "const": "failed" },
             "result_code": { "const": "TOOL_HARD_FAIL" },
+            "result_finality": { "const": "TERMINAL" },
+            "domain_reason_code": {
+              "enum": ["DETERMINISTIC_VALIDATION_REJECTED", "DOMAIN_SERVICE_FAILURE"]
+            },
             "result_refs": { "maxItems": 0 },
             "retry_disposition": { "enum": ["DO_NOT_RETRY", "REVISE_REQUEST"] }
           },
-          "required": ["result_status", "result_code", "domain_reason_code", "result_refs", "retry_disposition"]
+          "required": ["result_status", "result_code", "result_finality", "domain_reason_code", "result_refs", "retry_disposition"]
         }
       ]
     }
@@ -200,10 +253,25 @@
         "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" }
       }
     },
+    "ride_plan_revision_ref": {
+      "allOf": [
+        { "$ref": "common.schema.json#/$defs/revision_ref" },
+        {
+          "properties": {
+            "object_ref": {
+              "properties": {
+                "object_type": { "const": "ride_plan" }
+              },
+              "required": ["object_type"]
+            }
+          }
+        }
+      ]
+    },
     "result_ref": {
       "oneOf": [
         { "$ref": "#/$defs/packet_result_ref" },
-        { "$ref": "common.schema.json#/$defs/revision_ref" },
+        { "$ref": "#/$defs/ride_plan_revision_ref" },
         { "$ref": "#/$defs/contract_artifact_ref" }
       ]
     }

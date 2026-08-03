@@ -15,6 +15,8 @@
   "observation_kind": "candidate_plan_set",
   "result_status": "succeeded",
   "result_code": "TOOL_SUCCEEDED",
+  "attempt_index": 1,
+  "result_finality": "TERMINAL",
   "observed_at": "2026-08-03T20:10:00+08:00",
   "observation_only": true,
   "raw_provider_payload_exposed": false,
