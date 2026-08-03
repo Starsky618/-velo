@@ -30,6 +30,7 @@ ALLOWED_TOOLS = frozenset(
 )
 MAX_MODEL_TURNS = 4
 MAX_TOOL_CALLS = 6
+URBAN_EXPOSURE_RANK = {"low": 0, "medium": 1, "high": 2}
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,7 @@ class Decision:
 class ShadowResult:
     action: AgentAction
     candidates: list[dict[str, Any]] = field(default_factory=list)
+    rejected_candidates: list[dict[str, Any]] = field(default_factory=list)
     question: str | None = None
     rejection_reasons: list[str] = field(default_factory=list)
     model_turns: int = 0
@@ -132,7 +134,9 @@ class TianlongshanShadowAgent:
                 if before_present is not None:
                     before_present()
                     before_present = None
-                valid, rejected, stale = self.validate_plan(request, candidates)
+                valid, rejected, rejected_candidates, stale = self.validate_plan(
+                    request, candidates
+                )
                 result.tool_calls += 1
                 self.trace.append("validate_plan")
                 # A changed origin revision invalidates every old candidate.  Re-read
@@ -145,7 +149,9 @@ class TianlongshanShadowAgent:
                     result.candidate_generation_count += 1
                     result.tool_calls += 1
                     self.trace.append("generate_candidate_plans")
-                    valid, rejected, _ = self.validate_plan(request, candidates)
+                    valid, rejected, rejected_candidates, _ = self.validate_plan(
+                        request, candidates
+                    )
                     result.tool_calls += 1
                     self.trace.append("validate_plan")
                 ranked = self.compare_plans(valid)
@@ -153,7 +159,8 @@ class TianlongshanShadowAgent:
                 self.trace.append("compare_plans")
                 if result.tool_calls > MAX_TOOL_CALLS:
                     raise RuntimeError("shadow agent exceeded its tool-call cap")
-                result.candidates = ranked[:3]
+                result.candidates = self.describe_ranked_candidates(request, ranked[:3])
+                result.rejected_candidates = rejected_candidates
                 result.rejection_reasons = rejected
                 result.action = (
                     AgentAction.PRESENT_CANDIDATES if ranked else AgentAction.NO_RESULT
@@ -188,12 +195,12 @@ class TianlongshanShadowAgent:
 
     def validate_plan(
         self, request: RideRequest, candidates: list[dict[str, Any]]
-    ) -> tuple[list[dict[str, Any]], list[str], int]:
+    ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]], int]:
         valid: list[dict[str, Any]] = []
         rejected: list[str] = []
+        rejected_candidates: list[dict[str, Any]] = []
         stale = 0
-        exposure_rank = {"low": 0, "medium": 1, "high": 2}
-        requested_exposure = exposure_rank[request.urban_exposure]
+        requested_exposure = URBAN_EXPOSURE_RANK[request.urban_exposure]
         live_origin = self.world["origins"].get(request.origin)
         for candidate in candidates:
             reasons: list[str] = []
@@ -204,24 +211,73 @@ class TianlongshanShadowAgent:
                 reasons.append("预计时间超过硬限制")
             if candidate["total_climb_m"] > request.max_climb_m:
                 reasons.append("总爬升超过硬限制")
-            if exposure_rank[candidate["urban_exposure"]] > requested_exposure:
+            if URBAN_EXPOSURE_RANK[candidate["urban_exposure"]] > requested_exposure:
                 reasons.append("城区暴露超过偏好")
             if candidate.get("unknowns"):
                 reasons.append("存在未确认项，不能按通过处理")
             if reasons:
                 rejected.append(f"{candidate['name']}：{'；'.join(reasons)}")
+                rejected_candidate = dict(candidate)
+                rejected_candidate["rejection_reasons"] = reasons
+                rejected_candidates.append(rejected_candidate)
             else:
                 valid.append(candidate)
-        return valid, rejected, stale
+        return valid, rejected, rejected_candidates, stale
 
     def compare_plans(self, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return sorted(
             candidates,
             key=lambda candidate: (
-                candidate["urban_exposure"],
+                URBAN_EXPOSURE_RANK[candidate["urban_exposure"]],
                 candidate["estimated_minutes"],
                 candidate["total_climb_m"],
             ),
+        )
+
+    def describe_ranked_candidates(
+        self, request: RideRequest, candidates: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Add request-bound recommendation and trade-off text after ranking."""
+        described: list[dict[str, Any]] = []
+        for index, candidate in enumerate(candidates, start=1):
+            described_candidate = dict(candidate)
+            limit_summary = (
+                f"本次 {request.minutes} 分钟、{request.max_climb_m} m 上限和"
+                f"{request.urban_exposure} 城区偏好"
+            )
+            if index == 1:
+                described_candidate["recommendation_reason"] = (
+                    f"在{limit_summary}下排名第 1；城区暴露为"
+                    f"{candidate['urban_exposure']}。"
+                )
+            else:
+                leader = candidates[0]
+                described_candidate["recommendation_reason"] = (
+                    f"满足{limit_summary}，排名第 {index}；相对首选多用 "
+                    f"{candidate['estimated_minutes'] - leader['estimated_minutes']} 分钟、"
+                    f"多爬 {candidate['total_climb_m'] - leader['total_climb_m']} m。"
+                )
+            described_candidate["tradeoff"] = self._tradeoff(candidate, candidates, index)
+            described.append(described_candidate)
+        return described
+
+    @staticmethod
+    def _tradeoff(
+        candidate: Mapping[str, Any], candidates: list[dict[str, Any]], index: int
+    ) -> str:
+        if len(candidates) == 1:
+            return "这是唯一通过全部硬约束的方案。"
+        if index == 1:
+            next_candidate = candidates[1]
+            return (
+                f"相对下一方案少用 "
+                f"{next_candidate['estimated_minutes'] - candidate['estimated_minutes']} 分钟、"
+                f"少爬 {next_candidate['total_climb_m'] - candidate['total_climb_m']} m。"
+            )
+        leader = candidates[0]
+        return (
+            f"相对首选增加 {candidate['estimated_minutes'] - leader['estimated_minutes']} 分钟、"
+            f"{candidate['total_climb_m'] - leader['total_climb_m']} m 爬升。"
         )
 
 
@@ -250,7 +306,16 @@ def render_result(request: RideRequest, result: ShadowResult) -> str:
                     f"风险：{candidate['risk']}",
                     f"unknowns：{', '.join(candidate['unknowns']) or '无'}",
                     f"推荐理由：{candidate['recommendation_reason']}",
-                    f"淘汰理由：{candidate.get('rejection_reason') or '无'}",
+                    f"方案取舍：{candidate['tradeoff']}",
+                )
+            )
+        )
+    for candidate in result.rejected_candidates:
+        blocks.append(
+            "\n".join(
+                (
+                    f"淘汰方案：{candidate['name']}",
+                    f"淘汰原因：{'；'.join(candidate['rejection_reasons'])}",
                 )
             )
         )

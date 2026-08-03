@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.ride_planning.shadow import AgentAction, RideRequest, TianlongshanShadowAgent
+from app.ride_planning.shadow import (
+    AgentAction,
+    RideRequest,
+    TianlongshanShadowAgent,
+    render_result,
+)
 
 
 FIXTURE = Path(__file__).parents[1] / "fixtures/ride_planning/tianlongshan_world.json"
@@ -84,3 +89,36 @@ def test_changed_origin_revision_invalidates_and_regenerates_old_candidates() ->
     assert result.candidate_generation_count == 2
     assert result.tool_calls == 6
     assert {candidate["origin_revision"] for candidate in result.candidates} == {"origin-r2"}
+
+
+def test_high_urban_exposure_still_prefers_low_exposure_candidates() -> None:
+    result = TianlongshanShadowAgent(world()).run(
+        request(minutes=300, max_climb_m=1600, urban_exposure="high")
+    )
+
+    assert [candidate["name"] for candidate in result.candidates] == [
+        "蒙山补给环线",
+        "晋祠低城区暴露环线",
+        "城区直达强度线",
+    ]
+
+
+def test_recommendation_reason_is_generated_from_the_current_request() -> None:
+    result = TianlongshanShadowAgent(world()).run(
+        request(minutes=300, max_climb_m=1600, urban_exposure="high")
+    )
+
+    reason = result.candidates[0]["recommendation_reason"]
+    assert "300 分钟、1600 m 上限和high 城区偏好" in reason
+    assert "4 小时" not in reason
+    assert "1200 米" not in reason
+
+
+def test_normal_output_includes_the_rejected_third_plan_and_its_reasons() -> None:
+    result = TianlongshanShadowAgent(world()).run(request())
+
+    output = render_result(request(), result)
+
+    assert "淘汰方案：城区直达强度线" in output
+    assert "预计时间超过硬限制；总爬升超过硬限制；城区暴露超过偏好" in output
+    assert "淘汰理由：无" not in output

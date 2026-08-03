@@ -15,9 +15,7 @@
       "estimated_minutes": 225,
       "urban_exposure": "low",
       "risk": "长下坡与周末景区车流",
-      "unknowns": [],
-      "recommendation_reason": "在 4 小时与 1200 米限制内，城区暴露最低。",
-      "rejection_reason": null
+      "unknowns": []
     },
     {
       "name": "蒙山补给环线",
@@ -29,9 +27,7 @@
       "estimated_minutes": 210,
       "urban_exposure": "low",
       "risk": "补给点后路段服务稀少",
-      "unknowns": [],
-      "recommendation_reason": "总用时更短，仍满足低城区暴露偏好。",
-      "rejection_reason": null
+      "unknowns": []
     },
     {
       "name": "城区直达强度线",
@@ -43,9 +39,7 @@
       "estimated_minutes": 285,
       "urban_exposure": "high",
       "risk": "城区混行和长距离下坡",
-      "unknowns": [],
-      "recommendation_reason": "强度最高，但不适合本次约束。",
-      "rejection_reason": "默认因爬升和城区暴露淘汰。"
+      "unknowns": []
     }
   ]
 }
