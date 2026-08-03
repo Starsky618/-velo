@@ -26,7 +26,7 @@ ADR **不是**:
 
 ---
 
-## 2. 当前 16 份 ADR 总表
+## 2. 当前 17 份 ADR 总表
 
 | 编号 | 决策主题 | 核心结论 | 类型 |
 |---|---|---|---|
@@ -46,6 +46,7 @@ ADR **不是**:
 | [ADR-014](./014-为什么在线规划采用单一有界主Agent与确定性工作流.md) | 在线规划控制权 | **单一有界主 Agent + 确定性工作流**；模型只有 typed action proposal 权（Accepted） | Agent Runtime 架构 |
 | [ADR-015](./015-为什么世界事实会话运行与长期记忆必须分离.md) | 在线规划状态与记忆所有权 | **World Fact / User State / Session / Run / Memory / Trace 分离**；Context 只是编译投影（Accepted） | Agent 状态架构 |
 | [ADR-016](./016-为什么在线Agent的能力审批与副作用必须显式化.md) | 在线 Agent 能力、审批与副作用 | **Capability / effect scope / approval / ledger 显式分离**；公共真相与管理员能力不可达（Accepted） | Agent 权限架构 |
+| [ADR-017](./017-为什么旧app-agent必须迁出并保留RQ兼容路径.md) | 旧 `app/agent` namespace 迁移 | **`app.segment_draft_ai` canonical 新包 + `app.agent` 长期 compatibility tombstone + M1/M2/M3 分阶段切换**（Proposed，等待 A1.5 审查） | Agent namespace 架构 |
 
 另有 `00-ADR-编号大纲.md` — 这是 ADR 批次 3 的**历史 index**,包含每份 ADR 的决策背景、触发时机、引用路径。当你需要**跨 ADR 对比**或理解**决策时间线**时读这份。
 
@@ -77,7 +78,7 @@ ADR **不是**:
 
 ### 我要设计在线 Agent / Runtime
 
-先读 **ADR-013（允许什么）** + **ADR-014（谁控制）** + **ADR-015（状态和记忆属于谁）** + **ADR-016（哪些能力可执行、如何批准和记录副作用）**。四份均已 Accepted；ADR-016 builds on ADR-013 / ADR-014 / ADR-015，does not supersede them。它们都不单独授权实现 Runtime、选框架或启动后续任务。
+先读 **ADR-013（允许什么）** + **ADR-014（谁控制）** + **ADR-015（状态属于谁）** + **ADR-016（能力和副作用如何授权）** + **ADR-017（旧 namespace 如何隔离迁移）**。ADR-013–016 已 Accepted；ADR-017 仍为 Proposed，只是 A1.5 候选裁决。ADR-016 builds on ADR-013 / ADR-014 / ADR-015，does not supersede them；ADR-017 不授权实施 M1/M2、Runtime、部署或启动 A2。
 
 ### 我要做部署和运维
 
@@ -140,10 +141,10 @@ agent 检索 ADR 全文的触发条件:
 
 ## 7. 维护
 
-- **版本**:v1.11(2026-08-03) — ADR-016 Accepted，A1.4 Capability / Approval / Side Effect 以 `PASS / completed` 收口
+- **版本**:v1.12(2026-08-03) — 新增 Proposed ADR-017，A1.5 旧 `app/agent` namespace 迁移裁决进入 Orchestrator 审查
 - **下次新 ADR 可能产生的场景**:
   - v6 发布后新增重大架构调整
-  - Agent 层后续具体边界决策(下一个编号从 ADR-017 开始)
+  - Agent 层后续具体边界决策(下一个编号从 ADR-018 开始)
   - 遇到现有 ADR 没覆盖的决策争议
 - **维护者**:Tim + 技术团队(颜颜 / CCF)
-- **编号分配**:按时间顺序,下一个新 ADR 编号为 ADR-017
+- **编号分配**:按时间顺序,下一个新 ADR 编号为 ADR-018
