@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "tool_call_id": "tool-call.fixture-invalid-arguments",
+  "run_id": "agent-run.fixture-002",
+  "session_id": "planning-session.fixture-002",
+  "base_session_revision": 1,
+  "model_turn_index": 1,
+  "requested_by_agent_action_ref": "agent-action.fixture-propose-tool-call-001",
+  "tool_registry_id": "tool-registry.agent-v0",
+  "tool_registry_version": "0.1.0",
+  "tool_name": "planning.generate_candidate_plans",
+  "tool_version": "0.1.0",
+  "capability_id": "plan.draft.create",
+  "purpose_code": "generate_candidate_plans",
+  "input": {
+    "input_kind": "candidate_plan_generation_request",
+    "input_ref": "candidate-plan-request.fixture-invalid",
+    "input_revision": 1,
+    "input_schema_version": "0.1.0",
+    "target_revision_refs": [],
+    "arguments": {"coordinates": [112.5, 37.8]}
+  },
+  "expected_observation_kind": "candidate_plan_set",
+  "proposed_at": "2026-08-03T20:09:35+08:00",
+  "proposal_only": true,
+  "metadata": {}
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "action_id": "agent-action.fixture-propose-tool-call-001",
+  "run_id": "agent-run.fixture-002",
+  "session_id": "planning-session.fixture-002",
+  "base_session_revision": 1,
+  "model_turn_index": 1,
+  "proposed_at": "2026-08-03T20:09:30+08:00",
+  "proposal_only": true,
+  "action_type": "propose_tool_call",
+  "payload": {
+    "tool_call_ref": "tool-call.fixture-generate-002"
+  },
+  "map_actions": [],
+  "metadata": {
+    "x-fixture": true,
+    "x-synthetic": true
+  }
+}

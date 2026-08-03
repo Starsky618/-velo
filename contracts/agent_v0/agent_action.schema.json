@@ -36,7 +36,7 @@
       "type": "string",
       "enum": [
         "ask_clarifying_question",
-        "call_approved_tool",
+        "propose_tool_call",
         "present_valid_candidates",
         "request_confirmation",
         "finalize_response",
@@ -64,8 +64,8 @@
         },
         {
           "properties": {
-            "action_type": { "const": "call_approved_tool" },
-            "payload": { "$ref": "#/$defs/call_approved_tool_payload" },
+            "action_type": { "const": "propose_tool_call" },
+            "payload": { "$ref": "#/$defs/propose_tool_call_payload" },
             "map_actions": { "maxItems": 0 }
           },
           "required": ["action_type", "payload", "map_actions"]
@@ -165,37 +165,12 @@
         }
       ]
     },
-    "call_approved_tool_payload": {
+    "propose_tool_call_payload": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "tool_request_ref",
-        "tool_name",
-        "tool_version",
-        "input_ref",
-        "purpose_code",
-        "expected_observation_kind"
-      ],
+      "required": ["tool_call_ref"],
       "properties": {
-        "tool_request_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
-        "tool_name": { "$ref": "common.schema.json#/$defs/stable_id" },
-        "tool_version": { "$ref": "common.schema.json#/$defs/revision" },
-        "input_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
-        "purpose_code": {
-          "type": "string",
-          "enum": [
-            "resolve_intent",
-            "resolve_location",
-            "retrieve_rider_context",
-            "retrieve_world_context",
-            "generate_candidates",
-            "validate_candidates",
-            "revise_plan",
-            "compare_candidates",
-            "prepare_user_decision"
-          ]
-        },
-        "expected_observation_kind": { "$ref": "common.schema.json#/$defs/stable_id" }
+        "tool_call_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
       }
     },
     "candidate_reference": {

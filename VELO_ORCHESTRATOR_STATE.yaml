@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-04T01:31:11+08:00'
+updated_at: '2026-08-04T04:47:26+08:00'
 status: active
 authority:
   order:
@@ -59,10 +59,10 @@ repository:
   last_verified_main_commit_before_a1_5_merge: cae88a4d4d1e365baddd394d196444f4ee6d1e8f
   a1_5_reviewed_head: 91297fd544964bef7d6a2224af210c7272975468
   a1_5_reviewed_merge_ref: 4f436c9c08b05eff3ba79032bb8aaf8870e26bdf
-  last_verified_main_commit: 25169cac110a330c305d5b5f66d74a585277217a
-  last_verified_main_commit_status: verified_at_a2_2_start
-  last_verified_at: '2026-08-03T23:46:15+08:00'
-  verified_via: git_fetch_and_rev_parse_origin_main_at_a2_2_start
+  last_verified_main_commit: 2e2f5e227308b9f2244904f2d7fde32c1ce20a87
+  last_verified_main_commit_status: verified_at_a2_3a_start
+  last_verified_at: '2026-08-04T03:03:00+08:00'
+  verified_via: fresh_git_fetch_and_rev_parse_origin_main_at_a2_3a_start
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
@@ -118,6 +118,12 @@ repository:
   a2_2_reviewed_merge_ref: ff7e507dbb78f967a678ce5f8be030c235e8659f
   a2_2_branch_ci_run: 30835175619
   a2_2_merge_ref_ci_run: 30835176769
+  a2_2_merge_commit: 2e2f5e227308b9f2244904f2d7fde32c1ce20a87
+  a2_2_post_merge_ci_run: 30838576675
+  a2_2_post_merge_ci_result: 2312_passed_0_skipped_with_fresh_postgis_migration
+  a2_3a_baseline_commit: 2e2f5e227308b9f2244904f2d7fde32c1ce20a87
+  a2_3a_execution_branch: codex/agent-first-a2-tool-registry-call-results
+  a2_3a_worktree_initial_status: clean
   original_authoring_worktree_status_at_a0c_start: dirty_with_reviewed_a0_files_preserved
   dirty_workspace_policy: preserve_all_user_changes
   git_write_permission: false
@@ -125,7 +131,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: none_after_a2_2_closeout
+  git_write_scope: none_pending_a2_3a_re_review
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -160,10 +166,10 @@ a2_parent:
   name: agent_v0_contracts
   status: in_progress
 next_task:
-  id: A2.3
+  id: A2.3a-re-review
   parent: A2
-  name: tool_approval_effect_plan_and_validation_contracts
-  status: ready_to_specify
+  name: A2.3a orchestrator re-review
+  status: pending_orchestrator_re_review
   execution_authorized: false
   requires_new_orchestrator_task_packet: true
 a1_subtasks:
@@ -223,12 +229,29 @@ a2_subtasks:
   execution_authorized: false
 - id: A2.3
   name: tool_approval_effect_plan_and_validation_contracts
-  status: ready_to_specify
+  status: in_progress
   execution_authorized: false
 - id: A2.4
   name: trace_error_contribution_and_contract_freeze
   status: blocked
   blocked_by: A2.3
+a2_3_subtasks:
+- id: A2.3a
+  name: tool_registry_call_and_result_contracts
+  status: in_review
+  decision: pending_orchestrator_re_review
+  revision_status: applied_waiting_orchestrator_re_review
+  execution_authorized: false
+- id: A2.3b
+  name: approval_and_side_effect_contracts
+  status: blocked
+  blocked_by: A2.3a
+  execution_authorized: false
+- id: A2.3c
+  name: intent_constraint_plan_and_validation_contracts
+  status: blocked
+  blocked_by: A2.3b
+  execution_authorized: false
 agent_v0_contract_policy:
   json_schema_draft: 2020-12
   contract_directory: contracts/agent_v0
@@ -252,6 +275,24 @@ agent_v0_contract_policy:
   - map_event.schema.json
   - map_action.schema.json
   - agent_action.schema.json
+  a2_3a_contract_names:
+  - tool_registry.schema.json
+  - tool_call.schema.json
+  - tool_result.schema.json
+  tool_registry_owner: deterministic_control_plane
+  tool_execution_owner: deterministic_domain_plane
+  online_tool_default_decision: DENY
+  online_planning_tool_count: 8
+  a2_3c_intent_constraint_decisions:
+    opaque_active_intent_ref_alone_is_sufficient: false
+    intent_snapshot_required_in_A2_3c: true
+    plan_constraint_set_required_in_A2_3c: true
+    rider_preference_requires_deterministic_constraint_compilation: true
+    constraint_hardness:
+    - hard
+    - soft
+    - advisory
+    unknown_is_not_pass: true
   gold_world_package_route_shapes:
   - linear_climb
   - corridor
@@ -1038,6 +1079,165 @@ evidence_log:
     deploy_authorized: false
     a2_3_status: ready_to_specify
     a2_3_execution_authorized: false
+- id: E-20260804-A2-3A-CODEX-DELIVERY
+  type: contract_delivery
+  status: READY_FOR_ORCHESTRATOR_REVIEW
+  evidence:
+    parent_task: A2.3
+    task: A2.3a
+    baseline_main: 2e2f5e227308b9f2244904f2d7fde32c1ce20a87
+    execution_branch: codex/agent-first-a2-tool-registry-call-results
+    initial_worktree: clean
+    schema_version: 0.1.0
+    json_schema_draft: 2020-12
+    schemas:
+    - tool_registry.schema.json
+    - tool_call.schema.json
+    - tool_result.schema.json
+    registry_tool_count: 8
+    local_context_contract_test_result: 48_passed_0_skipped
+    local_session_run_map_action_test_result: 181_passed_0_skipped
+    local_tool_contract_test_result: 79_passed_0_skipped
+    local_combined_targeted_result: 308_passed_0_skipped
+    local_full_test_clean_head_result: 2295_passed_87_skipped_0_failed
+    local_full_test_exit_status: success
+    local_postgres_postgis_boundary: deferred_to_github_ci_fresh_service_with_skip_rejection
+    runtime_code_changed: false
+    production_code_changed: false
+    database_migration_changed: false
+    real_provider_or_export_run: false
+    runtime_choice: deferred
+    preferred_runtime_candidate_from_proposed_research: typescript_shadow_service
+    python_pytest_role: contract_semantic_conformance_harness_only
+    orchestrator_review: pending
+    merge_authorized: false
+    deploy_authorized: false
+    A2_3b_and_A2_3c: blocked
+    A2_4_and_A3_through_A5: blocked
+- id: E-20260804-A2-3A-ORCHESTRATOR-REVIEW-R1
+  type: orchestrator_contract_review
+  status: REVISE
+  evidence:
+    parent_task: A2.3
+    task: A2.3a
+    pr: 43
+    reviewed_base: 2e2f5e227308b9f2244904f2d7fde32c1ce20a87
+    reviewed_head: 321b6102a0272f1bcd4822e8e616c5a7b1c93b49
+    reviewed_merge_ref: 3967d81872c67770aafd84a7f8054a80dd03936e
+    changed_files: 32
+    branch_ci_run: 30845566385
+    merge_ref_ci_run: 30845597092
+    branch_ci_result: 2382_passed_0_skipped
+    merge_ref_ci_result: 2382_passed_0_skipped
+    fresh_postgis_migration: true
+    blocking_findings:
+    - tool_result_retry_attempt_lifecycle
+    - provider_query_irreversible_disclosure_classification
+    - ride_plan_revision_result_type
+    - candidate_presentation_context_plan_binding
+    - status_specific_domain_reason_mapping
+    decision: REVISE
+    merge_authorized: false
+    deploy_authorized: false
+- id: E-20260804-A2-3A-R1-CODEX-REVISION
+  type: contract_revision_delivery
+  status: applied_waiting_orchestrator_re_review
+  evidence:
+    parent_task: A2.3
+    task: A2.3a
+    review_round: A2_3A_R1
+    previous_head: 321b6102a0272f1bcd4822e8e616c5a7b1c93b49
+    last_orchestrator_decision: REVISE
+    revision_findings_applied:
+    - tool_result_retry_attempt_lifecycle
+    - provider_query_irreversible_disclosure_classification
+    - ride_plan_revision_result_type
+    - candidate_presentation_context_plan_binding
+    - status_specific_domain_reason_mapping
+    clean_head_context_contract_test_result: 48_passed_0_skipped
+    clean_head_session_run_map_action_test_result: 181_passed_0_skipped
+    clean_head_tool_contract_test_result: 127_passed_0_skipped
+    clean_head_combined_targeted_result: 356_passed_0_skipped
+    clean_head_local_full_test_result: 2343_passed_87_skipped_0_failed
+    local_full_test_exit_status: success
+    runtime_implemented: false
+    production_modified: false
+    database_migration_changed: false
+    real_provider_run: false
+    real_export_run: false
+    runtime_choice: deferred
+    A2_3b_started: false
+    A2_3c_started: false
+    orchestrator_re_review: pending
+    a2_3_status: in_progress
+    a2_3a_status: in_review
+    a2_3a_decision: pending_orchestrator_re_review
+    a2_3a_revision_status: applied_waiting_orchestrator_re_review
+    execution_authorized: false
+    git_write_permission_after_delivery: false
+    merge_authorized: false
+    deploy_authorized: false
+    A2_4_and_A3_through_A5: blocked
+- id: E-20260804-A2-3A-ORCHESTRATOR-REVIEW-R2
+  type: orchestrator_contract_review
+  status: REVISE
+  evidence:
+    parent_task: A2.3
+    task: A2.3a
+    review_round: A2_3A_R2
+    pr: 43
+    reviewed_base: 2e2f5e227308b9f2244904f2d7fde32c1ce20a87
+    reviewed_head: 6efe201f2332999ac6ccbe1e239581d62bd963f1
+    reviewed_merge_ref: 4f0e4b81313a7fddc8cc2d5a94b1bea17e2b09cf
+    cumulative_changed_files: 37
+    branch_ci_run: 30849306967
+    merge_ref_ci_run: 30849309843
+    branch_ci_result: 2430_passed_0_skipped
+    merge_ref_ci_result: 2430_passed_0_skipped
+    fresh_postgis_migration: true
+    resolved_r1_findings:
+    - tool_result_retry_attempt_lifecycle
+    - provider_query_irreversible_disclosure_classification
+    - ride_plan_revision_result_type
+    - candidate_presentation_context_plan_binding
+    - status_specific_domain_reason_mapping
+    blocking_findings:
+    - retry_attempt_chain_not_bound_to_agent_run
+    - running_intermediate_positive_case_uses_schema_invalid_agent_run
+    consistency_finding:
+    - intermediate_attempt_timeout_summary_mentions_run_deadline
+    decision: REVISE
+    merge_authorized: false
+    deploy_authorized: false
+- id: E-20260804-A2-3A-R2-CODEX-REVISION
+  type: contract_revision_delivery
+  status: applied_waiting_orchestrator_re_review
+  evidence:
+    parent_task: A2.3
+    task: A2.3a
+    review_round: A2_3A_R2
+    previous_head: 6efe201f2332999ac6ccbe1e239581d62bd963f1
+    last_orchestrator_decision: REVISE
+    revision_findings_applied:
+    - retry_attempt_chain_agent_run_cross_binding
+    - shape_valid_running_intermediate_positive_case
+    - intermediate_timeout_user_summary_alignment
+    clean_head_context_contract_test_result: 48_passed_0_skipped
+    clean_head_session_run_map_action_test_result: 181_passed_0_skipped
+    clean_head_tool_contract_test_result: 135_passed_0_skipped
+    clean_head_combined_targeted_result: 364_passed_0_skipped
+    clean_head_local_full_test_result: 2351_passed_87_skipped_0_failed
+    runtime_implemented: false
+    production_modified: false
+    database_migration_changed: false
+    real_provider_run: false
+    real_export_run: false
+    runtime_choice: deferred
+    A2_3b_started: false
+    A2_3c_started: false
+    orchestrator_re_review: pending
+    merge_authorized: false
+    deploy_authorized: false
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec

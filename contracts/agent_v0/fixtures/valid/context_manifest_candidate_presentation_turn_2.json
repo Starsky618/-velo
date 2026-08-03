@@ -1,12 +1,12 @@
 {
   "schema_version": "0.1.0",
-  "manifest_id": "context-manifest.fixture-run-002-turn-1",
+  "manifest_id": "context-manifest.fixture-run-002-turn-2",
   "packet_environment": "test",
   "session_id": "planning-session.fixture-002",
   "run_id": "agent-run.fixture-002",
-  "model_call_id": "model-call.fixture-run-002-turn-1",
-  "compiled_at": "2026-08-03T20:09:10+08:00",
-  "task_mode": "discover",
+  "model_call_id": "model-call.fixture-run-002-turn-2",
+  "compiled_at": "2026-08-03T20:09:50+08:00",
+  "task_mode": "compare",
   "prompt_policy_version": "prompt-policy.v0.1.0",
   "playbook_version": "planning-playbook.v0.1.0",
   "tool_registry_version": "0.1.0",
@@ -35,8 +35,25 @@
       "content_hash": "b578d9b1705a3d2fd6edb2104338f9c50eb2bd4365690c83d922087b18da3052"
     }
   ],
-  "memory_item_refs": ["memory.fixture-001"],
-  "plan_revision_refs": [],
+  "memory_item_refs": [
+    "memory.fixture-001"
+  ],
+  "plan_revision_refs": [
+    {
+      "object_ref": {
+        "object_id": "ride-plan.fixture-a",
+        "object_type": "ride_plan"
+      },
+      "revision": 1
+    },
+    {
+      "object_ref": {
+        "object_id": "ride-plan.fixture-b",
+        "object_type": "ride_plan"
+      },
+      "revision": 1
+    }
+  ],
   "included_sections": [
     "rider.authorization",
     "rider.current_request",
@@ -50,28 +67,67 @@
     "world.facts",
     "world.dynamic_states",
     "world.advisories",
-    "world.unknowns"
+    "world.unknowns",
+    "tool.observation.candidate_plan_set",
+    "plan.candidate_summaries",
+    "plan.validation_summaries"
   ],
   "omitted_sections": [
-    { "section": "rider.full_activity_tracks", "reason": "privacy" },
-    { "section": "world.exact_geometry", "reason": "privacy" },
-    { "section": "irrelevant_long_term_memory", "reason": "irrelevant" }
+    {
+      "section": "rider.full_activity_tracks",
+      "reason": "privacy"
+    },
+    {
+      "section": "world.exact_geometry",
+      "reason": "privacy"
+    },
+    {
+      "section": "irrelevant_long_term_memory",
+      "reason": "irrelevant"
+    }
   ],
   "privacy_redactions": [
-    { "section": "rider.saved_place_exact_coordinates", "policy_ref": "privacy.opaque-location-ref-only" },
-    { "section": "rider.raw_activity_tracks", "policy_ref": "privacy.summary-only" }
+    {
+      "section": "rider.saved_place_exact_coordinates",
+      "policy_ref": "privacy.opaque-location-ref-only"
+    },
+    {
+      "section": "rider.raw_activity_tracks",
+      "policy_ref": "privacy.summary-only"
+    }
   ],
   "token_budget": {
     "budget": 8000,
-    "used": 6300,
-    "reserved_for_response": 1700
+    "used": 7300,
+    "reserved_for_response": 700
   },
   "token_counts": [
-    { "section": "rider_context_packet", "tokens": 1100 },
-    { "section": "world_fact_tianlongshan", "tokens": 2800 },
-    { "section": "world_fact_fenhe", "tokens": 2400 }
+    {
+      "section": "rider_context_packet",
+      "tokens": 1100
+    },
+    {
+      "section": "world_fact_tianlongshan",
+      "tokens": 2800
+    },
+    {
+      "section": "world_fact_fenhe",
+      "tokens": 2400
+    },
+    {
+      "section": "tool_observation_candidate_plan_set",
+      "tokens": 300
+    },
+    {
+      "section": "plan_candidate_summaries",
+      "tokens": 400
+    },
+    {
+      "section": "plan_validation_summaries",
+      "tokens": 300
+    }
   ],
-  "context_content_hash": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  "context_content_hash": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
   "source_of_truth": false,
   "metadata": {
     "x-fixture": true,

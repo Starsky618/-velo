@@ -1,0 +1,41 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "observation_id": "observation.fixture-candidates-retry-success-001",
+  "tool_call_id": "tool-call.fixture-generate-timeout-001",
+  "run_id": "agent-run.fixture-outcome-001",
+  "session_id": "planning-session.fixture-outcome-001",
+  "base_session_revision": 1,
+  "tool_registry_id": "tool-registry.agent-v0",
+  "tool_registry_version": "0.1.0",
+  "tool_name": "planning.generate_candidate_plans",
+  "tool_version": "0.1.0",
+  "capability_id": "plan.draft.create",
+  "observation_kind": "candidate_plan_set",
+  "result_status": "succeeded",
+  "result_code": "TOOL_SUCCEEDED",
+  "attempt_index": 2,
+  "result_finality": "TERMINAL",
+  "observed_at": "2026-08-03T20:10:30+08:00",
+  "observation_only": true,
+  "raw_provider_payload_exposed": false,
+  "exact_coordinates_exposed": false,
+  "canonical_fact_claimed": false,
+  "result_refs": [
+    {
+      "contract_kind": "candidate_plan_set",
+      "contract_id": "candidate-plan-set.fixture-retry-001",
+      "contract_revision": 1,
+      "schema_version": "0.1.0"
+    }
+  ],
+  "warning_refs": [],
+  "unknown_refs": [],
+  "retry_disposition": "NOT_APPLICABLE",
+  "user_safe_summary": "同一请求的第二次确定性尝试已返回候选路线方案。",
+  "metadata": {
+    "x-fixture": true,
+    "x-synthetic": true
+  }
+}
