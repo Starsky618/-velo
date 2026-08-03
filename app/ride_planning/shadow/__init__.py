@@ -1,15 +1,13 @@
-"""A bounded, deterministic Tianlongshan shadow-planning slice.
-
-This module deliberately does not use the legacy ``app.agent`` package.  It
-contains only a fixture-backed orchestration loop suitable for a repeatable
-CLI demo and end-to-end tests.
-"""
+"""Grounded, bounded Tianlongshan door-to-door shadow planner."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Mapping
+from itertools import product
+from typing import Any, Mapping, Sequence
+
+from app.ride_planning.shadow.repository import GroundedWorldRepository, Traversal
 
 
 class AgentAction(str, Enum):
@@ -31,6 +29,7 @@ ALLOWED_TOOLS = frozenset(
 MAX_MODEL_TURNS = 4
 MAX_TOOL_CALLS = 6
 URBAN_EXPOSURE_RANK = {"low": 0, "medium": 1, "high": 2}
+_GENERATED_CANDIDATE_PROOF = object()
 
 
 @dataclass(frozen=True)
@@ -48,11 +47,47 @@ class Decision:
     question: str | None = None
 
 
+@dataclass(frozen=True)
+class CandidatePlan:
+    """A plan composed only from repository-returned Traversals."""
+
+    access: Traversal
+    core: Traversal
+    return_leg: Traversal
+    generation_proof: object | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def legs(self) -> tuple[Traversal, Traversal, Traversal]:
+        return (self.access, self.core, self.return_leg)
+
+    @property
+    def name(self) -> str:
+        return self.core.display_name
+
+    @property
+    def total_distance_km(self) -> float:
+        return sum(leg.distance_km.value for leg in self.legs)
+
+    @property
+    def total_climb_m(self) -> float:
+        return sum(leg.climb_m.value for leg in self.legs)
+
+    @property
+    def estimated_minutes(self) -> float:
+        return sum(leg.estimated_minutes.value for leg in self.legs)
+
+    @property
+    def urban_exposure(self) -> str:
+        return max(
+            (leg.urban_exposure for leg in self.legs),
+            key=URBAN_EXPOSURE_RANK.__getitem__,
+        )
+
+
 @dataclass
 class ShadowResult:
     action: AgentAction
     candidates: list[dict[str, Any]] = field(default_factory=list)
-    rejected_candidates: list[dict[str, Any]] = field(default_factory=list)
     question: str | None = None
     rejection_reasons: list[str] = field(default_factory=list)
     model_turns: int = 0
@@ -61,53 +96,44 @@ class ShadowResult:
 
 
 class ScriptedDecisionModel:
-    """Free, repeatable policy for the small permitted agent state machine."""
+    """Free, repeatable policy for the permitted agent state machine."""
 
-    def decide(
-        self,
-        *,
-        request: RideRequest,
-        exact_origin: bool,
-        turn: int,
-    ) -> Decision:
+    def decide(self, *, exact_origin: bool, turn: int) -> Decision:
         if not exact_origin:
             return Decision(
                 AgentAction.ASK_ONE_QUESTION,
                 question="你是从太原站附近的哪个出发点出发？请补充具体地点。",
             )
-        sequence = (
+        return (
             Decision(AgentAction.CALL_TOOL, "retrieve_world_context"),
             Decision(AgentAction.CALL_TOOL, "generate_candidate_plans"),
             Decision(AgentAction.PRESENT_CANDIDATES),
-        )
-        return sequence[turn]
+        )[turn]
 
 
 class TianlongshanShadowAgent:
-    """A bounded single-agent loop over five high-level fixture tools."""
+    """Single-agent loop whose world access is fail-closed and provenance-bound."""
 
-    def __init__(self, world: Mapping[str, Any], model: ScriptedDecisionModel | None = None):
+    def __init__(
+        self,
+        world: Mapping[str, Any],
+        model: ScriptedDecisionModel | None = None,
+        repository: GroundedWorldRepository | None = None,
+    ):
         self.world = world
         self.model = model or ScriptedDecisionModel()
+        self.repository = repository or GroundedWorldRepository(world)
         self.trace: list[str] = []
 
-    def run(
-        self,
-        request: RideRequest,
-        *,
-        before_present: Callable[[], None] | None = None,
-    ) -> ShadowResult:
+    def run(self, request: RideRequest) -> ShadowResult:
         self.trace = []
-        exact_origin = request.origin in self.world["origins"]
+        exact_origin = request.origin in self.world.get("origins", {})
         result = ShadowResult(action=AgentAction.NO_RESULT)
-        rider_context: dict[str, Any] = {}
-        world_context: dict[str, Any] | None = None
-        candidates: list[dict[str, Any]] = []
+        world_context: dict[str, Any] = {}
+        candidates: list[CandidatePlan] = []
 
         for turn in range(MAX_MODEL_TURNS):
-            decision = self.model.decide(
-                request=request, exact_origin=exact_origin, turn=turn
-            )
+            decision = self.model.decide(exact_origin=exact_origin, turn=turn)
             result.model_turns += 1
 
             if decision.action == AgentAction.ASK_ONE_QUESTION:
@@ -117,50 +143,25 @@ class TianlongshanShadowAgent:
             if decision.action == AgentAction.CALL_TOOL:
                 if decision.tool_name not in ALLOWED_TOOLS:
                     raise ValueError("decision attempted a tool outside the allowlist")
-                if decision.tool_name == "retrieve_rider_context":
-                    rider_context = self.retrieve_rider_context(request)
-                elif decision.tool_name == "retrieve_world_context":
+                if decision.tool_name == "retrieve_world_context":
                     world_context = self.retrieve_world_context(request)
                 elif decision.tool_name == "generate_candidate_plans":
-                    candidates = self.generate_candidate_plans(
-                        request, rider_context, world_context or {}
-                    )
+                    candidates = self.generate_candidate_plans(request, world_context)
                     result.candidate_generation_count += 1
                 result.tool_calls += 1
                 self.trace.append(decision.tool_name)
                 continue
 
             if decision.action == AgentAction.PRESENT_CANDIDATES:
-                if before_present is not None:
-                    before_present()
-                    before_present = None
-                valid, rejected, rejected_candidates, stale = self.validate_plan(
-                    request, candidates
-                )
+                valid, rejected = self.validate_plan(request, candidates)
                 result.tool_calls += 1
                 self.trace.append("validate_plan")
-                # A changed origin revision invalidates every old candidate.  Re-read
-                # fixture context and generate fresh candidates within the call cap.
-                if candidates and stale == len(candidates):
-                    world_context = self.retrieve_world_context(request)
-                    candidates = self.generate_candidate_plans(
-                        request, rider_context, world_context
-                    )
-                    result.candidate_generation_count += 1
-                    result.tool_calls += 1
-                    self.trace.append("generate_candidate_plans")
-                    valid, rejected, rejected_candidates, _ = self.validate_plan(
-                        request, candidates
-                    )
-                    result.tool_calls += 1
-                    self.trace.append("validate_plan")
                 ranked = self.compare_plans(valid)
                 result.tool_calls += 1
                 self.trace.append("compare_plans")
                 if result.tool_calls > MAX_TOOL_CALLS:
                     raise RuntimeError("shadow agent exceeded its tool-call cap")
                 result.candidates = self.describe_ranked_candidates(request, ranked[:3])
-                result.rejected_candidates = rejected_candidates
                 result.rejection_reasons = rejected
                 result.action = (
                     AgentAction.PRESENT_CANDIDATES if ranked else AgentAction.NO_RESULT
@@ -173,111 +174,184 @@ class TianlongshanShadowAgent:
         return {"preference": request.urban_exposure, "source": "cli_input"}
 
     def retrieve_world_context(self, request: RideRequest) -> dict[str, Any]:
-        origin = self.world["origins"].get(request.origin)
-        return {"origin": origin, "fixture_version": self.world["fixture_version"]}
+        return {
+            "origin": self.world.get("origins", {}).get(request.origin),
+            "traversals": self.repository.list_traversals(),
+            "fixture_version": self.world.get("fixture_version"),
+        }
 
     def generate_candidate_plans(
-        self,
-        request: RideRequest,
-        rider_context: Mapping[str, Any],
-        world_context: Mapping[str, Any],
-    ) -> list[dict[str, Any]]:
+        self, request: RideRequest, world_context: Mapping[str, Any]
+    ) -> list[CandidatePlan]:
+        """Compose candidates; never invent names, paths, or leg metrics."""
         origin = world_context.get("origin")
-        if origin is None:
+        if not origin:
             return []
-        plans: list[dict[str, Any]] = []
-        for plan in self.world["candidate_plans"]:
-            copied = dict(plan)
-            copied["origin_ref"] = origin["ref"]
-            copied["origin_revision"] = origin["revision"]
-            plans.append(copied)
-        return plans
+        origin_anchor_ref = origin.get("anchor_ref")
+        recorded_by_ref = {
+            traversal.traversal_ref: traversal
+            for traversal in self.repository.list_traversals()
+        }
+        traversals = [
+            traversal
+            for traversal in world_context.get("traversals", [])
+            if isinstance(traversal, Traversal)
+            and recorded_by_ref.get(traversal.traversal_ref) == traversal
+        ]
+        by_role = {
+            role: [traversal for traversal in traversals if traversal.role == role]
+            for role in ("access", "core", "return")
+        }
+        candidates: list[CandidatePlan] = []
+        for access, core, return_leg in product(
+            by_role["access"], by_role["core"], by_role["return"]
+        ):
+            legs = (access, core, return_leg)
+            if len({leg.composition_ref for leg in legs}) != 1:
+                continue
+            if access.start_anchor_ref != origin_anchor_ref:
+                continue
+            if return_leg.end_anchor_ref != origin_anchor_ref:
+                continue
+            if access.end_anchor_ref != core.start_anchor_ref:
+                continue
+            if core.end_anchor_ref != return_leg.start_anchor_ref:
+                continue
+            candidates.append(
+                CandidatePlan(
+                    access=access,
+                    core=core,
+                    return_leg=return_leg,
+                    generation_proof=_GENERATED_CANDIDATE_PROOF,
+                )
+            )
+        return candidates
 
     def validate_plan(
-        self, request: RideRequest, candidates: list[dict[str, Any]]
-    ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]], int]:
-        valid: list[dict[str, Any]] = []
+        self, request: RideRequest, candidates: Sequence[object]
+    ) -> tuple[list[CandidatePlan], list[str]]:
+        valid: list[CandidatePlan] = []
         rejected: list[str] = []
-        rejected_candidates: list[dict[str, Any]] = []
-        stale = 0
         requested_exposure = URBAN_EXPOSURE_RANK[request.urban_exposure]
-        live_origin = self.world["origins"].get(request.origin)
+        origin = self.world.get("origins", {}).get(request.origin, {})
+
         for candidate in candidates:
+            if not isinstance(candidate, CandidatePlan) or (
+                candidate.generation_proof is not _GENERATED_CANDIDATE_PROOF
+            ):
+                rejected.append("手写 candidate 未经 grounded generator，拒绝进入系统")
+                continue
             reasons: list[str] = []
-            if live_origin is None or candidate["origin_revision"] != live_origin["revision"]:
-                reasons.append("起点版本已变更，旧候选失效")
-                stale += 1
-            if candidate["estimated_minutes"] > request.minutes:
+            if tuple(leg.role for leg in candidate.legs) != ("access", "core", "return"):
+                reasons.append("leg roles 不完整")
+            if len({leg.composition_ref for leg in candidate.legs}) != 1:
+                reasons.append("legs 不属于同一可追溯组合")
+            if candidate.access.start_anchor_ref != origin.get("anchor_ref"):
+                reasons.append("access 未从本次起点开始")
+            if candidate.return_leg.end_anchor_ref != origin.get("anchor_ref"):
+                reasons.append("return 未回到本次起点")
+            if candidate.access.end_anchor_ref != candidate.core.start_anchor_ref or (
+                candidate.core.end_anchor_ref != candidate.return_leg.start_anchor_ref
+            ):
+                reasons.append("legs 不连续")
+            for leg in candidate.legs:
+                if self.repository.get_traversal(leg.traversal_ref) != leg:
+                    reasons.append(
+                        f"{leg.traversal_ref}: leg 不是 repository 当前返回的来源对象"
+                    )
+                leg_errors = self.repository.eligibility_errors(leg)
+                reasons.extend(f"{leg.traversal_ref}: {error}" for error in leg_errors)
+            if candidate.estimated_minutes > request.minutes:
                 reasons.append("预计时间超过硬限制")
-            if candidate["total_climb_m"] > request.max_climb_m:
+            if candidate.total_climb_m > request.max_climb_m:
                 reasons.append("总爬升超过硬限制")
-            if URBAN_EXPOSURE_RANK[candidate["urban_exposure"]] > requested_exposure:
+            if URBAN_EXPOSURE_RANK[candidate.urban_exposure] > requested_exposure:
                 reasons.append("城区暴露超过偏好")
-            if candidate.get("unknowns"):
-                reasons.append("存在未确认项，不能按通过处理")
             if reasons:
-                rejected.append(f"{candidate['name']}：{'；'.join(reasons)}")
-                rejected_candidate = dict(candidate)
-                rejected_candidate["rejection_reasons"] = reasons
-                rejected_candidates.append(rejected_candidate)
+                rejected.append(f"{candidate.name}：{'；'.join(reasons)}")
             else:
                 valid.append(candidate)
-        return valid, rejected, rejected_candidates, stale
+        return valid, rejected
 
-    def compare_plans(self, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def compare_plans(self, candidates: list[CandidatePlan]) -> list[CandidatePlan]:
         return sorted(
             candidates,
             key=lambda candidate: (
-                URBAN_EXPOSURE_RANK[candidate["urban_exposure"]],
-                candidate["estimated_minutes"],
-                candidate["total_climb_m"],
+                URBAN_EXPOSURE_RANK[candidate.urban_exposure],
+                candidate.estimated_minutes,
+                candidate.total_climb_m,
             ),
         )
 
     def describe_ranked_candidates(
-        self, request: RideRequest, candidates: list[dict[str, Any]]
+        self, request: RideRequest, candidates: list[CandidatePlan]
     ) -> list[dict[str, Any]]:
-        """Add request-bound recommendation and trade-off text after ranking."""
         described: list[dict[str, Any]] = []
         for index, candidate in enumerate(candidates, start=1):
-            described_candidate = dict(candidate)
-            limit_summary = (
-                f"本次 {request.minutes} 分钟、{request.max_climb_m} m 上限和"
-                f"{request.urban_exposure} 城区偏好"
+            legs = {
+                "access": self._leg_view(candidate.access),
+                "core": self._leg_view(candidate.core),
+                "return": self._leg_view(candidate.return_leg),
+            }
+            described.append(
+                {
+                    "name": candidate.name,
+                    **legs,
+                    "total_distance_km": candidate.total_distance_km,
+                    "total_climb_m": candidate.total_climb_m,
+                    "estimated_minutes": candidate.estimated_minutes,
+                    "urban_exposure": candidate.urban_exposure,
+                    "risk": "；".join(dict.fromkeys(leg.risk for leg in candidate.legs)),
+                    "unknowns": [],
+                    "source_object_refs": [
+                        leg.source_object_ref for leg in candidate.legs
+                    ],
+                    "metrics_provenance_refs": [
+                        source_ref
+                        for leg in candidate.legs
+                        for source_ref in (
+                            leg.distance_km.calculation_source_ref,
+                            leg.climb_m.calculation_source_ref,
+                            leg.estimated_minutes.calculation_source_ref,
+                        )
+                    ],
+                    "recommendation_reason": (
+                        f"本次 {request.minutes} 分钟、{request.max_climb_m} m 上限下"
+                        f"排名第 {index}；全部 leg 均通过来源与通行校验。"
+                    ),
+                    "tradeoff": self._tradeoff(candidate, candidates, index),
+                }
             )
-            if index == 1:
-                described_candidate["recommendation_reason"] = (
-                    f"在{limit_summary}下排名第 1；城区暴露为"
-                    f"{candidate['urban_exposure']}。"
-                )
-            else:
-                leader = candidates[0]
-                described_candidate["recommendation_reason"] = (
-                    f"满足{limit_summary}，排名第 {index}；相对首选多用 "
-                    f"{candidate['estimated_minutes'] - leader['estimated_minutes']} 分钟、"
-                    f"多爬 {candidate['total_climb_m'] - leader['total_climb_m']} m。"
-                )
-            described_candidate["tradeoff"] = self._tradeoff(candidate, candidates, index)
-            described.append(described_candidate)
         return described
 
     @staticmethod
+    def _leg_view(leg: Traversal) -> dict[str, Any]:
+        return {
+            "traversal_ref": leg.traversal_ref,
+            "path_ref": leg.path_ref,
+            "start_anchor_ref": leg.start_anchor_ref,
+            "end_anchor_ref": leg.end_anchor_ref,
+            "source_object_ref": leg.source_object_ref,
+            "revision_ref": leg.revision_ref,
+            "evidence_refs": [item.evidence_ref for item in leg.evidence],
+        }
+
+    @staticmethod
     def _tradeoff(
-        candidate: Mapping[str, Any], candidates: list[dict[str, Any]], index: int
+        candidate: CandidatePlan, candidates: list[CandidatePlan], index: int
     ) -> str:
         if len(candidates) == 1:
-            return "这是唯一通过全部硬约束的方案。"
+            return "这是唯一通过全部 grounding 与硬约束的方案。"
         if index == 1:
-            next_candidate = candidates[1]
+            other = candidates[1]
             return (
-                f"相对下一方案少用 "
-                f"{next_candidate['estimated_minutes'] - candidate['estimated_minutes']} 分钟、"
-                f"少爬 {next_candidate['total_climb_m'] - candidate['total_climb_m']} m。"
+                f"相对下一方案少用 {other.estimated_minutes - candidate.estimated_minutes:g} 分钟、"
+                f"少爬 {other.total_climb_m - candidate.total_climb_m:g} m。"
             )
         leader = candidates[0]
         return (
-            f"相对首选增加 {candidate['estimated_minutes'] - leader['estimated_minutes']} 分钟、"
-            f"{candidate['total_climb_m'] - leader['total_climb_m']} m 爬升。"
+            f"相对首选增加 {candidate.estimated_minutes - leader.estimated_minutes:g} 分钟、"
+            f"{candidate.total_climb_m - leader.total_climb_m:g} m 爬升。"
         )
 
 
@@ -285,38 +359,38 @@ def render_result(request: RideRequest, result: ShadowResult) -> str:
     if result.action == AgentAction.ASK_ONE_QUESTION:
         return f"需要补充一个问题：{result.question}"
     if result.action == AgentAction.NO_RESULT:
-        lines = ["没有符合全部硬约束的天龙山门到门候选。"]
-        if result.rejection_reasons:
-            lines.extend(f"淘汰理由：{reason}" for reason in result.rejection_reasons)
+        lines = ["NO_RESULT：没有通过 grounding 与全部硬约束的天龙山门到门候选。"]
+        lines.extend(f"拒绝原因：{reason}" for reason in result.rejection_reasons)
         return "\n".join(lines)
 
-    blocks = []
+    blocks: list[str] = []
     for index, candidate in enumerate(result.candidates, start=1):
         blocks.append(
             "\n".join(
                 (
                     f"候选 {index}：{candidate['name']}",
-                    f"access：{candidate['access']['path_ref']}（{candidate['access']['summary']}）",
-                    f"core：{candidate['core']['path_ref']}（{candidate['core']['summary']}）",
-                    f"return：{candidate['return']['path_ref']}（{candidate['return']['summary']}）",
+                    _render_leg("access", candidate["access"]),
+                    _render_leg("core", candidate["core"]),
+                    _render_leg("return", candidate["return"]),
                     f"总距离：{candidate['total_distance_km']:.1f} km",
-                    f"总爬升：{candidate['total_climb_m']} m",
-                    f"预计时间：{candidate['estimated_minutes']} 分钟",
+                    f"总爬升：{candidate['total_climb_m']:g} m",
+                    f"预计时间：{candidate['estimated_minutes']:g} 分钟",
                     f"城区暴露：{candidate['urban_exposure']}",
                     f"风险：{candidate['risk']}",
-                    f"unknowns：{', '.join(candidate['unknowns']) or '无'}",
+                    "unknowns：无",
                     f"推荐理由：{candidate['recommendation_reason']}",
                     f"方案取舍：{candidate['tradeoff']}",
+                    f"metrics provenance：{', '.join(candidate['metrics_provenance_refs'])}",
                 )
             )
         )
-    for candidate in result.rejected_candidates:
-        blocks.append(
-            "\n".join(
-                (
-                    f"淘汰方案：{candidate['name']}",
-                    f"淘汰原因：{'；'.join(candidate['rejection_reasons'])}",
-                )
-            )
-        )
+    blocks.extend(f"淘汰方案：{reason}" for reason in result.rejection_reasons)
     return "\n\n".join(blocks)
+
+
+def _render_leg(label: str, leg: Mapping[str, Any]) -> str:
+    return (
+        f"{label}：{leg['path_ref']} | traversal={leg['traversal_ref']} | "
+        f"source={leg['source_object_ref']}@{leg['revision_ref']} | "
+        f"evidence={','.join(leg['evidence_refs'])}"
+    )
