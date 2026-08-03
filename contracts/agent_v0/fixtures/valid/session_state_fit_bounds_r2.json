@@ -3,11 +3,11 @@
   "environment": "test",
   "fixture_only": true,
   "session_id": "planning-session.fixture-002",
-  "session_revision": 1,
+  "session_revision": 2,
   "state_owner": "deterministic_interaction_service",
   "status": "open",
   "created_at": "2026-08-03T20:00:00+08:00",
-  "updated_at": "2026-08-03T20:08:00+08:00",
+  "updated_at": "2026-08-03T20:08:30+08:00",
   "expires_at": "2026-08-03T23:00:00+08:00",
   "task_mode": "compare",
   "rider_ref": {
@@ -88,10 +88,10 @@
       "bounds.fixture-candidate-detail-002"
     ],
     "viewport": {
-      "bounds_ref": "bounds.fixture-candidate-area-002",
+      "bounds_ref": "bounds.fixture-candidate-detail-002",
       "zoom_level": 10,
-      "source_kind": "map_event",
-      "source_ref": "map-event.fixture-viewport-002"
+      "source_kind": "map_action",
+      "source_ref": "map-action.fixture-fit-bounds-001"
     },
     "presentation": {
       "shown_area_refs": [],
@@ -99,7 +99,9 @@
       "visible_candidate_refs": [],
       "dimmed_targets": [],
       "warning_scope_refs": [],
-      "last_map_action_refs": []
+      "last_map_action_refs": [
+        "map-action.fixture-fit-bounds-001"
+      ]
     }
   },
   "assumptions": [

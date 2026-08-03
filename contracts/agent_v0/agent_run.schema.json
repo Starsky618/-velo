@@ -74,7 +74,6 @@
     "budget": { "$ref": "#/$defs/budget" },
     "context_manifest_refs": {
       "type": "array",
-      "minItems": 1,
       "uniqueItems": true,
       "items": { "$ref": "common.schema.json#/$defs/stable_id" },
       "maxItems": 100
@@ -108,9 +107,55 @@
     {
       "oneOf": [
         {
-          "properties": { "run_status": { "enum": ["created", "running"] } },
+          "properties": {
+            "run_status": { "const": "created" },
+            "current_step": { "const": "receive_event" },
+            "budget": {
+              "properties": {
+                "consumed": {
+                  "properties": {
+                    "model_turns": { "const": 0 },
+                    "tool_calls": { "const": 0 },
+                    "plan_generations": { "const": 0 },
+                    "tokens": { "const": 0 },
+                    "cost_micros": { "const": 0 }
+                  }
+                },
+                "tool_retry_counters": { "maxItems": 0 }
+              }
+            },
+            "context_manifest_refs": { "maxItems": 0 },
+            "action_proposal_refs": { "maxItems": 0 },
+            "tool_call_refs": { "maxItems": 0 },
+            "observation_refs": { "maxItems": 0 },
+            "session_commit": {
+              "properties": { "commit_status": { "const": "not_attempted" } }
+            }
+          },
           "required": ["run_status"],
-          "not": { "anyOf": [{ "required": ["stop_reason"] }, { "required": ["ended_at"] }] }
+          "not": {
+            "anyOf": [
+              { "required": ["stop_reason"] },
+              { "required": ["pending_gate"] },
+              { "required": ["ended_at"] }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "run_status": { "const": "running" },
+            "session_commit": {
+              "properties": { "commit_status": { "const": "not_attempted" } }
+            }
+          },
+          "required": ["run_status"],
+          "not": {
+            "anyOf": [
+              { "required": ["stop_reason"] },
+              { "required": ["pending_gate"] },
+              { "required": ["ended_at"] }
+            ]
+          }
         },
         {
           "properties": {

@@ -185,12 +185,14 @@
       "required": [
         "candidate_ref",
         "plan_revision_ref",
+        "selected_by_event_type",
         "selected_by_user_event_ref",
         "selected_at"
       ],
       "properties": {
         "candidate_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
         "plan_revision_ref": { "$ref": "#/$defs/plan_revision_ref" },
+        "selected_by_event_type": { "const": "plan_confirmed" },
         "selected_by_user_event_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
         "selected_at": { "$ref": "common.schema.json#/$defs/timestamp" }
       }
@@ -212,11 +214,15 @@
     "map_viewport": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["bounds_ref", "zoom_level", "source_event_ref"],
+      "required": ["bounds_ref", "zoom_level", "source_kind", "source_ref"],
       "properties": {
         "bounds_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
         "zoom_level": { "type": "number", "minimum": 0, "maximum": 24 },
-        "source_event_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+        "source_kind": {
+          "type": "string",
+          "enum": ["initial", "map_event", "map_action"]
+        },
+        "source_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
       }
     },
     "elevation_selection": {
@@ -302,12 +308,24 @@
     "map_state": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["anchors", "viewport", "presentation"],
+      "required": [
+        "anchors",
+        "available_bounds_refs",
+        "viewport",
+        "presentation"
+      ],
       "properties": {
         "anchors": {
           "type": "array",
           "items": { "$ref": "#/$defs/map_anchor" },
           "maxItems": 20
+        },
+        "available_bounds_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+          "maxItems": 50
         },
         "viewport": { "$ref": "#/$defs/map_viewport" },
         "elevation_selection": { "$ref": "#/$defs/elevation_selection" },

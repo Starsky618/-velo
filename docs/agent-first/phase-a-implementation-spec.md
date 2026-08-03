@@ -1,6 +1,6 @@
 # VELO Phase A 文件级实施规格
 
-> A0/A0C/A1.1–A1.5 与 A2.1：`PASS / completed`；A1 parent 已 `completed / PASS`，ADR-013–017 均已 Accepted。A2 parent 为 `in_progress`；A2.1 已通过 PR #41 squash merge。A2.2 的语言中立 Session/Run/Map/Action contracts 已交付并进入 `in_review`，尚未 PASS；A2.3–A2.4 与 A3–A5 均为 `blocked`，Agent v0 尚未 freeze。本文不实施 `app/agent` 代码迁移、M1/M2/M3、Agent Runtime、生产 Context Compiler/reducer、数据库、API、UI、真实 Provider/export、Capability Engine、Approval UI、Side-effect Ledger、Contribution 或部署，不改变生产行为，也不构成后续子任务执行授权。
+> A0/A0C/A1.1–A1.5 与 A2.1：`PASS / completed`；A1 parent 已 `completed / PASS`，ADR-013–017 均已 Accepted。A2 parent 为 `in_progress`；A2.1 已通过 PR #41 squash merge。A2.2 经 Orchestrator 判定 `REVISE`，A2.2-R1 已应用并保持 `in_review`，等待 re-review，尚未 PASS；A2.3–A2.4 与 A3–A5 均为 `blocked`，Agent v0 尚未 freeze。本文不实施 `app/agent` 代码迁移、M1/M2/M3、Agent Runtime、生产 Context Compiler/reducer、数据库、API、UI、真实 Provider/export、Capability Engine、Approval UI、Side-effect Ledger、Contribution 或部署，不改变生产行为，也不构成后续子任务执行授权。
 
 ## 2.1 Repository Fact Baseline
 
@@ -260,18 +260,19 @@ Accepted [ADR-017](../adr/017-为什么旧app-agent必须迁出并保留RQ兼容
 #### A2.2 Session / Run / Map / Action 合同（in_review）
 
 - **五份 schema**：[`session_state.schema.json`](../../contracts/agent_v0/session_state.schema.json)、[`agent_run.schema.json`](../../contracts/agent_v0/agent_run.schema.json)、[`map_event.schema.json`](../../contracts/agent_v0/map_event.schema.json)、[`map_action.schema.json`](../../contracts/agent_v0/map_action.schema.json)、[`agent_action.schema.json`](../../contracts/agent_v0/agent_action.schema.json)；均使用 Draft 2020-12、`schema_version=0.1.0`、稳定 `$id`、strict objects 与本地 `$ref`。
-- **Session / Run**：`SessionState` 是 deterministic interaction service 拥有的 working state，不是 transcript、World Fact、Memory 或 Run checkpoint；one Session can have many Runs。每个 Run/Action 固定绑定一个 `base_session_revision`，resume lineage 的 limits 不变、consumed/retry 只能单调不减，stale commit/action 必须 fail closed。
-- **候选与选择**：Session 合法拥有 0–3 个 candidate；current+visible 必须带 validation ref。active candidate 只是当前关注项，`candidate_switched` 不等于 selected；只有 `plan_confirmed` 用户事件才能产生最终 `selected_plan`。起点/目的地改变会使旧 candidate stale，并清除 active/selected。
-- **Map / AgentAction**：MapEvent 是 typed user input；MapAction 是 `reducer_required=true` 的声明式动作，不包含 frontend command、CSS/style 或坐标。AgentAction 永远 `proposal_only=true`，一次 model turn 只有一个顶层 action；raw Provider/ORM/SQL、canonical write、真实 export 与外部 effect 无法表达。
+- **Session / Run**：`SessionState` 是 deterministic interaction service 拥有的 working state，不是 transcript、World Fact、Memory 或 Run checkpoint；one Session can have many Runs。created Run 必须零消耗、零执行引用且不提交，running Run 也不能提前 committed；每个 model turn 恰好绑定一个 ContextManifest。resume child 使用新 run ID、继承单调预算并绑定 parent commit 后的 current Session revision，stale commit/action 必须 fail closed。
+- **候选与选择**：Session 合法拥有 0–3 个 candidate；active、switch、leg selection 与 selected candidate 必须 current、非 hidden 且有 validation ref。`candidate_switched` 不等于 selected；最终 `selected_plan` 必须逐字段匹配真实 user `plan_confirmed` Event、前一 Session revision、candidate/Plan revision 与时间。起点/目的地改变会使旧 candidate stale，并清除 active/selected。
+- **Map / AgentAction**：MapEvent 是 typed user input；MapAction 是 `reducer_required=true` 的声明式动作，不包含 frontend command、CSS/style 或坐标。Session 只保存已解析 opaque `available_bounds_refs`，`fit_bounds` 可将 viewport 改到另一个已知 ref，并以 `source_kind/source_ref` 区分 Event/Action 来源。AgentAction 永远 `proposal_only=true`，一次 model turn 只有一个顶层 action；raw Provider/ORM/SQL、canonical write、真实 export 与外部 effect 无法表达。
 - **两条 synthetic scenario**：clarification/context alignment 将既有 Manifest 的 Session revision 3 经 paused Run 提交为 waiting revision 4；candidate presentation/user selection 将两个 current validated candidate 经 `show_candidate_set` 展示，再由用户 `plan_confirmed` 事件生成可追溯 selection。fixture 只含 Plan/Validation opaque refs，不创建 A2.3 正文。
-- **semantic conformance**：[`test_agent_v0_session_run_map_action_contracts.py`](../../tests/contracts/test_agent_v0_session_run_map_action_contracts.py) 固定 environment、时间、revision、candidate identity、selection transition、anchor invalidation、Run status/commit、budget/resume、MapEvent/MapAction discriminated payload、proposal-only、stale protection、隐私与无网络解析；JSON Schema shape validation 不替代这些不变量。
-- **当前状态与非目标**：A2.2 为 `in_review`，不是 PASS/completed。没有 Runtime、production reducer、数据库/迁移、API、小程序、Provider、真实 Plan/export 或部署；A2.3–A2.4 与 A3–A5 继续 blocked。
+- **semantic conformance**：[`test_agent_v0_session_run_map_action_contracts.py`](../../tests/contracts/test_agent_v0_session_run_map_action_contracts.py) 固定跨合同 environment/fixture/time、revision、candidate identity、selection provenance、viewport Event/Action transition、anchor invalidation、Run lifecycle/commit、budget/resume current Session、MapEvent/MapAction discriminated payload、proposal-only、stale protection、隐私与无网络解析；JSON Schema shape validation 不替代这些不变量。
+- **语言与 Runtime 边界**：A2 合同是 language-neutral JSON Schema；Python pytest 仅是既有仓库/CI 的 conformance harness，不是 Python Runtime 选择。Proposed research 的优先候选是独立 TypeScript Shadow Service，但 Accepted Runtime 语言/框架继续 `DEFER`，首个 Runtime implementation Task Packet 前必须正式裁决；现有 Python/FastAPI Deterministic Domain Plane 不重写。
+- **当前状态与非目标**：A2.2 为 `in_review / REVISE`，R1 已应用并等待 Orchestrator re-review，不是 PASS/completed。没有 Runtime、production reducer、数据库/迁移、API、小程序、Provider、真实 Plan/export 或部署；A2.3–A2.4 与 A3–A5 继续 blocked。
 
 #### A2 后续字段路由（保留，不提前实现）
 
 - A2.3 的 ToolCall/Result 继续承载 tool+version、capability/effect/approval、idempotency/deadline、input/output/error；RidePlanDraft 保留 revision、access/core/return legs、geometry refs、约束、指标和 validation state；ValidationResult 保留 hard/soft checks 与 deterministic evidence。
 - A2.4 的 TraceEvent 保留 run/session/sequence/event type、input/output/approval/effect refs；Error 保留稳定 code/retryability/user-safe message/details；Contribution 保留 proposal/status/attribution/provenance 与 canonical-write 禁止边界，并负责全量交叉验证与 v0 freeze。
-- JSON Schema 是单一真相源；未来 Python/TS 类型必须从同一 schema 生成或做一致性比对，禁止手工维护两套真相。Runtime 技术选型继续 `DEFER`。
+- JSON Schema 是单一真相源；未来 Python/TS 类型必须从同一 schema 生成或做一致性比对，禁止手工维护两套真相。Runtime 技术选型继续 `DEFER`，不得由 conformance harness 的语言偷渡决定。
 
 #### Phase A 数据准备度正式退出门槛
 
@@ -289,7 +290,7 @@ Accepted [ADR-017](../adr/017-为什么旧app-agent必须迁出并保留RQ兼容
 
 - **A2 整体禁止范围**：Agent Runtime、网络工具、ORM、生产 DB、真实腾讯/导出、Runtime 框架或把长期 World Model 数据库偷渡进投影合同。
 - **失败回滚**：只回退对应子任务新增的合同/测试/路由文档；没有运行数据迁移。
-- **Orchestrator 判定**：A2.1 已 `PASS / completed`；A2.2 已按当前 Task Packet 交付并处于 `in_review`，必须等待 Orchestrator 独立复核，不得自行判定 PASS、merge 或开始 A2.3。
+- **Orchestrator 判定**：A2.1 已 `PASS / completed`；A2.2 当前裁决为 `REVISE`，A2.2-R1 已应用并处于 `in_review`，必须等待 Orchestrator 独立复核，不得自行判定 PASS、merge 或开始 A2.3。
 
 ### A3 — VeloBench v0
 

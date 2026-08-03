@@ -20,15 +20,20 @@
       },
       "revision": 1
     },
+    "selected_by_event_type": "plan_confirmed",
     "selected_by_user_event_ref": "map-event.invalid-selection",
     "selected_at": "2026-08-03T20:10:00+08:00"
   },
   "map_state": {
     "anchors": [],
+    "available_bounds_refs": [
+      "bounds.invalid-selected-plan"
+    ],
     "viewport": {
       "bounds_ref": "bounds.invalid-selected-plan",
       "zoom_level": 10,
-      "source_event_ref": "map-event.invalid-viewport"
+      "source_kind": "map_event",
+      "source_ref": "map-event.invalid-viewport"
     },
     "presentation": {
       "shown_area_refs": [],

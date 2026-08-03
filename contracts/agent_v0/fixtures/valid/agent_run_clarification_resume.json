@@ -1,0 +1,53 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "run_id": "agent-run.fixture-001-resume",
+  "session_id": "planning-session.fixture-001",
+  "state_owner": "deterministic_run_controller",
+  "run_lineage_ref": "run-lineage.fixture-001",
+  "base_session_revision": 4,
+  "trigger": {
+    "trigger_type": "resume",
+    "trigger_ref": "resume-trigger.fixture-001",
+    "resumed_from_run_ref": "agent-run.fixture-001"
+  },
+  "run_status": "running",
+  "current_step": "gate",
+  "budget": {
+    "limits": {
+      "max_model_turns": 4,
+      "max_tool_calls": 6,
+      "max_plan_generations": 3,
+      "max_same_tool_retries": 2,
+      "wall_clock_deadline": "2026-08-03T19:50:00+08:00",
+      "token_limit": 12000
+    },
+    "consumed": {
+      "model_turns": 2,
+      "tool_calls": 0,
+      "plan_generations": 0,
+      "tokens": 1200
+    },
+    "tool_retry_counters": []
+  },
+  "context_manifest_refs": [
+    "context-manifest.fixture-run-001",
+    "context-manifest.fixture-resume-001"
+  ],
+  "action_proposal_refs": [
+    "agent-action.fixture-resume-001"
+  ],
+  "tool_call_refs": [],
+  "observation_refs": [],
+  "session_commit": {
+    "commit_status": "not_attempted",
+    "expected_base_revision": 4
+  },
+  "started_at": "2026-08-03T19:42:00+08:00",
+  "last_checkpoint_at": "2026-08-03T19:43:00+08:00",
+  "metadata": {
+    "x-fixture": true,
+    "x-synthetic": true
+  }
+}

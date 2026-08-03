@@ -41,10 +41,14 @@
         "source_event_ref": "map-event.fixture-origin-001"
       }
     ],
+    "available_bounds_refs": [
+      "bounds.fixture-comparison-area-001"
+    ],
     "viewport": {
       "bounds_ref": "bounds.fixture-comparison-area-001",
       "zoom_level": 11,
-      "source_event_ref": "map-event.fixture-viewport-001"
+      "source_kind": "map_event",
+      "source_ref": "map-event.fixture-viewport-001"
     },
     "presentation": {
       "shown_area_refs": [],

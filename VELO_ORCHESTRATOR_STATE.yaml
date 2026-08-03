@@ -121,7 +121,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: none_waiting_a2_2_orchestrator_review
+  git_write_scope: none_waiting_a2_2_orchestrator_re_review
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -160,8 +160,11 @@ next_task:
   parent: A2
   name: session_run_map_and_action_contracts
   status: in_review
-  orchestrator_decision: SELECTED
-  codex_result: READY_FOR_REVIEW
+  review_round: A2_2_R1
+  last_orchestrator_decision: REVISE
+  revision_status: applied_waiting_orchestrator_re_review
+  orchestrator_decision: REVISE
+  codex_result: revision_applied_waiting_orchestrator_re_review
   execution_authorized: false
   requires_orchestrator_review: true
 a1_subtasks:
@@ -214,8 +217,11 @@ a2_subtasks:
 - id: A2.2
   name: session_run_map_and_action_contracts
   status: in_review
-  orchestrator_decision: SELECTED
-  codex_result: READY_FOR_REVIEW
+  review_round: A2_2_R1
+  last_orchestrator_decision: REVISE
+  orchestrator_decision: REVISE
+  revision_status: applied_waiting_orchestrator_re_review
+  codex_result: revision_applied_waiting_orchestrator_re_review
   execution_authorized: false
 - id: A2.3
   name: tool_approval_effect_plan_and_validation_contracts
@@ -235,6 +241,11 @@ agent_v0_contract_policy:
   local_ref_resolution_only: true
   metadata_is_not_authoritative: true
   runtime_choice: deferred
+  preferred_runtime_candidate_from_proposed_research: typescript_shadow_service
+  python_pytest_role: contract_conformance_harness_only
+  runtime_language_decision_required_before_first_runtime_implementation: true
+  runtime_implementation_authorized: false
+  existing_python_fastapi_deterministic_domain_plane_rewrite_authorized: false
   database_schema_implied: false
   vector_database_implied: false
   a2_2_contract_names:
@@ -956,6 +967,37 @@ evidence_log:
     api_or_miniprogram_changed: false
     runtime_framework_decided: false
     real_provider_or_export_run: false
+    a2_2_status: in_review
+    a2_3_through_a2_4: blocked
+    a3_through_a5: blocked
+    merge_authorized: false
+    deploy_authorized: false
+- id: E-20260804-A2-2-R1-CODEX-REVISION
+  type: contract_revision
+  status: applied_waiting_orchestrator_re_review
+  evidence:
+    parent_task: A2
+    task: A2.2
+    review_round: A2_2_R1
+    previous_head: 2be0550525ceb929380b15ec86c38287a3588b0f
+    last_orchestrator_decision: REVISE
+    revision_findings_applied:
+    - created_and_running_run_lifecycle
+    - resume_session_revision_lineage
+    - cross_contract_environment_and_time_binding
+    - fit_bounds_viewport_transition
+    - user_event_backed_plan_selection
+    a2_1_contract_test_result: 48_passed_0_skipped
+    a2_2_contract_test_result: 190_passed_0_skipped
+    local_contract_test_result: 238_passed_0_skipped
+    typescript_runtime_not_implemented: true
+    python_pytest_is_contract_harness_only: true
+    preferred_runtime_candidate_from_proposed_research: typescript_shadow_service
+    runtime_choice: deferred
+    runtime_language_decision_required_before_first_runtime_implementation: true
+    runtime_implementation_authorized: false
+    existing_python_fastapi_deterministic_domain_plane_rewritten: false
+    orchestrator_re_review: pending
     a2_2_status: in_review
     a2_3_through_a2_4: blocked
     a3_through_a5: blocked

@@ -35,11 +35,16 @@ EXPECTED_SCHEMA_IDS = {
 }
 
 VALID_FIXTURE_SCHEMAS = {
+    "agent_run_created.json": "agent_run",
     "session_state_clarification_r3.json": "session_state",
     "agent_action_ask_clarification.json": "agent_action",
     "agent_run_clarification_paused.json": "agent_run",
     "session_state_clarification_r4.json": "session_state",
+    "agent_run_clarification_resume.json": "agent_run",
+    "agent_action_resume_clarification.json": "agent_action",
     "session_state_candidates_before.json": "session_state",
+    "map_action_fit_bounds.json": "map_action",
+    "session_state_fit_bounds_r2.json": "session_state",
     "map_action_show_candidate_set.json": "map_action",
     "agent_action_present_candidates.json": "agent_action",
     "agent_run_candidate_completed.json": "agent_run",
@@ -85,6 +90,7 @@ FORBIDDEN_FIXTURE_KEYS = {
     "canonical_write",
     "export_artifact",
     "full_transcript",
+    "runtime",
 }
 
 FORBIDDEN_METADATA_KEY_FRAGMENTS = {
@@ -213,6 +219,19 @@ def assert_environment(instance):
         ), key
 
 
+def assert_cross_contract_environment(*instances, manifest=None):
+    artifacts = [instance for instance in instances if instance is not None]
+    assert artifacts
+    for artifact in artifacts:
+        assert_environment(artifact)
+    environments = {artifact["environment"] for artifact in artifacts}
+    fixture_flags = {artifact["fixture_only"] for artifact in artifacts}
+    assert len(environments) == 1
+    assert len(fixture_flags) == 1
+    if manifest is not None:
+        assert manifest["packet_environment"] == next(iter(environments))
+
+
 def assert_display_target_exists(target, session):
     candidate_refs = {item["candidate_ref"] for item in session["candidate_plans"]}
     anchor_refs = {item["anchor_ref"] for item in session["map_state"]["anchors"]}
@@ -258,12 +277,16 @@ def assert_session_semantics(session):
     if "active_candidate_ref" in session:
         active = candidate_map[session["active_candidate_ref"]]
         assert active["session_fit_status"] == "current"
+        assert active["presentation_state"] != "hidden"
+        assert "validation_result_ref" in active
 
     if "selected_plan" in session:
         selected = session["selected_plan"]
         candidate = candidate_map[selected["candidate_ref"]]
         assert candidate["session_fit_status"] == "current"
+        assert candidate["presentation_state"] != "hidden"
         assert "validation_result_ref" in candidate
+        assert selected["selected_by_event_type"] == "plan_confirmed"
         assert revision_key(selected["plan_revision_ref"]) == revision_key(
             candidate["plan_revision_ref"]
         )
@@ -283,6 +306,14 @@ def assert_session_semantics(session):
     selection = session["map_state"].get("elevation_selection")
     if selection:
         assert selection["from_fraction"] <= selection["to_fraction"]
+
+    map_state = session["map_state"]
+    available_bounds_refs = map_state["available_bounds_refs"]
+    assert len(available_bounds_refs) == len(set(available_bounds_refs))
+    viewport = map_state["viewport"]
+    assert viewport["bounds_ref"] in available_bounds_refs
+    if viewport["source_kind"] == "initial":
+        assert session["session_revision"] == 1
 
     presentation = session["map_state"]["presentation"]
     visible_refs = set(presentation["visible_candidate_refs"])
@@ -311,6 +342,8 @@ def assert_run_semantics(run):
     started_at = parse_rfc3339(run["started_at"])
     checkpoint_at = parse_rfc3339(run["last_checkpoint_at"])
     assert started_at <= checkpoint_at
+    deadline_at = parse_rfc3339(run["budget"]["limits"]["wall_clock_deadline"])
+    assert started_at < deadline_at
     if "ended_at" in run:
         assert checkpoint_at <= parse_rfc3339(run["ended_at"])
 
@@ -336,7 +369,7 @@ def assert_run_semantics(run):
     )
     assert len(run["action_proposal_refs"]) <= consumed["model_turns"]
     assert len(run["tool_call_refs"]) <= consumed["tool_calls"]
-    assert len(run["context_manifest_refs"]) >= consumed["model_turns"]
+    assert len(run["context_manifest_refs"]) == consumed["model_turns"]
 
     commit = run["session_commit"]
     assert commit["expected_base_revision"] == run["base_session_revision"]
@@ -349,6 +382,31 @@ def assert_run_semantics(run):
     if run.get("stop_reason") == "completed":
         assert commit["commit_status"] == "committed"
 
+    status = run["run_status"]
+    execution_ref_fields = (
+        "context_manifest_refs",
+        "action_proposal_refs",
+        "tool_call_refs",
+        "observation_refs",
+    )
+    if status == "created":
+        assert run["current_step"] == "receive_event"
+        assert all(value == 0 for value in consumed.values())
+        assert all(not run[field] for field in execution_ref_fields)
+        assert not retry_counters
+        assert commit["commit_status"] == "not_attempted"
+        assert "stop_reason" not in run
+        assert "pending_gate" not in run
+        assert "ended_at" not in run
+    if status == "running":
+        assert commit["commit_status"] == "not_attempted"
+        assert "stop_reason" not in run
+        assert "pending_gate" not in run
+        assert "ended_at" not in run
+    if "pending_gate" in run:
+        gate_at = parse_rfc3339(run["pending_gate"]["created_at"])
+        assert started_at <= gate_at <= checkpoint_at
+
     if run.get("stop_reason") == "budget_exceeded":
         exhausted = any(
             consumed.get(consumed_name) == limits.get(limit_name)
@@ -359,13 +417,20 @@ def assert_run_semantics(run):
         assert exhausted or deadline_reached
 
 
-def assert_resume_semantics(parent, child):
+def assert_resume_semantics(parent, child, current_session, child_action=None):
     assert_run_semantics(parent)
     assert_run_semantics(child)
+    assert child["run_id"] != parent["run_id"]
     assert child["trigger"]["trigger_type"] == "resume"
     assert child["trigger"]["resumed_from_run_ref"] == parent["run_id"]
     assert child["session_id"] == parent["session_id"]
     assert child["run_lineage_ref"] == parent["run_lineage_ref"]
+    assert child["base_session_revision"] == current_session["session_revision"]
+    assert child["session_id"] == current_session["session_id"]
+    if parent["session_commit"]["commit_status"] == "committed":
+        committed_revision = parent["session_commit"]["committed_revision"]
+        assert current_session["session_revision"] >= committed_revision
+        assert child["base_session_revision"] >= committed_revision
     assert child["budget"]["limits"] == parent["budget"]["limits"]
     parent_consumed = parent["budget"]["consumed"]
     child_consumed = child["budget"]["consumed"]
@@ -383,12 +448,17 @@ def assert_resume_semantics(parent, child):
     assert set(parent_retries) <= set(child_retries)
     for tool_name, retries in parent_retries.items():
         assert child_retries[tool_name] >= retries
+    if child_action is not None:
+        assert child_action["run_id"] == child["run_id"]
+        assert child_action["base_session_revision"] == child["base_session_revision"]
+        assert_agent_action_semantics(child_action, child, current_session)
 
 
 def assert_event_semantics(event, session):
-    assert_environment(event)
+    assert_cross_contract_environment(event, session)
     assert event["session_id"] == session["session_id"]
     assert event["base_session_revision"] == session["session_revision"]
+    assert parse_rfc3339(session["created_at"]) <= parse_rfc3339(event["occurred_at"])
     payload = event["payload"]
     candidates = {item["candidate_ref"]: item for item in session["candidate_plans"]}
     if event["event_type"] == "ride_object_selected":
@@ -396,6 +466,8 @@ def assert_event_semantics(event, session):
     if event["event_type"] in {"candidate_switched", "leg_selected", "plan_confirmed"}:
         candidate = candidates[payload["candidate_ref"]]
         assert candidate["session_fit_status"] == "current"
+        assert candidate["presentation_state"] != "hidden"
+        assert "validation_result_ref" in candidate
         assert revision_key(candidate["plan_revision_ref"]) == revision_key(
             payload["plan_revision_ref"]
         )
@@ -403,6 +475,8 @@ def assert_event_semantics(event, session):
             assert "validation_result_ref" in candidate
     if event["event_type"] == "elevation_range_selected":
         assert payload["from_fraction"] <= payload["to_fraction"]
+    if event["event_type"] == "viewport_changed":
+        assert payload["bounds_ref"] in session["map_state"]["available_bounds_refs"]
     if event["event_type"] == "anchor_removed":
         anchors = {
             (item["anchor_ref"], item["anchor_role"])
@@ -417,7 +491,8 @@ def assert_event_semantics(event, session):
             }
 
 
-def assert_map_action_batch(map_actions, session, parent_action=None):
+def assert_map_action_batch(map_actions, session, parent_action=None, run=None):
+    assert_cross_contract_environment(session, parent_action, run, *map_actions)
     assert [item["sequence"] for item in map_actions] == list(
         range(1, len(map_actions) + 1)
     )
@@ -430,9 +505,16 @@ def assert_map_action_batch(map_actions, session, parent_action=None):
         assert map_action["base_session_revision"] == session["session_revision"]
         if parent_action:
             assert map_action["source_agent_action_ref"] == parent_action["action_id"]
+            assert parse_rfc3339(parent_action["proposed_at"]) <= parse_rfc3339(
+                map_action["issued_at"]
+            )
+        if run:
+            assert parse_rfc3339(map_action["issued_at"]) <= parse_rfc3339(
+                run["last_checkpoint_at"]
+            )
         payload = map_action["payload"]
         if map_action["action_type"] == "fit_bounds":
-            assert payload["bounds_ref"] == session["map_state"]["viewport"]["bounds_ref"]
+            assert payload["bounds_ref"] in session["map_state"]["available_bounds_refs"]
         elif map_action["action_type"] == "show_area":
             assert payload["area_ref"] in session["focused_world_refs"]
         elif map_action["action_type"] == "highlight_object":
@@ -468,8 +550,8 @@ def assert_map_action_batch(map_actions, session, parent_action=None):
             assert_display_target_exists(payload["target"], session)
 
 
-def assert_agent_action_semantics(action, run, session):
-    assert_environment(action)
+def assert_agent_action_semantics(action, run, session, selection_event=None):
+    assert_cross_contract_environment(session, run, action, *action["map_actions"])
     assert action["proposal_only"] is True
     assert action["run_id"] == run["run_id"]
     assert action["session_id"] == run["session_id"] == session["session_id"]
@@ -477,7 +559,9 @@ def assert_agent_action_semantics(action, run, session):
     assert action["base_session_revision"] == session["session_revision"]
     assert action["model_turn_index"] <= run["budget"]["consumed"]["model_turns"]
     assert action["action_id"] in run["action_proposal_refs"]
-    parse_rfc3339(action["proposed_at"])
+    proposed_at = parse_rfc3339(action["proposed_at"])
+    assert parse_rfc3339(run["started_at"]) <= proposed_at
+    assert proposed_at <= parse_rfc3339(run["last_checkpoint_at"])
     if action["action_type"] == "ask_clarifying_question" and "choices" in action["payload"]:
         assert_unique(action["payload"]["choices"], "choice_id")
     if action["action_type"] == "call_approved_tool":
@@ -514,11 +598,13 @@ def assert_agent_action_semantics(action, run, session):
         assert payload_keys == displayed_keys
     if action["action_type"] == "finalize_response":
         if action["payload"]["outcome_kind"] == "plan_selected":
-            assert "selected_plan" in session
-    assert_map_action_batch(action["map_actions"], session, action)
+            assert selection_event is not None
+            assert_plan_selection_provenance(session, selection_event)
+    assert_map_action_batch(action["map_actions"], session, action, run)
 
 
 def assert_session_transition(before, after, base_revision):
+    assert_cross_contract_environment(before, after)
     assert before["session_id"] == after["session_id"]
     assert before["session_revision"] == base_revision
     assert after["session_revision"] == base_revision + 1
@@ -527,16 +613,82 @@ def assert_session_transition(before, after, base_revision):
     assert_session_semantics(after)
 
 
+def assert_plan_selection_provenance(selected_session, event):
+    assert_cross_contract_environment(selected_session, event)
+    selected = selected_session["selected_plan"]
+    candidates = {
+        item["candidate_ref"]: item for item in selected_session["candidate_plans"]
+    }
+    candidate = candidates[selected["candidate_ref"]]
+    assert event["event_id"] == selected["selected_by_user_event_ref"]
+    assert event["actor"] == "user"
+    assert event["event_type"] == "plan_confirmed"
+    assert selected["selected_by_event_type"] == "plan_confirmed"
+    assert event["session_id"] == selected_session["session_id"]
+    assert parse_rfc3339(selected_session["created_at"]) <= parse_rfc3339(
+        event["occurred_at"]
+    )
+    assert event["base_session_revision"] == selected_session["session_revision"] - 1
+    assert event["payload"]["candidate_ref"] == selected["candidate_ref"]
+    assert revision_key(event["payload"]["plan_revision_ref"]) == revision_key(
+        selected["plan_revision_ref"]
+    )
+    assert parse_rfc3339(selected["selected_at"]) == parse_rfc3339(
+        event["occurred_at"]
+    )
+    assert selected_session["last_map_event_ref"] == event["event_id"]
+    assert candidate["session_fit_status"] == "current"
+    assert candidate["presentation_state"] != "hidden"
+    assert "validation_result_ref" in candidate
+
+
 def assert_plan_selection_transition(before, event, after):
     assert event["event_type"] == "plan_confirmed"
     assert_event_semantics(event, before)
     assert_session_transition(before, after, event["base_session_revision"])
+    assert parse_rfc3339(event["occurred_at"]) <= parse_rfc3339(after["updated_at"])
+    assert_plan_selection_provenance(after, event)
     selected = after["selected_plan"]
     assert selected["candidate_ref"] == event["payload"]["candidate_ref"]
     assert revision_key(selected["plan_revision_ref"]) == revision_key(
         event["payload"]["plan_revision_ref"]
     )
     assert selected["selected_by_user_event_ref"] == event["event_id"]
+
+
+def assert_fit_bounds_transition(before, map_action, after):
+    assert map_action["action_type"] == "fit_bounds"
+    assert_map_action_batch([map_action], before)
+    assert_session_transition(before, after, map_action["base_session_revision"])
+    expected = deepcopy(before)
+    expected["session_revision"] += 1
+    expected["updated_at"] = map_action["issued_at"]
+    expected["map_state"]["viewport"]["bounds_ref"] = map_action["payload"][
+        "bounds_ref"
+    ]
+    expected["map_state"]["viewport"]["source_kind"] = "map_action"
+    expected["map_state"]["viewport"]["source_ref"] = map_action["map_action_id"]
+    expected["map_state"]["presentation"]["last_map_action_refs"].append(
+        map_action["map_action_id"]
+    )
+    assert after == expected
+
+
+def assert_viewport_event_transition(before, event, after):
+    assert event["event_type"] == "viewport_changed"
+    assert_event_semantics(event, before)
+    assert_session_transition(before, after, event["base_session_revision"])
+    expected = deepcopy(before)
+    expected["session_revision"] += 1
+    expected["updated_at"] = event["occurred_at"]
+    expected["last_map_event_ref"] = event["event_id"]
+    expected["map_state"]["viewport"] = {
+        "bounds_ref": event["payload"]["bounds_ref"],
+        "zoom_level": event["payload"]["zoom_level"],
+        "source_kind": "map_event",
+        "source_ref": event["event_id"],
+    }
+    assert after == expected
 
 
 def make_event(session, event_type, payload, sequence=99):
@@ -682,6 +834,167 @@ def test_context_manifest_session_and_run_are_cross_bound():
     assert manifest["run_id"] == run["run_id"]
     assert manifest["packet_environment"] == session["environment"] == run["environment"]
     assert manifest["manifest_id"] in run["context_manifest_refs"]
+    assert_cross_contract_environment(session, run, manifest=manifest)
+
+
+def test_test_session_and_shadow_run_are_individually_valid_but_cross_invalid(
+    schemas, local_registry
+):
+    session = load_valid("session_state_clarification_r3.json")
+    run = load_valid("agent_run_clarification_paused.json")
+    run["environment"] = "shadow"
+    run["fixture_only"] = False
+    assert not validation_errors("session_state", session, schemas, local_registry)
+    assert not validation_errors("agent_run", run, schemas, local_registry)
+    with pytest.raises(AssertionError):
+        assert_cross_contract_environment(session, run)
+
+
+def test_test_run_and_production_action_are_individually_valid_but_cross_invalid(
+    schemas, local_registry
+):
+    session = load_valid("session_state_clarification_r3.json")
+    run = load_valid("agent_run_clarification_paused.json")
+    action = load_valid("agent_action_ask_clarification.json")
+    action["environment"] = "production"
+    action["fixture_only"] = False
+    assert not validation_errors("agent_action", action, schemas, local_registry)
+    with pytest.raises(AssertionError):
+        assert_agent_action_semantics(action, run, session)
+
+
+def test_test_action_and_shadow_nested_map_action_are_cross_invalid(
+    schemas, local_registry
+):
+    session = load_valid("session_state_candidates_before.json")
+    run = load_valid("agent_run_candidate_completed.json")
+    action = load_valid("agent_action_present_candidates.json")
+    action["map_actions"][0]["environment"] = "shadow"
+    action["map_actions"][0]["fixture_only"] = False
+    assert not validation_errors("agent_action", action, schemas, local_registry)
+    with pytest.raises(AssertionError):
+        assert_agent_action_semantics(action, run, session)
+
+
+def test_test_session_and_production_event_are_cross_invalid(
+    schemas, local_registry
+):
+    session = load_valid("session_state_candidates_presented.json")
+    event = load_valid("map_event_plan_confirmed.json")
+    event["environment"] = "production"
+    event["fixture_only"] = False
+    assert not validation_errors("map_event", event, schemas, local_registry)
+    with pytest.raises(AssertionError):
+        assert_event_semantics(event, session)
+
+
+@pytest.mark.parametrize(
+    "proposed_at",
+    ["2026-08-03T19:38:59+08:00", "2026-08-03T19:41:01+08:00"],
+)
+def test_agent_action_time_must_stay_within_run(proposed_at):
+    session = load_valid("session_state_clarification_r3.json")
+    run = load_valid("agent_run_clarification_paused.json")
+    action = load_valid("agent_action_ask_clarification.json")
+    action["proposed_at"] = proposed_at
+    with pytest.raises(AssertionError):
+        assert_agent_action_semantics(action, run, session)
+
+
+def test_nested_map_action_cannot_precede_agent_action():
+    session = load_valid("session_state_candidates_before.json")
+    run = load_valid("agent_run_candidate_completed.json")
+    action = load_valid("agent_action_present_candidates.json")
+    action["map_actions"][0]["issued_at"] = "2026-08-03T20:09:59+08:00"
+    with pytest.raises(AssertionError):
+        assert_agent_action_semantics(action, run, session)
+
+
+def test_pending_gate_time_must_stay_within_run():
+    run = load_valid("agent_run_clarification_paused.json")
+    run["pending_gate"]["created_at"] = "2026-08-03T19:38:59+08:00"
+    with pytest.raises(AssertionError):
+        assert_run_semantics(run)
+
+
+def test_map_event_cannot_precede_session_creation():
+    session = load_valid("session_state_candidates_presented.json")
+    event = load_valid("map_event_plan_confirmed.json")
+    event["occurred_at"] = "2026-08-03T19:59:59+08:00"
+    with pytest.raises(AssertionError):
+        assert_event_semantics(event, session)
+
+
+def test_created_run_fixture_is_pre_execution_and_valid(schemas, local_registry):
+    run = load_valid("agent_run_created.json")
+    assert not validation_errors("agent_run", run, schemas, local_registry)
+    assert_run_semantics(run)
+    assert run["context_manifest_refs"] == []
+    assert run["session_commit"]["commit_status"] == "not_attempted"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["context", "model_turn", "action", "tool", "observation", "commit"],
+)
+def test_created_run_cannot_claim_execution_or_commit(
+    mutation, schemas, local_registry
+):
+    run = load_valid("agent_run_created.json")
+    if mutation == "context":
+        run["context_manifest_refs"] = ["context-manifest.invalid-created"]
+    elif mutation == "model_turn":
+        run["budget"]["consumed"]["model_turns"] = 1
+    elif mutation == "action":
+        run["action_proposal_refs"] = ["agent-action.invalid-created"]
+    elif mutation == "tool":
+        run["tool_call_refs"] = ["tool-call.invalid-created"]
+    elif mutation == "observation":
+        run["observation_refs"] = ["observation.invalid-created"]
+    else:
+        run["session_commit"] = {
+            "commit_status": "committed",
+            "expected_base_revision": 3,
+            "committed_revision": 4,
+        }
+    assert validation_errors("agent_run", run, schemas, local_registry)
+    with pytest.raises(AssertionError):
+        assert_run_semantics(run)
+
+
+def test_running_run_cannot_claim_committed_session(schemas, local_registry):
+    run = load_valid("agent_run_clarification_resume.json")
+    run["session_commit"] = {
+        "commit_status": "committed",
+        "expected_base_revision": 4,
+        "committed_revision": 5,
+    }
+    assert validation_errors("agent_run", run, schemas, local_registry)
+    with pytest.raises(AssertionError):
+        assert_run_semantics(run)
+
+
+@pytest.mark.parametrize("delta", [-1, 1])
+def test_context_manifest_count_must_equal_model_turns(delta):
+    run = load_valid("agent_run_candidate_completed.json")
+    if delta < 0:
+        run["context_manifest_refs"] = []
+    else:
+        run["context_manifest_refs"].append("context-manifest.invalid-extra")
+    with pytest.raises(AssertionError):
+        assert_run_semantics(run)
+
+
+@pytest.mark.parametrize("deadline_relation", ["equal", "earlier"])
+def test_run_deadline_must_be_strictly_after_started_at(deadline_relation):
+    run = load_valid("agent_run_created.json")
+    run["budget"]["limits"]["wall_clock_deadline"] = run["started_at"]
+    if deadline_relation == "earlier":
+        run["budget"]["limits"]["wall_clock_deadline"] = (
+            "2026-08-03T19:38:29+08:00"
+        )
+    with pytest.raises(AssertionError):
+        assert_run_semantics(run)
 
 
 def test_clarification_scenario_commits_waiting_session_revision():
@@ -964,29 +1277,25 @@ def test_run_time_order_uses_timezone_aware_rfc3339():
         assert_run_semantics(run)
 
 
-def build_resume_child(parent):
-    child = deepcopy(parent)
-    child["run_id"] = "agent-run.fixture-001-resume"
-    child["trigger"] = {
-        "trigger_type": "resume",
-        "trigger_ref": "resume-trigger.fixture-001",
-        "resumed_from_run_ref": parent["run_id"],
-    }
-    child["budget"]["consumed"]["model_turns"] = 2
-    child["budget"]["consumed"]["tokens"] = 1200
-    child["action_proposal_refs"].append("agent-action.fixture-resume-001")
-    child["context_manifest_refs"].append("context-manifest.fixture-resume-001")
-    child["started_at"] = "2026-08-03T19:42:00+08:00"
-    child["last_checkpoint_at"] = "2026-08-03T19:43:00+08:00"
-    child["pending_gate"]["created_at"] = "2026-08-03T19:43:00+08:00"
-    return child
-
-
 def test_resume_child_preserves_budget_lineage(schemas, local_registry):
     parent = load_valid("agent_run_clarification_paused.json")
-    child = build_resume_child(parent)
+    child = load_valid("agent_run_clarification_resume.json")
+    current_session = load_valid("session_state_clarification_r4.json")
+    child_action = load_valid("agent_action_resume_clarification.json")
     assert not validation_errors("agent_run", child, schemas, local_registry)
-    assert_resume_semantics(parent, child)
+    assert not validation_errors("agent_action", child_action, schemas, local_registry)
+    assert_resume_semantics(parent, child, current_session, child_action)
+
+
+@pytest.mark.parametrize("base_revision", [3, 5])
+def test_resume_child_must_bind_exact_current_session_revision(base_revision):
+    parent = load_valid("agent_run_clarification_paused.json")
+    child = load_valid("agent_run_clarification_resume.json")
+    current_session = load_valid("session_state_clarification_r4.json")
+    child["base_session_revision"] = base_revision
+    child["session_commit"]["expected_base_revision"] = base_revision
+    with pytest.raises(AssertionError):
+        assert_resume_semantics(parent, child, current_session)
 
 
 @pytest.mark.parametrize(
@@ -996,19 +1305,17 @@ def test_resume_child_preserves_budget_lineage(schemas, local_registry):
         "lineage",
         "limits",
         "model_turns",
+        "tool_calls",
+        "plan_generations",
         "tokens",
+        "cost_micros",
         "retry",
     ],
 )
 def test_resume_child_cannot_reset_or_change_budget_lineage(mutation):
     parent = load_valid("agent_run_clarification_paused.json")
-    parent["budget"]["tool_retry_counters"] = [
-        {"tool_name": "planning.resolve_location", "retries": 1}
-    ]
-    child = build_resume_child(parent)
-    child["budget"]["tool_retry_counters"] = [
-        {"tool_name": "planning.resolve_location", "retries": 1}
-    ]
+    child = load_valid("agent_run_clarification_resume.json")
+    current_session = load_valid("session_state_clarification_r4.json")
     if mutation == "session":
         child["session_id"] = "planning-session.other"
     elif mutation == "lineage":
@@ -1018,12 +1325,41 @@ def test_resume_child_cannot_reset_or_change_budget_lineage(mutation):
     elif mutation == "model_turns":
         child["budget"]["consumed"]["model_turns"] = 0
         child["action_proposal_refs"] = []
+        child["context_manifest_refs"] = []
+    elif mutation == "tool_calls":
+        parent["budget"]["consumed"]["tool_calls"] = 1
+        parent["tool_call_refs"] = ["tool-call.fixture-parent-001"]
+        child["budget"]["consumed"]["tool_calls"] = 0
+        child["tool_call_refs"] = []
+    elif mutation == "plan_generations":
+        parent["budget"]["consumed"]["plan_generations"] = 1
+        child["budget"]["consumed"]["plan_generations"] = 0
     elif mutation == "tokens":
-        child["budget"]["consumed"]["tokens"] = 0
+        child["budget"]["consumed"]["tokens"] = 800
+    elif mutation == "cost_micros":
+        parent["budget"]["limits"]["cost_limit_micros"] = 10000
+        parent["budget"]["consumed"]["cost_micros"] = 100
+        child["budget"]["limits"]["cost_limit_micros"] = 10000
+        child["budget"]["consumed"]["cost_micros"] = 90
     else:
-        child["budget"]["tool_retry_counters"][0]["retries"] = 0
+        parent["budget"]["tool_retry_counters"] = [
+            {"tool_name": "planning.resolve_location", "retries": 1}
+        ]
+        child["budget"]["tool_retry_counters"] = [
+            {"tool_name": "planning.resolve_location", "retries": 0}
+        ]
     with pytest.raises(AssertionError):
-        assert_resume_semantics(parent, child)
+        assert_resume_semantics(parent, child, current_session)
+
+
+def test_resume_child_action_must_bind_child_base_revision():
+    parent = load_valid("agent_run_clarification_paused.json")
+    child = load_valid("agent_run_clarification_resume.json")
+    current_session = load_valid("session_state_clarification_r4.json")
+    child_action = load_valid("agent_action_resume_clarification.json")
+    child_action["base_session_revision"] = 3
+    with pytest.raises(AssertionError):
+        assert_resume_semantics(parent, child, current_session, child_action)
 
 
 def test_non_resume_trigger_cannot_fake_parent_run(schemas, local_registry):
@@ -1047,6 +1383,91 @@ def test_candidate_presentation_scenario_uses_one_validated_map_batch():
         "candidate.fixture-a",
         "candidate.fixture-b",
     }
+
+
+def test_fit_bounds_changes_viewport_to_known_bounds():
+    before = load_valid("session_state_candidates_before.json")
+    map_action = load_valid("map_action_fit_bounds.json")
+    after = load_valid("session_state_fit_bounds_r2.json")
+    assert map_action["payload"]["bounds_ref"] != before["map_state"]["viewport"][
+        "bounds_ref"
+    ]
+    assert_fit_bounds_transition(before, map_action, after)
+
+
+def test_fit_bounds_transition_requires_next_session_revision():
+    before = load_valid("session_state_candidates_before.json")
+    map_action = load_valid("map_action_fit_bounds.json")
+    after = load_valid("session_state_fit_bounds_r2.json")
+    after["session_revision"] = 3
+    with pytest.raises(AssertionError):
+        assert_fit_bounds_transition(before, map_action, after)
+
+
+def test_fit_bounds_rejects_unresolved_bounds_ref():
+    session = load_valid("session_state_candidates_before.json")
+    map_action = load_valid("map_action_fit_bounds.json")
+    map_action["payload"]["bounds_ref"] = "bounds.fixture-not-resolved"
+    with pytest.raises(AssertionError):
+        assert_map_action_batch([map_action], session)
+
+
+def test_fit_bounds_after_viewport_must_apply_requested_bounds():
+    before = load_valid("session_state_candidates_before.json")
+    map_action = load_valid("map_action_fit_bounds.json")
+    after = load_valid("session_state_fit_bounds_r2.json")
+    after["map_state"]["viewport"]["bounds_ref"] = before["map_state"]["viewport"][
+        "bounds_ref"
+    ]
+    with pytest.raises(AssertionError):
+        assert_fit_bounds_transition(before, map_action, after)
+
+
+@pytest.mark.parametrize("mutation", ["kind", "ref"])
+def test_fit_bounds_viewport_source_must_match_map_action(mutation):
+    before = load_valid("session_state_candidates_before.json")
+    map_action = load_valid("map_action_fit_bounds.json")
+    after = load_valid("session_state_fit_bounds_r2.json")
+    if mutation == "kind":
+        after["map_state"]["viewport"]["source_kind"] = "map_event"
+    else:
+        after["map_state"]["viewport"]["source_ref"] = "map-action.other"
+    with pytest.raises(AssertionError):
+        assert_fit_bounds_transition(before, map_action, after)
+
+
+def test_viewport_changed_event_records_map_event_source():
+    before = load_valid("session_state_candidates_before.json")
+    event = make_event(
+        before,
+        "viewport_changed",
+        {"bounds_ref": "bounds.fixture-candidate-detail-002", "zoom_level": 12},
+    )
+    after = deepcopy(before)
+    after["session_revision"] += 1
+    after["updated_at"] = event["occurred_at"]
+    after["last_map_event_ref"] = event["event_id"]
+    after["map_state"]["viewport"] = {
+        "bounds_ref": event["payload"]["bounds_ref"],
+        "zoom_level": event["payload"]["zoom_level"],
+        "source_kind": "map_event",
+        "source_ref": event["event_id"],
+    }
+    assert_viewport_event_transition(before, event, after)
+    after["map_state"]["viewport"]["source_kind"] = "map_action"
+    with pytest.raises(AssertionError):
+        assert_viewport_event_transition(before, event, after)
+
+
+@pytest.mark.parametrize("target", ["available", "viewport"])
+def test_bounds_refs_cannot_embed_coordinates(target, schemas, local_registry):
+    session = load_valid("session_state_candidates_before.json")
+    coordinate_value = {"coordinates": [112.5, 37.8]}
+    if target == "available":
+        session["map_state"]["available_bounds_refs"].append(coordinate_value)
+    else:
+        session["map_state"]["viewport"]["bounds_ref"] = coordinate_value
+    assert validation_errors("session_state", session, schemas, local_registry)
 
 
 def test_show_candidate_set_rejects_empty_or_four(schemas, local_registry):
@@ -1111,6 +1532,88 @@ def test_plan_confirmed_user_event_creates_traceable_selection():
     event = load_valid("map_event_plan_confirmed.json")
     after = load_valid("session_state_plan_selected.json")
     assert_plan_selection_transition(before, event, after)
+
+
+def test_selected_plan_user_event_ref_cannot_point_to_agent_action():
+    before = load_valid("session_state_candidates_presented.json")
+    event = load_valid("map_event_plan_confirmed.json")
+    after = load_valid("session_state_plan_selected.json")
+    after["selected_plan"]["selected_by_user_event_ref"] = (
+        "agent-action.fixture-present-candidates-001"
+    )
+    with pytest.raises(AssertionError):
+        assert_plan_selection_transition(before, event, after)
+
+
+def test_selection_event_candidate_must_match_selected_plan():
+    before = load_valid("session_state_candidates_presented.json")
+    event = load_valid("map_event_plan_confirmed.json")
+    after = load_valid("session_state_plan_selected.json")
+    candidate = before["candidate_plans"][0]
+    event["payload"] = {
+        "candidate_ref": candidate["candidate_ref"],
+        "plan_revision_ref": deepcopy(candidate["plan_revision_ref"]),
+    }
+    with pytest.raises(AssertionError):
+        assert_plan_selection_transition(before, event, after)
+
+
+def test_selection_event_plan_revision_must_match_selected_plan():
+    before = load_valid("session_state_candidates_presented.json")
+    event = load_valid("map_event_plan_confirmed.json")
+    after = load_valid("session_state_plan_selected.json")
+    event["payload"]["plan_revision_ref"]["revision"] = 2
+    with pytest.raises(AssertionError):
+        assert_plan_selection_transition(before, event, after)
+
+
+def test_selection_event_must_target_immediately_previous_revision():
+    before = load_valid("session_state_candidates_presented.json")
+    event = load_valid("map_event_plan_confirmed.json")
+    after = load_valid("session_state_plan_selected.json")
+    event["base_session_revision"] = 1
+    with pytest.raises(AssertionError):
+        assert_plan_selection_transition(before, event, after)
+
+
+def test_selected_at_must_equal_plan_confirmed_occurred_at():
+    before = load_valid("session_state_candidates_presented.json")
+    event = load_valid("map_event_plan_confirmed.json")
+    after = load_valid("session_state_plan_selected.json")
+    after["selected_plan"]["selected_at"] = "2026-08-03T20:14:01+08:00"
+    with pytest.raises(AssertionError):
+        assert_plan_selection_transition(before, event, after)
+
+
+def test_plan_confirmed_cannot_target_hidden_candidate():
+    before = load_valid("session_state_candidates_presented.json")
+    event = load_valid("map_event_plan_confirmed.json")
+    target = next(
+        item
+        for item in before["candidate_plans"]
+        if item["candidate_ref"] == event["payload"]["candidate_ref"]
+    )
+    target["presentation_state"] = "hidden"
+    with pytest.raises(AssertionError):
+        assert_event_semantics(event, before)
+
+
+def test_active_candidate_cannot_be_hidden():
+    session = load_valid("session_state_candidates_presented.json")
+    active = next(
+        item
+        for item in session["candidate_plans"]
+        if item["candidate_ref"] == session["active_candidate_ref"]
+    )
+    active["presentation_state"] = "hidden"
+    with pytest.raises(AssertionError):
+        assert_session_semantics(session)
+
+
+def test_selected_by_event_type_is_fixed_by_schema(schemas, local_registry):
+    session = load_valid("session_state_plan_selected.json")
+    session["selected_plan"]["selected_by_event_type"] = "candidate_switched"
+    assert validation_errors("session_state", session, schemas, local_registry)
 
 
 def test_candidate_switch_event_cannot_create_selected_plan():
@@ -1366,7 +1869,8 @@ def test_agent_can_report_plan_selected_only_after_user_event():
     run["session_commit"]["expected_base_revision"] = 3
     run["session_commit"]["committed_revision"] = 4
     session = load_valid("session_state_plan_selected.json")
-    assert_agent_action_semantics(action, run, session)
+    event = load_valid("map_event_plan_confirmed.json")
+    assert_agent_action_semantics(action, run, session, event)
 
 
 def test_no_result_is_valid_and_not_an_empty_candidate_success(
@@ -1543,6 +2047,9 @@ def test_valid_fixtures_never_embed_forbidden_private_or_runtime_material():
             "side-effect ledger",
             "canonical write",
             "export artifact",
+            "agent runtime",
+            "typescript shadow service",
+            "openai agents sdk",
             "linestring(",
             "polygon((",
             "featurecollection",

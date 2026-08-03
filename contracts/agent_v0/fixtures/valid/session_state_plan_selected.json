@@ -70,6 +70,7 @@
       },
       "revision": 1
     },
+    "selected_by_event_type": "plan_confirmed",
     "selected_by_user_event_ref": "map-event.fixture-plan-confirmed-002",
     "selected_at": "2026-08-03T20:14:00+08:00"
   },
@@ -98,10 +99,15 @@
         "source_event_ref": "map-event.fixture-destination-002"
       }
     ],
+    "available_bounds_refs": [
+      "bounds.fixture-candidate-area-002",
+      "bounds.fixture-candidate-detail-002"
+    ],
     "viewport": {
       "bounds_ref": "bounds.fixture-candidate-area-002",
       "zoom_level": 10,
-      "source_event_ref": "map-event.fixture-viewport-002"
+      "source_kind": "map_event",
+      "source_ref": "map-event.fixture-viewport-002"
     },
     "presentation": {
       "shown_area_refs": [],
