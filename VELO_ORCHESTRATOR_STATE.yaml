@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-03T18:40:00+08:00'
+updated_at: '2026-08-03T19:03:22+08:00'
 status: active
 authority:
   order:
@@ -56,10 +56,13 @@ repository:
   last_verified_main_commit_before_a1_4_merge: dfef5b693dc06461210c2d065564b42333990143
   a1_4_reviewed_head: 5465f3f831234794a353c4276fd64c5a1398064a
   a1_4_reviewed_merge_ref: b9efe1e26121b5877bde1f6c98e085b4231ffbe5
-  last_verified_main_commit: cae88a4d4d1e365baddd394d196444f4ee6d1e8f
-  last_verified_main_commit_status: verified_at_a1_5_start
-  last_verified_at: '2026-08-03T18:40:00+08:00'
-  verified_via: fetch_origin_and_exact_ref_at_a1_5_start
+  last_verified_main_commit_before_a1_5_merge: cae88a4d4d1e365baddd394d196444f4ee6d1e8f
+  a1_5_reviewed_head: 91297fd544964bef7d6a2224af210c7272975468
+  a1_5_reviewed_merge_ref: 4f436c9c08b05eff3ba79032bb8aaf8870e26bdf
+  last_verified_main_commit: null
+  last_verified_main_commit_status: pending_post_merge_reverification
+  last_verified_at: null
+  verified_via: pending_post_merge_remote_main_reverification
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
@@ -103,7 +106,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: none_until_orchestrator_review
+  git_write_scope: none_until_next_orchestrator_task_packet
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -122,16 +125,14 @@ current_phase:
 a1_parent:
   id: A1
   name: architecture_adrs
-  status: in_progress
+  status: completed
+  decision: PASS
 next_task:
-  id: A1.5
-  parent: A1
-  name: legacy_app_agent_naming_migration_decision
-  status: in_review
-  orchestrator_decision: SELECTED
-  codex_result: READY_FOR_REVIEW
+  id: A2
+  name: agent_v0_contracts
+  status: ready_to_specify
   execution_authorized: false
-  requires_orchestrator_review: true
+  requires_new_orchestrator_task_packet: true
 a1_subtasks:
 - id: A1.1
   name: static_planning_vs_realtime_navigation_boundary
@@ -164,14 +165,16 @@ a1_subtasks:
   pr: 39
 - id: A1.5
   name: legacy_app_agent_naming_migration_decision
-  status: in_review
-  orchestrator_decision: SELECTED
-  codex_result: READY_FOR_REVIEW
+  status: completed
+  decision: PASS
   execution_authorized: false
   adr: docs/adr/017-为什么旧app-agent必须迁出并保留RQ兼容路径.md
-  adr_status: Proposed
-  requires_orchestrator_review: true
+  adr_status: Accepted
+  pr: 40
 legacy_agent_namespace_policy:
+  decision_status: Accepted
+  architecture_task: A1.5
+  architecture_task_status: completed
   canonical_content_package: app.segment_draft_ai
   legacy_namespace: app.agent
   legacy_namespace_role: compatibility_tombstone_only
@@ -179,7 +182,10 @@ legacy_agent_namespace_policy:
   shim_removal_required: false
   shim_removal_requires_future_adr: true
   runtime_package_name: deferred_until_A2_A4_evidence
-  implementation_status: deferred_to_dedicated_pre_runtime_migration
+  implementation_status: not_started
+  M1_authorized: false
+  M2_authorized: false
+  M3_authorized: false
   must_complete_M1_before:
   - first_production_planning_agent_runtime
   - Phase_B_live_agent_integration
@@ -188,10 +194,6 @@ legacy_agent_namespace_policy:
   - A3
   - A4
 subsequent_tasks:
-- id: A2
-  name: agent_v0_contracts
-  status: blocked
-  blocked_by: A1.5
 - id: A3
   name: velobench_cases_fixtures_graders
   status: blocked
@@ -728,6 +730,35 @@ evidence_log:
     merge_authorized: false
     deploy_authorized: false
     a2_through_a5: blocked
+- id: E-20260803-A1-5-ORCHESTRATOR-PASS
+  type: orchestrator_architecture_review
+  status: PASS
+  evidence:
+    pr: 40
+    reviewed_base: cae88a4d4d1e365baddd394d196444f4ee6d1e8f
+    reviewed_head: 91297fd544964bef7d6a2224af210c7272975468
+    reviewed_merge_ref: 4f436c9c08b05eff3ba79032bb8aaf8870e26bdf
+    changed_files: 5
+    review_threads: 0
+    branch_ci_run: 30806694421
+    merge_ref_ci_run: 30806717958
+    branch_ci_result: 2074_passed_0_skipped_814_warnings
+    merge_ref_ci_result: 2074_passed_0_skipped_814_warnings
+    fresh_postgis_migration: true
+    decision: PASS
+    adr_status: Accepted
+    a1_5_status: completed
+    a1_parent_status: completed
+    runtime_code_changed: false
+    namespace_migration_implemented: false
+    M1_authorized: false
+    M2_authorized: false
+    M3_authorized: false
+    merge_authorized: true
+    deploy_authorized: false
+    a2_status: ready_to_specify
+    a2_execution_authorized: false
+    a3_through_a5: blocked
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec
@@ -826,6 +857,29 @@ completed_tasks:
   main_ci_run: 30804485326
   main_ci_tests_passed: 2074
   main_ci_skipped: 0
+- id: A1.5
+  parent: A1
+  name: legacy_app_agent_naming_migration_decision
+  decision: PASS
+  passed_at: '2026-08-03T19:03:22+08:00'
+  pr: 40
+  reviewed_base: cae88a4d4d1e365baddd394d196444f4ee6d1e8f
+  reviewed_head: 91297fd544964bef7d6a2224af210c7272975468
+  reviewed_merge_ref: 4f436c9c08b05eff3ba79032bb8aaf8870e26bdf
+  adr: docs/adr/017-为什么旧app-agent必须迁出并保留RQ兼容路径.md
+  adr_status: Accepted
+  branch_ci_run: 30806694421
+  merge_ref_ci_run: 30806717958
+  tests_passed: 2074
+  skipped: 0
+  fresh_postgis_migration: true
+  runtime_code_changed: false
+  namespace_migration_implemented: false
+  M1_authorized: false
+  M2_authorized: false
+  M3_authorized: false
+  merge_authorized_by_current_task_packet: true
+  deploy_authorized: false
 risks:
 - id: R1
   description: main_moves_during_orchestration_or_execution
@@ -847,7 +901,7 @@ risks:
   mitigation: mandatory_expected_end_state_forbidden_actions_code_grader_and_ledgers
 - id: R7
   description: A0_docs_misread_as_runtime_schema_or_production_authorization
-  mitigation: keep_A0_through_A1_4_PASS_as_architecture_only_A1_5_in_review_as_namespace_decision_only_without_M1_M2_M3_runtime_or_deploy_authorization_and_A2_to_A5_blocked
+  mitigation: keep_A0_through_A1_5_PASS_as_architecture_only_A1_completed_A2_ready_to_specify_but_unauthorized_M1_M2_M3_and_deploy_forbidden_and_A3_to_A5_blocked
 - id: R8
   description: baseline_ci_or_mock_tests_confused_with_provider_device_deploy_or_user_evidence
   mitigation: report_each_evidence_layer_separately_and_keep_unverified_explicit

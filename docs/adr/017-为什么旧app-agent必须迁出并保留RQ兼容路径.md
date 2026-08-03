@@ -1,6 +1,6 @@
 # ADR-017: 为什么旧 `app/agent` 必须迁出并保留 RQ 兼容路径
 
-> **状态：Proposed — A1.5，等待 Orchestrator 审查**
+> **状态：Accepted (2026-08-03) — A1.5 PASS / completed**
 >
 > **一句话核心决策：现有赛段 AI 草稿实现未来归属唯一 canonical package `app.segment_draft_ai`；`app.agent` 只能作为默认长期保留的 compatibility tombstone，用极薄 wrapper 继续执行旧 RQ serialized path，并永久禁止被新 Planning Agent Runtime 复用。**
 
@@ -9,6 +9,8 @@
 本 ADR 只裁决命名空间所有权、RQ 序列化路径兼容和未来 M1/M2/M3 迁移顺序。它不实施代码搬迁，不修改 producer、worker、queue、compose、测试、schema、migration、API 或数据库，不部署，不开始 A2。
 
 本决策不选择未来 Runtime 的 package 名、语言、SDK 或框架；`app.planning_agent` 与 `app.agent_control` 只是举例，不是命名结论。
+
+本 ADR builds on ADR-013 / ADR-014 / ADR-015 / ADR-016，does not supersede them。Accepted 只代表 namespace / RQ 兼容迁移边界已完成，不代表 `app.segment_draft_ai`、compatibility shim、M1、M2 或 M3 已实现，也不代表生产 Runtime、worker 操作或部署获授权。后续改变必须新开 ADR，并明确 `clarifies ADR-017` 或 `supersedes ADR-017`。
 
 ## 2. 当前代码事实
 
@@ -150,7 +152,7 @@ M1/M2 至少必须机器化验证：
 
 ## 15. 与 A2–A4 和 Phase B 的关系
 
-A1.5 只完成架构裁决，不实施 M1/M2。ADR-017 若被 Accepted，A1 可收口为 `completed / PASS`，A2 才可转为 `ready_to_specify`。
+A1.5 已完成架构裁决，不实施 M1/M2。ADR-017 Accepted 后，A1 已收口为 `completed / PASS`，A2 仅转为 `ready_to_specify / not started / execution unauthorized`。
 
 实际 M1/M2 不阻塞 A2 contracts、A3 VeloBench 或 A4 Fake Environment；但 M1 必须在第一个生产 Planning Agent Runtime 或 Phase B live Agent integration 之前完成。M2 是独立部署任务，必须有 worker 兼容证据；本 ADR 不提前授权它。
 
