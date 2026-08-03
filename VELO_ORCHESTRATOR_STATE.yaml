@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-03T15:51:30+08:00'
+updated_at: '2026-08-03T17:07:34+08:00'
 status: active
 authority:
   order:
@@ -53,10 +53,10 @@ repository:
   last_verified_main_commit_before_a1_3_merge: 2b6538ca01f45593ac8a2d4aecd8f7e8f95265a4
   a1_3_reviewed_head: 387eb908e6783af9cdeda9bebb8d24f9f244f9b2
   a1_3_reviewed_merge_ref: a8b7bb3bf9e87c2f567f2c15adaf7b7a873ff4e9
-  last_verified_main_commit: null
-  last_verified_main_commit_status: pending_post_merge_reverification
-  last_verified_at: null
-  verified_via: pending_post_merge_remote_main_reverification
+  last_verified_main_commit: dfef5b693dc06461210c2d065564b42333990143
+  last_verified_main_commit_status: verified_at_a1_4_start
+  last_verified_at: '2026-08-03T17:07:34+08:00'
+  verified_via: fetch_origin_and_exact_remote_ref_at_a1_4_start
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
@@ -81,6 +81,12 @@ repository:
   a1_3_execution_branch: codex/agent-first-a1-state-memory-boundary
   a1_3_worktree_initial_status: clean
   a1_3_adr_path: docs/adr/015-为什么世界事实会话运行与长期记忆必须分离.md
+  a1_3_merge_commit: dfef5b693dc06461210c2d065564b42333990143
+  a1_3_post_merge_ci_run: 30795837307
+  a1_4_baseline_commit: dfef5b693dc06461210c2d065564b42333990143
+  a1_4_execution_branch: codex/agent-first-a1-capability-approval-boundary
+  a1_4_worktree_initial_status: clean
+  a1_4_adr_path: docs/adr/016-为什么在线Agent的能力审批与副作用必须显式化.md
   original_authoring_worktree_status_at_a0c_start: dirty_with_reviewed_a0_files_preserved
   dirty_workspace_policy: preserve_all_user_changes
   git_write_permission: false
@@ -88,7 +94,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: none_until_next_orchestrator_task_packet
+  git_write_scope: none_until_orchestrator_review
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -112,9 +118,11 @@ next_task:
   id: A1.4
   parent: A1
   name: capability_approval_side_effect_boundary
-  status: ready_to_specify
+  status: in_review
+  orchestrator_decision: SELECTED
+  codex_result: READY_FOR_REVIEW
   execution_authorized: false
-  requires_new_orchestrator_task_packet: true
+  requires_orchestrator_review: true
 a1_subtasks:
 - id: A1.1
   name: static_planning_vs_realtime_navigation_boundary
@@ -139,8 +147,10 @@ a1_subtasks:
   pr: 38
 - id: A1.4
   name: capability_approval_side_effect_boundary
-  status: ready_to_specify
+  status: in_review
   execution_authorized: false
+  adr: docs/adr/016-为什么在线Agent的能力审批与副作用必须显式化.md
+  adr_status: Proposed
 - id: A1.5
   name: legacy_app_agent_naming_migration_decision
   status: blocked
@@ -558,6 +568,48 @@ evidence_log:
     merge_ref_ci_result: 2074_passed_0_skipped_814_warnings
     runtime_behavior_changed: false
     decision: PASS
+- id: E-20260803-A1-3-POST-MERGE
+  type: post_merge_verification
+  status: PASS
+  evidence:
+    pr: 38
+    merge_commit: dfef5b693dc06461210c2d065564b42333990143
+    main_ci_run: 30795837307
+    main_ci_result: 2074_passed_0_skipped
+    tests_passed: 2074
+    skipped: 0
+    fresh_postgis_migration: true
+    deploy: not_authorized_not_run
+- id: E-20260803-A1-4-CODEX-DELIVERY
+  type: architecture_decision_delivery
+  status: READY_FOR_REVIEW
+  evidence:
+    parent_task: A1
+    task: A1.4
+    orchestrator_decision: SELECTED
+    baseline_main: dfef5b693dc06461210c2d065564b42333990143
+    execution_branch: codex/agent-first-a1-capability-approval-boundary
+    adr_path: docs/adr/016-为什么在线Agent的能力审批与副作用必须显式化.md
+    adr_status: Proposed
+    changed_path_scope: exact_five_file_allowlist
+    resource_permission_is_not_approval: true
+    approval_is_not_validation: true
+    deny_by_default_and_pass_through_scope: true
+    effect_scope_count: 7
+    approval_mode_count: 5
+    exact_single_effect_approval_binding: true
+    idempotency_ledger_and_replay_boundary: true
+    export_prepare_zero_artifact: true
+    participatory_loop_preserved: true
+    canonical_write_unreachable: true
+    runtime_behavior_changed: false
+    runtime_schema_ui_framework_decided: false
+    merge_authorized: false
+    deploy_authorized: false
+    a1_5: blocked
+    a2_through_a5: blocked
+    ci_evidence: tracked_externally_on_current_draft_pr
+    ci_rule: exact_current_pull_request_head_and_merge_ref_runs_are_authoritative
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec
@@ -656,7 +708,7 @@ risks:
   mitigation: mandatory_expected_end_state_forbidden_actions_code_grader_and_ledgers
 - id: R7
   description: A0_docs_misread_as_runtime_schema_or_production_authorization
-  mitigation: keep_A0_A0C_A1_1_A1_2_A1_3_PASS_but_runtime_implementation_unauthorized_A1_4_ready_to_specify_without_execution_A1_5_and_later_tasks_blocked_and_merge_deploy_permissions_false
+  mitigation: keep_A0_A0C_A1_1_A1_2_A1_3_PASS_but_A1_4_Proposed_in_review_without_capability_approval_contribution_runtime_implementation_A1_5_and_later_tasks_blocked_and_merge_deploy_permissions_false
 - id: R8
   description: baseline_ci_or_mock_tests_confused_with_provider_device_deploy_or_user_evidence
   mitigation: report_each_evidence_layer_separately_and_keep_unverified_explicit
