@@ -4,11 +4,11 @@
 
 ## 1. 状态与适用范围
 
-**Proposed — A1.4，等待 Orchestrator 审查。**
+**Accepted (2026-08-03) — A1.4 `PASS / completed`。**
 
-本文承接 [ADR-013](./013-为什么区分骑前静态规划与骑中实时导航.md)、[ADR-014](./014-为什么在线规划采用单一有界主Agent与确定性工作流.md) 与 [ADR-015](./015-为什么世界事实会话运行与长期记忆必须分离.md)，只裁决在线骑前规划的能力、审批和副作用边界。
+本文承接 [ADR-013](./013-为什么区分骑前静态规划与骑中实时导航.md)、[ADR-014](./014-为什么在线规划采用单一有界主Agent与确定性工作流.md) 与 [ADR-015](./015-为什么世界事实会话运行与长期记忆必须分离.md)，只裁决在线骑前规划的能力、审批和副作用边界；ADR-016 builds on ADR-013 / ADR-014 / ADR-015，does not supersede them。
 
-Proposed 不授权 Capability Engine、Approval UI、Side-effect Ledger、Contribution、Runtime、schema、数据库、API、小程序、真实 Provider、真实导出或部署。精确字段、状态枚举和序列化合同延后 A2。
+Accepted 只代表 A1.4 架构边界完成，不代表 Capability Engine、Approval UI、Side-effect Ledger、Contribution、Runtime、schema、数据库、API、小程序、真实 Provider、真实导出或部署已经实现或获授权。精确字段、状态枚举和序列化合同延后 A2；后续若改变本决策，必须新开 ADR，并明确 `clarifies ADR-016` 或 `supersedes ADR-016`。
 
 ## 2. 当前代码事实
 
@@ -235,7 +235,7 @@ Replay、Eval 与 Shadow 环境必须 **zero real effect**：不得真实查询 
 - ADR-014 回答“谁控制一次 run”。
 - ADR-015 回答“状态和记忆属于谁”。
 - ADR-016 回答“哪些能力可执行、怎样批准、怎样记录副作用”。
-- A1.5 继续 blocked，负责旧 `app/agent` 命名迁移，不在本文执行。
+- A1.5 仅进入 `ready_to_specify`，负责旧 `app/agent` 命名迁移；尚未开始且没有执行授权。
 - A2 定义 capability/approval/effect/contribution 的语言中立合同；A3/A4 用 ambiguous consent、stale approval、committed-response-loss retry、idempotency conflict、跨 Run approval resume、disconnect-before/after-start、unknown-outcome reconciliation 和 zero-effect replay 等案例验证。
 
 ## 19. Trade-off 与后果
@@ -250,7 +250,7 @@ Replay、Eval 与 Shadow 环境必须 **zero real effect**：不得真实查询 
 - 不定义数据库表、API payload、JSON Schema、状态枚举或 Runtime/framework。
 - 不修改 export、RouteBook、腾讯、海拔、route cognition、Memory、API、小程序、测试、migration、依赖或部署。
 - 不调用真实 Provider、DEM、storage/export、生产数据库/Redis，不产生用户可见或生产行为变化。
-- 不自判 A1.4 PASS，不开始 A1.5/A2–A5。
+- A1.4 只完成架构边界，不实现或启动 A1.5/A2–A5。
 
 ## 21. Reopen triggers 与引用路径
 
