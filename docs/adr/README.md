@@ -44,7 +44,7 @@ ADR **不是**:
 | [ADR-012](./012-为什么路线认知用防火墙式-db-foundation.md) | 路线认知地基 | **防火墙式 DB foundation**,不直接改旧路线主流程 | 数据库设计 + 架构原则 |
 | [ADR-013](./013-为什么区分骑前静态规划与骑中实时导航.md) | 骑前规划与骑中导航边界 | **允许骑前静态规划**；禁止骑中实时导航和动态重规划（Accepted；clarifies ADR-010） | 产品 + 架构 |
 | [ADR-014](./014-为什么在线规划采用单一有界主Agent与确定性工作流.md) | 在线规划控制权 | **单一有界主 Agent + 确定性工作流**；模型只有 typed action proposal 权（Accepted） | Agent Runtime 架构 |
-| [ADR-015](./015-为什么世界事实会话运行与长期记忆必须分离.md) | 在线规划状态与记忆所有权 | **World Fact / User State / Session / Run / Memory / Trace 分离**；Context 只是编译投影（Proposed；A1.3 in review） | Agent 状态架构 |
+| [ADR-015](./015-为什么世界事实会话运行与长期记忆必须分离.md) | 在线规划状态与记忆所有权 | **World Fact / User State / Session / Run / Memory / Trace 分离**；Context 只是编译投影（Accepted） | Agent 状态架构 |
 
 另有 `00-ADR-编号大纲.md` — 这是 ADR 批次 3 的**历史 index**,包含每份 ADR 的决策背景、触发时机、引用路径。当你需要**跨 ADR 对比**或理解**决策时间线**时读这份。
 
@@ -76,7 +76,7 @@ ADR **不是**:
 
 ### 我要设计在线 Agent / Runtime
 
-先读 **ADR-013（允许什么）** + **ADR-014（谁控制）** + **ADR-015（状态和记忆属于谁）**。ADR-013/014 已 Accepted；ADR-015 仍为 Proposed / A1.3 in review，三者都不单独授权实现 Runtime、选框架或启动后续任务。
+先读 **ADR-013（允许什么）** + **ADR-014（谁控制）** + **ADR-015（状态和记忆属于谁）**。三者均已 Accepted，但都不单独授权实现 Runtime、选框架或启动后续任务。
 
 ### 我要做部署和运维
 
@@ -139,7 +139,7 @@ agent 检索 ADR 全文的触发条件:
 
 ## 7. 维护
 
-- **版本**:v1.8(2026-08-03) — 新增 Proposed ADR-015，A1.3 状态与记忆边界等待 Orchestrator 审查
+- **版本**:v1.9(2026-08-03) — ADR-015 Accepted，A1.3 状态与记忆边界完成裁决
 - **下次新 ADR 可能产生的场景**:
   - v6 发布后新增重大架构调整
   - Agent 层后续具体边界决策(可能产生 ADR-016 到 ADR-017)

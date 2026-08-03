@@ -1,6 +1,6 @@
 # VELO Phase A 文件级实施规格
 
-> A0/A0C/A1.1/A1.2：`PASS / completed`；A1 parent 保持 `in_progress`。ADR-013 与 ADR-014 已 Accepted；A1.3 已形成 Proposed ADR-015，状态为 `in_review`。本文不实现 Agent Runtime、Session、Run、Memory 或 Context Compiler，不改变生产行为，也不构成 merge、部署或后续子任务授权。
+> A0/A0C/A1.1/A1.2/A1.3：`PASS / completed`；A1 parent 保持 `in_progress`。ADR-013、ADR-014 与 ADR-015 已 Accepted；A1.4 仅为 `ready_to_specify`，尚未开始且无执行授权。本文不实现 Agent Runtime、Session、Run、Memory 或 Context Compiler，不改变生产行为，也不构成部署或后续子任务授权。
 
 ## 2.1 Repository Fact Baseline
 
@@ -123,13 +123,13 @@
 
 **有界循环**：未来 controller 必须强制 `max_model_turns`、`max_tool_calls`、`max_plan_generations`、`max_same_tool_retries`、`wall_clock_deadline`、`token_or_cost_budget`；停止原因至少包含 `completed`、`waiting_for_user`、`no_result`、`approval_required`、`budget_exceeded`、`deterministic_error`。具体数值留待实现与 VeloBench 证据。
 
-**后续边界**：action/schema 的精确合同延后 A2；World Fact/Session/Run/Memory 生命周期延后 A1.3；Capability/Approval/Side Effect taxonomy 延后 A1.4；旧 `app/agent` 命名迁移延后 A1.5。`Framework choice: DEFERRED`，本轮不选择 Python/TypeScript、OpenAI Agents SDK、LangGraph、LangChain 或其他 Runtime 框架。
+**后续边界**：action/schema 的精确合同延后 A2；World Fact/Session/Run/Memory 生命周期已由 A1.3 裁决；Capability/Approval/Side Effect taxonomy 延后 A1.4；旧 `app/agent` 命名迁移延后 A1.5。`Framework choice: DEFERRED`，本轮不选择 Python/TypeScript、OpenAI Agents SDK、LangGraph、LangChain 或其他 Runtime 框架。
 
 **A1.2 allowlist**：ADR-014、ADR index、Agent-First README、本文件与根 State，共五个文件。禁止修改 runtime、contracts、schema/migration、API、小程序、Provider、export、测试、依赖、workflow、compose、source 文档、Control Pack、ADR-013、产品裁决或架构总览。
 
 ### A1.3 World Fact / User State / Session / Run / Memory / Trace 决策边界
 
-**A1.3 status**：已由 Proposed [ADR-015](../adr/015-为什么世界事实会话运行与长期记忆必须分离.md) 编码，状态为 `in_review`，等待 Orchestrator 裁决；不进入 `completed_tasks`。
+**A1.3 status**：Orchestrator 已判定 `PASS / completed`，并由 Accepted [ADR-015](../adr/015-为什么世界事实会话运行与长期记忆必须分离.md) 编码；这只完成状态与记忆所有权裁决，不授权 Session、Run、Memory、Context 或 A1.4 实现。
 
 **当前代码事实**：`User` 保存 FTP、体重、车型和城市等明确资料；Activity 是结构化用户历史；`RouteBook` / `RouteVersion` 是用户路线资产和版本化几何。route cognition 已有 Judgment/Evidence/Research、Concept/Collection、候选/正式关系及人审 writer guard，但没有一等 Claim World Model。`JudgmentRun` 是路线认知/研究/人审台账，route export job 是领域副作用任务，二者都不是在线 Planning Agent Run。运行代码中不存在目标意义的 Planning Session、Agent Run State、Memory Service、Context Manifest、统一 Map State、Replay 或 VeloBench；当前 `app/agent` 仍是赛段文案生成模块，也没有向量数据库或生产长期 Memory。
 
@@ -171,13 +171,13 @@
 |---|---|---|---|
 | A1.1 | static planning vs realtime navigation | `completed / PASS` | A0C |
 | A1.2 | bounded Agent vs deterministic Workflow | `completed / PASS` | A1.1 |
-| A1.3 | World Fact / User State / Session / Run / Memory / Trace | `in_review` | A1.2 |
-| A1.4 | Capability / Approval / Side Effect | `blocked` | A1.3 |
+| A1.3 | World Fact / User State / Session / Run / Memory / Trace | `completed / PASS` | A1.2 |
+| A1.4 | Capability / Approval / Side Effect | `ready_to_specify` | A1.3 |
 | A1.5 | legacy `app/agent` naming migration | `blocked` | A1.4 |
 
 - **A1.1 结果**：七文件 allowlist 内的文档裁决已完成，ADR-013 为 Accepted。
 - **A1.2 结果**：五文件 allowlist 内的控制权裁决已由 Orchestrator 判定 `PASS`，ADR-014 为 Accepted；PR #37 的 post-merge CI 已通过。
-- **A1.3 当前结果**：五文件 allowlist 内已形成 Proposed ADR-015，状态为 `in_review`，不进入 completed；无 Session/Run/Memory/Context、schema、runtime、merge 或部署授权。
+- **A1.3 结果**：五文件 allowlist 内的状态与记忆边界已由 Orchestrator 判定 `PASS`，ADR-015 为 Accepted；无 Session/Run/Memory/Context、schema、runtime 或部署授权。A1.4 仅进入 `ready_to_specify`，仍须等待新 Task Packet。
 - **禁止范围**：运行代码、合同、schema/migration、API、小程序、依赖、队列和部署。
 - **最小测试**：Markdown 链接/路径检查；冲突词搜索；`git diff --check`；受保护路径零 diff；每个 ADR 都含状态、事实、决策、后果、非目标和撤回条件。
 - **退出门槛**：五项均有唯一裁决；INV-P03/D-P04/D-P07/ADR-010 不再矛盾；旧命名采用或拒绝 2.3 推荐方案；不偷偷选 Runtime 框架。
@@ -245,7 +245,7 @@
 | 过早选择 TypeScript/框架 | A2 先做语言中立 JSON Schema，A3/A4 用评测暴露需求；SDK/TS/LangGraph 延后 | 合同和 30 case 稳定后，现有 Python 无法满足明确的隔离/吞吐/工具需求 |
 | Fake 过度 mock，与真实高层合同不一致 | Fake 只模拟已定义的高层 tool contract；用真实代码的 schema/错误样例做 contract fixture，不复制底层算法 | 真实 Route Draw/Tencent/elevation/export 出现 Fake 无法表达的返回或失败语义 |
 | grader 只评语言，不评状态 | 必填 expected_end_state/forbidden_actions/code grader；做 mutation 测试并核对 ledger/trace | 漂亮回答能在错误状态或发生禁用副作用时通过 |
-| Agent-First 文档被误读为生产授权 | README/State/spec 明写 A0/A0C/A1.1/A1.2 `PASS` 只代表已审查裁决，A1.3 Proposed / `in_review` 仍不授权实现，后续任务 blocked、merge/deploy false；未来对象不等于 migration 授权 | 有人以 source/spec/Proposed ADR 为由改 runtime/schema、调用真实 Provider、导出、开始 A1.4 或部署 |
+| Agent-First 文档被误读为生产授权 | README/State/spec 明写 A0/A0C/A1.1/A1.2/A1.3 `PASS` 只代表架构裁决，A1.4 `ready_to_specify` 仍不授权实现，A1.5 与 A2–A5 blocked、merge/deploy false；未来对象不等于 migration 授权 | 有人以 source/spec/Accepted ADR 为由改 runtime/schema、调用真实 Provider、导出、开始 A1.4 或部署 |
 | 测试/CI 被误当 Provider/真机/部署证据 | 汇报强制分为本地、baseline CI、A0 diff CI、部署、线上真用；未验证写 `UNVERIFIED` | 用 mock/CI success 宣称腾讯可用、微信可用、已部署或用户可用 |
 | 原始 A0 编写 HEAD 含无关 route-draw commit | 保持原工作树与现有本地 `main` 不变；A0C 在直接基于最新 `origin/main` 的干净独立分支交付八个文件 | 交付分支的 merge-base 不再是任务开始时的 `origin/main`，或出现 allowlist 外改动 |
 | RouteVersion 当前可被海拔 backfill 原位更新，导出存在 stale/hash 门禁 | A2 只引用 version/revision/hash；不得绕过 export workflow；A5 把变更后重验写进 stop condition | Agent draft 持有的 version/hash 在验证或导出前已变化 |

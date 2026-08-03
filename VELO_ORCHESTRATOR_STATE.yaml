@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-03T01:29:03+08:00'
+updated_at: '2026-08-03T15:51:30+08:00'
 status: active
 authority:
   order:
@@ -50,10 +50,13 @@ repository:
   last_verified_main_commit_before_a1_2_merge: aa955edc67694fc2cbb628ec3f5caacc80e6d60c
   a1_2_reviewed_head: f6441184f8d79823d5ae88bb5f305c7676289dd6
   a1_2_reviewed_merge_ref: 70b3b560b404a04107a030b3df44cfeb6dcf7250
-  last_verified_main_commit: 2b6538ca01f45593ac8a2d4aecd8f7e8f95265a4
-  last_verified_main_commit_status: verified_at_a1_3_start
-  last_verified_at: '2026-08-03T01:29:03+08:00'
-  verified_via: git_fetch_origin_and_exact_remote_main_read
+  last_verified_main_commit_before_a1_3_merge: 2b6538ca01f45593ac8a2d4aecd8f7e8f95265a4
+  a1_3_reviewed_head: 387eb908e6783af9cdeda9bebb8d24f9f244f9b2
+  a1_3_reviewed_merge_ref: a8b7bb3bf9e87c2f567f2c15adaf7b7a873ff4e9
+  last_verified_main_commit: null
+  last_verified_main_commit_status: pending_post_merge_reverification
+  last_verified_at: null
+  verified_via: pending_post_merge_remote_main_reverification
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
@@ -85,7 +88,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: none_until_orchestrator_review
+  git_write_scope: none_until_next_orchestrator_task_packet
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -106,14 +109,12 @@ a1_parent:
   name: architecture_adrs
   status: in_progress
 next_task:
-  id: A1.3
+  id: A1.4
   parent: A1
-  name: world_fact_session_run_memory_boundary
-  status: in_review
-  orchestrator_decision: SELECTED
-  codex_result: READY_FOR_REVIEW
+  name: capability_approval_side_effect_boundary
+  status: ready_to_specify
   execution_authorized: false
-  requires_orchestrator_review: true
+  requires_new_orchestrator_task_packet: true
 a1_subtasks:
 - id: A1.1
   name: static_planning_vs_realtime_navigation_boundary
@@ -131,14 +132,15 @@ a1_subtasks:
   pr: 37
 - id: A1.3
   name: world_fact_session_run_memory_boundary
-  status: in_review
-  execution_authorized: false
+  status: completed
+  decision: PASS
   adr: docs/adr/015-为什么世界事实会话运行与长期记忆必须分离.md
-  adr_status: Proposed
+  adr_status: Accepted
+  pr: 38
 - id: A1.4
   name: capability_approval_side_effect_boundary
-  status: blocked
-  blocked_by: A1.3
+  status: ready_to_specify
+  execution_authorized: false
 - id: A1.5
   name: legacy_app_agent_naming_migration_decision
   status: blocked
@@ -215,6 +217,36 @@ hard_invariants:
 - single_bounded_main_agent
 - world_facts_are_not_agent_memory
 - evaluation_checks_end_state_not_only_language
+product_directives:
+  rider_utility_first:
+    statement: every future slice must solve a real rider decision or contribution task
+    anti_goal: technically_impressive_but_rider_useless_agent
+  participatory_knowledge_loop:
+    contribution_types:
+    - rider_correction
+    - local_name
+    - road_condition_report
+    - route_variant
+    - ride_feedback
+    - expectation_gap
+    requirements:
+    - contributor_attribution
+    - provenance
+    - visible_processing_status
+    - reviewer_or_system_feedback
+    - explicit_accept_or_reject_outcome
+    - contributor_credit_when_appropriate
+    - correction_and_appeal_path
+    canonical_write_rule: review_or_corroboration_required
+    online_agent_direct_canonical_write: forbidden
+    anti_goal: engagement_gamification_without_rider_utility
+    applies_to:
+    - A1.4
+    - A2
+    - A3
+    - A4
+    - A5
+    - Phase_B
 open_questions:
 - id: Q1
   question: final_typescript_runtime_choice
@@ -510,6 +542,22 @@ evidence_log:
     a2_through_a5: blocked
     ci_evidence: tracked_externally_on_current_draft_pr
     ci_rule: exact_current_pull_request_head_and_merge_ref_runs_are_authoritative
+- id: E-20260803-A1-3-ORCHESTRATOR-REVIEW-R1
+  type: architecture_decision_review
+  status: PASS
+  evidence:
+    pr: 38
+    reviewed_base: 2b6538ca01f45593ac8a2d4aecd8f7e8f95265a4
+    reviewed_head: 387eb908e6783af9cdeda9bebb8d24f9f244f9b2
+    reviewed_merge_ref: a8b7bb3bf9e87c2f567f2c15adaf7b7a873ff4e9
+    changed_files: 5
+    review_threads: 0
+    branch_ci_run: 30759291556
+    merge_ref_ci_run: 30759311216
+    branch_ci_result: 2074_passed_0_skipped_814_warnings
+    merge_ref_ci_result: 2074_passed_0_skipped_814_warnings
+    runtime_behavior_changed: false
+    decision: PASS
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec
@@ -571,6 +619,22 @@ completed_tasks:
   main_ci_run: 30757438481
   main_ci_tests_passed: 2074
   main_ci_skipped: 0
+- id: A1.3
+  parent: A1
+  name: world_fact_session_run_memory_boundary
+  decision: PASS
+  passed_at: '2026-08-03T15:51:30+08:00'
+  pr: 38
+  reviewed_head: 387eb908e6783af9cdeda9bebb8d24f9f244f9b2
+  reviewed_merge_ref: a8b7bb3bf9e87c2f567f2c15adaf7b7a873ff4e9
+  adr: docs/adr/015-为什么世界事实会话运行与长期记忆必须分离.md
+  adr_status: Accepted
+  branch_ci_run: 30759291556
+  merge_ref_ci_run: 30759311216
+  tests_passed: 2074
+  skipped: 0
+  fresh_postgis_migration: true
+  merge_authorized_by_current_task_packet: true
 risks:
 - id: R1
   description: main_moves_during_orchestration_or_execution
@@ -592,7 +656,7 @@ risks:
   mitigation: mandatory_expected_end_state_forbidden_actions_code_grader_and_ledgers
 - id: R7
   description: A0_docs_misread_as_runtime_schema_or_production_authorization
-  mitigation: keep_A0_A0C_A1_1_A1_2_PASS_A1_3_Proposed_in_review_but_implementation_unauthorized_later_tasks_blocked_and_runtime_merge_deploy_unauthorized
+  mitigation: keep_A0_A0C_A1_1_A1_2_A1_3_PASS_but_runtime_implementation_unauthorized_A1_4_ready_to_specify_without_execution_A1_5_and_later_tasks_blocked_and_merge_deploy_permissions_false
 - id: R8
   description: baseline_ci_or_mock_tests_confused_with_provider_device_deploy_or_user_evidence
   mitigation: report_each_evidence_layer_separately_and_keep_unverified_explicit
