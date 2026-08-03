@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/agent_action.schema.json",
+  "title": "VELO Agent Action v0",
+  "description": "The single typed proposal emitted by the logical planning Agent for one model turn. It never directly mutates state or performs an effect.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "environment",
+    "fixture_only",
+    "action_id",
+    "run_id",
+    "session_id",
+    "base_session_revision",
+    "model_turn_index",
+    "proposed_at",
+    "proposal_only",
+    "action_type",
+    "payload",
+    "map_actions",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "environment": { "$ref": "session_state.schema.json#/$defs/environment" },
+    "fixture_only": { "type": "boolean" },
+    "action_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "run_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "session_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "base_session_revision": { "type": "integer", "minimum": 1 },
+    "model_turn_index": { "type": "integer", "minimum": 1 },
+    "proposed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "proposal_only": { "const": true },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "ask_clarifying_question",
+        "call_approved_tool",
+        "present_valid_candidates",
+        "request_confirmation",
+        "finalize_response",
+        "no_result"
+      ]
+    },
+    "payload": { "type": "object" },
+    "map_actions": {
+      "type": "array",
+      "items": { "$ref": "map_action.schema.json" },
+      "maxItems": 20
+    },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "allOf": [
+    { "$ref": "session_state.schema.json#/$defs/environment_fixture_rule" },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "action_type": { "const": "ask_clarifying_question" },
+            "payload": { "$ref": "#/$defs/ask_clarifying_question_payload" }
+          },
+          "required": ["action_type", "payload"]
+        },
+        {
+          "properties": {
+            "action_type": { "const": "call_approved_tool" },
+            "payload": { "$ref": "#/$defs/call_approved_tool_payload" },
+            "map_actions": { "maxItems": 0 }
+          },
+          "required": ["action_type", "payload", "map_actions"]
+        },
+        {
+          "properties": {
+            "action_type": { "const": "present_valid_candidates" },
+            "payload": { "$ref": "#/$defs/present_valid_candidates_payload" },
+            "map_actions": {
+              "minItems": 1,
+              "contains": {
+                "properties": { "action_type": { "const": "show_candidate_set" } },
+                "required": ["action_type"]
+              },
+              "minContains": 1
+            }
+          },
+          "required": ["action_type", "payload", "map_actions"]
+        },
+        {
+          "properties": {
+            "action_type": { "const": "request_confirmation" },
+            "payload": { "$ref": "#/$defs/request_confirmation_payload" }
+          },
+          "required": ["action_type", "payload"]
+        },
+        {
+          "properties": {
+            "action_type": { "const": "finalize_response" },
+            "payload": { "$ref": "#/$defs/finalize_response_payload" }
+          },
+          "required": ["action_type", "payload"]
+        },
+        {
+          "properties": {
+            "action_type": { "const": "no_result" },
+            "payload": { "$ref": "#/$defs/no_result_payload" }
+          },
+          "required": ["action_type", "payload"]
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "choice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["choice_id", "user_safe_label"],
+      "properties": {
+        "choice_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "user_safe_label": { "type": "string", "minLength": 1, "maxLength": 120 }
+      }
+    },
+    "ask_clarifying_question_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question_ref",
+        "question_kind",
+        "user_safe_question",
+        "answer_mode",
+        "blocking_unknown_refs"
+      ],
+      "properties": {
+        "question_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "question_kind": {
+          "type": "string",
+          "enum": ["intent", "location", "time_budget", "route_preference", "candidate_choice"]
+        },
+        "user_safe_question": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "answer_mode": {
+          "type": "string",
+          "enum": ["single_choice", "multi_choice", "free_text", "map_pin", "yes_no"]
+        },
+        "blocking_unknown_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+          "maxItems": 20
+        },
+        "choices": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 6,
+          "items": { "$ref": "#/$defs/choice" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "answer_mode": { "enum": ["single_choice", "multi_choice"] } },
+            "required": ["answer_mode"]
+          },
+          "then": { "required": ["choices"] },
+          "else": { "not": { "required": ["choices"] } }
+        }
+      ]
+    },
+    "call_approved_tool_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_request_ref",
+        "tool_name",
+        "tool_version",
+        "input_ref",
+        "purpose_code",
+        "expected_observation_kind"
+      ],
+      "properties": {
+        "tool_request_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "tool_name": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "tool_version": { "$ref": "common.schema.json#/$defs/revision" },
+        "input_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "purpose_code": {
+          "type": "string",
+          "enum": [
+            "resolve_intent",
+            "resolve_location",
+            "retrieve_rider_context",
+            "retrieve_world_context",
+            "generate_candidates",
+            "validate_candidates",
+            "revise_plan",
+            "compare_candidates",
+            "prepare_user_decision"
+          ]
+        },
+        "expected_observation_kind": { "$ref": "common.schema.json#/$defs/stable_id" }
+      }
+    },
+    "candidate_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_ref", "plan_revision_ref", "validation_result_ref"],
+      "properties": {
+        "candidate_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "plan_revision_ref": { "$ref": "session_state.schema.json#/$defs/plan_revision_ref" },
+        "validation_result_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+      }
+    },
+    "present_valid_candidates_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidates", "user_safe_summary", "comparison_summary_ref"],
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/candidate_reference" }
+        },
+        "user_safe_summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "comparison_summary_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+      }
+    },
+    "request_confirmation_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "confirmation_ref",
+        "confirmation_kind",
+        "target_refs",
+        "exact_summary",
+        "user_safe_question"
+      ],
+      "properties": {
+        "confirmation_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "confirmation_kind": {
+          "type": "string",
+          "enum": [
+            "intent_interpretation",
+            "candidate_selection",
+            "plan_confirmation",
+            "session_assumption"
+          ]
+        },
+        "target_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+          "maxItems": 20
+        },
+        "exact_summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "user_safe_question": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "finalize_response_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["response_ref", "outcome_kind", "user_safe_message", "supporting_refs"],
+      "properties": {
+        "response_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "outcome_kind": {
+          "type": "string",
+          "enum": [
+            "information_delivered",
+            "candidate_set_presented",
+            "session_updated",
+            "plan_selected"
+          ]
+        },
+        "user_safe_message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "supporting_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+          "maxItems": 50
+        }
+      }
+    },
+    "no_result_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason_code", "user_safe_message", "blocking_unknown_refs"],
+      "properties": {
+        "reason_code": {
+          "type": "string",
+          "enum": [
+            "no_matching_world_object",
+            "no_viable_plan",
+            "hard_constraint_conflict",
+            "insufficient_information",
+            "data_unavailable"
+          ]
+        },
+        "user_safe_message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "blocking_unknown_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+          "maxItems": 20
+        },
+        "suggested_next_step": {
+          "type": "string",
+          "enum": ["clarify_intent", "relax_constraint", "choose_other_area", "try_later"]
+        }
+      }
+    }
+  }
+}

@@ -1,7 +1,7 @@
 schema_version: 1
 project: VELO
 orchestrator_mode: chatgpt_controls_codex
-updated_at: '2026-08-03T22:28:27+08:00'
+updated_at: '2026-08-03T23:46:15+08:00'
 status: active
 authority:
   order:
@@ -59,10 +59,10 @@ repository:
   last_verified_main_commit_before_a1_5_merge: cae88a4d4d1e365baddd394d196444f4ee6d1e8f
   a1_5_reviewed_head: 91297fd544964bef7d6a2224af210c7272975468
   a1_5_reviewed_merge_ref: 4f436c9c08b05eff3ba79032bb8aaf8870e26bdf
-  last_verified_main_commit: ba0a95d51291d64c905f55e8baa2ed6812991ac4
-  last_verified_main_commit_status: verified_at_a2_1_start
-  last_verified_at: '2026-08-03T20:00:00+08:00'
-  verified_via: git_fetch_and_rev_parse_origin_main_at_a2_1_start
+  last_verified_main_commit: 25169cac110a330c305d5b5f66d74a585277217a
+  last_verified_main_commit_status: verified_at_a2_2_start
+  last_verified_at: '2026-08-03T23:46:15+08:00'
+  verified_via: git_fetch_and_rev_parse_origin_main_at_a2_2_start
   must_reverify_at_each_task_start: true
   original_authoring_head: 44bdd95d61d3b3b622bc992978f15eda3e255730
   r1_evidence_branch: codex/agent-first-a0
@@ -108,6 +108,12 @@ repository:
   a2_1_reviewed_merge_ref: 52ace981cfaa741ee155748958dc1714f6a0c832
   a2_1_branch_ci_run: 30821046594
   a2_1_merge_ref_ci_run: 30821050482
+  a2_1_merge_commit: 25169cac110a330c305d5b5f66d74a585277217a
+  a2_1_post_merge_ci_run: 30823721358
+  a2_1_post_merge_ci_result: 2122_passed_0_skipped_with_fresh_postgis_migration
+  a2_2_baseline_commit: 25169cac110a330c305d5b5f66d74a585277217a
+  a2_2_execution_branch: codex/agent-first-a2-session-run-map-actions
+  a2_2_worktree_initial_status: clean
   original_authoring_worktree_status_at_a0c_start: dirty_with_reviewed_a0_files_preserved
   dirty_workspace_policy: preserve_all_user_changes
   git_write_permission: false
@@ -115,7 +121,7 @@ repository:
   deploy_permission: false
   a0c_delivery_branch_role: historical_clean_delivery_branch_retained_after_merge
   main_branch_role: remote_authority_baseline_and_pr_target_only
-  git_write_scope: none_after_a2_1_closeout
+  git_write_scope: none_waiting_a2_2_orchestrator_review
 current_phase:
   id: A
   name: architecture_contracts_eval_first
@@ -153,9 +159,11 @@ next_task:
   id: A2.2
   parent: A2
   name: session_run_map_and_action_contracts
-  status: ready_to_specify
+  status: in_review
+  orchestrator_decision: SELECTED
+  codex_result: READY_FOR_REVIEW
   execution_authorized: false
-  requires_new_orchestrator_task_packet: true
+  requires_orchestrator_review: true
 a1_subtasks:
 - id: A1.1
   name: static_planning_vs_realtime_navigation_boundary
@@ -205,7 +213,9 @@ a2_subtasks:
   execution_authorized: false
 - id: A2.2
   name: session_run_map_and_action_contracts
-  status: ready_to_specify
+  status: in_review
+  orchestrator_decision: SELECTED
+  codex_result: READY_FOR_REVIEW
   execution_authorized: false
 - id: A2.3
   name: tool_approval_effect_plan_and_validation_contracts
@@ -227,6 +237,12 @@ agent_v0_contract_policy:
   runtime_choice: deferred
   database_schema_implied: false
   vector_database_implied: false
+  a2_2_contract_names:
+  - session_state.schema.json
+  - agent_run.schema.json
+  - map_event.schema.json
+  - map_action.schema.json
+  - agent_action.schema.json
   gold_world_package_route_shapes:
   - linear_climb
   - corridor
@@ -916,6 +932,35 @@ evidence_log:
     deploy_authorized: false
     a2_2_status: ready_to_specify
     a2_2_execution_authorized: false
+- id: E-20260803-A2-2-CODEX-DELIVERY
+  type: contract_delivery
+  status: READY_FOR_REVIEW
+  evidence:
+    parent_task: A2
+    task: A2.2
+    baseline_main: 25169cac110a330c305d5b5f66d74a585277217a
+    execution_branch: codex/agent-first-a2-session-run-map-actions
+    initial_worktree: clean
+    schema_version: 0.1.0
+    json_schema_draft: 2020-12
+    schemas:
+    - session_state.schema.json
+    - agent_run.schema.json
+    - map_event.schema.json
+    - map_action.schema.json
+    - agent_action.schema.json
+    local_contract_test_result: 189_passed_0_skipped
+    local_refs_only: true
+    runtime_code_changed: false
+    database_migration_changed: false
+    api_or_miniprogram_changed: false
+    runtime_framework_decided: false
+    real_provider_or_export_run: false
+    a2_2_status: in_review
+    a2_3_through_a2_4: blocked
+    a3_through_a5: blocked
+    merge_authorized: false
+    deploy_authorized: false
 completed_tasks:
 - id: A0
   name: repository_intake_and_phase_a_implementation_spec
@@ -1052,6 +1097,10 @@ completed_tasks:
   fresh_postgis_migration: true
   merge_authorized_by_current_task_packet: true
   deploy_authorized: false
+  merge_commit: 25169cac110a330c305d5b5f66d74a585277217a
+  main_ci_run: 30823721358
+  main_ci_tests_passed: 2122
+  main_ci_skipped: 0
 risks:
 - id: R1
   description: main_moves_during_orchestration_or_execution
@@ -1073,7 +1122,7 @@ risks:
   mitigation: mandatory_expected_end_state_forbidden_actions_code_grader_and_ledgers
 - id: R7
   description: A0_docs_misread_as_runtime_schema_or_production_authorization
-  mitigation: keep_A0_through_A1_5_PASS_as_architecture_only_A2_1_PASS_as_contract_only_A2_2_ready_to_specify_but_unauthorized_A2_3_through_A5_blocked_M1_M2_M3_and_deploy_forbidden
+  mitigation: keep_A0_through_A1_5_PASS_as_architecture_only_A2_1_PASS_as_context_contract_only_A2_2_in_review_as_language_neutral_contract_only_A2_3_through_A5_blocked_M1_M2_M3_and_deploy_forbidden
 - id: R8
   description: baseline_ci_or_mock_tests_confused_with_provider_device_deploy_or_user_evidence
   mitigation: report_each_evidence_layer_separately_and_keep_unverified_explicit

@@ -1,0 +1,69 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "run_id": "agent-run.fixture-002",
+  "session_id": "planning-session.fixture-002",
+  "state_owner": "deterministic_run_controller",
+  "run_lineage_ref": "run-lineage.fixture-002",
+  "base_session_revision": 1,
+  "trigger": {
+    "trigger_type": "user_turn",
+    "trigger_ref": "user-turn.fixture-010"
+  },
+  "run_status": "stopped",
+  "stop_reason": "completed",
+  "current_step": "respond_or_stop",
+  "budget": {
+    "limits": {
+      "max_model_turns": 4,
+      "max_tool_calls": 6,
+      "max_plan_generations": 3,
+      "max_same_tool_retries": 2,
+      "wall_clock_deadline": "2026-08-03T20:20:00+08:00",
+      "token_limit": 12000
+    },
+    "consumed": {
+      "model_turns": 1,
+      "tool_calls": 2,
+      "plan_generations": 1,
+      "tokens": 2400
+    },
+    "tool_retry_counters": [
+      {
+        "tool_name": "planning.generate_candidates",
+        "retries": 0
+      },
+      {
+        "tool_name": "planning.validate_candidates",
+        "retries": 0
+      }
+    ]
+  },
+  "context_manifest_refs": [
+    "context-manifest.fixture-run-002"
+  ],
+  "action_proposal_refs": [
+    "agent-action.fixture-present-candidates-001"
+  ],
+  "tool_call_refs": [
+    "tool-call.fixture-generate-002",
+    "tool-call.fixture-validate-002"
+  ],
+  "observation_refs": [
+    "observation.fixture-candidates-002",
+    "observation.fixture-validation-002"
+  ],
+  "session_commit": {
+    "commit_status": "committed",
+    "expected_base_revision": 1,
+    "committed_revision": 2
+  },
+  "started_at": "2026-08-03T20:09:00+08:00",
+  "last_checkpoint_at": "2026-08-03T20:11:00+08:00",
+  "ended_at": "2026-08-03T20:11:00+08:00",
+  "metadata": {
+    "x-fixture": true,
+    "x-synthetic": true
+  }
+}

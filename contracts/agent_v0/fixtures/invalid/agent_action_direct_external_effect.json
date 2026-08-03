@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "action_id": "agent-action.invalid-direct-effect",
+  "run_id": "agent-run.invalid-direct-effect",
+  "session_id": "planning-session.fixture-002",
+  "base_session_revision": 2,
+  "model_turn_index": 1,
+  "proposed_at": "2026-08-03T20:15:00+08:00",
+  "proposal_only": true,
+  "action_type": "direct_external_effect",
+  "payload": {
+    "effect": "export_and_share_route"
+  },
+  "map_actions": [],
+  "metadata": {
+    "x-fixture": true,
+    "x-intentionally-invalid": true
+  }
+}

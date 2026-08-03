@@ -1,0 +1,144 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "session_id": "planning-session.fixture-002",
+  "session_revision": 3,
+  "state_owner": "deterministic_interaction_service",
+  "status": "resolved",
+  "created_at": "2026-08-03T20:00:00+08:00",
+  "updated_at": "2026-08-03T20:14:00+08:00",
+  "expires_at": "2026-08-03T23:00:00+08:00",
+  "task_mode": "compare",
+  "rider_ref": {
+    "object_id": "rider.fixture-002",
+    "object_type": "rider"
+  },
+  "active_intent_ref": "intent.fixture-candidates-002",
+  "last_user_turn_ref": "user-turn.fixture-010",
+  "last_map_event_ref": "map-event.fixture-plan-confirmed-002",
+  "last_committed_run_ref": "agent-run.fixture-002",
+  "focused_world_refs": [
+    {
+      "object_id": "route.fixture-plan-focus-a",
+      "object_type": "named_route"
+    },
+    {
+      "object_id": "route.fixture-plan-focus-b",
+      "object_type": "named_route"
+    }
+  ],
+  "candidate_plans": [
+    {
+      "candidate_ref": "candidate.fixture-a",
+      "plan_revision_ref": {
+        "object_ref": {
+          "object_id": "ride-plan.fixture-a",
+          "object_type": "ride_plan"
+        },
+        "revision": 1
+      },
+      "session_fit_status": "current",
+      "presentation_state": "visible",
+      "display_order": 1,
+      "validation_result_ref": "validation.fixture-a-r1",
+      "tradeoff_summary_ref": "tradeoff.fixture-a"
+    },
+    {
+      "candidate_ref": "candidate.fixture-b",
+      "plan_revision_ref": {
+        "object_ref": {
+          "object_id": "ride-plan.fixture-b",
+          "object_type": "ride_plan"
+        },
+        "revision": 1
+      },
+      "session_fit_status": "current",
+      "presentation_state": "visible",
+      "display_order": 2,
+      "validation_result_ref": "validation.fixture-b-r1",
+      "tradeoff_summary_ref": "tradeoff.fixture-b"
+    }
+  ],
+  "active_candidate_ref": "candidate.fixture-b",
+  "selected_plan": {
+    "candidate_ref": "candidate.fixture-b",
+    "plan_revision_ref": {
+      "object_ref": {
+        "object_id": "ride-plan.fixture-b",
+        "object_type": "ride_plan"
+      },
+      "revision": 1
+    },
+    "selected_by_user_event_ref": "map-event.fixture-plan-confirmed-002",
+    "selected_at": "2026-08-03T20:14:00+08:00"
+  },
+  "map_state": {
+    "anchors": [
+      {
+        "anchor_ref": "anchor.fixture-origin-002",
+        "anchor_role": "origin",
+        "location_handle": {
+          "place_ref": "place.fixture-origin-coarse-002",
+          "display_label": "河西集合区域",
+          "precision": "point_ref_hidden",
+          "exact_coordinates_exposed": false
+        },
+        "source_event_ref": "map-event.fixture-origin-002"
+      },
+      {
+        "anchor_ref": "anchor.fixture-destination-002",
+        "anchor_role": "destination",
+        "location_handle": {
+          "place_ref": "place.fixture-destination-coarse-002",
+          "display_label": "北部返程区域",
+          "precision": "point_ref_hidden",
+          "exact_coordinates_exposed": false
+        },
+        "source_event_ref": "map-event.fixture-destination-002"
+      }
+    ],
+    "viewport": {
+      "bounds_ref": "bounds.fixture-candidate-area-002",
+      "zoom_level": 10,
+      "source_event_ref": "map-event.fixture-viewport-002"
+    },
+    "presentation": {
+      "shown_area_refs": [],
+      "highlighted_targets": [
+        {
+          "target_kind": "candidate_plan",
+          "target_ref": "candidate.fixture-b"
+        }
+      ],
+      "visible_candidate_refs": [
+        "candidate.fixture-a",
+        "candidate.fixture-b"
+      ],
+      "dimmed_targets": [
+        {
+          "target_kind": "candidate_plan",
+          "target_ref": "candidate.fixture-a"
+        }
+      ],
+      "warning_scope_refs": [],
+      "last_map_action_refs": [
+        "map-action.fixture-show-candidates-001"
+      ]
+    }
+  },
+  "assumptions": [
+    {
+      "assumption_id": "assumption.fixture-tradeoff-002",
+      "assumption_kind": "plan_tradeoff",
+      "status": "user_confirmed",
+      "source_ref": "user-turn.fixture-010",
+      "user_safe_summary": "骑友愿意在风景和爬升强度之间做比较。"
+    }
+  ],
+  "unknowns": [],
+  "metadata": {
+    "x-fixture": true,
+    "x-synthetic": true
+  }
+}
