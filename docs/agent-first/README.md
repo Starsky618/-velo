@@ -1,6 +1,6 @@
 # VELO Agent-First / Orchestrator 文档入口
 
-> 当前状态：Phase A 与 A2 parent 均为 `in_progress`；A0/A0C/A1.1–A1.5 和 A2.1 均已由 Orchestrator `PASS / completed`。A2.1 已通过 PR #41 squash merge 为 `main@25169cac110a330c305d5b5f66d74a585277217a`；A2.2 经 Orchestrator 判定 `REVISE`，A2.2-R1 已应用并保持 `in_review`，等待独立复核，尚未 PASS。A2.3–A2.4 与 A3–A5 继续 `blocked`。Agent v0 尚未 freeze；当前不授权代码迁移、Agent Runtime、生产 Context Compiler、数据库、API、UI、真实 Provider/export 或部署。
+> 当前状态：Phase A 与 A2 parent 均为 `in_progress`；A0/A0C/A1.1–A1.5、A2.1 和 A2.2 均已由 Orchestrator 判定 `PASS / completed`。A2.1 已通过 PR #41 squash merge 为 `main@25169cac110a330c305d5b5f66d74a585277217a`；PR #42 已获准完成 A2.2 状态收口与 squash merge。A2.3 为 `ready_to_specify`，但 execution unauthorized；A2.4 与 A3–A5 继续 `blocked`。Agent v0 尚未 freeze；当前不授权代码迁移、Agent Runtime、生产 Context Compiler/reducer、数据库、API、小程序、真实 Provider/export 或部署。
 
 ## 1. 文档角色与权威顺序
 
@@ -17,7 +17,7 @@
 
 源文档保持随包原文和原始哈希，不在本目录中“顺手统一”彼此措辞。发现冲突时，先以当前代码确定现状，再由 ADR 和 State 记录裁决；历史本地仓库路径不构成事实来源。
 
-## 2. 当前 Phase A、已完成的 A1/A2.1 与在审的 A2.2
+## 2. 当前 Phase A、已完成的 A1/A2.1/A2.2 与后续边界
 
 - Phase A 目标是先建立 ADR、语言中立合同、VeloBench v0 和确定性 Fake Environment，再决定 Runtime 技术栈。
 - A0 已完成 Repository Intake、来源文档安置和 [Phase A 文件级实施规格](phase-a-implementation-spec.md)，并经 Orchestrator `PASS`。
@@ -34,9 +34,9 @@
 - A1.5 已由 Accepted [ADR-017](../adr/017-为什么旧app-agent必须迁出并保留RQ兼容路径.md) 编码并以 `PASS / completed` 收口：`app.segment_draft_ai` 是未来赛段草稿实现的唯一 canonical package；`app.agent` 只能作为默认长期保留的 compatibility tombstone，并永久禁止被 Planning Runtime 复用。
 - `app/agent` 当前仍未迁移，`app/segment_draft_ai` 仍未创建，M1/M2/M3 均未实施或获授权。实际 M1/M2 不阻塞 A2–A4，但 M1 必须在首个生产 Planning Runtime 或 Phase B live Agent 集成前完成。
 - A2 parent 继续 `in_progress`，尚未整体完成。A2.1 已由 Orchestrator 判定 `PASS / completed`，并通过 PR #41 squash merge 为 `main@25169cac110a330c305d5b5f66d74a585277217a`；post-merge CI run `30823721358` 为 `2122 passed / 0 skipped` 且 fresh PostGIS migration 成功。A2.1 只建立 [`contracts/agent_v0`](../../contracts/agent_v0/README.md) 中的 Common definitions、21 个事实／动态 Predicate、`RiderContextPacket`、`WorldFactPacket` 与 `ContextManifest`。正式 Relation 使用独立 relation request，不能重新加入 `route.exit_option`。
-- A2.2 已新增 `SessionState`、`AgentRun`、typed `MapEvent`、declarative `MapAction` 与 proposal-only `AgentAction` 五份 Draft 2020-12 schema，以及 clarification/context alignment 和 candidate presentation/user selection 两条 synthetic scenario。A2.2-R1 进一步固定 created/running lifecycle、resume current Session revision、跨合同 environment/time、可改变 viewport 的 opaque fit-bounds transition，以及由真实 user `plan_confirmed` Event 支撑的 selection provenance。它当前是 `in_review / REVISE`，等待 Orchestrator re-review，不是 PASS 或 completed，也不代表 reducer、Runtime 或持久化已存在。
+- A2.2 已由 Orchestrator 判定 `PASS / completed`，PR #42 获准完成状态收口与 squash merge。它建立 `SessionState`、`AgentRun`、typed `MapEvent`、declarative `MapAction` 与 proposal-only `AgentAction` 五份 Draft 2020-12 schema，以及 clarification/context alignment 和 candidate presentation/user selection 两条 synthetic scenario；R1 固定 created/running lifecycle、resume current Session revision、跨合同 environment/time、可改变 viewport 的 opaque fit-bounds transition，以及由真实 user `plan_confirmed` Event 支撑的 selection provenance。该 PASS 只代表 A2.2 合同通过，不代表 reducer、Runtime、持久化或 Agent v0 freeze 已存在。
 - A2 JSON Schema 完全语言中立；当前 Python pytest 只是既有仓库/CI 的 contract conformance harness，不构成 Python Runtime 选择。Proposed research 中 Agent Control Plane 的优先候选仍是独立 TypeScript Shadow Service，但 Accepted Runtime 语言/框架继续 deferred，必须在第一个 Runtime implementation Task Packet 前正式裁决；现有 Python/FastAPI Deterministic Domain Plane 不重写。
-- A2.3（Tool/Approval/Effect/Plan/Validation）、A2.4（Trace/Error/Contribution/全量交叉验证与 v0 freeze）及 A3–A5 继续 `blocked`。A2.1/A2.2 都只是语言中立合同与合成 fixture，不是完整 Agent v0 freeze、生产 Context Compiler、数据库 schema、Runtime、API、UI、真实路线事实或部署。两个 World fixture 只覆盖 `linear_climb` 与 `corridor` 的合同结构；Phase A 仍需至少 10 个版本化 Gold World Package、覆盖至少 6 种 route shape，并由至少 30 个 VeloBench case 消费。
+- A2.3（Tool/Approval/Effect/Plan/Validation）为 `ready_to_specify`，但 execution unauthorized；A2.4（Trace/Error/Contribution/全量交叉验证与 v0 freeze）及 A3–A5 继续 `blocked`。A2.1/A2.2 都只是语言中立合同与合成 fixture，不是完整 Agent v0 freeze、生产 Context Compiler、数据库 schema、Runtime、API、小程序、真实路线事实或部署。两个 World fixture 只覆盖 `linear_climb` 与 `corridor` 的合同结构；Phase A 仍需至少 10 个版本化 Gold World Package、覆盖至少 6 种 route shape，并由至少 30 个 VeloBench case 消费。
 - 不可变的 Control Pack v1.0 §11 中“当前唯一下一任务 A0”是 v1.0 创建时的 bootstrap snapshot，不是持续更新的 live state；不得为同步状态而修改 Control Pack 原文或哈希。
 - 当前阶段、下一任务和执行授权始终以仓库根 [`VELO_ORCHESTRATOR_STATE.yaml`](../../VELO_ORCHESTRATOR_STATE.yaml) 为准。
 - 后续文档提到的 `AgentSession`、`RidePlan`、`Traversal`、`RoadNode`、`RoadEdge`、合同或表，只是候选设计对象，不是当前 schema、migration、API 或实现授权。
@@ -45,6 +45,6 @@
 
 唯一可变执行状态位于仓库根目录 [`VELO_ORCHESTRATOR_STATE.yaml`](../../VELO_ORCHESTRATOR_STATE.yaml)。本 README、Control Pack、来源文档和实施规格都不能替代 State，也不能单独推动阶段。
 
-当前没有以下授权：A1.5 代码迁移 M1/M2/M3、A2.3–A2.4、生产 Agent、Session/Run/Memory/Context Compiler、production reducer、Capability Engine、Approval UI、Side-effect Ledger、Contribution、LangGraph、multi-agent、长期推断 Memory、向量数据库、完整 road graph、真实腾讯/DEM、真实导出、公开发布、生产流量或部署。Accepted ADR-017 只代表 namespace/RQ 兼容迁移边界完成；A2.1 `PASS / completed` 只代表 Context contracts 通过，A2.2 `in_review` 只代表 Session/Run/Map/Action 合同已交付待审，两者都不代表 Agent v0 已 freeze，或 Runtime、数据库、API、UI、Provider 与生产数据已经实现。
+当前没有以下授权：A1.5 代码迁移 M1/M2/M3、A2.3 执行、A2.4、生产 Agent、Session/Run/Memory/Context Compiler、production reducer、Capability Engine、Approval UI、Side-effect Ledger、Contribution、LangGraph、multi-agent、长期推断 Memory、向量数据库、完整 road graph、真实腾讯/DEM、真实导出、公开发布、生产流量或部署。Accepted ADR-017 只代表 namespace/RQ 兼容迁移边界完成；A2.1 `PASS / completed` 只代表 Context contracts 通过，A2.2 `PASS / completed` 只代表 Session/Run/Map/Action contracts 通过，两者都不代表 Agent v0 已 freeze，或 Runtime、数据库、API、小程序、Provider 与生产数据已经实现。
 
-A2.2-R1 Task Packet 只一次性授权本轮语言中立合同、fixture、conformance test 与状态文档返修；交付后 A2.2 保持 `in_review / REVISE` 并等待 Orchestrator re-review，git write、merge 与 deploy 常驻权限均恢复 false。它不授权 A2.3、VeloBench、Fake Environment、Runtime、生产 reducer、M1/M2/M3 或部署，`main` 继续只作为远程权威基线与 PR target。
+A2.2 已由 Orchestrator 判定 `PASS / completed`；当前 Task Packet 只一次性授权 PR #42 的状态收口与 squash merge，git write、merge 与 deploy 常驻权限仍为 false。A2.3 仅可由 Orchestrator 在新 Task Packet 中继续设计，execution unauthorized；该授权不包含 A2.4、VeloBench、Fake Environment、Runtime、生产 reducer、M1/M2/M3 或部署，`main` 继续只作为远程权威基线与 PR target。
