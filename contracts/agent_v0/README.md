@@ -1,6 +1,6 @@
 # VELO Agent v0 language-neutral contracts
 
-本目录包含 A2.1 Context contracts、A2.2 Session/Run/Map/Action contracts，以及第二轮 review 为 `REVISE`、已应用 R2 并等待 Orchestrator re-review 的 A2.3a Tool Registry/ToolCall/ToolResult contracts。它们固定语言中立、版本化的 shape 与 semantic conformance，不是数据库 schema，不选择 Python、TypeScript 或 Agent Runtime，也不证明生产 Context Compiler、Tool Gateway、reducer 或持久化服务已存在。
+本目录包含 A2.1 Context contracts、A2.2 Session/Run/Map/Action contracts，以及 A2.3a Tool Registry/ToolCall/ToolResult contracts。它们继续固定语言中立、版本化的 shape 与 semantic conformance，不是数据库 schema。仓库现在另有 [`agent_runtime`](../../agent_runtime/README.md) TypeScript Shadow 内核；该实现不把 TypeScript 私有状态偷渡进这些跨语言合同，也不证明生产 Context Compiler、Tool Gateway、数据库或 Provider 已存在。
 
 ## 当前包含
 
@@ -105,9 +105,10 @@ Predicate request 与 Relation request 是两条独立合同面。每个 request
 ## Python / TypeScript 与 Runtime 边界
 
 - A2 合同是 language-neutral JSON Schema。当前 Python pytest 只利用既有 Python 仓库与 CI 执行 semantic conformance，不代表选择 Python Agent Runtime。
-- Proposed Agent-First research 中，Agent Control Plane 的优先候选仍是独立 TypeScript Shadow Service；这是候选方向，不是 Accepted Runtime 语言或框架决策。
-- Runtime 选择继续 deferred。第一个 Runtime implementation Task Packet 之前必须完成正式技术栈决策，不能由 conformance test 的实现语言偷渡决定；当前 Runtime implementation 未授权。
+- 当前用户已明确选择 TypeScript Agent 项目；首个 plain TypeScript、event-sourced Shadow 内核位于 [`agent_runtime`](../../agent_runtime/README.md)。OpenAI Agents SDK、Mastra、LangGraph 与 XState 仍只可作为未来 orchestration 依赖，不能成为 Session、世界事实或权限的唯一真相源。
+- 创造者 Agent 与骑友 Agent 是两个独立产品和权限面，不是同一 Agent 的角色开关。骑友侧已跑通会话/Context/路线 Shadow；创造者侧已跑通来源、Evidence、Claim、Eval 到 World Change Proposal 的独立确定性状态机，但两边都尚未接生产服务。
 - 现有 Python/FastAPI Deterministic Domain Plane 继续保留，不因未来可能采用 TypeScript Agent Control Plane 而重写。
+- 当前没有生产数据库迁移、真实模型、腾讯 Provider、小程序接线或部署；这些未验证层级不能由 Shadow 测试冒充。
 
 安装 `requirements.txt` 中固定的测试依赖后运行：
 

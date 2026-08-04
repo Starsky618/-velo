@@ -1,15 +1,71 @@
 {
-  "fixture_version": "tianlongshan-recorded-v1",
+  "fixture_version": "tianlongshan-recorded-v2",
   "origins": {
     "太原站附近": {"ref": "origin:ty-rail-neighborhood", "revision": "origin-r1"},
     "太原站东广场": {"ref": "origin:ty-rail-east-square", "revision": "origin-r1"}
   },
+  "core_traversals": {
+    "traversal:tianlongshan-climb-west": {
+      "traversal_ref": "traversal:tianlongshan-climb-west",
+      "revision": "traversal-r3",
+      "geometry_hash": "sha256:tianlongshan-west-r3-fixture",
+      "start_ref": "junction:jinci-west",
+      "end_ref": "junction:tianlongshan-summit"
+    },
+    "traversal:tianlongshan-climb-east": {
+      "traversal_ref": "traversal:tianlongshan-climb-east",
+      "revision": "traversal-r2",
+      "geometry_hash": "sha256:tianlongshan-east-r2-fixture",
+      "start_ref": "junction:mengshan-east",
+      "end_ref": "junction:tianlongshan-summit"
+    },
+    "traversal:tianlongshan-full-climb": {
+      "traversal_ref": "traversal:tianlongshan-full-climb",
+      "revision": "traversal-r1",
+      "geometry_hash": "sha256:tianlongshan-full-r1-fixture",
+      "start_ref": "junction:urban-south",
+      "end_ref": "junction:tianlongshan-summit"
+    }
+  },
   "candidate_plans": [
     {
+      "plan_id": "plan:jinci-loop",
       "name": "晋祠低城区暴露环线",
-      "access": {"path_ref": "path:access-jinci-r1", "summary": "站区外缘至晋祠"},
-      "core": {"path_ref": "path:tianlongshan-climb-west-r3", "summary": "天龙山主爬升与山顶折返"},
-      "return": {"path_ref": "path:return-jinci-r2", "summary": "晋祠方向返回站区"},
+      "legs": [
+        {
+          "role": "access",
+          "source_adapter": "tencent_bicycling",
+          "from_ref": "$origin",
+          "to_ref": "junction:jinci-west",
+          "path_ref": "tencent:path:access-jinci-r1",
+          "path_revision": "provider-r1",
+          "geometry_hash": "sha256:access-jinci-r1-fixture",
+          "summary": "腾讯骑行路径连接站区外缘至晋祠核心入口",
+          "locked": false
+        },
+        {
+          "role": "core",
+          "source_adapter": "canonical_traversal",
+          "from_ref": "junction:jinci-west",
+          "to_ref": "junction:tianlongshan-summit",
+          "path_ref": "traversal:tianlongshan-climb-west",
+          "path_revision": "traversal-r3",
+          "geometry_hash": "sha256:tianlongshan-west-r3-fixture",
+          "summary": "锁定的天龙山西侧核心爬升",
+          "locked": true
+        },
+        {
+          "role": "return",
+          "source_adapter": "tencent_bicycling",
+          "from_ref": "junction:tianlongshan-summit",
+          "to_ref": "$origin",
+          "path_ref": "tencent:path:return-jinci-r2",
+          "path_revision": "provider-r2",
+          "geometry_hash": "sha256:return-jinci-r2-fixture",
+          "summary": "腾讯骑行路径从核心出口返回站区",
+          "locked": false
+        }
+      ],
       "total_distance_km": 82.4,
       "total_climb_m": 980,
       "estimated_minutes": 225,
@@ -18,10 +74,43 @@
       "unknowns": []
     },
     {
+      "plan_id": "plan:mengshan-loop",
       "name": "蒙山补给环线",
-      "access": {"path_ref": "path:access-mengshan-r1", "summary": "站区外缘经蒙山补给点"},
-      "core": {"path_ref": "path:tianlongshan-climb-east-r2", "summary": "天龙山东侧爬升与折返"},
-      "return": {"path_ref": "path:return-mengshan-r1", "summary": "蒙山外缘返回站区"},
+      "legs": [
+        {
+          "role": "access",
+          "source_adapter": "tencent_bicycling",
+          "from_ref": "$origin",
+          "to_ref": "junction:mengshan-east",
+          "path_ref": "tencent:path:access-mengshan-r1",
+          "path_revision": "provider-r1",
+          "geometry_hash": "sha256:access-mengshan-r1-fixture",
+          "summary": "腾讯骑行路径经蒙山补给点连接核心入口",
+          "locked": false
+        },
+        {
+          "role": "core",
+          "source_adapter": "canonical_traversal",
+          "from_ref": "junction:mengshan-east",
+          "to_ref": "junction:tianlongshan-summit",
+          "path_ref": "traversal:tianlongshan-climb-east",
+          "path_revision": "traversal-r2",
+          "geometry_hash": "sha256:tianlongshan-east-r2-fixture",
+          "summary": "锁定的天龙山东侧核心爬升",
+          "locked": true
+        },
+        {
+          "role": "return",
+          "source_adapter": "tencent_bicycling",
+          "from_ref": "junction:tianlongshan-summit",
+          "to_ref": "$origin",
+          "path_ref": "tencent:path:return-mengshan-r1",
+          "path_revision": "provider-r1",
+          "geometry_hash": "sha256:return-mengshan-r1-fixture",
+          "summary": "腾讯骑行路径沿蒙山外缘返回站区",
+          "locked": false
+        }
+      ],
       "total_distance_km": 76.1,
       "total_climb_m": 860,
       "estimated_minutes": 210,
@@ -30,10 +119,43 @@
       "unknowns": []
     },
     {
+      "plan_id": "plan:urban-direct",
       "name": "城区直达强度线",
-      "access": {"path_ref": "path:access-urban-direct-r1", "summary": "城区主干道直达景区"},
-      "core": {"path_ref": "path:tianlongshan-full-climb-r1", "summary": "全程主爬升"},
-      "return": {"path_ref": "path:return-urban-direct-r1", "summary": "城区主干道返回"},
+      "legs": [
+        {
+          "role": "access",
+          "source_adapter": "tencent_bicycling",
+          "from_ref": "$origin",
+          "to_ref": "junction:urban-south",
+          "path_ref": "tencent:path:access-urban-direct-r1",
+          "path_revision": "provider-r1",
+          "geometry_hash": "sha256:access-urban-r1-fixture",
+          "summary": "腾讯骑行路径经城区主干道连接核心入口",
+          "locked": false
+        },
+        {
+          "role": "core",
+          "source_adapter": "canonical_traversal",
+          "from_ref": "junction:urban-south",
+          "to_ref": "junction:tianlongshan-summit",
+          "path_ref": "traversal:tianlongshan-full-climb",
+          "path_revision": "traversal-r1",
+          "geometry_hash": "sha256:tianlongshan-full-r1-fixture",
+          "summary": "锁定的全程主爬升",
+          "locked": true
+        },
+        {
+          "role": "return",
+          "source_adapter": "tencent_bicycling",
+          "from_ref": "junction:tianlongshan-summit",
+          "to_ref": "$origin",
+          "path_ref": "tencent:path:return-urban-direct-r1",
+          "path_revision": "provider-r1",
+          "geometry_hash": "sha256:return-urban-r1-fixture",
+          "summary": "腾讯骑行路径经城区主干道返回",
+          "locked": false
+        }
+      ],
       "total_distance_km": 91.0,
       "total_climb_m": 1460,
       "estimated_minutes": 285,

@@ -1,0 +1,18 @@
+{
+  "name": "velo-agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:agent": "node --experimental-strip-types --test tests-ts/*.test.ts",
+    "test": "npm run typecheck && npm run test:agent",
+    "demo:shadow": "node --experimental-strip-types agent_runtime/consumer/cli/tianlongshan-shadow.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "typescript": "7.0.2"
+  }
+}

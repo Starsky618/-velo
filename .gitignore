@@ -7,6 +7,10 @@ build/
 venv/
 .venv/
 
+# TypeScript Agent runtime
+node_modules/
+.agent-runtime/
+
 # 环境变量（含密钥，绝对不能提交）
 .env
 
