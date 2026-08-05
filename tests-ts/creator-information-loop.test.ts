@@ -456,6 +456,33 @@ test("Creator Context fails closed when rights are revoked or a judgment reaches
   assert.equal(blocked.manifest.included.source_revisions.some((item) => item.source_ref === "repo:tianlongshan-guide"), false);
 });
 
+test("latest source rights follow event revision when timestamps are identical", async () => {
+  const { store } = await setupRealTianlongshanLoop();
+  await commit(store, {
+    ...base("z-rights-allowed", at(6)), type: "creator.rights_checked", rights_check_id: "rights:z-allowed",
+    source_ref: "repo:tianlongshan-guide", decision: "allowed", policy_ref: "policy:same-time-v1", reason: "较早 revision。",
+  });
+  const forbiddenView = await commit(store, {
+    ...base("a-rights-forbidden", at(6)), type: "creator.rights_checked", rights_check_id: "rights:a-forbidden",
+    source_ref: "repo:tianlongshan-guide", decision: "forbidden", policy_ref: "policy:same-time-v1", reason: "较晚 revision 必须生效。",
+  });
+  const forbidden = compileCreatorContext(forbiddenView, { task: "同时间撤权", subject_refs: [subjectRef], as_of: at(6) });
+  assert.deepEqual(forbidden.context.relevant_evidence, []);
+  assert.equal(forbidden.manifest.omissions.some((item) => item.reason === "rights_not_allowed" && item.refs.includes("evidence:guide")), true);
+
+  await commit(store, {
+    ...base("z-rights-forbidden", at(7)), type: "creator.rights_checked", rights_check_id: "rights:z-forbidden",
+    source_ref: "repo:tianlongshan-guide", decision: "forbidden", policy_ref: "policy:same-time-v1", reason: "较早 revision。",
+  });
+  const allowedView = await commit(store, {
+    ...base("a-rights-allowed", at(7)), type: "creator.rights_checked", rights_check_id: "rights:a-allowed",
+    source_ref: "repo:tianlongshan-guide", decision: "allowed", policy_ref: "policy:same-time-v1", reason: "较晚 revision 必须生效。",
+  });
+  const allowed = compileCreatorContext(allowedView, { task: "同时间重新授权", subject_refs: [subjectRef], as_of: at(7) });
+  assert.deepEqual(allowed.manifest.included.evidence_refs, ["evidence:guide"]);
+  assert.equal(allowed.manifest.included.source_revisions[0]?.rights_check_id, "rights:a-allowed");
+});
+
 test("needs_more_evidence keeps a contradiction open until a later terminal resolution", async () => {
   const { store, runtime, firstStatement } = await setupRealTianlongshanLoop();
   await runtime.run({ workspace_id: workspaceId, event_id: "open-7", occurred_at: at(6), task: "判断天龙山路线结构", subject_refs: [subjectRef] });
@@ -471,19 +498,34 @@ test("needs_more_evidence keeps a contradiction open until a later terminal reso
     expected_statement_hash: contentHash(firstStatement),
   }, reviewerPrincipal);
   await commit(store, {
-    ...base("open-10", at(9)), type: "creator.judgment_contradiction_recorded", contradiction_id: "contradiction:open",
+    ...base("open-10-other-evidence", at(9)), type: "creator.evidence_recorded", evidence_id: "evidence:other-route",
+    source_ref: "repo:tianlongshan-guide", subject_ref: "route:other", raw_observation: "OTHER_ROUTE_PRIVATE",
+    observed_at: "2026-08-05T08:00:00.000Z",
+  });
+  await assert.rejects(() => commit(store, {
+    ...base("open-11-invalid-contradiction", at(10)), type: "creator.judgment_contradiction_recorded", contradiction_id: "contradiction:cross-subject",
+    judgment_id: "judgment:tianlongshan-v1", contradicting_ref: "evidence:other-route", reason: "不能跨路线引用私有证据。",
+  }, agentPrincipal), /contradiction ref belongs to another subject/);
+  await commit(store, {
+    ...base("open-11", at(10)), type: "creator.judgment_contradiction_recorded", contradiction_id: "contradiction:open",
     judgment_id: "judgment:tianlongshan-v1", contradicting_ref: "evidence:guide", reason: "需要第二份独立材料。",
   }, agentPrincipal);
+  await assert.rejects(() => commit(store, {
+    ...base("open-12-invalid-resolution", at(11)), type: "creator.judgment_contradiction_resolved", resolution_id: "resolution:cross-subject",
+    contradiction_id: "contradiction:open", resolution: "needs_more_evidence", resolution_ref: "evidence:other-route",
+    reason: "不能用其他路线的证据解决矛盾。",
+  }, agentPrincipal), /resolution ref belongs to another subject/);
   await commit(store, {
-    ...base("open-11", at(10)), type: "creator.human_review_requested", review_id: "review:more-evidence",
+    ...base("open-12", at(11)), type: "creator.human_review_requested", review_id: "review:more-evidence",
     target_ref: "contradiction:open", request_kind: "request_more_evidence", reason: "继续收集骑友实测。",
   });
   const view = await commit(store, {
-    ...base("open-12", at(11)), type: "creator.judgment_contradiction_resolved", resolution_id: "resolution:still-open",
+    ...base("open-13", at(12)), type: "creator.judgment_contradiction_resolved", resolution_id: "resolution:still-open",
     contradiction_id: "contradiction:open", resolution: "needs_more_evidence", resolution_ref: "review:more-evidence",
     reason: "当前不能关闭矛盾。",
   }, agentPrincipal);
   assert.equal(view.judgment_contradictions["contradiction:open"]?.resolved, false);
-  const bundle = compileCreatorContext(view, { task: "继续判断天龙山", subject_refs: [subjectRef], as_of: at(11) });
+  const bundle = compileCreatorContext(view, { task: "继续判断天龙山", subject_refs: [subjectRef], as_of: at(12) });
   assert.deepEqual(bundle.manifest.included.contradiction_refs, ["contradiction:open"]);
+  assert.equal(bundle.context.relevant_evidence.some((item) => item.raw_observation === "OTHER_ROUTE_PRIVATE"), false);
 });

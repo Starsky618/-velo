@@ -125,10 +125,11 @@ export function compileCreatorContext(view: CreatorView, request: CreatorContext
   const allJudgments = Object.values(view.judgments);
   const relevantJudgments = allJudgments.filter((judgment) => isRelevant(judgment.subject_ref, requestedSubjects));
 
-  const latestRightsFor = (sourceRef: string) => sorted(
-    Object.values(view.rights_checks).filter((check) => check.source_ref === sourceRef),
-    (check) => `${check.occurred_at}:${check.event_id}`,
-  ).at(-1);
+  const latestRightsFor = (sourceRef: string) => Object.values(view.rights_checks)
+    .filter((check) => check.source_ref === sourceRef)
+    .reduce((latest, check) => (
+      latest === undefined || check.base_revision > latest.base_revision ? check : latest
+    ), undefined as (typeof view.rights_checks)[string] | undefined);
   const sourceIsAllowed = (sourceRef: string) => latestRightsFor(sourceRef)?.decision === "allowed";
   const judgmentSourceRefs = (judgment: CreatorJudgmentState) => [
     ...judgment.source_turn_refs.map((ref) => view.conversation_turns[ref]?.source_ref),
@@ -166,6 +167,17 @@ export function compileCreatorContext(view: CreatorView, request: CreatorContext
   const pendingInputTurns = takeLast(pendingTurnsAll, maxPendingTurns);
 
   const allContradictions = Object.values(view.judgment_contradictions);
+  const contradictionSubjectMatches = (contradiction: CreatorContradictionState) => {
+    const target = view.judgments[contradiction.judgment_id];
+    if (!target) return false;
+    const evidence = view.evidence[contradiction.contradicting_ref];
+    const turn = view.conversation_turns[contradiction.contradicting_ref];
+    const judgment = view.judgments[contradiction.contradicting_ref];
+    return evidence ? evidence.subject_ref === target.subject_ref
+      : turn ? turn.subject_refs.includes(target.subject_ref)
+        : judgment ? judgment.subject_ref === target.subject_ref
+          : false;
+  };
   const contradictionRightsAllowed = (contradiction: CreatorContradictionState) => {
     const evidence = view.evidence[contradiction.contradicting_ref];
     const turn = view.conversation_turns[contradiction.contradicting_ref];
@@ -180,7 +192,8 @@ export function compileCreatorContext(view: CreatorView, request: CreatorContext
     allContradictions.filter((contradiction) => {
       const judgment = view.judgments[contradiction.judgment_id];
       return !contradiction.resolved && judgment !== undefined
-        && currentJudgmentIds.has(judgment.id) && contradictionRightsAllowed(contradiction);
+        && currentJudgmentIds.has(judgment.id) && contradictionSubjectMatches(contradiction)
+        && contradictionRightsAllowed(contradiction);
     }),
     (contradiction) => contradiction.id,
   );
@@ -277,7 +290,9 @@ export function compileCreatorContext(view: CreatorView, request: CreatorContext
     }).map((item) => item.id)),
     omission("contradiction", "subject_mismatch", allContradictions.filter((item) => {
       const judgment = view.judgments[item.judgment_id];
-      return judgment !== undefined && !isRelevant(judgment.subject_ref, requestedSubjects);
+      return judgment !== undefined && (
+        !isRelevant(judgment.subject_ref, requestedSubjects) || !contradictionSubjectMatches(item)
+      );
     }).map((item) => item.id)),
     omission("source", "rights_not_allowed", [...new Set([
       ...subjectTurns.filter((turn) => !sourceIsAllowed(turn.source_ref)).map((turn) => turn.source_ref),

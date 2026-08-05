@@ -371,6 +371,7 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
           throw new Error("superseded judgment is not active and Tim-confirmed");
         }
         if (previous.judgment_key !== event.judgment_key) throw new Error("cannot supersede a different judgment_key");
+        if (previous.subject_ref !== event.subject_ref) throw new Error("cannot supersede a judgment from another subject");
       }
       next.judgments[event.proposal_id] = {
         id: event.proposal_id,
@@ -433,10 +434,16 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
       if (!contradicted || contradicted.status !== "tim_confirmed" || contradicted.superseded) {
         throw new Error("contradiction requires an active Tim-confirmed judgment");
       }
-      if (!next.evidence[event.contradicting_ref]
-        && !next.conversation_turns[event.contradicting_ref]
-        && !next.judgments[event.contradicting_ref]) {
-        throw new Error("contradiction requires a known evidence, turn or judgment ref");
+      const contradictingEvidence = next.evidence[event.contradicting_ref];
+      const contradictingTurn = next.conversation_turns[event.contradicting_ref];
+      const contradictingJudgment = next.judgments[event.contradicting_ref];
+      if ([contradictingEvidence, contradictingTurn, contradictingJudgment].filter(Boolean).length !== 1) {
+        throw new Error("contradiction requires exactly one known evidence, turn or judgment ref");
+      }
+      if ((contradictingEvidence && contradictingEvidence.subject_ref !== contradicted.subject_ref)
+        || (contradictingTurn && !contradictingTurn.subject_refs.includes(contradicted.subject_ref))
+        || (contradictingJudgment && contradictingJudgment.subject_ref !== contradicted.subject_ref)) {
+        throw new Error("contradiction ref belongs to another subject");
       }
       next.judgment_contradictions[event.contradiction_id] = {
         id: event.contradiction_id,
@@ -459,11 +466,21 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
           || replacement.supersedes_judgment_id !== original.id || !original.superseded) {
           throw new Error("superseded contradiction resolution requires the confirmed replacement judgment");
         }
-      } else if (!next.evidence[event.resolution_ref]
-        && !next.conversation_turns[event.resolution_ref]
-        && !next.judgments[event.resolution_ref]
-        && !next.human_review_requests[event.resolution_ref]) {
-        throw new Error("contradiction resolution requires a known resolution ref");
+      } else {
+        const original = next.judgments[contradiction.judgment_id];
+        const resolutionEvidence = next.evidence[event.resolution_ref];
+        const resolutionTurn = next.conversation_turns[event.resolution_ref];
+        const resolutionJudgment = next.judgments[event.resolution_ref];
+        const resolutionReview = next.human_review_requests[event.resolution_ref];
+        if (!original || [resolutionEvidence, resolutionTurn, resolutionJudgment, resolutionReview].filter(Boolean).length !== 1) {
+          throw new Error("contradiction resolution requires exactly one known resolution ref");
+        }
+        if ((resolutionEvidence && resolutionEvidence.subject_ref !== original.subject_ref)
+          || (resolutionTurn && !resolutionTurn.subject_refs.includes(original.subject_ref))
+          || (resolutionJudgment && resolutionJudgment.subject_ref !== original.subject_ref)
+          || (resolutionReview && ![contradiction.id, original.id].includes(resolutionReview.target_ref))) {
+          throw new Error("contradiction resolution ref belongs to another subject");
+        }
       }
       contradiction.resolved = event.resolution !== "needs_more_evidence";
       contradiction.resolution = event.resolution;

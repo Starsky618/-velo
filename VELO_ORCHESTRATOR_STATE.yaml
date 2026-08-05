@@ -91,7 +91,7 @@ current_delivery:
     - exact_event_commit_reconciliation_without_second_model_call
     - replaceable_model_port_and_deterministic_fake
     - fresh_process_context_replay_eval_with_real_tianlongshan_materials
-    local_validation: 55_typescript_tests_passed
+    local_validation: 56_typescript_tests_passed
     missing:
     - production_conversation_ingestion_adapter
     - authenticated_tim_review_ui_or_api

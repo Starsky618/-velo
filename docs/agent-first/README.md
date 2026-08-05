@@ -32,7 +32,7 @@ Reborn 是重要参照系：借鉴它的原始记录、显式状态、状态机�
 | TypeScript Creator 内核 | 已有原始 Conversation/Evidence、Agent 判断提议、Tim 精确确认/拒绝/替代、Contradiction、Context Manifest、模型端口与冷启动重放 Eval | [`agent_runtime/creator`](../../agent_runtime/creator)，当前 revision |
 | 路线规划 Shadow | 已验证锁定 canonical core Traversal，腾讯只生成 access/connector/exit/return；支持多核心段拼接 | synthetic 天龙山 fixture，不是真实腾讯调用或真实推荐质量 |
 | 数据库设计 | 已核实现有 Route Cognition/PostGIS 可复用对象，并固定 Creator append-only 事件、关系投影、事务与回放规格 | [`DATABASE_BOUNDARY.md`](../../agent_runtime/DATABASE_BOUNDARY.md) 与 [`CREATOR_POSTGRESQL_SPEC_V0.md`](../../agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md)；尚未创建 migration |
-| 验证 | PR #46 双独立审查通过；Creator v0 本地 TypeScript 55/55 | 当前分支修订后 CI 尚待重跑；本地结果不证明生产、真实 Tim UI 或骑友可用 |
+| 验证 | PR #46 双独立审查通过；Creator v0 本地 TypeScript 56/56 | 当前分支修订后 CI 尚待重跑；本地结果不证明生产、真实 Tim UI 或骑友可用 |
 
 当前还没有：
 

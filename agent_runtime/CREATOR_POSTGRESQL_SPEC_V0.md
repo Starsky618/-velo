@@ -86,7 +86,7 @@ Tim 审核动作 / Creator 模型 typed action
 
 ### 4.1 `creator_sources`
 
-保存 `(workspace_id, source_ref)`、source kind、content hash、不可变 `immutable_ref`（Git blob/provider revision/content-addressed object）、provenance、当前 rights decision/policy/reason、source 与 rights 对应 event revision。UNIQUE `(workspace_id, source_ref)`。
+保存 `(workspace_id, source_ref)`、source kind、content hash、不可变 `immutable_ref`（Git blob/provider revision/content-addressed object）、provenance、当前 rights decision/policy/reason、source 与 rights 对应 event revision。UNIQUE `(workspace_id, source_ref)`。同一 `occurred_at` 可以有多次 rights 变化，“最新”必须按 workspace event revision 判定，不能按 event ID 或时间字符串打破并列。
 
 rights 变更必须追加新 event，再更新投影；不能直接改投影冒充事件。
 
