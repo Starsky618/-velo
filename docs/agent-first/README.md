@@ -32,7 +32,7 @@ Reborn 是重要参照系：借鉴它的原始记录、显式状态、状态机�
 | TypeScript Creator 内核 | 已有原始 Conversation/Evidence、Agent 判断提议、Tim 精确确认/拒绝/替代、Contradiction、Context Manifest、模型端口与冷启动重放 Eval | [`agent_runtime/creator`](../../agent_runtime/creator)，当前 revision |
 | 路线规划 Shadow | 已验证锁定 canonical core Traversal，腾讯只生成 access/connector/exit/return；支持多核心段拼接 | synthetic 天龙山 fixture，不是真实腾讯调用或真实推荐质量 |
 | 数据库设计 | 已核实现有 Route Cognition/PostGIS 可复用对象，并固定 Creator append-only 事件、关系投影、事务与回放规格 | [`DATABASE_BOUNDARY.md`](../../agent_runtime/DATABASE_BOUNDARY.md) 与 [`CREATOR_POSTGRESQL_SPEC_V0.md`](../../agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md)；尚未创建 migration |
-| 验证 | PR #46 双独立审查通过；Creator v0 本地 TypeScript 48/48 | 当前分支 CI 尚待 PR；本地结果不证明生产、真实 Tim UI 或骑友可用 |
+| 验证 | PR #46 双独立审查通过；Creator v0 本地 TypeScript 55/55 | 当前分支修订后 CI 尚待重跑；本地结果不证明生产、真实 Tim UI 或骑友可用 |
 
 当前还没有：
 
@@ -55,7 +55,9 @@ Reborn 是重要参照系：借鉴它的原始记录、显式状态、状态机�
 - 被拒绝或替代的判断不会进入 current Context；
 - Manifest 记录 workspace revision、加载 refs、source hash/provenance、omission 与 context hash；
 - 支持当前判断的 Evidence 不会被 Context 预算裁掉；
-- 新 `JsonlCreatorStore` 实例可从空聊天上下文重放相同当前判断和未决矛盾。
+- 全新 Node 进程可从空聊天上下文重放相同当前判断和未决矛盾；
+- 每条 event 持久化实际 principal/capability 收据，Rider principal 在模型读取 Creator 私有 Context 前即被拒绝；
+- source 撤权、judgment 到达 `review_at` 或引用跨 subject 时 fail closed，commit 响应不明按 exact event 对账。
 
 **Creator PostgreSQL Persistence Spec v0** 已在 [`CREATOR_POSTGRESQL_SPEC_V0.md`](../../agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md) 固定 append-only 真值流、同事务投影、revision CAS、source message 去重、proposal/decision 复合绑定、supersession、contradiction、Context 查询与 reconciliation。
 
@@ -66,7 +68,7 @@ Reborn 是重要参照系：借鉴它的原始记录、显式状态、状态机�
 不要造一套“Agent 万能库”。Creator Loop v0 已在 JSONL Shadow 暴露第一批稳定写入和查询；数据库阶段只考虑：
 
 - `creator_workspaces` / `creator_workspace_events`
-- `source_records` / `source_messages`
+- `creator_sources` / `creator_source_messages`
 - `knowledge_claims` / `knowledge_claim_evidence`
 - Creator judgment proposal / decision / contradiction 的投影与唯一约束
 - `claim_evaluations`

@@ -53,7 +53,7 @@ VELO 是面向严肃公路车骑手的微信小程序和后端服务。当前小
 | 约骑 | 后端、表结构和历史测试保留；小程序前端已删除 | 有多轮历史真机走查 | 后端兼容面仍运行，但当前用户不可从小程序进入 |
 | 训练分析 | FTP、PMC、训练分布代码已存在 | 有历史真机反馈 | 不是当前产品投入主线 |
 | Route Cognition | DB foundation、内部 writer 和 seed dry-run 已有文档记录 | 只有内部流程证据 | 无公开 API、无 admin UI、无自动 backfill，不是用户可见产品 |
-| TypeScript Agent Runtime | Creator/Rider 独立内核；Creator v0 已有原始输入、判断确认/替代、Context、模型端口和冷启动 Eval | PR #46 CI 已通过；Creator v0 本地 TypeScript 48/48，当前分支 CI 待 PR | 未接真实模型、生产数据库、真实 Tim 审核 UI、腾讯网络、小程序或骑友流量 |
+| TypeScript Agent Runtime | Creator/Rider 独立内核；Creator v0 已有原始输入、判断确认/替代、Context、模型端口和冷启动 Eval | PR #46 CI 已通过；Creator v0 本地 TypeScript 55/55，当前分支修订后 CI 待重跑 | 未接真实模型、生产数据库、真实 Tim 审核 UI、腾讯网络、小程序或骑友流量 |
 
 ### 状态用词
 

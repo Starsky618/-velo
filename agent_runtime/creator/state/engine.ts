@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename } from "node:fs/promises";
+import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { canonicalJson, contentHash } from "../../shared/canonical.ts";
 import { withJsonlLock } from "../../shared/jsonl-lock.ts";
-import { createCreatorCapabilityGate } from "../capabilities.ts";
+import { createCreatorCapabilityGate, creatorCapabilityForEventType } from "../capabilities.ts";
 import type { RuntimePrincipal } from "../../shared/capability-gate.ts";
 import type { CreatorWorkspaceStore } from "./store-port.ts";
 import {
@@ -18,6 +18,7 @@ import {
   JUDGMENT_RESPONSES,
   RIGHTS_DECISIONS,
   type CreatorEvent,
+  type CreatorStoredEvent,
   type CreatorView,
 } from "./types.ts";
 
@@ -30,6 +31,11 @@ function requireUtcInstant(value: unknown, label: string): asserts value is stri
   requireString(value, label);
   const parsed = new Date(value);
   if (Number.isNaN(parsed.valueOf()) || parsed.toISOString() !== value) throw new Error(`${label} must be a canonical UTC instant`);
+}
+
+function requireContentHash(value: unknown, label: string): asserts value is string {
+  requireString(value, label);
+  if (!/^sha256:[0-9a-f]{64}$/.test(value)) throw new Error(`${label} must be a sha256 content hash`);
 }
 
 function requireRefs(value: unknown, label: string): asserts value is string[] {
@@ -69,13 +75,17 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       requireString(event.mission, "mission");
       return;
     case "creator.source_ingested":
-      requireExactKeys(event, [...BASE_EVENT_KEYS, "source_ref", "source_kind", "content_hash", "provenance_ref"], event.type);
+      requireExactKeys(event, [...BASE_EVENT_KEYS, "source_ref", "source_kind", "content_hash", "immutable_ref", "provenance_ref"], event.type);
       requireString(event.source_ref, "source_ref");
       requireString(event.source_kind, "source_kind");
-      requireString(event.content_hash, "content_hash");
+      requireContentHash(event.content_hash, "content_hash");
+      requireString(event.immutable_ref, "immutable_ref");
       requireString(event.provenance_ref, "provenance_ref");
       if (!["conversation", "rider_report", "provider", "manual_research", "repository"].includes(event.source_kind as string)) {
         throw new Error("invalid source_kind");
+      }
+      if (event.source_kind === "repository" && !/^git-blob:[0-9a-f]{40}$/.test(event.immutable_ref as string)) {
+        throw new Error("repository source immutable_ref must be a Git blob id");
       }
       return;
     case "creator.conversation_turn_recorded": {
@@ -84,7 +94,7 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       requireString(event.source_ref, "source_ref");
       requireString(event.source_message_ref, "source_message_ref");
       requireString(event.raw_text, "raw_text");
-      requireString(event.content_hash, "content_hash");
+      requireContentHash(event.content_hash, "content_hash");
       requireUniqueStringArray(event.subject_refs, "subject_refs");
       if (!CREATOR_SOURCE_ROLES.includes(event.source_role as never)) throw new Error("invalid creator source_role");
       if (!CREATOR_ACTORS.includes(event.actor as never)) throw new Error("invalid creator actor");
@@ -146,7 +156,7 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       if (event.review_at && event.review_at <= event.occurred_at) throw new Error("review_at must be after the claim proposal");
       return;
     case "creator.judgment_proposed":
-      requireExactKeys(event, [...BASE_EVENT_KEYS, "proposal_id", "judgment_key", "subject_ref", "statement", "statement_hash", "typed_value", "temporality", "context_compiler_version", "context_request_hash", "context_task", "context_subject_refs", "context_max_pending_turns", "context_max_evidence", "context_hash", "model_ref", "review_at", "source_turn_refs", "evidence_refs", "supersedes_judgment_id", "reason"], event.type);
+      requireExactKeys(event, [...BASE_EVENT_KEYS, "proposal_id", "judgment_key", "subject_ref", "statement", "statement_hash", "typed_value", "temporality", "context_compiler_version", "context_request_hash", "context_task", "context_subject_refs", "context_as_of", "context_max_pending_turns", "context_max_evidence", "context_hash", "model_ref", "review_at", "source_turn_refs", "evidence_refs", "supersedes_judgment_id", "reason"], event.type);
       requireString(event.proposal_id, "proposal_id");
       requireString(event.judgment_key, "judgment_key");
       requireString(event.subject_ref, "subject_ref");
@@ -156,6 +166,7 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       requireString(event.context_request_hash, "context_request_hash");
       requireString(event.context_task, "context_task");
       requireUniqueStringArray(event.context_subject_refs, "context_subject_refs");
+      requireUtcInstant(event.context_as_of, "context_as_of");
       if (canonicalJson(event.context_subject_refs) !== canonicalJson([...event.context_subject_refs].sort())) {
         throw new Error("context_subject_refs must be sorted");
       }
@@ -248,6 +259,7 @@ function initial(event: Extract<CreatorEvent, { type: "creator.workspace_started
     judgments: {},
     judgment_decisions: {},
     judgment_contradictions: {},
+    judgment_contradiction_resolutions: {},
     conflict_analyses: {},
     evaluations: {},
     human_review_requests: {},
@@ -285,6 +297,14 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
         throw new Error("conversation turn requires an allowed rights check");
       }
       if (event.content_hash !== contentHash(event.raw_text)) throw new Error("conversation turn content_hash mismatch");
+      if (event.interaction) {
+        const proposal = next.judgments[event.interaction.proposal_id];
+        if (!proposal || proposal.status !== "proposed" || proposal.superseded
+          || proposal.statement_hash !== event.interaction.statement_hash
+          || !event.subject_refs.includes(proposal.subject_ref)) {
+          throw new Error("judgment response interaction requires an existing exact active proposal");
+        }
+      }
       if (next.conversation_turns[event.turn_id]) throw new Error("duplicate creator turn_id");
       if (Object.values(next.conversation_turns).some((turn) => turn.source_message_ref === event.source_message_ref)) {
         throw new Error("duplicate source_message_ref");
@@ -321,14 +341,19 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
       if (event.context_request_hash !== contentHash({
         task: event.context_task,
         subject_refs: event.context_subject_refs,
+        as_of: event.context_as_of,
         max_pending_turns: event.context_max_pending_turns,
         max_evidence: event.context_max_evidence,
       })) throw new Error("judgment context_request_hash mismatch");
       for (const turnRef of event.source_turn_refs) {
-        if (!next.conversation_turns[turnRef]) throw new Error("judgment references unknown source turn");
+        const turn = next.conversation_turns[turnRef];
+        if (!turn) throw new Error("judgment references unknown source turn");
+        if (!turn.subject_refs.includes(event.subject_ref)) throw new Error("judgment source turn belongs to another subject");
       }
       for (const evidenceRef of event.evidence_refs) {
-        if (!next.evidence[evidenceRef]) throw new Error("judgment references unknown evidence");
+        const evidence = next.evidence[evidenceRef];
+        if (!evidence) throw new Error("judgment references unknown evidence");
+        if (evidence.subject_ref !== event.subject_ref) throw new Error("judgment evidence belongs to another subject");
       }
       const pending = Object.values(next.judgments).find(
         (judgment) => judgment.judgment_key === event.judgment_key && !judgment.superseded && judgment.status === "proposed",
@@ -359,6 +384,7 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
         context_request_hash: event.context_request_hash,
         context_task: event.context_task,
         context_subject_refs: [...event.context_subject_refs],
+        context_as_of: event.context_as_of,
         context_max_pending_turns: event.context_max_pending_turns,
         context_max_evidence: event.context_max_evidence,
         context_hash: event.context_hash,
@@ -423,6 +449,7 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
       break;
     case "creator.judgment_contradiction_resolved": {
       capabilities.require("judgment.contradict");
+      if (next.judgment_contradiction_resolutions[event.resolution_id]) throw new Error("duplicate contradiction resolution_id");
       const contradiction = next.judgment_contradictions[event.contradiction_id];
       if (!contradiction || contradiction.resolved) throw new Error("contradiction resolution requires an unresolved contradiction");
       if (event.resolution === "superseded") {
@@ -432,11 +459,17 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
           || replacement.supersedes_judgment_id !== original.id || !original.superseded) {
           throw new Error("superseded contradiction resolution requires the confirmed replacement judgment");
         }
+      } else if (!next.evidence[event.resolution_ref]
+        && !next.conversation_turns[event.resolution_ref]
+        && !next.judgments[event.resolution_ref]
+        && !next.human_review_requests[event.resolution_ref]) {
+        throw new Error("contradiction resolution requires a known resolution ref");
       }
-      contradiction.resolved = true;
+      contradiction.resolved = event.resolution !== "needs_more_evidence";
       contradiction.resolution = event.resolution;
       contradiction.resolution_ref = event.resolution_ref;
-      contradiction.resolved_at = event.occurred_at;
+      if (contradiction.resolved) contradiction.resolved_at = event.occurred_at;
+      next.judgment_contradiction_resolutions[event.resolution_id] = event;
       break;
     }
     case "creator.conflict_analyzed":
@@ -479,18 +512,64 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
   return next;
 }
 
-export function replayCreatorWorkspace(events: readonly CreatorEvent[], principal: RuntimePrincipal): CreatorView {
+function recordCreatorEvent(event: CreatorEvent, principal: RuntimePrincipal): CreatorStoredEvent {
+  const capability = creatorCapabilityForEventType(event.type);
+  createCreatorCapabilityGate(principal).require(capability);
+  return {
+    event: structuredClone(event),
+    committed_by: {
+      principal_id: principal.principal_id,
+      product: "creator",
+      environment: principal.environment,
+      capability,
+    },
+  };
+}
+
+export function validateCreatorStoredEvent(value: unknown): asserts value is CreatorStoredEvent {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("creator stored event must be an object");
+  const record = value as Record<string, unknown>;
+  requireExactKeys(record, ["event", "committed_by"], "creator stored event");
+  validateCreatorEvent(record.event);
+  if (record.committed_by === null || typeof record.committed_by !== "object" || Array.isArray(record.committed_by)) {
+    throw new Error("creator principal receipt must be an object");
+  }
+  const receipt = record.committed_by as Record<string, unknown>;
+  requireExactKeys(receipt, ["principal_id", "product", "environment", "capability"], "creator principal receipt");
+  requireString(receipt.principal_id, "committed_by.principal_id");
+  requireString(receipt.capability, "committed_by.capability");
+  if (receipt.product !== "creator") throw new Error("creator receipt product must be creator");
+  if (!["test", "shadow", "production"].includes(receipt.environment as string)) throw new Error("invalid creator receipt environment");
+  if (receipt.capability !== creatorCapabilityForEventType((record.event as CreatorEvent).type)) {
+    throw new Error("creator receipt capability does not match event type");
+  }
+}
+
+export function replayCreatorWorkspace(
+  recordsOrEvents: readonly CreatorStoredEvent[] | readonly CreatorEvent[],
+  testPrincipal?: RuntimePrincipal,
+): CreatorView {
+  const records = testPrincipal
+    ? (recordsOrEvents as readonly CreatorEvent[]).map((event) => recordCreatorEvent(event, testPrincipal))
+    : recordsOrEvents as readonly CreatorStoredEvent[];
   let view: CreatorView | undefined;
   const eventIds = new Map<string, string>();
-  for (const event of events) {
-    const encoded = canonicalJson(event);
-    const previous = eventIds.get(event.event_id);
+  for (const record of records) {
+    validateCreatorStoredEvent(record);
+    const encoded = canonicalJson(record);
+    const previous = eventIds.get(record.event.event_id);
     if (previous !== undefined) {
-      if (previous !== encoded) throw new Error(`event_id content conflict: ${event.event_id}`);
+      if (previous !== encoded) throw new Error(`event_id content conflict: ${record.event.event_id}`);
       continue;
     }
-    eventIds.set(event.event_id, encoded);
-    view = applyCreatorEvent(view, event, principal);
+    eventIds.set(record.event.event_id, encoded);
+    const principal: RuntimePrincipal = {
+      principal_id: record.committed_by.principal_id,
+      product: record.committed_by.product,
+      environment: record.committed_by.environment,
+      scopes: [record.committed_by.capability],
+    };
+    view = applyCreatorEvent(view, record.event, principal);
   }
   if (!view) throw new Error("creator workspace has no events");
   return view;
@@ -510,20 +589,30 @@ export class JsonlCreatorStore implements CreatorWorkspaceStore {
     return join(this.rootDirectory, `${workspaceId}.jsonl`);
   }
 
-  async read(workspaceId: string): Promise<{ events: CreatorEvent[]; view?: CreatorView }> {
+  async #readRecords(workspaceId: string): Promise<{ records: CreatorStoredEvent[]; events: CreatorEvent[]; view?: CreatorView }> {
     let text: string;
     try {
       text = await readFile(this.pathFor(workspaceId), "utf8");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { events: [] };
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { records: [], events: [] };
       throw error;
     }
-    const events = text.split("\n").filter(Boolean).map((line) => {
-      const event: unknown = JSON.parse(line);
-      validateCreatorEvent(event);
-      return event;
+    const records = text.split("\n").filter(Boolean).map((line) => {
+      const record: unknown = JSON.parse(line);
+      validateCreatorStoredEvent(record);
+      return record;
     });
-    return events.length ? { events, view: replayCreatorWorkspace(events, this.principal) } : { events };
+    const events = records.map((record) => record.event);
+    return records.length ? { records, events, view: replayCreatorWorkspace(records) } : { records, events };
+  }
+
+  async readAs(workspaceId: string, principal: RuntimePrincipal): Promise<{ records: CreatorStoredEvent[]; events: CreatorEvent[]; view?: CreatorView }> {
+    createCreatorCapabilityGate(principal).require("context.read_private");
+    return this.#readRecords(workspaceId);
+  }
+
+  async read(workspaceId: string): Promise<{ records: CreatorStoredEvent[]; events: CreatorEvent[]; view?: CreatorView }> {
+    return this.readAs(workspaceId, this.principal);
   }
 
   async append(event: CreatorEvent): Promise<CreatorView> {
@@ -531,10 +620,15 @@ export class JsonlCreatorStore implements CreatorWorkspaceStore {
   }
 
   async appendAs(event: CreatorEvent, principal: RuntimePrincipal): Promise<CreatorView> {
+    validateCreatorEvent(event);
+    const capability = creatorCapabilityForEventType(event.type);
+    const gate = createCreatorCapabilityGate(principal);
+    gate.require("context.read_private");
+    gate.require(capability);
     const path = this.pathFor(event.workspace_id);
     await mkdir(dirname(path), { recursive: true });
     return withJsonlLock(path, `creator workspace ${event.workspace_id}`, async () => {
-      const current = await this.read(event.workspace_id);
+      const current = await this.#readRecords(event.workspace_id);
       const identical = current.events.find((item) => item.event_id === event.event_id);
       if (identical) {
         if (canonicalJson(identical) !== canonicalJson(event)) throw new Error(`event_id content conflict: ${event.event_id}`);
@@ -542,16 +636,22 @@ export class JsonlCreatorStore implements CreatorWorkspaceStore {
         return current.view;
       }
       const next = applyCreatorEvent(current.view, event, principal);
-      const body = [...current.events, event].map(canonicalJson).join("\n") + "\n";
+      const record = recordCreatorEvent(event, principal);
+      const body = [...current.records, record].map(canonicalJson).join("\n") + "\n";
       const tempPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
       const temp = await open(tempPath, "wx");
       try {
-        await temp.writeFile(body, "utf8");
-        await temp.sync();
-      } finally {
-        await temp.close();
+        try {
+          await temp.writeFile(body, "utf8");
+          await temp.sync();
+        } finally {
+          await temp.close();
+        }
+        await rename(tempPath, path);
+      } catch (error) {
+        await unlink(tempPath).catch(() => undefined);
+        throw error;
       }
-      await rename(tempPath, path);
       const directory = await open(dirname(path), "r");
       try { await directory.sync(); } finally { await directory.close(); }
       return next;

@@ -26,9 +26,9 @@
 - `consumer/runtime/`：从现有 `contracts/agent_v0/tool_registry.v0.json` deny-by-default 解析 namespaced Tool，记录 AgentRun / ContextManifest / AgentAction / ToolCall / ToolResult。每个逻辑 model turn 都会先编译 Context，再让可替换的 `ShadowDecisionModel` 消费它并返回 typed proposal；当前实现是可重复的 deterministic fake model，不是外部 LLM。model、tool 和 Session commit 都受 AbortSignal、执行前/后 deadline 与不可逆写入前 guard 约束；超时 model turn 收敛为 typed action，超时 ToolCall 收敛为 terminal ToolResult。tool-call 与 plan-generation 预算在执行前门禁；校验和比较仍由确定性 gate 所有。Node AJV 验单体 schema，Python 测试直接复用既有 `assert_run_semantics` 并检查正常/超时 trace 的跨 artifact identity。
 - `consumer/planning/`：门到门候选绑定 request hash、origin identity/revision 与 world revision；腾讯连接段与 canonical Traversal 使用不同身份命名空间。腾讯可以连接多个核心赛段，不能重算、降级或冒充核心赛段。
 - `creator/state/`：独立的来源 → Rights Check → 原始 Conversation/Evidence → Claim/Judgment Proposal → Tim 精确响应 → Supersession/Contradiction → Eval → World Change Proposal 状态机。Agent 没有 `judgment.decide`；普通 prose 不能成为确认；没有 publish 事件。
-- `creator/context/`：按 subject 编译 mission、当前 Tim-confirmed judgment、pending proposal/input、相关 Evidence 与未决 contradiction，并输出 revision、source provenance/hash、加载项、遗漏原因和 context hash。当前判断的必要证据不会被预算静默裁掉。
-- `creator/runtime/`：模型端口只返回 exact-key typed action；确定性 fake model 证明相同事件日志可在新进程得到相同动作。reducer 继续拥有权限、revision 和写入。
-- `creator/eval/`：把进程内 view 与冷启动 JSONL 重放后的 Context 比较，并检查 superseded/rejected judgment 不会复活。
+- `creator/context/`：按 subject 与确定性 `as_of` 编译 mission、仍在复核期且来源权利允许的 Tim-confirmed judgment、pending proposal/input、相关 Evidence 与未决 contradiction，并输出 source event/rights revision、provenance/hash、加载项、遗漏原因和 context hash。撤权或到期信息 fail closed；当前判断的必要证据不会被预算静默裁掉。
+- `creator/runtime/`：读取私有 Context 前先过 Creator capability；模型端口只返回 exact-key typed action；模型只能引用本次 Context 真正加载的 source/evidence。atomic commit 响应不明时按 exact event ID/payload 重读对账，重试不会再次调用模型。reducer 继续拥有权限、revision 和写入。
+- `creator/eval/`：把进程内 view 与全新 Node 进程冷启动 JSONL 重放后的 Context 比较，并检查 superseded/rejected judgment 不会复活。
 
 当前 capability gate 是运行时执行守卫，不冒充生产鉴权：测试与 Shadow 使用显式 test/shadow principal，并验证 Creator/Rider principal 互相拒绝；生产 authenticated service principal、进程/网络隔离和部署身份尚未实现，所以本目录仍不进入 Python 生产镜像。
 

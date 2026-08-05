@@ -42,7 +42,7 @@ VELO 的替代必须经过三步：
 
 ### 3.2 不把 CLI 开关冒充 Tim 身份
 
-Reborn 的 `allowCurrentExplicit` 是导入门禁，不是已认证的人机审核收据。VELO v0 因此把权限拆成 Creator Agent 与 Tim Reviewer 两个 principal；当前仍只有 test principal，生产 UI 必须把 reviewer capability 绑定到真实登录和不可伪造的审核动作。
+Reborn 的 `allowCurrentExplicit` 是导入门禁，不是已认证的人机审核收据。VELO v0 因此把权限拆成 Creator Agent 与 Tim Reviewer 两个 principal；JSONL 保存由 Store 在授权后生成的 principal/product/environment/capability receipt，冷重放不再注入万能 principal。当前仍只有 test principal，生产 UI 必须把 reviewer capability 绑定到真实登录和不可伪造的审核动作。
 
 ### 3.3 不复制手写 stale lock
 
@@ -53,12 +53,12 @@ Reborn 当前手写锁会在判定 stale 后递归删除 lock，并在 finally �
 Reborn 当前文本 Context 会输出选中项，但没有记录完整 source revision、遗漏原因和编译 hash（`agent_runtime/state/engine.ts:822-876`）。Creator v0 每次编译同时返回：
 
 - workspace revision 和最后 event；
-- request hash 与 context hash；
+- 带确定性 `as_of` 的 request hash 与 context hash；
 - 当前 judgment、pending proposal、turn、evidence、contradiction refs；
-- source content hash 与 provenance；
-- superseded、rejected、resolved、subject mismatch、already processed 和 budget omission。
+- source event/rights revision、不可变 blob/provider ref、content hash 与 provenance；
+- superseded、rejected、resolved、subject mismatch、rights not allowed、review due、already processed 和 budget omission。
 
-支持当前判断的证据不受 `max_evidence` 预算裁掉；预算只能删可选背景证据。
+支持当前判断的证据不受 `max_evidence` 预算裁掉；预算只能删可选背景证据。source 最新 rights 不再 allowed、judgment 到达 `review_at` 或引用跨 subject 时 fail closed，不能继续把原文交给模型。
 
 ## 4. 当前事件闭环
 
@@ -85,8 +85,11 @@ compile current context → cold replay Eval
 - 普通“我同意”文字没有 `judgment_response` interaction，不能确认任何判断。
 - Agent principal 即使拿到正确 proposal 和 Tim turn，也没有 `judgment.decide` capability。
 - 同一 `source_message_ref` 不能重复写入；同 event ID 不同内容 fail closed。
+- `judgment_response` turn 必须在 exact active proposal 之后记录，不能先伪造“Tim 已确认”再补 proposal。
 - replacement proposal 不会提前抹掉旧判断；确认新判断后才替代。
-- resolved contradiction 和 superseded/rejected judgment 不进入 current context，但保留在事件链和 omission manifest。
+- `needs_more_evidence` 继续保持 contradiction 未决；只有 dismissed/superseded 才关闭。
+- resolved contradiction 和 superseded/rejected/review-due/rights-blocked judgment 不进入 current context，但保留在事件链和 omission manifest。
+- Creator private read 在调用模型前校验 capability；commit 响应不明时按 exact event 重读，重试同 event 不再次调用模型。
 - Creator 仍然只有 World Change Proposal，没有 publish 事件。
 
 ## 5. 代码所有权
@@ -107,9 +110,9 @@ compile current context → cold replay Eval
 - `content/routes/tianlongshan/meta.json` 的 Tim 拍定本来源；
 - `docs/agent-first/source/VELO_路线认知基础设施_v0.1.md` 的“线性 / 核心爬坡 / 半开放”分类。
 
-闭环先形成较粗判断，再用蓝图证据提出显式替代；Shadow Tim reviewer 确认后，冷启动 Context 只保留新判断，旧判断和已解决矛盾只出现在 omission。这里的 reviewer 是测试协议，不冒充 Tim 在生产环境已经执行过审核。
+闭环先形成较粗判断，再用蓝图证据提出显式替代；Shadow Tim reviewer 确认后，全新 Node 进程冷启动 Context 只保留新判断，旧判断和已解决矛盾只出现在 omission。repository Source 保存当前内容对应的 Git blob ref；每条 event 保存实际 test principal/capability receipt。这里的 reviewer 是测试协议，不冒充 Tim 在生产环境已经执行过审核。
 
-它证明：合同、权限、替代语义、来源追踪和重放有效。它没有证明：材料本身百分之百真实、模型推荐质量、腾讯连接质量、骑友接受度或 Published World 可以上线。
+它证明：合同、权限、替代语义、来源追踪和重放有效。它没有证明：材料本身百分之百真实、模型推荐质量、腾讯连接质量、骑友接受度或 Published World 可以上线；Judgment → Claim/Eval → World Change 的 adapter 与防旧信息发布 Eval 明确留给后续切片。
 
 ## 7. 数据库现在可以怎样进入
 

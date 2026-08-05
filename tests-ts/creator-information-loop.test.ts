@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import { compileCreatorContext } from "../agent_runtime/creator/context/compiler.ts";
 import { evaluateCreatorContextReplay } from "../agent_runtime/creator/eval/context-replay.ts";
@@ -11,7 +15,10 @@ import {
   createTestCreatorPrincipal,
   createTestCreatorReviewerPrincipal,
 } from "../agent_runtime/creator/capabilities.ts";
-import { CreatorAgentV0 } from "../agent_runtime/creator/runtime/agent-v0.ts";
+import {
+  CreatorAgentV0,
+  CreatorCommitReconciliationRequiredError,
+} from "../agent_runtime/creator/runtime/agent-v0.ts";
 import {
   DeterministicCreatorShadowModel,
   validateCreatorModelAction,
@@ -19,8 +26,12 @@ import {
 } from "../agent_runtime/creator/runtime/model.ts";
 import { JsonlCreatorStore } from "../agent_runtime/creator/state/engine.ts";
 import type { CreatorEvent } from "../agent_runtime/creator/state/types.ts";
-import { contentHash } from "../agent_runtime/shared/canonical.ts";
+import { canonicalJson, contentHash } from "../agent_runtime/shared/canonical.ts";
 import type { RuntimePrincipal } from "../agent_runtime/shared/capability-gate.ts";
+import { createShadowRiderPrincipal } from "../agent_runtime/consumer/capabilities.ts";
+import type { CreatorWorkspaceStore } from "../agent_runtime/creator/state/store-port.ts";
+
+const execFileAsync = promisify(execFile);
 
 const fullPrincipal = createTestCreatorPrincipal();
 const agentPrincipal = createTestCreatorAgentPrincipal();
@@ -30,6 +41,11 @@ const subjectRef = "route:tianlongshan";
 
 function at(minute: number): string {
   return `2026-08-05T09:${String(minute).padStart(2, "0")}:00.000Z`;
+}
+
+function gitBlobRef(content: string): string {
+  const hash = createHash("sha1").update(`blob ${Buffer.byteLength(content, "utf8")}\0`).update(content).digest("hex");
+  return `git-blob:${hash}`;
 }
 
 async function commit(
@@ -67,7 +83,7 @@ async function setupRealTianlongshanLoop() {
   });
   await commit(store, {
     ...base("loop-2", at(1)), type: "creator.source_ingested", source_ref: "repo:tianlongshan-guide",
-    source_kind: "repository", content_hash: contentHash(guide), provenance_ref: meta.source_ref,
+    source_kind: "repository", content_hash: contentHash(guide), immutable_ref: gitBlobRef(guide), provenance_ref: meta.source_ref,
   });
   await commit(store, {
     ...base("loop-3", at(2)), type: "creator.rights_checked", rights_check_id: "rights:guide",
@@ -76,7 +92,8 @@ async function setupRealTianlongshanLoop() {
   });
   await commit(store, {
     ...base("loop-4", at(3)), type: "creator.source_ingested", source_ref: "conversation:shadow-review",
-    source_kind: "conversation", content_hash: contentHash("creator-loop-shadow-review"), provenance_ref: "shadow:tim-review-protocol",
+    source_kind: "conversation", content_hash: contentHash("creator-loop-shadow-review"),
+    immutable_ref: contentHash("creator-loop-shadow-review"), provenance_ref: "shadow:tim-review-protocol",
   });
   await commit(store, {
     ...base("loop-5", at(4)), type: "creator.rights_checked", rights_check_id: "rights:shadow-review",
@@ -113,7 +130,7 @@ async function setupRealTianlongshanLoop() {
     },
   ]);
   const runtime = new CreatorAgentV0(store, agentPrincipal, model);
-  return { store, runtime, directory, blueprint, firstStatement, replacementStatement };
+  return { store, runtime, model, directory, blueprint, firstStatement, replacementStatement };
 }
 
 test("Creator binds Tim confirmation to the exact proposal and rejects prose or Agent authority", async () => {
@@ -124,7 +141,7 @@ test("Creator binds Tim confirmation to the exact proposal and rejects prose or 
   });
   assert.equal(firstRun.action.type, "propose_judgment");
   assert.equal(firstRun.context_manifest.request_hash, contentHash({
-    task: "判断天龙山路线结构", subject_refs: [subjectRef], max_pending_turns: 20, max_evidence: 30,
+    task: "判断天龙山路线结构", subject_refs: [subjectRef], as_of: at(6), max_pending_turns: 20, max_evidence: 30,
   }));
   const proposedView = (await store.read(workspaceId)).view!;
   assert.equal(proposedView.judgments["judgment:tianlongshan-v1"]?.context_request_hash, firstRun.context_manifest.request_hash);
@@ -181,7 +198,8 @@ test("real Tianlongshan materials survive replacement, cold replay and context c
   }, reviewerPrincipal);
   await commit(store, {
     ...base("loop-10", at(9)), type: "creator.source_ingested", source_ref: "repo:route-cognition-blueprint",
-    source_kind: "repository", content_hash: contentHash(blueprint), provenance_ref: "docs/agent-first/source/VELO_路线认知基础设施_v0.1.md",
+    source_kind: "repository", content_hash: contentHash(blueprint), immutable_ref: gitBlobRef(blueprint),
+    provenance_ref: "docs/agent-first/source/VELO_路线认知基础设施_v0.1.md",
   });
   await commit(store, {
     ...base("loop-11", at(10)), type: "creator.rights_checked", rights_check_id: "rights:blueprint",
@@ -230,6 +248,10 @@ test("real Tianlongshan materials survive replacement, cold replay and context c
   assert.equal(bundle.manifest.included.source_revisions.some((item) => item.source_ref === "repo:tianlongshan-guide"), true);
   assert.equal(bundle.manifest.included.source_revisions.some((item) => item.source_ref === "repo:route-cognition-blueprint"), true);
   assert.equal(bundle.manifest.included.source_revisions.some((item) => item.source_ref === "conversation:shadow-review"), true);
+  const guideSource = bundle.manifest.included.source_revisions.find((item) => item.source_ref === "repo:tianlongshan-guide");
+  assert.equal(guideSource?.source_event_revision, 2);
+  assert.match(guideSource?.immutable_ref ?? "", /^git-blob:[0-9a-f]{40}$/);
+  assert.equal(guideSource?.rights_decision, "allowed");
   assert.deepEqual(bundle.manifest.included.judgment_source_turn_refs, ["turn:confirm-v2"]);
   const constrained = compileCreatorContext(liveView, {
     task: "极小上下文仍保留当前判断的来源", subject_refs: [subjectRef], max_pending_turns: 0, max_evidence: 0,
@@ -245,6 +267,14 @@ test("real Tianlongshan materials survive replacement, cold replay and context c
     unresolved_contradiction_refs: [],
   });
   assert.equal(evaluation.verdict, "pass", JSON.stringify(evaluation.checks));
+  const records = (await store.read(workspaceId)).records;
+  assert.equal(records.find((item) => item.event.event_id === "loop-14")?.committed_by.principal_id, agentPrincipal.principal_id);
+  assert.equal(records.find((item) => item.event.event_id === "loop-16")?.committed_by.principal_id, reviewerPrincipal.principal_id);
+  const helperPath = fileURLToPath(new URL("./helpers/creator-replay-child.ts", import.meta.url));
+  const { stdout } = await execFileAsync(process.execPath, [
+    "--no-warnings", "--experimental-strip-types", helperPath, directory, workspaceId, JSON.stringify(request),
+  ]);
+  assert.equal(stdout, canonicalJson(bundle));
 });
 
 test("Tim can explicitly reject an Agent judgment without creating current truth", async () => {
@@ -292,5 +322,168 @@ test("Creator runtime rejects model citations that were not present in its compi
     workspace_id: workspaceId, event_id: "leak-7", occurred_at: at(6), task: "判断另一条路线",
     subject_refs: ["route:other"],
   }), /evidence outside the compiled context/);
-  assert.equal((await store.read(workspaceId)).view?.revision, 6);
+  await assert.rejects(() => runtime.run({
+    workspace_id: workspaceId, event_id: "cross-subject-7", occurred_at: at(6), task: "同时查看两条路线但不得串用证据",
+    subject_refs: [subjectRef, "route:other"],
+  }), /judgment evidence belongs to another subject/);
+  const unchanged = await store.read(workspaceId);
+  assert.equal(unchanged.view?.revision, 6);
+  const otherContext = compileCreatorContext(unchanged.view!, { task: "判断另一条路线", subject_refs: ["route:other"] });
+  assert.equal(otherContext.manifest.omissions.some((item) => (
+    item.category === "evidence" && item.reason === "subject_mismatch" && item.refs.includes("evidence:guide")
+  )), true);
+});
+
+test("Creator rejects Rider reads before compiling private Context or invoking the model", async () => {
+  const { store } = await setupRealTianlongshanLoop();
+  let modelCalls = 0;
+  const observingModel: CreatorDecisionModel = {
+    model_ref: "test:must-not-run",
+    async decide() {
+      modelCalls += 1;
+      return { type: "no_action", reason: "must not observe Creator private context" };
+    },
+  };
+  const riderPrincipal = createShadowRiderPrincipal();
+  const runtime = new CreatorAgentV0(store, riderPrincipal, observingModel);
+  await assert.rejects(() => runtime.run({
+    workspace_id: workspaceId, event_id: "rider-leak", occurred_at: at(6), task: "读取 Creator 私有材料",
+    subject_refs: [subjectRef],
+  }), /capability denied.*context\.read_private/);
+  await assert.rejects(() => store.readAs(workspaceId, riderPrincipal), /capability denied.*context\.read_private/);
+  assert.equal(modelCalls, 0);
+});
+
+test("Creator runtime reconciles a committed event and retries without invoking the model twice", async () => {
+  const { store, model } = await setupRealTianlongshanLoop();
+  let modelCalls = 0;
+  const countingModel: CreatorDecisionModel = {
+    model_ref: model.model_ref,
+    async decide(bundle, signal) {
+      modelCalls += 1;
+      return model.decide(bundle, signal);
+    },
+  };
+  let failResponseOnce = true;
+  const commitThenFailStore: CreatorWorkspaceStore = {
+    readAs: (workspace, principal) => store.readAs(workspace, principal),
+    async appendAs(event, principal) {
+      const view = await store.appendAs(event, principal);
+      if (failResponseOnce) {
+        failResponseOnce = false;
+        throw new Error("simulated response loss after durable Creator commit");
+      }
+      return view;
+    },
+  };
+  const runtime = new CreatorAgentV0(commitThenFailStore, agentPrincipal, countingModel);
+  const request = {
+    workspace_id: workspaceId, event_id: "reconcile-7", occurred_at: at(6), task: "判断天龙山路线结构",
+    subject_refs: [subjectRef],
+  };
+  const first = await runtime.run(request);
+  assert.equal(first.commit_status, "reconciled");
+  assert.equal(first.committed_revision, 7);
+  const retry = await runtime.run(request);
+  assert.equal(retry.commit_status, "reconciled");
+  assert.equal(retry.context_manifest.context_hash, first.context_manifest.context_hash);
+  assert.equal(modelCalls, 1);
+});
+
+test("Creator runtime reports typed reconciliation_required when commit outcome cannot be read", async () => {
+  const { store, model } = await setupRealTianlongshanLoop();
+  let reads = 0;
+  const unreadableStore: CreatorWorkspaceStore = {
+    async readAs(workspace, principal) {
+      reads += 1;
+      if (reads > 1) throw new Error("simulated reconciliation read failure");
+      return store.readAs(workspace, principal);
+    },
+    async appendAs() {
+      throw new Error("simulated ambiguous commit failure");
+    },
+  };
+  const runtime = new CreatorAgentV0(unreadableStore, agentPrincipal, model);
+  await assert.rejects(() => runtime.run({
+    workspace_id: workspaceId, event_id: "unreadable-7", occurred_at: at(6), task: "判断天龙山路线结构",
+    subject_refs: [subjectRef],
+  }), (error: unknown) => (
+    error instanceof CreatorCommitReconciliationRequiredError
+    && /read-after-error reconciliation also failed/.test(error.message)
+  ));
+});
+
+test("Creator requires the exact active proposal before recording a Tim response interaction", async () => {
+  const { store } = await setupRealTianlongshanLoop();
+  await assert.rejects(() => commit(store, {
+    ...base("early-response", at(6)), type: "creator.conversation_turn_recorded", turn_id: "turn:early-response",
+    source_ref: "conversation:shadow-review", source_message_ref: "shadow-message:early-response", source_role: "user",
+    actor: "tim", authorship_basis: "direct_unquoted_message", raw_text: "提前确认不存在的提议",
+    content_hash: contentHash("提前确认不存在的提议"), subject_refs: [subjectRef],
+    interaction: { kind: "judgment_response", proposal_id: "judgment:not-created", statement_hash: contentHash("不存在"), response: "tim_confirmed" },
+  }, reviewerPrincipal), /requires an existing exact active proposal/);
+});
+
+test("Creator Context fails closed when rights are revoked or a judgment reaches review_at", async () => {
+  const { store, runtime, firstStatement } = await setupRealTianlongshanLoop();
+  await runtime.run({ workspace_id: workspaceId, event_id: "fresh-7", occurred_at: at(6), task: "判断天龙山路线结构", subject_refs: [subjectRef] });
+  await commit(store, {
+    ...base("fresh-8", at(7)), type: "creator.conversation_turn_recorded", turn_id: "turn:fresh-confirm",
+    source_ref: "conversation:shadow-review", source_message_ref: "shadow-message:fresh-confirm", source_role: "user", actor: "tim",
+    authorship_basis: "direct_unquoted_message", raw_text: "确认待复核判断", content_hash: contentHash("确认待复核判断"), subject_refs: [subjectRef],
+    interaction: { kind: "judgment_response", proposal_id: "judgment:tianlongshan-v1", statement_hash: contentHash(firstStatement), response: "tim_confirmed" },
+  }, reviewerPrincipal);
+  const confirmed = await commit(store, {
+    ...base("fresh-9", at(8)), type: "creator.judgment_responded", decision_id: "decision:fresh-v1",
+    proposal_id: "judgment:tianlongshan-v1", response_turn_ref: "turn:fresh-confirm", response: "tim_confirmed",
+    expected_statement_hash: contentHash(firstStatement),
+  }, reviewerPrincipal);
+  const due = compileCreatorContext(confirmed, {
+    task: "复核过期判断", subject_refs: [subjectRef], as_of: "2027-01-01T00:00:00.000Z",
+  });
+  assert.deepEqual(due.context.current_judgments, []);
+  assert.equal(due.manifest.omissions.some((item) => item.reason === "review_due" && item.refs.includes("judgment:tianlongshan-v1")), true);
+
+  const revoked = await commit(store, {
+    ...base("rights-revoked-10", at(9)), type: "creator.rights_checked", rights_check_id: "rights:guide-revoked",
+    source_ref: "repo:tianlongshan-guide", decision: "forbidden", policy_ref: "policy:repository-revoked-v1",
+    reason: "验证撤权后原始材料不会继续进入模型 Context。",
+  });
+  const blocked = compileCreatorContext(revoked, { task: "撤权后重新编译", subject_refs: [subjectRef], as_of: at(9) });
+  assert.deepEqual(blocked.context.current_judgments, []);
+  assert.deepEqual(blocked.context.relevant_evidence, []);
+  assert.equal(blocked.manifest.omissions.some((item) => item.reason === "rights_not_allowed" && item.refs.includes("evidence:guide")), true);
+  assert.equal(blocked.manifest.included.source_revisions.some((item) => item.source_ref === "repo:tianlongshan-guide"), false);
+});
+
+test("needs_more_evidence keeps a contradiction open until a later terminal resolution", async () => {
+  const { store, runtime, firstStatement } = await setupRealTianlongshanLoop();
+  await runtime.run({ workspace_id: workspaceId, event_id: "open-7", occurred_at: at(6), task: "判断天龙山路线结构", subject_refs: [subjectRef] });
+  await commit(store, {
+    ...base("open-8", at(7)), type: "creator.conversation_turn_recorded", turn_id: "turn:open-confirm",
+    source_ref: "conversation:shadow-review", source_message_ref: "shadow-message:open-confirm", source_role: "user", actor: "tim",
+    authorship_basis: "direct_unquoted_message", raw_text: "确认第一版", content_hash: contentHash("确认第一版"), subject_refs: [subjectRef],
+    interaction: { kind: "judgment_response", proposal_id: "judgment:tianlongshan-v1", statement_hash: contentHash(firstStatement), response: "tim_confirmed" },
+  }, reviewerPrincipal);
+  await commit(store, {
+    ...base("open-9", at(8)), type: "creator.judgment_responded", decision_id: "decision:open-v1",
+    proposal_id: "judgment:tianlongshan-v1", response_turn_ref: "turn:open-confirm", response: "tim_confirmed",
+    expected_statement_hash: contentHash(firstStatement),
+  }, reviewerPrincipal);
+  await commit(store, {
+    ...base("open-10", at(9)), type: "creator.judgment_contradiction_recorded", contradiction_id: "contradiction:open",
+    judgment_id: "judgment:tianlongshan-v1", contradicting_ref: "evidence:guide", reason: "需要第二份独立材料。",
+  }, agentPrincipal);
+  await commit(store, {
+    ...base("open-11", at(10)), type: "creator.human_review_requested", review_id: "review:more-evidence",
+    target_ref: "contradiction:open", request_kind: "request_more_evidence", reason: "继续收集骑友实测。",
+  });
+  const view = await commit(store, {
+    ...base("open-12", at(11)), type: "creator.judgment_contradiction_resolved", resolution_id: "resolution:still-open",
+    contradiction_id: "contradiction:open", resolution: "needs_more_evidence", resolution_ref: "review:more-evidence",
+    reason: "当前不能关闭矛盾。",
+  }, agentPrincipal);
+  assert.equal(view.judgment_contradictions["contradiction:open"]?.resolved, false);
+  const bundle = compileCreatorContext(view, { task: "继续判断天龙山", subject_refs: [subjectRef], as_of: at(11) });
+  assert.deepEqual(bundle.manifest.included.contradiction_refs, ["contradiction:open"]);
 });

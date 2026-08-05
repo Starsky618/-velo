@@ -2,6 +2,7 @@ import { CapabilityGate, type RuntimePrincipal } from "../shared/capability-gate
 
 export const CREATOR_CAPABILITIES = [
   "workspace.create",
+  "context.read_private",
   "source.ingest",
   "conversation.record",
   "evidence.inspect_raw",
@@ -17,6 +18,26 @@ export const CREATOR_CAPABILITIES = [
 ] as const;
 
 export type CreatorCapability = (typeof CREATOR_CAPABILITIES)[number];
+
+export function creatorCapabilityForEventType(eventType: string): CreatorCapability {
+  switch (eventType) {
+    case "creator.workspace_started": return "workspace.create";
+    case "creator.source_ingested": return "source.ingest";
+    case "creator.conversation_turn_recorded": return "conversation.record";
+    case "creator.evidence_recorded": return "evidence.inspect_raw";
+    case "creator.claim_proposed": return "claim.propose";
+    case "creator.judgment_proposed": return "judgment.propose";
+    case "creator.judgment_responded": return "judgment.decide";
+    case "creator.judgment_contradiction_recorded":
+    case "creator.judgment_contradiction_resolved": return "judgment.contradict";
+    case "creator.world_change_proposed": return "world_change.propose";
+    case "creator.eval_recorded": return "eval.run";
+    case "creator.rights_checked": return "rights.check";
+    case "creator.conflict_analyzed": return "conflict.analyze";
+    case "creator.human_review_requested": return "human_review.request";
+    default: throw new Error(`unknown Creator event capability: ${eventType}`);
+  }
+}
 
 /** Internal knowledge-construction privileges. It cannot serve rider plans or publish truth directly. */
 export function createCreatorCapabilityGate(principal: RuntimePrincipal): CapabilityGate<CreatorCapability> {
@@ -44,6 +65,6 @@ export function createTestCreatorReviewerPrincipal(): RuntimePrincipal {
     principal_id: "test:tim-reviewer",
     product: "creator",
     environment: "test",
-    scopes: ["conversation.record", "judgment.decide"],
+    scopes: ["context.read_private", "conversation.record", "judgment.decide"],
   };
 }

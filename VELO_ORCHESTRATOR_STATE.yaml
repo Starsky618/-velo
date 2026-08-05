@@ -86,14 +86,18 @@ current_delivery:
     - exact_agent_judgment_proposal_and_tim_confirmation_rejection_supersession
     - judgment_contradiction_lifecycle
     - creator_context_compiler_manifest_and_omission_accounting
+    - source_rights_and_review_at_fail_closed_context
+    - persisted_principal_capability_receipts_and_pre_read_creator_authorization
+    - exact_event_commit_reconciliation_without_second_model_call
     - replaceable_model_port_and_deterministic_fake
     - fresh_process_context_replay_eval_with_real_tianlongshan_materials
-    local_validation: 48_typescript_tests_passed
+    local_validation: 55_typescript_tests_passed
     missing:
     - production_conversation_ingestion_adapter
     - authenticated_tim_review_ui_or_api
     - real_llm_and_trace_backend
     - real_world_route_outcome_learning_eval
+    - judgment_to_claim_world_change_adapter_eval
   database:
     status: creator_postgresql_spec_v0_in_current_revision
     migration_created: false

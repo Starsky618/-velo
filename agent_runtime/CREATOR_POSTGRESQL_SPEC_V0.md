@@ -67,6 +67,7 @@ Tim 审核动作 / Creator 模型 typed action
 | `base_revision bigint` | 必须等于 `revision - 1` |
 | `occurred_at timestamptz` | 领域事件时间 |
 | `principal_id text` | 实际提交 principal；不能只相信 payload actor |
+| `principal_product / principal_environment / authorized_capability text` | 认证层写入的授权收据；重放时可审计 Agent proposal 与 Tim reviewer decision |
 | `payload_json jsonb` | exact validated event |
 | `payload_sha256 char(71)` | `sha256:<64 hex>`，用于 idempotency/conflict |
 | `committed_at timestamptz` | 数据库提交时间 |
@@ -85,7 +86,7 @@ Tim 审核动作 / Creator 模型 typed action
 
 ### 4.1 `creator_sources`
 
-保存 `(workspace_id, source_ref)`、source kind、content hash、provenance、当前 rights decision/policy/reason、对应 event revision。UNIQUE `(workspace_id, source_ref)`。
+保存 `(workspace_id, source_ref)`、source kind、content hash、不可变 `immutable_ref`（Git blob/provider revision/content-addressed object）、provenance、当前 rights decision/policy/reason、source 与 rights 对应 event revision。UNIQUE `(workspace_id, source_ref)`。
 
 rights 变更必须追加新 event，再更新投影；不能直接改投影冒充事件。
 
@@ -167,7 +168,20 @@ rights 变更必须追加新 event，再更新投影；不能直接改投影冒�
 
 ## 5. 一次 append 的事务算法
 
-所有 event 走同一事务函数/服务，不给调用方直接写投影：
+所有 event 走同一事务函数/服务，不给调用方直接写投影。
+
+### 5.1 首个 `workspace_started` 原子 bootstrap
+
+空库没有 workspace 行，不能走普通 CAS。`workspace_started(base_revision=0)` 使用专用事务：
+
+1. 先查 `(workspace_id, event_id)`；已有同 hash 返回 revision 1，不同 hash 返回 conflict。
+2. `INSERT creator_workspaces(..., current_revision=1, mission=payload.mission)`；workspace ID 冲突时再次查 event ID：同 event 收敛，否则返回 workspace already exists/stale。
+3. 同事务 INSERT revision 1 的 `workspace_started` event 与初始化投影。
+4. 任一 INSERT/约束失败则整个事务回滚，不能留下“有 workspace、无首事件”的半成品。
+
+两个并发 bootstrap 只有一个 workspace INSERT 成功；另一个等待唯一约束后按 exact event ID + payload hash 幂等收敛或明确冲突。`creator_workspaces` 是事件流的 revision/查询投影，`workspace_started` event 仍是 mission 与创建事实的长期真值。
+
+### 5.2 后续 event 通用 append
 
 1. 按 `(workspace_id, event_id)` 查已有事件。
    - hash 相同：返回原 committed revision，幂等成功；
@@ -191,14 +205,14 @@ RETURNING current_revision;
 
 ## 6. Context 查询与重放
 
-Context 查询只从投影读取：
+Context 查询只从投影读取，并固定一个确定性的 `as_of`：
 
-- 当前 judgment：`status='tim_confirmed' AND superseded_at IS NULL`；
-- pending proposal：`status='proposed'`；
+- 当前 judgment：`status='tim_confirmed' AND superseded_at IS NULL AND (review_at IS NULL OR review_at > :as_of)`，且所有实际加载来源的最新 rights 为 allowed；
+- pending proposal：`status='proposed'`，同时满足 freshness 与 rights；
 - Evidence：当前/pending judgment 连接的必需证据优先，再按 subject/time 取可选证据；
 - contradiction：未解决且目标 judgment 与 subject 匹配；
 - source revision：从实际加载的 message/evidence 回 join source；
-- omission 计数：rejected/superseded/resolved/subject mismatch/budget。
+- omission 计数：rejected/superseded/resolved/subject mismatch/rights not allowed/review due/budget。
 
 每次结果携带 workspace revision。查询开始后 revision 变化时，不把两个 revision 拼成一个 Context；首版用一个 `REPEATABLE READ` 只读事务或显式 `through_revision` 查询。
 
@@ -222,6 +236,9 @@ Context 查询只从投影读取：
 - 同 event ID 同 payload 幂等；不同 payload fail closed。
 - 同 source message 不能重复写入。
 - 普通 Tim prose、Agent principal、错误 proposal ID、错误 statement hash 均无法形成 decision。
+- 首个 workspace 并发 bootstrap 只能形成一条 revision 1 event，失败时不留孤儿 workspace。
+- 每条 event 保存真实 principal/capability 收据，冷重放不依赖注入万能 principal。
+- source rights 撤销或 judgment 到达 `review_at` 后，raw material/current judgment 不再进入 Context，并有明确 omission。
 - 新 replacement 未确认时旧判断仍 current；确认后 partial unique 与 projection 只留下新 current。
 - transaction 在 event/projection 任一点失败时全部回滚。
 - connection loss after commit 可用 event ID receipt reconciliation 收敛。

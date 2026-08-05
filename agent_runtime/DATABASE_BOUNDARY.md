@@ -28,8 +28,8 @@ Creator 与 Rider Consumer 在数据库层也必须低耦合：分别写自己�
 Creator 首个生产持久化候选（表名与约束以 [`CREATOR_POSTGRESQL_SPEC_V0.md`](CREATOR_POSTGRESQL_SPEC_V0.md) 为准）：
 
 - `creator_workspaces`：一次路线认知建设任务的身份、mission、状态与 current revision。
-- `creator_workspace_events`：append-only 原始事件，唯一键 `(workspace_id, revision)` 与 `event_id`；raw Evidence 只在这个权限面可见。
-- `creator_sources`：材料的 provider/source identity、rights、content hash、captured time；解决当前 `evidence_items` 必须“已被判断使用”才能存在的问题。
+- `creator_workspace_events`：append-only 原始事件与实际 principal/capability 收据，唯一键 `(workspace_id, revision)` 与 `event_id`；raw Evidence 只在这个权限面可见。
+- `creator_sources`：材料的 provider/source identity、rights、content hash、不可变 blob/provider revision 与 captured time；解决当前 `evidence_items` 必须“已被判断使用”才能存在的问题。
 - `creator_source_messages`：精确原始 turn、通道角色、实际作者、作者依据与可选的 exact judgment response；同一来源消息不可重复摄取。
 - `creator_judgments` / `creator_judgment_decisions`：Agent proposal 与 Tim exact response 分表，并用 proposal/turn/statement hash 复合约束绑定。
 - `creator_judgment_contradictions`：未决矛盾、替代与解决链；不能把 contradiction 折成 false 或静默覆盖。

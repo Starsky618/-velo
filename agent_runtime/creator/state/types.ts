@@ -36,6 +36,8 @@ export interface SourceIngested extends BaseCreatorEvent {
   source_ref: string;
   source_kind: "conversation" | "rider_report" | "provider" | "manual_research" | "repository";
   content_hash: string;
+  /** Content-addressed blob, provider revision, or immutable upstream message-stream revision. */
+  immutable_ref: string;
   provenance_ref: string;
 }
 
@@ -105,6 +107,7 @@ export interface JudgmentProposed extends BaseCreatorEvent {
   context_request_hash: string;
   context_task: string;
   context_subject_refs: string[];
+  context_as_of: string;
   context_max_pending_turns: number;
   context_max_evidence: number;
   context_hash: string;
@@ -203,6 +206,7 @@ export interface CreatorJudgmentState {
   context_request_hash: string;
   context_task: string;
   context_subject_refs: string[];
+  context_as_of: string;
   context_max_pending_turns: number;
   context_max_evidence: number;
   context_hash: string;
@@ -246,8 +250,25 @@ export interface CreatorView {
   judgments: Record<string, CreatorJudgmentState>;
   judgment_decisions: Record<string, JudgmentResponded>;
   judgment_contradictions: Record<string, CreatorContradictionState>;
+  judgment_contradiction_resolutions: Record<string, JudgmentContradictionResolved>;
   conflict_analyses: Record<string, ConflictAnalyzed>;
   evaluations: Record<string, EvalRecorded>;
   human_review_requests: Record<string, HumanReviewRequested>;
   world_change_proposals: Record<string, WorldChangeProposed>;
+}
+
+export interface CreatorPrincipalReceipt {
+  principal_id: string;
+  product: "creator";
+  environment: "test" | "shadow" | "production";
+  capability: string;
+}
+
+/**
+ * Storage-owned envelope. Callers submit an event plus an authenticated
+ * principal; the store creates this receipt after capability authorization.
+ */
+export interface CreatorStoredEvent {
+  event: CreatorEvent;
+  committed_by: CreatorPrincipalReceipt;
 }

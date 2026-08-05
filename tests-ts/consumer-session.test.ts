@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import { compileRiderContext } from "../agent_runtime/consumer/context/compiler.ts";
 import { applySessionEvent, JsonlSessionStore, replaySession, validateSessionEvent } from "../agent_runtime/consumer/session/engine.ts";
 import { JsonlSessionRuntimePort, type SessionEventStore } from "../agent_runtime/consumer/session/jsonl-runtime-port.ts";
 import type { RiderSessionEvent, SessionView, TurnRecordedEvent } from "../agent_runtime/consumer/session/types.ts";
 import { contentHash } from "../agent_runtime/shared/canonical.ts";
+
+const execFileAsync = promisify(execFile);
 
 function start(): RiderSessionEvent {
   return {
@@ -290,6 +295,24 @@ test("two stale-lock recoverers never both enter the JSONL critical section", as
     1,
     outcomes.map((outcome) => outcome.status === "rejected" ? String(outcome.reason) : "fulfilled").join(" | "),
   );
+  const reloaded = await store.read("session-1");
+  assert.equal(reloaded.events.length, 2);
+  assert.equal(reloaded.view?.revision, 2);
+});
+
+test("two independent Node processes cannot both append the same JSONL revision", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "velo-rider-session-cross-process-lock-"));
+  const store = new JsonlSessionStore(directory);
+  await store.append(start());
+  const helperPath = fileURLToPath(new URL("./helpers/session-append-child.ts", import.meta.url));
+  const runChild = (event: RiderSessionEvent) => execFileAsync(process.execPath, [
+    "--no-warnings", "--experimental-strip-types", helperPath, directory, JSON.stringify(event),
+  ]);
+  const outcomes = await Promise.allSettled([
+    runChild(riderTurn(1, "cross-process A")),
+    runChild({ ...riderTurn(1, "cross-process B"), event_id: "event-turn-cross-b", turn_id: "turn-cross-b" }),
+  ]);
+  assert.equal(outcomes.filter((outcome) => outcome.status === "fulfilled").length, 1);
   const reloaded = await store.read("session-1");
   assert.equal(reloaded.events.length, 2);
   assert.equal(reloaded.view?.revision, 2);
