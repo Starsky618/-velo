@@ -1,6 +1,6 @@
 # Creator PostgreSQL Persistence Spec v0
 
-> 状态：架构规格，尚未创建 Alembic migration。只有当前 Creator v0 PR/CI 通过，并在临时 PostgreSQL 验证本文事务与重放门禁后，才允许落 migration。
+> 状态：Persistence Slice v0 只实现本文的事件真值、事务投影、内部 Store 与重放对账部分。Alembic revision `20260806_creator_pg_v0`、Python 单事务 service、可组合但未挂载公共 API 的内部 router，以及 TypeScript HTTP Store adapter 已进入同一交付切片；§6 的 projection-native Context 查询、漂移后停写/报警和生产身份仍未实现，不能把本切片称为完整生产持久化。
 
 ## 1. 推荐方案
 
@@ -22,7 +22,9 @@ Tim 审核动作 / Creator 模型 typed action
   → TypeScript 按该 revision 重读并编译 Context
 ```
 
-第一处仍未证明的边界是“内部 API 到真实 PostgreSQL 的并发/失败恢复”，所以本文先固定事务与约束，不在本轮创建生产表。
+本切片已经在任务专属 PostgreSQL 验证内部 Store wire contract、并发 CAS、幂等、投影回滚、精确判断绑定、撤权/到期 fail-closed、contradiction/replacement、commit 后 event-ID 收敛，以及 PostgreSQL event read 与 JSONL 的 Context hash。关系投影目前用冷重放 digest 对账，不直接生成 Context。仍未证明的是 projection-native Context、生产 bearer 身份签发、网络隔离、真实断网和 Tim UI；因此 router factory 不挂到 `app/main.py`，migration 也不在本切片部署生产。
+
+跨语言事件合同以 JavaScript 可精确表达、Python 可编码为标准 UTF-8 的 JSON 为交集：整数必须位于 `Number.isSafeInteger` 范围；字符串只允许 Unicode scalar value，拒绝孤立 surrogate；`context_subject_refs` 必须采用 JavaScript 默认的 UTF-16 code-unit 顺序。Python 边界在计算 hash 和写入事件真值前执行相同门禁，不能接收会在 Node 读取时静默变值、编码失败或重排的 payload。
 
 ## 2. 为什么不能直接复用现有表
 
@@ -90,6 +92,8 @@ Tim 审核动作 / Creator 模型 typed action
 
 rights 变更必须追加新 event，再更新投影；不能直接改投影冒充事件。
 
+实现中另有窄表 `creator_rights_checks` 保留每个 `rights_check_id`，使历史 check identity 在数据库层也不可复用；`creator_sources` 仍只缓存当前 rights。否则旧 check 被新 check 覆盖后，数据库会接受 TypeScript reducer 无法重放的重复 ID。
+
 ### 4.2 `creator_source_messages`
 
 保存 exact raw turn：
@@ -109,7 +113,7 @@ rights 变更必须追加新 event，再更新投影；不能直接改投影冒�
 关键约束：
 
 - PK `(workspace_id, turn_id)`；
-- UNIQUE `(workspace_id, source_ref, source_message_ref)`，防同一原始消息重复导入；
+- UNIQUE `(workspace_id, source_message_ref)`，与 Runtime 一致，在整个 workspace 防同一原始消息跨 source 重复导入；
 - interaction 四列必须全空或按协议全有；有 interaction 时 `source_role='user' AND actor='tim'`；
 - 为 decision 精确 FK 建 UNIQUE `(workspace_id, turn_id, interaction_proposal_id, interaction_statement_hash, interaction_response)`。
 
@@ -203,9 +207,9 @@ RETURNING current_revision;
 
 两个相同 base revision 的并发 writer 最多一个 CAS 成功；另一个只能通过同 event ID 幂等收敛或显式 stale conflict。
 
-## 6. Context 查询与重放
+## 6. 目标态 Context 查询与重放（v0 尚未全部实现）
 
-Context 查询只从投影读取，并固定一个确定性的 `as_of`：
+目标态 Context 查询只从投影读取，并固定一个确定性的 `as_of`。当前 v0 HTTP Store 读取 append-only events，由唯一的 TypeScript reducer/compiler 重放 Context，避免 Python 再复制一套 Context 语义；数据库投影仅用于约束、查询准备和 digest 对账：
 
 - 当前 judgment：`status='tim_confirmed' AND superseded_at IS NULL AND (review_at IS NULL OR review_at > :as_of)`，且所有实际加载来源的最新 rights 为 allowed；
 - pending proposal：`status='proposed'`，同时满足 freshness 与 rights；
@@ -216,14 +220,14 @@ Context 查询只从投影读取，并固定一个确定性的 `as_of`：
 
 每次结果携带 workspace revision。查询开始后 revision 变化时，不把两个 revision 拼成一个 Context；首版用一个 `REPEATABLE READ` 只读事务或显式 `through_revision` 查询。
 
-重放验证：从 `creator_workspace_events` 读指定 revision 前缀，用 TypeScript reducer 重建 View，再与数据库投影的 current judgment、pending proposal、decision 和 unresolved contradiction 集合比较。检测不一致时停止 Creator 写入并报警；自动修复另开受控命令，不在请求内静默覆盖。
+重放验证目标：从 `creator_workspace_events` 读指定 revision 前缀，用 TypeScript reducer 重建 View，再与数据库投影比较。v0 已比较 source/rights revision、current/pending judgment、decision 与 unresolved contradiction digest；尚未实现完整 Context 内容 digest，也未在发现漂移后自动停止写入和报警。自动修复仍必须另开受控命令，不能在请求内静默覆盖。
 
 ## 7. 迁移和混合版本顺序
 
 1. 先新增空表、约束和内部 repository/service；不改旧表、不 backfill。
 2. CI 临时 PostgreSQL 跑 upgrade/downgrade/upgrade、两个并发 CAS、相同/冲突 event ID、exact decision FK、冷重放对账。
-3. TypeScript 增加内部 API Store adapter，仅运行 Shadow；JSONL 仍保留为对照，不双写生产真值。
-4. 用天龙山同一组事件比较 JSONL 与 Postgres Context hash。
+3. TypeScript 增加内部 API Store adapter，仅运行 Shadow；JSONL 仍保留为对照，不双写生产真值。**本切片已实现**。
+4. 用天龙山同一组事件比较 JSONL 与 Postgres event-read Context hash，并比较关系投影 digest。**本切片已通过任务专属真 PostgreSQL 测试；不是 projection-native Context 验收**。
 5. 通过后才启用一个内部 Creator workspace；此时 Postgres 成为该 workspace 的唯一事件真值，不能同时接受 JSONL 写入。
 6. 生产验证稳定后再讨论 World Change/Published World migration；Rider 表族另开独立纵向切片。
 
@@ -251,3 +255,11 @@ Context 查询只从投影读取，并固定一个确定性的 `as_of`：
 - 若生产边界改为独立 Node Creator 服务并获得隔离数据库账号，可以重新评估 TypeScript 直连；在此之前坚持 Domain Plane API。
 - 若 exact decision 复合 FK 在真实 Alembic/Postgres 中造成不可接受的写入复杂度，允许退到单个数据库事务函数/trigger，但不能退成“应用记得校验”。
 - 若 Creator v0 的事件合同在真实 UI/provider 接线中频繁变化，暂停 migration，继续 JSONL Shadow；不要用不停改表掩盖合同未稳定。
+
+## 10. v0 实现边界
+
+当前 PostgreSQL service 只接受信息/判断闭环所需的九种事件：workspace、source、rights、conversation turn、evidence、judgment proposal/decision、contradiction record/resolve。Claim/Eval/World Change、Published World、Rider persistence 仍由 TypeScript Shadow 合同保留，不能借本 migration 偷渡入库。
+
+`human_review_requested` 也不在这九种事件内，因此 v0 contradiction resolution 只接受 same-subject evidence、turn、judgment，或已确认的 replacement；TypeScript Shadow 中指向 human-review request 的合法 resolution 要等该事件族进入后续 migration，当前 HTTP Store 会在发请求前明确拒绝，不会到服务端才得到隐式 422。
+
+内部 API 使用 `GET /internal/creator/workspaces/{id}` 与 `POST /internal/creator/workspaces/{id}/events`。认证 principal 只能由部署方注入的 bearer authenticator 生成；POST body 只有 event，不能自报 principal。仓库没有生产 token verifier，也没有把 router 挂到公开 FastAPI app。

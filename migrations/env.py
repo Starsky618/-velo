@@ -32,6 +32,7 @@ import app.training.models   # noqa: F401 — daily_training_load 表
 import app.route_book.models  # noqa: F401 — route_books 表
 import app.route_cognition.models  # noqa: F401 — judgment / evidence / research 表
 import app.meetup.models      # noqa: F401 — meetups + participants + media 表
+import app.creator_persistence.models  # noqa: F401 — Creator private event truth + projections
 
 # Alembic 配置对象（读取 alembic.ini）
 config = context.config

@@ -1,6 +1,6 @@
 schema_version: 2
 project: VELO
-updated_at: '2026-08-05T18:18:37+08:00'
+updated_at: '2026-08-06T00:00:00+08:00'
 status: active
 
 authority:
@@ -100,34 +100,56 @@ current_delivery:
     - real_world_route_outcome_learning_eval
     - judgment_to_claim_world_change_adapter_eval
   database:
-    status: creator_postgresql_spec_v0_merged
-    migration_created: false
+    status: creator_postgresql_persistence_v0_implemented_not_production_enabled
+    migration_created: true
     paths:
     - agent_runtime/DATABASE_BOUNDARY.md
     - agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md
+    - migrations/versions/20260806_creator_pg_v0.py
+    - app/creator_persistence
+    - agent_runtime/creator/state/http-store.ts
+    implemented:
+    - 13_isolated_creator_tables
+    - append_only_event_triggers_for_update_delete_and_truncate
+    - revision_compare_and_swap_and_exact_event_idempotency
+    - same_transaction_event_and_projection_writes
+    - source_message_workspace_global_deduplication
+    - exact_judgment_proposal_turn_evidence_and_decision_binding
+    - contradiction_and_resolution_projection
+    - injected_bearer_authenticator_internal_http_router
+    - typescript_http_store_exact_prefix_readback_and_reconciliation
+    local_validation:
+      typescript: 81_passed_0_failed_0_skipped
+      creator_postgresql: 16_passed_0_failed_0_skipped
+      alembic: single_head_20260806_creator_pg_v0
+      static: python_compileall_and_git_diff_check_passed
+    not_enabled:
+    - production_database_migration
+    - production_authenticator_or_token
+    - production_route_mount
+    - projection_native_context_or_drift_stop_alarm
 
 next_task:
-  id: creator_postgresql_persistence_slice_v0
-  status: ready_to_implement
-  objective: implement_the_spec_as_a_minimal_migration_repository_transaction_and_cross_store_replay_slice
+  id: creator_projection_native_context_and_drift_stop_shadow_v0
+  status: recommended_not_started
+  objective: make_database_projection_and_typescript_cold_replay_produce_comparable_context_and_fail_closed_on_drift_before_real_internal_enablement
   required_sequence:
-  - create_empty_creator_event_truth_and_required_projection_tables
-  - implement_python_domain_plane_revision_cas_idempotency_and_projection_transaction
-  - implement_internal_authenticated_creator_workspace_store_adapter
-  - test_empty_postgresql_upgrade_downgrade_upgrade_concurrency_and_reconciliation
-  - compare_jsonl_and_postgresql_context_hash_for_the_tianlongshan_event_chain
+  - define_projection_native_context_and_manifest_contract_without_copying_the_typescript_reducer
+  - compare_database_projection_to_typescript_cold_replay_for_every_supported_event_chain
+  - persist_or_emit_structured_drift_alarm_and_fail_closed_on_mismatch
+  - bind_real_tim_identity_to_the_injected_internal_authenticator
+  - mount_only_an_internal_shadow_route_and_run_real_database_reconciliation
   acceptance:
-  - no_changes_to_users_activities_segments_or_segment_efforts
-  - concurrent_same_revision_writers_cannot_both_commit
-  - same_event_id_same_payload_is_idempotent_and_conflicting_payload_fails
-  - tim_decision_cannot_commit_without_exact_proposal_turn_and_statement_hash
-  - cold_database_replay_matches_typescript_current_judgment_projection
-  - rollback_and_reconciliation_are_explicitly_tested
+  - projection_native_context_matches_typescript_context_and_manifest_field_for_field
+  - any_projection_or_replay_drift_stops_the_read_instead_of_returning_context
+  - bearer_identity_is_bound_to_tim_and_not_just_possession_of_a_static_secret
+  - router_remains_creator_internal_and_is_not_reachable_by_rider_principals
+  - empty_database_concurrency_disconnect_and_cold_replay_tests_remain_green
 
 explicitly_not_complete:
 - production_creator_or_rider_agent
 - creator_long_term_memory_or_vector_database
-- production_postgresql_agent_schema
+- production_enabled_postgresql_creator_schema
 - real_llm_or_tencent_provider
 - strava_ingestion_or_rights_approval
 - miniprogram_or_api_integration
