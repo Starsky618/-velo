@@ -1,0 +1,236 @@
+# Creator PostgreSQL Persistence Spec v0
+
+> 状态：架构规格，尚未创建 Alembic migration。只有当前 Creator v0 PR/CI 通过，并在临时 PostgreSQL 验证本文事务与重放门禁后，才允许落 migration。
+
+## 1. 推荐方案
+
+采用 **一条 append-only 事件真值流 + 同事务可重建投影**，由 Python Domain Plane 持有数据库连接和事务；TypeScript Creator Runtime 只依赖 `CreatorWorkspaceStore`，通过内部鉴权 API 使用生产持久化。
+
+不推荐两种做法：
+
+- 不把整个 `CreatorView` 塞进一行 JSONB 当真值；并发 revision、去重、判断确认绑定和局部查询都会变成应用自觉。
+- 不让 TypeScript Agent 直接拿现有业务库 SQL 权限；它不应跨过 Route Cognition、PostGIS、用户数据和发布事务的所有权边界。
+
+最短数据流：
+
+```text
+Tim 审核动作 / Creator 模型 typed action
+  → TypeScript event validator + capability
+  → CreatorWorkspaceStore 内部 API adapter
+  → Python Domain Plane 单事务 append + project
+  → committed revision receipt
+  → TypeScript 按该 revision 重读并编译 Context
+```
+
+第一处仍未证明的边界是“内部 API 到真实 PostgreSQL 的并发/失败恢复”，所以本文先固定事务与约束，不在本轮创建生产表。
+
+## 2. 为什么不能直接复用现有表
+
+现有 `judgment_runs` 记录一次算法/Agent/人工审查的过程摘要和置信状态，适合 Domain judgment，不等于某个可确认的 Tim 判断提议。
+
+现有 `evidence_items.first_judgment_run_id` 非空，语义是“已经被某次判断使用的证据”；Creator 需要先独立摄取 Source、原始 turn 和 Evidence，再决定是否形成 Claim/Judgment，所以不能强塞进去。
+
+现有 `route_cognition_segments` 和 `segment_geometry_sources` 继续拥有正式赛段几何准入与 provenance。Creator 只提出 World Change，不复制、不覆盖这些对象。
+
+因此本规格新增 Creator 私有表族，不修改：
+
+- `users`
+- `activities`
+- `segments`
+- `segment_efforts`
+- `route_books` / `route_versions`
+- 现有 Route Cognition 表
+
+## 3. 真值表
+
+### 3.1 `creator_workspaces`
+
+| 列 | 约束/用途 |
+|---|---|
+| `id text` | PK；沿用 Runtime 安全 workspace ID |
+| `mission text` | 非空 |
+| `status varchar(16)` | `active / completed / archived`；v0 只写 active |
+| `current_revision bigint` | 非负；每次事件 CAS +1 |
+| `created_at / updated_at timestamptz` | 数据库时间 |
+
+这是 revision 所有者，不保存大 Context 或 View。
+
+### 3.2 `creator_workspace_events`
+
+| 列 | 约束/用途 |
+|---|---|
+| `workspace_id text` | FK workspace，`ON DELETE RESTRICT` |
+| `revision bigint` | 与 workspace 内事件顺序一致 |
+| `event_id text` | 客户端幂等身份 |
+| `event_type varchar(64)` | 当前 Creator event enum |
+| `schema_version smallint` | 当前为 1 |
+| `base_revision bigint` | 必须等于 `revision - 1` |
+| `occurred_at timestamptz` | 领域事件时间 |
+| `principal_id text` | 实际提交 principal；不能只相信 payload actor |
+| `payload_json jsonb` | exact validated event |
+| `payload_sha256 char(71)` | `sha256:<64 hex>`，用于 idempotency/conflict |
+| `committed_at timestamptz` | 数据库提交时间 |
+
+关键约束：
+
+- PK `(workspace_id, revision)`；
+- UNIQUE `(workspace_id, event_id)`；
+- CHECK `revision > 0 AND base_revision = revision - 1`；
+- CHECK hash 格式；
+- 表只允许 INSERT；数据库角色撤销 UPDATE/DELETE，迁移/修复角色例外且需审计。
+
+事件是唯一长期真值。下面所有表都是同事务投影，可由事件重放校验或重建。
+
+## 4. 必要投影表
+
+### 4.1 `creator_sources`
+
+保存 `(workspace_id, source_ref)`、source kind、content hash、provenance、当前 rights decision/policy/reason、对应 event revision。UNIQUE `(workspace_id, source_ref)`。
+
+rights 变更必须追加新 event，再更新投影；不能直接改投影冒充事件。
+
+### 4.2 `creator_source_messages`
+
+保存 exact raw turn：
+
+- `turn_id`
+- `source_ref`
+- `source_message_ref`
+- `source_role`
+- `actor`
+- `authorship_basis`
+- `raw_text`
+- `content_hash`
+- `subject_refs jsonb`
+- 可空的 `interaction_proposal_id / interaction_statement_hash / interaction_response`
+- `event_revision`
+
+关键约束：
+
+- PK `(workspace_id, turn_id)`；
+- UNIQUE `(workspace_id, source_ref, source_message_ref)`，防同一原始消息重复导入；
+- interaction 四列必须全空或按协议全有；有 interaction 时 `source_role='user' AND actor='tim'`；
+- 为 decision 精确 FK 建 UNIQUE `(workspace_id, turn_id, interaction_proposal_id, interaction_statement_hash, interaction_response)`。
+
+### 4.3 `creator_evidence_items`
+
+保存 `(workspace_id, evidence_id)`、source ref、subject ref、raw observation、observed time、event revision。它是 Creator 私有摄取证据，不替代现有 `evidence_items`。
+
+只有某条 Domain Claim 进入既有 Judgment/World Change 流程时，才由显式 adapter 建立到现有 `evidence_items` 或未来 Published World provenance 的关系。
+
+### 4.4 `creator_judgments`
+
+一行代表一个 Agent proposal 及其派生当前状态：
+
+- proposal ID、judgment key、subject ref；
+- statement、statement hash、typed value JSON、temporality、review_at；
+- status：`proposed / tim_confirmed / rejected`；
+- `supersedes_proposal_id`、`superseded_at`；
+- Context compiler version、normalized request、request hash、context hash；
+- model ref、proposal reason、proposal event revision；
+- decision ID、responded_at（投影缓存）。
+
+关键约束：
+
+- PK `(workspace_id, proposal_id)`；
+- UNIQUE `(workspace_id, proposal_id, statement_hash)`，供 decision 精确 FK；
+- UNIQUE `(workspace_id, proposal_id, judgment_key)`，供 replacement 同 key FK；
+- partial UNIQUE `(workspace_id, judgment_key) WHERE status='proposed' AND superseded_at IS NULL`；
+- partial UNIQUE `(workspace_id, judgment_key) WHERE status='tim_confirmed' AND superseded_at IS NULL`；
+- replacement 用复合 FK `(workspace_id, supersedes_proposal_id, judgment_key)` 指向同 key 旧 proposal；
+- 非 permanent judgment 必须有 `review_at`。
+
+### 4.5 `creator_judgment_turns` / `creator_judgment_evidence`
+
+两张窄连接表保存 proposal 的 source turn refs 和 evidence refs，均使用复合 FK 约束 workspace 内身份；UNIQUE 防重复。不要把这些引用只塞在 JSONB 里，否则删除/重放和 Context 查询没有可靠关系约束。
+
+### 4.6 `creator_judgment_decisions`
+
+保存 decision ID、proposal ID、response turn ID、response、expected statement hash、event revision、reviewer principal ID。
+
+关键约束：
+
+- UNIQUE `(workspace_id, decision_id)`；
+- UNIQUE `(workspace_id, proposal_id)`，一份 proposal 只能回答一次；
+- UNIQUE `(workspace_id, response_turn_id)`，一条 Tim action 不能回答多个 proposal；
+- FK `(workspace_id, proposal_id, expected_statement_hash)` → judgment 的 exact statement；
+- FK `(workspace_id, response_turn_id, proposal_id, expected_statement_hash, response)` → source message 的 exact interaction；
+- reviewer principal 来自认证层/事件 envelope，不能由模型 payload 自报。
+
+这两组复合 FK 是数据库层最关键的不变量：即使应用漏检，也不能用普通“我同意”、另一条 proposal 或旧 statement hash 提交 Tim 判断。
+
+### 4.7 `creator_judgment_contradictions`
+
+保存 contradiction ID、目标 judgment、reason、状态、resolution、resolution ref、record/resolved event revision。
+
+`contradicting_ref` 在数据库中拆成三个可空 FK：evidence、turn、judgment；CHECK `num_nonnulls(...) = 1`，避免不可校验的 polymorphic string。partial index 支持按 workspace/subject 查 unresolved contradiction。
+
+## 5. 一次 append 的事务算法
+
+所有 event 走同一事务函数/服务，不给调用方直接写投影：
+
+1. 按 `(workspace_id, event_id)` 查已有事件。
+   - hash 相同：返回原 committed revision，幂等成功；
+   - hash 不同：409 conflict，不做任何写入。
+2. 执行 CAS：
+
+```sql
+UPDATE creator_workspaces
+SET current_revision = current_revision + 1, updated_at = now()
+WHERE id = :workspace_id AND current_revision = :base_revision
+RETURNING current_revision;
+```
+
+3. 未返回行：重新检查 event ID；若仍不存在，返回 stale revision conflict。
+4. INSERT event，revision 使用 CAS 返回值。
+5. 按 event type 更新对应投影；所有 FK/partial unique/check 在同事务生效。
+6. COMMIT 后返回 `event_id + committed_revision + payload_hash` receipt。
+7. TypeScript 必须按 receipt 重读；连接中断且无法确认 commit 时返回 `reconciliation_required`，不能重做一个新 event ID。
+
+两个相同 base revision 的并发 writer 最多一个 CAS 成功；另一个只能通过同 event ID 幂等收敛或显式 stale conflict。
+
+## 6. Context 查询与重放
+
+Context 查询只从投影读取：
+
+- 当前 judgment：`status='tim_confirmed' AND superseded_at IS NULL`；
+- pending proposal：`status='proposed'`；
+- Evidence：当前/pending judgment 连接的必需证据优先，再按 subject/time 取可选证据；
+- contradiction：未解决且目标 judgment 与 subject 匹配；
+- source revision：从实际加载的 message/evidence 回 join source；
+- omission 计数：rejected/superseded/resolved/subject mismatch/budget。
+
+每次结果携带 workspace revision。查询开始后 revision 变化时，不把两个 revision 拼成一个 Context；首版用一个 `REPEATABLE READ` 只读事务或显式 `through_revision` 查询。
+
+重放验证：从 `creator_workspace_events` 读指定 revision 前缀，用 TypeScript reducer 重建 View，再与数据库投影的 current judgment、pending proposal、decision 和 unresolved contradiction 集合比较。检测不一致时停止 Creator 写入并报警；自动修复另开受控命令，不在请求内静默覆盖。
+
+## 7. 迁移和混合版本顺序
+
+1. 先新增空表、约束和内部 repository/service；不改旧表、不 backfill。
+2. CI 临时 PostgreSQL 跑 upgrade/downgrade/upgrade、两个并发 CAS、相同/冲突 event ID、exact decision FK、冷重放对账。
+3. TypeScript 增加内部 API Store adapter，仅运行 Shadow；JSONL 仍保留为对照，不双写生产真值。
+4. 用天龙山同一组事件比较 JSONL 与 Postgres Context hash。
+5. 通过后才启用一个内部 Creator workspace；此时 Postgres 成为该 workspace 的唯一事件真值，不能同时接受 JSONL 写入。
+6. 生产验证稳定后再讨论 World Change/Published World migration；Rider 表族另开独立纵向切片。
+
+回滚：功能开关停止新 Creator workspace 写入；已写事件保留只读。migration downgrade 只允许在确认无生产 Creator 事件时执行；有数据后使用向前修复，不删除事件真值。
+
+## 8. 首个数据库验收
+
+- 空白 PostgreSQL/PostGIS 上 Alembic upgrade 成功，revision ID 不超过 32 字符。
+- 两个相同 base revision writer 不会都提交。
+- 同 event ID 同 payload 幂等；不同 payload fail closed。
+- 同 source message 不能重复写入。
+- 普通 Tim prose、Agent principal、错误 proposal ID、错误 statement hash 均无法形成 decision。
+- 新 replacement 未确认时旧判断仍 current；确认后 partial unique 与 projection 只留下新 current。
+- transaction 在 event/projection 任一点失败时全部回滚。
+- connection loss after commit 可用 event ID receipt reconciliation 收敛。
+- Postgres 冷重放与 JSONL/TypeScript Context hash 一致。
+- migration 不修改四张受保护核心表，也不让 Rider 读取 Creator raw text。
+
+## 9. 会让方案改变的新证据
+
+- 若真实查询证明事件 JSONB 重放足够快、projection 从未被在线读取，可进一步减少投影表；当前 Context 已明确需要 subject/status/ref 查询，所以不能先假设。
+- 若生产边界改为独立 Node Creator 服务并获得隔离数据库账号，可以重新评估 TypeScript 直连；在此之前坚持 Domain Plane API。
+- 若 exact decision 复合 FK 在真实 Alembic/Postgres 中造成不可接受的写入复杂度，允许退到单个数据库事务函数/trigger，但不能退成“应用记得校验”。
+- 若 Creator v0 的事件合同在真实 UI/provider 接线中频繁变化，暂停 migration，继续 JSONL Shadow；不要用不停改表掩盖合同未稳定。

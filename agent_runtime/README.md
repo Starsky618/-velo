@@ -6,7 +6,7 @@
 
 核心目的不是增加一个聊天入口，而是让 VELO 能长期保留来源信息、Tim 明确确认的判断及其修订链，并在每次模型运行前编译出可审计的最小 Context。聊天窗口被压缩或进程重启后，系统应从事件和 revision 恢复，而不是要求模型“记住”。
 
-这套闭环最终需要：原始信息 → Agent 提议 → Tim 确认/拒绝 → 判断替代与冲突 → Context 编译 → Agent Run → Eval/反馈 → World Change Proposal。当前只实现了其中的确定性骨架：Rider 已有 Session 与 Context Compiler；Creator 已有 Evidence/Claim/Eval 状态机，但还没有真实 conversation ingestion、Tim 判断确认协议或 Creator Context Compiler。
+这套闭环最终需要：原始信息 → Agent 提议 → Tim 确认/拒绝 → 判断替代与冲突 → Context 编译 → Agent Run → Eval/反馈 → World Change Proposal。当前 Rider 与 Creator 都已有本地确定性闭环；Creator 已新增 conversation ingestion、精确判断确认/拒绝/替代、Context Manifest、可替换模型端口和冷启动重放 Eval。它仍是 JSONL Shadow，不是生产服务。
 
 当前交接和下一阶段验收见 [`docs/agent-first/README.md`](../docs/agent-first/README.md)。
 
@@ -25,13 +25,17 @@
 - `consumer/context/`：把最近对话、所有仍生效的用户确认决定与未结分支编译成 `RiderConversationContext`；它会真实进入每次运行的 ContextManifest，但自身永远不冒充 Agent v0 `ContextManifest` 或事实源。
 - `consumer/runtime/`：从现有 `contracts/agent_v0/tool_registry.v0.json` deny-by-default 解析 namespaced Tool，记录 AgentRun / ContextManifest / AgentAction / ToolCall / ToolResult。每个逻辑 model turn 都会先编译 Context，再让可替换的 `ShadowDecisionModel` 消费它并返回 typed proposal；当前实现是可重复的 deterministic fake model，不是外部 LLM。model、tool 和 Session commit 都受 AbortSignal、执行前/后 deadline 与不可逆写入前 guard 约束；超时 model turn 收敛为 typed action，超时 ToolCall 收敛为 terminal ToolResult。tool-call 与 plan-generation 预算在执行前门禁；校验和比较仍由确定性 gate 所有。Node AJV 验单体 schema，Python 测试直接复用既有 `assert_run_semantics` 并检查正常/超时 trace 的跨 artifact identity。
 - `consumer/planning/`：门到门候选绑定 request hash、origin identity/revision 与 world revision；腾讯连接段与 canonical Traversal 使用不同身份命名空间。腾讯可以连接多个核心赛段，不能重算、降级或冒充核心赛段。
-- `creator/state/`：独立的来源 → Rights Check → 原始 Evidence → Claim（含有效期/复核时间）→ Conflict Analysis → Eval → World Change Proposal 状态机；`needs_review`/`needs_more_evidence` 可显式进入 Human Review Request。没有 publish 事件，不能绕过人工/确定性发布边界。
+- `creator/state/`：独立的来源 → Rights Check → 原始 Conversation/Evidence → Claim/Judgment Proposal → Tim 精确响应 → Supersession/Contradiction → Eval → World Change Proposal 状态机。Agent 没有 `judgment.decide`；普通 prose 不能成为确认；没有 publish 事件。
+- `creator/context/`：按 subject 编译 mission、当前 Tim-confirmed judgment、pending proposal/input、相关 Evidence 与未决 contradiction，并输出 revision、source provenance/hash、加载项、遗漏原因和 context hash。当前判断的必要证据不会被预算静默裁掉。
+- `creator/runtime/`：模型端口只返回 exact-key typed action；确定性 fake model 证明相同事件日志可在新进程得到相同动作。reducer 继续拥有权限、revision 和写入。
+- `creator/eval/`：把进程内 view 与冷启动 JSONL 重放后的 Context 比较，并检查 superseded/rejected judgment 不会复活。
 
 当前 capability gate 是运行时执行守卫，不冒充生产鉴权：测试与 Shadow 使用显式 test/shadow principal，并验证 Creator/Rider principal 互相拒绝；生产 authenticated service principal、进程/网络隔离和部署身份尚未实现，所以本目录仍不进入 Python 生产镜像。
 
-当前没有新增数据库迁移。原因是现有 Postgres 还没有承载这些 runtime 事件的真实失败证据；先让事件合同和评测暴露稳定写入模式，再分别设计 Creator evidence/claim/proposal 表族与 Consumer session/run/plan/trace 表族，避免一次性把蓝图猜成生产 schema。
+当前没有新增数据库迁移。Creator v0 已暴露 revision CAS、source message 去重、proposal/decision 强绑定、supersession、contradiction 与 Context 查询等第一批稳定模式；最小 PostgreSQL 事务、约束、投影、回放和失败恢复已经形成架构规格。下一阶段按该规格在 CI 临时 PostgreSQL 实现并验证首个持久化切片，不把整个 `CreatorView` 粗暴固化成一行 JSON。
 
-数据库复用与后续表族边界见 [`DATABASE_BOUNDARY.md`](DATABASE_BOUNDARY.md)。
+数据库复用与后续表族边界见 [`DATABASE_BOUNDARY.md`](DATABASE_BOUNDARY.md)，Creator 最小事务/约束/回放规格见 [`CREATOR_POSTGRESQL_SPEC_V0.md`](CREATOR_POSTGRESQL_SPEC_V0.md)。
+Reborn 迁移审计、Creator v0 合同与真实天龙山材料 Eval 见 [`creator-information-judgment-loop-v0.md`](../docs/agent-first/creator-information-judgment-loop-v0.md)。
 
 ## 本地运行
 

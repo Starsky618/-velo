@@ -1,6 +1,6 @@
 schema_version: 2
 project: VELO
-updated_at: '2026-08-05T16:33:42+08:00'
+updated_at: '2026-08-05T17:31:56+08:00'
 status: active
 
 authority:
@@ -31,9 +31,9 @@ source_documents:
 
 repository:
   github: Starsky618/-velo
-  verified_main_commit: ff8e09081d9613e761c01ab308fda068cd4651e7
-  verified_main_pr: 46
-  verified_ci_run: 30987858200
+  verified_main_commit: e84de8744c946c1880a6b1ccdd48c84aa3fecbe6
+  verified_main_pr: 48
+  verified_ci_run: 30990706408
   verified_ci_result:
     agent_runtime: 43_passed_0_failed_0_skipped
     pytest: 2447_passed_0_skipped_with_fresh_postgis_and_redis
@@ -76,42 +76,48 @@ current_delivery:
     - bounded_agent_run_tool_deadline_and_reconciliation
     - locked_core_traversals_with_tencent_connector_only_planning
   creator_typescript_shadow:
-    status: deterministic_state_kernel_only
-    pr: 46
+    status: information_judgment_loop_v0_in_current_revision
+    base_pr: 46
     implemented:
     - separate_deny_by_default_capabilities
     - source_rights_evidence_claim_conflict_eval_world_change_proposal_state_machine
     - append_only_jsonl_workspace_store
+    - raw_conversation_events_with_source_role_actor_and_authorship
+    - exact_agent_judgment_proposal_and_tim_confirmation_rejection_supersession
+    - judgment_contradiction_lifecycle
+    - creator_context_compiler_manifest_and_omission_accounting
+    - replaceable_model_port_and_deterministic_fake
+    - fresh_process_context_replay_eval_with_real_tianlongshan_materials
+    local_validation: 48_typescript_tests_passed
     missing:
-    - real_conversation_ingestion
-    - creator_judgment_confirmation_and_supersession_protocol
-    - creator_context_compiler_and_manifest
-    - real_model_loop_and_trace_backend
-    - end_to_end_learning_eval
+    - production_conversation_ingestion_adapter
+    - authenticated_tim_review_ui_or_api
+    - real_llm_and_trace_backend
+    - real_world_route_outcome_learning_eval
   database:
-    status: boundary_document_only
+    status: creator_postgresql_spec_v0_in_current_revision
     migration_created: false
-    path: agent_runtime/DATABASE_BOUNDARY.md
+    paths:
+    - agent_runtime/DATABASE_BOUNDARY.md
+    - agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md
 
 next_task:
-  id: creator_information_and_judgment_loop_v0
-  status: ready_to_specify
-  objective: prove_one_real_local_record_judge_confirm_compile_replay_eval_loop_before_database_migration
+  id: creator_postgresql_persistence_slice_v0
+  status: ready_after_current_revision_ci
+  objective: implement_the_spec_as_a_minimal_migration_repository_transaction_and_cross_store_replay_slice
   required_sequence:
-  - reconstruct_reborn_latest_session_state_machine_review_eval_and_feedback_loop
-  - add_creator_raw_conversation_and_source_events
-  - add_typed_judgment_proposal_confirmation_rejection_supersession_and_contradiction
-  - add_creator_context_compiler_and_context_manifest
-  - add_replaceable_model_port_with_deterministic_fake
-  - add_context_compression_and_fresh_process_replay_evals
-  - run_one_real_local_TIM_route_material_loop
+  - create_empty_creator_event_truth_and_required_projection_tables
+  - implement_python_domain_plane_revision_cas_idempotency_and_projection_transaction
+  - implement_internal_authenticated_creator_workspace_store_adapter
+  - test_empty_postgresql_upgrade_downgrade_upgrade_concurrency_and_reconciliation
+  - compare_jsonl_and_postgresql_context_hash_for_the_tianlongshan_event_chain
   acceptance:
-  - agent_prose_cannot_become_user_confirmed_judgment
-  - duplicate_or_conflicting_event_ids_fail_closed
-  - superseded_judgments_are_excluded_from_current_context
-  - manifest_records_loaded_sources_revisions_omissions_and_budget
-  - fresh_process_replay_recovers_same_active_judgments_and_unknowns
-  - failed_or_conflicting_claim_cannot_enter_published_world
+  - no_changes_to_users_activities_segments_or_segment_efforts
+  - concurrent_same_revision_writers_cannot_both_commit
+  - same_event_id_same_payload_is_idempotent_and_conflicting_payload_fails
+  - tim_decision_cannot_commit_without_exact_proposal_turn_and_statement_hash
+  - cold_database_replay_matches_typescript_current_judgment_projection
+  - rollback_and_reconciliation_are_explicitly_tested
 
 explicitly_not_complete:
 - production_creator_or_rider_agent

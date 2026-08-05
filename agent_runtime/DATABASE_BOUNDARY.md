@@ -25,11 +25,14 @@ Creator 与 Rider Consumer 在数据库层也必须低耦合：分别写自己�
 
 ### 1. Creator 私有面
 
-下一次数据库迁移候选：
+Creator 首个生产持久化候选（表名与约束以 [`CREATOR_POSTGRESQL_SPEC_V0.md`](CREATOR_POSTGRESQL_SPEC_V0.md) 为准）：
 
 - `creator_workspaces`：一次路线认知建设任务的身份、mission、状态与 current revision。
 - `creator_workspace_events`：append-only 原始事件，唯一键 `(workspace_id, revision)` 与 `event_id`；raw Evidence 只在这个权限面可见。
-- `source_records`：材料的 provider/source identity、rights、content hash、captured time；解决当前 `evidence_items` 必须“已被判断使用”才能存在的问题。
+- `creator_sources`：材料的 provider/source identity、rights、content hash、captured time；解决当前 `evidence_items` 必须“已被判断使用”才能存在的问题。
+- `creator_source_messages`：精确原始 turn、通道角色、实际作者、作者依据与可选的 exact judgment response；同一来源消息不可重复摄取。
+- `creator_judgments` / `creator_judgment_decisions`：Agent proposal 与 Tim exact response 分表，并用 proposal/turn/statement hash 复合约束绑定。
+- `creator_judgment_contradictions`：未决矛盾、替代与解决链；不能把 contradiction 折成 false 或静默覆盖。
 - `knowledge_claims`：subject、predicate、typed proposed value、temporality、valid time、状态。
 - `knowledge_claim_evidence`：Claim 与现有 `evidence_items` 的 support/contradict/unknown 关系。
 - `claim_evaluations`：grader/version/verdict/reason；不把一个裸 confidence 数字当作真伪。
@@ -75,8 +78,8 @@ Strava 官方 API 的 `/segments/explore` 确实能按 bounds 返回热门 ridin
 
 依据：[Strava API reference](https://developers.strava.com/docs/reference/)、[rate limits](https://developers.strava.com/docs/rate-limits/)、[2026 API Agreement](https://www.strava.com/legal/api)、[API changelog](https://developers.strava.com/docs/changelog/)。其中 changelog 已预告 2026-09-01 起部分新 segment 访问将要求获批的 Extended Access；在许可与产品展示方式明确前，Creator 的 `rights_checked` 必须保持 fail closed。
 
-## 为什么本轮不写 Alembic migration
+## 为什么本轮仍不写 Alembic migration
 
-当前 Shadow 已证明的写入只有两类 append-only 事件和 fixture Plan；真实 Provider、模型失败、并发恢复、发布审核与线上查询尚未运行。现在落完整 schema 会把蓝图猜测冻结成生产包袱，而且会重复仓库已经存在的 route-cognition 表。
+Creator v0 已用真实天龙山仓库材料证明原始输入、判断确认/拒绝/替代、Context 与冷启动 Eval；Rider 也已有 plan/revision Shadow。现在已经可以设计最小持久化，但生产内部 API、真实 PostgreSQL 并发、提交后断线 reconciliation 和 authenticated Tim reviewer 仍未验证。
 
-下一次 migration 的进入条件不是“文档看起来完整”，而是：事件合同稳定、至少一条 Creator ingestion/Eval 和一条 Rider plan/revision 流程在可重复环境里暴露真实查询与失败模式，并完成 Strava 数据来源/使用边界核验。到那时先落事件表与最小 Claim/World revision，不一次性创建全部长期表族。
+因此下一步先按 [`CREATOR_POSTGRESQL_SPEC_V0.md`](CREATOR_POSTGRESQL_SPEC_V0.md) 在 CI 临时 PostgreSQL 固定事务、唯一约束、复合 FK、投影回放和 upgrade/downgrade；通过后才创建正式 migration。首刀只落 Creator 事件真值与必要投影，不一次性创建 Published World、Rider 和全部长期表族。

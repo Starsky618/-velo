@@ -3,8 +3,12 @@ import { CapabilityGate, type RuntimePrincipal } from "../shared/capability-gate
 export const CREATOR_CAPABILITIES = [
   "workspace.create",
   "source.ingest",
+  "conversation.record",
   "evidence.inspect_raw",
   "claim.propose",
+  "judgment.propose",
+  "judgment.decide",
+  "judgment.contradict",
   "world_change.propose",
   "eval.run",
   "rights.check",
@@ -22,4 +26,24 @@ export function createCreatorCapabilityGate(principal: RuntimePrincipal): Capabi
 /** Only for tests. Production must inject an authenticated internal service principal. */
 export function createTestCreatorPrincipal(): RuntimePrincipal {
   return { principal_id: "test:creator-runtime", product: "creator", environment: "test", scopes: CREATOR_CAPABILITIES };
+}
+
+/** Test-only model/runtime principal. It may propose judgments but can never confirm Tim's judgment. */
+export function createTestCreatorAgentPrincipal(): RuntimePrincipal {
+  return {
+    principal_id: "test:creator-agent",
+    product: "creator",
+    environment: "test",
+    scopes: CREATOR_CAPABILITIES.filter((capability) => capability !== "judgment.decide"),
+  };
+}
+
+/** Test-only explicit review principal. A real adapter must bind this to authenticated Tim UI action. */
+export function createTestCreatorReviewerPrincipal(): RuntimePrincipal {
+  return {
+    principal_id: "test:tim-reviewer",
+    product: "creator",
+    environment: "test",
+    scopes: ["conversation.record", "judgment.decide"],
+  };
 }
