@@ -14,7 +14,7 @@ import math
 import re
 from typing import Any, Callable
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -409,6 +409,7 @@ class CreatorPersistenceService:
             raise CreatorProjectionRevisionMismatchError("expected_revision must be a non-negative safe integer")
 
         with self._session_factory() as db:
+            db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
             workspace = db.get(CreatorWorkspace, workspace_id)
             first_revision = workspace.current_revision if workspace is not None else None
             observed_revision = 0 if first_revision is None else first_revision
@@ -713,14 +714,15 @@ class CreatorPersistenceService:
     def read_projection_digest(self, workspace_id: str, principal: CreatorPrincipal) -> dict[str, Any]:
         """Read the rebuildable projection at one observed workspace revision.
 
-        The first/last revision fence prevents a READ COMMITTED caller from
-        combining projections from two committed appends. A drift checker can
-        compare this digest with a cold TypeScript replay without exposing raw
-        source text to a wider API.
+        A REPEATABLE READ, read-only transaction supplies one database snapshot;
+        the first/last revision fence also detects a revision mismatch visible
+        at that snapshot. A drift checker can compare this digest with a cold
+        TypeScript replay without exposing raw source text to a wider API.
         """
 
         principal.require("context.read_private")
         with self._session_factory() as db:
+            db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
             first_revision = db.scalar(select(CreatorWorkspace.current_revision).where(
                 CreatorWorkspace.id == workspace_id
             ))

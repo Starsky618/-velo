@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
-from threading import Barrier
+from threading import Barrier, get_ident
 import uuid
 
 from alembic.migration import MigrationContext
@@ -14,7 +14,7 @@ from alembic.operations import Operations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
-from sqlalchemy import create_engine, func, inspect, select, text, update
+from sqlalchemy import create_engine, event as sqlalchemy_event, func, inspect, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
@@ -689,6 +689,31 @@ def _compile_pg_records(records, tmp_path: Path, request: dict) -> dict:
     return json.loads(output)
 
 
+def _run_projection_guard_child(
+    event_response: dict,
+    projection_response: dict,
+    request: dict,
+    tmp_path: Path,
+) -> dict:
+    case_id = uuid.uuid4().hex
+    event_path = tmp_path / f"event-response-{case_id}.json"
+    projection_path = tmp_path / f"projection-response-{case_id}.json"
+    request_path = tmp_path / f"projection-request-{case_id}.json"
+    event_path.write_text(json.dumps(event_response, ensure_ascii=False), encoding="utf-8")
+    projection_path.write_text(json.dumps(projection_response, ensure_ascii=False), encoding="utf-8")
+    request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
+    root = Path(__file__).resolve().parents[1]
+    output = subprocess.run(
+        [
+            "node", "--no-warnings", "--experimental-strip-types",
+            str(root / "tests-ts/helpers/creator-projection-guard-child.ts"),
+            str(event_path), str(projection_path), str(request_path),
+        ],
+        cwd=root, capture_output=True, text=True, check=True,
+    ).stdout
+    return json.loads(output)
+
+
 def test_pg_event_read_fails_closed_for_rights_revocation_and_review_due(service, tmp_path):
     review_workspace = _workspace("creator-review-due")
     _statement, review_decision = _append_exact_decision_loop(service, review_workspace)
@@ -894,7 +919,86 @@ def test_relational_projection_reconstructs_all_nine_v0_events_without_payload_j
         service.read_projection_records(workspace_id, 8, FULL)
 
 
-def test_projection_tamper_diverges_while_append_only_event_truth_stays_exact(service, pg_engine):
+def test_projection_read_uses_one_repeatable_read_snapshot(service, pg_engine):
+    workspace_id = _workspace("creator-projection-snapshot")
+    _statement, decision = _append_exact_decision_loop(service, workspace_id)
+    service.append(decision, REVIEWER)
+    event_truth = service.read_records(workspace_id, FULL)
+    barrier = Barrier(2)
+    reader_thread_id = None
+    paused = False
+
+    def pause_after_event_metadata(_connection, _cursor, statement, _parameters, _context, _executemany):
+        nonlocal paused
+        if (
+            get_ident() == reader_thread_id
+            and not paused
+            and "FROM creator_workspace_events" in statement
+            and "payload_json" not in statement
+        ):
+            paused = True
+            barrier.wait()
+            barrier.wait()
+
+    def read_projection():
+        nonlocal reader_thread_id
+        reader_thread_id = get_ident()
+        return service.read_projection_records(workspace_id, 7, FULL)
+
+    sqlalchemy_event.listen(pg_engine, "after_cursor_execute", pause_after_event_metadata)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(read_projection)
+            barrier.wait()
+            with pg_engine.begin() as connection:
+                connection.execute(update(CreatorEvidenceItem).where(
+                    CreatorEvidenceItem.workspace_id == workspace_id,
+                    CreatorEvidenceItem.evidence_id == "evidence:guide",
+                ).values(raw_observation="并发篡改不应混入已经开始的投影快照"))
+            barrier.wait()
+            snapshot = future.result(timeout=10)
+    finally:
+        sqlalchemy_event.remove(pg_engine, "after_cursor_execute", pause_after_event_metadata)
+
+    assert paused is True
+    assert snapshot["records"] == event_truth
+    assert service.read_projection_records(workspace_id, 7, FULL)["records"] != event_truth
+
+
+def test_projection_tamper_stops_http_agent_before_model(service, pg_engine, tmp_path):
+    def authenticate_projection_test(token: str):
+        if token != "projection-test-token":
+            raise CreatorAuthorizationError("invalid token")
+        return FULL
+
+    app = FastAPI()
+    app.include_router(create_creator_internal_router(service, authenticate_projection_test))
+    client = TestClient(app)
+
+    def read_http_contract(workspace: str) -> tuple[dict, dict]:
+        headers = {"Authorization": "Bearer projection-test-token"}
+        event_response = client.get(
+            f"/internal/creator/workspaces/{workspace}", headers=headers,
+        )
+        projection_response = client.get(
+            f"/internal/creator/workspaces/{workspace}/projection-records?expected_revision=7",
+            headers=headers,
+        )
+        assert event_response.status_code == 200
+        assert projection_response.status_code == 200
+        return event_response.json(), projection_response.json()
+
+    def run_request(workspace: str) -> dict:
+        return {
+            "workspace_id": workspace,
+            "event_id": f"event:guard:{uuid.uuid4().hex}",
+            "occurred_at": "2026-08-06T02:00:00.000Z",
+            "task": "对账天龙山路线认知",
+            "subject_refs": ["route:tianlongshan"],
+            "max_pending_turns": 20,
+            "max_evidence": 30,
+        }
+
     workspace_id = _workspace("creator-projection-tamper")
     _statement, decision = _append_exact_decision_loop(service, workspace_id)
     service.append(decision, REVIEWER)
@@ -908,9 +1012,18 @@ def test_projection_tamper_diverges_while_append_only_event_truth_stays_exact(se
         ).values(raw_observation="人工篡改的关系投影"))
 
     assert service.read_records(workspace_id, FULL) == event_truth
-    projection = service.read_projection_records(workspace_id, 7, FULL)
-    assert projection["records"] != event_truth
-    assert projection["records"][3]["event"]["raw_observation"] == "人工篡改的关系投影"
+    event_response, projection_response = read_http_contract(workspace_id)
+    assert projection_response["records"] != event_truth
+    assert projection_response["records"][3]["event"]["raw_observation"] == "人工篡改的关系投影"
+    stopped = _run_projection_guard_child(
+        event_response, projection_response, run_request(workspace_id), tmp_path,
+    )
+    assert stopped == {
+        "alarm_count": 1,
+        "model_calls": 0,
+        "reasons": ["context_mismatch", "projection_record_mismatch"],
+        "stopped": True,
+    }
 
     cache_workspace = _workspace("creator-projection-cache-tamper")
     _statement, cache_decision = _append_exact_decision_loop(service, cache_workspace)
@@ -921,6 +1034,15 @@ def test_projection_tamper_diverges_while_append_only_event_truth_stays_exact(se
             CreatorJudgment.workspace_id == cache_workspace,
             CreatorJudgment.proposal_id == "judgment:v1",
         ).values(status="rejected"))
-    cache_projection = service.read_projection_records(cache_workspace, 7, FULL)
+    cache_event_response, cache_projection = read_http_contract(cache_workspace)
     assert cache_projection["records"] == cache_truth
     assert cache_projection["digest"]["current_judgment_refs"] == []
+    cache_stopped = _run_projection_guard_child(
+        cache_event_response, cache_projection, run_request(cache_workspace), tmp_path,
+    )
+    assert cache_stopped == {
+        "alarm_count": 1,
+        "model_calls": 0,
+        "reasons": ["projection_digest_mismatch"],
+        "stopped": True,
+    }

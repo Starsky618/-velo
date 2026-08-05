@@ -105,11 +105,13 @@ function projectionRead(records: CreatorStoredEvent[], read: CreatorWorkspaceRea
   };
 }
 
-class StaticStore implements CreatorWorkspaceStore {
+class StaticStore implements CreatorWorkspaceStore, CreatorProjectionRecordReader {
   readonly read: CreatorWorkspaceRead;
+  readonly projection: CreatorProjectionRead | Error;
 
-  constructor(read: CreatorWorkspaceRead) {
+  constructor(read: CreatorWorkspaceRead, projection: CreatorProjectionRead | Error) {
     this.read = read;
+    this.projection = projection;
   }
 
   async readAs(_workspaceId: string, _principal: RuntimePrincipal): Promise<CreatorWorkspaceRead> {
@@ -119,6 +121,15 @@ class StaticStore implements CreatorWorkspaceStore {
   async appendAs(_event: CreatorEvent, _principal: RuntimePrincipal): Promise<CreatorView> {
     throw new Error("no_action test must not append");
   }
+
+  async readProjectionRecordsAs(
+    _workspaceId: string,
+    _expectedRevision: number,
+    _principal: RuntimePrincipal,
+  ): Promise<CreatorProjectionRead> {
+    if (this.projection instanceof Error) throw this.projection;
+    return structuredClone(this.projection);
+  }
 }
 
 class MemoryAlarmSink implements CreatorContextSafetyAlarmSink {
@@ -126,23 +137,6 @@ class MemoryAlarmSink implements CreatorContextSafetyAlarmSink {
 
   async append(alarm: CreatorContextSafetyAlarm): Promise<void> {
     this.alarms.push(structuredClone(alarm));
-  }
-}
-
-class StaticProjectionReader implements CreatorProjectionRecordReader {
-  readonly read: CreatorProjectionRead | Error;
-
-  constructor(read: CreatorProjectionRead | Error) {
-    this.read = read;
-  }
-
-  async readProjectionRecordsAs(
-    _workspaceId: string,
-    _expectedRevision: number,
-    _principal: RuntimePrincipal,
-  ): Promise<CreatorProjectionRead> {
-    if (this.read instanceof Error) throw this.read;
-    return structuredClone(this.read);
   }
 }
 
@@ -173,11 +167,11 @@ test("Projection-verified Context invokes the model only after exact record and 
   const sink = new MemoryAlarmSink();
   const model = new CountingNoActionModel();
   const compiler = new ProjectionVerifiedCreatorContextCompiler(
-    new StaticProjectionReader(projectionRead(structuredClone(read.records), read)),
     sink,
     () => "2026-08-06T01:04:00.000Z",
   );
-  const result = await new CreatorAgentV0(new StaticStore(read), principal, model, compiler).run(runRequest());
+  const store = new StaticStore(read, projectionRead(structuredClone(read.records), read));
+  const result = await new CreatorAgentV0(store, principal, model, compiler).run(runRequest());
   assert.equal(result.commit_status, "no_action");
   assert.equal(model.calls, 1);
   assert.deepEqual(sink.alarms, []);
@@ -192,12 +186,12 @@ test("Projection drift writes a privacy-safe alarm and stops before model invoca
   const sink = new MemoryAlarmSink();
   const model = new CountingNoActionModel();
   const compiler = new ProjectionVerifiedCreatorContextCompiler(
-    new StaticProjectionReader(projectionRead(tampered, read)),
     sink,
     () => "2026-08-06T01:04:00.000Z",
   );
+  const store = new StaticStore(read, projectionRead(tampered, read));
   await assert.rejects(
-    () => new CreatorAgentV0(new StaticStore(read), principal, model, compiler).run(runRequest()),
+    () => new CreatorAgentV0(store, principal, model, compiler).run(runRequest()),
     (error) => {
       assert.ok(error instanceof CreatorContextDriftStopError);
       assert.deepEqual(error.alarm.reasons, ["context_mismatch", "projection_record_mismatch"]);
@@ -219,12 +213,12 @@ test("Current projection cache drift stops even when reconstructed event records
   const sink = new MemoryAlarmSink();
   const model = new CountingNoActionModel();
   const compiler = new ProjectionVerifiedCreatorContextCompiler(
-    new StaticProjectionReader(projection),
     sink,
     () => "2026-08-06T01:04:00.000Z",
   );
+  const store = new StaticStore(read, projection);
   await assert.rejects(
-    () => new CreatorAgentV0(new StaticStore(read), principal, model, compiler).run(runRequest()),
+    () => new CreatorAgentV0(store, principal, model, compiler).run(runRequest()),
     (error) => error instanceof CreatorContextDriftStopError
       && canonicalJson(error.alarm.reasons) === canonicalJson(["projection_digest_mismatch"]),
   );
@@ -241,12 +235,12 @@ test("Projection read and replay failures both fail closed before the model", as
     const sink = new MemoryAlarmSink();
     const model = new CountingNoActionModel();
     const compiler = new ProjectionVerifiedCreatorContextCompiler(
-      new StaticProjectionReader(new Error("revision changed")),
       sink,
       () => "2026-08-06T01:04:00.000Z",
     );
+    const store = new StaticStore(read, new Error("revision changed"));
     await assert.rejects(
-      () => new CreatorAgentV0(new StaticStore(read), principal, model, compiler).run(runRequest()),
+      () => new CreatorAgentV0(store, principal, model, compiler).run(runRequest()),
       (error) => error instanceof CreatorContextDriftStopError
         && error.alarm.reasons[0] === "projection_read_failed",
     );
@@ -261,18 +255,58 @@ test("Projection read and replay failures both fail closed before the model", as
     const sink = new MemoryAlarmSink();
     const model = new CountingNoActionModel();
     const compiler = new ProjectionVerifiedCreatorContextCompiler(
-      new StaticProjectionReader(projectionRead(tampered, read)),
       sink,
       () => "2026-08-06T01:04:00.000Z",
     );
+    const store = new StaticStore(read, projectionRead(tampered, read));
     await assert.rejects(
-      () => new CreatorAgentV0(new StaticStore(read), principal, model, compiler).run(runRequest()),
+      () => new CreatorAgentV0(store, principal, model, compiler).run(runRequest()),
       (error) => error instanceof CreatorContextDriftStopError
         && canonicalJson(error.alarm.reasons)
           === canonicalJson(["projection_record_mismatch", "projection_replay_failed"]),
     );
     assert.equal(model.calls, 0);
   });
+});
+
+test("Projection revision mismatch is checked again by the guard before model invocation", async () => {
+  const read = workspaceRead();
+  const projection = projectionRead(structuredClone(read.records), read);
+  projection.revision = 999;
+  const sink = new MemoryAlarmSink();
+  const model = new CountingNoActionModel();
+  const compiler = new ProjectionVerifiedCreatorContextCompiler(
+    sink,
+    () => "2026-08-06T01:04:00.000Z",
+  );
+  const store = new StaticStore(read, projection);
+  await assert.rejects(
+    () => new CreatorAgentV0(store, principal, model, compiler).run(runRequest()),
+    (error) => error instanceof CreatorContextDriftStopError
+      && canonicalJson(error.alarm.reasons) === canonicalJson(["projection_revision_mismatch"]),
+  );
+  assert.equal(model.calls, 0);
+  assert.equal(sink.alarms.length, 1);
+});
+
+test("Projection-verified compiler refuses a store without the projection read capability", async () => {
+  const read = workspaceRead();
+  const sink = new MemoryAlarmSink();
+  const model = new CountingNoActionModel();
+  const compiler = new ProjectionVerifiedCreatorContextCompiler(
+    sink,
+    () => "2026-08-06T01:04:00.000Z",
+  );
+  const eventOnlyStore: CreatorWorkspaceStore = {
+    readAs: async () => structuredClone(read),
+    appendAs: async () => { throw new Error("no_action test must not append"); },
+  };
+  await assert.rejects(
+    () => new CreatorAgentV0(eventOnlyStore, principal, model, compiler).run(runRequest()),
+    (error) => error instanceof CreatorContextDriftStopError
+      && canonicalJson(error.alarm.reasons) === canonicalJson(["projection_read_failed"]),
+  );
+  assert.equal(model.calls, 0);
 });
 
 test("Alarm persistence failure also keeps Context closed", async () => {
@@ -282,12 +316,12 @@ test("Alarm persistence failure also keeps Context closed", async () => {
   if (evidence.type === "creator.evidence_recorded") evidence.raw_observation = "tampered";
   const model = new CountingNoActionModel();
   const compiler = new ProjectionVerifiedCreatorContextCompiler(
-    new StaticProjectionReader(projectionRead(tampered, read)),
     { append: async () => { throw new Error("disk full"); } },
     () => "2026-08-06T01:04:00.000Z",
   );
+  const store = new StaticStore(read, projectionRead(tampered, read));
   await assert.rejects(
-    () => new CreatorAgentV0(new StaticStore(read), principal, model, compiler).run(runRequest()),
+    () => new CreatorAgentV0(store, principal, model, compiler).run(runRequest()),
     CreatorContextDriftStopError,
   );
   assert.equal(model.calls, 0);

@@ -124,14 +124,16 @@ current_delivery:
     - typescript_http_store_exact_prefix_readback_and_reconciliation
     - relation_projection_reconstructs_nine_v0_event_bodies_without_event_payload_json
     - exact_revision_projection_records_and_current_projection_digest_api
+    - repeatable_read_read_only_projection_snapshot
+    - event_truth_and_projection_bound_to_one_store_instance
     - single_typescript_reducer_compiler_for_event_and_projection_context
     - pre_model_record_digest_context_manifest_drift_stop
     - privacy_safe_append_only_jsonl_drift_alarm
     - projection_response_turn_temporal_filter_prevents_future_confirmation_backflow
     local_validation:
-      typescript: 95_passed_0_failed_0_skipped
-      creator_postgresql: 18_passed_0_failed_0_skipped
-      python_default_local: 2363_passed_103_skipped_sqlite_and_mock_only
+      typescript: 97_passed_0_failed_0_skipped
+      creator_postgresql: 19_passed_0_failed_0_skipped
+      python_default_local: 2363_passed_104_skipped_sqlite_and_mock_only
       alembic: single_head_20260806_creator_pg_v0
       static: python_compileall_and_git_diff_check_passed
     not_enabled:
@@ -151,10 +153,12 @@ next_task:
   - mount_only_an_internal_shadow_route_and_run_real_database_reconciliation
   - configure_projection_verified_context_compiler_and_alarm_sink_at_the_composition_root
   - run_one_real_http_postgresql_shadow_loop_without_real_llm_or_rider_exposure
+  - define_snapshot_linearization_and_revocation_semantics_before_any_real_llm_receives_raw_context
   acceptance:
   - bearer_identity_is_bound_to_tim_and_not_just_possession_of_a_static_secret
   - router_remains_creator_internal_and_is_not_reachable_by_rider_principals
   - projection_drift_alarm_is_operator_visible_and_still_stops_before_model_invocation
+  - real_llm_remains_blocked_until_revocation_requires_snapshot_semantics_or_an_enforced_lease_or_epoch
   - empty_database_concurrency_disconnect_cold_replay_and_projection_drift_tests_remain_green
 
 explicitly_not_complete:

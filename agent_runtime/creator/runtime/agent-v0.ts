@@ -119,7 +119,7 @@ export class CreatorAgentV0 {
         committed_revision: existing.base_revision + 1,
       };
     }
-    const bundle = await this.#contextCompiler.compile(current, contextRequest, this.#principal);
+    const bundle = await this.#contextCompiler.compile(current, contextRequest, this.#principal, this.#store);
     const action: unknown = await this.#model.decide(bundle, request.signal);
     validateCreatorModelAction(action);
     request.signal?.throwIfAborted();

@@ -10,11 +10,13 @@ import type {
   CreatorProjectionDigest,
   CreatorProjectionRecordReader,
   CreatorWorkspaceRead,
+  CreatorWorkspaceStore,
 } from "../state/store-port.ts";
 import type { CreatorView } from "../state/types.ts";
 
 export type CreatorContextDriftReason =
   | "projection_read_failed"
+  | "projection_revision_mismatch"
   | "projection_record_mismatch"
   | "projection_digest_mismatch"
   | "projection_replay_failed"
@@ -46,6 +48,7 @@ export interface CreatorContextCompilerPort {
     read: CreatorWorkspaceRead,
     request: CreatorContextRequest,
     principal: RuntimePrincipal,
+    store: CreatorWorkspaceStore,
   ): Promise<CreatorContextBundle>;
 }
 
@@ -54,6 +57,7 @@ export class EventTruthCreatorContextCompiler implements CreatorContextCompilerP
     read: CreatorWorkspaceRead,
     request: CreatorContextRequest,
     _principal: RuntimePrincipal,
+    _store: CreatorWorkspaceStore,
   ): Promise<CreatorContextBundle> {
     if (!read.view) throw new Error("Creator Context compilation requires an existing workspace");
     return compileCreatorContext(read.view, request);
@@ -138,16 +142,13 @@ export function creatorProjectionDigestFromView(view: CreatorView): CreatorProje
 }
 
 export class ProjectionVerifiedCreatorContextCompiler implements CreatorContextCompilerPort {
-  readonly #projectionReader: CreatorProjectionRecordReader;
   readonly #alarmSink: CreatorContextSafetyAlarmSink;
   readonly #clock: () => string;
 
   constructor(
-    projectionReader: CreatorProjectionRecordReader,
     alarmSink: CreatorContextSafetyAlarmSink,
     clock: () => string = () => new Date().toISOString(),
   ) {
-    this.#projectionReader = projectionReader;
     this.#alarmSink = alarmSink;
     this.#clock = clock;
   }
@@ -182,12 +183,18 @@ export class ProjectionVerifiedCreatorContextCompiler implements CreatorContextC
     read: CreatorWorkspaceRead,
     request: CreatorContextRequest,
     principal: RuntimePrincipal,
+    store: CreatorWorkspaceStore,
   ): Promise<CreatorContextBundle> {
     if (!read.view) throw new Error("Creator Context compilation requires an existing workspace");
     const eventBundle = compileCreatorContext(read.view, request);
+    if (!("readProjectionRecordsAs" in store)
+      || typeof store.readProjectionRecordsAs !== "function") {
+      return this.#stop(read, eventBundle, ["projection_read_failed"]);
+    }
+    const projectionReader = store as CreatorWorkspaceStore & CreatorProjectionRecordReader;
     let projectionRead;
     try {
-      projectionRead = await this.#projectionReader.readProjectionRecordsAs(
+      projectionRead = await projectionReader.readProjectionRecordsAs(
         read.view.workspace_id,
         read.view.revision,
         principal,
@@ -199,6 +206,10 @@ export class ProjectionVerifiedCreatorContextCompiler implements CreatorContextC
     const projectionRecordsHash = contentHash(projectionRead.records);
     const databaseProjectionDigestHash = contentHash(projectionRead.digest);
     const reasons: CreatorContextDriftReason[] = [];
+    if (projectionRead.revision !== read.view.revision
+      || projectionRead.digest.revision !== read.view.revision) {
+      reasons.push("projection_revision_mismatch");
+    }
     if (canonicalJson(projectionRead.records) !== canonicalJson(read.records)) {
       reasons.push("projection_record_mismatch");
     }
