@@ -1,6 +1,6 @@
 # Creator Information & Judgment Loop v0
 
-> 状态：TypeScript 本地闭环已实现，等待本任务 PR/CI。它证明事件合同、权限和 Context 重放，不代表生产 Agent、数据库或 UI 已上线。
+> 状态：TypeScript 本地闭环已通过 PR #49 合并；spec 忠诚审查与跨模块集成审查均为 Critical 0 / Important 0，CI TypeScript 56/56、pytest 2447 passed / 0 skipped。它证明 JSONL Shadow 的事件合同、权限和 Context 重放，不代表生产 Agent、数据库或 UI 已上线。
 
 ## 1. 这次真正解决什么
 
