@@ -6,94 +6,121 @@
     <meta name="description" content="Company information for VELO." />
     <title>Company | VELO</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/site.css?v=20260731a" />
+    <link rel="stylesheet" href="/assets/site.css?v=20260805a" />
   </head>
   <body>
-    <header class="site-header">
-      <nav class="nav" aria-label="Main navigation">
-        <a class="brand" href="/en/">
-          <span class="brand-dot" aria-hidden="true"></span>
+    <header class="site-head">
+      <div class="shell nav">
+        <a class="brand" href="/en/" aria-label="VELO home">
+          <i aria-hidden="true"></i>
           <span>VELO</span>
         </a>
-        <div class="nav-links">
-          <a href="/en/">Product</a>
+        <nav class="nav-links" aria-label="Main navigation">
+          <a href="/#index">Route index</a>
+          <a href="/#fenhe">Local route</a>
+          <a href="/#sync">Data sync</a>
           <a href="/en/privacy/">Privacy</a>
-          <a aria-current="page" href="/en/company/">Company</a>
-          <a class="language-link" href="/company/" lang="zh-CN">中文</a>
-        </div>
-      </nav>
+          <a href="/en/company/" aria-current="page">Company</a>
+          <a href="/company/" lang="zh-CN">中文</a>
+        </nav>
+        <details class="nav-toggle">
+          <summary>
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+            <span class="visually-hidden">Open navigation</span>
+          </summary>
+          <div class="menu-panel">
+            <a href="/#index">Route index</a>
+            <a href="/#fenhe">Local route</a>
+            <a href="/#sync">Data sync</a>
+            <a href="/en/privacy/">Privacy policy</a>
+            <a href="/en/company/" aria-current="page">Company</a>
+            <a href="/company/" lang="zh-CN">中文</a>
+          </div>
+        </details>
+      </div>
     </header>
 
-    <main class="page">
-      <section class="page-hero">
-        <span class="eyebrow">Operating company</span>
-        <h1>One company, focused on one cycling product.</h1>
-        <p>
-          VELO is developed and operated by
-          湖南湘江新区共演纪软件开发有限责任公司, a software company based
-          in Changsha, Hunan, China.
-        </p>
-      </section>
-
-      <section class="company-grid">
-        <article class="company-card">
-          <h2>Company details</h2>
-          <dl class="fact-list">
-            <div class="fact-row">
-              <dt>Legal name</dt>
-              <dd>湖南湘江新区共演纪软件开发有限责任公司</dd>
-            </div>
-            <div class="fact-row">
-              <dt>Established</dt>
-              <dd>25 May 2026</dd>
-            </div>
-            <div class="fact-row">
-              <dt>Location</dt>
-              <dd>Xiangjiang New Area, Changsha, Hunan, China</dd>
-            </div>
-            <div class="fact-row">
-              <dt>Product</dt>
-              <dd>VELO WeChat Mini Program</dd>
-            </div>
-            <div class="fact-row">
-              <dt>Contact</dt>
-              <dd>
-                <a href="mailto:chengyuxiang@synexissoftware.cn"
-                  >chengyuxiang@synexissoftware.cn</a
-                >
-              </dd>
-            </div>
-          </dl>
-        </article>
-        <article class="company-card">
-          <h2>What we build</h2>
+    <main>
+      <div class="shell">
+        <section class="page-hero">
+          <p class="kicker">Operating company</p>
+          <h1>One company, focused on one cycling product.</h1>
           <p>
-            We develop software for serious road cyclists in Chinese cities.
-            VELO helps riders manage real outdoor activity history, segment
-            results, and route information.
+            VELO is developed and operated by
+            湖南湘江新区共演纪软件开发有限责任公司, a software company based
+            in Changsha, Hunan, China.
           </p>
-          <div class="notice">
-            We do not manufacture cycling hardware, operate an equipment store,
-            or expand VELO into a general fitness platform.
-          </div>
-        </article>
-      </section>
+        </section>
+
+        <section class="company-grid">
+          <article class="company-card">
+            <h2>Company details</h2>
+            <dl class="fact-list">
+              <div class="fact-row">
+                <dt>Legal name</dt>
+                <dd>湖南湘江新区共演纪软件开发有限责任公司</dd>
+              </div>
+              <div class="fact-row">
+                <dt>Established</dt>
+                <dd>25 May 2026</dd>
+              </div>
+              <div class="fact-row">
+                <dt>Location</dt>
+                <dd>Xiangjiang New Area, Changsha, Hunan, China</dd>
+              </div>
+              <div class="fact-row">
+                <dt>Product</dt>
+                <dd>VELO WeChat Mini Program</dd>
+              </div>
+              <div class="fact-row">
+                <dt>Contact</dt>
+                <dd>
+                  <a href="mailto:chengyuxiang@synexissoftware.cn"
+                    >chengyuxiang@synexissoftware.cn</a
+                  >
+                </dd>
+              </div>
+            </dl>
+          </article>
+          <article class="company-card">
+            <h2>What we build</h2>
+            <p>
+              We develop software for serious road cyclists in Chinese cities.
+              VELO helps riders manage real outdoor activity history, segment
+              results, and route information.
+            </p>
+            <div class="notice">
+              We do not manufacture cycling hardware, operate an equipment store,
+              or expand VELO into a general fitness platform.
+            </div>
+          </article>
+        </section>
+      </div>
     </main>
 
-    <footer class="site-footer">
-      <div class="footer-inner">
+    <footer class="site-foot">
+      <div class="shell foot">
         <div>
-          <div class="footer-title">VELO</div>
-          <p class="footer-legal">
-            湖南湘江新区共演纪软件开发有限责任公司
-          </p>
+          Operated by 湖南湘江新区共演纪软件开发有限责任公司. VELO is an
+          independent cycling product.
         </div>
-        <div class="footer-links">
-          <a href="/en/">Home</a>
+        <div class="foot-links">
+          <a href="/en/company/">Company</a>
           <a href="/en/privacy/">Privacy</a>
           <a href="/en/privacy/garmin/">Garmin data policy</a>
+          <a href="/company/" lang="zh-CN">中文</a>
         </div>
-        <div class="footer-record">
+        <div class="icp">
           <a
             href="https://beian.miit.gov.cn/"
             target="_blank"

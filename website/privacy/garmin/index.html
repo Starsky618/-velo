@@ -9,27 +9,54 @@
     />
     <title>Garmin 数据专项政策｜VELO</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/site.css?v=20260731a" />
+    <link rel="stylesheet" href="/assets/site.css?v=20260805a" />
   </head>
   <body>
-    <header class="site-header">
-      <nav class="nav" aria-label="主导航">
-        <a class="brand" href="/">
-          <span class="brand-dot" aria-hidden="true"></span>
+    <header class="site-head">
+      <div class="shell nav">
+        <a class="brand" href="/" aria-label="VELO 首页">
+          <i aria-hidden="true"></i>
           <span>VELO</span>
         </a>
-        <div class="nav-links">
-          <a href="/">产品</a>
-          <a aria-current="page" href="/privacy/garmin/">Garmin 数据</a>
+        <nav class="nav-links" aria-label="主导航">
+          <a href="/#index">路线索引</a>
+          <a href="/#fenhe">本地路线</a>
+          <a href="/#sync">数据同步</a>
           <a href="/privacy/">隐私</a>
-          <a class="language-link" href="/en/privacy/garmin/" lang="en">EN</a>
-        </div>
-      </nav>
+          <a href="/company/">关于公司</a>
+          <a href="/en/privacy/garmin/" lang="en">EN</a>
+        </nav>
+        <details class="nav-toggle">
+          <summary>
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+            <span class="visually-hidden">打开导航</span>
+          </summary>
+          <div class="menu-panel">
+            <a href="/#index">路线索引</a>
+            <a href="/#fenhe">本地路线</a>
+            <a href="/#sync">数据同步</a>
+            <a href="/privacy/">隐私政策</a>
+            <a href="/company/">关于公司</a>
+            <a href="/en/privacy/garmin/" lang="en">English</a>
+          </div>
+        </details>
+      </div>
     </header>
 
-    <main class="page">
+    <main>
+      <div class="shell">
       <section class="page-hero">
-        <span class="eyebrow">Garmin 数据专项政策</span>
+        <p class="kicker">Garmin 数据专项政策</p>
         <h1>只同步你授权的骑行，只用于你看得见的功能。</h1>
         <p>
           本政策专门说明 VELO 计划如何通过 Garmin Connect Developer
@@ -54,7 +81,7 @@
           <a href="#rights">用户权利</a>
         </nav>
 
-        <article class="policy-content">
+        <article>
           <section class="policy-section" id="authorization">
             <h2>1. 授权方式</h2>
             <p>
@@ -219,22 +246,19 @@
           </section>
         </article>
       </div>
+      </div>
     </main>
 
-    <footer class="site-footer">
-      <div class="footer-inner">
-        <div>
-          <div class="footer-title">VELO</div>
-          <p class="footer-legal">
-            湖南湘江新区共演纪软件开发有限责任公司
-          </p>
-        </div>
-        <div class="footer-links">
-          <a href="/">返回首页</a>
-          <a href="/privacy/">隐私政策</a>
+    <footer class="site-foot">
+      <div class="shell foot">
+        <div>VELO — 由湖南湘江新区共演纪软件开发有限责任公司运营。</div>
+        <div class="foot-links">
           <a href="/company/">关于公司</a>
+          <a href="/privacy/">隐私政策</a>
+          <a href="/privacy/garmin/">Garmin 数据政策</a>
+          <a href="/en/privacy/" lang="en">English</a>
         </div>
-        <div class="footer-record">
+        <div class="icp">
           <a
             href="https://beian.miit.gov.cn/"
             target="_blank"

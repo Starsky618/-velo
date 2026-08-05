@@ -9,251 +9,278 @@
     />
     <title>Privacy Policy | VELO</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/site.css?v=20260731a" />
+    <link rel="stylesheet" href="/assets/site.css?v=20260805a" />
   </head>
   <body>
-    <header class="site-header">
-      <nav class="nav" aria-label="Main navigation">
-        <a class="brand" href="/en/">
-          <span class="brand-dot" aria-hidden="true"></span>
+    <header class="site-head">
+      <div class="shell nav">
+        <a class="brand" href="/en/" aria-label="VELO home">
+          <i aria-hidden="true"></i>
           <span>VELO</span>
         </a>
-        <div class="nav-links">
-          <a href="/en/">Product</a>
-          <a aria-current="page" href="/en/privacy/">Privacy</a>
+        <nav class="nav-links" aria-label="Main navigation">
+          <a href="/#index">Route index</a>
+          <a href="/#fenhe">Local route</a>
+          <a href="/#sync">Data sync</a>
+          <a href="/en/privacy/" aria-current="page">Privacy</a>
           <a href="/en/company/">Company</a>
-          <a class="language-link" href="/privacy/" lang="zh-CN">中文</a>
-        </div>
-      </nav>
+          <a href="/privacy/" lang="zh-CN">中文</a>
+        </nav>
+        <details class="nav-toggle">
+          <summary>
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+            <span class="visually-hidden">Open navigation</span>
+          </summary>
+          <div class="menu-panel">
+            <a href="/#index">Route index</a>
+            <a href="/#fenhe">Local route</a>
+            <a href="/#sync">Data sync</a>
+            <a href="/en/privacy/" aria-current="page">Privacy policy</a>
+            <a href="/en/company/">Company</a>
+            <a href="/privacy/" lang="zh-CN">中文</a>
+          </div>
+        </details>
+      </div>
     </header>
 
-    <main class="page">
-      <section class="page-hero">
-        <span class="eyebrow">Privacy policy</span>
-        <h1>Your ride data should stay under your control.</h1>
-        <p>
-          This policy explains how VELO processes account information,
-          activity files, routes, sensor data, and third-party authorization
-          information.
-        </p>
-        <div class="meta-row">
-          <span>Effective: 29 July 2026</span>
-          <span>Version 1.0</span>
-          <span>Operator: 湖南湘江新区共演纪软件开发有限责任公司</span>
+    <main>
+      <div class="shell">
+        <section class="page-hero">
+          <p class="kicker">Privacy policy</p>
+          <h1>Your ride data should stay under your control.</h1>
+          <p>
+            This policy explains how VELO processes account information,
+            activity files, routes, sensor data, and third-party authorization
+            information.
+          </p>
+          <div class="meta-row">
+            <span>Effective: 29 July 2026</span>
+            <span>Version 1.0</span>
+            <span>Operator: 湖南湘江新区共演纪软件开发有限责任公司</span>
+          </div>
+        </section>
+
+        <div class="policy-layout">
+          <nav class="policy-toc" aria-label="Policy contents">
+            <a href="#controller">Controller</a>
+            <a href="#data">Data</a>
+            <a href="#purpose">Purposes</a>
+            <a href="#sharing">Sharing</a>
+            <a href="#retention">Retention</a>
+            <a href="#rights">Rights</a>
+            <a href="#security">Security</a>
+            <a href="#children">Children</a>
+            <a href="#changes">Policy changes</a>
+            <a href="#contact">Contact</a>
+          </nav>
+          <article>
+            <section class="policy-section" id="controller">
+              <h2>1. Controller and scope</h2>
+              <p>
+                VELO is operated by 湖南湘江新区共演纪软件开发有限责任公司.
+                This policy applies to the VELO WeChat Mini Program, official
+                website, ride history, route, segment, and data-sync services.
+              </p>
+              <p>
+                Garmin-specific processing is described in the
+                <a href="/en/privacy/garmin/"><strong>Garmin Data Policy</strong></a>.
+              </p>
+              <p>
+                Third-party services have their own privacy policies. Users should
+                also review those policies when leaving VELO for a third-party
+                service.
+              </p>
+            </section>
+
+            <section class="policy-section" id="data">
+              <h2>2. Information we process</h2>
+              <ul>
+                <li>WeChat OpenID, nickname, and avatar for account access;</li>
+                <li>optional rider profile fields such as city, bike type, FTP, weight, and heart-rate settings;</li>
+                <li>FIT/GPX files, timestamps, distance, speed, elevation, power, heart rate, and cadence;</li>
+                <li>GPS track points and simplified routes for maps and segment matching;</li>
+                <li>third-party identifiers, OAuth tokens, and authorization status when a user connects a platform;</li>
+                <li>limited operational logs required for security and troubleshooting.</li>
+              </ul>
+              <p>
+                Optional fields such as FTP, weight, and year of birth may be left
+                blank. VELO does not invent values when those fields are absent.
+              </p>
+            </section>
+
+            <section class="policy-section" id="purpose">
+              <h2>3. Why we use information</h2>
+              <ul>
+                <li>create and maintain a VELO account;</li>
+                <li>parse rides and show route and performance information;</li>
+                <li>match road-cycling segments and calculate personal results;</li>
+                <li>save and export user-created route books;</li>
+                <li>apply user visibility, power, and heart-rate privacy choices;</li>
+                <li>process disconnect, deletion, account closure, and data-rights requests;</li>
+                <li>secure, maintain, and troubleshoot the service.</li>
+              </ul>
+              <p>
+                VELO does not sell ride tracks for advertising profiles and does
+                not provide third-party synchronized ride data to an external AI
+                or large language model for training.
+              </p>
+            </section>
+
+            <section class="policy-section" id="sharing">
+              <h2>4. Sharing and publication</h2>
+              <p>
+                Users can make an activity private and hide power or heart-rate
+                fields. Garmin-imported rides are planned to be private by
+                default and published only after a user action.
+              </p>
+              <p>
+                We do not sell ride tracks or OAuth tokens. Production
+                infrastructure and backups are hosted in Tencent Cloud's
+                Guangzhou region in Mainland China. Garmin activity data is not
+                provided to external AI or LLM services.
+              </p>
+              <ul>
+                <li>we do not sell or rent ride tracks or third-party authorization tokens;</li>
+                <li>we do not provide machine-readable raw Garmin data to another platform;</li>
+                <li>we do not automatically publish Garmin-imported activities without user consent;</li>
+                <li>we do not send Garmin activity data to third parties outside Mainland China.</li>
+              </ul>
+              <p>
+                We may provide information within the legally required scope when
+                required by applicable law or a competent judicial or
+                administrative authority.
+              </p>
+            </section>
+
+            <section class="policy-section" id="retention">
+              <h2>5. Storage and retention</h2>
+              <ul>
+                <li>production data is processed and stored in Mainland China;</li>
+                <li>accounts and ride history are kept while the account remains active, unless deleted earlier;</li>
+                <li>OAuth tokens are deleted when the user disconnects the third-party service;</li>
+                <li>operational backups expire within 30 days;</li>
+                <li>raw Garmin activity files are retained for no more than 30 days after successful parsing;</li>
+                <li>longer retention applies where required by law.</li>
+              </ul>
+              <p>
+                Manually uploaded FIT/GPX files and automatically synchronized
+                Garmin files follow different rules. When an activity or account
+                is deleted, VELO attempts to delete its manually uploaded file at
+                the same time. A storage failure may leave a residual file until
+                VELO manually reviews and deletes it; the file will no longer be
+                used to provide the service. Users may email us to request that
+                review and deletion.
+              </p>
+            </section>
+
+            <section class="policy-section" id="rights">
+              <h2>6. User rights</h2>
+              <p>Users may request:</p>
+              <ul>
+                <li>access to, correction of, or supplementation of profile information;</li>
+                <li>deletion of an individual ride and its track;</li>
+                <li>withdrawal of third-party authorization and termination of future sync;</li>
+                <li>a copy or transfer of personal information;</li>
+                <li>account closure and deletion or de-identification of associated personal data;</li>
+                <li>an explanation of VELO's personal-information processing rules.</li>
+              </ul>
+              <p>
+                Account closure is irreversible. Personal account data, rides,
+                tracks, segment results, and third-party tokens are deleted
+                through the product's confirmation flow. To preserve the
+                integrity of content already shared with the community, route
+                books and published meetup content, meeting points, descriptions,
+                and media may remain after association with the account is
+                removed. This content may still contain information the user
+                supplied or uploaded. Before closing an account, users may delete
+                or edit content for which the product provides self-service
+                controls. For published meetups and other content without such
+                controls, users may email us to request review and deletion.
+              </p>
+            </section>
+
+            <section class="policy-section" id="security">
+              <h2>7. Security and incidents</h2>
+              <p>
+                VELO uses HTTPS, access control, least privilege, logging, and
+                backup isolation. Third-party tokens must not appear in public
+                APIs, web pages, or application logs. Garmin tokens will be
+                encrypted at rest before production access is made available.
+              </p>
+              <p>
+                If a security incident may affect user rights, VELO will take
+                remedial measures required by law and notify affected users,
+                where practicable, through the product or available contact
+                channels.
+              </p>
+            </section>
+
+            <section class="policy-section" id="children">
+              <h2>8. Children</h2>
+              <p>
+                VELO is designed for adult road cyclists and is not intentionally
+                offered to children under 14. If VELO learns that a child's
+                personal information was processed without guardian consent, it
+                will delete that information promptly.
+              </p>
+            </section>
+
+            <section class="policy-section" id="changes">
+              <h2>9. Policy changes</h2>
+              <p>
+                Material changes will update the effective date on this page and,
+                where appropriate, be presented in the product for consent. If a
+                new processing purpose is not directly or reasonably related to
+                the original authorization, VELO will obtain new consent.
+              </p>
+            </section>
+
+            <section class="policy-section" id="contact">
+              <h2>10. Contact</h2>
+              <p>
+                Controller: 湖南湘江新区共演纪软件开发有限责任公司
+              </p>
+              <p>
+                Email:
+                <a href="mailto:chengyuxiang@synexissoftware.cn"
+                  ><strong>chengyuxiang@synexissoftware.cn</strong></a
+                >
+              </p>
+              <p>
+                VELO will verify that a requester is connected to the relevant
+                account and respond within the period required by law. Only
+                information necessary for identity and account verification will
+                be requested.
+              </p>
+            </section>
+          </article>
         </div>
-      </section>
-
-      <div class="policy-layout">
-        <nav class="policy-toc" aria-label="Policy contents">
-          <a href="#controller">Controller</a>
-          <a href="#data">Data</a>
-          <a href="#purpose">Purposes</a>
-          <a href="#sharing">Sharing</a>
-          <a href="#retention">Retention</a>
-          <a href="#rights">Rights</a>
-          <a href="#security">Security</a>
-          <a href="#children">Children</a>
-          <a href="#changes">Policy changes</a>
-          <a href="#contact">Contact</a>
-        </nav>
-        <article class="policy-content">
-          <section class="policy-section" id="controller">
-            <h2>1. Controller and scope</h2>
-            <p>
-              VELO is operated by 湖南湘江新区共演纪软件开发有限责任公司.
-              This policy applies to the VELO WeChat Mini Program, official
-              website, ride history, route, segment, and data-sync services.
-            </p>
-            <p>
-              Garmin-specific processing is described in the
-              <a href="/en/privacy/garmin/"><strong>Garmin Data Policy</strong></a>.
-            </p>
-            <p>
-              Third-party services have their own privacy policies. Users should
-              also review those policies when leaving VELO for a third-party
-              service.
-            </p>
-          </section>
-
-          <section class="policy-section" id="data">
-            <h2>2. Information we process</h2>
-            <ul>
-              <li>WeChat OpenID, nickname, and avatar for account access;</li>
-              <li>optional rider profile fields such as city, bike type, FTP, weight, and heart-rate settings;</li>
-              <li>FIT/GPX files, timestamps, distance, speed, elevation, power, heart rate, and cadence;</li>
-              <li>GPS track points and simplified routes for maps and segment matching;</li>
-              <li>third-party identifiers, OAuth tokens, and authorization status when a user connects a platform;</li>
-              <li>limited operational logs required for security and troubleshooting.</li>
-            </ul>
-            <p>
-              Optional fields such as FTP, weight, and year of birth may be left
-              blank. VELO does not invent values when those fields are absent.
-            </p>
-          </section>
-
-          <section class="policy-section" id="purpose">
-            <h2>3. Why we use information</h2>
-            <ul>
-              <li>create and maintain a VELO account;</li>
-              <li>parse rides and show route and performance information;</li>
-              <li>match road-cycling segments and calculate personal results;</li>
-              <li>save and export user-created route books;</li>
-              <li>apply user visibility, power, and heart-rate privacy choices;</li>
-              <li>process disconnect, deletion, account closure, and data-rights requests;</li>
-              <li>secure, maintain, and troubleshoot the service.</li>
-            </ul>
-            <p>
-              VELO does not sell ride tracks for advertising profiles and does
-              not provide third-party synchronized ride data to an external AI
-              or large language model for training.
-            </p>
-          </section>
-
-          <section class="policy-section" id="sharing">
-            <h2>4. Sharing and publication</h2>
-            <p>
-              Users can make an activity private and hide power or heart-rate
-              fields. Garmin-imported rides are planned to be private by
-              default and published only after a user action.
-            </p>
-            <p>
-              We do not sell ride tracks or OAuth tokens. Production
-              infrastructure and backups are hosted in Tencent Cloud's
-              Guangzhou region in Mainland China. Garmin activity data is not
-              provided to external AI or LLM services.
-            </p>
-            <ul>
-              <li>we do not sell or rent ride tracks or third-party authorization tokens;</li>
-              <li>we do not provide machine-readable raw Garmin data to another platform;</li>
-              <li>we do not automatically publish Garmin-imported activities without user consent;</li>
-              <li>we do not send Garmin activity data to third parties outside Mainland China.</li>
-            </ul>
-            <p>
-              We may provide information within the legally required scope when
-              required by applicable law or a competent judicial or
-              administrative authority.
-            </p>
-          </section>
-
-          <section class="policy-section" id="retention">
-            <h2>5. Storage and retention</h2>
-            <ul>
-              <li>production data is processed and stored in Mainland China;</li>
-              <li>accounts and ride history are kept while the account remains active, unless deleted earlier;</li>
-              <li>OAuth tokens are deleted when the user disconnects the third-party service;</li>
-              <li>operational backups expire within 30 days;</li>
-              <li>raw Garmin activity files are retained for no more than 30 days after successful parsing;</li>
-              <li>longer retention applies where required by law.</li>
-            </ul>
-            <p>
-              Manually uploaded FIT/GPX files and automatically synchronized
-              Garmin files follow different rules. When an activity or account
-              is deleted, VELO attempts to delete its manually uploaded file at
-              the same time. A storage failure may leave a residual file until
-              VELO manually reviews and deletes it; the file will no longer be
-              used to provide the service. Users may email us to request that
-              review and deletion.
-            </p>
-          </section>
-
-          <section class="policy-section" id="rights">
-            <h2>6. User rights</h2>
-            <p>Users may request:</p>
-            <ul>
-              <li>access to, correction of, or supplementation of profile information;</li>
-              <li>deletion of an individual ride and its track;</li>
-              <li>withdrawal of third-party authorization and termination of future sync;</li>
-              <li>a copy or transfer of personal information;</li>
-              <li>account closure and deletion or de-identification of associated personal data;</li>
-              <li>an explanation of VELO's personal-information processing rules.</li>
-            </ul>
-            <p>
-              Account closure is irreversible. Personal account data, rides,
-              tracks, segment results, and third-party tokens are deleted
-              through the product's confirmation flow. To preserve the
-              integrity of content already shared with the community, route
-              books and published meetup content, meeting points, descriptions,
-              and media may remain after association with the account is
-              removed. This content may still contain information the user
-              supplied or uploaded. Before closing an account, users may delete
-              or edit content for which the product provides self-service
-              controls. For published meetups and other content without such
-              controls, users may email us to request review and deletion.
-            </p>
-          </section>
-
-          <section class="policy-section" id="security">
-            <h2>7. Security and incidents</h2>
-            <p>
-              VELO uses HTTPS, access control, least privilege, logging, and
-              backup isolation. Third-party tokens must not appear in public
-              APIs, web pages, or application logs. Garmin tokens will be
-              encrypted at rest before production access is made available.
-            </p>
-            <p>
-              If a security incident may affect user rights, VELO will take
-              remedial measures required by law and notify affected users,
-              where practicable, through the product or available contact
-              channels.
-            </p>
-          </section>
-
-          <section class="policy-section" id="children">
-            <h2>8. Children</h2>
-            <p>
-              VELO is designed for adult road cyclists and is not intentionally
-              offered to children under 14. If VELO learns that a child's
-              personal information was processed without guardian consent, it
-              will delete that information promptly.
-            </p>
-          </section>
-
-          <section class="policy-section" id="changes">
-            <h2>9. Policy changes</h2>
-            <p>
-              Material changes will update the effective date on this page and,
-              where appropriate, be presented in the product for consent. If a
-              new processing purpose is not directly or reasonably related to
-              the original authorization, VELO will obtain new consent.
-            </p>
-          </section>
-
-          <section class="policy-section" id="contact">
-            <h2>10. Contact</h2>
-            <p>
-              Controller: 湖南湘江新区共演纪软件开发有限责任公司
-            </p>
-            <p>
-              Email:
-              <a href="mailto:chengyuxiang@synexissoftware.cn"
-                ><strong>chengyuxiang@synexissoftware.cn</strong></a
-              >
-            </p>
-            <p>
-              VELO will verify that a requester is connected to the relevant
-              account and respond within the period required by law. Only
-              information necessary for identity and account verification will
-              be requested.
-            </p>
-          </section>
-        </article>
       </div>
     </main>
 
-    <footer class="site-footer">
-      <div class="footer-inner">
+    <footer class="site-foot">
+      <div class="shell foot">
         <div>
-          <div class="footer-title">VELO</div>
-          <p class="footer-legal">
-            湖南湘江新区共演纪软件开发有限责任公司
-          </p>
+          Operated by 湖南湘江新区共演纪软件开发有限责任公司. VELO is an
+          independent cycling product.
         </div>
-        <div class="footer-links">
-          <a href="/en/">Home</a>
+        <div class="foot-links">
           <a href="/en/company/">Company</a>
+          <a href="/en/privacy/">Privacy</a>
           <a href="/en/privacy/garmin/">Garmin data policy</a>
+          <a href="/privacy/" lang="zh-CN">中文</a>
         </div>
-        <div class="footer-record">
+        <div class="icp">
           <a
             href="https://beian.miit.gov.cn/"
             target="_blank"
