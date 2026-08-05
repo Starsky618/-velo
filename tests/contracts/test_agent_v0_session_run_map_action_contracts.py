@@ -381,7 +381,7 @@ def assert_run_semantics(run):
         assert commit["committed_revision"] == run["base_session_revision"] + 1
     else:
         assert "committed_revision" not in commit
-    if commit["commit_status"] == "rejected_stale":
+    if commit["commit_status"] in {"rejected_stale", "reconciliation_required"}:
         assert run.get("stop_reason") in {"deterministic_error", "cancelled"}
     if run.get("stop_reason") == "completed":
         assert commit["commit_status"] == "committed"
@@ -1271,6 +1271,20 @@ def test_rejected_stale_run_cannot_claim_completed():
         "commit_status": "rejected_stale",
         "expected_base_revision": 1,
     }
+    with pytest.raises(AssertionError):
+        assert_run_semantics(run)
+
+
+def test_reconciliation_required_is_a_formal_non_completed_commit_state(schemas, local_registry):
+    run = load_valid("agent_run_candidate_completed.json")
+    run["stop_reason"] = "deterministic_error"
+    run["session_commit"] = {
+        "commit_status": "reconciliation_required",
+        "expected_base_revision": 1,
+    }
+    assert not validation_errors("agent_run", run, schemas, local_registry)
+    assert_run_semantics(run)
+    run["stop_reason"] = "completed"
     with pytest.raises(AssertionError):
         assert_run_semantics(run)
 

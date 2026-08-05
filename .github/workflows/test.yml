@@ -18,6 +18,23 @@ on:
   pull_request:
 
 jobs:
+  agent-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install TypeScript Agent dependencies
+        run: npm ci
+
+      - name: Typecheck and test the TypeScript Agent runtime
+        run: npm test
+
   pytest:
     runs-on: ubuntu-latest
     services:
@@ -49,6 +66,14 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 for cross-language Agent conformance
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install TypeScript Agent dependencies for cross-language conformance
+        run: npm ci
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5

@@ -1,6 +1,6 @@
 # VELO Agent v0 language-neutral contracts
 
-本目录包含 A2.1 Context contracts、A2.2 Session/Run/Map/Action contracts，以及第二轮 review 为 `REVISE`、已应用 R2 并等待 Orchestrator re-review 的 A2.3a Tool Registry/ToolCall/ToolResult contracts。它们固定语言中立、版本化的 shape 与 semantic conformance，不是数据库 schema，不选择 Python、TypeScript 或 Agent Runtime，也不证明生产 Context Compiler、Tool Gateway、reducer 或持久化服务已存在。
+本目录包含 A2.1 Context contracts、A2.2 Session/Run/Map/Action contracts，以及 A2.3a Tool Registry/ToolCall/ToolResult contracts。它们继续固定语言中立、版本化的 shape 与 semantic conformance，不是数据库 schema。仓库现在另有 [`agent_runtime`](../../agent_runtime/README.md) TypeScript Shadow 内核；该实现不把 TypeScript 私有状态偷渡进这些跨语言合同，也不证明生产 Context Compiler、Tool Gateway、数据库或 Provider 已存在。
 
 ## 当前包含
 
@@ -44,6 +44,7 @@
 ## Session、Run 与地图动作边界
 
 - `SessionState` 是 deterministic interaction service 拥有的 working state，不是完整聊天记录。one Session can have many Runs；Run 与 Session 分离，Run/AgentAction/MapAction 都绑定 `base_session_revision`，stale proposal 不能覆盖新版 Session。
+- `session_commit.commit_status=reconciliation_required` 只用于持久层写入返回异常且 exact-event 重读也无法判断结果的窄故障面；它必须停止为 `deterministic_error` 或 `cancelled`，禁止自动重试、禁止声称 committed，并由恢复流程按 immutable event id 对账。不得把该状态藏进 metadata。
 - `AgentRun` 的 created 状态不含任何执行引用或预算消耗，且不能提交 Session；每个实际 model turn 必须恰好对应一个 `ContextManifest`。running Run 也不能提前声称最终 commit，deadline 必须严格晚于 started time。resume 使用新 `run_id`，继承同一 lineage 与单调预算，并绑定 parent 已提交后的 current Session revision。
 - `MapEvent` 和 `MapAction` 都必须经过 deterministic reducer；地图状态不能从自然语言回复反推。用户切换 active candidate 只改变当前关注项，只有 `plan_confirmed` 用户事件或未来等价明确事件才能产生 `selected_plan`。
 - Session 的地图状态只保存 deterministic boundary 已解析的 opaque `available_bounds_refs`。`fit_bounds` 可以把 viewport 从当前 bounds 改到其中另一个已知 ref；viewport 用 `source_kind/source_ref` 区分 initial、MapEvent 与 MapAction 来源，仍禁止 bbox、坐标、WKT 或 GeoJSON。
@@ -105,9 +106,10 @@ Predicate request 与 Relation request 是两条独立合同面。每个 request
 ## Python / TypeScript 与 Runtime 边界
 
 - A2 合同是 language-neutral JSON Schema。当前 Python pytest 只利用既有 Python 仓库与 CI 执行 semantic conformance，不代表选择 Python Agent Runtime。
-- Proposed Agent-First research 中，Agent Control Plane 的优先候选仍是独立 TypeScript Shadow Service；这是候选方向，不是 Accepted Runtime 语言或框架决策。
-- Runtime 选择继续 deferred。第一个 Runtime implementation Task Packet 之前必须完成正式技术栈决策，不能由 conformance test 的实现语言偷渡决定；当前 Runtime implementation 未授权。
+- 当前用户已明确选择 TypeScript Agent 项目；首个 plain TypeScript、event-sourced Shadow 内核位于 [`agent_runtime`](../../agent_runtime/README.md)。OpenAI Agents SDK、Mastra、LangGraph 与 XState 仍只可作为未来 orchestration 依赖，不能成为 Session、世界事实或权限的唯一真相源。
+- 创造者 Agent 与骑友 Agent 是两个独立产品和权限面，不是同一 Agent 的角色开关。骑友侧已跑通会话/Context/路线 Shadow；创造者侧已跑通来源、Evidence、Claim、Eval 到 World Change Proposal 的独立确定性状态机，但两边都尚未接生产服务。
 - 现有 Python/FastAPI Deterministic Domain Plane 继续保留，不因未来可能采用 TypeScript Agent Control Plane 而重写。
+- 当前没有生产数据库迁移、真实模型、腾讯 Provider、小程序接线或部署；这些未验证层级不能由 Shadow 测试冒充。
 
 安装 `requirements.txt` 中固定的测试依赖后运行：
 
