@@ -1,0 +1,24 @@
+{
+  "name": "velo-agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:agent": "node --experimental-strip-types --test tests-ts/*.test.ts",
+    "test": "npm run typecheck && npm run test:agent",
+    "demo:shadow": "node --experimental-strip-types agent_runtime/consumer/cli/tianlongshan-shadow.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "@types/proper-lockfile": "4.1.4",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "proper-lockfile": "4.1.2"
+  }
+}

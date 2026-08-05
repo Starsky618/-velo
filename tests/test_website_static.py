@@ -287,21 +287,21 @@ def test_privacy_policy_matches_current_and_planned_data_boundaries():
 
 
 def test_account_deletion_copy_matches_deidentified_shared_content_retention():
-    settings_js = (ROOT / "miniprogram/pages/settings/settings.js").read_text(
+    account_js = (ROOT / "miniprogram/pages/account-settings/account-settings.js").read_text(
         encoding="utf-8"
     )
-    settings_wxml = (ROOT / "miniprogram/pages/settings/settings.wxml").read_text(
+    account_wxml = (ROOT / "miniprogram/pages/account-settings/account-settings.wxml").read_text(
         encoding="utf-8"
     )
     api_js = (ROOT / "miniprogram/utils/api.js").read_text(encoding="utf-8")
     router = (ROOT / "app/user/router.py").read_text(encoding="utf-8")
     service = (ROOT / "app/user/service.py").read_text(encoding="utf-8")
-    combined = "\n".join([settings_js, settings_wxml, api_js, router, service])
+    combined = "\n".join([account_js, account_wxml, api_js, router, service])
 
     assert "彻底删除你的全部数据" not in combined
-    assert "你创建的路书都会解除关联后保留" in settings_js
-    assert "已开放约骑会取消并解除关联后保留" in settings_js
-    assert "官网隐私邮箱申请" in settings_js
+    assert "你创建的路书都会解除关联后保留" in account_js
+    assert "已开放约骑会取消并解除关联后保留" in account_js
+    assert "官网隐私邮箱申请" in account_js
     assert "创建的全部路书和已开放约骑按后端规则去标识保留" in api_js
     assert "创建的全部路书和已开放约骑去标识保留" in router
     assert "所有路线定义保留为无主" in service

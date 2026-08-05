@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/context_manifest.schema.json",
+  "title": "VELO Context Manifest v0",
+  "description": "An auditable compilation record for one model call. It records versioned sources, selections, omissions, privacy redactions, and token accounting without copying the full context.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "packet_environment",
+    "session_id",
+    "run_id",
+    "model_call_id",
+    "compiled_at",
+    "task_mode",
+    "prompt_policy_version",
+    "playbook_version",
+    "tool_registry_version",
+    "predicate_registry_version",
+    "session_revision",
+    "source_packet_refs",
+    "memory_item_refs",
+    "plan_revision_refs",
+    "included_sections",
+    "omitted_sections",
+    "privacy_redactions",
+    "token_budget",
+    "token_counts",
+    "context_content_hash",
+    "source_of_truth",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "manifest_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "packet_environment": {
+      "type": "string",
+      "enum": ["test", "shadow", "production"]
+    },
+    "session_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "run_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "model_call_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "compiled_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "task_mode": {
+      "type": "string",
+      "enum": ["discover", "understand", "compare", "revise", "execute"]
+    },
+    "prompt_policy_version": { "$ref": "common.schema.json#/$defs/revision" },
+    "playbook_version": { "$ref": "common.schema.json#/$defs/revision" },
+    "tool_registry_version": { "$ref": "common.schema.json#/$defs/revision" },
+    "predicate_registry_version": { "const": "0.1.0" },
+    "session_revision": { "$ref": "common.schema.json#/$defs/revision" },
+    "source_packet_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "allOf": [
+          { "$ref": "common.schema.json#/$defs/packet_ref" },
+          {
+            "properties": {
+              "packet_type": {
+                "enum": ["rider_context_packet", "world_fact_packet"]
+              }
+            }
+          }
+        ]
+      },
+      "maxItems": 100
+    },
+    "memory_item_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "common.schema.json#/$defs/stable_id" },
+      "maxItems": 100
+    },
+    "plan_revision_refs": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/revision_ref" },
+      "maxItems": 100
+    },
+    "included_sections": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "maxItems": 100
+    },
+    "omitted_sections": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/omitted_section" },
+      "maxItems": 100
+    },
+    "privacy_redactions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/privacy_redaction" },
+      "maxItems": 100
+    },
+    "token_budget": { "$ref": "#/$defs/token_budget" },
+    "token_counts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/token_count" },
+      "maxItems": 100
+    },
+    "context_content_hash": { "$ref": "common.schema.json#/$defs/content_hash" },
+    "source_of_truth": { "const": false },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "$defs": {
+    "privacy_redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["section", "policy_ref"],
+      "properties": {
+        "section": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "policy_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+      }
+    },
+    "token_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["budget", "used", "reserved_for_response"],
+      "properties": {
+        "budget": { "type": "integer", "minimum": 1 },
+        "used": { "type": "integer", "minimum": 0 },
+        "reserved_for_response": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "token_count": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["section", "tokens"],
+      "properties": {
+        "section": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "tokens": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

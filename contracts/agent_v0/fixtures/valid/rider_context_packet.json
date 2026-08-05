@@ -1,0 +1,127 @@
+{
+  "schema_version": "0.1.0",
+  "packet_id": "rider-context.fixture.rider-001.1",
+  "packet_environment": "test",
+  "generated_at": "2026-08-03T19:30:00+08:00",
+  "source_revision": "fixture-rider-source-r1",
+  "session_id": "planning-session.fixture-001",
+  "user_ref": "user.fixture-rider-001",
+  "authorization": {
+    "purpose": "Compare two fixture routes for a four-hour road ride.",
+    "task_mode": "compare",
+    "allowed_sections": [
+      "bike_profiles",
+      "performance_context",
+      "saved_place_handles",
+      "familiarity",
+      "explicit_preferences",
+      "relevant_history_summaries",
+      "explicit_memory_items"
+    ],
+    "data_scope_refs": ["scope.fixture-route-comparison"],
+    "sensitive_location_policy": "opaque_ref_only"
+  },
+  "current_request": {
+    "request_summary": "周末四小时公路骑行，比较天龙山爬坡与汾河双岸路线。",
+    "time_budget_s": 14400,
+    "return_to_origin": true,
+    "selected_bike_profile_ref": "bike-profile.road-001",
+    "companion_summary": "两位熟悉城市道路的同伴。"
+  },
+  "bike_profiles": [
+    {
+      "profile_ref": "bike-profile.road-001",
+      "bike_type": "road",
+      "surface_capabilities": ["paved", "compact_gravel"]
+    }
+  ],
+  "performance_context": {
+    "ftp_watts": 240,
+    "weight_kg": 68,
+    "speed_model_ref": "speed-model.fixture-rider-001.v2",
+    "climb_model_ref": "climb-model.fixture-rider-001.v1"
+  },
+  "saved_place_handles": [
+    {
+      "place_ref": "place-handle.home-area-001",
+      "display_label": "常用出发区域",
+      "precision": "area_ref",
+      "exact_coordinates_exposed": false
+    }
+  ],
+  "familiarity": [
+    {
+      "subject_ref": {
+        "object_id": "route.fenhe-dual-bank-001",
+        "object_type": "named_route"
+      },
+      "traversal_ref": "traversal.fenhe-clockwise-001",
+      "level": "familiar",
+      "ride_count_summary": {
+        "completed_rides": 6,
+        "summary": "近一年完成过六次相关骑行。"
+      },
+      "last_ridden_at": "2026-07-20T08:00:00+08:00",
+      "source_activity_refs": ["activity.fixture-101", "activity.fixture-106"]
+    }
+  ],
+  "explicit_preferences": [
+    {
+      "preference_id": "preference.fixture-001",
+      "predicate_id": "route.surface_type",
+      "value": {
+        "value_kind": "enum",
+        "enum_value": "asphalt"
+      },
+      "source_kind": "user_confirmation",
+      "confirmed_at": "2026-08-01T12:00:00+08:00",
+      "relevance_reason": "The selected road bike favors paved surfaces."
+    }
+  ],
+  "relevant_history_summaries": [
+    {
+      "summary_id": "history-summary.fixture-001",
+      "source_activity_refs": ["activity.fixture-101", "activity.fixture-106"],
+      "summary": "平路四小时骑行通常可稳定完成，长爬坡数据不足。",
+      "relevance_reason": "Helps bound route duration without exposing raw tracks."
+    }
+  ],
+  "explicit_memory_items": [
+    {
+      "memory_id": "memory.fixture-001",
+      "source_kind": "explicit_memory",
+      "confirmed_at": "2026-08-01T12:00:00+08:00",
+      "relevance_reason": "The rider explicitly asked to avoid busy roads.",
+      "content_summary": "偏好低机动车干扰路线。",
+      "user_control_state": "active"
+    }
+  ],
+  "unknowns": [
+    {
+      "unknown_id": "unknown.rider-current-climb-form",
+      "subject_ref": {
+        "object_id": "rider.fixture-rider-001",
+        "object_type": "rider"
+      },
+      "predicate_id": "rider.current_climb_form",
+      "reason_code": "insufficient_recent_climb_history",
+      "blocking": false,
+      "user_safe_summary": "近期长爬坡能力没有足够数据。"
+    }
+  ],
+  "omitted_sections": [
+    {
+      "section": "raw_activity_tracks",
+      "reason": "privacy"
+    }
+  ],
+  "privacy": {
+    "exact_coordinates_included": false,
+    "raw_activity_tracks_included": false,
+    "full_chat_transcript_included": false
+  },
+  "metadata": {
+    "x-fixture": true,
+    "x-purpose": "contract-validation"
+  }
+}

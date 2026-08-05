@@ -1,0 +1,139 @@
+schema_version: 2
+project: VELO
+updated_at: '2026-08-05T18:18:37+08:00'
+status: active
+
+authority:
+  order:
+  - current_user_instruction
+  - repository_code_tests_ci_runtime
+  - current_orchestrator_state
+  - accepted_adrs_and_current_handoff
+  - source_blueprints
+  - historical_specs_and_chat
+
+source_documents:
+- name: VELO_路线认知基础设施_v0.1.md
+  path: docs/agent-first/source/VELO_路线认知基础设施_v0.1.md
+  sha256: 2dd16330905664fb126daf2cb685e02d4d1897675df6de82c9b3b5c8f3b3bdb1
+  role: product_and_domain_constitution
+  status: authoritative
+- name: VELO_Agent_First_架构研究与系统设计_v0.1.md
+  path: docs/agent-first/source/VELO_Agent_First_架构研究与系统设计_v0.1.md
+  sha256: 526fa8d1c154f5fd702b16ddacf35c5c1d9c90299bf60bf0e17e83d144ee0b17
+  role: architecture_research
+  status: proposed_requires_eval
+- name: VELO_目标领域架构与渐进式迁移蓝图_v1.0.md
+  path: docs/agent-first/source/VELO_目标领域架构与渐进式迁移蓝图_v1.0.md
+  sha256: b7fd39deba4c3f802c03ee0d76696c35ac0d488ec65bb61792ea9b47a1768e4a
+  role: long_term_world_model_map
+  status: proposed_long_term
+
+repository:
+  github: Starsky618/-velo
+  verified_main_commit: 9728e2e9ba9c5d77e3193b4c379bd3df461c8c44
+  verified_main_pr: 49
+  verified_ci_run: 30996385431
+  verified_ci_result:
+    agent_runtime: 56_passed_0_failed_0_skipped
+    pytest: 2447_passed_0_skipped_with_fresh_postgis_and_redis
+    independent_reviews: spec_and_integration_critical_0_important_0
+  production_deployed: false
+  rider_visible: false
+
+mission:
+  product_goal: build_provenance_backed_route_cognition_and_static_ride_planning
+  creator_agent:
+    serves: Tim_and_VELO_builders
+    objective: preserve_source_information_and_user_confirmed_judgment_then_compile_auditable_context
+    invariants:
+    - agent_proposal_is_not_user_judgment
+    - evidence_is_not_fact
+    - every_confirmed_judgment_has_source_revision_and_authorship
+    - superseded_judgment_is_not_loaded_into_current_context
+    - context_is_a_compiled_projection_not_a_truth_source
+    - world_change_requires_eval_and_human_or_deterministic_publish_boundary
+  rider_agent:
+    serves: riders
+    objective: compose_locked_route_knowledge_with_tencent_connectors_for_static_ride_plans
+    invariants:
+    - creator_private_evidence_is_not_visible
+    - tencent_connector_cannot_replace_canonical_core
+    - rider_feedback_is_proposal_only
+  coupling: versioned_published_world_traversal_plan_and_feedback_contracts_only
+
+current_delivery:
+  language_neutral_contracts:
+    status: merged
+    prs: [41, 42, 43]
+    path: contracts/agent_v0
+  rider_typescript_shadow:
+    status: merged_and_tested
+    prs: [44, 46]
+    implemented:
+    - append_only_jsonl_session_and_exact_raw_turns
+    - explicit_user_confirmed_decisions_and_supersession
+    - blocking_unknowns_and_context_compiler
+    - bounded_agent_run_tool_deadline_and_reconciliation
+    - locked_core_traversals_with_tencent_connector_only_planning
+  creator_typescript_shadow:
+    status: merged_and_tested
+    prs: [49]
+    implemented:
+    - separate_deny_by_default_capabilities
+    - source_rights_evidence_claim_conflict_eval_world_change_proposal_state_machine
+    - append_only_jsonl_workspace_store
+    - raw_conversation_events_with_source_role_actor_and_authorship
+    - exact_agent_judgment_proposal_and_tim_confirmation_rejection_supersession
+    - judgment_contradiction_lifecycle
+    - creator_context_compiler_manifest_and_omission_accounting
+    - source_rights_and_review_at_fail_closed_context
+    - persisted_principal_capability_receipts_and_pre_read_creator_authorization
+    - exact_event_commit_reconciliation_without_second_model_call
+    - replaceable_model_port_and_deterministic_fake
+    - fresh_process_context_replay_eval_with_real_tianlongshan_materials
+    local_validation: 56_typescript_tests_passed
+    missing:
+    - production_conversation_ingestion_adapter
+    - authenticated_tim_review_ui_or_api
+    - real_llm_and_trace_backend
+    - real_world_route_outcome_learning_eval
+    - judgment_to_claim_world_change_adapter_eval
+  database:
+    status: creator_postgresql_spec_v0_merged
+    migration_created: false
+    paths:
+    - agent_runtime/DATABASE_BOUNDARY.md
+    - agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md
+
+next_task:
+  id: creator_postgresql_persistence_slice_v0
+  status: ready_to_implement
+  objective: implement_the_spec_as_a_minimal_migration_repository_transaction_and_cross_store_replay_slice
+  required_sequence:
+  - create_empty_creator_event_truth_and_required_projection_tables
+  - implement_python_domain_plane_revision_cas_idempotency_and_projection_transaction
+  - implement_internal_authenticated_creator_workspace_store_adapter
+  - test_empty_postgresql_upgrade_downgrade_upgrade_concurrency_and_reconciliation
+  - compare_jsonl_and_postgresql_context_hash_for_the_tianlongshan_event_chain
+  acceptance:
+  - no_changes_to_users_activities_segments_or_segment_efforts
+  - concurrent_same_revision_writers_cannot_both_commit
+  - same_event_id_same_payload_is_idempotent_and_conflicting_payload_fails
+  - tim_decision_cannot_commit_without_exact_proposal_turn_and_statement_hash
+  - cold_database_replay_matches_typescript_current_judgment_projection
+  - rollback_and_reconciliation_are_explicitly_tested
+
+explicitly_not_complete:
+- production_creator_or_rider_agent
+- creator_long_term_memory_or_vector_database
+- production_postgresql_agent_schema
+- real_llm_or_tencent_provider
+- strava_ingestion_or_rights_approval
+- miniprogram_or_api_integration
+- deployment_or_rider_acceptance
+
+history:
+  phase_a_spec: docs/agent-first/phase-a-implementation-spec.md
+  control_pack: docs/agent-first/VELO_Orchestrator_Control_Pack_v1.0.md
+  status: historical_evidence_not_current_execution_state

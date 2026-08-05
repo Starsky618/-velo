@@ -1,0 +1,92 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "session_id": "planning-session.fixture-001",
+  "session_revision": 4,
+  "state_owner": "deterministic_interaction_service",
+  "status": "open",
+  "created_at": "2026-08-03T19:30:00+08:00",
+  "updated_at": "2026-08-03T19:41:00+08:00",
+  "expires_at": "2026-08-03T22:30:00+08:00",
+  "task_mode": "compare",
+  "rider_ref": {
+    "object_id": "rider.fixture-001",
+    "object_type": "rider"
+  },
+  "active_intent_ref": "intent.fixture-compare-001",
+  "last_user_turn_ref": "user-turn.fixture-003",
+  "last_committed_run_ref": "agent-run.fixture-001",
+  "focused_world_refs": [
+    {
+      "object_id": "route.fixture-tianlongshan",
+      "object_type": "named_route"
+    },
+    {
+      "object_id": "route.fixture-fenhe-corridor",
+      "object_type": "named_route"
+    }
+  ],
+  "candidate_plans": [],
+  "map_state": {
+    "anchors": [
+      {
+        "anchor_ref": "anchor.fixture-origin-001",
+        "anchor_role": "origin",
+        "location_handle": {
+          "place_ref": "place.fixture-origin-coarse-001",
+          "display_label": "城西骑行集合区域",
+          "precision": "point_ref_hidden",
+          "exact_coordinates_exposed": false
+        },
+        "source_event_ref": "map-event.fixture-origin-001"
+      }
+    ],
+    "available_bounds_refs": [
+      "bounds.fixture-comparison-area-001"
+    ],
+    "viewport": {
+      "bounds_ref": "bounds.fixture-comparison-area-001",
+      "zoom_level": 11,
+      "source_kind": "map_event",
+      "source_ref": "map-event.fixture-viewport-001"
+    },
+    "presentation": {
+      "shown_area_refs": [],
+      "highlighted_targets": [],
+      "visible_candidate_refs": [],
+      "dimmed_targets": [],
+      "warning_scope_refs": [],
+      "last_map_action_refs": []
+    }
+  },
+  "assumptions": [
+    {
+      "assumption_id": "assumption.fixture-time-budget-001",
+      "assumption_kind": "time_budget",
+      "status": "proposed",
+      "source_ref": "user-turn.fixture-003",
+      "user_safe_summary": "暂按半日骑行理解，等待骑友确认。"
+    }
+  ],
+  "unknowns": [
+    {
+      "unknown_id": "unknown.fixture-location-destination-001",
+      "unknown_kind": "location",
+      "blocking": true,
+      "user_safe_summary": "还不知道骑友希望在哪个区域结束骑行。",
+      "related_ref": "intent.fixture-compare-001"
+    }
+  ],
+  "pending_user_decision": {
+    "decision_ref": "decision.fixture-clarification-001",
+    "decision_kind": "clarification",
+    "requested_by_agent_action_ref": "agent-action.fixture-clarify-001",
+    "blocking": true,
+    "created_at": "2026-08-03T19:41:00+08:00"
+  },
+  "metadata": {
+    "x-fixture": true,
+    "x-synthetic": true
+  }
+}

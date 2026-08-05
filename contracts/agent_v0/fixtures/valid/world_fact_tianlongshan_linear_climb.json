@@ -1,0 +1,320 @@
+{
+  "schema_version": "0.1.0",
+  "packet_id": "world-fact.fixture.tianlongshan-linear-climb.1",
+  "packet_environment": "test",
+  "fixture_only": true,
+  "generated_at": "2026-08-03T19:35:00+08:00",
+  "source_revision": "fixture-world-r1",
+  "region_ref": "region.fixture-taiyuan",
+  "predicate_registry_version": "0.1.0",
+  "query_context": {
+    "task_mode": "understand",
+    "focus_refs": [
+      { "object_id": "route.tianlongshan-001", "object_type": "named_route" }
+    ],
+    "requested_predicate_ids": [
+      "metric.distance_m",
+      "metric.climb_m",
+      "metric.moving_time_range_s",
+      "route.climb_rhythm",
+      "dynamic.closure"
+    ],
+    "requested_relation_types": [],
+    "time_window": {
+      "start": "2026-08-03T00:00:00+08:00",
+      "end": "2026-08-10T00:00:00+08:00"
+    },
+    "synthetic_fixture_data": true
+  },
+  "objects": [
+    {
+      "object_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+      "revision_ref": {
+        "object_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+        "revision": "fixture-route-r1",
+        "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "display_name": "天龙山线性爬坡（合成测试对象）",
+      "aliases": ["天龙山 fixture"],
+      "route_shape": "linear_climb",
+      "geometry_ref": {
+        "geometry_id": "geometry.fixture.tianlongshan-line-v1",
+        "geometry_kind": "line",
+        "geometry_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+        "coordinate_system": "WGS84"
+      }
+    },
+    {
+      "object_ref": { "object_id": "climb.tianlongshan-main-001", "object_type": "climb" },
+      "revision_ref": {
+        "object_ref": { "object_id": "climb.tianlongshan-main-001", "object_type": "climb" },
+        "revision": "fixture-climb-r1"
+      },
+      "display_name": "主爬坡段（合成测试对象）",
+      "aliases": [],
+      "geometry_ref": {
+        "geometry_id": "geometry.fixture.tianlongshan-climb-v1",
+        "geometry_kind": "line",
+        "geometry_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+        "coordinate_system": "WGS84"
+      }
+    }
+  ],
+  "traversals": [
+    {
+      "traversal_ref": { "object_id": "traversal.tianlongshan-uphill-001", "object_type": "traversal" },
+      "parent_object_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+      "direction": "forward",
+      "start_anchor_ref": "anchor.fixture.tianlongshan-bottom",
+      "end_anchor_ref": "anchor.fixture.tianlongshan-top",
+      "metric_fact_refs": [
+        "fact.tianlongshan.distance",
+        "fact.tianlongshan.climb",
+        "fact.tianlongshan.moving-time-range"
+      ]
+    },
+    {
+      "traversal_ref": { "object_id": "traversal.tianlongshan-downhill-001", "object_type": "traversal" },
+      "parent_object_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+      "direction": "reverse",
+      "start_anchor_ref": "anchor.fixture.tianlongshan-top",
+      "end_anchor_ref": "anchor.fixture.tianlongshan-bottom",
+      "metric_fact_refs": []
+    }
+  ],
+  "relations": [
+    {
+      "relation_id": "relation.tianlongshan-contains-main-climb",
+      "from_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+      "to_ref": { "object_id": "climb.tianlongshan-main-001", "object_type": "climb" },
+      "relation_type": "contains",
+      "scope": {
+        "subject_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+        "traversal_ref": { "object_id": "traversal.tianlongshan-uphill-001", "object_type": "traversal" },
+        "direction": "forward"
+      },
+      "provenance_refs": ["provenance.fixture-route-source"]
+    }
+  ],
+  "facts": [
+    {
+      "fact_id": "fact.tianlongshan.distance",
+      "subject_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+      "predicate_id": "metric.distance_m",
+      "claim_kind": "computed_metric",
+      "value": { "value_kind": "number", "number_value": 42000, "unit_code": "m" },
+      "scope": {
+        "subject_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+        "traversal_ref": { "object_id": "traversal.tianlongshan-uphill-001", "object_type": "traversal" },
+        "direction": "forward"
+      },
+      "fact_status": "computed",
+      "freshness": {
+        "freshness_status": "static",
+        "calculated_at": "2026-08-03T18:00:00+08:00",
+        "policy_ref": "freshness.computed_revision.v1"
+      },
+      "quality": {
+        "source_quality_level": "primary",
+        "corroboration_level": "not_applicable",
+        "human_confirmation_state": "not_required"
+      },
+      "calculation_run_ref": "calculation.fixture-tianlongshan-v1"
+    },
+    {
+      "fact_id": "fact.tianlongshan.climb",
+      "subject_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+      "predicate_id": "metric.climb_m",
+      "claim_kind": "computed_metric",
+      "value": { "value_kind": "number", "number_value": 980, "unit_code": "m" },
+      "scope": {
+        "subject_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+        "traversal_ref": { "object_id": "traversal.tianlongshan-uphill-001", "object_type": "traversal" },
+        "direction": "forward"
+      },
+      "fact_status": "computed",
+      "freshness": {
+        "freshness_status": "static",
+        "calculated_at": "2026-08-03T18:00:00+08:00",
+        "policy_ref": "freshness.computed_revision.v1"
+      },
+      "quality": {
+        "source_quality_level": "primary",
+        "corroboration_level": "not_applicable",
+        "human_confirmation_state": "not_required"
+      },
+      "calculation_run_ref": "calculation.fixture-tianlongshan-v1"
+    },
+    {
+      "fact_id": "fact.tianlongshan.moving-time-range",
+      "subject_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+      "predicate_id": "metric.moving_time_range_s",
+      "claim_kind": "computed_metric",
+      "value": {
+        "value_kind": "number_range",
+        "number_range_value": {
+          "minimum": 7200,
+          "maximum": 10800,
+          "unit_code": "s"
+        }
+      },
+      "scope": {
+        "subject_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+        "traversal_ref": { "object_id": "traversal.tianlongshan-uphill-001", "object_type": "traversal" },
+        "direction": "forward"
+      },
+      "fact_status": "computed",
+      "freshness": {
+        "freshness_status": "current",
+        "calculated_at": "2026-08-03T18:00:00+08:00",
+        "policy_ref": "freshness.model_revision.v1"
+      },
+      "quality": {
+        "source_quality_level": "primary",
+        "corroboration_level": "not_applicable",
+        "human_confirmation_state": "not_required"
+      },
+      "calculation_run_ref": "calculation.fixture-tianlongshan-v1"
+    },
+    {
+      "fact_id": "fact.tianlongshan.climb-rhythm",
+      "subject_ref": { "object_id": "climb.tianlongshan-main-001", "object_type": "climb" },
+      "predicate_id": "route.climb_rhythm",
+      "claim_kind": "directional_experience",
+      "value": { "value_kind": "enum", "enum_value": "steady" },
+      "scope": {
+        "subject_ref": { "object_id": "climb.tianlongshan-main-001", "object_type": "climb" },
+        "traversal_ref": { "object_id": "traversal.tianlongshan-uphill-001", "object_type": "traversal" },
+        "direction": "forward"
+      },
+      "fact_status": "accepted",
+      "freshness": {
+        "freshness_status": "static",
+        "observed_at": "2026-07-30T10:00:00+08:00",
+        "policy_ref": "freshness.experience_revision.v1"
+      },
+      "quality": {
+        "source_quality_level": "high",
+        "corroboration_level": "multiple_sources",
+        "human_confirmation_state": "confirmed"
+      },
+      "evidence_refs": ["provenance.fixture-review"]
+    }
+  ],
+  "dynamic_states": [
+    {
+      "state_id": "dynamic-state.tianlongshan-closure-clear",
+      "state_type": "dynamic.closure",
+      "status": "open",
+      "severity": "information",
+      "scope": {
+        "subject_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+        "traversal_ref": { "object_id": "traversal.tianlongshan-uphill-001", "object_type": "traversal" },
+        "direction": "forward",
+        "spatial_interval": {
+          "interval_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+          "from_fraction": 0,
+          "to_fraction": 1
+        },
+        "time_window": {
+          "start": "2026-08-03T00:00:00+08:00",
+          "end": "2026-08-04T00:00:00+08:00"
+        }
+      },
+      "valid_from": "2026-08-03T00:00:00+08:00",
+      "valid_until": "2026-08-04T00:00:00+08:00",
+      "evidence_refs": ["provenance.fixture-dynamic-source"],
+      "freshness": {
+        "freshness_status": "current",
+        "observed_at": "2026-08-03T17:00:00+08:00",
+        "valid_from": "2026-08-03T00:00:00+08:00",
+        "valid_until": "2026-08-04T00:00:00+08:00",
+        "policy_ref": "freshness.dynamic_72h.v1"
+      }
+    }
+  ],
+  "advisories": [
+    {
+      "advisory_id": "advisory.tianlongshan-descent-report",
+      "advisory_type": "route.technical_descent",
+      "reported_value": { "value_kind": "enum", "enum_value": "moderate" },
+      "scope": {
+        "subject_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+        "traversal_ref": { "object_id": "traversal.tianlongshan-downhill-001", "object_type": "traversal" },
+        "direction": "reverse"
+      },
+      "observed_at": "2026-07-28T09:00:00+08:00",
+      "freshness": {
+        "freshness_status": "static",
+        "observed_at": "2026-07-28T09:00:00+08:00",
+        "policy_ref": "freshness.experience_revision.v1"
+      },
+      "verification_status": "reported",
+      "usage_policy": "advisory_only",
+      "contribution_ref": "contribution.fixture-rider-report-001",
+      "provenance_refs": ["provenance.fixture-rider-report"],
+      "user_safe_summary": "一条未核验的骑手报告称返程下降需谨慎；不得作为规范事实。"
+    }
+  ],
+  "unknowns": [
+    {
+      "unknown_id": "unknown.tianlongshan-supply",
+      "subject_ref": { "object_id": "route.tianlongshan-001", "object_type": "named_route" },
+      "predicate_id": "route.supply_availability",
+      "reason_code": "no_current_verified_source",
+      "blocking": false,
+      "user_safe_summary": "当前补给可用性没有可靠信息。"
+    }
+  ],
+  "request_omissions": [],
+  "provenance_index": [
+    {
+      "provenance_id": "provenance.fixture-route-source",
+      "provenance_type": "source",
+      "source_revision": "fixture-route-r1",
+      "content_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+      "summary": "Synthetic route-source fixture."
+    },
+    {
+      "provenance_id": "provenance.fixture-review",
+      "provenance_type": "evidence",
+      "source_revision": "fixture-review-r1",
+      "content_hash": "6666666666666666666666666666666666666666666666666666666666666666",
+      "summary": "Synthetic reviewed characterization."
+    },
+    {
+      "provenance_id": "provenance.fixture-dynamic-source",
+      "provenance_type": "evidence",
+      "source_revision": "fixture-dynamic-r1",
+      "content_hash": "7777777777777777777777777777777777777777777777777777777777777777",
+      "summary": "Synthetic time-bounded closure observation."
+    },
+    {
+      "provenance_id": "provenance.fixture-rider-report",
+      "provenance_type": "contribution",
+      "source_revision": "fixture-report-r1",
+      "content_hash": "8888888888888888888888888888888888888888888888888888888888888888",
+      "summary": "Synthetic unverified rider report."
+    },
+    {
+      "provenance_id": "calculation.fixture-tianlongshan-v1",
+      "provenance_type": "calculation_run",
+      "source_revision": "fixture-calculation-r1",
+      "content_hash": "9999999999999999999999999999999999999999999999999999999999999999",
+      "summary": "Synthetic route metric calculation."
+    }
+  ],
+  "omitted_sections": [
+    { "section": "exact_geometry", "reason": "privacy" }
+  ],
+  "packet_limits": {
+    "fact_limit": 100,
+    "facts_included": 4,
+    "facts_omitted": 0,
+    "truncated": false
+  },
+  "metadata": {
+    "x-fixture": true,
+    "x-data-origin": "synthetic-not-production"
+  }
+}

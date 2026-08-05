@@ -1,0 +1,136 @@
+{
+  "schema_version": "0.1.0",
+  "manifest_id": "context-manifest.fixture-run-002-turn-2",
+  "packet_environment": "test",
+  "session_id": "planning-session.fixture-002",
+  "run_id": "agent-run.fixture-002",
+  "model_call_id": "model-call.fixture-run-002-turn-2",
+  "compiled_at": "2026-08-03T20:09:50+08:00",
+  "task_mode": "compare",
+  "prompt_policy_version": "prompt-policy.v0.1.0",
+  "playbook_version": "planning-playbook.v0.1.0",
+  "tool_registry_version": "0.1.0",
+  "predicate_registry_version": "0.1.0",
+  "session_revision": 1,
+  "source_packet_refs": [
+    {
+      "packet_type": "rider_context_packet",
+      "packet_id": "rider-context.fixture.rider-001.1",
+      "schema_version": "0.1.0",
+      "source_revision": "fixture-rider-source-r1",
+      "content_hash": "3acb00157edd0f4e7bb386d74ec4a039d94f29ea558142b203f52082e7ca01fe"
+    },
+    {
+      "packet_type": "world_fact_packet",
+      "packet_id": "world-fact.fixture.tianlongshan-linear-climb.1",
+      "schema_version": "0.1.0",
+      "source_revision": "fixture-world-r1",
+      "content_hash": "fc7e89a3574d99bad983c8f34471453405e1078486e029ff1bd1cf9ca25f4b0f"
+    },
+    {
+      "packet_type": "world_fact_packet",
+      "packet_id": "world-fact.fixture.fenhe-dual-bank.1",
+      "schema_version": "0.1.0",
+      "source_revision": "fixture-world-r1",
+      "content_hash": "b578d9b1705a3d2fd6edb2104338f9c50eb2bd4365690c83d922087b18da3052"
+    }
+  ],
+  "memory_item_refs": [
+    "memory.fixture-001"
+  ],
+  "plan_revision_refs": [
+    {
+      "object_ref": {
+        "object_id": "ride-plan.fixture-a",
+        "object_type": "ride_plan"
+      },
+      "revision": 1
+    },
+    {
+      "object_ref": {
+        "object_id": "ride-plan.fixture-b",
+        "object_type": "ride_plan"
+      },
+      "revision": 1
+    }
+  ],
+  "included_sections": [
+    "rider.authorization",
+    "rider.current_request",
+    "rider.bike_profiles",
+    "rider.familiarity",
+    "rider.explicit_preferences",
+    "rider.explicit_memory_items",
+    "world.objects",
+    "world.traversals",
+    "world.relations",
+    "world.facts",
+    "world.dynamic_states",
+    "world.advisories",
+    "world.unknowns",
+    "tool.observation.candidate_plan_set",
+    "plan.candidate_summaries",
+    "plan.validation_summaries"
+  ],
+  "omitted_sections": [
+    {
+      "section": "rider.full_activity_tracks",
+      "reason": "privacy"
+    },
+    {
+      "section": "world.exact_geometry",
+      "reason": "privacy"
+    },
+    {
+      "section": "irrelevant_long_term_memory",
+      "reason": "irrelevant"
+    }
+  ],
+  "privacy_redactions": [
+    {
+      "section": "rider.saved_place_exact_coordinates",
+      "policy_ref": "privacy.opaque-location-ref-only"
+    },
+    {
+      "section": "rider.raw_activity_tracks",
+      "policy_ref": "privacy.summary-only"
+    }
+  ],
+  "token_budget": {
+    "budget": 8000,
+    "used": 7300,
+    "reserved_for_response": 700
+  },
+  "token_counts": [
+    {
+      "section": "rider_context_packet",
+      "tokens": 1100
+    },
+    {
+      "section": "world_fact_tianlongshan",
+      "tokens": 2800
+    },
+    {
+      "section": "world_fact_fenhe",
+      "tokens": 2400
+    },
+    {
+      "section": "tool_observation_candidate_plan_set",
+      "tokens": 300
+    },
+    {
+      "section": "plan_candidate_summaries",
+      "tokens": 400
+    },
+    {
+      "section": "plan_validation_summaries",
+      "tokens": 300
+    }
+  ],
+  "context_content_hash": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+  "source_of_truth": false,
+  "metadata": {
+    "x-fixture": true,
+    "x-no-runtime-claim": true
+  }
+}

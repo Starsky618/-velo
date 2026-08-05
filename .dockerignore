@@ -5,6 +5,14 @@
 .git
 .gitignore
 .dockerignore
+node_modules/
+.agent-runtime/
+# TypeScript Agent 仍是独立 shadow 控制面，不进入当前 Python 生产镜像。
+agent_runtime/
+tests-ts/
+package.json
+package-lock.json
+tsconfig.json
 __pycache__
 *.pyc
 tests/

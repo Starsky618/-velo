@@ -1,0 +1,641 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/common.schema.json",
+  "title": "VELO Agent v0 common contract definitions",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "#/$defs/schema_version"
+    }
+  },
+  "required": [
+    "schema_version"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "stable_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "object_type": {
+      "type": "string",
+      "enum": [
+        "cycling_area",
+        "named_route",
+        "named_line",
+        "climb",
+        "destination",
+        "classic_ride",
+        "route_book",
+        "route_version",
+        "path",
+        "traversal",
+        "road_section",
+        "ride_plan",
+        "rider"
+      ]
+    },
+    "object_ref": {
+      "type": "object",
+      "properties": {
+        "object_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "object_type": {
+          "$ref": "#/$defs/object_type"
+        }
+      },
+      "required": [
+        "object_id",
+        "object_type"
+      ],
+      "additionalProperties": false
+    },
+    "revision": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 96,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        }
+      ]
+    },
+    "revision_ref": {
+      "type": "object",
+      "properties": {
+        "object_ref": {
+          "$ref": "#/$defs/object_ref"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/content_hash"
+        }
+      },
+      "required": [
+        "object_ref",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "geometry_ref": {
+      "type": "object",
+      "properties": {
+        "geometry_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "geometry_kind": {
+          "type": "string",
+          "enum": [
+            "point",
+            "line",
+            "path",
+            "area"
+          ]
+        },
+        "geometry_hash": {
+          "$ref": "#/$defs/content_hash"
+        },
+        "coordinate_system": {
+          "const": "WGS84"
+        }
+      },
+      "required": [
+        "geometry_id",
+        "geometry_kind",
+        "geometry_hash",
+        "coordinate_system"
+      ],
+      "additionalProperties": false
+    },
+    "location_handle": {
+      "type": "object",
+      "properties": {
+        "place_ref": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "display_label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "precision": {
+          "type": "string",
+          "enum": [
+            "coarse_label",
+            "area_ref",
+            "point_ref_hidden"
+          ]
+        },
+        "exact_coordinates_exposed": {
+          "const": false
+        }
+      },
+      "required": [
+        "place_ref",
+        "display_label",
+        "precision",
+        "exact_coordinates_exposed"
+      ],
+      "additionalProperties": false
+    },
+    "number_range_value": {
+      "type": "object",
+      "properties": {
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "unit_code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "minimum",
+        "maximum",
+        "unit_code"
+      ],
+      "additionalProperties": false
+    },
+    "typed_value": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "value_kind": {
+              "const": "number"
+            },
+            "number_value": {
+              "type": "number"
+            },
+            "unit_code": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            }
+          },
+          "required": [
+            "value_kind",
+            "number_value",
+            "unit_code"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "value_kind": {
+              "const": "number_range"
+            },
+            "number_range_value": {
+              "$ref": "#/$defs/number_range_value"
+            }
+          },
+          "required": [
+            "value_kind",
+            "number_range_value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "value_kind": {
+              "const": "text"
+            },
+            "text_value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "value_kind",
+            "text_value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "value_kind": {
+              "const": "boolean"
+            },
+            "boolean_value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "value_kind",
+            "boolean_value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "value_kind": {
+              "const": "enum"
+            },
+            "enum_value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "required": [
+            "value_kind",
+            "enum_value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "value_kind": {
+              "const": "timestamp"
+            },
+            "timestamp_value": {
+              "$ref": "#/$defs/timestamp"
+            }
+          },
+          "required": [
+            "value_kind",
+            "timestamp_value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "value_kind": {
+              "const": "object_ref"
+            },
+            "object_ref_value": {
+              "$ref": "#/$defs/object_ref"
+            }
+          },
+          "required": [
+            "value_kind",
+            "object_ref_value"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "forward",
+        "reverse",
+        "clockwise",
+        "counterclockwise",
+        "both",
+        "not_applicable"
+      ]
+    },
+    "spatial_interval": {
+      "type": "object",
+      "properties": {
+        "interval_ref": {
+          "$ref": "#/$defs/object_ref"
+        },
+        "from_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "to_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "interval_ref",
+        "from_fraction",
+        "to_fraction"
+      ],
+      "additionalProperties": false
+    },
+    "time_window": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "end": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": false
+    },
+    "fact_scope": {
+      "type": "object",
+      "properties": {
+        "subject_ref": {
+          "$ref": "#/$defs/object_ref"
+        },
+        "traversal_ref": {
+          "$ref": "#/$defs/object_ref"
+        },
+        "direction": {
+          "$ref": "#/$defs/direction"
+        },
+        "spatial_interval": {
+          "$ref": "#/$defs/spatial_interval"
+        },
+        "time_window": {
+          "$ref": "#/$defs/time_window"
+        }
+      },
+      "required": [
+        "subject_ref"
+      ],
+      "additionalProperties": false
+    },
+    "provenance_ref": {
+      "type": "object",
+      "properties": {
+        "provenance_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "provenance_type": {
+          "type": "string",
+          "enum": [
+            "source",
+            "evidence",
+            "calculation_run",
+            "contribution"
+          ]
+        },
+        "source_revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/content_hash"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "provenance_id",
+        "provenance_type",
+        "source_revision"
+      ],
+      "additionalProperties": false
+    },
+    "freshness": {
+      "type": "object",
+      "properties": {
+        "freshness_status": {
+          "type": "string",
+          "enum": [
+            "static",
+            "current",
+            "stale",
+            "expired",
+            "unknown"
+          ]
+        },
+        "observed_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "calculated_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "valid_from": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "valid_until": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "policy_ref": {
+          "$ref": "#/$defs/stable_id"
+        }
+      },
+      "required": [
+        "freshness_status",
+        "policy_ref"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "observed_at"
+          ]
+        },
+        {
+          "required": [
+            "calculated_at"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "quality_assessment": {
+      "type": "object",
+      "properties": {
+        "source_quality_level": {
+          "type": "string",
+          "enum": [
+            "primary",
+            "high",
+            "medium",
+            "low",
+            "unknown"
+          ]
+        },
+        "corroboration_level": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "single_source",
+            "multiple_sources",
+            "conflicted"
+          ]
+        },
+        "human_confirmation_state": {
+          "type": "string",
+          "enum": [
+            "not_required",
+            "unreviewed",
+            "confirmed",
+            "rejected",
+            "disputed"
+          ]
+        }
+      },
+      "required": [
+        "source_quality_level",
+        "corroboration_level",
+        "human_confirmation_state"
+      ],
+      "additionalProperties": false
+    },
+    "unknown_item": {
+      "type": "object",
+      "properties": {
+        "unknown_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "subject_ref": {
+          "$ref": "#/$defs/object_ref"
+        },
+        "predicate_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "blocking": {
+          "type": "boolean"
+        },
+        "user_safe_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "unknown_id",
+        "subject_ref",
+        "predicate_id",
+        "reason_code",
+        "blocking",
+        "user_safe_summary"
+      ],
+      "additionalProperties": false
+    },
+    "omitted_section": {
+      "type": "object",
+      "properties": {
+        "section": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "irrelevant",
+            "privacy",
+            "unauthorized",
+            "token_budget",
+            "unavailable",
+            "stale"
+          ]
+        }
+      },
+      "required": [
+        "section",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "packet_ref": {
+      "type": "object",
+      "properties": {
+        "packet_type": {
+          "type": "string",
+          "enum": [
+            "rider_context_packet",
+            "world_fact_packet",
+            "predicate_registry"
+          ]
+        },
+        "packet_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/schema_version"
+        },
+        "source_revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/content_hash"
+        }
+      },
+      "required": [
+        "packet_type",
+        "packet_id",
+        "schema_version",
+        "source_revision",
+        "content_hash"
+      ],
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "propertyNames": {
+        "allOf": [
+          {
+            "pattern": "^x-[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          {
+            "not": {
+              "pattern": "^x-(?:.*-)?(?:lat|latitude|lng|lon|longitude|coordinate|coordinates|exact-location|raw-trackpoints)(?:-|$)"
+            }
+          }
+        ]
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "maxLength": 256
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "maxItems": 10,
+            "uniqueItems": true
+          }
+        ]
+      },
+      "maxProperties": 16
+    }
+  }
+}

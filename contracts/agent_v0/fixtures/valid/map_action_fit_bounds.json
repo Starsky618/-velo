@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "map_action_id": "map-action.fixture-fit-bounds-001",
+  "session_id": "planning-session.fixture-002",
+  "base_session_revision": 1,
+  "source_agent_action_ref": "agent-action.fixture-fit-bounds-001",
+  "sequence": 1,
+  "issued_at": "2026-08-03T20:08:30+08:00",
+  "reducer_required": true,
+  "action_type": "fit_bounds",
+  "payload": {
+    "bounds_ref": "bounds.fixture-candidate-detail-002",
+    "padding_profile": "comfortable"
+  },
+  "metadata": {
+    "x-fixture": true,
+    "x-synthetic": true
+  }
+}

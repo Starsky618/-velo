@@ -256,7 +256,7 @@ Page({
 
   // 编辑 bio —— wx.showModal editable + PATCH /api/user/me
   // PATCH /me 是 settings 类小修（接 city / bio）/ 不与 PUT /profile 主资料字段耦合
-  // onEditBio 已移除（Tim 2026-06-12 拍：bio 编辑入口移设置页"骑行宣言"行，
+  // onEditBio 已移除（Tim 2026-06-12 拍：bio 编辑入口移设置页“个人简介”行，
   // profile 页只展示——对齐微信"我的页展示、设置页修改"惯例）
 
   // 编辑昵称 —— wx.showModal editable + PUT /api/user/profile
@@ -357,7 +357,7 @@ Page({
       });
   },
 
-  // 跳到设置页（bio / 训练参数 / 退出登录 / 注销账号）
+  // 跳到设置页（身份资料 / 训练基线 / 支持；账号操作从设置页进入二级页）
   onTapSettings() {
     wx.navigateTo({ url: '/pages/settings/settings' });
   },

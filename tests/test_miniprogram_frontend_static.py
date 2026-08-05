@@ -46,12 +46,9 @@ def test_meetup_frontend_is_fully_removed():
     assert all(not path.exists() for path in removed_paths)
 
     allowed_account_deletion_disclosures = {
-        MINI / "pages" / "settings" / "settings.js": [
+        MINI / "pages" / "account-settings" / "account-settings.js": [
             "已开放约骑会取消并解除关联后保留",
             "需删除已开放约骑",
-        ],
-        MINI / "pages" / "settings" / "settings.wxml": [
-            "已开放约骑会取消并去关联保留",
         ],
         MINI / "utils" / "api.js": [
             "已开放约骑按后端规则去标识保留",
@@ -110,6 +107,167 @@ def test_registered_pages_and_static_assets_still_exist():
     for wxml_path in MINI.rglob("*.wxml"):
         for ref in asset_ref.findall(_read(wxml_path)):
             assert (MINI / ref).exists(), f"{wxml_path} 引用了不存在的 /{ref}"
+
+
+def test_settings_page_uses_rider_summary_and_secondary_account_management():
+    app_json = json.loads(_read(MINI / "app.json"))
+    settings_wxml = _read(MINI / "pages" / "settings" / "settings.wxml")
+    settings_js = _read(MINI / "pages" / "settings" / "settings.js")
+    account_wxml = _read(
+        MINI / "pages" / "account-settings" / "account-settings.wxml"
+    )
+    account_js = _read(
+        MINI / "pages" / "account-settings" / "account-settings.js"
+    )
+
+    assert "pages/account-settings/account-settings" in app_json["pages"]
+    for field in ("avatarUrl", "nickname", "city", "bio", "bikeTypeLabel"):
+        assert field in settings_wxml
+    assert "添加个人简介" in settings_wxml
+    assert "编辑个人简介" in settings_js
+    assert "骑行宣言" not in settings_wxml
+    assert "骑行宣言" not in settings_js
+    assert 'bindtap="onOpenAccountSettings"' in settings_wxml
+    assert "/pages/account-settings/account-settings" in settings_js
+    assert 'bindtap="onLogout"' not in settings_wxml
+    assert 'bindtap="onDeleteAccount"' not in settings_wxml
+    assert "row-danger" not in settings_wxml
+
+    assert 'bindtap="onLogout"' in account_wxml
+    assert 'bindtap="onDeleteAccount"' in account_wxml
+    assert account_js.count("wx.showModal") >= 3
+    assert "api.deleteAccount()" in account_js
+    assert "wx.reLaunch({ url: '/pages/profile/profile' })" in account_js
+
+
+def test_account_settings_actions_execute_confirmed_logout_and_delete():
+    script = r"""
+const assert = require('assert')
+
+let pageDefinition = null
+let logoutCalls = 0
+let deleteCalls = 0
+let hideLoadingCalls = 0
+const relaunches = []
+const toasts = []
+let modalAnswers = []
+let deleteResult = Promise.resolve()
+const removedStorageKeys = []
+
+const app = {
+  globalData: { token: 'token', userId: 7, userInfo: { id: 7 } },
+  logout: function () {
+    logoutCalls += 1
+    this.globalData.token = null
+    this.globalData.userId = 0
+    this.globalData.userInfo = null
+  },
+}
+
+function restoreSession() {
+  app.globalData.token = 'token'
+  app.globalData.userId = 7
+  app.globalData.userInfo = { id: 7 }
+}
+
+function flushPromises() {
+  return new Promise(function (resolve) { setImmediate(resolve) })
+}
+
+global.getApp = function () { return app }
+global.Page = function (definition) { pageDefinition = definition }
+global.setTimeout = function (callback) { callback(); return 1 }
+global.wx = {
+  showModal: function (options) {
+    const answer = modalAnswers.shift()
+    options.success(answer || { confirm: false })
+  },
+  showLoading: function () {},
+  hideLoading: function () { hideLoadingCalls += 1 },
+  showToast: function (options) { toasts.push(options.title) },
+  reLaunch: function (options) { relaunches.push(options.url) },
+  removeStorageSync: function (key) { removedStorageKeys.push(key) },
+}
+
+const api = require('./miniprogram/utils/api.js')
+api.deleteAccount = function () {
+  deleteCalls += 1
+  return deleteResult
+}
+
+require('./miniprogram/pages/account-settings/account-settings.js')
+assert.ok(pageDefinition)
+
+async function run() {
+  // 退出登录：取消没有副作用，确认才清理会话并跳转。
+  modalAnswers = [{ confirm: false }]
+  pageDefinition.onLogout()
+  assert.strictEqual(logoutCalls, 0)
+  assert.deepStrictEqual(relaunches, [])
+
+  modalAnswers = [{ confirm: true }]
+  pageDefinition.onLogout()
+  assert.strictEqual(logoutCalls, 1)
+  assert.deepStrictEqual(relaunches, ['/pages/profile/profile'])
+
+  // 注销：任意一道确认取消都不能调用 DELETE。
+  restoreSession()
+  modalAnswers = [{ confirm: false }]
+  pageDefinition.onDeleteAccount()
+  assert.strictEqual(deleteCalls, 0)
+
+  modalAnswers = [{ confirm: true }, { confirm: false }]
+  pageDefinition.onDeleteAccount()
+  assert.strictEqual(deleteCalls, 0)
+
+  // 普通失败保留登录态；loading 必须收尾。
+  deleteResult = Promise.reject({ code: 500, message: '服务失败' })
+  modalAnswers = [{ confirm: true }, { confirm: true }]
+  pageDefinition.onDeleteAccount()
+  await flushPromises()
+  assert.strictEqual(deleteCalls, 1)
+  assert.strictEqual(logoutCalls, 1)
+  assert.strictEqual(app.globalData.token, 'token')
+  assert.strictEqual(toasts[toasts.length - 1], '服务失败')
+
+  // 401 表示会话已过期：完整清理本地身份并退回登录页。
+  deleteResult = Promise.reject({ code: 401, message: '登录已过期' })
+  modalAnswers = [{ confirm: true }, { confirm: true }]
+  pageDefinition.onDeleteAccount()
+  await flushPromises()
+  assert.strictEqual(deleteCalls, 2)
+  assert.strictEqual(logoutCalls, 2)
+  assert.strictEqual(app.globalData.userId, 0)
+  assert.strictEqual(app.globalData.userInfo, null)
+  assert.deepStrictEqual(relaunches, [
+    '/pages/profile/profile',
+    '/pages/profile/profile',
+  ])
+
+  // 成功注销同样清会话，并在成功提示后退回登录页。
+  restoreSession()
+  deleteResult = Promise.resolve()
+  modalAnswers = [{ confirm: true }, { confirm: true }]
+  pageDefinition.onDeleteAccount()
+  await flushPromises()
+  assert.strictEqual(deleteCalls, 3)
+  assert.strictEqual(logoutCalls, 3)
+  assert.strictEqual(toasts[toasts.length - 1], '账号已注销')
+  assert.strictEqual(hideLoadingCalls, 3)
+  assert.deepStrictEqual(relaunches, [
+    '/pages/profile/profile',
+    '/pages/profile/profile',
+    '/pages/profile/profile',
+  ])
+}
+
+run().catch(function (err) {
+  console.error(err)
+  process.exit(1)
+})
+"""
+
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
 def test_route_map_markers_keep_wechat_required_dimensions():

@@ -1,0 +1,551 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/world_fact_packet.schema.json",
+  "title": "VELO World Fact Packet v0",
+  "description": "A versioned, evidence-scoped projection of route-world objects, traversals, facts, dynamics, advisories, and explicit unknowns for one task. It is not the World Model database.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "packet_id",
+    "packet_environment",
+    "fixture_only",
+    "generated_at",
+    "source_revision",
+    "region_ref",
+    "predicate_registry_version",
+    "query_context",
+    "objects",
+    "traversals",
+    "relations",
+    "facts",
+    "dynamic_states",
+    "advisories",
+    "unknowns",
+    "request_omissions",
+    "provenance_index",
+    "omitted_sections",
+    "packet_limits",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schema_version" },
+    "packet_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "packet_environment": {
+      "type": "string",
+      "enum": ["test", "shadow", "production"]
+    },
+    "fixture_only": { "type": "boolean" },
+    "generated_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "source_revision": { "$ref": "common.schema.json#/$defs/revision" },
+    "region_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+    "predicate_registry_version": { "const": "0.1.0" },
+    "query_context": { "$ref": "#/$defs/query_context" },
+    "objects": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/world_object" },
+      "maxItems": 500
+    },
+    "traversals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/traversal" },
+      "maxItems": 500
+    },
+    "relations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relation" },
+      "maxItems": 1000
+    },
+    "facts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fact" },
+      "maxItems": 5000
+    },
+    "dynamic_states": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dynamic_state" },
+      "maxItems": 1000
+    },
+    "advisories": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/advisory" },
+      "maxItems": 1000
+    },
+    "unknowns": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/world_unknown_item" },
+      "maxItems": 1000
+    },
+    "request_omissions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/request_omission" },
+      "maxItems": 1000
+    },
+    "provenance_index": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/provenance_ref" },
+      "maxItems": 5000
+    },
+    "omitted_sections": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/omitted_section" },
+      "maxItems": 100
+    },
+    "packet_limits": { "$ref": "#/$defs/packet_limits" },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "packet_environment": { "const": "test" } },
+        "required": ["packet_environment"]
+      },
+      "then": {
+        "properties": {
+          "fixture_only": { "const": true },
+          "query_context": {
+            "properties": { "synthetic_fixture_data": { "const": true } }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "packet_environment": { "enum": ["shadow", "production"] }
+        },
+        "required": ["packet_environment"]
+      },
+      "then": {
+        "properties": {
+          "fixture_only": { "const": false },
+          "query_context": {
+            "properties": { "synthetic_fixture_data": { "const": false } }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "world_object_ref": {
+      "allOf": [
+        { "$ref": "common.schema.json#/$defs/object_ref" },
+        {
+          "properties": {
+            "object_type": { "not": { "const": "rider" } }
+          }
+        }
+      ]
+    },
+    "world_revision_ref": {
+      "allOf": [
+        { "$ref": "common.schema.json#/$defs/revision_ref" },
+        {
+          "properties": {
+            "object_ref": { "$ref": "#/$defs/world_object_ref" }
+          }
+        }
+      ]
+    },
+    "world_traversal_ref": {
+      "allOf": [
+        { "$ref": "#/$defs/world_object_ref" },
+        {
+          "properties": {
+            "object_type": { "const": "traversal" }
+          }
+        }
+      ]
+    },
+    "world_spatial_interval": {
+      "allOf": [
+        { "$ref": "common.schema.json#/$defs/spatial_interval" },
+        {
+          "properties": {
+            "interval_ref": { "$ref": "#/$defs/world_object_ref" }
+          }
+        }
+      ]
+    },
+    "world_fact_scope": {
+      "allOf": [
+        { "$ref": "common.schema.json#/$defs/fact_scope" },
+        {
+          "properties": {
+            "subject_ref": { "$ref": "#/$defs/world_object_ref" },
+            "traversal_ref": { "$ref": "#/$defs/world_traversal_ref" },
+            "spatial_interval": { "$ref": "#/$defs/world_spatial_interval" }
+          }
+        }
+      ]
+    },
+    "world_unknown_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unknown_id",
+        "subject_ref",
+        "reason_code",
+        "blocking",
+        "user_safe_summary"
+      ],
+      "properties": {
+        "unknown_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "subject_ref": { "$ref": "#/$defs/world_object_ref" },
+        "predicate_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "relation_type": { "$ref": "#/$defs/relation_type" },
+        "reason_code": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "blocking": { "type": "boolean" },
+        "user_safe_summary": { "type": "string", "minLength": 1, "maxLength": 240 }
+      },
+      "oneOf": [
+        {
+          "required": ["predicate_id"],
+          "not": { "required": ["relation_type"] }
+        },
+        {
+          "required": ["relation_type"],
+          "not": { "required": ["predicate_id"] }
+        }
+      ]
+    },
+    "query_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_mode",
+        "focus_refs",
+        "requested_predicate_ids",
+        "requested_relation_types",
+        "synthetic_fixture_data"
+      ],
+      "properties": {
+        "task_mode": {
+          "type": "string",
+          "enum": ["discover", "understand", "compare", "revise", "execute"]
+        },
+        "focus_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/world_object_ref" }
+        },
+        "requested_predicate_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" }
+        },
+        "requested_relation_types": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/relation_type" }
+        },
+        "time_window": { "$ref": "common.schema.json#/$defs/time_window" },
+        "synthetic_fixture_data": { "type": "boolean" }
+      }
+    },
+    "route_shape": {
+      "type": "string",
+      "enum": [
+        "linear_climb",
+        "corridor",
+        "area_network",
+        "loop",
+        "destination_ride",
+        "classic_composition"
+      ]
+    },
+    "world_object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_ref", "revision_ref", "display_name", "aliases"],
+      "properties": {
+        "object_ref": { "$ref": "#/$defs/world_object_ref" },
+        "revision_ref": { "$ref": "#/$defs/world_revision_ref" },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "aliases": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "maxItems": 20
+        },
+        "route_shape": { "$ref": "#/$defs/route_shape" },
+        "area_ref": { "$ref": "#/$defs/world_object_ref" },
+        "geometry_ref": { "$ref": "common.schema.json#/$defs/geometry_ref" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "object_ref": {
+                "properties": {
+                  "object_type": {
+                    "enum": [
+                      "cycling_area",
+                      "named_route",
+                      "named_line",
+                      "climb",
+                      "classic_ride"
+                    ]
+                  }
+                },
+                "required": ["object_type"]
+              }
+            },
+            "required": ["object_ref"]
+          },
+          "else": { "not": { "required": ["route_shape"] } }
+        }
+      ]
+    },
+    "traversal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "traversal_ref",
+        "parent_object_ref",
+        "direction",
+        "start_anchor_ref",
+        "end_anchor_ref",
+        "metric_fact_refs"
+      ],
+      "properties": {
+        "traversal_ref": { "$ref": "#/$defs/world_traversal_ref" },
+        "parent_object_ref": { "$ref": "#/$defs/world_object_ref" },
+        "direction": { "$ref": "common.schema.json#/$defs/direction" },
+        "start_anchor_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "end_anchor_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "path_ref": { "$ref": "#/$defs/world_object_ref" },
+        "geometry_ref": { "$ref": "common.schema.json#/$defs/geometry_ref" },
+        "metric_fact_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" }
+        }
+      }
+    },
+    "relation_type": {
+      "type": "string",
+      "enum": [
+        "contains",
+        "part_of",
+        "connects_to",
+        "accesses",
+        "starts_at",
+        "ends_at",
+        "variant_of",
+        "classic_step",
+        "exit_to",
+        "turnaround_at",
+        "parallel_bank_of"
+      ]
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relation_id", "from_ref", "to_ref", "relation_type", "scope", "provenance_refs"],
+      "properties": {
+        "relation_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "from_ref": { "$ref": "#/$defs/world_object_ref" },
+        "to_ref": { "$ref": "#/$defs/world_object_ref" },
+        "relation_type": { "$ref": "#/$defs/relation_type" },
+        "scope": { "$ref": "#/$defs/world_fact_scope" },
+        "provenance_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" }
+        }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fact_id",
+        "subject_ref",
+        "predicate_id",
+        "claim_kind",
+        "value",
+        "scope",
+        "fact_status",
+        "freshness",
+        "quality"
+      ],
+      "properties": {
+        "fact_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "subject_ref": { "$ref": "#/$defs/world_object_ref" },
+        "predicate_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "claim_kind": {
+          "type": "string",
+          "enum": [
+            "computed_metric",
+            "static_curated_fact",
+            "directional_experience",
+            "subjective_local_consensus"
+          ]
+        },
+        "value": {
+          "allOf": [
+            { "$ref": "common.schema.json#/$defs/typed_value" },
+            {
+              "if": {
+                "properties": { "value_kind": { "const": "enum" } },
+                "required": ["value_kind"]
+              },
+              "then": {
+                "properties": { "enum_value": { "not": { "const": "unknown" } } }
+              }
+            }
+          ]
+        },
+        "scope": { "$ref": "#/$defs/world_fact_scope" },
+        "fact_status": {
+          "type": "string",
+          "enum": ["computed", "accepted", "verified_dynamic"]
+        },
+        "freshness": {
+          "allOf": [
+            { "$ref": "common.schema.json#/$defs/freshness" },
+            {
+              "properties": {
+                "freshness_status": { "not": { "const": "unknown" } }
+              }
+            }
+          ]
+        },
+        "quality": { "$ref": "common.schema.json#/$defs/quality_assessment" },
+        "evidence_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" }
+        },
+        "calculation_run_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+      },
+      "anyOf": [
+        {
+          "properties": { "evidence_refs": { "minItems": 1 } },
+          "required": ["evidence_refs"]
+        },
+        { "required": ["calculation_run_ref"] }
+      ]
+    },
+    "dynamic_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state_id",
+        "state_type",
+        "status",
+        "severity",
+        "scope",
+        "valid_from",
+        "evidence_refs",
+        "freshness"
+      ],
+      "properties": {
+        "state_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "state_type": {
+          "type": "string",
+          "enum": [
+            "dynamic.closure",
+            "dynamic.construction",
+            "dynamic.surface_damage",
+            "dynamic.supply_closed"
+          ]
+        },
+        "status": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "severity": {
+          "type": "string",
+          "enum": ["information", "caution", "major", "critical", "unknown"]
+        },
+        "scope": { "$ref": "#/$defs/world_fact_scope" },
+        "valid_from": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "valid_until": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" }
+        },
+        "freshness": { "$ref": "common.schema.json#/$defs/freshness" }
+      }
+    },
+    "advisory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "advisory_id",
+        "advisory_type",
+        "reported_value",
+        "scope",
+        "observed_at",
+        "freshness",
+        "verification_status",
+        "usage_policy",
+        "contribution_ref",
+        "provenance_refs",
+        "user_safe_summary"
+      ],
+      "properties": {
+        "advisory_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "advisory_type": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "reported_value": { "$ref": "common.schema.json#/$defs/typed_value" },
+        "scope": { "$ref": "#/$defs/world_fact_scope" },
+        "observed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "freshness": { "$ref": "common.schema.json#/$defs/freshness" },
+        "verification_status": {
+          "type": "string",
+          "enum": ["unverified", "reported", "contested"]
+        },
+        "usage_policy": {
+          "type": "string",
+          "enum": ["advisory_only", "unknown_only"]
+        },
+        "contribution_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "provenance_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/stable_id" }
+        },
+        "user_safe_summary": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      }
+    },
+    "request_omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_kind", "request_id", "reason", "user_safe_summary"],
+      "properties": {
+        "request_kind": { "type": "string", "enum": ["predicate", "relation"] },
+        "request_id": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "reason": {
+          "type": "string",
+          "enum": ["token_budget", "privacy", "unauthorized"]
+        },
+        "user_safe_summary": { "type": "string", "minLength": 1, "maxLength": 240 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "request_kind": { "const": "relation" } },
+            "required": ["request_kind"]
+          },
+          "then": {
+            "properties": { "request_id": { "$ref": "#/$defs/relation_type" } }
+          }
+        }
+      ]
+    },
+    "packet_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact_limit", "facts_included", "facts_omitted", "truncated"],
+      "properties": {
+        "fact_limit": { "type": "integer", "minimum": 0 },
+        "facts_included": { "type": "integer", "minimum": 0 },
+        "facts_omitted": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "boolean" }
+      }
+    }
+  }
+}

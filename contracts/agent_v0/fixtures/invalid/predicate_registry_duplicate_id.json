@@ -1,0 +1,59 @@
+{
+  "schema_version": "0.1.0",
+  "registry_id": "predicate_registry:fixture-duplicate",
+  "registry_version": "0.1.0",
+  "created_at": "2026-08-03T19:20:00+08:00",
+  "predicates": [
+    {
+      "predicate_id": "metric.distance_m",
+      "label_zh": "距离",
+      "description": "First definition in the duplicate-ID fixture.",
+      "category": "computed_metric",
+      "allowed_subject_types": ["named_route"],
+      "value_kind": "number",
+      "unit_codes": ["m"],
+      "scope_requirements": {
+        "traversal_scope": false,
+        "direction_scope": false,
+        "spatial_scope": "optional",
+        "time_window": "none"
+      },
+      "directionality": "direction_optional",
+      "freshness_policy": {
+        "policy_ref": "freshness.computed_revision.v1",
+        "time_bound": false,
+        "expected_statuses": ["static"],
+        "max_age_s": null
+      },
+      "evidence_requirement": "calculation_required",
+      "allowed_fact_statuses": ["computed"]
+    },
+    {
+      "predicate_id": "metric.distance_m",
+      "label_zh": "重复距离",
+      "description": "Second definition intentionally repeats the same predicate ID.",
+      "category": "computed_metric",
+      "allowed_subject_types": ["named_route"],
+      "value_kind": "number",
+      "unit_codes": ["m"],
+      "scope_requirements": {
+        "traversal_scope": false,
+        "direction_scope": false,
+        "spatial_scope": "optional",
+        "time_window": "none"
+      },
+      "directionality": "direction_optional",
+      "freshness_policy": {
+        "policy_ref": "freshness.computed_revision.v1",
+        "time_bound": false,
+        "expected_statuses": ["static"],
+        "max_age_s": null
+      },
+      "evidence_requirement": "calculation_required",
+      "allowed_fact_statuses": ["computed"]
+    }
+  ],
+  "metadata": {
+    "x-fixture": true
+  }
+}

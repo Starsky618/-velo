@@ -8,6 +8,7 @@
     "pages/notification/notification",
     "pages/honor/honor",
     "pages/settings/settings",
+    "pages/account-settings/account-settings",
     "pages/user/user",
     "pages/segment/segment",
     "pages/segment-efforts/segment-efforts",

@@ -1,0 +1,27 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "action_id": "agent-action.fixture-clarify-001",
+  "run_id": "agent-run.fixture-001",
+  "session_id": "planning-session.fixture-001",
+  "base_session_revision": 3,
+  "model_turn_index": 1,
+  "proposed_at": "2026-08-03T19:40:30+08:00",
+  "proposal_only": true,
+  "action_type": "ask_clarifying_question",
+  "payload": {
+    "question_ref": "question.fixture-destination-001",
+    "question_kind": "location",
+    "user_safe_question": "你希望这次骑行在哪个区域结束？也可以直接在地图上选一个目的地。",
+    "answer_mode": "map_pin",
+    "blocking_unknown_refs": [
+      "unknown.fixture-location-destination-001"
+    ]
+  },
+  "map_actions": [],
+  "metadata": {
+    "x-fixture": true,
+    "x-synthetic": true
+  }
+}

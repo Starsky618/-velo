@@ -2,7 +2,7 @@
 
 > 这份 README 只做三件事：说明 VELO 现在是什么、当前代码和真实用户证据到了哪一层、不同任务应该从哪份文档进入。
 >
-> **最后校准：2026-07-28。** 代码事实核对到本机最新 `origin/main`；生产环境、微信体验版和管理后台本轮未重新验证。本文中的“有代码”不等于“已上线”。
+> **最后校准：2026-08-05。** Agent-First 交接基线核对到 `origin/main@9728e2e9`（PR #49）。其他产品能力、生产环境、微信体验版和管理后台本轮未重新验证。本文中的“有代码”不等于“已上线”。
 
 ---
 
@@ -53,6 +53,7 @@ VELO 是面向严肃公路车骑手的微信小程序和后端服务。当前小
 | 约骑 | 后端、表结构和历史测试保留；小程序前端已删除 | 有多轮历史真机走查 | 后端兼容面仍运行，但当前用户不可从小程序进入 |
 | 训练分析 | FTP、PMC、训练分布代码已存在 | 有历史真机反馈 | 不是当前产品投入主线 |
 | Route Cognition | DB foundation、内部 writer 和 seed dry-run 已有文档记录 | 只有内部流程证据 | 无公开 API、无 admin UI、无自动 backfill，不是用户可见产品 |
+| TypeScript Agent Runtime | Creator/Rider 独立内核；Creator v0 已有原始输入、判断确认/替代、Context、模型端口和冷启动 Eval | PR #49 已合并；双独立审查 Critical 0 / Important 0，CI TypeScript 56/56、pytest 2447 passed / 0 skipped | 未接真实模型、生产数据库、真实 Tim 审核 UI、腾讯网络、小程序或骑友流量 |
 
 ### 状态用词
 
@@ -88,6 +89,9 @@ miniprogram/
   components/        共用组件
   utils/api.js       小程序 API 单一入口
 
+agent_runtime/       TypeScript Creator/Rider Agent Shadow 控制面
+contracts/agent_v0/  语言中立 Context/Session/Run/Tool 合同
+tests-ts/            TypeScript Runtime 状态机、权限与路线 Shadow 测试
 migrations/versions/ Alembic 迁移
 tests/               单元、集成、静态合同和真 PG 测试
 scripts/             运维、导入、回填、发布与门禁脚本
@@ -110,6 +114,9 @@ docs/                产品、规格、架构、运行规则和历史档案
 | [agent-rules/product-decisions.md](agent-rules/product-decisions.md) | 新功能、商业化或用户范围变化时按需核对的产品决策记录 |
 | [agent-rules/agent-collaboration.md](agent-rules/agent-collaboration.md) | 历史协作手册；只有当前任务明确引用时才加载 |
 | [agent-rules/deploy-sop.md](agent-rules/deploy-sop.md) | 部署唯一执行入口；`commit ≠ ship` |
+| [agent-first/README.md](agent-first/README.md) | Agent-First 当前交接：最初目标、Creator/Rider 边界、已实现内核、未完成闭环与唯一推荐下一刀 |
+| [agent-first/creator-information-judgment-loop-v0.md](agent-first/creator-information-judgment-loop-v0.md) | Reborn 迁移审计、Creator 信息判断闭环、Context Manifest、冷启动 Eval 与数据库进入边界 |
+| [../agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md](../agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md) | Creator 首个 PostgreSQL 事件真值、关系投影、事务、并发、回放和回滚规格；尚非已落库 schema |
 
 ### B. 当前路线工作
 
@@ -151,6 +158,7 @@ docs/                产品、规格、架构、运行规则和历史档案
 | 你要做什么 | 起手顺序 |
 |---|---|
 | 判断下一步产品方向 | 本文 §0-1 → 当前用户反馈 → `product-decisions.md`；方向未定时不要从旧 PRD 直接推导 |
+| 继续 Agent / 数据库设计 | `agent-first/README.md` → `agent_runtime/README.md` → `agent_runtime/DATABASE_BOUNDARY.md` → `agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md` → 真实代码与测试；Phase A spec 只作历史证据 |
 | 改 Route Draw | `spec-route-draw-v0.md` → `plans/route-draw-v0/` 对应任务 → grep `origin/main` 真实页面/API/测试 |
 | 改路线导出或海拔 | `spec-route-export-v0.md` → `app/route_book/` → 对应测试；分别验证几何、海拔来源、展示/导出采样和码表行为 |
 | 处理约骑遗留后端或历史数据 | `app/meetup/` + migrations + 真实 PostgreSQL 数据关系；不得把保留的后端兼容面重新接回前端 |

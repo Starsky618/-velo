@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/predicate_registry.schema.json",
+  "title": "VELO Agent v0 Predicate Registry",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "https://schemas.velo.invalid/agent_v0/common.schema.json#/$defs/schema_version"
+    },
+    "registry_id": {
+      "$ref": "https://schemas.velo.invalid/agent_v0/common.schema.json#/$defs/stable_id"
+    },
+    "registry_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "created_at": {
+      "$ref": "https://schemas.velo.invalid/agent_v0/common.schema.json#/$defs/timestamp"
+    },
+    "predicates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/predicate_definition"
+      },
+      "minItems": 1
+    },
+    "metadata": {
+      "$ref": "https://schemas.velo.invalid/agent_v0/common.schema.json#/$defs/metadata"
+    }
+  },
+  "required": [
+    "schema_version",
+    "registry_id",
+    "registry_version",
+    "created_at",
+    "predicates"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "scope_requirements": {
+      "type": "object",
+      "properties": {
+        "traversal_scope": {
+          "type": "boolean"
+        },
+        "direction_scope": {
+          "type": "boolean"
+        },
+        "spatial_scope": {
+          "type": "string",
+          "enum": [
+            "none",
+            "optional",
+            "required"
+          ]
+        },
+        "time_window": {
+          "type": "string",
+          "enum": [
+            "none",
+            "optional",
+            "required"
+          ]
+        }
+      },
+      "required": [
+        "traversal_scope",
+        "direction_scope",
+        "spatial_scope",
+        "time_window"
+      ],
+      "additionalProperties": false
+    },
+    "freshness_policy": {
+      "type": "object",
+      "properties": {
+        "policy_ref": {
+          "$ref": "https://schemas.velo.invalid/agent_v0/common.schema.json#/$defs/stable_id"
+        },
+        "time_bound": {
+          "type": "boolean"
+        },
+        "expected_statuses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "static",
+              "current",
+              "stale",
+              "expired"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "max_age_s": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      },
+      "required": [
+        "policy_ref",
+        "time_bound",
+        "expected_statuses",
+        "max_age_s"
+      ],
+      "additionalProperties": false
+    },
+    "predicate_definition": {
+      "type": "object",
+      "properties": {
+        "predicate_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+          "maxLength": 96
+        },
+        "label_zh": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 320
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "computed_metric",
+            "static_curated_fact",
+            "directional_experience",
+            "subjective_local_consensus",
+            "time_bound_dynamic_state"
+          ]
+        },
+        "allowed_subject_types": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.velo.invalid/agent_v0/common.schema.json#/$defs/object_type"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "value_kind": {
+          "type": "string",
+          "enum": [
+            "number",
+            "number_range",
+            "text",
+            "boolean",
+            "enum",
+            "timestamp",
+            "object_ref"
+          ]
+        },
+        "unit_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "enum_values": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "not": { "const": "unknown" }
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "scope_requirements": {
+          "$ref": "#/$defs/scope_requirements"
+        },
+        "directionality": {
+          "type": "string",
+          "enum": [
+            "not_directional",
+            "direction_optional",
+            "direction_specific"
+          ]
+        },
+        "freshness_policy": {
+          "$ref": "#/$defs/freshness_policy"
+        },
+        "evidence_requirement": {
+          "type": "string",
+          "enum": [
+            "evidence_or_calculation",
+            "evidence_required",
+            "calculation_required"
+          ]
+        },
+        "allowed_fact_statuses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "computed",
+              "accepted",
+              "verified_dynamic"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "predicate_id",
+        "label_zh",
+        "description",
+        "category",
+        "allowed_subject_types",
+        "value_kind",
+        "scope_requirements",
+        "directionality",
+        "freshness_policy",
+        "evidence_requirement",
+        "allowed_fact_statuses"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "value_kind": {
+                "enum": [
+                  "number",
+                  "number_range"
+                ]
+              }
+            },
+            "required": [
+              "value_kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "unit_codes"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "value_kind": {
+                "const": "enum"
+              }
+            },
+            "required": [
+              "value_kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "enum_values"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "directionality": {
+                "const": "direction_specific"
+              }
+            },
+            "required": [
+              "directionality"
+            ]
+          },
+          "then": {
+            "properties": {
+              "scope_requirements": {
+                "properties": {
+                  "traversal_scope": {
+                    "const": true
+                  },
+                  "direction_scope": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "category": {
+                "const": "time_bound_dynamic_state"
+              }
+            },
+            "required": [
+              "category"
+            ]
+          },
+          "then": {
+            "properties": {
+              "scope_requirements": {
+                "properties": {
+                  "time_window": {
+                    "const": "required"
+                  }
+                }
+              },
+              "freshness_policy": {
+                "properties": {
+                  "time_bound": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

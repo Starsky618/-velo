@@ -26,7 +26,7 @@ ADR **不是**:
 
 ---
 
-## 2. 当前 12 份 ADR 总表
+## 2. 当前 17 份 ADR 总表
 
 | 编号 | 决策主题 | 核心结论 | 类型 |
 |---|---|---|---|
@@ -42,6 +42,11 @@ ADR **不是**:
 | [ADR-010](./010-为什么不做实时导航.md) | 功能边界 | **永不做**实时导航,跳转高德 | 产品战略 |
 | [ADR-011](./011-为什么抽-app-common-层.md) | 共享工具归属 | **`app/common/` 独立层**,任意业务模块向下依赖,common 不反向 import 业务模块 | 架构原则 |
 | [ADR-012](./012-为什么路线认知用防火墙式-db-foundation.md) | 路线认知地基 | **防火墙式 DB foundation**,不直接改旧路线主流程 | 数据库设计 + 架构原则 |
+| [ADR-013](./013-为什么区分骑前静态规划与骑中实时导航.md) | 骑前规划与骑中导航边界 | **允许骑前静态规划**；禁止骑中实时导航和动态重规划（Accepted；clarifies ADR-010） | 产品 + 架构 |
+| [ADR-014](./014-为什么在线规划采用单一有界主Agent与确定性工作流.md) | 在线规划控制权 | **单一有界主 Agent + 确定性工作流**；模型只有 typed action proposal 权（Accepted） | Agent Runtime 架构 |
+| [ADR-015](./015-为什么世界事实会话运行与长期记忆必须分离.md) | 在线规划状态与记忆所有权 | **World Fact / User State / Session / Run / Memory / Trace 分离**；Context 只是编译投影（Accepted） | Agent 状态架构 |
+| [ADR-016](./016-为什么在线Agent的能力审批与副作用必须显式化.md) | 在线 Agent 能力、审批与副作用 | **Capability / effect scope / approval / ledger 显式分离**；公共真相与管理员能力不可达（Accepted） | Agent 权限架构 |
+| [ADR-017](./017-为什么旧app-agent必须迁出并保留RQ兼容路径.md) | 旧 `app/agent` namespace 迁移 | **`app.segment_draft_ai` canonical 新包 + `app.agent` 长期 compatibility tombstone + M1/M2/M3 分阶段切换**（Accepted；A1.5 `completed / PASS`） | Agent namespace 架构 |
 
 另有 `00-ADR-编号大纲.md` — 这是 ADR 批次 3 的**历史 index**,包含每份 ADR 的决策背景、触发时机、引用路径。当你需要**跨 ADR 对比**或理解**决策时间线**时读这份。
 
@@ -67,9 +72,13 @@ ADR **不是**:
 
 ### 我要做产品决策
 
-先读 **ADR-006(小程序优先)** + **ADR-007(赛段贡献者众包)** + **ADR-010(不做导航)** + `docs/agent-rules/product-decisions.md` **D-P07(Agent 是路线决策的核心交互层)**。
+先读 **ADR-006(小程序优先)** + **ADR-007(赛段贡献者众包)** + **ADR-010(不做实时导航)** + **ADR-013(骑前静态规划与骑中实时导航边界)** + `docs/agent-rules/product-decisions.md` **D-P07(Agent 是路线决策的核心交互层)**。
 
-这 3 份 ADR 与当前 D-P07 是相关产品形态约束。ADR-009 已由 D-P07 取代,只保留作历史记录。
+这些 ADR 与当前 D-P07 共同约束产品形态。ADR-013 已 Accepted，并 clarifies ADR-010、does not supersede ADR-010；ADR-009 已由 D-P07 取代，只保留作历史记录。
+
+### 我要设计在线 Agent / Runtime
+
+先读 **ADR-013（允许什么）** + **ADR-014（谁控制）** + **ADR-015（状态属于谁）** + **ADR-016（能力和副作用如何授权）** + **ADR-017（旧 namespace 如何隔离迁移）**。五份均已 Accepted；ADR-016 builds on ADR-013 / ADR-014 / ADR-015，does not supersede them；ADR-017 builds on ADR-013 / ADR-014 / ADR-015 / ADR-016，does not supersede them。ADR-017 不授权实施 M1/M2/M3、Runtime、部署或启动 A2。
 
 ### 我要做部署和运维
 
@@ -121,7 +130,8 @@ agent 检索 ADR 全文的触发条件:
 
 ## 6. ADR 状态说明
 
-- **Accepted**:当前生效的决策(10 份目前都是此状态)
+- **Accepted**:当前生效的决策；已 Accepted 的历史原文不改
+- **Proposed**:已形成候选裁决，等待 Orchestrator 审查；尚不能作为 Accepted 历史结论
 - **Superseded**:被新 ADR 取代(原文保留,标注被哪份取代)
 - **Deprecated**:不再适用但没有新决策替代(极少见)
 
@@ -131,10 +141,10 @@ agent 检索 ADR 全文的触发条件:
 
 ## 7. 维护
 
-- **版本**:v1.3(2026-08-01) — 标记 ADR-009 已由当前 D-P07 取代
+- **版本**:v1.13(2026-08-03) — ADR-017 Accepted，A1.5 与 A1 parent 以 `PASS / completed` 收口
 - **下次新 ADR 可能产生的场景**:
   - v6 发布后新增重大架构调整
-  - Agent 层具体实现决策(可能产生 ADR-013 到 ADR-015)
+  - Agent 层后续具体边界决策(下一个编号从 ADR-018 开始)
   - 遇到现有 ADR 没覆盖的决策争议
 - **维护者**:Tim + 技术团队(颜颜 / CCF)
-- **编号分配**:按时间顺序,下一个新 ADR 编号为 ADR-013
+- **编号分配**:按时间顺序,下一个新 ADR 编号为 ADR-018

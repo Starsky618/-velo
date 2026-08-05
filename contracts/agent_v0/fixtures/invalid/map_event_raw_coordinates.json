@@ -1,0 +1,32 @@
+{
+  "schema_version": "0.1.0",
+  "environment": "test",
+  "fixture_only": true,
+  "event_id": "map-event.invalid-raw-coordinates",
+  "client_event_id": "client-event.invalid-raw-coordinates",
+  "session_id": "planning-session.fixture-002",
+  "base_session_revision": 2,
+  "event_sequence": 9,
+  "occurred_at": "2026-08-03T20:15:00+08:00",
+  "actor": "user",
+  "source_surface": "route_map",
+  "event_type": "origin_pinned",
+  "payload": {
+    "anchor": {
+      "anchor_ref": "anchor.invalid-raw-coordinates",
+      "anchor_role": "origin",
+      "location_handle": {
+        "place_ref": "place.invalid-raw-coordinates",
+        "display_label": "不应携带坐标的测试位置",
+        "precision": "point_ref_hidden",
+        "exact_coordinates_exposed": false
+      },
+      "source_event_ref": "map-event.invalid-raw-coordinates",
+      "coordinates": [112.5, 37.8]
+    }
+  },
+  "metadata": {
+    "x-fixture": true,
+    "x-intentionally-invalid": true
+  }
+}

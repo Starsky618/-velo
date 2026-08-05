@@ -1,0 +1,46 @@
+{
+  "schema_version": "0.1.0",
+  "packet_id": "rider-context.fixture.invalid-coordinates",
+  "packet_environment": "test",
+  "generated_at": "2026-08-03T19:30:00+08:00",
+  "source_revision": "fixture-rider-source-r1",
+  "session_id": "planning-session.fixture-invalid",
+  "user_ref": "user.fixture-rider-001",
+  "authorization": {
+    "purpose": "Demonstrate exact-coordinate rejection.",
+    "task_mode": "discover",
+    "allowed_sections": ["saved_place_handles"],
+    "data_scope_refs": ["scope.fixture-invalid"],
+    "sensitive_location_policy": "opaque_ref_only"
+  },
+  "current_request": {
+    "request_summary": "Find a route from a saved area.",
+    "time_budget_s": 7200,
+    "return_to_origin": true
+  },
+  "bike_profiles": [],
+  "performance_context": {},
+  "saved_place_handles": [
+    {
+      "place_ref": "place-handle.invalid-exact-point",
+      "display_label": "Forbidden exact point",
+      "precision": "point_ref_hidden",
+      "exact_coordinates_exposed": false,
+      "coordinates": [112.5627, 37.7749]
+    }
+  ],
+  "familiarity": [],
+  "explicit_preferences": [],
+  "relevant_history_summaries": [],
+  "explicit_memory_items": [],
+  "unknowns": [],
+  "omitted_sections": [],
+  "privacy": {
+    "exact_coordinates_included": false,
+    "raw_activity_tracks_included": false,
+    "full_chat_transcript_included": false
+  },
+  "metadata": {
+    "x-fixture": true
+  }
+}

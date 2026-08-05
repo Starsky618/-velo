@@ -128,7 +128,7 @@ velo 读作：iPhone 用户为主的骑行成就与社交工具。观感目标 =
 - [x] tabBar 五个选中态 png 图标重着色：旧红 → 系统橙（PIL 保 alpha 染色，形状不动）
 - [x] 长尾色值统一（2026-06-12 顺手清）：segment / segment-efforts 的非标橙 `#FF6B00` → `#FF9500`；home 通知红点阴影修正为语义红 rgba
 - [x] 免费地图架构（2026-07-29 更新）：路线缩略仍用 canvas 自绘；个人热图改为单张原生地图叠加半透明轨迹，并可进入全屏拖动、缩放、切年份与颜色；所有原生地图都不传 subkey/layer-style，避免付费个性化底图鉴权失败
-- [x] "我的"页四件套（2026-06-12，第五批 / `eafceff2` 已部署生产）：训练统计卡"本周|生涯"segmented（period=all 零后端改动 + 进页预拉防瞬态错位）；bio 灰框退场纯展示（编辑移设置页）；settings 全量 iOS inset-grouped 五组重构（宣言/周目标/车型行 + 意见反馈 open-type=contact + 关于版本；退出/注销改居中红字行防误触，二次确认保留；**调研定稿不做假功能**——单位/多语言/深色/缓存清理/通知开关均无底层支持或微信统管，Strava/Komoot 官方实证）；活动列表 iGPSport 式轨迹缩略（后端新只读端点 track-thumbs 抽稀 ≤60 点 owner-only / ride-card 左图右信息 observer 自画 / 新 `utils/ride-thumbs.js` 批量缓存）
+- [x] "我的"页四件套（2026-06-12，第五批 / `eafceff2` 已部署生产；设置页 2026-08-02 再整理）：训练统计卡"本周|生涯"segmented（period=all 零后端改动 + 进页预拉防瞬态错位）；bio 灰框退场纯展示（编辑移设置页）；settings 采用骑手身份摘要 + iOS inset-grouped（真实头像/昵称/家乡/个人简介原地编辑，骑行资料、训练基线、支持与关于分组）；退出/注销下沉到中性的“账号与数据”二级入口，二次确认保留；**调研定稿不做假功能**——单位/多语言/深色/缓存清理/通知开关均无底层支持或微信统管，Strava/Komoot 官方实证；活动列表 iGPSport 式轨迹缩略（后端新只读端点 track-thumbs 抽稀 ≤60 点 owner-only / ride-card 左图右信息 observer 自画 / 新 `utils/ride-thumbs.js` 批量缓存）
 - [x] 动效与触感规范立项 + 全量铺开（2026-06-14，本文件 §4.5）：从同学 iOS 原型对照中提炼"按压反馈 + 选中态滑动"两条 HIG 标准触感写进合同；红线锁死"液态玻璃等 iOS 独占质感禁止 canvas 模仿"。落地：
   - 全局 `.tappable` 基类入 `app.wxss`（按下 scale(0.94)+变暗，松手带过冲曲线"弹"回 → 手感来源是回弹不是缩放幅度；第一版 0.98 太微肉眼看不出已实证废弃）
   - 页面级 42 处可点元素挂 `.tappable`（13 个 .wxml；带 bindtap/catchtap 的卡片/列表行/功能行/选中态元素/小图标；纯展示行如 settings 车型/年龄无 bindtap 已跳过；已有自带 :active 的 7 元素跳过）
