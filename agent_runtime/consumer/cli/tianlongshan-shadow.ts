@@ -4,8 +4,11 @@ import { resolve } from "node:path";
 
 import { JsonlSessionStore } from "../session/engine.ts";
 import type { RiderSessionEvent } from "../session/types.ts";
+import { JsonlSessionRuntimePort } from "../session/jsonl-runtime-port.ts";
+import { compileRiderContext } from "../context/compiler.ts";
 import { renderResult, TianlongshanShadowAgent } from "../planning/shadow.ts";
-import type { PlanningWorld, RideRequest, UrbanExposure } from "../planning/types.ts";
+import type { RideRequest, UrbanExposure } from "../planning/types.ts";
+import { parsePlanningWorld } from "../planning/world-validator.ts";
 
 function valueAfter(flag: string): string {
   const index = process.argv.indexOf(flag);
@@ -23,7 +26,7 @@ const request: RideRequest = {
 const sessionId = process.argv.includes("--session-id") ? valueAfter("--session-id") : randomUUID();
 const storeRoot = process.argv.includes("--session-dir") ? valueAfter("--session-dir") : ".agent-runtime/sessions";
 const fixturePath = resolve("tests/fixtures/ride_planning/tianlongshan_world.json");
-const world = JSON.parse(await readFile(fixturePath, "utf8")) as PlanningWorld;
+const world = parsePlanningWorld(JSON.parse(await readFile(fixturePath, "utf8")) as unknown);
 const store = new JsonlSessionStore(storeRoot);
 let current = await store.read(sessionId);
 const occurredAt = new Date().toISOString();
@@ -55,20 +58,18 @@ const userEvent: RiderSessionEvent = {
   content: exactInput,
 };
 current.view = await store.append(userEvent);
-const rendered = renderResult(new TianlongshanShadowAgent(world).run(request));
-await store.append({
-  schema_version: 1,
-  event_id: randomUUID(),
+const mainlineTopicId = current.view.mainline_topic_id;
+const sessionPort = new JsonlSessionRuntimePort(store, sessionId, mainlineTopicId);
+const result = await new TianlongshanShadowAgent(world).run(request, {
   session_id: sessionId,
-  base_revision: current.view.revision,
-  occurred_at: new Date().toISOString(),
-  type: "turn.recorded",
-  turn_id: randomUUID(),
-  topic_id: current.view.mainline_topic_id,
-  role: "agent",
-  source_role: "agent",
-  authorship_basis: "agent_generated",
-  content: rendered,
+  session_revision: current.view.revision,
+  request_ref: userEvent.turn_id,
+  rider_context: compileRiderContext(current.view),
+  session_port: sessionPort,
 });
+const rendered = renderResult(result);
 console.log(rendered);
 console.error(`session_id=${sessionId}`);
+if (["budget_exceeded", "deterministic_error"].includes(result.runtime_trace.agent_run.stop_reason as string)) {
+  process.exitCode = 1;
+}

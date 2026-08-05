@@ -41,7 +41,7 @@ Creator 与 Rider Consumer 在数据库层也必须低耦合：分别写自己�
 - `world_fact_versions`：subject/predicate/typed value、`valid_from/valid_to`（现实有效期）、`recorded_at/superseded_at`（系统时间）、provenance、freshness、publication revision。
 - `traversals` / `traversal_versions`：稳定路线认知身份与不可变方向几何版本；核心引用必须锁定 revision + geometry hash。
 
-首版 `Traversal` 可以先由现有 `route_cognition_segments` 投影为 `(segment_id, geometry_hash, direction, start_fraction, end_fraction)`，不急着迁表。只有出现同一 segment 多方向语义、多个稳定裁切、独立事实或正式版本演化时，才创建 `traversals` 表族。
+首版 `Traversal` 身份只能以 `route_cognition_segments.(segment_id, geometry_hash)` 作为已审核几何锚点；`direction/start_fraction/end_fraction` 实际属于 `route_segments`，只在某个既有 `route_version` 的组件关系里成立，不能假装是白名单赛段自身的字段。若要把某条既有正式路线组件投影为 Traversal，必须显式 join 两表并保留 route/version/component identity；通用、跨路线的方向与稳定裁切仍需未来的 `traversals` 表族承载。
 
 ### 3. Rider Consumer 私有面
 
@@ -73,7 +73,7 @@ Strava 官方 API 的 `/segments/explore` 确实能按 bounds 返回热门 ridin
 - 优先用 VELO 自有 Activity、骑友明确授权的 GPX/FIT、管理员实测或其他许可来源重建并核验核心 Traversal；发布时保留独立 geometry hash 与 provenance。
 - 如果未来获准使用 Strava 数据，adapter 必须记录 provider object id、captured time、rights/display policy、删除/失效处理与 rate-limit observation，不能冒充当前 `admin_import`。
 
-依据：[Strava API reference](https://developers.strava.com/docs/reference/)、[rate limits](https://developers.strava.com/docs/rate-limits/)、[2026 API Agreement](https://www.strava.com/legal/api)。
+依据：[Strava API reference](https://developers.strava.com/docs/reference/)、[rate limits](https://developers.strava.com/docs/rate-limits/)、[2026 API Agreement](https://www.strava.com/legal/api)、[API changelog](https://developers.strava.com/docs/changelog/)。其中 changelog 已预告 2026-09-01 起部分新 segment 访问将要求获批的 Extended Access；在许可与产品展示方式明确前，Creator 的 `rights_checked` 必须保持 fail closed。
 
 ## 为什么本轮不写 Alembic migration
 

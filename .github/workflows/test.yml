@@ -67,6 +67,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Node.js 22 for cross-language Agent conformance
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:

@@ -1,5 +1,6 @@
 {
   "fixture_version": "tianlongshan-recorded-v2",
+  "world_revision": "world:tianlongshan-r1",
   "origins": {
     "太原站附近": {"ref": "origin:ty-rail-neighborhood", "revision": "origin-r1"},
     "太原站东广场": {"ref": "origin:ty-rail-east-square", "revision": "origin-r1"}

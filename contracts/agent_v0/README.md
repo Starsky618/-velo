@@ -44,6 +44,7 @@
 ## Session、Run 与地图动作边界
 
 - `SessionState` 是 deterministic interaction service 拥有的 working state，不是完整聊天记录。one Session can have many Runs；Run 与 Session 分离，Run/AgentAction/MapAction 都绑定 `base_session_revision`，stale proposal 不能覆盖新版 Session。
+- `session_commit.commit_status=reconciliation_required` 只用于持久层写入返回异常且 exact-event 重读也无法判断结果的窄故障面；它必须停止为 `deterministic_error` 或 `cancelled`，禁止自动重试、禁止声称 committed，并由恢复流程按 immutable event id 对账。不得把该状态藏进 metadata。
 - `AgentRun` 的 created 状态不含任何执行引用或预算消耗，且不能提交 Session；每个实际 model turn 必须恰好对应一个 `ContextManifest`。running Run 也不能提前声称最终 commit，deadline 必须严格晚于 started time。resume 使用新 `run_id`，继承同一 lineage 与单调预算，并绑定 parent 已提交后的 current Session revision。
 - `MapEvent` 和 `MapAction` 都必须经过 deterministic reducer；地图状态不能从自然语言回复反推。用户切换 active candidate 只改变当前关注项，只有 `plan_confirmed` 用户事件或未来等价明确事件才能产生 `selected_plan`。
 - Session 的地图状态只保存 deterministic boundary 已解析的 opaque `available_bounds_refs`。`fit_bounds` 可以把 viewport 从当前 bounds 改到其中另一个已知 ref；viewport 用 `source_kind/source_ref` 区分 initial、MapEvent 与 MapAction 来源，仍禁止 bbox、坐标、WKT 或 GeoJSON。

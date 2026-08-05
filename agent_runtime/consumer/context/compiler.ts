@@ -1,8 +1,9 @@
 import { contentHash } from "../../shared/canonical.ts";
 import type { ConversationTurn, SessionDecision, SessionView } from "../session/types.ts";
 
-export interface RiderContextManifest {
+export interface RiderConversationContext {
   schema_version: 1;
+  context_ref: string;
   session_id: string;
   source_revision: number;
   source_of_truth: false;
@@ -16,7 +17,7 @@ export interface RiderContextManifest {
   context_hash: string;
 }
 
-export function compileRiderContext(view: SessionView, recentTurnLimit = 12): RiderContextManifest {
+export function compileRiderContext(view: SessionView, recentTurnLimit = 12): RiderConversationContext {
   if (!Number.isInteger(recentTurnLimit) || recentTurnLimit < 1) throw new Error("recentTurnLimit must be positive");
   const recentTurns = view.turns.slice(-recentTurnLimit);
   const confirmedDecisions = Object.values(view.decisions)
@@ -49,5 +50,6 @@ export function compileRiderContext(view: SessionView, recentTurnLimit = 12): Ri
     omitted_turn_refs: omittedTurnRefs,
     included_decision_refs: confirmedDecisions.map((decision) => decision.id),
   };
-  return { ...manifest, context_hash: contentHash(manifest) };
+  const contextHash = contentHash(manifest);
+  return { ...manifest, context_ref: `rider-context:${view.session_id}:${view.revision}`, context_hash: contextHash };
 }

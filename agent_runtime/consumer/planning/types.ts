@@ -51,8 +51,11 @@ export interface CandidatePlanTemplate {
 }
 
 export interface CandidatePlan extends CandidatePlanTemplate {
+  plan_revision: string;
   origin_ref: string;
   origin_revision: string;
+  request_hash: string;
+  world_revision: string;
   recommendation_reason?: string;
   tradeoff?: string;
 }
@@ -63,6 +66,7 @@ export interface RejectedCandidate extends CandidatePlan {
 
 export interface PlanningWorld {
   fixture_version: string;
+  world_revision: string;
   origins: Record<string, OriginVersion>;
   core_traversals: Record<string, CoreTraversal>;
   candidate_plans: CandidatePlanTemplate[];
@@ -77,4 +81,15 @@ export interface ShadowResult {
   model_turns: number;
   tool_calls: number;
   candidate_generation_count: number;
+  runtime_trace: AgentV0RuntimeTrace;
+}
+
+export interface AgentV0RuntimeTrace {
+  registry_id: string;
+  registry_version: string;
+  context_manifests: Record<string, unknown>[];
+  actions: Record<string, unknown>[];
+  tool_calls: Record<string, unknown>[];
+  tool_results: Record<string, unknown>[];
+  agent_run: Record<string, unknown>;
 }

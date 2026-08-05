@@ -310,7 +310,7 @@
       "properties": {
         "commit_status": {
           "type": "string",
-          "enum": ["not_attempted", "committed", "rejected_stale"]
+          "enum": ["not_attempted", "committed", "rejected_stale", "reconciliation_required"]
         },
         "expected_base_revision": { "type": "integer", "minimum": 1 },
         "committed_revision": { "type": "integer", "minimum": 2 }
@@ -321,7 +321,7 @@
           "required": ["commit_status", "committed_revision"]
         },
         {
-          "properties": { "commit_status": { "enum": ["not_attempted", "rejected_stale"] } },
+          "properties": { "commit_status": { "enum": ["not_attempted", "rejected_stale", "reconciliation_required"] } },
           "required": ["commit_status"],
           "not": { "required": ["committed_revision"] }
         }

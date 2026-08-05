@@ -1,7 +1,11 @@
 export const CLAIM_TEMPORALITIES = ["permanent", "slow_changing", "temporary"] as const;
 export const EVAL_VERDICTS = ["pass", "fail", "needs_more_evidence"] as const;
+export const RIGHTS_DECISIONS = ["allowed", "forbidden", "needs_review"] as const;
+export const CONFLICT_RESULTS = ["clear", "conflicting", "needs_more_evidence"] as const;
 export type ClaimTemporality = (typeof CLAIM_TEMPORALITIES)[number];
 export type EvalVerdict = (typeof EVAL_VERDICTS)[number];
+export type RightsDecision = (typeof RIGHTS_DECISIONS)[number];
+export type ConflictResult = (typeof CONFLICT_RESULTS)[number];
 
 interface BaseCreatorEvent {
   schema_version: 1;
@@ -34,6 +38,15 @@ export interface EvidenceRecorded extends BaseCreatorEvent {
   observed_at: string;
 }
 
+export interface RightsChecked extends BaseCreatorEvent {
+  type: "creator.rights_checked";
+  rights_check_id: string;
+  source_ref: string;
+  decision: RightsDecision;
+  policy_ref: string;
+  reason: string;
+}
+
 export interface ClaimProposed extends BaseCreatorEvent {
   type: "creator.claim_proposed";
   claim_id: string;
@@ -41,7 +54,27 @@ export interface ClaimProposed extends BaseCreatorEvent {
   predicate: string;
   proposed_value: string | number | boolean;
   temporality: ClaimTemporality;
+  valid_from?: string;
+  valid_to?: string;
+  review_at?: string;
   evidence_refs: string[];
+}
+
+export interface ConflictAnalyzed extends BaseCreatorEvent {
+  type: "creator.conflict_analyzed";
+  analysis_id: string;
+  claim_id: string;
+  result: ConflictResult;
+  conflicting_claim_refs: string[];
+  reason: string;
+}
+
+export interface HumanReviewRequested extends BaseCreatorEvent {
+  type: "creator.human_review_requested";
+  review_id: string;
+  target_ref: string;
+  request_kind: "rights_review" | "conflict_review" | "request_more_evidence";
+  reason: string;
 }
 
 export interface EvalRecorded extends BaseCreatorEvent {
@@ -63,9 +96,12 @@ export interface WorldChangeProposed extends BaseCreatorEvent {
 export type CreatorEvent =
   | CreatorWorkspaceStarted
   | SourceIngested
+  | RightsChecked
   | EvidenceRecorded
   | ClaimProposed
+  | ConflictAnalyzed
   | EvalRecorded
+  | HumanReviewRequested
   | WorldChangeProposed;
 
 export interface CreatorView {
@@ -76,8 +112,11 @@ export interface CreatorView {
   last_event_id: string;
   last_occurred_at: string;
   sources: Record<string, SourceIngested>;
+  rights_checks: Record<string, RightsChecked>;
   evidence: Record<string, EvidenceRecorded>;
   claims: Record<string, ClaimProposed>;
+  conflict_analyses: Record<string, ConflictAnalyzed>;
   evaluations: Record<string, EvalRecorded>;
+  human_review_requests: Record<string, HumanReviewRequested>;
   world_change_proposals: Record<string, WorldChangeProposed>;
 }
