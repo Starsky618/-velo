@@ -78,8 +78,10 @@ Strava 官方 API 的 `/segments/explore` 确实能按 bounds 返回热门 ridin
 
 依据：[Strava API reference](https://developers.strava.com/docs/reference/)、[rate limits](https://developers.strava.com/docs/rate-limits/)、[2026 API Agreement](https://www.strava.com/legal/api)、[API changelog](https://developers.strava.com/docs/changelog/)。其中 changelog 已预告 2026-09-01 起部分新 segment 访问将要求获批的 Extended Access；在许可与产品展示方式明确前，Creator 的 `rights_checked` 必须保持 fail closed。
 
-## 为什么本轮仍不写 Alembic migration
+## 当前已落的数据库边界
 
-Creator v0 已用真实天龙山仓库材料证明原始输入、判断确认/拒绝/替代、Context 与冷启动 Eval；Rider 也已有 plan/revision Shadow。现在已经可以设计最小持久化，但生产内部 API、真实 PostgreSQL 并发、提交后断线 reconciliation 和 authenticated Tim reviewer 仍未验证。
+Creator Persistence Slice v0 已新增 Alembic revision `20260806_creator_pg_v0`：只创建 `creator_*` 事件真值与信息/判断投影，不修改现有 Route Cognition、路线或 Rider 核心表。Python service 用单事务持有 revision CAS、event id/hash 幂等、投影与 exact Tim decision 绑定；事件表有 append-only trigger。
 
-因此下一步先按 [`CREATOR_POSTGRESQL_SPEC_V0.md`](CREATOR_POSTGRESQL_SPEC_V0.md) 在 CI 临时 PostgreSQL 固定事务、唯一约束、复合 FK、投影回放和 upgrade/downgrade；通过后才创建正式 migration。首刀只落 Creator 事件真值与必要投影，不一次性创建 Published World、Rider 和全部长期表族。
+TypeScript 仍通过 `CreatorWorkspaceStore` 内部 HTTP adapter 访问，不直接连接 SQL。Python router 只能由部署 composition root 注入 bearer authenticator 后显式挂载；本切片未在 `app/main.py` 暴露路由，也未配置生产 secret 或部署 migration。
+
+下一刀不是继续扩大表族，而是先补 projection-native Context/漂移停写，再为一个内部 workspace 建立真实登录 Tim 审核身份、内网挂载和 Shadow 观测。Published World、Rider persistence、腾讯、Strava 与真实 LLM 继续分开验收。

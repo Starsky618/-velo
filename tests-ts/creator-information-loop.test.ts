@@ -298,10 +298,33 @@ test("Tim can explicitly reject an Agent judgment without creating current truth
 
 test("Creator model output fails closed on unknown fields", () => {
   assert.throws(() => validateCreatorModelAction({
+    type: "no_action", reason: "bad\ud800text",
+  }), /Unicode scalar/);
+  assert.throws(() => validateCreatorModelAction({
     type: "propose_judgment", proposal_id: "p", judgment_key: "k", subject_ref: "s", statement: "x",
     typed_value: true, temporality: "permanent", source_turn_refs: [], evidence_refs: ["e"], reason: "r",
     publish_immediately: true,
   }), /unknown fields/);
+  assert.throws(() => validateCreatorModelAction({
+    type: "propose_judgment", proposal_id: "p", judgment_key: "k", subject_ref: "s", statement: "x",
+    typed_value: Number.NaN, temporality: "permanent", source_turn_refs: [], evidence_refs: ["e"], reason: "r",
+  }), /must be finite/);
+  assert.throws(() => validateCreatorModelAction({
+    type: "propose_judgment", proposal_id: "p", judgment_key: "k", subject_ref: "s", statement: "x",
+    typed_value: Number.MAX_SAFE_INTEGER + 1, temporality: "permanent", source_turn_refs: [], evidence_refs: ["e"], reason: "r",
+  }), /safe integer range/);
+  assert.doesNotThrow(() => validateCreatorModelAction({
+    type: "propose_judgment", proposal_id: "p", judgment_key: "k", subject_ref: "s", statement: "x",
+    typed_value: Number.MAX_SAFE_INTEGER, temporality: "permanent", source_turn_refs: [], evidence_refs: ["e"], reason: "r",
+  }));
+  assert.throws(() => validateCreatorModelAction({
+    type: "propose_judgment", proposal_id: "p", judgment_key: "k", subject_ref: "s", statement: "bad\ud800text",
+    typed_value: true, temporality: "permanent", source_turn_refs: [], evidence_refs: ["e"], reason: "r",
+  }), /Unicode scalar/);
+  assert.throws(() => validateCreatorModelAction({
+    type: "propose_judgment", proposal_id: "p", judgment_key: "k", subject_ref: "s", statement: "x",
+    typed_value: "bad\ud800text", temporality: "permanent", source_turn_refs: [], evidence_refs: ["e"], reason: "r",
+  }), /Unicode scalar/);
 });
 
 test("Creator runtime rejects model citations that were not present in its compiled context", async () => {
@@ -388,6 +411,31 @@ test("Creator runtime reconciles a committed event and retries without invoking 
   assert.equal(retry.commit_status, "reconciled");
   assert.equal(retry.context_manifest.context_hash, first.context_manifest.context_hash);
   assert.equal(modelCalls, 1);
+});
+
+test("Creator runtime never claims another principal's exact event as its reconciliation", async () => {
+  const { store, model } = await setupRealTianlongshanLoop();
+  const otherPrincipal: RuntimePrincipal = { ...agentPrincipal, principal_id: "test:other-creator-agent" };
+  const commitAsOtherThenFail: CreatorWorkspaceStore = {
+    readAs: (workspace, principal) => store.readAs(workspace, principal),
+    async appendAs(event) {
+      await store.appendAs(event, otherPrincipal);
+      throw new Error("simulated response loss after another principal committed");
+    },
+  };
+  const runtime = new CreatorAgentV0(commitAsOtherThenFail, agentPrincipal, model);
+  const request = {
+    workspace_id: workspaceId, event_id: "foreign-reconcile-7", occurred_at: at(6), task: "判断天龙山路线结构",
+    subject_refs: [subjectRef],
+  };
+  await assert.rejects(
+    () => runtime.run(request),
+    (error: unknown) => error instanceof CreatorCommitReconciliationRequiredError,
+  );
+  await assert.rejects(
+    () => runtime.run(request),
+    /committed by a different authenticated principal/,
+  );
 });
 
 test("Creator runtime reports typed reconciliation_required when commit outcome cannot be read", async () => {

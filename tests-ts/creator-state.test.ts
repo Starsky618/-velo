@@ -60,6 +60,22 @@ test("creator preserves source to evidence to claim to eval provenance", () => {
   assert.equal(view.evaluations["eval:1"]?.verdict, "pass");
 });
 
+test("creator events reject non-finite scalar values before JSON persistence", () => {
+  const poison = { ...events()[4], proposed_value: Number.POSITIVE_INFINITY };
+  assert.throws(() => validateCreatorEvent(poison), /must be finite/);
+  assert.throws(
+    () => validateCreatorEvent({ ...events()[4], proposed_value: Number.MAX_SAFE_INTEGER + 1 }),
+    /safe integer range/,
+  );
+  assert.doesNotThrow(() => validateCreatorEvent({ ...events()[4], proposed_value: Number.MAX_SAFE_INTEGER }));
+});
+
+test("creator events reject unpaired surrogates but preserve valid non-BMP text", () => {
+  assert.throws(() => validateCreatorEvent({ ...events()[0], mission: "bad\ud800text" }), /Unicode scalar/);
+  assert.throws(() => validateCreatorEvent({ ...events()[4], proposed_value: "bad\ud800text" }), /Unicode scalar/);
+  assert.doesNotThrow(() => validateCreatorEvent({ ...events()[0], mission: "valid \u{10000} text" }));
+});
+
 test("a Rider principal cannot create or claim a Creator workspace", () => {
   assert.throws(() => replayCreatorWorkspace([events()[0]!], createShadowRiderPrincipal()), /capability denied/);
 });

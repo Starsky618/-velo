@@ -34,9 +34,35 @@ function exactKeys(value: Record<string, unknown>, allowed: readonly string[], l
   if (unknown.length > 0) throw new Error(`${label} has unknown fields: ${unknown.join(", ")}`);
 }
 
+function assertUnicodeScalarString(value: unknown, label: string): asserts value is string {
+  assertNonEmptyString(value, label);
+  assertUnicodeScalarValue(value, label);
+}
+
+function assertUnicodeScalarValue(value: string, label: string): void {
+  for (let index = 0; index < value.length; index += 1) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) throw new Error(`${label} must contain only Unicode scalar values`);
+      index += 1;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      throw new Error(`${label} must contain only Unicode scalar values`);
+    }
+  }
+}
+
 function stringArray(value: unknown, label: string): asserts value is string[] {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item.trim() === "")) {
+  if (!Array.isArray(value)) {
     throw new Error(`${label} must be a string array`);
+  }
+  for (const item of value) assertUnicodeScalarString(item, label);
+}
+
+function exactJsonNumber(value: number, label: string): void {
+  if (!Number.isFinite(value)) throw new Error(`${label} must be finite`);
+  if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+    throw new Error(`${label} must be within the JavaScript safe integer range`);
   }
 }
 
@@ -44,23 +70,25 @@ export function validateCreatorModelAction(value: unknown): asserts value is Cre
   assertRecord(value, "Creator model action");
   if (value.type === "no_action") {
     exactKeys(value, ["type", "reason"], "Creator no_action");
-    assertNonEmptyString(value.reason, "reason");
+    assertUnicodeScalarString(value.reason, "reason");
     return;
   }
   if (value.type !== "propose_judgment") throw new Error("unknown Creator model action type");
   exactKeys(value, ["type", "proposal_id", "judgment_key", "subject_ref", "statement", "typed_value", "temporality", "review_at", "source_turn_refs", "evidence_refs", "supersedes_judgment_id", "reason"], "Creator propose_judgment");
   for (const field of ["proposal_id", "judgment_key", "subject_ref", "statement", "reason"] as const) {
-    assertNonEmptyString(value[field], field);
+    assertUnicodeScalarString(value[field], field);
   }
   if (!["string", "number", "boolean"].includes(typeof value.typed_value)) throw new Error("invalid Creator typed_value");
+  if (typeof value.typed_value === "string") assertUnicodeScalarValue(value.typed_value, "Creator typed_value");
+  if (typeof value.typed_value === "number") exactJsonNumber(value.typed_value, "Creator typed_value");
   if (!CLAIM_TEMPORALITIES.includes(value.temporality as never)) throw new Error("invalid Creator judgment temporality");
   stringArray(value.source_turn_refs, "source_turn_refs");
   stringArray(value.evidence_refs, "evidence_refs");
   if (new Set(value.source_turn_refs).size !== value.source_turn_refs.length) throw new Error("source_turn_refs must be unique");
   if (new Set(value.evidence_refs).size !== value.evidence_refs.length) throw new Error("evidence_refs must be unique");
   if (value.source_turn_refs.length + value.evidence_refs.length === 0) throw new Error("Creator judgment needs a source turn or evidence");
-  if (value.review_at !== undefined) assertNonEmptyString(value.review_at, "review_at");
-  if (value.supersedes_judgment_id !== undefined) assertNonEmptyString(value.supersedes_judgment_id, "supersedes_judgment_id");
+  if (value.review_at !== undefined) assertUnicodeScalarString(value.review_at, "review_at");
+  if (value.supersedes_judgment_id !== undefined) assertUnicodeScalarString(value.supersedes_judgment_id, "supersedes_judgment_id");
 }
 
 export interface CreatorShadowRule {

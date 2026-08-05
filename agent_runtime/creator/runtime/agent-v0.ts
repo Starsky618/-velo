@@ -1,9 +1,10 @@
 import { canonicalJson, contentHash } from "../../shared/canonical.ts";
 import type { RuntimePrincipal } from "../../shared/capability-gate.ts";
+import { creatorCapabilityForEventType } from "../capabilities.ts";
 import { compileCreatorContext, type CreatorContextManifest, type CreatorContextRequest } from "../context/compiler.ts";
 import { replayCreatorWorkspace } from "../state/engine.ts";
 import type { CreatorWorkspaceStore } from "../state/store-port.ts";
-import type { CreatorEvent, JudgmentProposed } from "../state/types.ts";
+import type { CreatorEvent, CreatorStoredEvent, JudgmentProposed } from "../state/types.ts";
 import { validateCreatorModelAction, type CreatorDecisionModel, type CreatorModelAction } from "./model.ts";
 
 export interface CreatorRunRequest extends CreatorContextRequest {
@@ -45,6 +46,19 @@ function actionFromProposal(event: JudgmentProposed): CreatorModelAction {
   };
 }
 
+function receiptMatchesPrincipal(
+  record: CreatorStoredEvent | undefined,
+  event: CreatorEvent,
+  principal: RuntimePrincipal,
+): boolean {
+  return record !== undefined
+    && canonicalJson(record.event) === canonicalJson(event)
+    && record.committed_by.principal_id === principal.principal_id
+    && record.committed_by.product === principal.product
+    && record.committed_by.environment === principal.environment
+    && record.committed_by.capability === creatorCapabilityForEventType(event.type);
+}
+
 export class CreatorAgentV0 {
   readonly #store: CreatorWorkspaceStore;
   readonly #principal: RuntimePrincipal;
@@ -73,6 +87,11 @@ export class CreatorAgentV0 {
       if (!existing || existing.type !== "creator.judgment_proposed" || existing.workspace_id !== request.workspace_id
         || existing.occurred_at !== request.occurred_at || existing.model_ref !== this.#model.model_ref) {
         throw new Error(`Creator run event_id content conflict: ${request.event_id}`);
+      }
+      if (!receiptMatchesPrincipal(current.records[existingIndex], existing, this.#principal)) {
+        throw new CreatorCommitReconciliationRequiredError(
+          `Creator run event ${request.event_id} was committed by a different authenticated principal`,
+        );
       }
       const priorView = replayCreatorWorkspace(current.records.slice(0, existingIndex));
       const priorBundle = compileCreatorContext(priorView, contextRequest);
@@ -164,9 +183,9 @@ export class CreatorAgentV0 {
           `Creator commit failed and read-after-error reconciliation also failed: ${reconciliationError instanceof Error ? reconciliationError.message : String(reconciliationError)}`,
         );
       }
-      const persisted = recovered.events.find((item) => item.event_id === event.event_id);
-      if (!persisted) throw error;
-      if (canonicalJson(persisted) !== canonicalJson(event) || !recovered.view) {
+      const persistedRecords = recovered.records.filter((item) => item.event.event_id === event.event_id);
+      if (persistedRecords.length === 0) throw error;
+      if (persistedRecords.length !== 1 || !receiptMatchesPrincipal(persistedRecords[0], event, this.#principal) || !recovered.view) {
         throw new CreatorCommitReconciliationRequiredError(`Creator event ${event.event_id} has conflicting persisted content`);
       }
       committedRevision = event.base_revision + 1;

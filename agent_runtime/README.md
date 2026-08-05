@@ -1,12 +1,12 @@
 # VELO TypeScript Agent Runtime
 
-这是 VELO 的 Agent 控制面，不是 Python 业务后端的翻译版。当前第一刀只建立可重放内核、权限边界和确定性天龙山 Shadow；没有接真实模型、腾讯网络、生产数据库或小程序。
+这是 VELO 的 Agent 控制面，不是 Python 业务后端的翻译版。当前已有可重放内核、权限边界、确定性天龙山 Shadow，以及首个 Creator PostgreSQL persistence slice；没有接真实模型、腾讯网络、生产数据库流量或小程序。
 
 ## 为什么做这个 Runtime
 
 核心目的不是增加一个聊天入口，而是让 VELO 能长期保留来源信息、Tim 明确确认的判断及其修订链，并在每次模型运行前编译出可审计的最小 Context。聊天窗口被压缩或进程重启后，系统应从事件和 revision 恢复，而不是要求模型“记住”。
 
-这套闭环最终需要：原始信息 → Agent 提议 → Tim 确认/拒绝 → 判断替代与冲突 → Context 编译 → Agent Run → Eval/反馈 → World Change Proposal。当前 Rider 与 Creator 都已有本地确定性闭环；Creator 已新增 conversation ingestion、精确判断确认/拒绝/替代、Context Manifest、可替换模型端口和冷启动重放 Eval。它仍是 JSONL Shadow，不是生产服务。
+这套闭环最终需要：原始信息 → Agent 提议 → Tim 确认/拒绝 → 判断替代与冲突 → Context 编译 → Agent Run → Eval/反馈 → World Change Proposal。当前 Rider 与 Creator 都已有本地确定性闭环；Creator 的信息/判断子集还可通过内部 HTTP Store 写入 PostgreSQL 事件真值与投影。JSONL 仍是 Shadow 对照，内部 router 未挂载生产服务。
 
 当前交接和下一阶段验收见 [`docs/agent-first/README.md`](../docs/agent-first/README.md)。
 
@@ -29,10 +29,12 @@
 - `creator/context/`：按 subject 与确定性 `as_of` 编译 mission、仍在复核期且来源权利允许的 Tim-confirmed judgment、pending proposal/input、相关 Evidence 与未决 contradiction，并输出 source event/rights revision、provenance/hash、加载项、遗漏原因和 context hash。撤权或到期信息 fail closed；当前判断的必要证据不会被预算静默裁掉。
 - `creator/runtime/`：读取私有 Context 前先过 Creator capability；模型端口只返回 exact-key typed action；模型只能引用本次 Context 真正加载的 source/evidence。atomic commit 响应不明时按 exact event ID/payload 重读对账，重试不会再次调用模型。reducer 继续拥有权限、revision 和写入。
 - `creator/eval/`：把进程内 view 与全新 Node 进程冷启动 JSONL 重放后的 Context 比较，并检查 superseded/rejected judgment 不会复活。
+- `creator/state/http-store.ts`：只依赖 bearer credential provider 的 `CreatorWorkspaceStore`；POST 不发送 principal，commit receipt 必须重读 exact event/revision/hash/principal/capability 才算成功。
+- `app/creator_persistence/`：Python Domain Plane 持有 PostgreSQL transaction、revision CAS、event id/hash 幂等、append-only 事件真值、必要投影和 proposal/Tim turn/statement hash 复合绑定。它不导入 TypeScript，也不修改 Rider 或路线核心表。
 
-当前 capability gate 是运行时执行守卫，不冒充生产鉴权：测试与 Shadow 使用显式 test/shadow principal，并验证 Creator/Rider principal 互相拒绝；生产 authenticated service principal、进程/网络隔离和部署身份尚未实现，所以本目录仍不进入 Python 生产镜像。
+当前 capability gate 是运行时执行守卫，不冒充生产鉴权：测试与 Shadow 使用显式 test/shadow principal，并验证 Creator/Rider principal 互相拒绝。Python 提供需要部署方注入 token authenticator 的 router factory，但没有生产 token verifier、真实 Tim 身份签发、进程/网络隔离或公开路由挂载。
 
-当前没有新增数据库迁移。Creator v0 已暴露 revision CAS、source message 去重、proposal/decision 强绑定、supersession、contradiction 与 Context 查询等第一批稳定模式；最小 PostgreSQL 事务、约束、投影、回放和失败恢复已经形成架构规格。下一阶段按该规格在 CI 临时 PostgreSQL 实现并验证首个持久化切片，不把整个 `CreatorView` 粗暴固化成一行 JSON。
+Creator persistence v0 新增 Alembic revision `20260806_creator_pg_v0` 和 13 张隔离的 `creator_*` 表。事件流是 append-only 真值，投影与事件同事务；不把整个 `CreatorView` 固化成一行 JSON。当前 HTTP Store 只覆盖 information/judgment 九类事件，并在 transport 前拒绝其他 Creator event family；Claim/Eval/Human Review/World Change、Published World 和 Rider 表族未进入该 migration。Context 仍由 TypeScript 从 PG events 重放；projection-native Context 与漂移停写是下一道门禁。
 
 数据库复用与后续表族边界见 [`DATABASE_BOUNDARY.md`](DATABASE_BOUNDARY.md)，Creator 最小事务/约束/回放规格见 [`CREATOR_POSTGRESQL_SPEC_V0.md`](CREATOR_POSTGRESQL_SPEC_V0.md)。
 Reborn 迁移审计、Creator v0 合同与真实天龙山材料 Eval 见 [`creator-information-judgment-loop-v0.md`](../docs/agent-first/creator-information-judgment-loop-v0.md)。

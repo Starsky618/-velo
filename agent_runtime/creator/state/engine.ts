@@ -23,8 +23,23 @@ import {
 } from "./types.ts";
 
 
+function containsUnpairedSurrogate(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      index += 1;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function requireString(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || value.trim() === "") throw new Error(`${label} must be a non-empty string`);
+  if (containsUnpairedSurrogate(value)) throw new Error(`${label} must contain only Unicode scalar values`);
 }
 
 function requireUtcInstant(value: unknown, label: string): asserts value is string {
@@ -39,18 +54,27 @@ function requireContentHash(value: unknown, label: string): asserts value is str
 }
 
 function requireRefs(value: unknown, label: string): asserts value is string[] {
-  if (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== "string" || item.trim() === "")) {
+  if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`${label} must contain at least one ref`);
   }
+  for (const item of value) requireString(item, label);
 }
 
 function requireStringArray(value: unknown, label: string): asserts value is string[] {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item.trim() === "")) throw new Error(`${label} must be a string array`);
+  if (!Array.isArray(value)) throw new Error(`${label} must be a string array`);
+  for (const item of value) requireString(item, label);
 }
 
 function requireUniqueStringArray(value: unknown, label: string): asserts value is string[] {
   requireStringArray(value, label);
   if (new Set(value).size !== value.length) throw new Error(`${label} must not contain duplicate refs`);
+}
+
+function requireExactJsonNumber(value: unknown, label: string): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${label} must be finite`);
+  if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+    throw new Error(`${label} must be within the JavaScript safe integer range`);
+  }
 }
 
 function requireExactKeys(value: Record<string, unknown>, allowed: readonly string[], label: string): void {
@@ -67,8 +91,9 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
   if (event.schema_version !== 1) throw new Error("unsupported creator event schema_version");
   requireString(event.event_id, "event_id");
   requireString(event.workspace_id, "workspace_id");
+  if (!/^[a-zA-Z0-9._-]+$/.test(event.workspace_id)) throw new Error("workspace_id contains unsafe characters");
   requireUtcInstant(event.occurred_at, "occurred_at");
-  if (!Number.isInteger(event.base_revision) || (event.base_revision as number) < 0) throw new Error("base_revision must be non-negative");
+  if (!Number.isSafeInteger(event.base_revision) || (event.base_revision as number) < 0) throw new Error("base_revision must be a non-negative safe integer");
   switch (event.type) {
     case "creator.workspace_started":
       requireExactKeys(event, [...BASE_EVENT_KEYS, "mission"], event.type);
@@ -143,6 +168,8 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       requireRefs(event.evidence_refs, "evidence_refs");
       if (!CLAIM_TEMPORALITIES.includes(event.temporality as (typeof CLAIM_TEMPORALITIES)[number])) throw new Error("invalid claim temporality");
       if (!["string", "number", "boolean"].includes(typeof event.proposed_value)) throw new Error("invalid proposed_value");
+      if (typeof event.proposed_value === "string" && containsUnpairedSurrogate(event.proposed_value)) throw new Error("proposed_value must contain only Unicode scalar values");
+      if (typeof event.proposed_value === "number") requireExactJsonNumber(event.proposed_value, "proposed_value");
       for (const field of ["valid_from", "valid_to", "review_at"] as const) {
         if (event[field] !== undefined) requireUtcInstant(event[field], field);
       }
@@ -170,8 +197,8 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       if (canonicalJson(event.context_subject_refs) !== canonicalJson([...event.context_subject_refs].sort())) {
         throw new Error("context_subject_refs must be sorted");
       }
-      if (!Number.isInteger(event.context_max_pending_turns) || (event.context_max_pending_turns as number) < 0) throw new Error("context_max_pending_turns must be non-negative");
-      if (!Number.isInteger(event.context_max_evidence) || (event.context_max_evidence as number) < 0) throw new Error("context_max_evidence must be non-negative");
+      if (!Number.isSafeInteger(event.context_max_pending_turns) || (event.context_max_pending_turns as number) < 0) throw new Error("context_max_pending_turns must be a non-negative safe integer");
+      if (!Number.isSafeInteger(event.context_max_evidence) || (event.context_max_evidence as number) < 0) throw new Error("context_max_evidence must be a non-negative safe integer");
       requireString(event.context_hash, "context_hash");
       requireString(event.model_ref, "model_ref");
       requireString(event.reason, "reason");
@@ -179,6 +206,8 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       requireUniqueStringArray(event.evidence_refs, "evidence_refs");
       if (event.source_turn_refs.length + event.evidence_refs.length === 0) throw new Error("judgment proposal requires at least one source turn or evidence ref");
       if (!["string", "number", "boolean"].includes(typeof event.typed_value)) throw new Error("invalid judgment typed_value");
+      if (typeof event.typed_value === "string" && containsUnpairedSurrogate(event.typed_value)) throw new Error("judgment typed_value must contain only Unicode scalar values");
+      if (typeof event.typed_value === "number") requireExactJsonNumber(event.typed_value, "judgment typed_value");
       if (!CLAIM_TEMPORALITIES.includes(event.temporality as never)) throw new Error("invalid judgment temporality");
       if (event.review_at !== undefined) requireUtcInstant(event.review_at, "review_at");
       if (event.temporality !== "permanent" && !event.review_at) throw new Error("non-permanent judgment requires review_at");
