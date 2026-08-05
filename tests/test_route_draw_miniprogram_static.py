@@ -70,12 +70,81 @@ def test_route_draw_page_uses_map_tap_as_default_input_and_sketch_only_touch_lay
 def test_route_draw_can_search_and_center_an_exact_location():
     js = _read(PAGE_DIR / "route-draw.js")
     wxml = _read(PAGE_DIR / "route-draw.wxml")
+    wxss = _read(PAGE_DIR / "route-draw.wxss")
 
-    assert 'catchtap="onTapSearchLocation"' in wxml
+    assert 'class="route-draw-action-button" bindtap="onTapSearchLocation"' in wxml
+    assert 'class="route-draw-action-button" bindtap="onTapLocate"' in wxml
     assert "搜地点" in wxml
     assert "onTapSearchLocation: function" in js
     assert "wx.chooseLocation" in js
+    assert "wx.requirePrivacyAuthorize" in js
+    assert "wx.authorize" in js
+    assert "scope.userLocation" in js
+    assert "wx.openSetting" in js
+    assert "小程序用户隐私保护指引" in js
+    assert "正在打开地点搜索" in js
+    assert "未选择地点" in js
     assert "直接点地图设置路线点" in js
+    assert "route-draw-map-side-tools" not in wxml
+    assert "route-draw-map-side-tools" not in wxss
+    assert ".route-draw-actions-row" in wxss
+    assert ".route-draw-action-button" in wxss
+
+
+def test_location_actions_finish_privacy_and_scope_authorization_before_calling_wechat_apis():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            textwrap.dedent(
+                """
+                let pageConfig
+                const calls = []
+                global.Page = function (config) { pageConfig = config }
+                global.wx = {
+                  requirePrivacyAuthorize: function (options) {
+                    calls.push('privacy')
+                    options.success()
+                  },
+                  getSetting: function (options) {
+                    calls.push('setting')
+                    options.success({ authSetting: { 'scope.userLocation': true } })
+                  },
+                  getLocation: function (options) {
+                    calls.push('locate')
+                    options.success({ longitude: 112.5, latitude: 37.8 })
+                  },
+                  chooseLocation: function (options) {
+                    calls.push('choose')
+                    options.success({ name: '晋祠', longitude: 112.44, latitude: 37.7 })
+                  },
+                  showModal: function () {},
+                  showToast: function () {},
+                }
+                require('./miniprogram/pages/route-draw/route-draw.js')
+                const page = Object.assign({}, pageConfig, {
+                  data: JSON.parse(JSON.stringify(pageConfig.data)),
+                  setData: function (patch) {
+                    this.data = Object.assign({}, this.data, patch)
+                  },
+                })
+                page.onTapLocate()
+                page.onTapSearchLocation()
+                process.stdout.write(JSON.stringify({ calls: calls, data: page.data }))
+                """
+            ),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["calls"] == ["privacy", "setting", "locate", "privacy", "setting", "choose"]
+    assert payload["data"]["longitude"] == 112.44
+    assert payload["data"]["latitude"] == 37.7
+    assert "已找到晋祠" in payload["data"]["statusText"]
 
 
 def test_route_draw_removes_center_crosshair_and_add_center_fallback():
@@ -252,7 +321,7 @@ def test_route_draw_exposes_smart_tap_and_true_manual_pencil_modes():
 
     assert "Manual Mode" not in wxml
     assert "builderMode === 'manual'" not in js
-    assert 'catchtap="onTapStartSketch"' in wxml
+    assert 'bindtap="onTapStartSketch"' in wxml
     assert "this.startSnapPreview([lastPoint, normalized])" in js
     assert "this.startSnapPreview(raw, 'freehand')" not in js
     assert "supports_detour_confirmation" not in js
