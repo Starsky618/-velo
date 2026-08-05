@@ -20,7 +20,8 @@ function events(verdict: "pass" | "fail" | "needs_more_evidence" = "pass"): Crea
     {
       schema_version: 1, event_id: "c-2", workspace_id: "creator-1", base_revision: 1,
       occurred_at: "2026-08-04T08:01:00.000Z", type: "creator.source_ingested", source_ref: "report:1",
-      source_kind: "rider_report", content_hash: "sha256:report-1", provenance_ref: "rider-submission:1",
+      source_kind: "rider_report", content_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000001", immutable_ref: "rider-submission:1:revision:1",
+      provenance_ref: "rider-submission:1",
     },
     {
       schema_version: 1, event_id: "c-3", workspace_id: "creator-1", base_revision: 2,
@@ -107,6 +108,9 @@ test("creator JSONL store durably replays exact append-only events", async () =>
   const reloaded = await store.read("creator-1");
   const lines = (await readFile(store.pathFor("creator-1"), "utf8")).trim().split("\n");
   assert.equal(lines.length, 7);
+  const records = lines.map((line) => JSON.parse(line) as { committed_by: { principal_id: string; capability: string } });
+  assert.equal(records[0]?.committed_by.principal_id, principal.principal_id);
+  assert.equal(records[0]?.committed_by.capability, "workspace.create");
   assert.equal(reloaded.view?.claims["claim:1"]?.proposed_value, "weekend_morning");
   await assert.rejects(() => store.append({ ...started, mission: "tampered" }), /event_id content conflict/);
 });

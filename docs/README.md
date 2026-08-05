@@ -2,7 +2,7 @@
 
 > 这份 README 只做三件事：说明 VELO 现在是什么、当前代码和真实用户证据到了哪一层、不同任务应该从哪份文档进入。
 >
-> **最后校准：2026-08-05。** Agent-First 状态核对到 `origin/main@ff8e0908`；其他产品能力、生产环境、微信体验版和管理后台本轮未重新验证。本文中的“有代码”不等于“已上线”。
+> **最后校准：2026-08-05。** Agent-First 交接基线核对到 `origin/main@e84de874`；Creator v0 以本文所在 revision 为准。其他产品能力、生产环境、微信体验版和管理后台本轮未重新验证。本文中的“有代码”不等于“已上线”。
 
 ---
 
@@ -53,7 +53,7 @@ VELO 是面向严肃公路车骑手的微信小程序和后端服务。当前小
 | 约骑 | 后端、表结构和历史测试保留；小程序前端已删除 | 有多轮历史真机走查 | 后端兼容面仍运行，但当前用户不可从小程序进入 |
 | 训练分析 | FTP、PMC、训练分布代码已存在 | 有历史真机反馈 | 不是当前产品投入主线 |
 | Route Cognition | DB foundation、内部 writer 和 seed dry-run 已有文档记录 | 只有内部流程证据 | 无公开 API、无 admin UI、无自动 backfill，不是用户可见产品 |
-| TypeScript Agent Runtime | Creator/Rider 独立内核、Session/Context、权限、Tool/Run 与路线 Shadow 已进入主线 | PR #46 CI：TypeScript 43/43；pytest 2447 passed / 0 skipped | 未接真实模型、生产数据库、腾讯网络、小程序或骑友流量 |
+| TypeScript Agent Runtime | Creator/Rider 独立内核；Creator v0 已有原始输入、判断确认/替代、Context、模型端口和冷启动 Eval | PR #46 CI 已通过；Creator v0 本地 TypeScript 56/56，当前分支修订后 CI 待重跑 | 未接真实模型、生产数据库、真实 Tim 审核 UI、腾讯网络、小程序或骑友流量 |
 
 ### 状态用词
 
@@ -115,6 +115,8 @@ docs/                产品、规格、架构、运行规则和历史档案
 | [agent-rules/agent-collaboration.md](agent-rules/agent-collaboration.md) | 历史协作手册；只有当前任务明确引用时才加载 |
 | [agent-rules/deploy-sop.md](agent-rules/deploy-sop.md) | 部署唯一执行入口；`commit ≠ ship` |
 | [agent-first/README.md](agent-first/README.md) | Agent-First 当前交接：最初目标、Creator/Rider 边界、已实现内核、未完成闭环与唯一推荐下一刀 |
+| [agent-first/creator-information-judgment-loop-v0.md](agent-first/creator-information-judgment-loop-v0.md) | Reborn 迁移审计、Creator 信息判断闭环、Context Manifest、冷启动 Eval 与数据库进入边界 |
+| [../agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md](../agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md) | Creator 首个 PostgreSQL 事件真值、关系投影、事务、并发、回放和回滚规格；尚非已落库 schema |
 
 ### B. 当前路线工作
 

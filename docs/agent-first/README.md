@@ -1,6 +1,6 @@
 # VELO Agent-First 当前交接
 
-> 最后核实：2026-08-05，`origin/main@ff8e09081d9613e761c01ab308fda068cd4651e7`（PR #46）。这份文件回答三个问题：我们为什么做 Agent、现在真实做到了哪一层、下一刀是什么。
+> 最后核实：2026-08-05，交接文档基线为 `origin/main@e84de8744c946c1880a6b1ccdd48c84aa3fecbe6`（PR #48）；Creator v0 实现以本文件所在 revision 为准。这份文件回答三个问题：我们为什么做 Agent、现在真实做到了哪一层、下一刀是什么。
 
 ## 1. 一开始要解决什么
 
@@ -29,55 +29,52 @@ Reborn 是重要参照系：借鉴它的原始记录、显式状态、状态机�
 |---|---|---|
 | 语言中立合同 | Context、Session、Run、Map/Action、Tool Registry/Call/Result 已进入主线 | [`contracts/agent_v0`](../../contracts/agent_v0/README.md)，PR #41–#43 |
 | TypeScript Rider 内核 | 已有 append-only JSONL Session、原始 turn、明确决定、unknown、Context 编译、Run/Tool deadline、重放与 reconciliation | [`agent_runtime`](../../agent_runtime/README.md)，PR #44、#46 |
-| TypeScript Creator 内核 | 已有独立 capability 与来源 → Rights → Evidence → Claim → Conflict → Eval → World Change Proposal 状态机和 JSONL store | [`agent_runtime/creator`](../../agent_runtime/creator)，PR #46 |
+| TypeScript Creator 内核 | 已有原始 Conversation/Evidence、Agent 判断提议、Tim 精确确认/拒绝/替代、Contradiction、Context Manifest、模型端口与冷启动重放 Eval | [`agent_runtime/creator`](../../agent_runtime/creator)，当前 revision |
 | 路线规划 Shadow | 已验证锁定 canonical core Traversal，腾讯只生成 access/connector/exit/return；支持多核心段拼接 | synthetic 天龙山 fixture，不是真实腾讯调用或真实推荐质量 |
-| 数据库设计 | 已核实现有 Route Cognition/PostGIS 可复用对象，并提出 Creator/Published World/Rider 三个数据面 | [`DATABASE_BOUNDARY.md`](../../agent_runtime/DATABASE_BOUNDARY.md) 仍是迁移前边界，不是已落库 schema |
-| 验证 | PR #46 双独立审查通过；GitHub CI run #319 为 TypeScript 43/43、pytest 2447 passed / 0 skipped | 证明代码、空白 PostGIS migration 和 Redis 测试通过，不证明生产或骑友可用 |
+| 数据库设计 | 已核实现有 Route Cognition/PostGIS 可复用对象，并固定 Creator append-only 事件、关系投影、事务与回放规格 | [`DATABASE_BOUNDARY.md`](../../agent_runtime/DATABASE_BOUNDARY.md) 与 [`CREATOR_POSTGRESQL_SPEC_V0.md`](../../agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md)；尚未创建 migration |
+| 验证 | PR #46 双独立审查通过；Creator v0 本地 TypeScript 56/56 | 当前分支修订后 CI 尚待重跑；本地结果不证明生产、真实 Tim UI 或骑友可用 |
 
 当前还没有：
 
-- Creator 对真实聊天/资料的自动摄取流程。
-- Creator 自己的 Conversation Session、判断确认/替代协议和 Context Compiler。
+- Creator 对 Codex/ChatGPT/资料源的生产自动摄取适配器。
+- 绑定真实登录 Tim 身份的审核 UI/API。
 - 真实 LLM/provider loop、tracing 后端或人机审核界面。
 - 生产鉴权、进程隔离、数据库迁移、API、小程序接线、真实腾讯调用或 Strava ingestion。
-- 能证明“保留的信息确实改善下一次判断”的端到端 Eval。
+- 能证明“路线判断真实改善推荐与骑友结果”的现实端到端 Eval。
 
 所以，PR #46 建成的是可信内核，不是最终的“第二大脑”。
 
-## 4. 当前唯一推荐下一刀
+## 4. 本轮已交付和当前唯一推荐下一刀
 
-下一阶段叫 **Creator Information & Judgment Loop v0**。先让开发者 Agent 在本地真实完成一次“记录 → 判断 → 确认 → 编译上下文 → 再运行 → Eval”，再讨论生产数据库。
+**Creator Information & Judgment Loop v0** 已在本文件所在 revision 完成本地实现：真实读取天龙山拍定本与路线认知蓝图，运行“来源 → Evidence → Agent 提议 → Shadow Tim 精确响应 → 判断替代 → Context → 冷启动 Eval”。详细合同和 Reborn 迁移审计见 [`creator-information-judgment-loop-v0.md`](creator-information-judgment-loop-v0.md)。
 
-按顺序完成：
+本地已证明：
 
-1. 深读 Reborn 当前最新 Session、TypeScript 状态机、review/Eval 与内外部反馈回流，输出可以复用到 VELO 的不变量和不能照搬的差异。
-2. 给 Creator 增加原始 conversation/source event；所有原文 append-only，并记录作者、来源和时间。
-3. 增加 judgment proposal、Tim 明确确认/拒绝、supersede 与 contradiction 事件；Agent prose 永远不能自行升级成 Tim 的判断。
-4. 建立 Creator Context Compiler：每轮只加载当前 mission、已确认且未被替代的判断、相关 Evidence、未决冲突和省略清单，并生成 manifest。
-5. 接一个可替换的模型端口与确定性 fake model；模型只能提议 typed action，状态机掌控写入、权限、预算和停止。
-6. 建立 context-compression Eval：清空聊天窗口后，仅从 JSONL 重放，仍能恢复正确判断、来源和未决问题；旧判断不能覆盖新确认。
-7. 用一组 Tim 的真实路线材料跑通本地闭环。暴露真实查询、并发、冲突与恢复模式后，才落最小 PostgreSQL migration。
+- 同一 source message 不会重复写入，冲突 event ID fail closed；
+- 普通 prose 和 Agent principal 都不能确认 Tim 判断；
+- 被拒绝或替代的判断不会进入 current Context；
+- Manifest 记录 workspace revision、加载 refs、source hash/provenance、omission 与 context hash；
+- 支持当前判断的 Evidence 不会被 Context 预算裁掉；
+- 全新 Node 进程可从空聊天上下文重放相同当前判断和未决矛盾；
+- 每条 event 持久化实际 principal/capability 收据，Rider principal 在模型读取 Creator 私有 Context 前即被拒绝；
+- source 撤权、judgment 到达 `review_at` 或引用跨 subject 时 fail closed，commit 响应不明按 exact event 对账。
 
-### v0 验收
+**Creator PostgreSQL Persistence Spec v0** 已在 [`CREATOR_POSTGRESQL_SPEC_V0.md`](../../agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md) 固定 append-only 真值流、同事务投影、revision CAS、source message 去重、proposal/decision 复合绑定、supersession、contradiction、Context 查询与 reconciliation。
 
-- 同一份原始话语不会被重复写入；冲突 event id fail closed。
-- Agent 提议与 Tim 确认在数据结构和权限上不可混淆。
-- 判断替代保留完整链路，旧判断不再进入新 Context。
-- Context Manifest 能说明加载了什么、为什么加载、遗漏了什么、使用哪个 revision。
-- 在全新进程和空聊天上下文中重放，得到相同的有效判断与未决问题。
-- 至少一个 Eval 能证明错误或过时信息不会静默进入 Published World。
+当前唯一推荐下一刀是 **Creator PostgreSQL Persistence Slice v0**：按上述规格创建首个 migration 与 Python repository/service，用 CI 临时 Postgres 测空库迁移、并发、断线对账和 TypeScript 冷重放；不同时扩 Published World 或 Rider 数据面。
 
 ## 5. 数据库进入条件
 
-不要先造一套“Agent 万能库”。Creator Loop v0 在 JSONL Shadow 暴露稳定写入和查询后，首个 migration 只考虑：
+不要造一套“Agent 万能库”。Creator Loop v0 已在 JSONL Shadow 暴露第一批稳定写入和查询；数据库阶段只考虑：
 
 - `creator_workspaces` / `creator_workspace_events`
-- `source_records`
+- `creator_sources` / `creator_source_messages`
 - `knowledge_claims` / `knowledge_claim_evidence`
+- Creator judgment proposal / decision / contradiction 的投影与唯一约束
 - `claim_evaluations`
 - `world_change_proposals`
 
-Published World 与 Rider 私有表族仍按 [`DATABASE_BOUNDARY.md`](../../agent_runtime/DATABASE_BOUNDARY.md) 分面设计。首个 migration 不修改 `users`、`activities`、`segments` 或 `segment_efforts`。
+Published World 与 Rider 私有表族仍按 [`DATABASE_BOUNDARY.md`](../../agent_runtime/DATABASE_BOUNDARY.md) 分面设计。规格已经写明；下一刀在 CI 临时空库实现并验证后再决定是否启用生产持久化。首个 migration 不修改 `users`、`activities`、`segments` 或 `segment_efforts`。
 
 ## 6. 文档权威与历史边界
 
