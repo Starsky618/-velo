@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
-from threading import Barrier
+from threading import Barrier, get_ident
 import uuid
 
 from alembic.migration import MigrationContext
@@ -14,12 +14,13 @@ from alembic.operations import Operations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
-from sqlalchemy import create_engine, func, inspect, select, text
+from sqlalchemy import create_engine, event as sqlalchemy_event, func, inspect, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from app.creator_persistence.canonical import canonical_json, content_hash
 from app.creator_persistence.models import (
+    CreatorEvidenceItem,
     CreatorJudgment,
     CreatorJudgmentContradiction,
     CreatorJudgmentDecision,
@@ -35,6 +36,7 @@ from app.creator_persistence.service import (
     CreatorPersistenceService,
     CreatorPrincipal,
     CreatorProjectionError,
+    CreatorProjectionRevisionMismatchError,
     CreatorStaleRevisionError,
 )
 
@@ -288,6 +290,7 @@ def test_concurrent_distinct_writers_use_revision_cas(service, pg_engine):
     with pg_engine.connect() as connection:
         assert connection.scalar(select(CreatorWorkspace.current_revision).where(CreatorWorkspace.id == workspace_id)) == 2
         assert connection.scalar(select(func.count()).select_from(CreatorWorkspaceEvent).where(CreatorWorkspaceEvent.workspace_id == workspace_id)) == 2
+    assert service.read_projection_records(workspace_id, 2, FULL)["records"] == service.read_records(workspace_id, FULL)
 
 
 def test_event_idempotency_conflict_and_projection_failure_roll_back(service, pg_engine):
@@ -420,6 +423,16 @@ def test_python_boundary_rejects_events_typescript_cannot_cold_replay(service, p
     })
     with pytest.raises(CreatorProjectionError, match="context_max_evidence"):
         service.append(invalid_budget, AGENT)
+
+    unsorted_refs = {
+        **proposal,
+        "event_id": "event:unsorted-refs",
+        "proposal_id": "judgment:unsorted-refs",
+        "context_as_of": "2026-08-06T01:04:00.000Z",
+        "evidence_refs": ["evidence:z", "evidence:a"],
+    }
+    with pytest.raises(CreatorProjectionError, match="evidence_refs must use JavaScript UTF-16 sort order"):
+        service.append(unsorted_refs, AGENT)
 
     safe_number = {
         **proposal,
@@ -621,6 +634,7 @@ def test_replacement_keeps_old_current_until_exact_confirmation(service, pg_engi
             CreatorJudgmentContradiction.resolution, CreatorJudgmentContradiction.resolved_at
         ).where(CreatorJudgmentContradiction.workspace_id == workspace_id)).one()
         assert contradiction.resolution == "superseded" and contradiction.resolved_at is not None
+    assert service.read_projection_records(workspace_id, 13, FULL)["records"] == service.read_records(workspace_id, FULL)
 
 
 def test_exact_tim_rejection_never_creates_current_judgment(service, pg_engine):
@@ -675,6 +689,31 @@ def _compile_pg_records(records, tmp_path: Path, request: dict) -> dict:
     return json.loads(output)
 
 
+def _run_projection_guard_child(
+    event_response: dict,
+    projection_response: dict,
+    request: dict,
+    tmp_path: Path,
+) -> dict:
+    case_id = uuid.uuid4().hex
+    event_path = tmp_path / f"event-response-{case_id}.json"
+    projection_path = tmp_path / f"projection-response-{case_id}.json"
+    request_path = tmp_path / f"projection-request-{case_id}.json"
+    event_path.write_text(json.dumps(event_response, ensure_ascii=False), encoding="utf-8")
+    projection_path.write_text(json.dumps(projection_response, ensure_ascii=False), encoding="utf-8")
+    request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
+    root = Path(__file__).resolve().parents[1]
+    output = subprocess.run(
+        [
+            "node", "--no-warnings", "--experimental-strip-types",
+            str(root / "tests-ts/helpers/creator-projection-guard-child.ts"),
+            str(event_path), str(projection_path), str(request_path),
+        ],
+        cwd=root, capture_output=True, text=True, check=True,
+    ).stdout
+    return json.loads(output)
+
+
 def test_pg_event_read_fails_closed_for_rights_revocation_and_review_due(service, tmp_path):
     review_workspace = _workspace("creator-review-due")
     _statement, review_decision = _append_exact_decision_loop(service, review_workspace)
@@ -683,6 +722,12 @@ def test_pg_event_read_fails_closed_for_rights_revocation_and_review_due(service
         "task": "复核过期判断", "subject_refs": ["route:tianlongshan"],
         "as_of": "2028-01-01T00:00:00.000Z", "max_pending_turns": 20, "max_evidence": 30,
     })
+    review_projection = service.read_projection_records(review_workspace, 7, FULL)["records"]
+    assert review_projection == service.read_records(review_workspace, FULL)
+    assert _compile_pg_records(review_projection, tmp_path, {
+        "task": "复核过期判断", "subject_refs": ["route:tianlongshan"],
+        "as_of": "2028-01-01T00:00:00.000Z", "max_pending_turns": 20, "max_evidence": 30,
+    }) == review_bundle
     assert review_bundle["context"]["current_judgments"] == []
     assert any(item["reason"] == "review_due" for item in review_bundle["manifest"]["omissions"])
 
@@ -698,6 +743,12 @@ def test_pg_event_read_fails_closed_for_rights_revocation_and_review_due(service
         "task": "撤权后不得加载原文", "subject_refs": ["route:tianlongshan"],
         "as_of": "2026-08-06T01:09:00.000Z", "max_pending_turns": 20, "max_evidence": 30,
     })
+    revoked_projection = service.read_projection_records(revoked_workspace, 8, FULL)["records"]
+    assert revoked_projection == service.read_records(revoked_workspace, FULL)
+    assert _compile_pg_records(revoked_projection, tmp_path, {
+        "task": "撤权后不得加载原文", "subject_refs": ["route:tianlongshan"],
+        "as_of": "2026-08-06T01:09:00.000Z", "max_pending_turns": 20, "max_evidence": 30,
+    }) == revoked_bundle
     assert revoked_bundle["context"]["current_judgments"] == []
     assert revoked_bundle["context"]["relevant_evidence"] == []
     assert any(item["reason"] == "rights_not_allowed" for item in revoked_bundle["manifest"]["omissions"])
@@ -713,6 +764,21 @@ def test_internal_router_binds_bearer_identity_and_never_accepts_body_principal(
         def read_records(self, workspace_id, principal):
             principal.require("context.read_private")
             return []
+
+        def read_projection_records(self, workspace_id, expected_revision, principal):
+            principal.require("context.read_private")
+            return {
+                "revision": expected_revision,
+                "records": [],
+                "digest": {
+                    "revision": expected_revision,
+                    "source_rights": [],
+                    "current_judgment_refs": [],
+                    "pending_judgment_refs": [],
+                    "decision_refs": [],
+                    "unresolved_contradiction_refs": [],
+                },
+            }
 
         def append(self, event, principal):
             principal.require("workspace.create")
@@ -738,6 +804,23 @@ def test_internal_router_binds_bearer_identity_and_never_accepts_body_principal(
         json={"event": event, "principal": {"principal_id": "forged"}},
     )
     assert response.status_code == 422
+    projection = client.get(
+        "/internal/creator/workspaces/ws/projection-records?expected_revision=0",
+        headers={"Authorization": "Bearer valid-internal-token"},
+    )
+    assert projection.status_code == 200
+    assert projection.json() == {
+        "revision": 0,
+        "records": [],
+        "digest": {
+            "revision": 0,
+            "source_rights": [],
+            "current_judgment_refs": [],
+            "pending_judgment_refs": [],
+            "decision_refs": [],
+            "unresolved_contradiction_refs": [],
+        },
+    }
 
 
 def test_postgres_records_match_jsonl_context_hash_for_tianlongshan(service, tmp_path):
@@ -778,3 +861,188 @@ def test_postgres_records_match_jsonl_context_hash_for_tianlongshan(service, tmp
         cwd=root, capture_output=True, text=True, check=True,
     ).stdout
     assert json.loads(replay_digest) == service.read_projection_digest(workspace_id, FULL)
+
+
+def test_relational_projection_reconstructs_all_nine_v0_events_without_payload_json(service, tmp_path):
+    workspace_id = _workspace("creator-projection-records")
+    _statement, decision = _append_exact_decision_loop(service, workspace_id)
+    service.append(decision, REVIEWER)
+    service.append(_event(
+        workspace_id, 7, "event:contradiction", "creator.judgment_contradiction_recorded", 8,
+        contradiction_id="contradiction:v1", judgment_id="judgment:v1",
+        contradicting_ref="evidence:guide", reason="需要复核骑友反馈与既有判断。",
+    ), AGENT)
+    service.append(_event(
+        workspace_id, 8, "event:resolution", "creator.judgment_contradiction_resolved", 9,
+        resolution_id="resolution:v1", contradiction_id="contradiction:v1",
+        resolution="dismissed", resolution_ref="evidence:guide", reason="证据不足以推翻当前判断。",
+    ), AGENT)
+
+    event_truth = service.read_records(workspace_id, FULL)
+    projection = service.read_projection_records(workspace_id, 9, FULL)
+    assert projection["revision"] == 9
+    assert projection["records"] == event_truth
+    assert projection["digest"] == service.read_projection_digest(workspace_id, FULL)
+    assert {record["event"]["type"] for record in projection["records"]} == set(CAPABILITY_BY_EVENT_TYPE)
+
+    def authenticate_projection_test(token: str):
+        if token != "projection-test-token":
+            raise CreatorAuthorizationError("invalid token")
+        return FULL
+
+    app = FastAPI()
+    app.include_router(create_creator_internal_router(service, authenticate_projection_test))
+    response = TestClient(app).get(
+        f"/internal/creator/workspaces/{workspace_id}/projection-records?expected_revision=9",
+        headers={"Authorization": "Bearer projection-test-token"},
+    )
+    assert response.status_code == 200
+    assert response.json() == projection
+    stale_response = TestClient(app).get(
+        f"/internal/creator/workspaces/{workspace_id}/projection-records?expected_revision=8",
+        headers={"Authorization": "Bearer projection-test-token"},
+    )
+    assert stale_response.status_code == 409
+    assert stale_response.json()["detail"]["code"] == "projection_revision_mismatch"
+
+    request = {
+        "task": "生成天龙山路线认知上下文",
+        "subject_refs": ["route:tianlongshan"],
+        "as_of": "2026-08-06T01:59:00.000Z",
+        "max_pending_turns": 20,
+        "max_evidence": 30,
+    }
+    assert _compile_pg_records(event_truth, tmp_path, request) == _compile_pg_records(
+        projection["records"], tmp_path, request
+    )
+    with pytest.raises(CreatorProjectionRevisionMismatchError, match="expected 8, observed 9"):
+        service.read_projection_records(workspace_id, 8, FULL)
+
+
+def test_projection_read_uses_one_repeatable_read_snapshot(service, pg_engine):
+    workspace_id = _workspace("creator-projection-snapshot")
+    _statement, decision = _append_exact_decision_loop(service, workspace_id)
+    service.append(decision, REVIEWER)
+    event_truth = service.read_records(workspace_id, FULL)
+    barrier = Barrier(2)
+    reader_thread_id = None
+    paused = False
+
+    def pause_after_event_metadata(_connection, _cursor, statement, _parameters, _context, _executemany):
+        nonlocal paused
+        if (
+            get_ident() == reader_thread_id
+            and not paused
+            and "FROM creator_workspace_events" in statement
+            and "payload_json" not in statement
+        ):
+            paused = True
+            barrier.wait()
+            barrier.wait()
+
+    def read_projection():
+        nonlocal reader_thread_id
+        reader_thread_id = get_ident()
+        return service.read_projection_records(workspace_id, 7, FULL)
+
+    sqlalchemy_event.listen(pg_engine, "after_cursor_execute", pause_after_event_metadata)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(read_projection)
+            barrier.wait()
+            with pg_engine.begin() as connection:
+                connection.execute(update(CreatorEvidenceItem).where(
+                    CreatorEvidenceItem.workspace_id == workspace_id,
+                    CreatorEvidenceItem.evidence_id == "evidence:guide",
+                ).values(raw_observation="并发篡改不应混入已经开始的投影快照"))
+            barrier.wait()
+            snapshot = future.result(timeout=10)
+    finally:
+        sqlalchemy_event.remove(pg_engine, "after_cursor_execute", pause_after_event_metadata)
+
+    assert paused is True
+    assert snapshot["records"] == event_truth
+    assert service.read_projection_records(workspace_id, 7, FULL)["records"] != event_truth
+
+
+def test_projection_tamper_stops_http_agent_before_model(service, pg_engine, tmp_path):
+    def authenticate_projection_test(token: str):
+        if token != "projection-test-token":
+            raise CreatorAuthorizationError("invalid token")
+        return FULL
+
+    app = FastAPI()
+    app.include_router(create_creator_internal_router(service, authenticate_projection_test))
+    client = TestClient(app)
+
+    def read_http_contract(workspace: str) -> tuple[dict, dict]:
+        headers = {"Authorization": "Bearer projection-test-token"}
+        event_response = client.get(
+            f"/internal/creator/workspaces/{workspace}", headers=headers,
+        )
+        projection_response = client.get(
+            f"/internal/creator/workspaces/{workspace}/projection-records?expected_revision=7",
+            headers=headers,
+        )
+        assert event_response.status_code == 200
+        assert projection_response.status_code == 200
+        return event_response.json(), projection_response.json()
+
+    def run_request(workspace: str) -> dict:
+        return {
+            "workspace_id": workspace,
+            "event_id": f"event:guard:{uuid.uuid4().hex}",
+            "occurred_at": "2026-08-06T02:00:00.000Z",
+            "task": "对账天龙山路线认知",
+            "subject_refs": ["route:tianlongshan"],
+            "max_pending_turns": 20,
+            "max_evidence": 30,
+        }
+
+    workspace_id = _workspace("creator-projection-tamper")
+    _statement, decision = _append_exact_decision_loop(service, workspace_id)
+    service.append(decision, REVIEWER)
+    event_truth = service.read_records(workspace_id, FULL)
+    assert service.read_projection_records(workspace_id, 7, FULL)["records"] == event_truth
+
+    with pg_engine.begin() as connection:
+        connection.execute(update(CreatorEvidenceItem).where(
+            CreatorEvidenceItem.workspace_id == workspace_id,
+            CreatorEvidenceItem.evidence_id == "evidence:guide",
+        ).values(raw_observation="人工篡改的关系投影"))
+
+    assert service.read_records(workspace_id, FULL) == event_truth
+    event_response, projection_response = read_http_contract(workspace_id)
+    assert projection_response["records"] != event_truth
+    assert projection_response["records"][3]["event"]["raw_observation"] == "人工篡改的关系投影"
+    stopped = _run_projection_guard_child(
+        event_response, projection_response, run_request(workspace_id), tmp_path,
+    )
+    assert stopped == {
+        "alarm_count": 1,
+        "model_calls": 0,
+        "reasons": ["context_mismatch", "projection_record_mismatch"],
+        "stopped": True,
+    }
+
+    cache_workspace = _workspace("creator-projection-cache-tamper")
+    _statement, cache_decision = _append_exact_decision_loop(service, cache_workspace)
+    service.append(cache_decision, REVIEWER)
+    cache_truth = service.read_records(cache_workspace, FULL)
+    with pg_engine.begin() as connection:
+        connection.execute(update(CreatorJudgment).where(
+            CreatorJudgment.workspace_id == cache_workspace,
+            CreatorJudgment.proposal_id == "judgment:v1",
+        ).values(status="rejected"))
+    cache_event_response, cache_projection = read_http_contract(cache_workspace)
+    assert cache_projection["records"] == cache_truth
+    assert cache_projection["digest"]["current_judgment_refs"] == []
+    cache_stopped = _run_projection_guard_child(
+        cache_event_response, cache_projection, run_request(cache_workspace), tmp_path,
+    )
+    assert cache_stopped == {
+        "alarm_count": 1,
+        "model_calls": 0,
+        "reasons": ["projection_digest_mismatch"],
+        "stopped": True,
+    }

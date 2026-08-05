@@ -42,6 +42,20 @@ const source: CreatorEvent = {
   provenance_ref: "conversation:1",
 };
 
+const sourceProjectionDigest = {
+  revision: 2,
+  source_rights: [{
+    source_ref: "source:1",
+    source_event_revision: 2,
+    rights_decision: null,
+    rights_event_revision: null,
+  }],
+  current_judgment_refs: [],
+  pending_judgment_refs: [],
+  decision_refs: [],
+  unresolved_contradiction_refs: [],
+};
+
 function stored(event: CreatorEvent, committedPrincipal: RuntimePrincipal = principal): CreatorStoredEvent {
   const capability = event.type === "creator.workspace_started" ? "workspace.create" : "source.ingest";
   return {
@@ -84,6 +98,66 @@ test("HTTP Creator Store authenticates reads and replays exact stored events", a
   assert.equal(calls, 1);
   assert.equal(read.view?.revision, 1);
   assert.deepEqual(read.events, [started]);
+});
+
+test("HTTP Creator Store reads an exact projection prefix at the requested revision", async () => {
+  const fetchImplementation: typeof fetch = async (input, init) => {
+    assert.equal(
+      String(input),
+      "https://creator.internal/internal/creator/workspaces/workspace-http/projection-records?expected_revision=2",
+    );
+    assert.equal(init?.method, "GET");
+    assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer test-token.secret");
+    return responseJson({
+      revision: 2,
+      records: [stored(started), stored(source)],
+      digest: sourceProjectionDigest,
+    });
+  };
+  const projection = await makeStore(fetchImplementation).readProjectionRecordsAs(
+    started.workspace_id,
+    2,
+    principal,
+  );
+  assert.equal(projection.revision, 2);
+  assert.deepEqual(projection.records.map((record) => record.event.event_id), ["evt-start", "evt-source"]);
+});
+
+test("HTTP Creator Store fails closed for malformed or mismatched projection prefixes", async (t) => {
+  await t.test("revision mismatch", async () => {
+    await assert.rejects(
+      () => makeStore(async () => responseJson({ revision: 1, records: [stored(started)], digest: sourceProjectionDigest }))
+        .readProjectionRecordsAs(started.workspace_id, 2, principal),
+      /revision does not match request/,
+    );
+  });
+  await t.test("missing revision", async () => {
+    await assert.rejects(
+      () => makeStore(async () => responseJson({ revision: 2, records: [stored(started)], digest: sourceProjectionDigest }))
+        .readProjectionRecordsAs(started.workspace_id, 2, principal),
+      /do not cover the requested revision/,
+    );
+  });
+  await t.test("non-contiguous base revision", async () => {
+    const wrongBase = { ...source, base_revision: 0 };
+    await assert.rejects(
+      () => makeStore(async () => responseJson({
+        revision: 2,
+        records: [stored(started), stored(wrongBase)],
+        digest: sourceProjectionDigest,
+      })).readProjectionRecordsAs(started.workspace_id, 2, principal),
+      /not the exact requested workspace prefix/,
+    );
+  });
+  await t.test("unsafe revision rejected before transport", async () => {
+    let calls = 0;
+    await assert.rejects(
+      () => makeStore(async () => { calls += 1; throw new Error("must not fetch"); })
+        .readProjectionRecordsAs(started.workspace_id, Number.MAX_SAFE_INTEGER + 1, principal),
+      /expectedRevision must be a non-negative safe integer/,
+    );
+    assert.equal(calls, 0);
+  });
 });
 
 test("HTTP Creator Store rejects Rider, credential mismatch, and missing bearer token before transport", async (t) => {

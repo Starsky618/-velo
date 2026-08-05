@@ -14,7 +14,7 @@ import math
 import re
 from typing import Any, Callable
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -96,6 +96,10 @@ class CreatorStaleRevisionError(CreatorPersistenceError):
 
 class CreatorProjectionError(CreatorPersistenceError):
     code = "projection_conflict"
+
+
+class CreatorProjectionRevisionMismatchError(CreatorPersistenceError):
+    code = "projection_revision_mismatch"
 
 
 class CreatorAuthorizationError(CreatorPersistenceError):
@@ -190,6 +194,12 @@ def _javascript_utf16_sort_key(value: str) -> bytes:
     return value.encode("utf-16-be")
 
 
+def _canonical_db_instant(value: Any, label: str) -> str:
+    if not isinstance(value, datetime) or value.tzinfo is None:
+        raise CreatorProjectionError(f"{label} must be a timezone-aware database instant")
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 def _validate_event(event: dict[str, Any]) -> tuple[str, datetime]:
     if not isinstance(event, dict):
         raise CreatorProjectionError("Creator event must be an object")
@@ -261,6 +271,10 @@ def _validate_event(event: dict[str, Any]) -> tuple[str, datetime]:
         turns = _unique_strings(event["source_turn_refs"], "source_turn_refs")
         evidence = _unique_strings(event["evidence_refs"], "evidence_refs")
         subjects = _unique_strings(event["context_subject_refs"], "context_subject_refs")
+        if turns != sorted(turns, key=_javascript_utf16_sort_key):
+            raise CreatorProjectionError("source_turn_refs must use JavaScript UTF-16 sort order")
+        if evidence != sorted(evidence, key=_javascript_utf16_sort_key):
+            raise CreatorProjectionError("evidence_refs must use JavaScript UTF-16 sort order")
         if subjects != sorted(subjects, key=_javascript_utf16_sort_key):
             raise CreatorProjectionError("context_subject_refs must use JavaScript UTF-16 sort order")
         _instant(event["context_as_of"], "context_as_of")
@@ -375,73 +389,352 @@ class CreatorPersistenceService:
                 for row in rows
             ]
 
+    def read_projection_records(
+        self,
+        workspace_id: str,
+        expected_revision: int,
+        principal: CreatorPrincipal,
+    ) -> dict[str, Any]:
+        """Reconstruct the persisted v0 event stream from relational projections.
+
+        Event metadata and authenticated principal receipts come from the
+        append-only event index, but event bodies deliberately never read its
+        ``payload_json`` column. The TypeScript runtime can therefore compare
+        this independently materialized stream with event truth at one exact
+        revision before exposing Context to a model.
+        """
+
+        principal.require("context.read_private")
+        if type(expected_revision) is not int or not 0 <= expected_revision <= MAX_SAFE_JSON_INTEGER:
+            raise CreatorProjectionRevisionMismatchError("expected_revision must be a non-negative safe integer")
+
+        with self._session_factory() as db:
+            db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
+            workspace = db.get(CreatorWorkspace, workspace_id)
+            first_revision = workspace.current_revision if workspace is not None else None
+            observed_revision = 0 if first_revision is None else first_revision
+            if observed_revision != expected_revision:
+                raise CreatorProjectionRevisionMismatchError(
+                    f"projection revision mismatch: expected {expected_revision}, observed {observed_revision}"
+                )
+            if workspace is None:
+                return {
+                    "revision": 0,
+                    "records": [],
+                    "digest": self._projection_digest_in_session(db, workspace_id, 0),
+                }
+
+            metadata_rows = db.execute(select(
+                CreatorWorkspaceEvent.revision,
+                CreatorWorkspaceEvent.event_id,
+                CreatorWorkspaceEvent.event_type,
+                CreatorWorkspaceEvent.schema_version,
+                CreatorWorkspaceEvent.base_revision,
+                CreatorWorkspaceEvent.occurred_at,
+                CreatorWorkspaceEvent.principal_id,
+                CreatorWorkspaceEvent.principal_product,
+                CreatorWorkspaceEvent.principal_environment,
+                CreatorWorkspaceEvent.authorized_capability,
+            ).where(
+                CreatorWorkspaceEvent.workspace_id == workspace_id,
+                CreatorWorkspaceEvent.revision <= expected_revision,
+            ).order_by(CreatorWorkspaceEvent.revision)).all()
+            metadata = {row.revision: row for row in metadata_rows}
+            expected_revisions = list(range(1, expected_revision + 1))
+            if list(metadata) != expected_revisions:
+                raise CreatorProjectionError("Creator event metadata is not a contiguous projection prefix")
+
+            projected_events: dict[int, dict[str, Any]] = {}
+
+            def add_event(revision: int, event_type: str, payload: dict[str, Any]) -> None:
+                row = metadata.get(revision)
+                if row is None:
+                    raise CreatorProjectionError(f"projection references unknown event revision {revision}")
+                if revision in projected_events:
+                    raise CreatorProjectionError(f"multiple projection bodies claim event revision {revision}")
+                if row.event_type != event_type or row.schema_version != 1 or row.base_revision != revision - 1:
+                    raise CreatorProjectionError(f"projection metadata does not match {event_type} at revision {revision}")
+                capability = CAPABILITY_BY_EVENT_TYPE.get(event_type)
+                if (
+                    capability is None
+                    or row.authorized_capability != capability
+                    or row.principal_product != "creator"
+                    or row.principal_environment not in {"test", "shadow", "production"}
+                ):
+                    raise CreatorProjectionError(f"invalid authenticated event metadata at revision {revision}")
+                event = {
+                    "schema_version": 1,
+                    "event_id": row.event_id,
+                    "workspace_id": workspace_id,
+                    "base_revision": row.base_revision,
+                    "occurred_at": _canonical_db_instant(row.occurred_at, "occurred_at"),
+                    "type": event_type,
+                    **payload,
+                }
+                _validate_event(event)
+                projected_events[revision] = event
+
+            add_event(1, "creator.workspace_started", {"mission": workspace.mission})
+
+            for row in db.scalars(select(CreatorSource).where(
+                CreatorSource.workspace_id == workspace_id
+            ).order_by(CreatorSource.source_event_revision)).all():
+                add_event(row.source_event_revision, "creator.source_ingested", {
+                    "source_ref": row.source_ref,
+                    "source_kind": row.source_kind,
+                    "content_hash": row.content_hash,
+                    "immutable_ref": row.immutable_ref,
+                    "provenance_ref": row.provenance_ref,
+                })
+
+            for row in db.scalars(select(CreatorRightsCheck).where(
+                CreatorRightsCheck.workspace_id == workspace_id
+            ).order_by(CreatorRightsCheck.event_revision)).all():
+                add_event(row.event_revision, "creator.rights_checked", {
+                    "rights_check_id": row.rights_check_id,
+                    "source_ref": row.source_ref,
+                    "decision": row.decision,
+                    "policy_ref": row.policy_ref,
+                    "reason": row.reason,
+                })
+
+            for row in db.scalars(select(CreatorSourceMessage).where(
+                CreatorSourceMessage.workspace_id == workspace_id
+            ).order_by(CreatorSourceMessage.event_revision)).all():
+                interaction = None
+                if row.interaction_proposal_id is not None:
+                    interaction = {
+                        "kind": "judgment_response",
+                        "proposal_id": row.interaction_proposal_id,
+                        "statement_hash": row.interaction_statement_hash,
+                        "response": row.interaction_response,
+                    }
+                add_event(row.event_revision, "creator.conversation_turn_recorded", {
+                    "turn_id": row.turn_id,
+                    "source_ref": row.source_ref,
+                    "source_message_ref": row.source_message_ref,
+                    "source_role": row.source_role,
+                    "actor": row.actor,
+                    "authorship_basis": row.authorship_basis,
+                    "raw_text": row.raw_text,
+                    "content_hash": row.content_hash,
+                    "subject_refs": row.subject_refs,
+                    **({"interaction": interaction} if interaction is not None else {}),
+                })
+
+            for row in db.scalars(select(CreatorEvidenceItem).where(
+                CreatorEvidenceItem.workspace_id == workspace_id
+            ).order_by(CreatorEvidenceItem.event_revision)).all():
+                add_event(row.event_revision, "creator.evidence_recorded", {
+                    "evidence_id": row.evidence_id,
+                    "source_ref": row.source_ref,
+                    "subject_ref": row.subject_ref,
+                    "raw_observation": row.raw_observation,
+                    "observed_at": _canonical_db_instant(row.observed_at, "observed_at"),
+                })
+
+            turns_by_proposal: dict[str, list[str]] = {}
+            for proposal_id, turn_id in db.execute(select(
+                CreatorJudgmentTurn.proposal_id,
+                CreatorJudgmentTurn.turn_id,
+            ).join(
+                CreatorJudgment,
+                (CreatorJudgment.workspace_id == CreatorJudgmentTurn.workspace_id)
+                & (CreatorJudgment.proposal_id == CreatorJudgmentTurn.proposal_id),
+            ).join(
+                CreatorSourceMessage,
+                (CreatorSourceMessage.workspace_id == CreatorJudgmentTurn.workspace_id)
+                & (CreatorSourceMessage.turn_id == CreatorJudgmentTurn.turn_id),
+            ).where(
+                CreatorJudgmentTurn.workspace_id == workspace_id,
+                CreatorSourceMessage.event_revision < CreatorJudgment.proposal_event_revision,
+            )).all():
+                turns_by_proposal.setdefault(proposal_id, []).append(turn_id)
+            evidence_by_proposal: dict[str, list[str]] = {}
+            for proposal_id, evidence_id in db.execute(select(
+                CreatorJudgmentEvidence.proposal_id,
+                CreatorJudgmentEvidence.evidence_id,
+            ).where(CreatorJudgmentEvidence.workspace_id == workspace_id)).all():
+                evidence_by_proposal.setdefault(proposal_id, []).append(evidence_id)
+
+            for row in db.scalars(select(CreatorJudgment).where(
+                CreatorJudgment.workspace_id == workspace_id
+            ).order_by(CreatorJudgment.proposal_event_revision)).all():
+                request = row.context_request_json
+                if not isinstance(request, dict) or set(request) != {
+                    "task", "subject_refs", "as_of", "max_pending_turns", "max_evidence"
+                }:
+                    raise CreatorProjectionError("judgment context request projection is invalid")
+                payload = {
+                    "proposal_id": row.proposal_id,
+                    "judgment_key": row.judgment_key,
+                    "subject_ref": row.subject_ref,
+                    "statement": row.statement,
+                    "statement_hash": row.statement_hash,
+                    "typed_value": row.typed_value,
+                    "temporality": row.temporality,
+                    "context_compiler_version": row.context_compiler_version,
+                    "context_request_hash": row.context_request_hash,
+                    "context_task": request["task"],
+                    "context_subject_refs": request["subject_refs"],
+                    "context_as_of": request["as_of"],
+                    "context_max_pending_turns": request["max_pending_turns"],
+                    "context_max_evidence": request["max_evidence"],
+                    "context_hash": row.context_hash,
+                    "model_ref": row.model_ref,
+                    "source_turn_refs": sorted(
+                        turns_by_proposal.get(row.proposal_id, []), key=_javascript_utf16_sort_key
+                    ),
+                    "evidence_refs": sorted(
+                        evidence_by_proposal.get(row.proposal_id, []), key=_javascript_utf16_sort_key
+                    ),
+                    "reason": row.proposal_reason,
+                }
+                if row.review_at is not None:
+                    payload["review_at"] = _canonical_db_instant(row.review_at, "review_at")
+                if row.supersedes_proposal_id is not None:
+                    payload["supersedes_judgment_id"] = row.supersedes_proposal_id
+                add_event(row.proposal_event_revision, "creator.judgment_proposed", payload)
+
+            for row in db.scalars(select(CreatorJudgmentDecision).where(
+                CreatorJudgmentDecision.workspace_id == workspace_id
+            ).order_by(CreatorJudgmentDecision.event_revision)).all():
+                add_event(row.event_revision, "creator.judgment_responded", {
+                    "decision_id": row.decision_id,
+                    "proposal_id": row.proposal_id,
+                    "response_turn_ref": row.response_turn_id,
+                    "response": row.response,
+                    "expected_statement_hash": row.expected_statement_hash,
+                })
+
+            for row in db.scalars(select(CreatorJudgmentContradiction).where(
+                CreatorJudgmentContradiction.workspace_id == workspace_id
+            ).order_by(CreatorJudgmentContradiction.recorded_event_revision)).all():
+                refs = [
+                    ref for ref in (
+                        row.contradicting_evidence_id,
+                        row.contradicting_turn_id,
+                        row.contradicting_judgment_id,
+                    ) if ref is not None
+                ]
+                if len(refs) != 1:
+                    raise CreatorProjectionError("contradiction projection must contain exactly one contradicting ref")
+                add_event(row.recorded_event_revision, "creator.judgment_contradiction_recorded", {
+                    "contradiction_id": row.contradiction_id,
+                    "judgment_id": row.judgment_id,
+                    "contradicting_ref": refs[0],
+                    "reason": row.reason,
+                })
+
+            for row in db.scalars(select(CreatorJudgmentContradictionResolution).where(
+                CreatorJudgmentContradictionResolution.workspace_id == workspace_id
+            ).order_by(CreatorJudgmentContradictionResolution.event_revision)).all():
+                add_event(row.event_revision, "creator.judgment_contradiction_resolved", {
+                    "resolution_id": row.resolution_id,
+                    "contradiction_id": row.contradiction_id,
+                    "resolution": row.resolution,
+                    "resolution_ref": row.resolution_ref,
+                    "reason": row.reason,
+                })
+
+            if sorted(projected_events) != expected_revisions:
+                missing = sorted(set(expected_revisions) - set(projected_events))
+                raise CreatorProjectionError(f"relational projections do not cover event revisions: {missing}")
+            digest = self._projection_digest_in_session(db, workspace_id, expected_revision)
+            last_revision = db.scalar(select(CreatorWorkspace.current_revision).where(
+                CreatorWorkspace.id == workspace_id
+            ))
+            if last_revision != first_revision:
+                raise CreatorProjectionRevisionMismatchError(
+                    "workspace revision changed while reconstructing Creator projections"
+                )
+            return {
+                "revision": expected_revision,
+                "digest": digest,
+                "records": [
+                    {
+                        "event": projected_events[revision],
+                        "committed_by": {
+                            "principal_id": metadata[revision].principal_id,
+                            "product": metadata[revision].principal_product,
+                            "environment": metadata[revision].principal_environment,
+                            "capability": metadata[revision].authorized_capability,
+                        },
+                    }
+                    for revision in expected_revisions
+                ],
+            }
+
+    @staticmethod
+    def _projection_digest_in_session(
+        db: Session,
+        workspace_id: str,
+        revision: int,
+    ) -> dict[str, Any]:
+        source_rows = db.execute(select(
+            CreatorSource.source_ref,
+            CreatorSource.source_event_revision,
+            CreatorSource.rights_decision,
+            CreatorSource.rights_event_revision,
+        ).where(CreatorSource.workspace_id == workspace_id)).all()
+        current = db.scalars(select(CreatorJudgment.proposal_id).where(
+            CreatorJudgment.workspace_id == workspace_id,
+            CreatorJudgment.status == "tim_confirmed",
+            CreatorJudgment.superseded_at.is_(None),
+        )).all()
+        pending = db.scalars(select(CreatorJudgment.proposal_id).where(
+            CreatorJudgment.workspace_id == workspace_id,
+            CreatorJudgment.status == "proposed",
+            CreatorJudgment.superseded_at.is_(None),
+        )).all()
+        decisions = db.scalars(select(CreatorJudgmentDecision.decision_id).where(
+            CreatorJudgmentDecision.workspace_id == workspace_id
+        )).all()
+        contradictions = db.scalars(select(CreatorJudgmentContradiction.contradiction_id).where(
+            CreatorJudgmentContradiction.workspace_id == workspace_id,
+            CreatorJudgmentContradiction.resolved_at.is_(None),
+        )).all()
+        return {
+            "revision": revision,
+            "source_rights": [
+                {
+                    "source_ref": row.source_ref,
+                    "source_event_revision": row.source_event_revision,
+                    "rights_decision": row.rights_decision,
+                    "rights_event_revision": row.rights_event_revision,
+                }
+                for row in sorted(source_rows, key=lambda item: _javascript_utf16_sort_key(item.source_ref))
+            ],
+            "current_judgment_refs": sorted(current, key=_javascript_utf16_sort_key),
+            "pending_judgment_refs": sorted(pending, key=_javascript_utf16_sort_key),
+            "decision_refs": sorted(decisions, key=_javascript_utf16_sort_key),
+            "unresolved_contradiction_refs": sorted(contradictions, key=_javascript_utf16_sort_key),
+        }
+
     def read_projection_digest(self, workspace_id: str, principal: CreatorPrincipal) -> dict[str, Any]:
         """Read the rebuildable projection at one observed workspace revision.
 
-        The first/last revision fence prevents a READ COMMITTED caller from
-        combining projections from two committed appends. A drift checker can
-        compare this digest with a cold TypeScript replay without exposing raw
-        source text to a wider API.
+        A REPEATABLE READ, read-only transaction supplies one database snapshot;
+        the first/last revision fence also detects a revision mismatch visible
+        at that snapshot. A drift checker can compare this digest with a cold
+        TypeScript replay without exposing raw source text to a wider API.
         """
 
         principal.require("context.read_private")
         with self._session_factory() as db:
+            db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
             first_revision = db.scalar(select(CreatorWorkspace.current_revision).where(
                 CreatorWorkspace.id == workspace_id
             ))
             if first_revision is None:
-                return {
-                    "revision": 0,
-                    "source_rights": [],
-                    "current_judgment_refs": [],
-                    "pending_judgment_refs": [],
-                    "decision_refs": [],
-                    "unresolved_contradiction_refs": [],
-                }
-            source_rows = db.execute(select(
-                CreatorSource.source_ref,
-                CreatorSource.source_event_revision,
-                CreatorSource.rights_decision,
-                CreatorSource.rights_event_revision,
-            ).where(CreatorSource.workspace_id == workspace_id).order_by(CreatorSource.source_ref)).all()
-            current = db.scalars(select(CreatorJudgment.proposal_id).where(
-                CreatorJudgment.workspace_id == workspace_id,
-                CreatorJudgment.status == "tim_confirmed",
-                CreatorJudgment.superseded_at.is_(None),
-            ).order_by(CreatorJudgment.proposal_id)).all()
-            pending = db.scalars(select(CreatorJudgment.proposal_id).where(
-                CreatorJudgment.workspace_id == workspace_id,
-                CreatorJudgment.status == "proposed",
-                CreatorJudgment.superseded_at.is_(None),
-            ).order_by(CreatorJudgment.proposal_id)).all()
-            decisions = db.scalars(select(CreatorJudgmentDecision.decision_id).where(
-                CreatorJudgmentDecision.workspace_id == workspace_id
-            ).order_by(CreatorJudgmentDecision.decision_id)).all()
-            contradictions = db.scalars(select(CreatorJudgmentContradiction.contradiction_id).where(
-                CreatorJudgmentContradiction.workspace_id == workspace_id,
-                CreatorJudgmentContradiction.resolved_at.is_(None),
-            ).order_by(CreatorJudgmentContradiction.contradiction_id)).all()
+                return self._projection_digest_in_session(db, workspace_id, 0)
+            digest = self._projection_digest_in_session(db, workspace_id, first_revision)
             last_revision = db.scalar(select(CreatorWorkspace.current_revision).where(
                 CreatorWorkspace.id == workspace_id
             ))
             if last_revision != first_revision:
                 raise CreatorProjectionError("workspace revision changed while reading Creator projections")
-            return {
-                "revision": first_revision,
-                "source_rights": [
-                    {
-                        "source_ref": row.source_ref,
-                        "source_event_revision": row.source_event_revision,
-                        "rights_decision": row.rights_decision,
-                        "rights_event_revision": row.rights_event_revision,
-                    }
-                    for row in source_rows
-                ],
-                "current_judgment_refs": list(current),
-                "pending_judgment_refs": list(pending),
-                "decision_refs": list(decisions),
-                "unresolved_contradiction_refs": list(contradictions),
-            }
+            return digest
 
     def _reconcile(self, event: dict[str, Any], payload_hash: str) -> CreatorAppendReceipt | None:
         with self._session_factory() as db:

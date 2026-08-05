@@ -325,6 +325,10 @@ test("Creator model output fails closed on unknown fields", () => {
     type: "propose_judgment", proposal_id: "p", judgment_key: "k", subject_ref: "s", statement: "x",
     typed_value: "bad\ud800text", temporality: "permanent", source_turn_refs: [], evidence_refs: ["e"], reason: "r",
   }), /Unicode scalar/);
+  assert.throws(() => validateCreatorModelAction({
+    type: "propose_judgment", proposal_id: "p", judgment_key: "k", subject_ref: "s", statement: "x",
+    typed_value: true, temporality: "permanent", source_turn_refs: [], evidence_refs: ["evidence:z", "evidence:a"], reason: "r",
+  }), /evidence_refs must be sorted/);
 });
 
 test("Creator runtime rejects model citations that were not present in its compiled context", async () => {

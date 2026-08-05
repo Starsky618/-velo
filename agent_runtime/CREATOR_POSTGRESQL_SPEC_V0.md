@@ -1,6 +1,6 @@
 # Creator PostgreSQL Persistence Spec v0
 
-> 状态：Persistence Slice v0 只实现本文的事件真值、事务投影、内部 Store 与重放对账部分。Alembic revision `20260806_creator_pg_v0`、Python 单事务 service、可组合但未挂载公共 API 的内部 router，以及 TypeScript HTTP Store adapter 已进入同一交付切片；§6 的 projection-native Context 查询、漂移后停写/报警和生产身份仍未实现，不能把本切片称为完整生产持久化。
+> 状态：Persistence Slice v0 已实现事件真值、事务投影、内部 Store 与重放对账；Projection-native Context + Drift-stop Shadow v0 进一步实现了 §6 的关系投影事件重建、唯一 TypeScript compiler 双路径对账和模型调用前停机告警。Alembic revision `20260806_creator_pg_v0`、Python 单事务 service、可组合但未挂载公共 API 的内部 router，以及 TypeScript HTTP Store/Context guard 都仍是 Shadow 边界；生产身份、路由挂载与生产迁移尚未实现，不能称为完整生产持久化。
 
 ## 1. 推荐方案
 
@@ -22,7 +22,7 @@ Tim 审核动作 / Creator 模型 typed action
   → TypeScript 按该 revision 重读并编译 Context
 ```
 
-本切片已经在任务专属 PostgreSQL 验证内部 Store wire contract、并发 CAS、幂等、投影回滚、精确判断绑定、撤权/到期 fail-closed、contradiction/replacement、commit 后 event-ID 收敛，以及 PostgreSQL event read 与 JSONL 的 Context hash。关系投影目前用冷重放 digest 对账，不直接生成 Context。仍未证明的是 projection-native Context、生产 bearer 身份签发、网络隔离、真实断网和 Tim UI；因此 router factory 不挂到 `app/main.py`，migration 也不在本切片部署生产。
+当前 Shadow 已在任务专属 PostgreSQL 验证内部 Store wire contract、并发 CAS、幂等、投影回滚、精确判断绑定、撤权/到期 fail-closed、contradiction/replacement、commit 后 event-ID 收敛，以及 PostgreSQL event truth、关系投影重建与 JSONL 的 Context/Manifest 对账。仍未证明的是生产 bearer 身份签发、网络隔离、真实断网、告警后人工处置和 Tim UI；因此 router factory 不挂到 `app/main.py`，migration 也不在本切片部署生产。
 
 跨语言事件合同以 JavaScript 可精确表达、Python 可编码为标准 UTF-8 的 JSON 为交集：整数必须位于 `Number.isSafeInteger` 范围；字符串只允许 Unicode scalar value，拒绝孤立 surrogate；`context_subject_refs` 必须采用 JavaScript 默认的 UTF-16 code-unit 顺序。Python 边界在计算 hash 和写入事件真值前执行相同门禁，不能接收会在 Node 读取时静默变值、编码失败或重排的 payload。
 
@@ -207,9 +207,29 @@ RETURNING current_revision;
 
 两个相同 base revision 的并发 writer 最多一个 CAS 成功；另一个只能通过同 event ID 幂等收敛或显式 stale conflict。
 
-## 6. 目标态 Context 查询与重放（v0 尚未全部实现）
+## 6. Projection-native Context 查询与重放（Shadow v0 已实现）
 
-目标态 Context 查询只从投影读取，并固定一个确定性的 `as_of`。当前 v0 HTTP Store 读取 append-only events，由唯一的 TypeScript reducer/compiler 重放 Context，避免 Python 再复制一套 Context 语义；数据库投影仅用于约束、查询准备和 digest 对账：
+Context 的业务语义仍只有一份：TypeScript reducer/compiler。Python 不复制 rights、freshness、supersession、omission 或 budget 规则，而是从关系投影重建九类 v0 `CreatorStoredEvent`，再由 TypeScript 走同一个 reducer/compiler。事件 metadata 与认证 receipt 可从 append-only event index 读取，但事件正文明确不得读取其中的 `payload_json`，否则两条路径会共享同一个错误而失去漂移检测价值。
+
+内部接口 `GET /internal/creator/workspaces/{workspace_id}/projection-records?expected_revision=N` 只接受精确 revision，并返回 `{revision, records, digest}`。关系重建使用以下确定性规则：
+
+- `source_turn_refs`、`evidence_refs` 与 `context_subject_refs` 是去重后按 JavaScript UTF-16 排序的数组；TypeScript 模型动作、TypeScript 事件和 Python append 三层同时拒绝非规范顺序；
+- `creator_judgment_turns` 同时包含 proposal 来源回合与后来 decision response turn；重建 proposal 时只取 `source_message.event_revision < proposal_event_revision` 的回合，防止未来确认倒灌进过去 Context；
+- 时间统一还原为毫秒精度 UTC `Z`；typed scalar、原文、rights 历史、contradiction/resolution 和 authenticated principal receipt 均逐字段还原；
+- projection records 必须覆盖 `1..expected_revision` 的连续前缀，event type、base revision、capability 与 workspace 必须精确匹配。
+
+TypeScript `ProjectionVerifiedCreatorContextCompiler` 在调用模型前执行：
+
+1. 从 event truth 编译 Context/Manifest；
+2. 从 Agent 已用于读取 event truth 的同一个 Store 实例读取同 revision 的 projection records，禁止单独注入第二数据源，并比较顶层 revision、digest revision 与完整 canonical record stream；
+3. 将 event truth 冷重放得到的 projection digest 与同一事务读取的数据库当前缓存比较，覆盖 current/pending status、supersession、最新 rights、decision 与 unresolved contradiction；
+4. 对 projection records 冷重放，再用唯一 compiler 编译同一 normalized request；
+5. 比较完整 Context/Manifest，而不只比较摘要；
+6. revision/read/replay/record/digest/Context 任一漂移都 fail closed，不调用模型、不写新事件，并写一条只含 refs 的 hash、Context hash、revision 和 reason code 的 JSONL 告警；告警本身写入失败时仍保持关闭。
+
+告警不保存 source text、evidence、statement 或 event ID 原文；event ID 只保存 hash。请求内不做静默修复，人工修复必须另开受控命令。
+
+编译规则仍保持：
 
 - 当前 judgment：`status='tim_confirmed' AND superseded_at IS NULL AND (review_at IS NULL OR review_at > :as_of)`，且所有实际加载来源的最新 rights 为 allowed；
 - pending proposal：`status='proposed'`，同时满足 freshness 与 rights；
@@ -218,16 +238,18 @@ RETURNING current_revision;
 - source revision：从实际加载的 message/evidence 回 join source；
 - omission 计数：rejected/superseded/resolved/subject mismatch/rights not allowed/review due/budget。
 
-每次结果携带 workspace revision。查询开始后 revision 变化时，不把两个 revision 拼成一个 Context；首版用一个 `REPEATABLE READ` 只读事务或显式 `through_revision` 查询。
+每次结果携带 workspace revision。Shadow v0 在一个 `REPEATABLE READ, READ ONLY` PostgreSQL 事务中读取全部关系投影，并使用显式 `expected_revision` 与读取首尾 revision fence；因此合法 append 或不更新 revision 的人工 repair/tamper 都不能被跨查询拼成一个从未真实存在的混合 Context。若未来需要读取任意历史 revision，再单独设计 `through_revision` 快照，不能用当前可变投影假装历史真值。
 
-重放验证目标：从 `creator_workspace_events` 读指定 revision 前缀，用 TypeScript reducer 重建 View，再与数据库投影比较。v0 已比较 source/rights revision、current/pending judgment、decision 与 unresolved contradiction digest；尚未实现完整 Context 内容 digest，也未在发现漂移后自动停止写入和报警。自动修复仍必须另开受控命令，不能在请求内静默覆盖。
+当前未挂载 Shadow、没有真实 LLM。此阶段的线性化点定义为 exact projection snapshot 被门禁接受的时刻；门禁之后发生的撤权不会让本次快照倒流变化。接入任何会接收 raw Context 的真实模型前，必须另行明确撤权语义并通过 hard gate：若要求撤权 commit 后零披露，单纯在模型调用前重查 revision 只能缩短竞态窗口，不能闭合，必须采用数据库/advisory lease、read epoch/token 或不向外部模型发送 raw material。
+
+原有 projection digest 保留为窄诊断入口，不再承担完整漂移门禁。完整门禁比较 event truth 与关系投影的 canonical records，以及两次独立冷重放得到的 Context/Manifest。
 
 ## 7. 迁移和混合版本顺序
 
 1. 先新增空表、约束和内部 repository/service；不改旧表、不 backfill。
 2. CI 临时 PostgreSQL 跑 upgrade/downgrade/upgrade、两个并发 CAS、相同/冲突 event ID、exact decision FK、冷重放对账。
 3. TypeScript 增加内部 API Store adapter，仅运行 Shadow；JSONL 仍保留为对照，不双写生产真值。**本切片已实现**。
-4. 用天龙山同一组事件比较 JSONL 与 Postgres event-read Context hash，并比较关系投影 digest。**本切片已通过任务专属真 PostgreSQL 测试；不是 projection-native Context 验收**。
+4. 用天龙山同一组事件比较 JSONL、Postgres event truth 与关系投影重建的 Context/Manifest，并人工篡改关系投影验证模型调用前停机。**Shadow v0 已通过真实 PostgreSQL → FastAPI wire response → 同一个 TypeScript HTTP Store → drift guard → Agent 组合测试；尚不是生产网络、认证或真实模型接线验收**。
 5. 通过后才启用一个内部 Creator workspace；此时 Postgres 成为该 workspace 的唯一事件真值，不能同时接受 JSONL 写入。
 6. 生产验证稳定后再讨论 World Change/Published World migration；Rider 表族另开独立纵向切片。
 

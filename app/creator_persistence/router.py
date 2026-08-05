@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from .service import (
     CreatorAppendConflictError,
@@ -19,6 +19,7 @@ from .service import (
     CreatorPersistenceService,
     CreatorPrincipal,
     CreatorProjectionError,
+    CreatorProjectionRevisionMismatchError,
     CreatorStaleRevisionError,
 )
 
@@ -54,6 +55,21 @@ def create_creator_internal_router(
             return {"records": service.read_records(workspace_id, principal)}
         except CreatorAuthorizationError as exc:
             raise HTTPException(status_code=403, detail={"code": exc.code}) from exc
+
+    @router.get("/workspaces/{workspace_id}/projection-records")
+    def read_projection_records(
+        workspace_id: str,
+        expected_revision: int = Query(ge=0),
+        principal: CreatorPrincipal = Depends(authenticated_principal),
+    ) -> dict[str, Any]:
+        try:
+            return service.read_projection_records(workspace_id, expected_revision, principal)
+        except CreatorAuthorizationError as exc:
+            raise HTTPException(status_code=403, detail={"code": exc.code}) from exc
+        except CreatorProjectionRevisionMismatchError as exc:
+            raise HTTPException(status_code=409, detail={"code": exc.code}) from exc
+        except CreatorProjectionError as exc:
+            raise HTTPException(status_code=422, detail={"code": exc.code}) from exc
 
     @router.post("/workspaces/{workspace_id}/events")
     def append_event(

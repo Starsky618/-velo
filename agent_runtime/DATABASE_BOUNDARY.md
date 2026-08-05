@@ -84,4 +84,4 @@ Creator Persistence Slice v0 已新增 Alembic revision `20260806_creator_pg_v0`
 
 TypeScript 仍通过 `CreatorWorkspaceStore` 内部 HTTP adapter 访问，不直接连接 SQL。Python router 只能由部署 composition root 注入 bearer authenticator 后显式挂载；本切片未在 `app/main.py` 暴露路由，也未配置生产 secret 或部署 migration。
 
-下一刀不是继续扩大表族，而是先补 projection-native Context/漂移停写，再为一个内部 workspace 建立真实登录 Tim 审核身份、内网挂载和 Shadow 观测。Published World、Rider persistence、腾讯、Strava 与真实 LLM 继续分开验收。
+projection-native Context/漂移停机 Shadow 已实现：关系投影在一致只读快照中重建事件，由同一个 TypeScript reducer/compiler 对账，并在模型调用前 fail closed；它仍未生产挂载。下一刀不是继续扩大表族，而是为一个内部 workspace 建立真实登录 Tim 审核身份、内网挂载和 Shadow 观测。Published World、Rider persistence、腾讯、Strava 与真实 LLM 继续分开验收；真实 LLM 接收 raw Context 前还必须关闭并发撤权的披露竞态。

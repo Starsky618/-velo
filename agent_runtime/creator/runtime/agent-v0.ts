@@ -2,6 +2,10 @@ import { canonicalJson, contentHash } from "../../shared/canonical.ts";
 import type { RuntimePrincipal } from "../../shared/capability-gate.ts";
 import { creatorCapabilityForEventType } from "../capabilities.ts";
 import { compileCreatorContext, type CreatorContextManifest, type CreatorContextRequest } from "../context/compiler.ts";
+import {
+  EventTruthCreatorContextCompiler,
+  type CreatorContextCompilerPort,
+} from "../context/projection-guard.ts";
 import { replayCreatorWorkspace } from "../state/engine.ts";
 import type { CreatorWorkspaceStore } from "../state/store-port.ts";
 import type { CreatorEvent, CreatorStoredEvent, JudgmentProposed } from "../state/types.ts";
@@ -63,11 +67,18 @@ export class CreatorAgentV0 {
   readonly #store: CreatorWorkspaceStore;
   readonly #principal: RuntimePrincipal;
   readonly #model: CreatorDecisionModel;
+  readonly #contextCompiler: CreatorContextCompilerPort;
 
-  constructor(store: CreatorWorkspaceStore, principal: RuntimePrincipal, model: CreatorDecisionModel) {
+  constructor(
+    store: CreatorWorkspaceStore,
+    principal: RuntimePrincipal,
+    model: CreatorDecisionModel,
+    contextCompiler: CreatorContextCompilerPort = new EventTruthCreatorContextCompiler(),
+  ) {
     this.#store = store;
     this.#principal = principal;
     this.#model = model;
+    this.#contextCompiler = contextCompiler;
   }
 
   async run(request: CreatorRunRequest): Promise<CreatorRunResult> {
@@ -108,7 +119,7 @@ export class CreatorAgentV0 {
         committed_revision: existing.base_revision + 1,
       };
     }
-    const bundle = compileCreatorContext(current.view, contextRequest);
+    const bundle = await this.#contextCompiler.compile(current, contextRequest, this.#principal, this.#store);
     const action: unknown = await this.#model.decide(bundle, request.signal);
     validateCreatorModelAction(action);
     request.signal?.throwIfAborted();
