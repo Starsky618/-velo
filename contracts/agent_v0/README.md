@@ -99,7 +99,7 @@ Predicate request 与 Relation request 是两条独立合同面。每个 request
 - 同主版本只允许兼容性新增可选字段；破坏性变更使用新目录或新主版本。
 - fixture 固定 `schema_version`，World fixture 均为 `packet_environment=test`、`fixture_only=true` 的合成合同数据，不是已核验产品事实。
 - A2.2 fixture 均为 `environment=test`、`fixture_only=true` 的 synthetic interaction scenario，不是生产 Session、真实 Plan、Provider 结果或持久化记录。
-- A2.3a ToolCall/ToolResult fixture 同样是 `environment=test`、`fixture_only=true` 的合成 observation；它可以表达 timeout → same-call retry → success 的 attempt chain，并由 conformance harness 绑定同一 AgentRun，但没有执行真实网络、Provider、export、数据库、storage 或外部 effect。R2 已应用，当前等待 Orchestrator 再复审；A2.3b/A2.3c 未开始。
+- A2.3a ToolCall/ToolResult fixture 同样是 `environment=test`、`fixture_only=true` 的合成 observation；它可以表达 timeout → same-call retry → success 的 attempt chain，并由 conformance harness 绑定同一 AgentRun。该合同已通过 PR #43 进入主线并被 TypeScript Shadow 消费，但仍没有执行真实网络、Provider、export、数据库、storage 或外部 effect；Approval/SideEffect 与完整 Intent/Constraint/Plan/Validation 合同仍未实现。
 - 所有 `$ref` 必须由本地 `referencing.Registry` 解析；合同测试不得联网、访问数据库、Redis 或真实 filesystem storage。
 - JSON Schema 负责语言中立的 shape validation，但不等于 semantic conformance。Registry unit/value/freshness、request 完整响应、route-shape focus、范围顺序、带时区时间顺序、跨合同 environment/fixture/time、Session/Run revision、resume budget/current Session、candidate/selection provenance、viewport Event/Action transition、MapEvent/MapAction target identity、Manifest binding 与 token accounting 等跨字段不变量由 conformance suite 固定。未来任何语言的消费者都必须实现并通过这些不变量，不能只跑 schema shape validation。
 
