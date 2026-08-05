@@ -204,6 +204,12 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       requireString(event.reason, "reason");
       requireUniqueStringArray(event.source_turn_refs, "source_turn_refs");
       requireUniqueStringArray(event.evidence_refs, "evidence_refs");
+      if (canonicalJson(event.source_turn_refs) !== canonicalJson([...event.source_turn_refs].sort())) {
+        throw new Error("source_turn_refs must be sorted");
+      }
+      if (canonicalJson(event.evidence_refs) !== canonicalJson([...event.evidence_refs].sort())) {
+        throw new Error("evidence_refs must be sorted");
+      }
       if (event.source_turn_refs.length + event.evidence_refs.length === 0) throw new Error("judgment proposal requires at least one source turn or evidence ref");
       if (!["string", "number", "boolean"].includes(typeof event.typed_value)) throw new Error("invalid judgment typed_value");
       if (typeof event.typed_value === "string" && containsUnpairedSurrogate(event.typed_value)) throw new Error("judgment typed_value must contain only Unicode scalar values");

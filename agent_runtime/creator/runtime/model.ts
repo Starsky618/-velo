@@ -86,6 +86,12 @@ export function validateCreatorModelAction(value: unknown): asserts value is Cre
   stringArray(value.evidence_refs, "evidence_refs");
   if (new Set(value.source_turn_refs).size !== value.source_turn_refs.length) throw new Error("source_turn_refs must be unique");
   if (new Set(value.evidence_refs).size !== value.evidence_refs.length) throw new Error("evidence_refs must be unique");
+  if (JSON.stringify(value.source_turn_refs) !== JSON.stringify([...value.source_turn_refs].sort())) {
+    throw new Error("source_turn_refs must be sorted");
+  }
+  if (JSON.stringify(value.evidence_refs) !== JSON.stringify([...value.evidence_refs].sort())) {
+    throw new Error("evidence_refs must be sorted");
+  }
   if (value.source_turn_refs.length + value.evidence_refs.length === 0) throw new Error("Creator judgment needs a source turn or evidence");
   if (value.review_at !== undefined) assertUnicodeScalarString(value.review_at, "review_at");
   if (value.supersedes_judgment_id !== undefined) assertUnicodeScalarString(value.supersedes_judgment_id, "supersedes_judgment_id");

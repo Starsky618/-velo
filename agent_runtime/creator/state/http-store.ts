@@ -2,7 +2,13 @@ import { creatorCapabilityForEventType, createCreatorCapabilityGate } from "../c
 import { canonicalJson, contentHash } from "../../shared/canonical.ts";
 import type { RuntimePrincipal } from "../../shared/capability-gate.ts";
 import { replayCreatorWorkspace, validateCreatorEvent, validateCreatorStoredEvent } from "./engine.ts";
-import type { CreatorWorkspaceRead, CreatorWorkspaceStore } from "./store-port.ts";
+import type {
+  CreatorProjectionDigest,
+  CreatorProjectionRead,
+  CreatorProjectionRecordReader,
+  CreatorWorkspaceRead,
+  CreatorWorkspaceStore,
+} from "./store-port.ts";
 import type { CreatorEvent, CreatorStoredEvent, CreatorView } from "./types.ts";
 
 export interface CreatorInternalApiCredential {
@@ -140,6 +146,94 @@ function validateReadResponse(value: unknown): CreatorStoredEvent[] {
   return value.records;
 }
 
+function validateProjectionReadResponse(
+  value: unknown,
+  workspaceId: string,
+  expectedRevision: number,
+): CreatorProjectionRead {
+  assertPlainRecord(value, "Creator projection read response");
+  assertExactKeys(value, ["revision", "records", "digest"], "Creator projection read response");
+  if (!Number.isSafeInteger(value.revision) || (value.revision as number) < 0) {
+    throw new CreatorHttpStoreProtocolError("Creator projection read response revision must be a non-negative safe integer");
+  }
+  if (value.revision !== expectedRevision) {
+    throw new CreatorHttpStoreProtocolError("Creator projection read response revision does not match request");
+  }
+  if (!Array.isArray(value.records) || value.records.length !== expectedRevision) {
+    throw new CreatorHttpStoreProtocolError("Creator projection read response records do not cover the requested revision");
+  }
+  for (const [index, record] of value.records.entries()) {
+    try {
+      validateCreatorStoredEvent(record);
+    } catch (error) {
+      throw new CreatorHttpStoreProtocolError(
+        `Creator projection read response contains an invalid stored event: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (record.event.workspace_id !== workspaceId || record.event.base_revision !== index) {
+      throw new CreatorHttpStoreProtocolError("Creator projection read response is not the exact requested workspace prefix");
+    }
+  }
+  const digest = validateProjectionDigest(value.digest, expectedRevision);
+  return { revision: expectedRevision, records: value.records, digest };
+}
+
+function validateProjectionDigest(value: unknown, expectedRevision: number): CreatorProjectionDigest {
+  assertPlainRecord(value, "Creator projection digest");
+  assertExactKeys(value, [
+    "revision",
+    "source_rights",
+    "current_judgment_refs",
+    "pending_judgment_refs",
+    "decision_refs",
+    "unresolved_contradiction_refs",
+  ], "Creator projection digest");
+  if (value.revision !== expectedRevision) {
+    throw new CreatorHttpStoreProtocolError("Creator projection digest revision does not match request");
+  }
+  for (const field of [
+    "current_judgment_refs",
+    "pending_judgment_refs",
+    "decision_refs",
+    "unresolved_contradiction_refs",
+  ] as const) {
+    const refs = value[field];
+    if (!Array.isArray(refs) || refs.some((ref) => typeof ref !== "string" || ref.length === 0)
+      || new Set(refs).size !== refs.length || canonicalJson(refs) !== canonicalJson([...refs].sort())) {
+      throw new CreatorHttpStoreProtocolError(`Creator projection digest ${field} must be a sorted unique string array`);
+    }
+  }
+  if (!Array.isArray(value.source_rights)) {
+    throw new CreatorHttpStoreProtocolError("Creator projection digest source_rights must be an array");
+  }
+  let previousSourceRef: string | undefined;
+  for (const item of value.source_rights) {
+    assertPlainRecord(item, "Creator projection digest source_rights item");
+    assertExactKeys(item, [
+      "source_ref", "source_event_revision", "rights_decision", "rights_event_revision",
+    ], "Creator projection digest source_rights item");
+    if (typeof item.source_ref !== "string" || item.source_ref.length === 0
+      || (previousSourceRef !== undefined && previousSourceRef >= item.source_ref)) {
+      throw new CreatorHttpStoreProtocolError("Creator projection digest source_rights must use sorted unique source refs");
+    }
+    if (!Number.isSafeInteger(item.source_event_revision) || (item.source_event_revision as number) < 1) {
+      throw new CreatorHttpStoreProtocolError("Creator projection digest source event revision is invalid");
+    }
+    if (item.rights_decision !== null
+      && item.rights_decision !== "allowed"
+      && item.rights_decision !== "forbidden"
+      && item.rights_decision !== "needs_review") {
+      throw new CreatorHttpStoreProtocolError("Creator projection digest rights decision is invalid");
+    }
+    if (item.rights_event_revision !== null
+      && (!Number.isSafeInteger(item.rights_event_revision) || (item.rights_event_revision as number) < 1)) {
+      throw new CreatorHttpStoreProtocolError("Creator projection digest rights event revision is invalid");
+    }
+    previousSourceRef = item.source_ref;
+  }
+  return value as unknown as CreatorProjectionDigest;
+}
+
 function validateAppendReceipt(value: unknown): CreatorAppendReceipt {
   assertPlainRecord(value, "Creator append receipt");
   assertExactKeys(value, ["event_id", "committed_revision", "payload_sha256"], "Creator append receipt");
@@ -155,7 +249,7 @@ function validateAppendReceipt(value: unknown): CreatorAppendReceipt {
   return value as unknown as CreatorAppendReceipt;
 }
 
-export class HttpCreatorWorkspaceStore implements CreatorWorkspaceStore {
+export class HttpCreatorWorkspaceStore implements CreatorWorkspaceStore, CreatorProjectionRecordReader {
   readonly #baseUrl: string;
   readonly #credentials: CreatorInternalApiCredentialProvider;
   readonly #fetch: typeof globalThis.fetch;
@@ -225,6 +319,27 @@ export class HttpCreatorWorkspaceStore implements CreatorWorkspaceStore {
       throw new CreatorHttpStoreProtocolError("Creator workspace read response workspace_id does not match request");
     }
     return { records, events, view };
+  }
+
+  async readProjectionRecordsAs(
+    workspaceId: string,
+    expectedRevision: number,
+    principal: RuntimePrincipal,
+  ): Promise<CreatorProjectionRead> {
+    if (typeof workspaceId !== "string" || !/^[a-zA-Z0-9._-]+$/.test(workspaceId)) {
+      throw new TypeError("workspaceId must use only safe alphanumeric, dot, underscore or hyphen characters");
+    }
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+      throw new TypeError("expectedRevision must be a non-negative safe integer");
+    }
+    createCreatorCapabilityGate(principal).require("context.read_private");
+    const credential = await this.#credentialFor(principal, "context.read_private");
+    const raw = await this.#requestJson(
+      "GET",
+      `/internal/creator/workspaces/${encodeURIComponent(workspaceId)}/projection-records?expected_revision=${expectedRevision}`,
+      credential,
+    );
+    return validateProjectionReadResponse(raw, workspaceId, expectedRevision);
   }
 
   async appendAs(event: CreatorEvent, principal: RuntimePrincipal): Promise<CreatorView> {
