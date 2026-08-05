@@ -1,6 +1,6 @@
 # VELO Agent-First 当前交接
 
-> 最后核实：2026-08-06。本轮从 `origin/main@70b4e97d` 开始实现 Creator PostgreSQL Persistence Slice v0；最终合并与 CI 状态以本轮 GitHub PR 为准。这份文件回答三个问题：我们为什么做 Agent、现在真实做到了哪一层、下一刀是什么。
+> 最后核实：2026-08-06。本轮从 `origin/main@70b4e97d` 开始实现 Creator PostgreSQL Persistence Slice v0，交付 PR 为 #51；最终合并与 CI 状态以 GitHub checks 为准。这份文件回答三个问题：我们为什么做 Agent、现在真实做到了哪一层、下一刀是什么。
 
 ## 1. 一开始要解决什么
 

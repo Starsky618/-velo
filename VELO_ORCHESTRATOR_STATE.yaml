@@ -1,6 +1,6 @@
 schema_version: 2
 project: VELO
-updated_at: '2026-08-06T00:00:00+08:00'
+updated_at: '2026-08-06T03:07:49+08:00'
 status: active
 
 authority:
@@ -31,10 +31,13 @@ source_documents:
 
 repository:
   github: Starsky618/-velo
-  verified_main_commit: 9728e2e9ba9c5d77e3193b4c379bd3df461c8c44
-  verified_main_pr: 49
-  verified_ci_run: 30996385431
-  verified_ci_result:
+  verified_main_commit: 70b4e97dfe35b8be44eff4253a3693e958be3c57
+  verified_main_pr: 47
+  current_delivery_pr: 51
+  current_delivery_implementation_commit: 1527c994
+  previous_creator_ci:
+    pr: 49
+    run: 30996385431
     agent_runtime: 56_passed_0_failed_0_skipped
     pytest: 2447_passed_0_skipped_with_fresh_postgis_and_redis
     independent_reviews: spec_and_integration_critical_0_important_0
