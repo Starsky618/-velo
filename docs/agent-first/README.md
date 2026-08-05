@@ -1,6 +1,6 @@
 # VELO Agent-First 当前交接
 
-> 最后核实：2026-08-05，交接文档基线为 `origin/main@e84de8744c946c1880a6b1ccdd48c84aa3fecbe6`（PR #48）；Creator v0 实现以本文件所在 revision 为准。这份文件回答三个问题：我们为什么做 Agent、现在真实做到了哪一层、下一刀是什么。
+> 最后核实：2026-08-05，交接文档基线为 `origin/main@9728e2e9ba9c5d77e3193b4c379bd3df461c8c44`（PR #49）。这份文件回答三个问题：我们为什么做 Agent、现在真实做到了哪一层、下一刀是什么。
 
 ## 1. 一开始要解决什么
 
@@ -29,10 +29,10 @@ Reborn 是重要参照系：借鉴它的原始记录、显式状态、状态机�
 |---|---|---|
 | 语言中立合同 | Context、Session、Run、Map/Action、Tool Registry/Call/Result 已进入主线 | [`contracts/agent_v0`](../../contracts/agent_v0/README.md)，PR #41–#43 |
 | TypeScript Rider 内核 | 已有 append-only JSONL Session、原始 turn、明确决定、unknown、Context 编译、Run/Tool deadline、重放与 reconciliation | [`agent_runtime`](../../agent_runtime/README.md)，PR #44、#46 |
-| TypeScript Creator 内核 | 已有原始 Conversation/Evidence、Agent 判断提议、Tim 精确确认/拒绝/替代、Contradiction、Context Manifest、模型端口与冷启动重放 Eval | [`agent_runtime/creator`](../../agent_runtime/creator)，当前 revision |
+| TypeScript Creator 内核 | 已有原始 Conversation/Evidence、Agent 判断提议、Tim 精确确认/拒绝/替代、Contradiction、Context Manifest、模型端口与冷启动重放 Eval | [`agent_runtime/creator`](../../agent_runtime/creator)，PR #49 |
 | 路线规划 Shadow | 已验证锁定 canonical core Traversal，腾讯只生成 access/connector/exit/return；支持多核心段拼接 | synthetic 天龙山 fixture，不是真实腾讯调用或真实推荐质量 |
 | 数据库设计 | 已核实现有 Route Cognition/PostGIS 可复用对象，并固定 Creator append-only 事件、关系投影、事务与回放规格 | [`DATABASE_BOUNDARY.md`](../../agent_runtime/DATABASE_BOUNDARY.md) 与 [`CREATOR_POSTGRESQL_SPEC_V0.md`](../../agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md)；尚未创建 migration |
-| 验证 | PR #46 双独立审查通过；Creator v0 本地 TypeScript 56/56 | 当前分支修订后 CI 尚待重跑；本地结果不证明生产、真实 Tim UI 或骑友可用 |
+| 验证 | PR #49 spec 忠诚审查与跨模块集成审查均为 Critical 0 / Important 0；CI TypeScript 56/56，pytest 2447 passed / 0 skipped | CI 使用临时 PostGIS/Redis；不证明生产、真实 Tim UI 或骑友可用 |
 
 当前还没有：
 
@@ -42,11 +42,11 @@ Reborn 是重要参照系：借鉴它的原始记录、显式状态、状态机�
 - 生产鉴权、进程隔离、数据库迁移、API、小程序接线、真实腾讯调用或 Strava ingestion。
 - 能证明“路线判断真实改善推荐与骑友结果”的现实端到端 Eval。
 
-所以，PR #46 建成的是可信内核，不是最终的“第二大脑”。
+所以，PR #46 建成 Rider Runtime 地基，PR #49 建成 Creator 本地信息与判断闭环；两者都不是最终的“第二大脑”。
 
 ## 4. 本轮已交付和当前唯一推荐下一刀
 
-**Creator Information & Judgment Loop v0** 已在本文件所在 revision 完成本地实现：真实读取天龙山拍定本与路线认知蓝图，运行“来源 → Evidence → Agent 提议 → Shadow Tim 精确响应 → 判断替代 → Context → 冷启动 Eval”。详细合同和 Reborn 迁移审计见 [`creator-information-judgment-loop-v0.md`](creator-information-judgment-loop-v0.md)。
+**Creator Information & Judgment Loop v0** 已通过 PR #49 合并：真实读取天龙山拍定本与路线认知蓝图，运行“来源 → Evidence → Agent 提议 → Shadow Tim 精确响应 → 判断替代 → Context → 冷启动 Eval”。详细合同和 Reborn 迁移审计见 [`creator-information-judgment-loop-v0.md`](creator-information-judgment-loop-v0.md)。
 
 本地已证明：
 

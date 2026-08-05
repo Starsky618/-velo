@@ -1,6 +1,6 @@
 schema_version: 2
 project: VELO
-updated_at: '2026-08-05T17:31:56+08:00'
+updated_at: '2026-08-05T18:18:37+08:00'
 status: active
 
 authority:
@@ -31,12 +31,13 @@ source_documents:
 
 repository:
   github: Starsky618/-velo
-  verified_main_commit: e84de8744c946c1880a6b1ccdd48c84aa3fecbe6
-  verified_main_pr: 48
-  verified_ci_run: 30990706408
+  verified_main_commit: 9728e2e9ba9c5d77e3193b4c379bd3df461c8c44
+  verified_main_pr: 49
+  verified_ci_run: 30996385431
   verified_ci_result:
-    agent_runtime: 43_passed_0_failed_0_skipped
+    agent_runtime: 56_passed_0_failed_0_skipped
     pytest: 2447_passed_0_skipped_with_fresh_postgis_and_redis
+    independent_reviews: spec_and_integration_critical_0_important_0
   production_deployed: false
   rider_visible: false
 
@@ -76,8 +77,8 @@ current_delivery:
     - bounded_agent_run_tool_deadline_and_reconciliation
     - locked_core_traversals_with_tencent_connector_only_planning
   creator_typescript_shadow:
-    status: information_judgment_loop_v0_in_current_revision
-    base_pr: 46
+    status: merged_and_tested
+    prs: [49]
     implemented:
     - separate_deny_by_default_capabilities
     - source_rights_evidence_claim_conflict_eval_world_change_proposal_state_machine
@@ -99,7 +100,7 @@ current_delivery:
     - real_world_route_outcome_learning_eval
     - judgment_to_claim_world_change_adapter_eval
   database:
-    status: creator_postgresql_spec_v0_in_current_revision
+    status: creator_postgresql_spec_v0_merged
     migration_created: false
     paths:
     - agent_runtime/DATABASE_BOUNDARY.md
@@ -107,7 +108,7 @@ current_delivery:
 
 next_task:
   id: creator_postgresql_persistence_slice_v0
-  status: ready_after_current_revision_ci
+  status: ready_to_implement
   objective: implement_the_spec_as_a_minimal_migration_repository_transaction_and_cross_store_replay_slice
   required_sequence:
   - create_empty_creator_event_truth_and_required_projection_tables
