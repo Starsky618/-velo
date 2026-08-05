@@ -17,6 +17,14 @@
 }
 
 @font-face {
+  font-family: "VELO Sans";
+  src: url("/assets/fonts/velo-sans-zh-bold-v1.woff") format("woff");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "VELO Serif";
   src: url("/assets/fonts/velo-serif-zh-bold-v1.woff") format("woff");
   font-style: normal;
@@ -59,6 +67,7 @@ body {
   font-size: 16px;
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
 }
 
 a {
@@ -123,6 +132,7 @@ summary:focus-visible {
 .brand {
   display: inline-flex;
   align-items: baseline;
+  min-height: 44px;
   gap: 10px;
   font-family: var(--mono);
   font-size: 19px;
@@ -146,6 +156,9 @@ summary:focus-visible {
 }
 
 .nav-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: var(--ink-soft);
   padding: 6px 0;
   border-bottom: 2px solid transparent;
@@ -782,13 +795,22 @@ h2 {
   color: #fff;
 }
 
-.foot-links {
+.footer-links {
   display: flex;
   flex-wrap: wrap;
   gap: 22px;
 }
 
-.foot .icp {
+.footer-links a,
+.footer-record a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.footer-record {
+  grid-column: 1 / -1;
+  justify-content: center;
   width: 100%;
   text-align: center;
   font-family: var(--mono);
@@ -959,4 +981,9 @@ h2 {
   *::after {
     transition-duration: 0.01ms !important;
   }
+}
+
+/* homepage scope marker */
+.home-v2 {
+  font-synthesis: none;
 }

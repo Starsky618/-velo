@@ -12,7 +12,7 @@ WEBSITE = ROOT / "website"
 LEGAL_NAME = "湖南湘江新区共演纪软件开发有限责任公司"
 ICP_RECORD = "湘ICP备2026023052号-1"
 ICP_QUERY_URL = "https://beian.miit.gov.cn/"
-SITE_STYLESHEET_URL = "/assets/site.css?v=20260731a"
+SITE_STYLESHEET_URL = "/assets/site.css?v=20260805a"
 
 
 class _LinkParser(HTMLParser):
@@ -163,17 +163,17 @@ def test_homepage_uses_local_chinese_web_fonts_without_synthetic_weights():
         "regular": (
             WEBSITE / "assets/fonts/velo-sans-zh-regular-v1.woff",
             400,
-            "8c50d408ecef8eeaed9c5b817918719c44d5cde4177236f9da936811e70a5ff2",
+            "4b531112cef78e73d00cba2b4530a7771f186bd4c50af52d2ceb827603cb1326",
         ),
         "medium": (
             WEBSITE / "assets/fonts/velo-sans-zh-medium-v1.woff",
             500,
-            "c030c28f5b997d3ea995420e000a6c38ecabd27678c87708d89d550ea9dc8ba8",
+            "8e8ee2ad10ba54c7a987c873715a8d2c3d37ad90ca14dd54d0e7436552e97b60",
         ),
         "bold": (
             WEBSITE / "assets/fonts/velo-sans-zh-bold-v1.woff",
             700,
-            "ceeefa8801b6a9b7f20e2e920f575a676c869b82f644e4dcc7f1c92ffb85bf54",
+            "fa4edd15a008d0decb995a51a01d6deb4263b7a24cc1f53c04218442d62dd77e",
         ),
     }
 
