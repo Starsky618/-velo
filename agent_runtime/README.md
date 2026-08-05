@@ -2,6 +2,14 @@
 
 这是 VELO 的 Agent 控制面，不是 Python 业务后端的翻译版。当前第一刀只建立可重放内核、权限边界和确定性天龙山 Shadow；没有接真实模型、腾讯网络、生产数据库或小程序。
 
+## 为什么做这个 Runtime
+
+核心目的不是增加一个聊天入口，而是让 VELO 能长期保留来源信息、Tim 明确确认的判断及其修订链，并在每次模型运行前编译出可审计的最小 Context。聊天窗口被压缩或进程重启后，系统应从事件和 revision 恢复，而不是要求模型“记住”。
+
+这套闭环最终需要：原始信息 → Agent 提议 → Tim 确认/拒绝 → 判断替代与冲突 → Context 编译 → Agent Run → Eval/反馈 → World Change Proposal。当前只实现了其中的确定性骨架：Rider 已有 Session 与 Context Compiler；Creator 已有 Evidence/Claim/Eval 状态机，但还没有真实 conversation ingestion、Tim 判断确认协议或 Creator Context Compiler。
+
+当前交接和下一阶段验收见 [`docs/agent-first/README.md`](../docs/agent-first/README.md)。
+
 ## 两个 Agent 产品
 
 | 产品 | 服务对象 | 可以做 | 明确不能做 |

@@ -1,56 +1,105 @@
-# VELO Agent-First / Orchestrator 文档入口
+# VELO Agent-First 当前交接
 
-> 当前状态：Phase A 与 A2 parent 均为 `in_progress`；A0/A0C/A1.1–A1.5、A2.1 和 A2.2 均已由 Orchestrator 判定 `PASS / completed`。PR #42 已 squash merge 为 `main@2e2f5e227308b9f2244904f2d7fde32c1ce20a87`，post-merge CI run `30838576675` 为 `2312 passed / 0 skipped` 且 fresh PostGIS migration 成功。A2.3 已串行拆为 A2.3a/b/c；A2.3a 第二轮 review 为 `REVISE`，R2 合同证明修订已应用并处于 `in_review / pending_orchestrator_re_review`，A2.3b 与 A2.3c 未开始且 blocked。A2.4 与 A3–A5 继续 `blocked`。Agent v0 尚未 freeze；当前不授权代码迁移、Agent Runtime、生产 Context Compiler/reducer、数据库、API、小程序、真实 Provider/export 或部署。
+> 最后核实：2026-08-05，`origin/main@ff8e09081d9613e761c01ab308fda068cd4651e7`（PR #46）。这份文件回答三个问题：我们为什么做 Agent、现在真实做到了哪一层、下一刀是什么。
 
-## 1. 文档角色与权威顺序
+## 1. 一开始要解决什么
 
-发生冲突时按以下顺序处理；不能用较低层文档覆盖较高层事实：
+VELO 不是为了“接一个会聊天的模型”而做 Agent。真正目标是建立一套可持续的路线认知系统：
+
+1. 把 Tim、骑友、路线材料、实测数据和外部来源保留为可追溯的原始信息。
+2. 严格区分“Tim 已明确确认的判断”“Agent 提议”“外部证据”“尚未解决的矛盾”，不让模型替 Tim 发明观点。
+3. 让判断可以被确认、拒绝、修订和替代，同时保留来源、版本和时间。
+4. 每次模型运行前，只编译当前任务真正需要的事实、判断、未决问题和来源，生成可审计 Context；聊天窗口压缩后仍能从事件重放，而不是靠模型回忆。
+5. 用 Eval、真实结果和反馈检查 Agent 的输出，再把有效修正进入下一轮，而不是把一次回答直接升级成长期真相。
+
+Reborn 是重要参照系：借鉴它的原始记录、显式状态、状态机、来源权威、review/Eval 和反馈回流思想；不复制它的具体目录或把 Reborn 的项目状态塞进 VELO。
+
+## 2. 两个低耦合产品
+
+| 产品 | 服务对象 | 核心责任 | 不能做 |
+|---|---|---|---|
+| Creator Agent | Tim 与 VELO 建设者 | 摄取信息、保留判断、核对来源、形成 Evidence/Claim、发现冲突、运行 Eval、提出 World Change | 替 Tim 确认判断；绕过审核发布世界事实；面向骑友直接规划 |
+| Rider Consumer Agent | 骑友用户 | 读取已发布路线认知，理解需求，组合锁定核心赛段与腾讯连接段，生成/校验/比较方案 | 读取 Creator 私有原文；修改 canonical truth；让腾讯重算或替换核心赛段 |
+
+两边不能合成一个靠 `role` 开关区分的 Super Agent。它们只通过版本化 Published World、Traversal、Plan 和 Feedback Proposal 交换信息。
+
+## 3. 现在真实做到了哪
+
+| 层面 | 当前事实 | 证据边界 |
+|---|---|---|
+| 语言中立合同 | Context、Session、Run、Map/Action、Tool Registry/Call/Result 已进入主线 | [`contracts/agent_v0`](../../contracts/agent_v0/README.md)，PR #41–#43 |
+| TypeScript Rider 内核 | 已有 append-only JSONL Session、原始 turn、明确决定、unknown、Context 编译、Run/Tool deadline、重放与 reconciliation | [`agent_runtime`](../../agent_runtime/README.md)，PR #44、#46 |
+| TypeScript Creator 内核 | 已有独立 capability 与来源 → Rights → Evidence → Claim → Conflict → Eval → World Change Proposal 状态机和 JSONL store | [`agent_runtime/creator`](../../agent_runtime/creator)，PR #46 |
+| 路线规划 Shadow | 已验证锁定 canonical core Traversal，腾讯只生成 access/connector/exit/return；支持多核心段拼接 | synthetic 天龙山 fixture，不是真实腾讯调用或真实推荐质量 |
+| 数据库设计 | 已核实现有 Route Cognition/PostGIS 可复用对象，并提出 Creator/Published World/Rider 三个数据面 | [`DATABASE_BOUNDARY.md`](../../agent_runtime/DATABASE_BOUNDARY.md) 仍是迁移前边界，不是已落库 schema |
+| 验证 | PR #46 双独立审查通过；GitHub CI run #319 为 TypeScript 43/43、pytest 2447 passed / 0 skipped | 证明代码、空白 PostGIS migration 和 Redis 测试通过，不证明生产或骑友可用 |
+
+当前还没有：
+
+- Creator 对真实聊天/资料的自动摄取流程。
+- Creator 自己的 Conversation Session、判断确认/替代协议和 Context Compiler。
+- 真实 LLM/provider loop、tracing 后端或人机审核界面。
+- 生产鉴权、进程隔离、数据库迁移、API、小程序接线、真实腾讯调用或 Strava ingestion。
+- 能证明“保留的信息确实改善下一次判断”的端到端 Eval。
+
+所以，PR #46 建成的是可信内核，不是最终的“第二大脑”。
+
+## 4. 当前唯一推荐下一刀
+
+下一阶段叫 **Creator Information & Judgment Loop v0**。先让开发者 Agent 在本地真实完成一次“记录 → 判断 → 确认 → 编译上下文 → 再运行 → Eval”，再讨论生产数据库。
+
+按顺序完成：
+
+1. 深读 Reborn 当前最新 Session、TypeScript 状态机、review/Eval 与内外部反馈回流，输出可以复用到 VELO 的不变量和不能照搬的差异。
+2. 给 Creator 增加原始 conversation/source event；所有原文 append-only，并记录作者、来源和时间。
+3. 增加 judgment proposal、Tim 明确确认/拒绝、supersede 与 contradiction 事件；Agent prose 永远不能自行升级成 Tim 的判断。
+4. 建立 Creator Context Compiler：每轮只加载当前 mission、已确认且未被替代的判断、相关 Evidence、未决冲突和省略清单，并生成 manifest。
+5. 接一个可替换的模型端口与确定性 fake model；模型只能提议 typed action，状态机掌控写入、权限、预算和停止。
+6. 建立 context-compression Eval：清空聊天窗口后，仅从 JSONL 重放，仍能恢复正确判断、来源和未决问题；旧判断不能覆盖新确认。
+7. 用一组 Tim 的真实路线材料跑通本地闭环。暴露真实查询、并发、冲突与恢复模式后，才落最小 PostgreSQL migration。
+
+### v0 验收
+
+- 同一份原始话语不会被重复写入；冲突 event id fail closed。
+- Agent 提议与 Tim 确认在数据结构和权限上不可混淆。
+- 判断替代保留完整链路，旧判断不再进入新 Context。
+- Context Manifest 能说明加载了什么、为什么加载、遗漏了什么、使用哪个 revision。
+- 在全新进程和空聊天上下文中重放，得到相同的有效判断与未决问题。
+- 至少一个 Eval 能证明错误或过时信息不会静默进入 Published World。
+
+## 5. 数据库进入条件
+
+不要先造一套“Agent 万能库”。Creator Loop v0 在 JSONL Shadow 暴露稳定写入和查询后，首个 migration 只考虑：
+
+- `creator_workspaces` / `creator_workspace_events`
+- `source_records`
+- `knowledge_claims` / `knowledge_claim_evidence`
+- `claim_evaluations`
+- `world_change_proposals`
+
+Published World 与 Rider 私有表族仍按 [`DATABASE_BOUNDARY.md`](../../agent_runtime/DATABASE_BOUNDARY.md) 分面设计。首个 migration 不修改 `users`、`activities`、`segments` 或 `segment_efforts`。
+
+## 6. 文档权威与历史边界
 
 1. 当前用户指令。
-2. 当前仓库代码、测试、CI 和真实运行证据。
-3. [VELO_Orchestrator_Control_Pack_v1.0.md](VELO_Orchestrator_Control_Pack_v1.0.md) 的执行不变量，以及仓库根目录唯一 live state [`VELO_ORCHESTRATOR_STATE.yaml`](../../VELO_ORCHESTRATOR_STATE.yaml)。
-4. [VELO_路线认知基础设施_v0.1.md](source/VELO_路线认知基础设施_v0.1.md)：产品与领域宪法，`authoritative`。
-5. [VELO_Agent_First_架构研究与系统设计_v0.1.md](source/VELO_Agent_First_架构研究与系统设计_v0.1.md)：Agent Runtime 架构提案，`proposed_requires_eval`。
-6. [VELO_目标领域架构与渐进式迁移蓝图_v1.0.md](source/VELO_目标领域架构与渐进式迁移蓝图_v1.0.md)：长期 World Model 蓝图，`proposed_long_term`。
-7. 当前仓库其他文档。
-8. 历史文档与聊天记录。
+2. 当前代码、测试、CI 和真实运行结果。
+3. 仓库根 [`VELO_ORCHESTRATOR_STATE.yaml`](../../VELO_ORCHESTRATOR_STATE.yaml) 的当前交接状态。
+4. 本 README 与 Accepted ADR。
+5. 三份 source 蓝图：领域宪法、Agent 架构研究、长期领域架构。
+6. 历史 Phase A 规格和 Control Pack。
 
-源文档保持随包原文和原始哈希，不在本目录中“顺手统一”彼此措辞。发现冲突时，先以当前代码确定现状，再由 ADR 和 State 记录裁决；历史本地仓库路径不构成事实来源。
+[`phase-a-implementation-spec.md`](phase-a-implementation-spec.md) 与 [`VELO_Orchestrator_Control_Pack_v1.0.md`](VELO_Orchestrator_Control_Pack_v1.0.md) 保留为当时的设计与执行证据，不再承担当前状态。旧任务编号、旧 PR head 和当时的授权不能覆盖现在的代码事实。
 
-## 2. 当前 Phase A、已完成的 A1/A2.1/A2.2 与 A2.3a 审查边界
+## 7. 本地验证入口
 
-- Phase A 目标是先建立 ADR、语言中立合同、VeloBench v0 和确定性 Fake Environment，再决定 Runtime 技术栈。
-- A0 已完成 Repository Intake、来源文档安置和 [Phase A 文件级实施规格](phase-a-implementation-spec.md)，并经 Orchestrator `PASS`。
-- A0C 已完成 clean-branch delivery，通过 PR #35 将经审查的八个文档/State 文件交付到权威主线，并经 Orchestrator `PASS`。
-- A1 parent 的五个串行子任务已全部通过，A1 已由 Orchestrator 判定 `completed / PASS`；A1.1 由 Accepted [ADR-013](../adr/013-为什么区分骑前静态规划与骑中实时导航.md) 编码并以 `PASS / completed` 收口。
-- A1.1 已通过 PR #36 合并为 `main@aa955edc67694fc2cbb628ec3f5caacc80e6d60c`，post-merge CI run `30754762304` 为 `2074 passed / 0 skipped` 且 fresh migration 成功。
-- A1.2 已由 Accepted [ADR-014](../adr/014-为什么在线规划采用单一有界主Agent与确定性工作流.md) 编码并以 `PASS / completed` 收口：模型只提议 typed action，代码掌控状态、门禁、校验、持久化、预算和停止；Framework choice 保持 `DEFERRED`。
-- A1.2 已通过 PR #37 合并为 `main@2b6538ca01f45593ac8a2d4aecd8f7e8f95265a4`；post-merge CI run `30757438481` 完成 fresh PostGIS migration，结果为 `2074 passed / 0 skipped`。
-- A1.3 已由 Accepted [ADR-015](../adr/015-为什么世界事实会话运行与长期记忆必须分离.md) 编码并以 `PASS / completed` 收口：World Fact、User State、Planning Session、Agent Run、Explicit Memory v0、Trace/Eval 分别拥有唯一 Owner，Context 只是一轮模型调用的编译投影。
-- A1.3 已通过 PR #38 合并为 `main@dfef5b693dc06461210c2d065564b42333990143`；post-merge CI run `30795837307` 完成 fresh PostGIS migration，结果为 `2074 passed / 0 skipped`。
-- A1.4 已由 Accepted [ADR-016](../adr/016-为什么在线Agent的能力审批与副作用必须显式化.md) 编码 deny-by-default Capability、七类 effect scope、五类 approval mode、exact grant、幂等/ledger/replay 与骑友贡献 proposal 边界，并由 Orchestrator 判定 `PASS / completed`；PR #39 获准完成状态收口并 squash merge。
-- ADR-016 明确 resource permission、domain validation 与 user approval 是三类独立门禁；`export.prepare` 必须零 artifact，`export.commit` 才能在精确确认后产生外部交付；online Agent 不能发布公共真相或接受 Claim。
-- A1.4 已通过 PR #39 squash merge 为 `main@cae88a4d4d1e365baddd394d196444f4ee6d1e8f`；post-merge CI run `30804485326` 完成 fresh PostGIS migration，结果为 `2074 passed / 0 skipped`。
-- A1.5 已由 Accepted [ADR-017](../adr/017-为什么旧app-agent必须迁出并保留RQ兼容路径.md) 编码并以 `PASS / completed` 收口：`app.segment_draft_ai` 是未来赛段草稿实现的唯一 canonical package；`app.agent` 只能作为默认长期保留的 compatibility tombstone，并永久禁止被 Planning Runtime 复用。
-- `app/agent` 当前仍未迁移，`app/segment_draft_ai` 仍未创建，M1/M2/M3 均未实施或获授权。实际 M1/M2 不阻塞 A2–A4，但 M1 必须在首个生产 Planning Runtime 或 Phase B live Agent 集成前完成。
-- A2 parent 继续 `in_progress`，尚未整体完成。A2.1 已由 Orchestrator 判定 `PASS / completed`，并通过 PR #41 squash merge 为 `main@25169cac110a330c305d5b5f66d74a585277217a`；post-merge CI run `30823721358` 为 `2122 passed / 0 skipped` 且 fresh PostGIS migration 成功。A2.1 只建立 [`contracts/agent_v0`](../../contracts/agent_v0/README.md) 中的 Common definitions、21 个事实／动态 Predicate、`RiderContextPacket`、`WorldFactPacket` 与 `ContextManifest`。正式 Relation 使用独立 relation request，不能重新加入 `route.exit_option`。
-- A2.2 已由 Orchestrator 判定 `PASS / completed`，PR #42 获准完成状态收口与 squash merge。它建立 `SessionState`、`AgentRun`、typed `MapEvent`、declarative `MapAction` 与 proposal-only `AgentAction` 五份 Draft 2020-12 schema，以及 clarification/context alignment 和 candidate presentation/user selection 两条 synthetic scenario；R1 固定 created/running lifecycle、resume current Session revision、跨合同 environment/time、可改变 viewport 的 opaque fit-bounds transition，以及由真实 user `plan_confirmed` Event 支撑的 selection provenance。该 PASS 只代表 A2.2 合同通过，不代表 reducer、Runtime、持久化或 Agent v0 freeze 已存在。
-- A2.3a 只新增确定性 Control Plane 拥有、deny-by-default 的 8-tool Registry，以及 proposal-only `ToolCall` 与 typed attempt observation `ToolResult`。AgentAction 已由语义错误的 `call_approved_tool` 改为只携带 `tool_call_ref` 的 `propose_tool_call`；模型不能声称批准、执行或副作用。8 个高层工具仅为 `planning.resolve_ride_object`、`planning.retrieve_rider_context`、`planning.retrieve_world_context`、`planning.generate_candidate_plans`、`planning.revise_plan`、`planning.validate_plan`、`planning.compare_plans`、`planning.prepare_export`。
-- A2.3a R1 固定 `tool_call_id` 为 immutable request identity；同一请求可有 attempt 1 timeout/disconnect intermediate 与 attempt 2 terminal Result，但最多一个 terminal 且必须最后出现。`RETRY_SAME_CALL` 只是资格而非执行授权；`consumed.tool_calls` 统计 initial attempt 加 deterministic retries，`tool_call_refs` 只统计唯一 proposal。修改 input/tool/capability/Session revision/expected observation 等权威请求字段必须换新 ToolCall ID。
-- A2.3a R2 要求整条 retry attempt chain 精确绑定同一 AgentRun：ToolCall 与 Run 的 run、session、base revision、environment、fixture mode 必须一致，每个 ToolResult 再绑定该 Call 与 Run；Call 不能早于 Run start，Result 不能早于 Call 或晚于 Run checkpoint。running/paused Run 只保留 `INTERMEDIATE` observation 时，Run 自身仍必须通过 AgentRun schema；running Run 的 `session_commit.commit_status` 固定为 `not_attempted`，不得发明 `not_committed`。
-- Registry 不再把“没有 external artifact”误写成“没有 effect”：`planning.generate_candidate_plans` 固定为 `IRREVERSIBLE_EXTERNAL_DISCLOSURE / MINIMIZED_DOMAIN_MEDIATED`，并声明未来 A2.3b 需要 effect reconciliation；`planning.revise_plan` 是可逆 Session artifact，其余六个工具无持久 effect。模型仍只见 opaque refs，Provider disclosure 的 exact identity、ledger 与 runtime reconciliation 未在本轮实现。
-- A2.3a 的 candidate scenario 固定为两轮：第一轮 Manifest → proposal → `planning.generate_candidate_plans` → typed `candidate_plan_set` observation；不可绕过的 deterministic validation gate 不是第二个 Agent ToolCall；第二轮真实 Manifest 必须包含随后 `present_valid_candidates` 引用的两个 `ride_plan` revisions，模型不能引用未进入该 turn Context 的 Plan。`planning.revise_plan` 成功也只能返回 `object_type=ride_plan` 的 revision；`planning.prepare_export` 只返回 `export_preview`，零 artifact、零个人/世界写入，不调用真实 export。
-- A2.3a 第二轮 Orchestrator 结论仍是 `REVISE`；R1 五组结构性 finding 已关闭，R2 的 AgentRun cross-binding、shape-valid running/intermediate 正向证据与 timeout 摘要一致性修订已在同一 Draft PR 分支应用。当前只能是 `in_review / pending_orchestrator_re_review / applied_waiting_orchestrator_re_review`，不能写成 PASS/completed。A2.3b Approval/SideEffect 与 A2.3c IntentSnapshot/PlanConstraintSet/RidePlanDraft/ValidationResult 均未开始。
-- A2 JSON Schema 完全语言中立；当前 Python pytest 只是既有仓库/CI 的 contract conformance harness，不构成 Python Runtime 选择。Proposed research 中 Agent Control Plane 的优先候选仍是独立 TypeScript Shadow Service，但 Accepted Runtime 语言/框架继续 deferred，必须在第一个 Runtime implementation Task Packet 前正式裁决；现有 Python/FastAPI Deterministic Domain Plane 不重写。
-- A2.3 parent 为 `in_progress`；A2.3a 等待 Orchestrator re-review，A2.3b/A2.3c blocked 且 execution unauthorized。A2.4（Trace/Error/Contribution/全量交叉验证与 v0 freeze）及 A3–A5 继续 `blocked`。A2.1–A2.3a 都只是语言中立合同与合成 fixture，不是完整 Agent v0 freeze、生产 Tool Gateway/Context Compiler、数据库 schema、Runtime、API、小程序、真实路线事实或部署。两个 World fixture 只覆盖 `linear_climb` 与 `corridor` 的合同结构；Phase A 仍需至少 10 个版本化 Gold World Package、覆盖至少 6 种 route shape，并由至少 30 个 VeloBench case 消费。
-- 不可变的 Control Pack v1.0 §11 中“当前唯一下一任务 A0”是 v1.0 创建时的 bootstrap snapshot，不是持续更新的 live state；不得为同步状态而修改 Control Pack 原文或哈希。
-- 当前阶段、下一任务和执行授权始终以仓库根 [`VELO_ORCHESTRATOR_STATE.yaml`](../../VELO_ORCHESTRATOR_STATE.yaml) 为准。
-- 后续文档提到的 `AgentSession`、`RidePlan`、`Traversal`、`RoadNode`、`RoadEdge`、合同或表，只是候选设计对象，不是当前 schema、migration、API 或实现授权。
+```bash
+npm ci
+npm test
+npm run demo:shadow -- \
+  --origin 太原站附近 \
+  --minutes 240 \
+  --max-climb-m 1200 \
+  --urban-exposure low
+```
 
-## 3. 执行状态边界
-
-唯一可变执行状态位于仓库根目录 [`VELO_ORCHESTRATOR_STATE.yaml`](../../VELO_ORCHESTRATOR_STATE.yaml)。本 README、Control Pack、来源文档和实施规格都不能替代 State，也不能单独推动阶段。
-
-当前没有以下授权：A1.5 代码迁移 M1/M2/M3、A2.3b、A2.3c、A2.4、生产 Agent、Tool Gateway、Session/Run/Memory/Context Compiler、production reducer、Capability Engine、Approval UI、Side-effect Ledger、Contribution、LangGraph、multi-agent、长期推断 Memory、向量数据库、完整 road graph、真实腾讯/DEM、真实导出、公开发布、生产流量或部署。Accepted ADR-017 只代表 namespace/RQ 兼容迁移边界完成；A2.1 `PASS / completed` 只代表 Context contracts 通过，A2.2 `PASS / completed` 只代表 Session/Run/Map/Action contracts 通过；A2.3a 等待 re-review，三者都不代表 Agent v0 已 freeze，或 Runtime、数据库、API、小程序、Provider 与生产数据已经实现。
-
-A2.2 已由 Orchestrator 判定 `PASS / completed`。当前 R2 Task Packet 只授权 A2.3a 六文件 allowlist 内证明修订、测试、push 与现有 Draft PR 更新；不授权 merge/deploy，也不授权 A2.3b、A2.3c 或后续任务。A2.3a 交付状态只能是 `in_review / pending_orchestrator_re_review / applied_waiting_orchestrator_re_review`，`main` 继续只作为远程权威基线与 PR target。
+当前 Runtime 的开发者说明看 [`agent_runtime/README.md`](../../agent_runtime/README.md)，语言中立合同看 [`contracts/agent_v0/README.md`](../../contracts/agent_v0/README.md)。

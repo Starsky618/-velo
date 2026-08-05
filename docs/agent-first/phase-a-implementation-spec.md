@@ -1,6 +1,9 @@
 # VELO Phase A 文件级实施规格
 
-> A0/A0C/A1.1–A1.5、A2.1 与 A2.2：`PASS / completed`；A1 parent 已 `completed / PASS`，ADR-013–017 均已 Accepted。A2 parent 与 A2.3 parent 为 `in_progress`；A2.3 已串行拆为 A2.3a/b/c，A2.3a 第二轮 Orchestrator 结论为 `REVISE`，R2 合同证明修订已应用并处于 `in_review / pending_orchestrator_re_review`，A2.3b 与 A2.3c blocked 且未开始。A2.4 与 A3–A5 均为 `blocked`，Agent v0 尚未 freeze。本文不实施 `app/agent` 代码迁移、M1/M2/M3、Agent Runtime、生产 Context Compiler/Tool Gateway/reducer、数据库、API、小程序、真实 Provider/export、Capability Engine、Approval UI、Side-effect Ledger、Contribution 或部署，不改变生产行为，也不构成后续子任务执行授权。
+> [!IMPORTANT]
+> 这是 2026-08-02 至 2026-08-04 的 Phase A 执行快照，正文保留当时基线、任务状态和审查证据，不再承担当前状态或执行授权。PR #43、#44 与 #46 后的当前交接以 [`README.md`](README.md)、仓库根 [`VELO_ORCHESTRATOR_STATE.yaml`](../../VELO_ORCHESTRATOR_STATE.yaml) 和真实代码/CI 为准。下面的 `pending`、`blocked`、旧 SHA 与“Runtime 未实现”等文字只能按历史时点阅读。
+
+> 当时状态：A0/A0C/A1.1–A1.5、A2.1 与 A2.2 为 `PASS / completed`；A2.3a R2 正等待复审。该状态已被后续主线交付取代。
 
 ## 2.1 Repository Fact Baseline
 
