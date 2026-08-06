@@ -28,9 +28,11 @@ Creator 与 Rider Consumer 在数据库层也必须低耦合：分别写自己�
 Creator 首个生产持久化候选（表名与约束以 [`CREATOR_POSTGRESQL_SPEC_V0.md`](CREATOR_POSTGRESQL_SPEC_V0.md) 为准）：
 
 - `creator_workspaces`：一次路线认知建设任务的身份、mission、状态与 current revision。
-- `creator_workspace_events`：append-only 原始事件与实际 principal/capability 收据，唯一键 `(workspace_id, revision)` 与 `event_id`；raw Evidence 只在这个权限面可见。
+- `creator_workspace_events`：append-only 原始事件、实际 principal/capability 收据与派生事件 reducer attestation，唯一键 `(workspace_id, revision)` 与 `event_id`；raw Evidence 只在这个权限面可见。
 - `creator_sources`：材料的 provider/source identity、rights、content hash、不可变 blob/provider revision 与 captured time；解决当前 `evidence_items` 必须“已被判断使用”才能存在的问题。
 - `creator_source_messages`：精确原始 turn、通道角色、实际作者、作者依据与可选的 exact judgment response；同一来源消息不可重复摄取。
+- `creator_turn_interpretations` / `creator_task_states`：模型解释候选与任务执行真值分开；task-local 纠正不进入长期用户画像。
+- `creator_behavior_calibrations` / `creator_judgment_interpretations`：行为结果与判断 lineage；结果型升格必须携带同主体 real-world Evidence。
 - `creator_judgments` / `creator_judgment_decisions`：Agent proposal 与 Tim exact response 分表，并用 proposal/turn/statement hash 复合约束绑定。
 - `creator_judgment_contradictions`：未决矛盾、替代与解决链；不能把 contradiction 折成 false 或静默覆盖。
 - `knowledge_claims`：subject、predicate、typed proposed value、temporality、valid time、状态。
@@ -80,8 +82,8 @@ Strava 官方 API 的 `/segments/explore` 确实能按 bounds 返回热门 ridin
 
 ## 当前已落的数据库边界
 
-Creator Persistence Slice v0 已新增 Alembic revision `20260806_creator_pg_v0`：只创建 `creator_*` 事件真值与信息/判断投影，不修改现有 Route Cognition、路线或 Rider 核心表。Python service 用单事务持有 revision CAS、event id/hash 幂等、投影与 exact Tim decision 绑定；事件表有 append-only trigger。
+Creator Persistence 现由 `20260806_creator_pg_v0` 与 `20260806_creator_ctx_v1` 两个 Alembic revision 组成：只创建 `creator_*` 事件真值与信息/判断/解释投影，不修改现有 Route Cognition、路线或 Rider 核心表。Python service 用单事务持有 revision CAS、event id/hash 幂等、投影、promotion lineage 与 exact Tim decision 绑定；事件表有 append-only trigger。
 
-TypeScript 仍通过 `CreatorWorkspaceStore` 内部 HTTP adapter 访问，不直接连接 SQL。Python router 只能由部署 composition root 注入 bearer authenticator 后显式挂载；本切片未在 `app/main.py` 暴露路由，也未配置生产 secret 或部署 migration。
+TypeScript 仍通过 `CreatorWorkspaceStore` 内部 HTTP adapter 访问，不直接连接 SQL。Python router 只能由部署 composition root 注入 bearer authenticator 后显式挂载；本切片未在 `app/main.py` 暴露路由，也未配置生产 Ed25519 私钥/验签公钥或部署 migration。
 
-projection-native Context/漂移停机 Shadow 已实现：关系投影在一致只读快照中重建事件，由同一个 TypeScript reducer/compiler 对账，并在模型调用前 fail closed；它仍未生产挂载。下一刀不是继续扩大表族，而是为一个内部 workspace 建立真实登录 Tim 审核身份、内网挂载和 Shadow 观测。Published World、Rider persistence、腾讯、Strava 与真实 LLM 继续分开验收；真实 LLM 接收 raw Context 前还必须关闭并发撤权的披露竞态。
+projection-native Context/漂移停机 Shadow 与 Context Interpretation & Promotion v0 已实现：关系投影在一致只读快照中重建事件，由同一个 TypeScript reducer/compiler 对账，并在模型调用前 fail closed；历史 schema v1 conversation judgment 只保留冷回放、在线写入关闭，新 schema v2 route/domain 判断入口不能消费对话原话；派生写入还必须经 reducer attestation。它仍未生产挂载。下一刀不是继续扩大表族，而是接一个真实 interpretation model 做 unseen Shadow，并与真实登录 Tim 审核身份、密钥托管、内网挂载和行为校准一起验收。Published World、Rider persistence、腾讯、Strava 与 Rider LLM 继续分开验收；任何外部模型接收 raw Context 前还必须关闭并发撤权的披露竞态。

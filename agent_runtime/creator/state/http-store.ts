@@ -1,7 +1,7 @@
-import { creatorCapabilityForEventType, createCreatorCapabilityGate } from "../capabilities.ts";
+import { creatorCapabilityForEvent, createCreatorCapabilityGate } from "../capabilities.ts";
 import { canonicalJson, contentHash } from "../../shared/canonical.ts";
 import type { RuntimePrincipal } from "../../shared/capability-gate.ts";
-import { replayCreatorWorkspace, validateCreatorEvent, validateCreatorStoredEvent } from "./engine.ts";
+import { replayCreatorWorkspace, validateCreatorAppendEvent, validateCreatorStoredEvent } from "./engine.ts";
 import type {
   CreatorProjectionDigest,
   CreatorProjectionRead,
@@ -10,6 +10,10 @@ import type {
   CreatorWorkspaceStore,
 } from "./store-port.ts";
 import type { CreatorEvent, CreatorStoredEvent, CreatorView } from "./types.ts";
+import {
+  creatorEventRequiresDerivationAttestation,
+  type CreatorDerivationAttestor,
+} from "./derivation-attestation.ts";
 
 export interface CreatorInternalApiCredential {
   bearer_token: string;
@@ -22,7 +26,11 @@ export const CREATOR_PERSISTENCE_V0_EVENT_TYPES = [
   "creator.conversation_turn_recorded",
   "creator.rights_checked",
   "creator.evidence_recorded",
+  "creator.turn_interpretation_proposed",
+  "creator.task_state_changed",
+  "creator.behavior_calibration_recorded",
   "creator.judgment_proposed",
+  "creator.judgment_promotion_proposed",
   "creator.judgment_responded",
   "creator.judgment_contradiction_recorded",
   "creator.judgment_contradiction_resolved",
@@ -43,6 +51,8 @@ export interface CreatorHttpStoreOptions {
   base_url: string;
   credentials: CreatorInternalApiCredentialProvider;
   fetch?: typeof globalThis.fetch;
+  /** Required for every model/mechanical derived append to PostgreSQL. */
+  derivation_attestor?: CreatorDerivationAttestor;
 }
 
 export class CreatorHttpStoreProtocolError extends Error {
@@ -253,6 +263,7 @@ export class HttpCreatorWorkspaceStore implements CreatorWorkspaceStore, Creator
   readonly #baseUrl: string;
   readonly #credentials: CreatorInternalApiCredentialProvider;
   readonly #fetch: typeof globalThis.fetch;
+  readonly #derivationAttestor: CreatorDerivationAttestor | undefined;
 
   constructor(options: CreatorHttpStoreOptions) {
     if (typeof options.base_url !== "string" || options.base_url.trim().length === 0) {
@@ -261,6 +272,7 @@ export class HttpCreatorWorkspaceStore implements CreatorWorkspaceStore, Creator
     this.#baseUrl = options.base_url.replace(/\/+$/, "");
     this.#credentials = options.credentials;
     this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#derivationAttestor = options.derivation_attestor;
     if (typeof this.#fetch !== "function") throw new TypeError("Creator HTTP Store requires fetch");
   }
 
@@ -343,21 +355,42 @@ export class HttpCreatorWorkspaceStore implements CreatorWorkspaceStore, Creator
   }
 
   async appendAs(event: CreatorEvent, principal: RuntimePrincipal): Promise<CreatorView> {
-    validateCreatorEvent(event);
+    validateCreatorAppendEvent(event);
     if (!isCreatorPersistenceV0Event(event)) {
       throw new CreatorHttpStoreProtocolError(`Creator event type is outside persistence v0: ${event.type}`);
     }
-    const capability = creatorCapabilityForEventType(event.type);
+    const capability = creatorCapabilityForEvent(event);
     const gate = createCreatorCapabilityGate(principal);
     gate.require("context.read_private");
     gate.require(capability);
     const credential = await this.#credentialFor(principal, capability);
     createCreatorCapabilityGate(credential.principal).require("context.read_private");
+    let derivationAttestation;
+    if (creatorEventRequiresDerivationAttestation(event)) {
+      if (!this.#derivationAttestor) {
+        throw new CreatorHttpStoreProtocolError("Creator derived append requires a configured reducer attestor");
+      }
+      const prior = await this.readAs(event.workspace_id, principal);
+      if (prior.records.length < event.base_revision) {
+        throw new CreatorHttpStoreProtocolError("Creator derived append cannot attest a missing prior revision prefix");
+      }
+      try {
+        derivationAttestation = this.#derivationAttestor.attest(
+          event,
+          prior.records.slice(0, event.base_revision),
+          principal,
+        );
+      } catch (error) {
+        throw new CreatorHttpStoreProtocolError(
+          `Creator derived append failed reducer attestation: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
     const rawReceipt = await this.#requestJson(
       "POST",
       `/internal/creator/workspaces/${encodeURIComponent(event.workspace_id)}/events`,
       credential,
-      { event },
+      derivationAttestation === undefined ? { event } : { event, derivation_attestation: derivationAttestation },
     );
     const receipt = validateAppendReceipt(rawReceipt);
     const expectedRevision = event.base_revision + 1;

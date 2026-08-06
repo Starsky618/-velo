@@ -3,8 +3,13 @@ import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { canonicalJson, contentHash } from "../../shared/canonical.ts";
+import { compileCreatorContext, CREATOR_CONTEXT_COMPILER_VERSION } from "../context/compiler.ts";
 import { withJsonlLock } from "../../shared/jsonl-lock.ts";
-import { createCreatorCapabilityGate, creatorCapabilityForEventType } from "../capabilities.ts";
+import {
+  createCreatorCapabilityGate,
+  creatorCalibrationAuthorityCapability,
+  creatorCapabilityForEvent,
+} from "../capabilities.ts";
 import type { RuntimePrincipal } from "../../shared/capability-gate.ts";
 import type { CreatorWorkspaceStore } from "./store-port.ts";
 import {
@@ -13,11 +18,24 @@ import {
   CONTRADICTION_RESOLUTIONS,
   CONFLICT_RESULTS,
   CREATOR_ACTORS,
+  CREATOR_CALIBRATION_AUTHORITIES,
+  CREATOR_CALIBRATION_METRICS,
   CREATOR_SOURCE_ROLES,
+  CREATOR_TASK_STATE_ENGINE_VERSION,
+  CREATOR_TASK_STATUSES,
   EVAL_VERDICTS,
+  INTERPRETATION_ACTION_EFFECTS,
+  INTERPRETATION_ANNOTATION_BASES,
+  INTERPRETATION_EPISTEMIC_STATUSES,
+  INTERPRETATION_PERSISTENCE_INTENTS,
+  INTERPRETATION_RELATION_KINDS,
+  INTERPRETATION_SCOPE_LEVELS,
+  INTERPRETATION_SPEECH_ACTS,
+  JUDGMENT_PROMOTION_BASES,
   JUDGMENT_RESPONSES,
   RIGHTS_DECISIONS,
   type CreatorEvent,
+  type CreatorInterpretationState,
   type CreatorStoredEvent,
   type CreatorView,
 } from "./types.ts";
@@ -70,6 +88,11 @@ function requireUniqueStringArray(value: unknown, label: string): asserts value 
   if (new Set(value).size !== value.length) throw new Error(`${label} must not contain duplicate refs`);
 }
 
+function requireSortedUniqueStringArray(value: unknown, label: string): asserts value is string[] {
+  requireUniqueStringArray(value, label);
+  if (canonicalJson(value) !== canonicalJson([...value].sort())) throw new Error(`${label} must be sorted`);
+}
+
 function requireExactJsonNumber(value: unknown, label: string): asserts value is number {
   if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${label} must be finite`);
   if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
@@ -88,7 +111,9 @@ const BASE_EVENT_KEYS = ["schema_version", "event_id", "workspace_id", "base_rev
 export function validateCreatorEvent(value: unknown): asserts value is CreatorEvent {
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("creator event must be an object");
   const event = value as Record<string, unknown>;
-  if (event.schema_version !== 1) throw new Error("unsupported creator event schema_version");
+  if (event.schema_version !== 1 && !(event.schema_version === 2 && event.type === "creator.judgment_proposed")) {
+    throw new Error("unsupported creator event schema_version");
+  }
   requireString(event.event_id, "event_id");
   requireString(event.workspace_id, "workspace_id");
   if (!/^[a-zA-Z0-9._-]+$/.test(event.workspace_id)) throw new Error("workspace_id contains unsafe characters");
@@ -121,6 +146,7 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       requireString(event.raw_text, "raw_text");
       requireContentHash(event.content_hash, "content_hash");
       requireUniqueStringArray(event.subject_refs, "subject_refs");
+      if (event.subject_refs.length === 0) throw new Error("conversation turn requires at least one privacy subject");
       if (!CREATOR_SOURCE_ROLES.includes(event.source_role as never)) throw new Error("invalid creator source_role");
       if (!CREATOR_ACTORS.includes(event.actor as never)) throw new Error("invalid creator actor");
       if (!AUTHORSHIP_BASES.includes(event.authorship_basis as never)) throw new Error("invalid authorship_basis");
@@ -160,6 +186,103 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       requireString(event.raw_observation, "raw_observation");
       requireUtcInstant(event.observed_at, "observed_at");
       return;
+    case "creator.turn_interpretation_proposed": {
+      requireExactKeys(event, [
+        ...BASE_EVENT_KEYS, "interpretation_id", "turn_id", "task_ref", "subject_refs", "speech_acts",
+        "epistemic_status", "scope_level", "scope_ref", "persistence_intent", "annotation_basis", "claim",
+        "confidence", "alternatives", "supporting_refs", "counterevidence_refs", "relations", "action_effect",
+        "review_when", "context_compiler_version", "context_request_hash", "context_task", "context_subject_refs",
+        "context_as_of", "context_max_pending_turns", "context_max_evidence", "context_max_interpretations",
+        "context_hash", "model_ref",
+        "supersedes_interpretation_id",
+      ], event.type);
+      for (const field of [
+        "interpretation_id", "turn_id", "task_ref", "scope_ref", "claim", "review_when",
+        "context_compiler_version", "context_task", "model_ref",
+      ] as const) requireString(event[field], field);
+      requireContentHash(event.context_request_hash, "context_request_hash");
+      requireContentHash(event.context_hash, "context_hash");
+      requireUtcInstant(event.context_as_of, "context_as_of");
+      requireSortedUniqueStringArray(event.context_subject_refs, "context_subject_refs");
+      for (const field of ["context_max_pending_turns", "context_max_evidence", "context_max_interpretations"] as const) {
+        if (!Number.isSafeInteger(event[field]) || (event[field] as number) < 0) {
+          throw new Error(`${field} must be a non-negative safe integer`);
+        }
+      }
+      requireSortedUniqueStringArray(event.subject_refs, "subject_refs");
+      requireUniqueStringArray(event.speech_acts, "speech_acts");
+      if (event.speech_acts.length === 0 || event.speech_acts.some((item) => !INTERPRETATION_SPEECH_ACTS.includes(item as never))) {
+        throw new Error("invalid interpretation speech_acts");
+      }
+      if (!INTERPRETATION_EPISTEMIC_STATUSES.includes(event.epistemic_status as never)) throw new Error("invalid interpretation epistemic_status");
+      if (!INTERPRETATION_SCOPE_LEVELS.includes(event.scope_level as never)) throw new Error("invalid interpretation scope_level");
+      if (!INTERPRETATION_PERSISTENCE_INTENTS.includes(event.persistence_intent as never)) throw new Error("invalid interpretation persistence_intent");
+      if (!INTERPRETATION_ANNOTATION_BASES.includes(event.annotation_basis as never)) throw new Error("invalid interpretation annotation_basis");
+      if (!INTERPRETATION_ACTION_EFFECTS.includes(event.action_effect as never)) throw new Error("invalid interpretation action_effect");
+      if (event.scope_level === "turn" && event.scope_ref !== event.turn_id) throw new Error("turn interpretation scope_ref must equal turn_id");
+      if (event.scope_level === "task" && event.scope_ref !== event.task_ref) throw new Error("task interpretation scope_ref must equal task_ref");
+      requireExactJsonNumber(event.confidence, "confidence");
+      if ((event.confidence as number) < 0 || (event.confidence as number) > 1) throw new Error("confidence must be between 0 and 1");
+      if (!Array.isArray(event.alternatives)) throw new Error("alternatives must be an array");
+      for (const alternative of event.alternatives) {
+        if (alternative === null || typeof alternative !== "object" || Array.isArray(alternative)) throw new Error("interpretation alternative must be an object");
+        const item = alternative as Record<string, unknown>;
+        requireExactKeys(item, ["claim", "disconfirming_evidence"], "interpretation alternative");
+        requireString(item.claim, "alternative.claim");
+        requireString(item.disconfirming_evidence, "alternative.disconfirming_evidence");
+      }
+      requireSortedUniqueStringArray(event.supporting_refs, "supporting_refs");
+      requireSortedUniqueStringArray(event.counterevidence_refs, "counterevidence_refs");
+      if (!Array.isArray(event.relations)) throw new Error("relations must be an array");
+      const relationKeys = new Set<string>();
+      for (const relation of event.relations) {
+        if (relation === null || typeof relation !== "object" || Array.isArray(relation)) throw new Error("interpretation relation must be an object");
+        const item = relation as Record<string, unknown>;
+        requireExactKeys(item, ["target_ref", "kind", "reason"], "interpretation relation");
+        requireString(item.target_ref, "relation.target_ref");
+        requireString(item.reason, "relation.reason");
+        if (!INTERPRETATION_RELATION_KINDS.includes(item.kind as never)) throw new Error("invalid interpretation relation kind");
+        const key = `${String(item.kind)}:${String(item.target_ref)}`;
+        if (relationKeys.has(key)) throw new Error("interpretation relations must be unique");
+        relationKeys.add(key);
+      }
+      if (event.supersedes_interpretation_id !== undefined) requireString(event.supersedes_interpretation_id, "supersedes_interpretation_id");
+      return;
+    }
+    case "creator.task_state_changed":
+      requireExactKeys(event, [
+        ...BASE_EVENT_KEYS, "task_state_id", "task_ref", "project_ref", "status", "objective", "focus",
+        "acceptance_criteria", "open_loops", "source_turn_refs", "supersedes_task_state_id",
+        "source_interpretation_ref", "engine_ref",
+      ], event.type);
+      for (const field of ["task_state_id", "task_ref", "project_ref", "objective", "focus"] as const) requireString(event[field], field);
+      if (!CREATOR_TASK_STATUSES.includes(event.status as never)) throw new Error("invalid Creator task status");
+      requireUniqueStringArray(event.acceptance_criteria, "acceptance_criteria");
+      requireUniqueStringArray(event.open_loops, "open_loops");
+      requireSortedUniqueStringArray(event.source_turn_refs, "source_turn_refs");
+      if (event.source_turn_refs.length === 0) throw new Error("task state requires at least one source turn");
+      if (event.supersedes_task_state_id !== undefined) requireString(event.supersedes_task_state_id, "supersedes_task_state_id");
+      if (event.source_interpretation_ref !== undefined) requireString(event.source_interpretation_ref, "source_interpretation_ref");
+      if (event.engine_ref !== undefined && event.engine_ref !== CREATOR_TASK_STATE_ENGINE_VERSION) {
+        throw new Error("task state engine_ref must identify the mechanical task state engine");
+      }
+      if ((event.supersedes_task_state_id === undefined) !== (event.source_interpretation_ref === undefined)
+        || (event.supersedes_task_state_id === undefined) !== (event.engine_ref === undefined)) {
+        throw new Error("task state update bundle must contain supersedes_task_state_id, source_interpretation_ref and engine_ref together");
+      }
+      return;
+    case "creator.behavior_calibration_recorded":
+      requireExactKeys(event, [
+        ...BASE_EVENT_KEYS, "calibration_id", "task_ref", "metric", "verdict", "authority", "prediction",
+        "observed_result", "context_hash", "context_item_refs",
+      ], event.type);
+      for (const field of ["calibration_id", "task_ref", "prediction", "observed_result"] as const) requireString(event[field], field);
+      requireContentHash(event.context_hash, "context_hash");
+      requireSortedUniqueStringArray(event.context_item_refs, "context_item_refs");
+      if (!CREATOR_CALIBRATION_METRICS.includes(event.metric as never)) throw new Error("invalid Creator calibration metric");
+      if (!CREATOR_CALIBRATION_AUTHORITIES.includes(event.authority as never)) throw new Error("invalid Creator calibration authority");
+      if (!EVAL_VERDICTS.includes(event.verdict as never)) throw new Error("invalid Creator calibration verdict");
+      return;
     case "creator.claim_proposed":
       requireExactKeys(event, [...BASE_EVENT_KEYS, "claim_id", "subject_ref", "predicate", "proposed_value", "temporality", "valid_from", "valid_to", "review_at", "evidence_refs"], event.type);
       requireString(event.claim_id, "claim_id");
@@ -183,7 +306,15 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       if (event.review_at && event.review_at <= event.occurred_at) throw new Error("review_at must be after the claim proposal");
       return;
     case "creator.judgment_proposed":
-      requireExactKeys(event, [...BASE_EVENT_KEYS, "proposal_id", "judgment_key", "subject_ref", "statement", "statement_hash", "typed_value", "temporality", "context_compiler_version", "context_request_hash", "context_task", "context_subject_refs", "context_as_of", "context_max_pending_turns", "context_max_evidence", "context_hash", "model_ref", "review_at", "source_turn_refs", "evidence_refs", "supersedes_judgment_id", "reason"], event.type);
+    case "creator.judgment_promotion_proposed":
+      requireExactKeys(event, [
+        ...BASE_EVENT_KEYS, "proposal_id", "judgment_key", "subject_ref", "statement", "statement_hash", "typed_value",
+        "temporality", "context_compiler_version", "context_request_hash", "context_task", "context_subject_refs",
+        "context_as_of", "context_max_pending_turns", "context_max_evidence", "context_hash", "model_ref", "review_at",
+        "source_turn_refs", "evidence_refs", "supersedes_judgment_id", "reason",
+        ...(event.type === "creator.judgment_promotion_proposed"
+          ? ["context_task_ref", "context_max_interpretations", "source_interpretation_refs", "promotion_basis", "promotion_basis_refs"] : []),
+      ], event.type);
       requireString(event.proposal_id, "proposal_id");
       requireString(event.judgment_key, "judgment_key");
       requireString(event.subject_ref, "subject_ref");
@@ -211,6 +342,12 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
         throw new Error("evidence_refs must be sorted");
       }
       if (event.source_turn_refs.length + event.evidence_refs.length === 0) throw new Error("judgment proposal requires at least one source turn or evidence ref");
+      if (event.type === "creator.judgment_proposed" && event.schema_version === 2 && event.source_turn_refs.length > 0) {
+        throw new Error("schema v2 compatibility judgment cannot consume conversation turns; use interpretation and promotion");
+      }
+      if (event.type === "creator.judgment_proposed" && event.schema_version === 2 && event.evidence_refs.length === 0) {
+        throw new Error("schema v2 compatibility judgment requires route/domain evidence");
+      }
       if (!["string", "number", "boolean"].includes(typeof event.typed_value)) throw new Error("invalid judgment typed_value");
       if (typeof event.typed_value === "string" && containsUnpairedSurrogate(event.typed_value)) throw new Error("judgment typed_value must contain only Unicode scalar values");
       if (typeof event.typed_value === "number") requireExactJsonNumber(event.typed_value, "judgment typed_value");
@@ -219,6 +356,16 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
       if (event.temporality !== "permanent" && !event.review_at) throw new Error("non-permanent judgment requires review_at");
       if (event.review_at && event.review_at <= event.occurred_at) throw new Error("review_at must be after the judgment proposal");
       if (event.supersedes_judgment_id !== undefined) requireString(event.supersedes_judgment_id, "supersedes_judgment_id");
+      if (event.type === "creator.judgment_promotion_proposed") {
+        requireString(event.context_task_ref, "context_task_ref");
+        if (!Number.isSafeInteger(event.context_max_interpretations) || (event.context_max_interpretations as number) <= 0) {
+          throw new Error("context_max_interpretations must be a positive safe integer");
+        }
+        requireSortedUniqueStringArray(event.source_interpretation_refs, "source_interpretation_refs");
+        requireSortedUniqueStringArray(event.promotion_basis_refs, "promotion_basis_refs");
+        if (event.source_interpretation_refs.length === 0) throw new Error("judgment promotion requires an interpretation");
+        if (!JUDGMENT_PROMOTION_BASES.includes(event.promotion_basis as never)) throw new Error("invalid judgment promotion basis");
+      }
       return;
     case "creator.judgment_responded":
       requireExactKeys(event, [...BASE_EVENT_KEYS, "decision_id", "proposal_id", "response_turn_ref", "response", "expected_statement_hash"], event.type);
@@ -278,6 +425,18 @@ export function validateCreatorEvent(value: unknown): asserts value is CreatorEv
   }
 }
 
+/**
+ * Online append contract. Historical schema-v1 conversation judgments remain
+ * readable by validateCreatorEvent/replayCreatorWorkspace, but can never be
+ * appended after the interpretation/promotion boundary exists.
+ */
+export function validateCreatorAppendEvent(value: unknown): asserts value is CreatorEvent {
+  validateCreatorEvent(value);
+  if (value.type === "creator.judgment_proposed" && value.schema_version !== 2) {
+    throw new Error("schema v1 creator judgment is replay-only; new writes must use schema v2 evidence or interpretation promotion");
+  }
+}
+
 function initial(event: Extract<CreatorEvent, { type: "creator.workspace_started" }>): CreatorView {
   return {
     schema_version: 1,
@@ -290,6 +449,9 @@ function initial(event: Extract<CreatorEvent, { type: "creator.workspace_started
     conversation_turns: {},
     rights_checks: {},
     evidence: {},
+    interpretations: {},
+    task_states: {},
+    behavior_calibrations: {},
     claims: {},
     judgments: {},
     judgment_decisions: {},
@@ -300,6 +462,242 @@ function initial(event: Extract<CreatorEvent, { type: "creator.workspace_started
     human_review_requests: {},
     world_change_proposals: {},
   };
+}
+
+function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
+  return canonicalJson([...left].sort()) === canonicalJson([...right].sort());
+}
+
+function knownContextItem(view: CreatorView, ref: string): boolean {
+  return Boolean(
+    view.interpretations[ref] || view.task_states[ref] || view.behavior_calibrations[ref]
+    || view.judgments[ref] || view.judgment_contradictions[ref] || view.evidence[ref]
+    || view.conversation_turns[ref],
+  );
+}
+
+function sourceRightsAllowed(view: CreatorView, sourceRef: string): boolean {
+  return Object.values(view.rights_checks).filter((check) => check.source_ref === sourceRef).at(-1)?.decision === "allowed";
+}
+
+function directContextRefRightsAllowed(view: CreatorView, ref: string): boolean {
+  const turn = view.conversation_turns[ref];
+  const evidence = view.evidence[ref];
+  return turn ? sourceRightsAllowed(view, turn.source_ref)
+    : evidence ? sourceRightsAllowed(view, evidence.source_ref)
+      : false;
+}
+
+function interpretationRightsAllowed(view: CreatorView, item: CreatorInterpretationState): boolean {
+  const turn = view.conversation_turns[item.turn_id];
+  return turn !== undefined && sourceRightsAllowed(view, turn.source_ref)
+    && [...item.supporting_refs, ...item.counterevidence_refs].every((ref) => directContextRefRightsAllowed(view, ref));
+}
+
+function contextItemSubjectRefs(view: CreatorView, ref: string, visited = new Set<string>()): string[] | undefined {
+  if (visited.has(ref)) return undefined;
+  const nextVisited = new Set(visited).add(ref);
+  const turn = view.conversation_turns[ref];
+  if (turn) return turn.subject_refs.length === 0 ? undefined : [...turn.subject_refs].sort();
+  const evidence = view.evidence[ref];
+  if (evidence) return evidence.subject_ref === "" ? undefined : [evidence.subject_ref];
+  const interpretation = view.interpretations[ref];
+  if (interpretation) {
+    const declared = [...interpretation.subject_refs].sort();
+    if (declared.length === 0) return undefined;
+    const lineageRefs = [interpretation.turn_id, ...interpretation.supporting_refs, ...interpretation.counterevidence_refs];
+    const lineageSubjects = lineageRefs.map((itemRef) => contextItemSubjectRefs(view, itemRef, nextVisited));
+    if (lineageSubjects.some((subjects) => !subjects || subjects.length === 0
+      || subjects.some((subject) => !declared.includes(subject)))) return undefined;
+    return declared;
+  }
+  const task = view.task_states[ref];
+  if (task) {
+    const subjectSets = task.source_turn_refs.map((turnRef) => contextItemSubjectRefs(view, turnRef, nextVisited));
+    if (subjectSets.length === 0 || subjectSets.some((subjects) => !subjects || subjects.length === 0)) return undefined;
+    return [...new Set(subjectSets.flatMap((subjects) => subjects ?? []))].sort();
+  }
+  const judgment = view.judgments[ref];
+  if (judgment) {
+    const lineageRefs = [...new Set([
+      ...judgment.source_turn_refs,
+      ...judgment.evidence_refs,
+      ...(judgment.source_interpretation_refs ?? []),
+      ...(judgment.promotion_basis_refs ?? []),
+    ])];
+    const lineageSubjects = lineageRefs.map((itemRef) => contextItemSubjectRefs(view, itemRef, nextVisited));
+    if (lineageSubjects.length === 0 || lineageSubjects.some((subjects) => !subjects || subjects.length === 0)) {
+      return undefined;
+    }
+    return [...new Set([judgment.subject_ref, ...lineageSubjects.flatMap((subjects) => subjects ?? [])])].sort();
+  }
+  const contradiction = view.judgment_contradictions[ref];
+  if (contradiction) {
+    const targetSubjects = contextItemSubjectRefs(view, contradiction.judgment_id, nextVisited);
+    const contradictingSubjects = contextItemSubjectRefs(view, contradiction.contradicting_ref, nextVisited);
+    if (!targetSubjects || !contradictingSubjects || !sameStringSet(targetSubjects, contradictingSubjects)) {
+      return undefined;
+    }
+    return targetSubjects;
+  }
+  const calibration = view.behavior_calibrations[ref];
+  if (calibration) {
+    const subjectSets = calibration.context_item_refs.map((itemRef) => contextItemSubjectRefs(view, itemRef, nextVisited));
+    if (subjectSets.length === 0 || subjectSets.some((subjects) => subjects === undefined)) return undefined;
+    const first = subjectSets[0]!;
+    return first.length > 0 && subjectSets.every((subjects) => (
+      subjects !== undefined && subjects.length > 0 && sameStringSet(subjects, first)
+    )) ? first : undefined;
+  }
+  return undefined;
+}
+
+function contextItemRightsAllowed(view: CreatorView, ref: string, visited = new Set<string>()): boolean {
+  if (visited.has(ref)) return false;
+  const nextVisited = new Set(visited).add(ref);
+  const turn = view.conversation_turns[ref];
+  if (turn) return sourceRightsAllowed(view, turn.source_ref);
+  const evidence = view.evidence[ref];
+  if (evidence) return sourceRightsAllowed(view, evidence.source_ref);
+  const interpretation = view.interpretations[ref];
+  if (interpretation) return interpretationRightsAllowed(view, interpretation);
+  const task = view.task_states[ref];
+  if (task) return task.source_turn_refs.length > 0
+    && task.source_turn_refs.every((turnRef) => contextItemRightsAllowed(view, turnRef, nextVisited));
+  const judgment = view.judgments[ref];
+  if (judgment) {
+    const lineageRefs = [...new Set([
+      ...judgment.source_turn_refs,
+      ...judgment.evidence_refs,
+      ...(judgment.source_interpretation_refs ?? []),
+      ...(judgment.promotion_basis_refs ?? []),
+    ])];
+    return lineageRefs.length > 0
+      && lineageRefs.every((itemRef) => contextItemRightsAllowed(view, itemRef, nextVisited));
+  }
+  const contradiction = view.judgment_contradictions[ref];
+  if (contradiction) return contextItemRightsAllowed(view, contradiction.judgment_id, nextVisited)
+    && contextItemRightsAllowed(view, contradiction.contradicting_ref, nextVisited);
+  const calibration = view.behavior_calibrations[ref];
+  return calibration !== undefined && calibration.context_item_refs.length > 0
+    && calibration.context_item_refs.every((itemRef) => contextItemRightsAllowed(view, itemRef, nextVisited));
+}
+
+function contextItemTaskMatches(view: CreatorView, ref: string, taskRef: string): boolean {
+  const interpretation = view.interpretations[ref];
+  const task = view.task_states[ref];
+  const calibration = view.behavior_calibrations[ref];
+  return interpretation ? interpretation.task_ref === taskRef
+    : task ? task.task_ref === taskRef
+      : calibration ? calibration.task_ref === taskRef
+        : true;
+}
+
+function interpretationSourceIsTimAuthored(view: CreatorView, item: CreatorInterpretationState): boolean {
+  const turn = view.conversation_turns[item.turn_id];
+  return turn !== undefined && turn.actor === "tim" && turn.source_role === "user"
+    && ["direct_unquoted_message", "manual_review"].includes(turn.authorship_basis)
+    && !item.speech_acts.includes("external_quote");
+}
+
+function validatePromotionGate(
+  view: CreatorView,
+  event: Extract<CreatorEvent, { type: "creator.judgment_promotion_proposed" }>,
+): void {
+  if (event.model_ref !== "creator-promotion-engine-v0") {
+    throw new Error("judgment promotion requires the mechanical promotion engine identity");
+  }
+  if (event.context_compiler_version !== CREATOR_CONTEXT_COMPILER_VERSION) {
+    throw new Error("judgment promotion requires the current context compiler version");
+  }
+  const bundle = compileCreatorContext(view, {
+    task: event.context_task,
+    task_ref: event.context_task_ref,
+    subject_refs: event.context_subject_refs,
+    as_of: event.context_as_of,
+    max_pending_turns: event.context_max_pending_turns,
+    max_evidence: event.context_max_evidence,
+    max_interpretations: event.context_max_interpretations,
+  });
+  if (event.context_request_hash !== bundle.manifest.request_hash
+    || event.context_hash !== bundle.manifest.context_hash
+    || !sameStringSet(event.context_subject_refs, bundle.context.subject_refs)
+    || event.source_interpretation_refs.some((ref) => !bundle.manifest.included.interpretation_refs.includes(ref))) {
+    throw new Error("judgment promotion context does not replay to the exact visible interpretation set");
+  }
+  const interpretations = event.source_interpretation_refs.map((ref) => view.interpretations[ref]);
+  if (interpretations.some((item) => item === undefined || item.superseded)) {
+    throw new Error("judgment promotion requires active interpretation refs");
+  }
+  const active = interpretations.filter((item) => item !== undefined);
+  if (active.some((item) => !interpretationRightsAllowed(view, item))) {
+    throw new Error("judgment promotion requires currently allowed source rights");
+  }
+  if (active.some((item) => !interpretationSourceIsTimAuthored(view, item))) {
+    throw new Error("judgment promotion requires exact Tim-authored source turns and cannot promote external quotes");
+  }
+  if (active.some((item) => !item.subject_refs.includes(event.subject_ref))) {
+    throw new Error("judgment promotion interpretation belongs to another subject");
+  }
+  if (active.some((item) => (
+    item.action_effect !== "candidate_for_promotion"
+    || ["ambiguous", "hypothetical", "unknown"].includes(item.epistemic_status)
+    || item.counterevidence_refs.length > 0
+    || item.alternatives.length > 0
+  ))) {
+    throw new Error("judgment promotion requires resolved promotion candidates");
+  }
+  if (!sameStringSet(event.source_turn_refs, active.map((item) => item.turn_id))) {
+    throw new Error("judgment promotion source turns must exactly match its interpretations");
+  }
+  const basisSet = new Set(event.promotion_basis_refs);
+  if (event.promotion_basis === "durable_explicit") {
+    if (!sameStringSet(event.promotion_basis_refs, event.source_interpretation_refs)) {
+      throw new Error("durable explicit promotion basis must name the exact interpretations");
+    }
+    if (active.some((item) => (
+      item.persistence_intent !== "durable_explicit" || item.annotation_basis !== "direct_language"
+      || item.epistemic_status !== "explicit" || !["project", "cross_project", "global"].includes(item.scope_level)
+      || !item.speech_acts.some((act) => act === "instruction" || act === "decision")
+    ))) {
+      throw new Error("durable explicit promotion requires an explicit durable Tim instruction or decision");
+    }
+  } else if (event.promotion_basis === "repeated_independent_tasks") {
+    const taskRefs = new Set(active.map((item) => item.task_ref));
+    const messageRefs = new Set(active.map((item) => view.conversation_turns[item.turn_id]?.source_message_ref));
+    const taskStateGrounded = active.every((item) => Object.values(view.task_states).some((taskState) => (
+      taskState.task_ref === item.task_ref && taskState.source_turn_refs.includes(item.turn_id)
+    )));
+    if (active.length < 2 || taskRefs.size < 2 || messageRefs.size < 2
+      || !sameStringSet(event.promotion_basis_refs, event.source_interpretation_refs)
+      || active.some((item) => !["provisional", "durable_explicit"].includes(item.persistence_intent))
+      || !taskStateGrounded) {
+      throw new Error("repeated promotion requires exact evidence from two grounded independent tasks and messages");
+    }
+  } else {
+    const calibrations = event.promotion_basis_refs.map((ref) => view.behavior_calibrations[ref]);
+    if (calibrations.length === 0 || calibrations.some((item) => item === undefined || !basisSet.has(item.calibration_id))) {
+      throw new Error("outcome promotion requires exact calibration refs");
+    }
+    const exactCalibrations = calibrations.filter((item) => item !== undefined);
+    const carriesRealWorldEvidence = (item: (typeof exactCalibrations)[number]) => item.context_item_refs.some((ref) => (
+      view.evidence[ref]?.subject_ref === event.subject_ref && event.evidence_refs.includes(ref)
+    ));
+    if (event.promotion_basis === "validated_outcome" && exactCalibrations.some((item) => (
+      item.verdict !== "pass" || item.authority !== "real_world"
+      || !item.context_item_refs.some((ref) => event.source_interpretation_refs.includes(ref))
+      || !carriesRealWorldEvidence(item)
+    ))) {
+      throw new Error("validated outcome promotion requires passing real-world calibration with exact evidence");
+    }
+    if (event.promotion_basis === "high_cost_failure" && exactCalibrations.some((item) => (
+      item.verdict !== "fail" || item.authority !== "real_world"
+      || !item.context_item_refs.some((ref) => event.source_interpretation_refs.includes(ref))
+      || !carriesRealWorldEvidence(item)
+    ))) {
+      throw new Error("high-cost promotion requires failed real-world calibration with exact evidence");
+    }
+  }
 }
 
 export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorEvent, principal: RuntimePrincipal): CreatorView {
@@ -362,6 +760,153 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
       if (next.evidence[event.evidence_id]) throw new Error("duplicate evidence_id");
       next.evidence[event.evidence_id] = event;
       break;
+    case "creator.turn_interpretation_proposed": {
+      capabilities.require("interpretation.propose");
+      if (next.interpretations[event.interpretation_id]) throw new Error("duplicate interpretation_id");
+      const turn = next.conversation_turns[event.turn_id];
+      if (!turn) throw new Error("interpretation requires an immutable source turn");
+      if (!sourceRightsAllowed(next, turn.source_ref)) throw new Error("interpretation requires currently allowed source rights");
+      if (event.subject_refs.length === 0 || !sameStringSet(event.subject_refs, turn.subject_refs)) {
+        throw new Error("interpretation subjects must exactly preserve every source turn privacy label");
+      }
+      const referenced = [...event.supporting_refs, ...event.counterevidence_refs];
+      if (referenced.some((ref) => !next.conversation_turns[ref] && !next.evidence[ref])) {
+        throw new Error("interpretation evidence must directly reference an immutable turn or evidence item");
+      }
+      if (referenced.some((ref) => !directContextRefRightsAllowed(next, ref))) {
+        throw new Error("interpretation evidence requires currently allowed source rights");
+      }
+      if (referenced.some((ref) => {
+        const referencedTurn = next.conversation_turns[ref];
+        const referencedEvidence = next.evidence[ref];
+        return referencedTurn ? !referencedTurn.subject_refs.every((subject) => event.subject_refs.includes(subject))
+          : referencedEvidence ? !event.subject_refs.includes(referencedEvidence.subject_ref) : true;
+      })) {
+        throw new Error("interpretation evidence belongs to another subject");
+      }
+      for (const relation of event.relations) {
+        const targetJudgment = next.judgments[relation.target_ref];
+        const targetInterpretation = next.interpretations[relation.target_ref];
+        if (!targetJudgment && !targetInterpretation) {
+          throw new Error("interpretation relation target must be a known judgment or interpretation");
+        }
+        if ((targetJudgment && !event.subject_refs.includes(targetJudgment.subject_ref))
+          || (targetInterpretation && !sameStringSet(event.subject_refs, targetInterpretation.subject_refs))) {
+          throw new Error("interpretation relation target belongs to another subject");
+        }
+      }
+      const replayedContext = compileCreatorContext(view, {
+        task: event.context_task,
+        task_ref: event.task_ref,
+        subject_refs: event.context_subject_refs,
+        as_of: event.context_as_of,
+        max_pending_turns: event.context_max_pending_turns,
+        max_evidence: event.context_max_evidence,
+        max_interpretations: event.context_max_interpretations,
+      });
+      if (event.context_compiler_version !== CREATOR_CONTEXT_COMPILER_VERSION
+        || event.context_request_hash !== replayedContext.manifest.request_hash
+        || event.context_hash !== replayedContext.manifest.context_hash
+        || !replayedContext.manifest.included.turn_refs.includes(event.turn_id)) {
+        throw new Error("interpretation context does not replay to the exact source turn");
+      }
+      if (event.persistence_intent === "durable_explicit") {
+        if (turn.actor !== "tim" || turn.source_role !== "user"
+          || !["direct_unquoted_message", "manual_review"].includes(turn.authorship_basis)
+          || event.annotation_basis !== "direct_language" || event.epistemic_status !== "explicit"
+          || !["project", "cross_project", "global"].includes(event.scope_level)
+          || !event.speech_acts.some((act) => act === "instruction" || act === "decision")
+          || event.action_effect !== "candidate_for_promotion") {
+          throw new Error("durable interpretation requires an exact Tim instruction or decision");
+        }
+      }
+      if (event.speech_acts.includes("external_quote") && event.persistence_intent === "durable_explicit") {
+        throw new Error("quoted external material cannot become Tim's durable intent");
+      }
+      if (event.scope_level === "project") {
+        const activeTask = Object.values(next.task_states).find((item) => (
+          item.task_ref === event.task_ref && !item.superseded
+        ));
+        if (!activeTask || activeTask.project_ref !== event.scope_ref) {
+          throw new Error("project interpretation requires the matching active task project");
+        }
+      }
+      if (event.supersedes_interpretation_id) {
+        const previous = next.interpretations[event.supersedes_interpretation_id];
+        if (!previous || previous.superseded || previous.task_ref !== event.task_ref
+          || !sameStringSet(previous.subject_refs, event.subject_refs)) {
+          throw new Error("superseded interpretation must be active in the same task and subject");
+        }
+        previous.superseded = true;
+      }
+      next.interpretations[event.interpretation_id] = { ...event, superseded: false };
+      break;
+    }
+    case "creator.task_state_changed": {
+      capabilities.require("task.update");
+      if (next.task_states[event.task_state_id]) throw new Error("duplicate task_state_id");
+      const turns = event.source_turn_refs.map((ref) => next.conversation_turns[ref]);
+      if (turns.some((turn) => turn === undefined)) throw new Error("task state references an unknown turn");
+      if (!turns.every((turn) => turn?.actor === "tim" && turn.source_role === "user"
+        && ["direct_unquoted_message", "manual_review"].includes(turn.authorship_basis))) {
+        throw new Error("every task state source must be an exact Tim turn");
+      }
+      if (turns.some((turn) => !turn || !sourceRightsAllowed(next, turn.source_ref))) {
+        throw new Error("task state requires currently allowed source rights");
+      }
+      const active = Object.values(next.task_states).find((item) => item.task_ref === event.task_ref && !item.superseded);
+      if (active && event.supersedes_task_state_id !== active.task_state_id) {
+        throw new Error("task state change must explicitly supersede the current state");
+      }
+      if (!active && event.supersedes_task_state_id) throw new Error("task state cannot supersede a missing state");
+      if (active) {
+        const interpretation = event.source_interpretation_ref
+          ? next.interpretations[event.source_interpretation_ref]
+          : undefined;
+        if (event.engine_ref !== CREATOR_TASK_STATE_ENGINE_VERSION || !interpretation || interpretation.superseded
+          || interpretation.task_ref !== active.task_ref || interpretation.action_effect !== "change_current_task") {
+          throw new Error("task state update requires the mechanical engine and an active same-task change_current_task interpretation");
+        }
+        if (interpretation.scope_level === "project" && interpretation.scope_ref !== active.project_ref) {
+          throw new Error("task state update interpretation project does not match the active task");
+        }
+        const expectedSourceRefs = [...new Set([...active.source_turn_refs, interpretation.turn_id])].sort();
+        if (event.project_ref !== active.project_ref || event.status !== active.status
+          || event.objective !== active.objective || event.focus !== interpretation.claim
+          || canonicalJson(event.acceptance_criteria) !== canonicalJson(active.acceptance_criteria)
+          || canonicalJson(event.open_loops) !== canonicalJson(active.open_loops)
+          || canonicalJson(event.source_turn_refs) !== canonicalJson(expectedSourceRefs)) {
+          throw new Error("task state update may only copy stable task fields and replace focus from its interpretation");
+        }
+      } else if (event.source_interpretation_ref !== undefined || event.engine_ref !== undefined) {
+        throw new Error("initial task state cannot claim a derived interpretation update");
+      }
+      if (active) active.superseded = true;
+      next.task_states[event.task_state_id] = { ...event, superseded: false };
+      break;
+    }
+    case "creator.behavior_calibration_recorded":
+      capabilities.require(creatorCalibrationAuthorityCapability(event.authority));
+      if (next.behavior_calibrations[event.calibration_id]) throw new Error("duplicate calibration_id");
+      if (event.context_item_refs.some((ref) => !knownContextItem(next, ref))) {
+        throw new Error("calibration context_item_refs contain an unknown ref");
+      }
+      if (event.context_item_refs.length === 0) throw new Error("calibration requires at least one context item");
+      const calibrationSubjectSets = event.context_item_refs.map((ref) => contextItemSubjectRefs(next, ref));
+      const firstCalibrationSubjects = calibrationSubjectSets[0];
+      if (!firstCalibrationSubjects || firstCalibrationSubjects.length === 0 || calibrationSubjectSets.some((subjects) => (
+        subjects === undefined || !sameStringSet(subjects, firstCalibrationSubjects)
+      ))) {
+        throw new Error("calibration context_item_refs must share one exact privacy subject set");
+      }
+      if (event.context_item_refs.some((ref) => !contextItemRightsAllowed(next, ref))) {
+        throw new Error("calibration context_item_refs require currently allowed source rights");
+      }
+      if (event.context_item_refs.some((ref) => !contextItemTaskMatches(next, ref, event.task_ref))) {
+        throw new Error("calibration context_item_refs must belong to the calibration task when task-bound");
+      }
+      next.behavior_calibrations[event.calibration_id] = event;
+      break;
     case "creator.claim_proposed":
       capabilities.require("claim.propose");
       if (event.evidence_refs.some((ref) => !next.evidence[ref])) throw new Error("claim references unknown evidence");
@@ -369,16 +914,38 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
       if (next.claims[event.claim_id]) throw new Error("duplicate claim_id");
       next.claims[event.claim_id] = event;
       break;
-    case "creator.judgment_proposed": {
-      capabilities.require("judgment.propose");
+    case "creator.judgment_proposed":
+    case "creator.judgment_promotion_proposed": {
+      capabilities.require(event.type === "creator.judgment_proposed" ? "judgment.propose" : "judgment.promote");
+      if (event.type === "creator.judgment_promotion_proposed") validatePromotionGate(next, event);
+      if (event.type === "creator.judgment_proposed" && event.schema_version === 2) {
+        if (event.context_compiler_version !== CREATOR_CONTEXT_COMPILER_VERSION) {
+          throw new Error("schema v2 evidence judgment requires the current context compiler version");
+        }
+        const bundle = compileCreatorContext(next, {
+          task: event.context_task,
+          subject_refs: event.context_subject_refs,
+          as_of: event.context_as_of,
+          max_pending_turns: event.context_max_pending_turns,
+          max_evidence: event.context_max_evidence,
+        });
+        if (event.context_request_hash !== bundle.manifest.request_hash
+          || event.context_hash !== bundle.manifest.context_hash
+          || event.evidence_refs.some((ref) => !bundle.manifest.included.evidence_refs.includes(ref))) {
+          throw new Error("schema v2 evidence judgment context does not replay to its exact visible evidence");
+        }
+      }
       if (next.judgments[event.proposal_id]) throw new Error("duplicate judgment proposal_id");
       if (event.statement_hash !== contentHash(event.statement)) throw new Error("judgment statement_hash mismatch");
       if (event.context_request_hash !== contentHash({
         task: event.context_task,
+        ...(event.type === "creator.judgment_promotion_proposed" ? { task_ref: event.context_task_ref } : {}),
         subject_refs: event.context_subject_refs,
         as_of: event.context_as_of,
         max_pending_turns: event.context_max_pending_turns,
         max_evidence: event.context_max_evidence,
+        ...(event.type === "creator.judgment_promotion_proposed"
+          ? { max_interpretations: event.context_max_interpretations } : {}),
       })) throw new Error("judgment context_request_hash mismatch");
       for (const turnRef of event.source_turn_refs) {
         const turn = next.conversation_turns[turnRef];
@@ -423,8 +990,18 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
         context_as_of: event.context_as_of,
         context_max_pending_turns: event.context_max_pending_turns,
         context_max_evidence: event.context_max_evidence,
+        ...(event.type === "creator.judgment_promotion_proposed" ? {
+          context_task_ref: event.context_task_ref,
+          context_max_interpretations: event.context_max_interpretations,
+        } : {}),
         context_hash: event.context_hash,
         model_ref: event.model_ref,
+        proposal_event_type: event.type,
+        ...(event.type === "creator.judgment_promotion_proposed" ? {
+          source_interpretation_refs: [...event.source_interpretation_refs],
+          promotion_basis: event.promotion_basis,
+          promotion_basis_refs: [...event.promotion_basis_refs],
+        } : {}),
         ...(event.review_at ? { review_at: event.review_at } : {}),
         status: "proposed",
         source_turn_refs: [...event.source_turn_refs],
@@ -476,7 +1053,7 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
         throw new Error("contradiction requires exactly one known evidence, turn or judgment ref");
       }
       if ((contradictingEvidence && contradictingEvidence.subject_ref !== contradicted.subject_ref)
-        || (contradictingTurn && !contradictingTurn.subject_refs.includes(contradicted.subject_ref))
+        || (contradictingTurn && !sameStringSet(contradictingTurn.subject_refs, [contradicted.subject_ref]))
         || (contradictingJudgment && contradictingJudgment.subject_ref !== contradicted.subject_ref)) {
         throw new Error("contradiction ref belongs to another subject");
       }
@@ -511,7 +1088,7 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
           throw new Error("contradiction resolution requires exactly one known resolution ref");
         }
         if ((resolutionEvidence && resolutionEvidence.subject_ref !== original.subject_ref)
-          || (resolutionTurn && !resolutionTurn.subject_refs.includes(original.subject_ref))
+          || (resolutionTurn && !sameStringSet(resolutionTurn.subject_refs, [original.subject_ref]))
           || (resolutionJudgment && resolutionJudgment.subject_ref !== original.subject_ref)
           || (resolutionReview && ![contradiction.id, original.id].includes(resolutionReview.target_ref))) {
           throw new Error("contradiction resolution ref belongs to another subject");
@@ -565,7 +1142,7 @@ export function applyCreatorEvent(view: CreatorView | undefined, event: CreatorE
 }
 
 function recordCreatorEvent(event: CreatorEvent, principal: RuntimePrincipal): CreatorStoredEvent {
-  const capability = creatorCapabilityForEventType(event.type);
+  const capability = creatorCapabilityForEvent(event);
   createCreatorCapabilityGate(principal).require(capability);
   return {
     event: structuredClone(event),
@@ -592,7 +1169,7 @@ export function validateCreatorStoredEvent(value: unknown): asserts value is Cre
   requireString(receipt.capability, "committed_by.capability");
   if (receipt.product !== "creator") throw new Error("creator receipt product must be creator");
   if (!["test", "shadow", "production"].includes(receipt.environment as string)) throw new Error("invalid creator receipt environment");
-  if (receipt.capability !== creatorCapabilityForEventType((record.event as CreatorEvent).type)) {
+  if (receipt.capability !== creatorCapabilityForEvent(record.event as CreatorEvent)) {
     throw new Error("creator receipt capability does not match event type");
   }
 }
@@ -672,8 +1249,8 @@ export class JsonlCreatorStore implements CreatorWorkspaceStore {
   }
 
   async appendAs(event: CreatorEvent, principal: RuntimePrincipal): Promise<CreatorView> {
-    validateCreatorEvent(event);
-    const capability = creatorCapabilityForEventType(event.type);
+    validateCreatorAppendEvent(event);
+    const capability = creatorCapabilityForEvent(event);
     const gate = createCreatorCapabilityGate(principal);
     gate.require("context.read_private");
     gate.require(capability);
@@ -681,9 +1258,18 @@ export class JsonlCreatorStore implements CreatorWorkspaceStore {
     await mkdir(dirname(path), { recursive: true });
     return withJsonlLock(path, `creator workspace ${event.workspace_id}`, async () => {
       const current = await this.#readRecords(event.workspace_id);
-      const identical = current.events.find((item) => item.event_id === event.event_id);
+      const identicalIndex = current.events.findIndex((item) => item.event_id === event.event_id);
+      const identical = identicalIndex === -1 ? undefined : current.events[identicalIndex];
       if (identical) {
         if (canonicalJson(identical) !== canonicalJson(event)) throw new Error(`event_id content conflict: ${event.event_id}`);
+        const committedBy = current.records[identicalIndex]?.committed_by;
+        if (!committedBy
+          || committedBy.principal_id !== principal.principal_id
+          || committedBy.product !== principal.product
+          || committedBy.environment !== principal.environment
+          || committedBy.capability !== capability) {
+          throw new Error(`event_id principal conflict: ${event.event_id}`);
+        }
         if (!current.view) throw new Error("stored event did not create a creator workspace");
         return current.view;
       }

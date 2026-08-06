@@ -1,6 +1,6 @@
 import { canonicalJson, contentHash } from "../../shared/canonical.ts";
 import type { RuntimePrincipal } from "../../shared/capability-gate.ts";
-import { creatorCapabilityForEventType } from "../capabilities.ts";
+import { creatorCapabilityForEvent } from "../capabilities.ts";
 import { compileCreatorContext, type CreatorContextManifest, type CreatorContextRequest } from "../context/compiler.ts";
 import {
   EventTruthCreatorContextCompiler,
@@ -60,7 +60,7 @@ function receiptMatchesPrincipal(
     && record.committed_by.principal_id === principal.principal_id
     && record.committed_by.product === principal.product
     && record.committed_by.environment === principal.environment
-    && record.committed_by.capability === creatorCapabilityForEventType(event.type);
+    && record.committed_by.capability === creatorCapabilityForEvent(event);
 }
 
 export class CreatorAgentV0 {
@@ -75,6 +75,10 @@ export class CreatorAgentV0 {
     model: CreatorDecisionModel,
     contextCompiler: CreatorContextCompilerPort = new EventTruthCreatorContextCompiler(),
   ) {
+    if (contextCompiler instanceof EventTruthCreatorContextCompiler
+      && "readProjectionRecordsAs" in store && typeof store.readProjectionRecordsAs === "function") {
+      throw new Error("projection-capable Creator store requires an explicit ProjectionVerifiedCreatorContextCompiler");
+    }
     this.#store = store;
     this.#principal = principal;
     this.#model = model;
@@ -152,7 +156,7 @@ export class CreatorAgentV0 {
       throw new Error("Creator model supersedes a judgment outside the compiled context");
     }
     const event: CreatorEvent = {
-      schema_version: 1,
+      schema_version: 2,
       event_id: request.event_id,
       workspace_id: request.workspace_id,
       base_revision: current.view.revision,

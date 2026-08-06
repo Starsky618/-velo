@@ -92,7 +92,10 @@ export function validateCreatorModelAction(value: unknown): asserts value is Cre
   if (JSON.stringify(value.evidence_refs) !== JSON.stringify([...value.evidence_refs].sort())) {
     throw new Error("evidence_refs must be sorted");
   }
-  if (value.source_turn_refs.length + value.evidence_refs.length === 0) throw new Error("Creator judgment needs a source turn or evidence");
+  if (value.source_turn_refs.length > 0) {
+    throw new Error("CreatorAgentV0 cannot consume conversation turns; use interpretation and promotion");
+  }
+  if (value.evidence_refs.length === 0) throw new Error("CreatorAgentV0 needs route/domain evidence");
   if (value.review_at !== undefined) assertUnicodeScalarString(value.review_at, "review_at");
   if (value.supersedes_judgment_id !== undefined) assertUnicodeScalarString(value.supersedes_judgment_id, "supersedes_judgment_id");
 }

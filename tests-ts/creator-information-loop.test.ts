@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 import { compileCreatorContext } from "../agent_runtime/creator/context/compiler.ts";
 import { evaluateCreatorContextReplay } from "../agent_runtime/creator/eval/context-replay.ts";
 import {
-  createTestCreatorAgentPrincipal,
+  createTestCreatorLegacyAgentPrincipal,
   createTestCreatorPrincipal,
   createTestCreatorReviewerPrincipal,
 } from "../agent_runtime/creator/capabilities.ts";
@@ -34,7 +34,7 @@ import type { CreatorWorkspaceStore } from "../agent_runtime/creator/state/store
 const execFileAsync = promisify(execFile);
 
 const fullPrincipal = createTestCreatorPrincipal();
-const agentPrincipal = createTestCreatorAgentPrincipal();
+const agentPrincipal = createTestCreatorLegacyAgentPrincipal();
 const reviewerPrincipal = createTestCreatorReviewerPrincipal();
 const workspaceId = "creator-tianlongshan-loop";
 const subjectRef = "route:tianlongshan";
@@ -357,7 +357,7 @@ test("Creator runtime rejects model citations that were not present in its compi
   assert.equal(unchanged.view?.revision, 6);
   const otherContext = compileCreatorContext(unchanged.view!, { task: "判断另一条路线", subject_refs: ["route:other"] });
   assert.equal(otherContext.manifest.omissions.some((item) => (
-    item.category === "evidence" && item.reason === "subject_mismatch" && item.refs.includes("evidence:guide")
+    item.category === "evidence" && item.reason === "subject_mismatch" && item.count === 1 && item.refs.length === 0
   )), true);
 });
 
@@ -442,6 +442,24 @@ test("Creator runtime never claims another principal's exact event as its reconc
   );
 });
 
+test("JSONL exact retry remains bound to the original principal receipt", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "velo-creator-jsonl-principal-"));
+  const store = new JsonlCreatorStore(directory, fullPrincipal);
+  const event: CreatorEvent = {
+    ...base("principal-retry-1", at(0)),
+    type: "creator.workspace_started",
+    mission: "验证 JSONL 幂等重试不能跨身份认领",
+  };
+  const first = await store.appendAs(event, fullPrincipal);
+  assert.equal(first.revision, 1);
+  const otherPrincipal: RuntimePrincipal = {
+    ...fullPrincipal,
+    principal_id: "test:other-creator-runtime",
+  };
+  await assert.rejects(() => store.appendAs(event, otherPrincipal), /event_id principal conflict/);
+  assert.equal((await store.appendAs(event, fullPrincipal)).revision, 1);
+});
+
 test("Creator runtime reports typed reconciliation_required when commit outcome cannot be read", async () => {
   const { store, model } = await setupRealTianlongshanLoop();
   let reads = 0;
@@ -504,7 +522,9 @@ test("Creator Context fails closed when rights are revoked or a judgment reaches
   const blocked = compileCreatorContext(revoked, { task: "撤权后重新编译", subject_refs: [subjectRef], as_of: at(9) });
   assert.deepEqual(blocked.context.current_judgments, []);
   assert.deepEqual(blocked.context.relevant_evidence, []);
-  assert.equal(blocked.manifest.omissions.some((item) => item.reason === "rights_not_allowed" && item.refs.includes("evidence:guide")), true);
+  assert.equal(blocked.manifest.omissions.some((item) => (
+    item.reason === "rights_not_allowed" && item.count > 0 && item.refs.length === 0
+  )), true);
   assert.equal(blocked.manifest.included.source_revisions.some((item) => item.source_ref === "repo:tianlongshan-guide"), false);
 });
 
@@ -520,7 +540,9 @@ test("latest source rights follow event revision when timestamps are identical",
   });
   const forbidden = compileCreatorContext(forbiddenView, { task: "同时间撤权", subject_refs: [subjectRef], as_of: at(6) });
   assert.deepEqual(forbidden.context.relevant_evidence, []);
-  assert.equal(forbidden.manifest.omissions.some((item) => item.reason === "rights_not_allowed" && item.refs.includes("evidence:guide")), true);
+  assert.equal(forbidden.manifest.omissions.some((item) => (
+    item.reason === "rights_not_allowed" && item.count > 0 && item.refs.length === 0
+  )), true);
 
   await commit(store, {
     ...base("z-rights-forbidden", at(7)), type: "creator.rights_checked", rights_check_id: "rights:z-forbidden",

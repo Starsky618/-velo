@@ -20,11 +20,15 @@ from sqlalchemy.orm import sessionmaker
 
 from app.creator_persistence.canonical import canonical_json, content_hash
 from app.creator_persistence.models import (
+    CreatorBehaviorCalibration,
     CreatorEvidenceItem,
     CreatorJudgment,
     CreatorJudgmentContradiction,
     CreatorJudgmentDecision,
     CreatorSource,
+    CreatorSourceMessage,
+    CreatorTaskStateRecord,
+    CreatorTurnInterpretation,
     CreatorWorkspace,
     CreatorWorkspaceEvent,
 )
@@ -34,24 +38,70 @@ from app.creator_persistence.service import (
     CreatorAppendConflictError,
     CreatorAuthorizationError,
     CreatorPersistenceService,
+    CreatorEd25519DerivationVerifier,
+    CreatorEd25519VerificationKey,
     CreatorPrincipal,
     CreatorProjectionError,
     CreatorProjectionRevisionMismatchError,
     CreatorStaleRevisionError,
+    capability_for_event,
 )
+
+
+DERIVATION_KEY_ID = "test-creator-reducer-v1"
+
+
+def _generate_derivation_key_pair() -> tuple[str, str]:
+    script = (
+        "const{generateKeyPairSync}=require('node:crypto');"
+        "const{privateKey,publicKey}=generateKeyPairSync('ed25519');"
+        "process.stdout.write(JSON.stringify({private_key_pem:privateKey.export({format:'pem',type:'pkcs8'}).toString(),"
+        "public_key_pem:publicKey.export({format:'pem',type:'spki'}).toString()}));"
+    )
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    keys = json.loads(result.stdout)
+    return keys["private_key_pem"], keys["public_key_pem"]
+
+
+DERIVATION_PRIVATE_KEY_PEM, DERIVATION_PUBLIC_KEY_PEM = _generate_derivation_key_pair()
 
 
 FULL = CreatorPrincipal(
     principal_id="test:creator-runtime",
     product="creator",
     environment="test",
-    scopes=("context.read_private", *tuple(dict.fromkeys(CAPABILITY_BY_EVENT_TYPE.values()))),
+    scopes=(
+        "context.read_private", *tuple(dict.fromkeys(CAPABILITY_BY_EVENT_TYPE.values())),
+        "behavior.calibrate.agent_assessed", "behavior.calibrate.mechanical",
+        "behavior.calibrate.tim_confirmed", "behavior.calibrate.real_world",
+    ),
 )
 AGENT = CreatorPrincipal(
     principal_id="test:creator-agent",
     product="creator",
     environment="test",
     scopes=tuple(scope for scope in FULL.scopes if scope != "judgment.decide"),
+)
+INTERPRETATION_AGENT = CreatorPrincipal(
+    principal_id="test:creator-interpretation-agent",
+    product="creator",
+    environment="test",
+    scopes=("context.read_private", "conversation.record", "interpretation.propose", "task.update"),
+)
+PROMOTION_ENGINE = CreatorPrincipal(
+    principal_id="test:creator-promotion-engine",
+    product="creator",
+    environment="test",
+    scopes=("context.read_private", "judgment.promote"),
+)
+CALIBRATION_ADAPTER = CreatorPrincipal(
+    principal_id="test:creator-calibration-adapter",
+    product="creator",
+    environment="test",
+    scopes=(
+        "context.read_private",
+        "behavior.calibrate.agent_assessed", "behavior.calibrate.mechanical",
+    ),
 )
 REVIEWER = CreatorPrincipal(
     principal_id="test:tim-reviewer",
@@ -90,7 +140,25 @@ def pg_engine():
 
 @pytest.fixture(scope="module")
 def service(pg_engine):
-    return CreatorPersistenceService(sessionmaker(bind=pg_engine, autocommit=False, autoflush=False))
+    return CreatorPersistenceService(
+        sessionmaker(bind=pg_engine, autocommit=False, autoflush=False),
+        CreatorEd25519DerivationVerifier({
+            DERIVATION_KEY_ID: CreatorEd25519VerificationKey(
+                public_key_pem=DERIVATION_PUBLIC_KEY_PEM,
+                allowed_principal_ids=tuple({
+                    FULL.principal_id, AGENT.principal_id, INTERPRETATION_AGENT.principal_id,
+                    PROMOTION_ENGINE.principal_id, CALIBRATION_ADAPTER.principal_id,
+                }),
+                allowed_environments=("test",),
+                allowed_capabilities=(
+                    "interpretation.propose", "task.update",
+                    "behavior.calibrate.agent_assessed", "behavior.calibrate.mechanical",
+                    "behavior.calibrate.tim_confirmed", "behavior.calibrate.real_world",
+                    "judgment.propose", "judgment.promote",
+                ),
+            ),
+        }),
+    )
 
 
 def _workspace(prefix: str) -> str:
@@ -132,6 +200,43 @@ def _source_sequence(service: CreatorPersistenceService, workspace_id: str, *, p
     service.append(source, FULL)
     service.append(rights, FULL)
     return source, rights
+
+
+def _typescript_derivation_attestation(
+    service: CreatorPersistenceService,
+    event: dict,
+    principal: CreatorPrincipal,
+) -> dict:
+    records = service.read_records(event["workspace_id"], FULL)[:event["base_revision"]]
+    script = (
+        "import{CreatorEd25519DerivationAttestor}from'./agent_runtime/creator/state/derivation-attestation.ts';"
+        "let b='';for await(const c of process.stdin)b+=c;const x=JSON.parse(b);"
+        "process.stdout.write(JSON.stringify(new CreatorEd25519DerivationAttestor(x.key_id,x.private_key_pem,x.policy)"
+        ".attest(x.event,x.records,x.principal)));"
+    )
+    payload = {
+        "key_id": DERIVATION_KEY_ID, "private_key_pem": DERIVATION_PRIVATE_KEY_PEM,
+        "policy": {
+            "allowed_principal_ids": [principal.principal_id],
+            "allowed_environments": [principal.environment],
+            "allowed_capabilities": [capability_for_event(event)],
+        },
+        "event": event, "records": records,
+        "principal": {
+            "principal_id": principal.principal_id, "product": principal.product,
+            "environment": principal.environment, "scopes": list(principal.scopes),
+        },
+    }
+    result = subprocess.run(
+        ["node", "--no-warnings", "--experimental-strip-types", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1], input=json.dumps(payload, ensure_ascii=False),
+        capture_output=True, text=True, check=True,
+    )
+    return json.loads(result.stdout)
+
+
+def _append_derived(service: CreatorPersistenceService, event: dict, principal: CreatorPrincipal):
+    return service.append(event, principal, _typescript_derivation_attestation(service, event, principal))
 
 
 def test_canonical_hash_matches_typescript_for_unicode_and_numbers(tmp_path):
@@ -179,6 +284,50 @@ def test_migration_upgrade_downgrade_upgrade_round_trip(pg_engine):
             migration.upgrade()
             assert set(inspect(connection).get_table_names(schema=schema)) == expected
             migration.downgrade()
+    finally:
+        with pg_engine.begin() as connection:
+            connection.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+
+
+def test_context_interpretation_migration_round_trip(pg_engine):
+    schema = f"creator_context_migration_{uuid.uuid4().hex}"
+    foundation = importlib.import_module("migrations.versions.20260806_creator_pg_v0")
+    context = importlib.import_module("migrations.versions.20260806_creator_ctx_v1")
+    added = {
+        "creator_turn_interpretations", "creator_task_states",
+        "creator_behavior_calibrations", "creator_judgment_interpretations",
+    }
+    with pg_engine.begin() as connection:
+        connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
+    try:
+        with pg_engine.begin() as connection:
+            connection.exec_driver_sql(f'SET LOCAL search_path TO "{schema}"')
+            foundation.op = Operations(MigrationContext.configure(connection))
+            context.op = Operations(MigrationContext.configure(connection))
+            foundation.upgrade()
+            context.upgrade()
+            assert added.issubset(set(inspect(connection).get_table_names(schema=schema)))
+            judgment_columns = {item["name"] for item in inspect(connection).get_columns(
+                "creator_judgments", schema=schema
+            )}
+            assert {
+                "proposal_event_type", "context_task_ref", "context_max_interpretations",
+                "promotion_basis", "promotion_basis_refs",
+            }.issubset(judgment_columns)
+            event_columns = {item["name"] for item in inspect(connection).get_columns(
+                "creator_workspace_events", schema=schema
+            )}
+            assert {
+                "derivation_key_id", "derivation_signature", "derivation_prior_records_hash",
+            }.issubset(event_columns)
+            task_columns = {item["name"] for item in inspect(connection).get_columns(
+                "creator_task_states", schema=schema
+            )}
+            assert {"source_interpretation_ref", "engine_ref"}.issubset(task_columns)
+            context.downgrade()
+            assert not added.intersection(inspect(connection).get_table_names(schema=schema))
+            foundation.downgrade()
+            assert inspect(connection).get_table_names(schema=schema) == []
     finally:
         with pg_engine.begin() as connection:
             connection.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
@@ -304,6 +453,11 @@ def test_event_idempotency_conflict_and_projection_failure_roll_back(service, pg
     first = service.append(source, FULL)
     second = service.append(source, FULL)
     assert first == second
+    other_authorized_principal = CreatorPrincipal(
+        principal_id="test:other-creator-runtime", product="creator", environment="test", scopes=FULL.scopes,
+    )
+    with pytest.raises(CreatorAppendConflictError, match="principal conflict"):
+        service.append(source, other_authorized_principal)
     with pytest.raises(CreatorAppendConflictError):
         service.append({**source, "provenance_ref": "test:changed"}, FULL)
 
@@ -399,21 +553,20 @@ def test_python_boundary_rejects_events_typescript_cannot_cold_replay(service, p
         raw_observation="天龙山结构证据", observed_at="2026-08-01T00:00:00.000Z",
     ), AGENT)
     proposal = _proposal_event(
-        workspace_id, 4, "event:bad-context", "judgment:bad-context", "上下文必须可重放。",
+        service, workspace_id, 4, "event:bad-context", "judgment:bad-context", "上下文必须可重放。",
         "evidence:guide", 4,
     )
-    proposal["context_as_of"] = "2026-08-06T01:04:00Z"
-    proposal["context_request_hash"] = content_hash({
-        "task": proposal["context_task"], "subject_refs": proposal["context_subject_refs"],
-        "as_of": proposal["context_as_of"], "max_pending_turns": proposal["context_max_pending_turns"],
-        "max_evidence": proposal["context_max_evidence"],
+    invalid_instant = {**proposal, "context_as_of": "2026-08-06T01:04:00Z"}
+    invalid_instant["context_request_hash"] = content_hash({
+        "task": invalid_instant["context_task"], "subject_refs": invalid_instant["context_subject_refs"],
+        "as_of": invalid_instant["context_as_of"], "max_pending_turns": invalid_instant["context_max_pending_turns"],
+        "max_evidence": invalid_instant["context_max_evidence"],
     })
     with pytest.raises(CreatorProjectionError, match="context_as_of"):
-        service.append(proposal, AGENT)
+        service.append(invalid_instant, AGENT)
     invalid_budget = {
         **proposal,
         "event_id": "event:bad-budget",
-        "context_as_of": "2026-08-06T01:04:00.000Z",
         "context_max_evidence": -1,
     }
     invalid_budget["context_request_hash"] = content_hash({
@@ -428,7 +581,6 @@ def test_python_boundary_rejects_events_typescript_cannot_cold_replay(service, p
         **proposal,
         "event_id": "event:unsorted-refs",
         "proposal_id": "judgment:unsorted-refs",
-        "context_as_of": "2026-08-06T01:04:00.000Z",
         "evidence_refs": ["evidence:z", "evidence:a"],
     }
     with pytest.raises(CreatorProjectionError, match="evidence_refs must use JavaScript UTF-16 sort order"):
@@ -438,18 +590,9 @@ def test_python_boundary_rejects_events_typescript_cannot_cold_replay(service, p
         **proposal,
         "event_id": "event:safe-number",
         "proposal_id": "judgment:safe-number",
-        "context_as_of": "2026-08-06T01:04:00.000Z",
-        # JavaScript sorts strings by UTF-16 code units: the surrogate pair
-        # for U+10000 precedes the BMP private-use U+E000 character.
-        "context_subject_refs": ["\U00010000", "\ue000"],
         "typed_value": 2**53 - 1,
     }
-    safe_number["context_request_hash"] = content_hash({
-        "task": safe_number["context_task"], "subject_refs": safe_number["context_subject_refs"],
-        "as_of": safe_number["context_as_of"], "max_pending_turns": safe_number["context_max_pending_turns"],
-        "max_evidence": safe_number["context_max_evidence"],
-    })
-    service.append(safe_number, AGENT)
+    _append_derived(service, safe_number, AGENT)
     unsafe_number = {
         **safe_number,
         "event_id": "event:unsafe-number",
@@ -475,22 +618,50 @@ def test_python_boundary_rejects_events_typescript_cannot_cold_replay(service, p
         )) == 5
 
 
-def _proposal_event(workspace_id: str, revision: int, event_id: str, proposal_id: str, statement: str, evidence_id: str, minute: int, **extra):
+def _compile_records_inline(records: list[dict], request: dict) -> dict:
+    script = (
+        "import{compileCreatorContext}from'./agent_runtime/creator/context/compiler.ts';"
+        "import{replayCreatorWorkspace}from'./agent_runtime/creator/state/engine.ts';"
+        "let b='';for await(const c of process.stdin)b+=c;const x=JSON.parse(b);"
+        "process.stdout.write(JSON.stringify(compileCreatorContext(replayCreatorWorkspace(x.records),x.request)));"
+    )
+    result = subprocess.run(
+        ["node", "--no-warnings", "--experimental-strip-types", "--input-type=module", "-e", script],
+        cwd=Path(__file__).resolve().parents[1], input=json.dumps({"records": records, "request": request}, ensure_ascii=False),
+        capture_output=True, text=True, check=True,
+    )
+    return json.loads(result.stdout)
+
+
+def _proposal_event(
+    service: CreatorPersistenceService,
+    workspace_id: str,
+    revision: int,
+    event_id: str,
+    proposal_id: str,
+    statement: str,
+    evidence_id: str,
+    minute: int,
+    **extra,
+):
     request = {
         "task": "判断天龙山路线结构", "subject_refs": ["route:tianlongshan"],
         "as_of": f"2026-08-06T01:{minute:02d}:00.000Z", "max_pending_turns": 20, "max_evidence": 30,
     }
-    return _event(
+    bundle = _compile_records_inline(service.read_records(workspace_id, FULL), request)
+    event = _event(
         workspace_id, revision, event_id, "creator.judgment_proposed", minute,
         proposal_id=proposal_id, judgment_key="route.tianlongshan.structure", subject_ref="route:tianlongshan",
         statement=statement, statement_hash=content_hash(statement), typed_value="linear_core_climb",
         temporality="slow_changing", review_at="2027-01-01T00:00:00.000Z",
-        context_compiler_version="creator-context-v0", context_request_hash=content_hash(request),
+        context_compiler_version=bundle["manifest"]["compiler_version"], context_request_hash=bundle["manifest"]["request_hash"],
         context_task=request["task"], context_subject_refs=request["subject_refs"], context_as_of=request["as_of"],
-        context_max_pending_turns=20, context_max_evidence=30, context_hash=content_hash({"fixture": proposal_id}),
+        context_max_pending_turns=20, context_max_evidence=30, context_hash=bundle["manifest"]["context_hash"],
         model_ref="shadow:test", source_turn_refs=[], evidence_refs=[evidence_id],
         reason="真实证据支持该判断。", **extra,
     )
+    event["schema_version"] = 2
+    return event
 
 
 def _append_exact_decision_loop(service: CreatorPersistenceService, workspace_id: str):
@@ -503,8 +674,8 @@ def _append_exact_decision_loop(service: CreatorPersistenceService, workspace_id
     )
     service.append(evidence, AGENT)
     statement = "天龙山是一条以长距离耐力爬升为核心的路线认知对象。"
-    proposal = _proposal_event(workspace_id, 4, "event:proposal", "judgment:v1", statement, "evidence:guide", 4)
-    service.append(proposal, AGENT)
+    proposal = _proposal_event(service, workspace_id, 4, "event:proposal", "judgment:v1", statement, "evidence:guide", 4)
+    _append_derived(service, proposal, AGENT)
     exact_turn = _event(
         workspace_id, 5, "event:review-turn", "creator.conversation_turn_recorded", 5,
         turn_id="turn:confirm-v1", source_ref="source:conversation", source_message_ref="message:confirm-v1",
@@ -519,6 +690,280 @@ def _append_exact_decision_loop(service: CreatorPersistenceService, workspace_id
         response="tim_confirmed", expected_statement_hash=content_hash(statement),
     )
     return statement, decision
+
+
+def test_interpretation_task_promotion_and_calibration_round_trip(service, pg_engine):
+    workspace_id = _workspace("creator-interpretation")
+    _start(service, workspace_id)
+    _source_sequence(service, workspace_id)
+    with pytest.raises(CreatorProjectionError, match="at least one privacy subject"):
+        service.append(_event(
+            workspace_id, 3, "event:empty-subject", "creator.conversation_turn_recorded", 3,
+            turn_id="turn:empty-subject", source_ref="source:conversation",
+            source_message_ref="message:empty-subject", source_role="user", actor="tim",
+            authorship_basis="direct_unquoted_message", raw_text="没有隐私主体标签",
+            content_hash=content_hash("没有隐私主体标签"), subject_refs=[],
+        ), INTERPRETATION_AGENT)
+    rule_text = "单次局部纠正不得自动升格为长期规则。"
+    service.append(_event(
+        workspace_id, 3, "event:rule-turn", "creator.conversation_turn_recorded", 3,
+        turn_id="turn:rule", source_ref="source:conversation", source_message_ref="message:rule",
+        source_role="user", actor="tim", authorship_basis="direct_unquoted_message",
+        raw_text=rule_text, content_hash=content_hash(rule_text), subject_refs=["project:velo-agent"],
+    ), INTERPRETATION_AGENT)
+    task_event = _event(
+        workspace_id, 4, "event:task", "creator.task_state_changed", 4,
+        task_state_id="task-state:firewall", task_ref="task:firewall", project_ref="project:velo",
+        status="active", objective="建立解释升格防火墙", focus="先保留原话，再判定作用域",
+        acceptance_criteria=["局部纠正不升格", "精确确认后才成为当前判断"], open_loops=[],
+        source_turn_refs=["turn:rule"],
+    )
+    with pytest.raises(CreatorProjectionError, match="reducer attestation"):
+        service.append(task_event, INTERPRETATION_AGENT)
+    bad_attestation = {
+        **_typescript_derivation_attestation(service, task_event, INTERPRETATION_AGENT),
+        "signature": "ed25519:" + "A" * 86,
+    }
+    with pytest.raises(CreatorProjectionError, match="invalid Creator derivation attestation signature"):
+        service.append(task_event, INTERPRETATION_AGENT, bad_attestation)
+    _append_derived(service, task_event, INTERPRETATION_AGENT)
+    interpretation_request = {
+        "task": "解释并分类 Tim 指令", "task_ref": "task:firewall",
+        "subject_refs": ["project:velo-agent"], "as_of": "2026-08-06T01:05:00.000Z",
+        "max_pending_turns": 20, "max_evidence": 30, "max_interpretations": 20,
+    }
+    interpretation_bundle = _compile_records_inline(
+        service.read_records(workspace_id, FULL), interpretation_request
+    )
+    interpretation = _event(
+        workspace_id, 5, "event:interpretation", "creator.turn_interpretation_proposed", 5,
+        interpretation_id="interpretation:firewall", turn_id="turn:rule", task_ref="task:firewall",
+        subject_refs=["project:velo-agent"], speech_acts=["instruction", "decision"],
+        epistemic_status="explicit", scope_level="project", scope_ref="project:velo",
+        persistence_intent="durable_explicit", annotation_basis="direct_language",
+        claim="Creator 必须把局部解释与长期判断升格分开。", confidence=1,
+        alternatives=[], supporting_refs=["turn:rule"], counterevidence_refs=[], relations=[],
+        action_effect="candidate_for_promotion", review_when="架构边界变化时复核",
+        context_compiler_version="creator-context-v1",
+        context_request_hash=interpretation_bundle["manifest"]["request_hash"],
+        context_task="解释并分类 Tim 指令", context_subject_refs=["project:velo-agent"],
+        context_as_of="2026-08-06T01:05:00.000Z", context_max_pending_turns=20,
+        context_max_evidence=30, context_max_interpretations=20,
+        context_hash=interpretation_bundle["manifest"]["context_hash"], model_ref="shadow:interpretation-v0",
+    )
+    _append_derived(service, interpretation, INTERPRETATION_AGENT)
+    request = {
+        "task": "建立升格防火墙", "task_ref": "task:firewall", "subject_refs": ["project:velo-agent"],
+        "as_of": "2026-08-06T01:06:00.000Z", "max_pending_turns": 20, "max_evidence": 30,
+        "max_interpretations": 20,
+    }
+    statement = "VELO Creator 中，单次局部纠正不得自动升格为长期规则。"
+    promotion_bundle = _compile_records_inline(service.read_records(workspace_id, FULL), request)
+    promotion = _event(
+        workspace_id, 6, "event:promotion", "creator.judgment_promotion_proposed", 6,
+        proposal_id="judgment:firewall", judgment_key="creator.context.promotion-firewall",
+        subject_ref="project:velo-agent", statement=statement, statement_hash=content_hash(statement),
+        typed_value=True, temporality="permanent", context_compiler_version="creator-context-v1",
+        context_request_hash=promotion_bundle["manifest"]["request_hash"], context_task=request["task"],
+        context_task_ref=request["task_ref"], context_subject_refs=request["subject_refs"],
+        context_as_of=request["as_of"], context_max_pending_turns=20, context_max_evidence=30,
+        context_max_interpretations=20, context_hash=promotion_bundle["manifest"]["context_hash"],
+        model_ref="creator-promotion-engine-v0", source_turn_refs=["turn:rule"], evidence_refs=[],
+        source_interpretation_refs=["interpretation:firewall"], promotion_basis="durable_explicit",
+        promotion_basis_refs=["interpretation:firewall"], reason="精确 Tim 项目指令满足升格门槛。",
+    )
+    with pytest.raises(subprocess.CalledProcessError):
+        _typescript_derivation_attestation(service, {
+            **promotion, "event_id": "event:forged-promotion-model", "model_ref": "shadow:forged",
+        }, PROMOTION_ENGINE)
+    zero_budget_request = {**request, "max_interpretations": 0}
+    with pytest.raises(CreatorProjectionError, match="positive integer"):
+        service.append({
+            **promotion, "event_id": "event:zero-promotion-budget", "context_max_interpretations": 0,
+            "context_request_hash": content_hash(zero_budget_request),
+        }, PROMOTION_ENGINE)
+    _append_derived(service, promotion, PROMOTION_ENGINE)
+    with pytest.raises(subprocess.CalledProcessError):
+        _typescript_derivation_attestation(service, _event(
+            workspace_id, 7, "event:forged-task-update", "creator.task_state_changed", 7,
+            task_state_id="task-state:forged", task_ref="task:firewall", project_ref="project:velo",
+            status="active", objective="建立解释升格防火墙",
+            focus="Creator 必须把局部解释与长期判断升格分开。",
+            acceptance_criteria=["局部纠正不升格", "精确确认后才成为当前判断"], open_loops=[],
+            source_turn_refs=["turn:rule"], supersedes_task_state_id="task-state:firewall",
+            source_interpretation_ref="interpretation:firewall", engine_ref="creator-task-state-engine-v0",
+        ), INTERPRETATION_AGENT)
+
+    local_text = "这里只修正当前回答，不要变成长期规则。"
+    service.append(_event(
+        workspace_id, 7, "event:local-turn", "creator.conversation_turn_recorded", 7,
+        turn_id="turn:local", source_ref="source:conversation", source_message_ref="message:local",
+        source_role="user", actor="tim", authorship_basis="direct_unquoted_message",
+        raw_text=local_text, content_hash=content_hash(local_text), subject_refs=["project:velo-agent"],
+    ), INTERPRETATION_AGENT)
+    local_request = {
+        "task": "解释当前局部纠正", "task_ref": "task:local",
+        "subject_refs": ["project:velo-agent"], "as_of": "2026-08-06T01:08:00.000Z",
+        "max_pending_turns": 20, "max_evidence": 30, "max_interpretations": 20,
+    }
+    local_bundle = _compile_records_inline(service.read_records(workspace_id, FULL), local_request)
+    _append_derived(service, _event(
+        workspace_id, 8, "event:local-interpretation", "creator.turn_interpretation_proposed", 8,
+        interpretation_id="interpretation:local", turn_id="turn:local", task_ref="task:local",
+        subject_refs=["project:velo-agent"], speech_acts=["correction"], epistemic_status="explicit",
+        scope_level="task", scope_ref="task:local", persistence_intent="task_local",
+        annotation_basis="direct_language", claim="只修正当前回答。", confidence=1, alternatives=[],
+        supporting_refs=["turn:local"], counterevidence_refs=[], relations=[], action_effect="change_current_task",
+        review_when="任务结束时丢弃", context_compiler_version="creator-context-v1",
+        context_request_hash=local_bundle["manifest"]["request_hash"],
+        context_task="解释当前局部纠正", context_subject_refs=["project:velo-agent"],
+        context_as_of="2026-08-06T01:08:00.000Z", context_max_pending_turns=20,
+        context_max_evidence=30, context_max_interpretations=20,
+        context_hash=local_bundle["manifest"]["context_hash"], model_ref="shadow:interpretation-v0",
+    ), INTERPRETATION_AGENT)
+    bad_request = {**request, "task_ref": "task:local", "as_of": "2026-08-06T01:09:00.000Z"}
+    with pytest.raises(subprocess.CalledProcessError):
+        _typescript_derivation_attestation(service, _event(
+            workspace_id, 9, "event:bad-promotion", "creator.judgment_promotion_proposed", 9,
+            proposal_id="judgment:bad-local", judgment_key="creator.context.bad-local",
+            subject_ref="project:velo-agent", statement="所有局部纠正都成为长期规则。",
+            statement_hash=content_hash("所有局部纠正都成为长期规则。"), typed_value=True,
+            temporality="permanent", context_compiler_version="creator-context-v1",
+            context_request_hash=content_hash(bad_request), context_task=bad_request["task"],
+            context_task_ref=bad_request["task_ref"], context_subject_refs=bad_request["subject_refs"],
+            context_as_of=bad_request["as_of"], context_max_pending_turns=20, context_max_evidence=30,
+            context_max_interpretations=20, context_hash=content_hash({"fixture": "bad"}),
+            model_ref="creator-promotion-engine-v0", source_turn_refs=["turn:local"], evidence_refs=[],
+            source_interpretation_refs=["interpretation:local"], promotion_basis="durable_explicit",
+            promotion_basis_refs=["interpretation:local"], reason="故意绕过升格门槛。",
+        ), PROMOTION_ENGINE)
+    legacy_request = {
+        "task": "错误地从对话直写长期判断", "subject_refs": ["project:velo-agent"],
+        "as_of": "2026-08-06T01:10:00.000Z", "max_pending_turns": 20, "max_evidence": 30,
+    }
+    legacy_event = _event(
+        workspace_id, 9, "event:legacy-conversation-bypass", "creator.judgment_proposed", 10,
+        proposal_id="judgment:legacy-bypass", judgment_key="creator.context.legacy-bypass",
+        subject_ref="project:velo-agent", statement="把当前纠正直接写成长效判断。",
+        statement_hash=content_hash("把当前纠正直接写成长效判断。"), typed_value=True,
+        temporality="permanent", context_compiler_version="creator-context-v1",
+        context_request_hash=content_hash(legacy_request), context_task=legacy_request["task"],
+        context_subject_refs=legacy_request["subject_refs"], context_as_of=legacy_request["as_of"],
+        context_max_pending_turns=20, context_max_evidence=30,
+        context_hash=content_hash({"fixture": "legacy-bypass"}), model_ref="shadow:legacy-bypass",
+        source_turn_refs=["turn:local"], evidence_refs=[], reason="故意测试旧入口绕过。",
+    )
+    with pytest.raises(CreatorAuthorizationError, match="judgment.propose"):
+        service.append(legacy_event, INTERPRETATION_AGENT)
+    with pytest.raises(CreatorProjectionError, match="schema v1 creator judgment is replay-only"):
+        service.append(legacy_event, FULL)
+    forged_real_world_calibration = _event(
+        workspace_id, 9, "event:forged-real-world-calibration", "creator.behavior_calibration_recorded", 10,
+        calibration_id="calibration:forged-real-world", task_ref="task:local", metric="overpromotion",
+        verdict="pass", authority="real_world", prediction="伪造真实世界权威", observed_result="伪造结果",
+        context_hash=content_hash({"fixture": "forged-real-world"}),
+        context_item_refs=["interpretation:local"],
+    )
+    with pytest.raises(CreatorAuthorizationError, match="behavior.calibrate.real_world"):
+        service.append(forged_real_world_calibration, CALIBRATION_ADAPTER, {})
+    _append_derived(service, _event(
+        workspace_id, 9, "event:calibration", "creator.behavior_calibration_recorded", 10,
+        calibration_id="calibration:no-overpromotion", task_ref="task:local", metric="overpromotion",
+        verdict="pass", authority="mechanical", prediction="局部纠正不会产生长期判断。",
+        observed_result="绕过升格的写入被 PostgreSQL 事务边界拒绝。",
+        context_hash=content_hash({"fixture": "promotion-context"}),
+        context_item_refs=["interpretation:local"],
+    ), CALIBRATION_ADAPTER)
+
+    def projection_calibration(event_id, context_item_refs, task_ref="task:local"):
+        return _event(
+            workspace_id, 10, event_id, "creator.behavior_calibration_recorded", 11,
+            calibration_id=f"calibration:{event_id}", task_ref=task_ref, metric="context_usefulness",
+            verdict="fail", authority="mechanical", prediction="关系闭包反例",
+            observed_result="PostgreSQL 投影必须独立拒绝", context_hash=content_hash(event_id),
+            context_item_refs=context_item_refs,
+        )
+
+    with service._session_factory() as db:
+        poisoned = db.get(CreatorTurnInterpretation, (workspace_id, "interpretation:local"))
+        assert poisoned is not None
+        poisoned.subject_refs = ["project:velo-agent", "private:other-topic"]
+        db.flush()
+        with pytest.raises(CreatorProjectionError, match="one exact privacy subject set"):
+            service._project_calibration(db, projection_calibration(
+                "projection-cross-subject",
+                ["interpretation:local", "interpretation:firewall"],
+            ), 11)
+
+    with service._session_factory() as db:
+        poisoned = db.get(CreatorTurnInterpretation, (workspace_id, "interpretation:firewall"))
+        assert poisoned is not None
+        poisoned.subject_refs = ["project:velo-agent", "private:other-topic"]
+        db.flush()
+        with pytest.raises(CreatorProjectionError, match="one exact privacy subject set"):
+            service._project_calibration(db, projection_calibration(
+                "projection-judgment-interpretation-lineage",
+                ["judgment:firewall", "turn:rule"],
+            ), 11)
+
+    with service._session_factory() as db:
+        empty_turn = db.get(CreatorSourceMessage, (workspace_id, "turn:local"))
+        assert empty_turn is not None
+        empty_turn.subject_refs = []
+        db.flush()
+        with pytest.raises(CreatorProjectionError, match="one exact privacy subject set"):
+            service._project_calibration(db, projection_calibration(
+                "projection-empty-interpretation-lineage", ["interpretation:local"],
+            ), 11)
+
+    with service._session_factory() as db:
+        empty_turn = db.get(CreatorSourceMessage, (workspace_id, "turn:rule"))
+        assert empty_turn is not None
+        empty_turn.subject_refs = []
+        db.flush()
+        for suffix, reference in [
+            ("task", "task-state:firewall"),
+            ("judgment", "judgment:firewall"),
+        ]:
+            with pytest.raises(CreatorProjectionError, match="one exact privacy subject set"):
+                service._project_calibration(db, projection_calibration(
+                    f"projection-empty-{suffix}-lineage", [reference],
+                ), 11)
+
+    with service._session_factory() as db:
+        with pytest.raises(CreatorProjectionError, match="belong to the calibration task"):
+            service._project_calibration(db, projection_calibration(
+                "projection-cross-task",
+                ["interpretation:local", "interpretation:firewall"],
+            ), 11)
+
+    with service._session_factory() as db:
+        source = db.get(CreatorSource, (workspace_id, "source:conversation"))
+        assert source is not None
+        source.rights_decision = "forbidden"
+        db.flush()
+        with pytest.raises(CreatorProjectionError, match="currently allowed source rights"):
+            service._project_calibration(db, projection_calibration(
+                "projection-rights-revoked", ["interpretation:local"],
+            ), 11)
+
+    records = service.read_records(workspace_id, FULL)
+    projection = service.read_projection_records(workspace_id, 10, FULL)
+    assert projection["records"] == records
+    with pg_engine.connect() as connection:
+        assert connection.scalar(select(func.count()).select_from(CreatorTurnInterpretation).where(
+            CreatorTurnInterpretation.workspace_id == workspace_id
+        )) == 2
+        assert connection.scalar(select(CreatorTaskStateRecord.task_state_id).where(
+            CreatorTaskStateRecord.workspace_id == workspace_id
+        )) == "task-state:firewall"
+        assert connection.scalar(select(CreatorBehaviorCalibration.calibration_id).where(
+            CreatorBehaviorCalibration.workspace_id == workspace_id
+        )) == "calibration:no-overpromotion"
+        judgment = connection.execute(select(
+            CreatorJudgment.proposal_event_type, CreatorJudgment.promotion_basis, CreatorJudgment.status
+        ).where(CreatorJudgment.workspace_id == workspace_id)).one()
+        assert judgment == ("creator.judgment_promotion_proposed", "durable_explicit", "proposed")
 
 
 def test_exact_tim_decision_binding_and_authenticated_receipt(service, pg_engine):
@@ -592,10 +1037,10 @@ def test_replacement_keeps_old_current_until_exact_confirmation(service, pg_engi
     assert service.read_projection_digest(workspace_id, FULL)["unresolved_contradiction_refs"] == ["contradiction:v1"]
     replacement_statement = "天龙山是线性、核心爬坡、半开放的路线认知对象。"
     replacement = _proposal_event(
-        workspace_id, 9, "event:replacement", "judgment:v2", replacement_statement,
+        service, workspace_id, 9, "event:replacement", "judgment:v2", replacement_statement,
         "evidence:guide", 10, supersedes_judgment_id="judgment:v1",
     )
-    service.append(replacement, AGENT)
+    _append_derived(service, replacement, AGENT)
     with pg_engine.connect() as connection:
         current = connection.scalars(select(CreatorJudgment.proposal_id).where(
             CreatorJudgment.workspace_id == workspace_id,
@@ -647,8 +1092,8 @@ def test_exact_tim_rejection_never_creates_current_judgment(service, pg_engine):
         raw_observation="待审核结构证据", observed_at="2026-08-01T00:00:00.000Z",
     ), AGENT)
     statement = "这条判断应被 Tim 拒绝。"
-    service.append(_proposal_event(
-        workspace_id, 4, "event:proposal", "judgment:reject", statement, "evidence:guide", 4,
+    _append_derived(service, _proposal_event(
+        service, workspace_id, 4, "event:proposal", "judgment:reject", statement, "evidence:guide", 4,
     ), AGENT)
     service.append(_event(
         workspace_id, 5, "event:reject-turn", "creator.conversation_turn_recorded", 5,
@@ -780,7 +1225,7 @@ def test_internal_router_binds_bearer_identity_and_never_accepts_body_principal(
                 },
             }
 
-        def append(self, event, principal):
+        def append(self, event, principal, derivation_attestation=None):
             principal.require("workspace.create")
             from app.creator_persistence.service import CreatorAppendReceipt
             return CreatorAppendReceipt(event["event_id"], 1, content_hash(event))
@@ -883,7 +1328,12 @@ def test_relational_projection_reconstructs_all_nine_v0_events_without_payload_j
     assert projection["revision"] == 9
     assert projection["records"] == event_truth
     assert projection["digest"] == service.read_projection_digest(workspace_id, FULL)
-    assert {record["event"]["type"] for record in projection["records"]} == set(CAPABILITY_BY_EVENT_TYPE)
+    assert {record["event"]["type"] for record in projection["records"]} == {
+        "creator.workspace_started", "creator.source_ingested", "creator.rights_checked",
+        "creator.evidence_recorded", "creator.judgment_proposed", "creator.conversation_turn_recorded",
+        "creator.judgment_responded", "creator.judgment_contradiction_recorded",
+        "creator.judgment_contradiction_resolved",
+    }
 
     def authenticate_projection_test(token: str):
         if token != "projection-test-token":
@@ -1021,7 +1471,7 @@ def test_projection_tamper_stops_http_agent_before_model(service, pg_engine, tmp
     assert stopped == {
         "alarm_count": 1,
         "model_calls": 0,
-        "reasons": ["context_mismatch", "projection_record_mismatch"],
+        "reasons": ["projection_record_mismatch", "projection_replay_failed"],
         "stopped": True,
     }
 
