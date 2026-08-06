@@ -1,6 +1,6 @@
 # Creator PostgreSQL Persistence Spec v0
 
-> 状态：Persistence Slice v0 已实现事件真值、事务投影、内部 Store 与重放对账；Projection-native Context + Drift-stop Shadow v0 进一步实现了 §6 的关系投影事件重建、唯一 TypeScript compiler 双路径对账和模型调用前停机告警。Alembic revision `20260806_creator_pg_v0`、Python 单事务 service、可组合但未挂载公共 API 的内部 router，以及 TypeScript HTTP Store/Context guard 都仍是 Shadow 边界；生产身份、路由挂载与生产迁移尚未实现，不能称为完整生产持久化。
+> 状态：Persistence Slice v0 已实现事件真值、事务投影、内部 Store 与重放对账；Projection-native Context + Drift-stop Shadow v0 进一步实现了 §6 的关系投影事件重建、唯一 TypeScript compiler 双路径对账和模型调用前停机告警。`20260806_creator_ctx_v1` 在此基础上增加解释、任务、行为校准和长期判断升格 lineage。两条 migration、Python 单事务 service、可组合但未挂载公共 API 的内部 router，以及 TypeScript HTTP Store/Context guard 都仍是 Shadow 边界；生产身份、路由挂载与生产迁移尚未实现，不能称为完整生产持久化。
 
 ## 1. 推荐方案
 
@@ -65,13 +65,14 @@ Tim 审核动作 / Creator 模型 typed action
 | `revision bigint` | 与 workspace 内事件顺序一致 |
 | `event_id text` | 客户端幂等身份 |
 | `event_type varchar(64)` | 当前 Creator event enum |
-| `schema_version smallint` | 当前为 1 |
+| `schema_version smallint` | 历史事件为 1；仅 evidence-only `creator.judgment_proposed` 允许 2 |
 | `base_revision bigint` | 必须等于 `revision - 1` |
 | `occurred_at timestamptz` | 领域事件时间 |
 | `principal_id text` | 实际提交 principal；不能只相信 payload actor |
 | `principal_product / principal_environment / authorized_capability text` | 认证层写入的授权收据；重放时可审计 Agent proposal 与 Tim reviewer decision |
 | `payload_json jsonb` | exact validated event |
 | `payload_sha256 char(71)` | `sha256:<64 hex>`，用于 idempotency/conflict |
+| `derivation_key_id / derivation_signature / derivation_prior_records_hash` | interpretation/task/calibration/promotion/schema-v2 judgment 的 reducer attestation；普通事件必须为空 |
 | `committed_at timestamptz` | 数据库提交时间 |
 
 关键约束：
@@ -170,6 +171,19 @@ rights 变更必须追加新 event，再更新投影；不能直接改投影冒�
 
 `contradicting_ref` 在数据库中拆成三个可空 FK：evidence、turn、judgment；CHECK `num_nonnulls(...) = 1`，避免不可校验的 polymorphic string。partial index 支持按 workspace/subject 查 unresolved contradiction。
 
+### 4.8 Context Interpretation & Promotion v1 投影
+
+`20260806_creator_ctx_v1` 增加四张表，不修改 Rider 或路线核心表：
+
+- `creator_turn_interpretations`：模型对精确原话的可替代解释、作用域、认识状态、替代解释、反证、关系和生成 Context；它不是 Tim 判断。
+- `creator_task_states`：`task_ref` 的 objective、focus、acceptance、open loops 和精确 Tim 原话依据；同一 task 只有一个未替代状态。
+- `creator_behavior_calibrations`：预测与观察结果分开，保存 authority 和所用 Context refs；结果型升格还必须携带同主体 real-world Evidence，不能只自报标签。
+- `creator_judgment_interpretations`：长期判断到解释的关系 lineage，双端都受 workspace 内复合 FK 约束。
+
+`creator_judgments` 同步增加 proposal event type、task Context、interpretation refs 与 promotion basis。历史 schema v1 的 conversation judgment 保持冷回放，但所有在线 append 入口拒绝新写 v1 judgment；新 `CreatorAgentV0` 发出的 schema v2 `creator.judgment_proposed` 仅允许 route/domain Evidence，禁止引用 conversation turn。新的对话长期判断只能走 interpretation → mechanical promotion → exact Tim response。
+
+每条 interpretation 关系投影还保存完整 normalized Context request，而不只有两个 hash；support/counterevidence 只允许同主体、权利允许的原始 turn 或 Evidence。promotion 要求专用 capability、固定 engine/compiler identity、JavaScript safe positive interpretation budget、精确 Tim 作者与匹配项目。Task update 绑定 source interpretation 和固定 engine identity，稳定字段只能从前态复制。完整 Context hash 重放只由 TypeScript reducer/compiler 所有；HTTP Store 仅在 reducer 对精确前序 event prefix 预演通过后用 Ed25519 私钥签发 attestation，Python 只持公钥，在落盘前重算 payload/prefix/principal/capability 并验签，数据库再强制派生事件证明字段非空。每把验签公钥还显式限制 principal、environment 与 capability；bearer capability 或 Python verifier 单独都不能签发证明。
+
 ## 5. 一次 append 的事务算法
 
 所有 event 走同一事务函数/服务，不给调用方直接写投影。
@@ -209,7 +223,7 @@ RETURNING current_revision;
 
 ## 6. Projection-native Context 查询与重放（Shadow v0 已实现）
 
-Context 的业务语义仍只有一份：TypeScript reducer/compiler。Python 不复制 rights、freshness、supersession、omission 或 budget 规则，而是从关系投影重建九类 v0 `CreatorStoredEvent`，再由 TypeScript 走同一个 reducer/compiler。事件 metadata 与认证 receipt 可从 append-only event index 读取，但事件正文明确不得读取其中的 `payload_json`，否则两条路径会共享同一个错误而失去漂移检测价值。
+Context 的业务语义仍只有一份：TypeScript reducer/compiler。Python 不复制 rights、freshness、supersession、omission 或 budget 规则，而是从关系投影重建 13 类已持久化的 `CreatorStoredEvent`，再由 TypeScript 走同一个 reducer/compiler。事件 metadata 与认证 receipt 可从 append-only event index 读取，但事件正文明确不得读取其中的 `payload_json`，否则两条路径会共享同一个错误而失去漂移检测价值。
 
 内部接口 `GET /internal/creator/workspaces/{workspace_id}/projection-records?expected_revision=N` 只接受精确 revision，并返回 `{revision, records, digest}`。关系重建使用以下确定性规则：
 
@@ -280,8 +294,8 @@ TypeScript `ProjectionVerifiedCreatorContextCompiler` 在调用模型前执行�
 
 ## 10. v0 实现边界
 
-当前 PostgreSQL service 只接受信息/判断闭环所需的九种事件：workspace、source、rights、conversation turn、evidence、judgment proposal/decision、contradiction record/resolve。Claim/Eval/World Change、Published World、Rider persistence 仍由 TypeScript Shadow 合同保留，不能借本 migration 偷渡入库。
+当前 PostgreSQL service 接受信息/判断/解释闭环所需的 13 类事件：workspace、source、rights、conversation turn、evidence、interpretation、task state、behavior calibration、legacy evidence judgment、guarded promotion、decision、contradiction record/resolve。Claim、通用 Eval、Human Review、World Change、Published World、Rider persistence 仍由 TypeScript Shadow 合同保留，不能借本 migration 偷渡入库。
 
-`human_review_requested` 也不在这九种事件内，因此 v0 contradiction resolution 只接受 same-subject evidence、turn、judgment，或已确认的 replacement；TypeScript Shadow 中指向 human-review request 的合法 resolution 要等该事件族进入后续 migration，当前 HTTP Store 会在发请求前明确拒绝，不会到服务端才得到隐式 422。
+`human_review_requested` 也不在这 13 类事件内，因此 contradiction resolution 只接受 same-subject evidence、turn、judgment，或已确认的 replacement；TypeScript Shadow 中指向 human-review request 的合法 resolution 要等该事件族进入后续 migration，当前 HTTP Store 会在发请求前明确拒绝，不会到服务端才得到隐式 422。
 
-内部 API 使用 `GET /internal/creator/workspaces/{id}` 与 `POST /internal/creator/workspaces/{id}/events`。认证 principal 只能由部署方注入的 bearer authenticator 生成；POST body 只有 event，不能自报 principal。仓库没有生产 token verifier，也没有把 router 挂到公开 FastAPI app。
+内部 API 使用 `GET /internal/creator/workspaces/{id}` 与 `POST /internal/creator/workspaces/{id}/events`。认证 principal 只能由部署方注入的 bearer authenticator 生成；普通写入 body 只有 event，派生写入 body 还必须带 Ed25519 `derivation_attestation`，两者都不能自报 principal。仓库没有生产 token verifier、签名私钥/验签公钥配置，也没有把 router 挂到公开 FastAPI app。

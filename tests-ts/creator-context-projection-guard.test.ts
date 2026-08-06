@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createTestCreatorPrincipal, creatorCapabilityForEventType } from "../agent_runtime/creator/capabilities.ts";
+import { createTestCreatorPrincipal, creatorCapabilityForEvent } from "../agent_runtime/creator/capabilities.ts";
 import {
   CreatorContextDriftStopError,
   JsonlCreatorContextSafetyAlarmSink,
@@ -14,6 +14,8 @@ import {
   type CreatorContextSafetyAlarmSink,
 } from "../agent_runtime/creator/context/projection-guard.ts";
 import { CreatorAgentV0 } from "../agent_runtime/creator/runtime/agent-v0.ts";
+import { CreatorInterpretationAgentV0 } from "../agent_runtime/creator/interpretation/agent-v0.ts";
+import { DeterministicCreatorInterpretationModel } from "../agent_runtime/creator/interpretation/model.ts";
 import type { CreatorDecisionModel } from "../agent_runtime/creator/runtime/model.ts";
 import { replayCreatorWorkspace } from "../agent_runtime/creator/state/engine.ts";
 import type {
@@ -87,7 +89,7 @@ function stored(event: CreatorEvent): CreatorStoredEvent {
       principal_id: principal.principal_id,
       product: "creator",
       environment: principal.environment,
-      capability: creatorCapabilityForEventType(event.type),
+      capability: creatorCapabilityForEvent(event),
     },
   };
 }
@@ -175,6 +177,23 @@ test("Projection-verified Context invokes the model only after exact record and 
   assert.equal(result.commit_status, "no_action");
   assert.equal(model.calls, 1);
   assert.deepEqual(sink.alarms, []);
+});
+
+test("projection-capable stores cannot silently fall back to event-only compilation", () => {
+  const read = workspaceRead();
+  const store = new StaticStore(read, projectionRead(structuredClone(read.records), read));
+  assert.throws(
+    () => new CreatorAgentV0(store, principal, new CountingNoActionModel()),
+    /requires an explicit ProjectionVerifiedCreatorContextCompiler/,
+  );
+  assert.throws(
+    () => new CreatorInterpretationAgentV0(
+      store,
+      principal,
+      new DeterministicCreatorInterpretationModel("shadow:no-fallback", {}),
+    ),
+    /requires an explicit ProjectionVerifiedCreatorContextCompiler/,
+  );
 });
 
 test("Projection drift writes a privacy-safe alarm and stops before model invocation", async () => {

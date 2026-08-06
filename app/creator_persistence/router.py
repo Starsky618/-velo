@@ -77,13 +77,13 @@ def create_creator_internal_router(
         body: dict[str, Any],
         principal: CreatorPrincipal = Depends(authenticated_principal),
     ) -> dict[str, Any]:
-        if set(body) != {"event"} or not isinstance(body["event"], dict):
+        if set(body) not in ({"event"}, {"event", "derivation_attestation"}) or not isinstance(body["event"], dict):
             raise HTTPException(status_code=422, detail={"code": "invalid_creator_append_body"})
         event = body["event"]
         if event.get("workspace_id") != workspace_id:
             raise HTTPException(status_code=409, detail={"code": "workspace_id_mismatch"})
         try:
-            receipt = service.append(event, principal)
+            receipt = service.append(event, principal, body.get("derivation_attestation"))
         except CreatorAuthorizationError as exc:
             raise HTTPException(status_code=403, detail={"code": exc.code}) from exc
         except (CreatorAppendConflictError, CreatorStaleRevisionError) as exc:

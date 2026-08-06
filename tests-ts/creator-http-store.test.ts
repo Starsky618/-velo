@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import test from "node:test";
 
 import { createShadowRiderPrincipal } from "../agent_runtime/consumer/capabilities.ts";
-import { CREATOR_CAPABILITIES, createTestCreatorPrincipal } from "../agent_runtime/creator/capabilities.ts";
+import { CREATOR_CAPABILITIES, createTestCreatorPrincipal, creatorCapabilityForEvent } from "../agent_runtime/creator/capabilities.ts";
 import {
   CreatorHttpStoreProtocolError,
   HttpCreatorWorkspaceStore,
   type CreatorInternalApiCredential,
 } from "../agent_runtime/creator/state/http-store.ts";
+import {
+  CreatorEd25519DerivationAttestor,
+  verifyCreatorEd25519DerivationAttestation,
+  type CreatorDerivationAttestor,
+} from "../agent_runtime/creator/state/derivation-attestation.ts";
 import type { CreatorEvent, CreatorStoredEvent } from "../agent_runtime/creator/state/types.ts";
 import { contentHash } from "../agent_runtime/shared/canonical.ts";
 import type { RuntimePrincipal } from "../agent_runtime/shared/capability-gate.ts";
@@ -57,7 +63,7 @@ const sourceProjectionDigest = {
 };
 
 function stored(event: CreatorEvent, committedPrincipal: RuntimePrincipal = principal): CreatorStoredEvent {
-  const capability = event.type === "creator.workspace_started" ? "workspace.create" : "source.ingest";
+  const capability = creatorCapabilityForEvent(event);
   return {
     event,
     committed_by: {
@@ -76,13 +82,38 @@ function responseJson(value: unknown, status = 200): Response {
   });
 }
 
-function makeStore(fetchImplementation: typeof globalThis.fetch, suppliedCredential: unknown = credential): HttpCreatorWorkspaceStore {
+function makeStore(
+  fetchImplementation: typeof globalThis.fetch,
+  suppliedCredential: unknown = credential,
+  derivationAttestor?: CreatorDerivationAttestor,
+): HttpCreatorWorkspaceStore {
   return new HttpCreatorWorkspaceStore({
     base_url: "https://creator.internal/",
     credentials: async () => suppliedCredential as CreatorInternalApiCredential,
     fetch: fetchImplementation,
+    ...(derivationAttestor ? { derivation_attestor: derivationAttestor } : {}),
   });
 }
+
+const rights: CreatorEvent = {
+  schema_version: 1, type: "creator.rights_checked", event_id: "evt-rights", workspace_id: started.workspace_id,
+  base_revision: 2, occurred_at: "2026-08-06T01:02:00.000Z", rights_check_id: "rights:1",
+  source_ref: source.source_ref, decision: "allowed", policy_ref: "policy:test", reason: "测试来源允许内部使用。",
+};
+const turnText = "建立当前任务状态。";
+const turn: CreatorEvent = {
+  schema_version: 1, type: "creator.conversation_turn_recorded", event_id: "evt-turn",
+  workspace_id: started.workspace_id, base_revision: 3, occurred_at: "2026-08-06T01:03:00.000Z",
+  turn_id: "turn:task", source_ref: source.source_ref, source_message_ref: "message:task", source_role: "user",
+  actor: "tim", authorship_basis: "direct_unquoted_message", raw_text: turnText, content_hash: contentHash(turnText),
+  subject_refs: ["project:velo-agent"],
+};
+const taskState: CreatorEvent = {
+  schema_version: 1, type: "creator.task_state_changed", event_id: "evt-task", workspace_id: started.workspace_id,
+  base_revision: 4, occurred_at: "2026-08-06T01:04:00.000Z", task_state_id: "task-state:1",
+  task_ref: "task:1", project_ref: "project:velo", status: "active", objective: "验证派生写入证明",
+  focus: "先验证 reducer", acceptance_criteria: ["无证明不写入"], open_loops: [], source_turn_refs: ["turn:task"],
+};
 
 test("HTTP Creator Store authenticates reads and replays exact stored events", async () => {
   let calls = 0;
@@ -235,6 +266,46 @@ test("HTTP Creator Store POST body contains only the event and verifies receipt 
   assert.equal(calls[0]?.init?.method, "POST");
   assert.equal(new Headers(calls[0]?.init?.headers).get("Authorization"), "Bearer test-token.secret");
   assert.equal(calls[1]?.init?.method, "GET");
+});
+
+test("HTTP Creator Store refuses derived state without proof and sends only reducer-attested content", async () => {
+  let calls = 0;
+  await assert.rejects(() => makeStore(async () => {
+    calls += 1;
+    throw new Error("must not fetch");
+  }).appendAs(taskState, principal), /requires a configured reducer attestor/);
+  assert.equal(calls, 0);
+
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const privateKeyPem = privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+  const publicKeyPem = publicKey.export({ format: "pem", type: "spki" }).toString();
+  const attestor = new CreatorEd25519DerivationAttestor("http-test-key-v1", privateKeyPem, {
+    allowed_principal_ids: [principal.principal_id],
+    allowed_environments: [principal.environment],
+    allowed_capabilities: ["task.update"],
+  });
+  const prior = [stored(started), stored(source), stored(rights), stored(turn)];
+  const committed = [...prior, stored(taskState)];
+  const fetchImplementation: typeof fetch = async (_input, init) => {
+    calls += 1;
+    if (init?.method === "POST") {
+      const body = JSON.parse(String(init.body));
+      assert.deepEqual(body.event, taskState);
+      assert.equal(body.derivation_attestation.event_payload_hash, contentHash(taskState));
+      assert.equal(body.derivation_attestation.prior_records_hash, contentHash(prior));
+      assert.equal(verifyCreatorEd25519DerivationAttestation(body.derivation_attestation, publicKeyPem), true);
+      assert.equal(String(init.body).includes(privateKeyPem), false);
+      return responseJson({
+        event_id: taskState.event_id,
+        committed_revision: 5,
+        payload_sha256: contentHash(taskState),
+      });
+    }
+    return calls === 1 ? responseJson({ records: prior }) : responseJson({ records: committed });
+  };
+  const view = await makeStore(fetchImplementation, credential, attestor).appendAs(taskState, principal);
+  assert.equal(view.revision, 5);
+  assert.equal(calls, 3);
 });
 
 test("HTTP Creator Store returns the receipt revision when another writer commits before re-read", async () => {

@@ -1,6 +1,6 @@
 # VELO Agent-First 当前交接
 
-> 最后核实：2026-08-06。本轮从 `origin/main@70b4e97d` 开始实现 Creator PostgreSQL Persistence Slice v0，交付 PR 为 #51；最终合并与 CI 状态以 GitHub checks 为准。这份文件回答三个问题：我们为什么做 Agent、现在真实做到了哪一层、下一刀是什么。
+> 最后核实：2026-08-06。当前交接基线是 `origin/main@e7924654`；本轮实现 Context Interpretation & Promotion v0，PR、CI 与合并状态必须以 GitHub 为准。这份文件回答三个问题：我们为什么做 Agent、现在真实做到了哪一层、下一刀是什么。
 
 ## 1. 一开始要解决什么
 
@@ -29,10 +29,10 @@ Reborn 是重要参照系：借鉴它的原始记录、显式状态、状态机�
 |---|---|---|
 | 语言中立合同 | Context、Session、Run、Map/Action、Tool Registry/Call/Result 已进入主线 | [`contracts/agent_v0`](../../contracts/agent_v0/README.md)，PR #41–#43 |
 | TypeScript Rider 内核 | 已有 append-only JSONL Session、原始 turn、明确决定、unknown、Context 编译、Run/Tool deadline、重放与 reconciliation | [`agent_runtime`](../../agent_runtime/README.md)，PR #44、#46 |
-| TypeScript Creator 内核 | 已有原始 Conversation/Evidence、Agent 判断提议、Tim 精确确认/拒绝/替代、Contradiction、Context Manifest、模型端口与冷启动重放 Eval | [`agent_runtime/creator`](../../agent_runtime/creator)，PR #49 |
+| TypeScript Creator 内核 | 已有原始 Conversation/Evidence、可撤销解释、任务状态、机械升格、Tim 精确确认/拒绝/替代、Conflict Packet、Context Manifest 与真实病例 replay | [`agent_runtime/creator`](../../agent_runtime/creator)；解释模型仍是 deterministic fake |
 | 路线规划 Shadow | 已验证锁定 canonical core Traversal，腾讯只生成 access/connector/exit/return；支持多核心段拼接 | synthetic 天龙山 fixture，不是真实腾讯调用或真实推荐质量 |
-| Creator PostgreSQL Slice | 已实现独立 `creator_*` append-only 真值流与关系投影、revision CAS、幂等与冲突、Python 事务服务、鉴权注入式内部 HTTP router、TypeScript HTTP Store 和精确回读对账 | 迁移与本地任务 PostgreSQL 已验证；router 未挂载到生产应用，未配置生产 token，也未执行生产迁移 |
-| 本轮本地验证 | TypeScript 81/81；真实 PostgreSQL 16/16 且 0 skipped；Alembic 单 head；Python compileall 与 diff check 通过 | 完整临时 PostGIS/Redis 和全量 pytest 仍由本轮 GitHub CI 证明；本地结果不证明生产、真实 Tim UI 或骑友可用 |
+| Creator PostgreSQL Slice | 已实现 17 张独立 `creator_*` 表、append-only 真值流与关系投影、revision CAS、幂等与冲突、interpretation/task/calibration/promotion lineage、TypeScript HTTP Store 和精确回读对账 | router 未挂载生产应用，未配置生产 token，也未执行生产迁移 |
+| 本轮验证 | TypeScript 107/107、Python compileall；一次性 PostgreSQL 17.9 空库上 migration 回环、事务、并发、鉴权、投影重建 21/21 通过；全量 pytest 仍以本轮 CI 为最终证据 | 本地真库仍不证明生产、真实 Tim UI、真实模型或骑友可用 |
 
 当前还没有：
 
@@ -40,12 +40,12 @@ Reborn 是重要参照系：借鉴它的原始记录、显式状态、状态机�
 - 绑定真实登录 Tim 身份的审核 UI/API。
 - 真实 LLM/provider loop、tracing 后端或人机审核界面。
 - 生产鉴权与路由挂载、生产数据库迁移、小程序接线、真实腾讯调用或 Strava ingestion。
-- 直接从 PostgreSQL 投影编译 Context 的生产读模型与 drift-stop 告警；当前 TypeScript 仍读取精确事件前缀并自行重放。
+- 已挂载的生产 PostgreSQL Context 读模型与 drift-stop 告警处置；当前能力仍是未挂载 Shadow。
 - 能证明“路线判断真实改善推荐与骑友结果”的现实端到端 Eval。
 
 所以，PR #46 建成 Rider Runtime 地基，PR #49 建成 Creator 本地信息与判断闭环；两者都不是最终的“第二大脑”。
 
-## 4. 本轮已实现和当前唯一推荐下一刀
+## 4. 本轮实现和当前唯一推荐下一刀
 
 **Creator Information & Judgment Loop v0** 已通过 PR #49 合并：真实读取天龙山拍定本与路线认知蓝图，运行“来源 → Evidence → Agent 提议 → Shadow Tim 精确响应 → 判断替代 → Context → 冷启动 Eval”。详细合同和 Reborn 迁移审计见 [`creator-information-judgment-loop-v0.md`](creator-information-judgment-loop-v0.md)。
 
@@ -59,20 +59,29 @@ Reborn 是重要参照系：借鉴它的原始记录、显式状态、状态机�
 - 全新 Node 进程可从空聊天上下文重放相同当前判断和未决矛盾；
 - 每条 event 持久化实际 principal/capability 收据，Rider principal 在模型读取 Creator 私有 Context 前即被拒绝；
 - source 撤权、judgment 到达 `review_at` 或引用跨 subject 时 fail closed，commit 响应不明按 exact event 对账。
+- task-local 纠正只在相同 `task_ref` 可见；后续解释显式 supersede 旧解释但不删除历史；
+- 历史 schema v1 conversation judgment 可继续冷回放；新 schema v2 evidence judgment 禁止消费 conversation turn，对话长期判断必须经过 promotion gate；
+- interpretation、Task State、calibration、promotion 与 schema v2 judgment 只有经过 TypeScript reducer 后由 Ed25519 私钥签发 attestation 才能写入 PostgreSQL；Python 只持按 principal/environment/capability 限域的公钥，bearer capability 不能单独绕过；
+- 外部引语、歧义身份和未解决反证不能升格，当前判断遇到新矛盾时 Context 明确携带 Conflict Packet；
+- 跨任务重复必须由不同原始消息和真实 Task State 支撑，结果型升格必须携带同主体 real-world Evidence。
 
-**Creator PostgreSQL Persistence Slice v0** 已把 [`CREATOR_POSTGRESQL_SPEC_V0.md`](../../agent_runtime/CREATOR_POSTGRESQL_SPEC_V0.md) 的最小可执行部分落成：13 张独立 `creator_*` 表、append-only trigger、同事务投影、revision CAS、source message 去重、proposal/decision 复合绑定、supersession、contradiction、精确事件回读与 reconciliation。TypeScript 仍是 reducer/compiler 的语义所有者；Python 只负责持久化事务和数据库约束，避免两套状态机各自演化。
+**Creator PostgreSQL Persistence Slice v0** 与 projection drift-stop 已落成。TypeScript 仍是 reducer/compiler 的语义所有者；Python 只负责持久化事务和数据库约束，避免两套状态机各自演化。
 
-当前唯一推荐下一刀是 **Projection-native Context + Drift-stop Shadow**：让数据库投影生成与 TypeScript 冷重放可逐字段比较的 Context/Manifest，在差异出现时 fail closed 并留下告警；随后才接真实 Tim 身份与内部 Shadow API。仍不同时扩 Published World 或 Rider 数据面。
+**Context Interpretation & Promotion v0** 的完整冻结架构见 [`creator-context-interpretation-promotion-v0.md`](creator-context-interpretation-promotion-v0.md)。本轮增加“原话 → 模型解释候选 → task-local 状态 → 机械升格 → Tim 精确确认”的防火墙；单次纠正、外部引语、歧义身份与未解决反证不能变成长效判断，后来的矛盾会进入 Conflict Packet 供 Agent 主动提醒。
+
+当前唯一推荐下一刀是 **真实 interpretation model 的 unseen Shadow + Tim 审核面**：先证明首次理解率、重复纠正率、过度升格、应当拒答和冲突挑战真的改善，再考虑把结果用于 Published World 或 Rider Agent。不能从本轮 deterministic 测试推导为“已经具有人类判断力”；测试数量以本 PR/CI 最终结果为准。
 
 ## 5. 数据库当前边界
 
-本轮没有造“Agent 万能库”，只实现 Creator Information & Judgment Loop 已稳定使用的 13 张隔离表：
+本轮没有造“Agent 万能库”，Creator 私有面现有 17 张隔离表：
 
 - `creator_workspaces` / `creator_workspace_events`：revision 与 append-only 真值流；
 - `creator_sources` / `creator_rights_checks` / `creator_source_messages` / `creator_source_message_subjects`：来源、权限与原文；
 - `creator_evidence_items`：可追溯证据；
 - `creator_judgments` / `creator_judgment_turns` / `creator_judgment_evidence` / `creator_judgment_decisions`：Agent 提议与 Tim 精确决定；
 - `creator_judgment_contradictions` / `creator_judgment_contradiction_resolutions`：未决冲突和解决记录。
+- `creator_turn_interpretations` / `creator_task_states`：解释谱系与当前任务真值；局部纠正按 task_ref 隔离。
+- `creator_behavior_calibrations` / `creator_judgment_interpretations`：行为结果与长期判断的精确解释 lineage。
 
 Published World、Claim/Eval/World Change 和 Rider 私有表族仍按 [`DATABASE_BOUNDARY.md`](../../agent_runtime/DATABASE_BOUNDARY.md) 分面设计，没有被本轮顺手实现。migration 不修改 `users`、`activities`、`segments` 或 `segment_efforts`。生产迁移、真实鉴权和路由挂载需要单独授权与验收，不能从“CI 迁移成功”推导为“线上已启用”。
 
