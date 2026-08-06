@@ -1,6 +1,7 @@
 import { CapabilityGate, type RuntimePrincipal } from "../shared/capability-gate.ts";
 
 export const RIDER_CAPABILITIES = [
+  "user_context.read_authorized",
   "world.read_published",
   "plan.generate",
   "plan.validate",

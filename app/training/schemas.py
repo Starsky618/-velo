@@ -1,5 +1,6 @@
 """训练负荷 API 的请求/响应格式，像给小程序画图准备的一张固定菜单。"""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -12,6 +13,14 @@ TrainingLoadRange = Literal["30d", "90d", "1y"]
 TrainingDistributionRange = Literal["6w"]
 TrainingDistributionType = Literal["polarized", "pyramidal", "sweet_spot", "threshold", "mixed"]
 StatusBand = Literal["fresh", "ok", "tired", "overreached"]
+RiderCapabilityConfidence = Literal["insufficient", "low", "medium", "high"]
+RiderCapabilityFreshness = Literal["none", "fresh", "stale"]
+RiderCapabilityReasonCode = Literal[
+    "no_usable_activities",
+    "too_few_usable_activities",
+    "history_stale",
+    "insufficient_elevation_history",
+]
 
 
 class TrainingLoadPoint(BaseModel):
@@ -131,3 +140,39 @@ class TrainingDistributionResponse(BaseModel):
     raw_zones: list[TrainingDistributionZone]
     actions: list[TrainingDistributionAction]
     week_plan: list[TrainingDistributionWeekItem]
+
+
+class RiderCapabilityPrivacy(BaseModel):
+    """Fields deliberately withheld from the route-planning snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    exact_coordinates_included: Literal[False] = False
+    raw_activity_tracks_included: Literal[False] = False
+    health_metrics_included: Literal[False] = False
+
+
+class RiderCapabilitySnapshotResponse(BaseModel):
+    """Observed recent route envelope for one authenticated rider."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["0.1.0"]
+    snapshot_id: str
+    generated_at: datetime
+    source_revision: str
+    window_days: int
+    source_activity_count: int
+    excluded_activity_count: int
+    elevation_activity_count: int
+    data_complete: bool
+    confidence: RiderCapabilityConfidence
+    freshness: RiderCapabilityFreshness
+    latest_activity_at: datetime | None
+    typical_distance_km: float | None
+    upper_observed_distance_km: float | None
+    typical_duration_minutes: int | None
+    typical_climb_m_per_km: float | None
+    source_types: list[str]
+    reason_codes: list[RiderCapabilityReasonCode]
+    privacy: RiderCapabilityPrivacy

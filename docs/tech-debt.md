@@ -21,6 +21,29 @@
 
 ---
 
+## 🟡 P2 `[SCALE-TRIGGER]`：RiderCapabilitySnapshot v0 先同步汇总 42 天 Activity，暂不建画像表或 ML（2026-08-06）
+
+**当前状态（任务分支实现，尚未生产接入 Consumer Agent）**：当前用户可通过只读 `GET /api/training/rider-capability` 获取近期路线历史快照；Python Domain Plane 只读 Activity 汇总列，TypeScript Consumer 把同一版本化结果编译进带 purpose、scope、privacy 和 source revision 的 `RiderContextPacket`。Creator capability 明确不能读取这份个人快照。生产 Consumer 的 HTTP adapter、真实模型使用、骑后难度反馈和小程序入口仍未实现。
+
+**当前选择**：每次请求同步读取当前用户近 42 天 `completed cycling`、非 duplicate Activity 的摘要列。距离不足 5km 或没有有效移动/总时长的记录只计入 excluded；至少 3 次有效活动才给 medium，8 次且最近 14 天有骑行才给 high。典型距离/时长使用中位数，观察上沿使用距离 75 分位；爬升密度至少需要 3 次有海拔数据的活动。响应只包含聚合值、数量、数据源类型、新鲜度、reason code 和内容哈希 revision，不含轨迹、坐标、功率、心率或健康判断。API 日志仅记录置信度、样本数量和耗时，不记录 user id 或路线数据。
+
+**暂缓方案**：本轮不新增 `users`/`activities` 字段，不建持久化 rider profile/materialized view，不读取 Trackpoint，不做个性化机器学习，不把快照当硬限制自动淘汰路线，也不把个人数据开放给 Creator。42 天、5km、3/8 次和 P50/P75 都是透明的 v0 假设，不冒充已验证的骑手能力模型。
+
+**触发条件（任一满足即重评）**：
+
+1. 在任何生产路线流程中准备把快照用于自动淘汰候选或替用户确定“轻松/困难”之前；
+2. `rider_capability_snapshot` 日志有效样本不少于 100 次后，请求 `p95 > 200ms`，或单次 `source_activity_count + excluded_activity_count > 200`；
+3. 有效样本不少于 100 次后，`excluded_activity_count / (source_activity_count + excluded_activity_count) > 20%`，说明 5km/时长门槛或上游数据质量需要拆因；
+4. 未来累计至少 30 个带骑手明确难度反馈的已完成 Ride Plan 后，预测区间与实际完成/反馈不一致比例超过 20%。
+
+**检查入口**：API 日志 grep `rider_capability_snapshot` 可读 confidence、source/excluded/elevation count 与 duration_ms；当前用户可直接请求只读 endpoint 检查 reason code 和 source revision；算法合同由 `tests/test_rider_capability_api.py`、`tests-ts/rider-capability-context.test.ts` 与 `contracts/agent_v0/rider_capability_snapshot.schema.json` 固定。第 4 条的反馈表尚不存在，所以第一次准备把快照接入正式推荐时，必须先落骑前 prediction 与骑后 outcome/用户难度反馈入口，不能用 Agent 自评代替。
+
+**越线风险**：继续同步扫描会拉高 API 延迟；继续沿用固定分位数会把通勤、间歇训练、团骑或季节变化混成一个“典型骑手”；把观察上沿当生理极限会过度限制用户；把稀疏海拔或旧历史强行补值会制造虚假精度。
+
+**到点动作**：先按日志和真实骑后反馈拆清瓶颈或误差来源。查询慢时再评估 Activity 摘要索引、缓存或可重建投影；语义误差高时先增加可解释分群、当前意图和骑后反馈，再决定是否需要统计模型。任何升级继续输出来源 revision、置信度和降级原因，并保持 Creator/Consumer 数据权限隔离。
+
+---
+
 ## 🟡 P2 `[SCALE-TRIGGER]`：个人热图先用单机持久瓦片卷，暂不上对象存储/CDN（2026-07-31，2026-08-01 更新）
 
 **当前状态（已上线）**：2026-08-01 已把所有可见热图路径统一到完整 `Trackpoint` 几何真值，并正式接入 H5/WebGL 分层瓦片页。代码已通过 PR/CI、部署到 `api.weiluai.top`，微信业务域名根目录校验已通过，Tim 在正式微信开发者工具项目中确认新版个人热图可用。该证据不等同于独立真机性能验收；真机差异仍以之后的真实反馈为准。

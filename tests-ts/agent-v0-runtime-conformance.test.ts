@@ -110,7 +110,7 @@ test("replayed rider decisions are included in every runtime ContextManifest", a
   );
   for (const manifest of result.runtime_trace.context_manifests) {
     assert.equal((manifest.memory_item_refs as string[]).includes("decision:urban"), true);
-    assert.equal((manifest.source_packet_refs as Array<{ packet_type: string }>).some((ref) => ref.packet_type === "rider_context_packet"), true);
+    assert.equal((manifest.source_packet_refs as Array<{ packet_type: string }>).some((ref) => ref.packet_type === "rider_context_packet"), false);
   }
   const conflictPort = createInMemorySessionRuntimePort(sessionView);
   const conflict = await new TianlongshanShadowAgent(world).run(

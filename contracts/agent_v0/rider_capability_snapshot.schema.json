@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.velo.invalid/agent_v0/rider_capability_snapshot.schema.json",
+  "title": "VELO Rider Capability Snapshot v0",
+  "description": "A privacy-safe observational projection of recent route history. It contains no raw tracks or health metrics and is not a training prescription.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "generated_at",
+    "source_revision",
+    "window_days",
+    "source_activity_count",
+    "excluded_activity_count",
+    "elevation_activity_count",
+    "data_complete",
+    "confidence",
+    "freshness",
+    "latest_activity_at",
+    "typical_distance_km",
+    "upper_observed_distance_km",
+    "typical_duration_minutes",
+    "typical_climb_m_per_km",
+    "source_types",
+    "reason_codes",
+    "privacy"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1.0" },
+    "snapshot_id": {
+      "type": "string",
+      "pattern": "^rider-capability:[A-Za-z0-9._:-]+$",
+      "maxLength": 160
+    },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "source_revision": {
+      "type": "string",
+      "pattern": "^activity-history:sha256:[a-f0-9]{64}$",
+      "maxLength": 96
+    },
+    "window_days": { "type": "integer", "const": 42 },
+    "source_activity_count": { "type": "integer", "minimum": 0 },
+    "excluded_activity_count": { "type": "integer", "minimum": 0 },
+    "elevation_activity_count": { "type": "integer", "minimum": 0 },
+    "data_complete": { "type": "boolean" },
+    "confidence": {
+      "type": "string",
+      "enum": ["insufficient", "low", "medium", "high"]
+    },
+    "freshness": { "type": "string", "enum": ["none", "fresh", "stale"] },
+    "latest_activity_at": {
+      "oneOf": [
+        { "type": "string", "format": "date-time" },
+        { "type": "null" }
+      ]
+    },
+    "typical_distance_km": { "$ref": "#/$defs/non_negative_nullable_number" },
+    "upper_observed_distance_km": { "$ref": "#/$defs/non_negative_nullable_number" },
+    "typical_duration_minutes": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "null" }
+      ]
+    },
+    "typical_climb_m_per_km": { "$ref": "#/$defs/non_negative_nullable_number" },
+    "source_types": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 32 },
+      "maxItems": 20
+    },
+    "reason_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "no_usable_activities",
+          "too_few_usable_activities",
+          "history_stale",
+          "insufficient_elevation_history"
+        ]
+      },
+      "maxItems": 10
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exact_coordinates_included",
+        "raw_activity_tracks_included",
+        "health_metrics_included"
+      ],
+      "properties": {
+        "exact_coordinates_included": { "const": false },
+        "raw_activity_tracks_included": { "const": false },
+        "health_metrics_included": { "const": false }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "source_activity_count": { "const": 0 } } },
+      "then": {
+        "properties": {
+          "confidence": { "const": "insufficient" },
+          "freshness": { "const": "none" },
+          "data_complete": { "const": false },
+          "latest_activity_at": { "type": "null" },
+          "typical_distance_km": { "type": "null" },
+          "upper_observed_distance_km": { "type": "null" },
+          "typical_duration_minutes": { "type": "null" },
+          "typical_climb_m_per_km": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "confidence": { "enum": ["medium", "high"] } } },
+      "then": { "properties": { "data_complete": { "const": true } } },
+      "else": { "properties": { "data_complete": { "const": false } } }
+    }
+  ],
+  "$defs": {
+    "non_negative_nullable_number": {
+      "oneOf": [
+        { "type": "number", "minimum": 0 },
+        { "type": "null" }
+      ]
+    }
+  }
+}
