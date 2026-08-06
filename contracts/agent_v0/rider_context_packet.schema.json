@@ -253,8 +253,76 @@
         "ftp_watts": { "type": "number", "exclusiveMinimum": 0 },
         "weight_kg": { "type": "number", "exclusiveMinimum": 0 },
         "speed_model_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
-        "climb_model_ref": { "$ref": "common.schema.json#/$defs/stable_id" }
+        "climb_model_ref": { "$ref": "common.schema.json#/$defs/stable_id" },
+        "route_history_snapshot": { "$ref": "#/$defs/route_history_snapshot" }
       }
+    },
+    "route_history_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_revision",
+        "calculated_at",
+        "window_days",
+        "source_activity_count",
+        "excluded_activity_count",
+        "elevation_activity_count",
+        "data_complete",
+        "confidence",
+        "freshness",
+        "source_types",
+        "reason_codes"
+      ],
+      "properties": {
+        "source_revision": { "$ref": "common.schema.json#/$defs/revision" },
+        "calculated_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "window_days": { "type": "integer", "minimum": 1, "maximum": 366 },
+        "source_activity_count": { "type": "integer", "minimum": 0 },
+        "excluded_activity_count": { "type": "integer", "minimum": 0 },
+        "elevation_activity_count": { "type": "integer", "minimum": 0 },
+        "data_complete": { "type": "boolean" },
+        "confidence": {
+          "type": "string",
+          "enum": ["insufficient", "low", "medium", "high"]
+        },
+        "freshness": { "type": "string", "enum": ["none", "fresh", "stale"] },
+        "latest_activity_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "typical_distance_km": { "type": "number", "minimum": 0 },
+        "upper_observed_distance_km": { "type": "number", "minimum": 0 },
+        "typical_duration_minutes": { "type": "integer", "minimum": 0 },
+        "typical_climb_m_per_km": { "type": "number", "minimum": 0 },
+        "source_types": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 32 },
+          "maxItems": 20
+        },
+        "reason_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "no_usable_activities",
+              "too_few_usable_activities",
+              "history_stale",
+              "insufficient_elevation_history"
+            ]
+          },
+          "maxItems": 10
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "source_activity_count": { "const": 0 } } },
+          "then": {
+            "properties": {
+              "confidence": { "const": "insufficient" },
+              "freshness": { "const": "none" }
+            }
+          }
+        }
+      ]
     },
     "familiarity_item": {
       "type": "object",

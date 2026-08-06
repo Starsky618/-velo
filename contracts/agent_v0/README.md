@@ -6,6 +6,7 @@
 
 - Common definitions
 - Predicate Registry
+- RiderCapabilitySnapshot
 - RiderContextPacket
 - WorldFactPacket
 - ContextManifest
@@ -29,6 +30,7 @@
 
 | 合同 | 职责 |
 |---|---|
+| `RiderCapabilitySnapshot` | Python Domain Plane 从当前骑手近 42 天 Activity 汇总出的距离、时长、爬升密度、数据新鲜度和置信度；不含原始轨迹、精确坐标、功率、心率或健康判断。 |
 | `RiderContextPacket` | 仅投影当前任务已授权且相关的骑手资料、opaque saved-place ref、结构化 familiarity、明确偏好/记忆、unknown 与省略项。 |
 | `WorldFactPacket` | 仅投影当前任务需要的版本化路线对象、Traversal、关系、带 scope/provenance/freshness 的事实、时效动态、隔离 advisory 与 explicit unknown。 |
 | `ContextManifest` | 记录一次 model call 使用的 source revision、选择/省略、隐私删减与 token 预算，使编译输入可审计和可重放；它不是事实来源。 |
@@ -109,7 +111,7 @@ Predicate request 与 Relation request 是两条独立合同面。每个 request
 - 当前用户已明确选择 TypeScript Agent 项目；首个 plain TypeScript、event-sourced Shadow 内核位于 [`agent_runtime`](../../agent_runtime/README.md)。OpenAI Agents SDK、Mastra、LangGraph 与 XState 仍只可作为未来 orchestration 依赖，不能成为 Session、世界事实或权限的唯一真相源。
 - 创造者 Agent 与骑友 Agent 是两个独立产品和权限面，不是同一 Agent 的角色开关。骑友侧已跑通会话/Context/路线 Shadow；创造者侧已跑通来源、Evidence、Claim、Eval 到 World Change Proposal 的独立确定性状态机，但两边都尚未接生产服务。
 - 现有 Python/FastAPI Deterministic Domain Plane 继续保留，不因未来可能采用 TypeScript Agent Control Plane 而重写。
-- 当前没有生产数据库迁移、真实模型、腾讯 Provider、小程序接线或部署；这些未验证层级不能由 Shadow 测试冒充。
+- `RiderCapabilitySnapshot` 已有当前用户只读 FastAPI 投影和 TypeScript Context 编译器；生产 Consumer 尚未接 HTTP adapter，Creator 也无权读取个人骑手快照。当前仍没有真实模型、腾讯 Provider 或小程序 Agent 接线，这些未验证层级不能由 Shadow 测试冒充。
 
 安装 `requirements.txt` 中固定的测试依赖后运行：
 

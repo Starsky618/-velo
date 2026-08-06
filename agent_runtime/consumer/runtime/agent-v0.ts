@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { contentHash } from "../../shared/canonical.ts";
 import type { RiderConversationContext } from "../context/compiler.ts";
+import type { RiderTaskContextPacket } from "../context/rider-task-context.ts";
 import type { AgentV0RuntimeTrace, CandidatePlan } from "../planning/types.ts";
 import type { SessionCommitResult, SessionRuntimePort } from "../session/committer.ts";
 
@@ -27,6 +28,7 @@ interface RuntimeOptions {
   request_ref: string;
   world_revision: string;
   rider_context?: RiderConversationContext;
+  rider_task_context?: RiderTaskContextPacket;
   max_model_turns?: number;
   max_tool_calls?: number;
   max_plan_generations?: number;
@@ -94,6 +96,7 @@ export class AgentV0RuntimeController {
     this.#modelTurns += 1;
     const turn = this.#modelTurns;
     const context = this.#options.rider_context;
+    const riderTaskContext = this.#options.rider_task_context;
     const manifestId = `${this.runId}:context:${turn}`;
     const sourcePacketRefs = [
       {
@@ -101,10 +104,10 @@ export class AgentV0RuntimeController {
         schema_version: "0.1.0", source_revision: this.#options.world_revision,
         content_hash: bareHash({ world_revision: this.#options.world_revision }),
       },
-      ...(context ? [{
-        packet_type: "rider_context_packet", packet_id: context.context_ref,
-        schema_version: "0.1.0", source_revision: context.source_revision,
-        content_hash: context.context_hash.slice("sha256:".length),
+      ...(riderTaskContext ? [{
+        packet_type: "rider_context_packet", packet_id: riderTaskContext.packet_id,
+        schema_version: riderTaskContext.schema_version, source_revision: riderTaskContext.source_revision,
+        content_hash: bareHash(riderTaskContext),
       }] : []),
     ];
     this.trace.context_manifests.push({
@@ -122,10 +125,16 @@ export class AgentV0RuntimeController {
       included_sections: [
         "current_request", "published_world",
         ...(context ? ["confirmed_rider_decisions"] : []),
+        ...(riderTaskContext ? ["authorized_rider_route_history"] : []),
         ...(plans.length ? ["tool.observation.candidate_plan_set", "plan.candidate_summaries", "plan.validation_summaries"] : []),
       ],
       omitted_sections: [], privacy_redactions: [], token_budget: { budget: 4096, used: 0, reserved_for_response: 512 },
-      token_counts: [], context_content_hash: bareHash({ sourcePacketRefs, plans: plans.map((plan) => plan.plan_revision), context_hash: context?.context_hash }),
+      token_counts: [], context_content_hash: bareHash({
+        sourcePacketRefs,
+        plans: plans.map((plan) => plan.plan_revision),
+        conversation_context_hash: context?.context_hash,
+        rider_task_context_hash: riderTaskContext === undefined ? undefined : bareHash(riderTaskContext),
+      }),
       source_of_truth: false, metadata: { "x-runtime": "typescript-shadow" },
     });
     return turn;

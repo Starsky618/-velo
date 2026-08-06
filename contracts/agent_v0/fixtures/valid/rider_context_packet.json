@@ -39,7 +39,25 @@
     "ftp_watts": 240,
     "weight_kg": 68,
     "speed_model_ref": "speed-model.fixture-rider-001.v2",
-    "climb_model_ref": "climb-model.fixture-rider-001.v1"
+    "climb_model_ref": "climb-model.fixture-rider-001.v1",
+    "route_history_snapshot": {
+      "source_revision": "activity-history:sha256:fixture-r1",
+      "calculated_at": "2026-08-03T19:30:00+08:00",
+      "window_days": 42,
+      "source_activity_count": 7,
+      "excluded_activity_count": 1,
+      "elevation_activity_count": 6,
+      "data_complete": true,
+      "confidence": "medium",
+      "freshness": "fresh",
+      "latest_activity_at": "2026-08-01T08:00:00+08:00",
+      "typical_distance_km": 62.5,
+      "upper_observed_distance_km": 81.2,
+      "typical_duration_minutes": 210,
+      "typical_climb_m_per_km": 9.4,
+      "source_types": ["fit", "gpx"],
+      "reason_codes": []
+    }
   },
   "saved_place_handles": [
     {

@@ -18,7 +18,7 @@
       "packet_id": "rider-context.fixture.rider-001.1",
       "schema_version": "0.1.0",
       "source_revision": "fixture-rider-source-r1",
-      "content_hash": "3acb00157edd0f4e7bb386d74ec4a039d94f29ea558142b203f52082e7ca01fe"
+      "content_hash": "316d1657a9b096c247669260993f40dfa44e695de68c5890fefdf2644929a200"
     },
     {
       "packet_type": "world_fact_packet",

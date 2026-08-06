@@ -1,6 +1,7 @@
 import { createRiderCapabilityGate, createShadowRiderPrincipal } from "../capabilities.ts";
 import { contentHash } from "../../shared/canonical.ts";
 import type { RiderConversationContext } from "../context/compiler.ts";
+import type { RiderTaskContextPacket } from "../context/rider-task-context.ts";
 import { AgentDeadlineExceededError, AgentV0RuntimeController } from "../runtime/agent-v0.ts";
 import {
   createInMemorySessionRuntimePort,
@@ -53,6 +54,7 @@ export interface ShadowModelInput {
   phase: "resolve_origin" | "retrieve_world" | "generate_candidates" | "present";
   request: RideRequest;
   rider_context: RiderConversationContext | undefined;
+  rider_task_context: RiderTaskContextPacket | undefined;
   candidate_count: number;
   signal: AbortSignal;
 }
@@ -113,11 +115,13 @@ export class TianlongshanShadowAgent {
     session_revision?: number;
     request_ref?: string;
     rider_context?: RiderConversationContext;
+    rider_task_context?: RiderTaskContextPacket;
     session_port?: SessionRuntimePort;
     now_ms?: () => number;
   } = {}): Promise<ShadowResult> {
     this.trace.length = 0;
     this.#assertRequest(request);
+    if (options.rider_task_context !== undefined) this.#capabilities.require("user_context.read_authorized");
     const exactOrigin = Object.hasOwn(this.#world.origins, request.origin);
     const sessionId = options.session_id ?? "session:tianlongshan-shadow";
     let sessionRevision = options.session_revision ?? 1;
@@ -147,6 +151,7 @@ export class TianlongshanShadowAgent {
       request_ref: options.request_ref ?? `request:${contentHash(request).slice(-24)}`,
       world_revision: this.#world.world_revision,
       ...(options.rider_context ? { rider_context: options.rider_context } : {}),
+      ...(options.rider_task_context ? { rider_task_context: options.rider_task_context } : {}),
       ...(options.now_ms ? { now_ms: options.now_ms } : {}),
     });
     const result: ShadowResult = {
@@ -154,7 +159,12 @@ export class TianlongshanShadowAgent {
       model_turns: 0, tool_calls: 0, candidate_generation_count: 0, runtime_trace: runtime.trace,
     };
     const decide = (phase: ShadowModelInput["phase"], candidateCount: number) => runtime.invokeModel((signal) => this.#model.decide({
-      phase, request, rider_context: options.rider_context, candidate_count: candidateCount, signal,
+      phase,
+      request,
+      rider_context: options.rider_context,
+      rider_task_context: options.rider_task_context,
+      candidate_count: candidateCount,
+      signal,
     }));
     const clearUnsafeOutput = (reason: string): void => {
       result.action = "NO_RESULT";
