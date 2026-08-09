@@ -19,6 +19,8 @@ from app.config import settings
 
 _TENCENT_DIRECTION_PATH = "/ws/direction/v1/bicycling/"
 _TENCENT_DIRECTION_URL = "https://apis.map.qq.com" + _TENCENT_DIRECTION_PATH
+_TENCENT_DRIVING_DIRECTION_PATH = "/ws/direction/v1/driving/"
+_TENCENT_DRIVING_DIRECTION_URL = "https://apis.map.qq.com" + _TENCENT_DRIVING_DIRECTION_PATH
 
 
 class TencentMapError(ValueError):
@@ -75,16 +77,14 @@ def _decode_polyline(polyline: list[int | float]) -> list[dict[str, float]]:
     return points
 
 
-def plan_tencent_bicycling_route(
+def _plan_tencent_route(
     start: tuple[float, float],
     end: tuple[float, float],
+    *,
+    path: str,
+    url: str,
     timeout_sec: float = 8.0,
 ) -> dict[str, Any]:
-    """
-    调腾讯骑行路线规划。
-
-    start/end 均是 (lat, lon)，与腾讯 API 的“纬度在前，经度在后”一致。
-    """
     if not settings.TENCENT_MAP_KEY or not settings.TENCENT_MAP_SK:
         raise TencentMapConfigError("TENCENT_MAP_KEY / TENCENT_MAP_SK 未配置")
 
@@ -102,10 +102,10 @@ def plan_tencent_bicycling_route(
         "key": settings.TENCENT_MAP_KEY,
         "output": "json",
     }
-    params["sig"] = _build_sig(_TENCENT_DIRECTION_PATH, params, settings.TENCENT_MAP_SK)
+    params["sig"] = _build_sig(path, params, settings.TENCENT_MAP_SK)
 
     try:
-        response = httpx.get(_TENCENT_DIRECTION_URL, params=params, timeout=timeout_sec)
+        response = httpx.get(url, params=params, timeout=timeout_sec)
         response.raise_for_status()
         data = response.json()
     except httpx.HTTPError:
@@ -129,3 +129,33 @@ def plan_tencent_bicycling_route(
         "duration": route.get("duration"),
         "points": points,
     }
+
+
+def plan_tencent_bicycling_route(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    timeout_sec: float = 8.0,
+) -> dict[str, Any]:
+    """调腾讯骑行路线规划；保留给路书功能，赛段门禁禁止使用。"""
+    return _plan_tencent_route(
+        start,
+        end,
+        path=_TENCENT_DIRECTION_PATH,
+        url=_TENCENT_DIRECTION_URL,
+        timeout_sec=timeout_sec,
+    )
+
+
+def plan_tencent_driving_route(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    timeout_sec: float = 8.0,
+) -> dict[str, Any]:
+    """调腾讯驾车路线规划；赛段候选只能由这个服务端函数生成。"""
+    return _plan_tencent_route(
+        start,
+        end,
+        path=_TENCENT_DRIVING_DIRECTION_PATH,
+        url=_TENCENT_DRIVING_DIRECTION_URL,
+        timeout_sec=timeout_sec,
+    )

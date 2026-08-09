@@ -68,13 +68,20 @@ _FAKE_EWKB = "0102000020E6100000020000003333333333235C408FC2F5285CEF424033333333
 
 @event.listens_for(_test_engine, "connect")
 def _register_fake_postgis(dbapi_conn, connection_record):
+    def _as_text(value):
+        if isinstance(value, str) and value.upper().startswith("SRID="):
+            return value.split(";", 1)[1]
+        return value
+
     dbapi_conn.create_function("GeomFromEWKT", 1, lambda x: x)
     dbapi_conn.create_function("ST_GeomFromEWKT", 1, lambda x: x)
     # AsEWKB / ST_AsEWKB 必须返回合法十六进制 EWKB，不能原样返回 WKT
     dbapi_conn.create_function("AsEWKB", 1, lambda x: _FAKE_EWKB)
     dbapi_conn.create_function("ST_AsEWKB", 1, lambda x: _FAKE_EWKB)
-    dbapi_conn.create_function("AsText", 1, lambda x: x)
-    dbapi_conn.create_function("ST_AsText", 1, lambda x: x)
+    # PostGIS ST_AsText(geometry) 不返回 EWKT 的 ``SRID=...;`` 前缀。
+    # SQLite 替身也保持同一语义，避免测试中的几何指纹与生产回读不一致。
+    dbapi_conn.create_function("AsText", 1, _as_text)
+    dbapi_conn.create_function("ST_AsText", 1, _as_text)
 
 
 # 简化版 activities 表——只包含统计测试需要的字段
@@ -211,6 +218,24 @@ _segment_efforts_table = Table(
 
 # 标准几何替换暂存表。测试只验证 admin 暂存/派发合同；真 PostGIS 下的原子切换
 # 由独立 PG 测试覆盖。
+_segment_routing_candidates_table = Table(
+    "segment_routing_candidates",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("segment_id", Integer, nullable=False),
+    Column("status", String(16), nullable=False, default="ready"),
+    Column("routing_provider", String(16), nullable=False, default="tencent"),
+    Column("routing_mode", String(16), nullable=False, default="driving"),
+    Column("control_points_json", Text, nullable=False),
+    Column("reference_line_wkt", Text, nullable=False),
+    Column("geometry_hash", String(64), nullable=False),
+    Column("provider_distance_m", Float, nullable=False),
+    Column("measured_distance_m", Float, nullable=False),
+    Column("record_hash", String(64), nullable=False),
+    Column("created_by", Integer),
+    Column("created_at", DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")),
+)
+
 _segment_geometry_revisions_table = Table(
     "segment_geometry_revisions",
     _test_metadata,
@@ -237,6 +262,13 @@ _segment_geometry_revisions_table = Table(
     Column("match_tolerance", Float, nullable=False),
     Column("min_match_ratio", Float, nullable=False),
     Column("source_url", Text, nullable=False),
+    Column("source_segment_id", String(64)),
+    Column("source_distance_m", Float),
+    Column("source_observation_id", String(64)),
+    Column("routing_candidate_id", Integer),
+    Column("candidate_payload_hash", String(64)),
+    Column("validation_version", String(64)),
+    Column("validation_metrics_json", Text),
     Column("routing_provider", String(16), nullable=False, default="tencent"),
     Column("routing_mode", String(16), nullable=False, default="driving"),
     Column("original_coordinate_system", String(16), nullable=False, default="gcj02"),

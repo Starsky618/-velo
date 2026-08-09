@@ -14,12 +14,13 @@ from app.database import SessionLocal
 from app.queue import segment_rebuilds_queue
 from app.route_cognition.services.segment_geometry_change import record_geometry_change
 from app.segment.geometry_rebuild import (
+    SEGMENT_GEOMETRY_GATE_VERSION,
     SegmentGeometryRevisionError,
     activate_revision_core,
     collect_effort_candidates,
     mark_revision_failed,
     mark_revision_processing,
-    prepare_segment_geometry,
+    prepare_segment_geometry_from_evidence,
     stage_geometry_revision,
 )
 from app.segment.models import Segment, SegmentGeometryRevision
@@ -39,22 +40,23 @@ def request_segment_geometry_rebuild(
     db: Session,
     *,
     segment_id: int,
-    reference_points: list[dict],
-    source_url: str,
-    coordinate_system: str,
+    source_observation_id: str,
+    routing_candidate_id: int,
     admin_id: int,
 ) -> SegmentGeometryRevision:
     """准备、暂存并派发替换任务；此时公开标准线仍完全不变。"""
-    prepared = prepare_segment_geometry(
-        reference_points,
-        coordinate_system=coordinate_system,
+    prepared = prepare_segment_geometry_from_evidence(
+        db,
+        segment_id=segment_id,
+        source_observation_id=source_observation_id,
+        routing_candidate_id=routing_candidate_id,
     )
     revision = stage_geometry_revision(
         db,
         segment_id=segment_id,
         prepared=prepared,
-        source_url=source_url,
-        coordinate_system=coordinate_system,
+        source_observation_id=source_observation_id,
+        routing_candidate_id=routing_candidate_id,
         created_by=admin_id,
     )
     db.commit()
@@ -85,11 +87,19 @@ def retry_segment_geometry_revision(
             SegmentGeometryRevision.id == revision_id,
             SegmentGeometryRevision.segment_id == segment_id,
         )
+        .populate_existing()
         .with_for_update()
         .first()
     )
     if revision is None:
         raise SegmentGeometryRevisionError("标准几何替换任务不存在")
+    if (
+        revision.source_observation_id is None
+        or revision.routing_candidate_id is None
+        or revision.candidate_payload_hash is None
+        or revision.validation_version != SEGMENT_GEOMETRY_GATE_VERSION
+    ):
+        raise SegmentGeometryRevisionError("历史几何任务缺少当前门禁证据，不能重试；请新建 revision")
 
     now = datetime.now(timezone.utc)
     retrying_processing = revision.status == "processing"
