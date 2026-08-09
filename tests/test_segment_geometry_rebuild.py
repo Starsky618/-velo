@@ -70,7 +70,7 @@ def _prepared() -> PreparedSegmentGeometry:
     return PreparedSegmentGeometry(
         reference_line_wkt=wkt,
         geometry_hash=stable_line_hash(wkt),
-        distance=2200.0,
+        distance=1200.0,
         elevation_gain=220.0,
         elevation_loss=20.0,
         avg_gradient=8.5,
@@ -108,6 +108,7 @@ def test_admin_stages_driving_geometry_without_touching_live_segment(
         json={
             "reference_points": [
                 {"lat": 37.7, "lon": 112.4},
+                {"lat": 37.71, "lon": 112.41},
                 {"lat": 37.72, "lon": 112.42},
             ],
             "source_url": "https://www.strava.com/segments/123",
@@ -131,7 +132,7 @@ def test_admin_stages_driving_geometry_without_touching_live_segment(
     assert live_segment.distance == 1000.0
     assert live_segment.elevation_gain == 100.0
     revision = db.get(SegmentGeometryRevision, payload["id"])
-    assert revision.distance == 2200.0
+    assert revision.distance == 1200.0
     assert revision.previous_reference_line_wkt != revision.candidate_reference_line_wkt
 
     status = client.get(
@@ -240,6 +241,7 @@ def test_staged_revision_with_job_id_recovers_only_when_claim_expired_and_job_mi
         json={
             "reference_points": [
                 {"lat": 37.7, "lon": 112.4},
+                {"lat": 37.705, "lon": 112.405},
                 {"lat": 37.71, "lon": 112.41},
             ],
             "source_url": "https://www.strava.com/segments/123",
@@ -287,6 +289,7 @@ def test_admin_rejects_bicycling_geometry_before_any_write(client, db, admin_hea
         json={
             "reference_points": [
                 {"lat": 37.7, "lon": 112.4},
+                {"lat": 37.71, "lon": 112.41},
                 {"lat": 37.72, "lon": 112.42},
             ],
             "source_url": "https://www.strava.com/segments/456",
@@ -294,6 +297,57 @@ def test_admin_rejects_bicycling_geometry_before_any_write(client, db, admin_hea
         },
     )
     assert response.status_code == 422
+    assert db.query(SegmentGeometryRevision).count() == 0
+
+
+def test_admin_rejects_endpoints_only_before_any_geometry_work(client, db, admin_header):
+    segment = _segment(db, name="万亩生态园")
+
+    response = client.post(
+        f"/api/admin/segments/{segment.id}/geometry-revisions",
+        headers=admin_header,
+        json={
+            "reference_points": [
+                {"lat": 37.7, "lon": 112.4},
+                {"lat": 37.72, "lon": 112.42},
+            ],
+            "source_url": "https://www.strava.com/segments/123",
+        },
+    )
+
+    assert response.status_code == 422
+    assert db.query(SegmentGeometryRevision).count() == 0
+
+
+@pytest.mark.parametrize("candidate_distance", [530.0, 1600.0])
+def test_admin_rejects_implausible_length_change_for_same_segment_id(
+    client,
+    db,
+    admin_header,
+    monkeypatch,
+    candidate_distance,
+):
+    segment = _segment(db)
+    monkeypatch.setattr(
+        "app.admin.segment_geometry_workflow.prepare_segment_geometry",
+        lambda *args, **kwargs: replace(_prepared(), distance=candidate_distance),
+    )
+
+    response = client.post(
+        f"/api/admin/segments/{segment.id}/geometry-revisions",
+        headers=admin_header,
+        json={
+            "reference_points": [
+                {"lat": 37.7, "lon": 112.4},
+                {"lat": 37.71, "lon": 112.41},
+                {"lat": 37.72, "lon": 112.42},
+            ],
+            "source_url": "https://www.strava.com/segments/123",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "长度差异过大" in response.json()["detail"]
     assert db.query(SegmentGeometryRevision).count() == 0
 
 
@@ -322,6 +376,7 @@ def test_admin_rejects_candidate_for_a_different_real_world_segment(
         json={
             "reference_points": [
                 {"lat": 37.7, "lon": 112.4},
+                {"lat": 37.71, "lon": 112.41},
                 {"lat": 37.72, "lon": 112.42},
             ],
             "source_url": "https://www.strava.com/segments/456",
@@ -355,6 +410,7 @@ def test_dispatch_failure_marks_revision_failed_without_touching_live_segment(
         json={
             "reference_points": [
                 {"lat": 37.7, "lon": 112.4},
+                {"lat": 37.71, "lon": 112.41},
                 {"lat": 37.72, "lon": 112.42},
             ],
             "source_url": "https://www.strava.com/segments/123",

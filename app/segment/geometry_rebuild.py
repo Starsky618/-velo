@@ -30,6 +30,8 @@ from app.segment.service_create import _build_segment_elevation_result
 SEGMENT_MATCH_LOCK_NAMESPACE = 92811
 SEGMENT_GEOMETRY_EPOCH_LOCK_NAMESPACE = 92812
 SEGMENT_GEOMETRY_EPOCH_LOCK_KEY = 0
+MIN_GEOMETRY_DISTANCE_RATIO = 0.65
+MAX_GEOMETRY_DISTANCE_RATIO = 1.50
 
 
 class SegmentGeometryRevisionError(ValueError):
@@ -99,8 +101,8 @@ def prepare_segment_geometry(
     """把腾讯驾车折线变成可激活的 WGS84 标准几何和 GLO-30 派生数据。"""
     points = [dict(point) for point in reference_points]
     points = convert_points_to_wgs84(points, coordinate_system)
-    if len(points) < 2:
-        raise SegmentGeometryRevisionError("标准几何至少需要 2 个点")
+    if len(points) < 3:
+        raise SegmentGeometryRevisionError("标准几何必须是腾讯驾车返回的完整折线，至少需要 3 个点")
 
     distance = sum(
         _haversine(
@@ -214,6 +216,16 @@ def stage_geometry_revision(
     if start_shift > endpoint_tolerance or end_shift > endpoint_tolerance:
         raise SegmentGeometryRevisionError(
             "候选线起终点偏离现有赛段，不能在同一个 segment_id 下覆盖"
+        )
+    current_distance = float(segment.distance or 0.0)
+    if current_distance <= 0:
+        raise SegmentGeometryRevisionError("现有赛段距离无效，无法校验候选线是否为同一赛段")
+    distance_ratio = prepared.distance / current_distance
+    if not MIN_GEOMETRY_DISTANCE_RATIO <= distance_ratio <= MAX_GEOMETRY_DISTANCE_RATIO:
+        raise SegmentGeometryRevisionError(
+            "候选线与现有赛段长度差异过大，不能在同一个 segment_id 下自动覆盖"
+            f"（现有 {current_distance:.1f}m，候选 {prepared.distance:.1f}m，"
+            f"比例 {distance_ratio:.1%}）"
         )
     candidate_wkt = prepared.reference_line_wkt
     if db.bind.dialect.name == "postgresql":
