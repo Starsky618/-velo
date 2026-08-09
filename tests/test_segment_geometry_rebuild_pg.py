@@ -214,7 +214,7 @@ def test_concurrent_stage_serializes_on_segment_parent_lock(pg_engine):
             geometry_hash=stable_line_hash(
                 "LINESTRING(112.4 37.7,112.405 37.715,112.41 37.71)"
             ),
-            distance=2200.0,
+            distance=1200.0,
             elevation_gain=220.0,
             elevation_loss=20.0,
             avg_gradient=8.5,

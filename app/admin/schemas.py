@@ -185,7 +185,9 @@ class SegmentGeometryRebuildRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    reference_points: list[dict] = Field(..., min_length=2, max_length=2000)
+    # 这里接收的是腾讯驾车 API 返回的完整折线，不是只用于算路的起终点。
+    # 两点输入只能画出直线，曾导致真实道路被误覆盖。
+    reference_points: list[dict] = Field(..., min_length=3, max_length=2000)
     source_url: HttpUrl
     coordinate_system: Literal["gcj02", "wgs84"] = "gcj02"
     routing_provider: Literal["tencent"] = "tencent"
