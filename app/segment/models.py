@@ -173,6 +173,50 @@ class SegmentEffort(Base):
     )
 
 
+class SegmentRoutingCandidate(Base):
+    """服务端真实调用腾讯 driving 后固化的不可编辑候选。"""
+
+    __tablename__ = "segment_routing_candidates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    segment_id = Column(
+        Integer,
+        ForeignKey("segments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status = Column(String(16), nullable=False, server_default="ready")
+    routing_provider = Column(String(16), nullable=False, server_default="tencent")
+    routing_mode = Column(String(16), nullable=False, server_default="driving")
+    control_points_json = Column(Text, nullable=False)
+    reference_line_wkt = Column(Text, nullable=False)
+    geometry_hash = Column(String(64), nullable=False)
+    provider_distance_m = Column(Float, nullable=False)
+    measured_distance_m = Column(Float, nullable=False)
+    record_hash = Column(String(64), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('ready', 'consumed')",
+            name="ck_segment_routing_candidates_status",
+        ),
+        CheckConstraint(
+            "routing_provider = 'tencent'",
+            name="ck_segment_routing_candidates_provider",
+        ),
+        CheckConstraint(
+            "routing_mode = 'driving'",
+            name="ck_segment_routing_candidates_mode",
+        ),
+        CheckConstraint(
+            "provider_distance_m > 0 AND measured_distance_m > 0",
+            name="ck_segment_routing_candidates_distance",
+        ),
+        Index("idx_segment_routing_candidates_segment", "segment_id", "created_at"),
+    )
+
+
 class SegmentGeometryRevision(Base):
     """标准几何替换的暂存单与回滚证据。
 
@@ -217,6 +261,19 @@ class SegmentGeometryRevision(Base):
     # 本轮只允许已经实测确认的腾讯驾车重建线。若未来支持别的 provider/mode，
     # 必须显式扩约束与验收，不能悄悄把骑行线重新放进来。
     source_url = Column(Text, nullable=False)
+    # source_segment_id 从严格 Strava URL 机械提取；source_distance_m 是公开页
+    # 显示的硬事实。历史 revision 允许 NULL，新建/激活任务由应用门禁强制非空。
+    source_segment_id = Column(String(64), nullable=True)
+    source_distance_m = Column(Float, nullable=True)
+    source_observation_id = Column(String(64), nullable=True)
+    routing_candidate_id = Column(
+        Integer,
+        ForeignKey("segment_routing_candidates.id", ondelete="NO ACTION"),
+        nullable=True,
+    )
+    candidate_payload_hash = Column(String(64), nullable=True)
+    validation_version = Column(String(64), nullable=True)
+    validation_metrics_json = Column(Text, nullable=True)
     routing_provider = Column(String(16), nullable=False, server_default="tencent")
     routing_mode = Column(String(16), nullable=False, server_default="driving")
     original_coordinate_system = Column(String(16), nullable=False, server_default="gcj02")
@@ -246,6 +303,10 @@ class SegmentGeometryRevision(Base):
         CheckConstraint(
             "original_coordinate_system IN ('gcj02', 'wgs84')",
             name="ck_segment_geometry_revisions_coordinate_system",
+        ),
+        CheckConstraint(
+            "source_distance_m IS NULL OR source_distance_m > 0",
+            name="ck_segment_geometry_revisions_source_distance",
         ),
         CheckConstraint(
             "difficulty IN ('easy', 'medium', 'hard', 'extreme')",

@@ -43,8 +43,47 @@ def test_segment_geometry_migration_roundtrip_and_incompatible_history_guard():
         command.upgrade(alembic_config, "head")
         with temp_engine.connect() as connection:
             assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "20260809_seg_geom_rebuild"
+                "20260809_seg_geom_gates"
             )
+            gate_columns = {
+                row[0]
+                for row in connection.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name = 'segment_geometry_revisions'"
+                    )
+                )
+            }
+            assert {
+                "source_segment_id",
+                "source_distance_m",
+                "source_observation_id",
+                "routing_candidate_id",
+                "candidate_payload_hash",
+                "validation_version",
+                "validation_metrics_json",
+            } <= gate_columns
+            candidate_columns = {
+                row[0]
+                for row in connection.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name = 'segment_routing_candidates'"
+                    )
+                )
+            }
+            assert {
+                "segment_id",
+                "status",
+                "routing_provider",
+                "routing_mode",
+                "control_points_json",
+                "reference_line_wkt",
+                "geometry_hash",
+                "provider_distance_m",
+                "measured_distance_m",
+                "record_hash",
+            } <= candidate_columns
 
         command.downgrade(alembic_config, "20260806_creator_ctx_v1")
         command.upgrade(alembic_config, "head")
@@ -106,8 +145,10 @@ def test_segment_geometry_migration_roundtrip_and_incompatible_history_guard():
             command.downgrade(alembic_config, "20260806_creator_ctx_v1")
 
         with temp_engine.connect() as connection:
+            # Alembic/PostgreSQL rolls the failed downgrade back as one
+            # transaction, including the preceding gate-migration downgrade.
             assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "20260809_seg_geom_rebuild"
+                "20260809_seg_geom_gates"
             )
     finally:
         settings.DATABASE_URL = original_database_url

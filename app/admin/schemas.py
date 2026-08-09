@@ -4,7 +4,7 @@ from datetime import datetime
 import math
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 AiDraftStatus = Literal["pending", "human_edited", "approved", "rejected"]
 City = Literal[
@@ -180,20 +180,15 @@ class FromGpxRequest(BaseModel):
         return v
 
 
-class SegmentGeometryRebuildRequest(BaseModel):
-    """用腾讯驾车折线替换同一个现实赛段的标准几何。"""
+class SegmentRoutingCandidateCreateRequest(BaseModel):
+    """只提交算路控制点；完整折线必须由后端真实调用腾讯 driving 生成。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    # 这里接收的是腾讯驾车 API 返回的完整折线，不是只用于算路的起终点。
-    # 两点输入只能画出直线，曾导致真实道路被误覆盖。
-    reference_points: list[dict] = Field(..., min_length=3, max_length=2000)
-    source_url: HttpUrl
-    coordinate_system: Literal["gcj02", "wgs84"] = "gcj02"
-    routing_provider: Literal["tencent"] = "tencent"
-    routing_mode: Literal["driving"] = "driving"
+    control_points: list[dict] = Field(..., min_length=2, max_length=20)
+    coordinate_system: Literal["gcj02", "wgs84"]
 
-    @field_validator("reference_points")
+    @field_validator("control_points")
     @classmethod
     def validate_points(cls, value):
         for point in value:
@@ -216,15 +211,29 @@ class SegmentGeometryRebuildRequest(BaseModel):
                 raise ValueError(f"lon 越界: {lon}")
         return value
 
-    @field_validator("source_url")
-    @classmethod
-    def validate_strava_segment_url(cls, value: HttpUrl):
-        host = (value.host or "").lower()
-        if host != "strava.com" and not host.endswith(".strava.com"):
-            raise ValueError("source_url 必须是 Strava 公开赛段链接")
-        if not value.path.startswith("/segments/"):
-            raise ValueError("source_url 必须指向 Strava segment 页面")
-        return value
+
+class SegmentRoutingCandidateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    segment_id: int
+    status: Literal["ready", "consumed"]
+    routing_provider: Literal["tencent"]
+    routing_mode: Literal["driving"]
+    geometry_hash: str
+    provider_distance_m: float
+    measured_distance_m: float
+    record_hash: str
+    created_at: datetime
+
+
+class SegmentGeometryRebuildRequest(BaseModel):
+    """从两份不可变证据中选择来源观察和腾讯 driving 候选。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_observation_id: str = Field(..., min_length=1, max_length=64)
+    routing_candidate_id: int = Field(..., gt=0)
 
 
 class SegmentGeometryRevisionResponse(BaseModel):
@@ -238,6 +247,13 @@ class SegmentGeometryRevisionResponse(BaseModel):
     routing_provider: Literal["tencent"]
     routing_mode: Literal["driving"]
     source_url: str
+    source_segment_id: str | None = None
+    source_distance_m: float | None = None
+    source_observation_id: str | None = None
+    routing_candidate_id: int | None = None
+    candidate_payload_hash: str | None = None
+    validation_version: str | None = None
+    validation_metrics_json: str | None = None
     job_id: str | None = None
     dispatch_claimed_at: datetime | None = None
     error_message: str | None = None

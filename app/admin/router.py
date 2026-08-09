@@ -11,9 +11,18 @@ from app.admin.segment_geometry_workflow import (
     request_segment_geometry_rebuild,
     retry_segment_geometry_revision,
 )
+from app.admin.segment_routing_candidate_workflow import (
+    SegmentRoutingCandidateError,
+    create_segment_routing_candidate,
+)
 from app.database import get_db
+from app.route_book.tencent_direction import (
+    TencentMapConfigError,
+    TencentMapError,
+    TencentMapServiceUnavailableError,
+)
 from app.segment.exceptions import InvalidSegmentRangeError, SegmentOverlapError
-from app.segment.geometry_rebuild import SegmentGeometryRevisionError
+from app.segment.geometry_rebuild import SegmentGeometryGateError, SegmentGeometryRevisionError
 from app.segment.dem_client import DEMServiceError
 from app.segment import service as segment_service
 from app.user.models import User
@@ -201,6 +210,34 @@ def create_segment_from_gpx_admin(
 
 
 @router.post(
+    "/segments/{segment_id}/routing-candidates",
+    response_model=schemas.SegmentRoutingCandidateResponse,
+    status_code=201,
+)
+def create_segment_routing_candidate_admin(
+    segment_id: int,
+    body: schemas.SegmentRoutingCandidateCreateRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """服务端真实调用腾讯 driving，并固化不可编辑候选。"""
+    try:
+        return create_segment_routing_candidate(
+            db,
+            segment_id=segment_id,
+            control_points=body.control_points,
+            coordinate_system=body.coordinate_system,
+            admin_id=admin.id,
+        )
+    except (SegmentRoutingCandidateError, TencentMapError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (TencentMapConfigError, TencentMapServiceUnavailableError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post(
     "/segments/{segment_id}/geometry-revisions",
     response_model=schemas.SegmentGeometryRevisionResponse,
     status_code=202,
@@ -211,16 +248,18 @@ def rebuild_segment_geometry_admin(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """暂存腾讯驾车标准线并异步重建历史成绩；不接受骑行模式。"""
+    """选择只读来源观察和服务端腾讯候选，异步原子重建历史成绩。"""
     try:
         return request_segment_geometry_rebuild(
             db,
             segment_id=segment_id,
-            reference_points=body.reference_points,
-            source_url=str(body.source_url),
-            coordinate_system=body.coordinate_system,
+            source_observation_id=body.source_observation_id,
+            routing_candidate_id=body.routing_candidate_id,
             admin_id=admin.id,
         )
+    except SegmentGeometryGateError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=exc.as_detail()) from exc
     except SegmentGeometryRevisionError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc

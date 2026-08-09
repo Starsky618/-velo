@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 import app.admin.segment_geometry_workflow as geometry_workflow
+import app.segment.geometry_rebuild as geometry_rebuild
 from app.activity.models import Activity, Trackpoint
 from app.common.geometry_hash import SEGMENT_GEOMETRY_NORMALIZATION_VERSION, stable_line_hash
 from app.route_book.models import RouteBook, RouteVersion
@@ -26,14 +27,23 @@ from app.route_cognition.services.segment_eligibility import (
 )
 from app.segment.geometry_rebuild import (
     PreparedSegmentGeometry,
+    SEGMENT_GEOMETRY_GATE_VERSION,
     SegmentGeometryRevisionError,
     acquire_geometry_activation_lock,
     acquire_geometry_match_read_lock,
     activate_revision_core,
     collect_effort_candidates,
+    parse_linestring_wkt,
     stage_geometry_revision,
 )
-from app.segment.models import Segment, SegmentEffort, SegmentGeometryRevision
+from app.segment._geo_utils import _haversine
+from app.segment.models import (
+    Segment,
+    SegmentEffort,
+    SegmentGeometryRevision,
+    SegmentRoutingCandidate,
+)
+from app.segment.routing_candidates import routing_candidate_record_hash
 from app.user.models import User
 
 
@@ -42,6 +52,55 @@ def _db_url() -> str:
     if not url:
         pytest.skip("设置 VELO_TEST_DATABASE_URL 后才运行赛段几何替换真 PG 测试")
     return url
+
+
+def _wkt_distance(wkt: str) -> float:
+    points = parse_linestring_wkt(wkt)
+    return sum(
+        _haversine(*points[index - 1], *points[index])
+        for index in range(1, len(points))
+    )
+
+
+def _install_source_observation(monkeypatch, *, observed_distance_m: float):
+    observation = SimpleNamespace(
+        observation_id="pg-source-observation",
+        source_segment_id="123",
+        source_url="https://www.strava.com/segments/123",
+        observed_distance_m=observed_distance_m,
+    )
+    monkeypatch.setattr(
+        geometry_rebuild,
+        "resolve_source_observation",
+        lambda *args, **kwargs: observation,
+    )
+    return observation
+
+
+def _routing_candidate(db, *, segment_id: int, prepared: PreparedSegmentGeometry):
+    candidate = SegmentRoutingCandidate(
+        segment_id=segment_id,
+        status="ready",
+        routing_provider="tencent",
+        routing_mode="driving",
+        control_points_json=json.dumps(
+            [
+                {"lat": prepared.start_lat, "lon": prepared.start_lon},
+                {"lat": prepared.end_lat, "lon": prepared.end_lon},
+            ],
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        reference_line_wkt=prepared.reference_line_wkt,
+        geometry_hash=prepared.geometry_hash,
+        provider_distance_m=prepared.distance,
+        measured_distance_m=prepared.distance,
+        record_hash="pending",
+    )
+    candidate.record_hash = routing_candidate_record_hash(candidate)
+    db.add(candidate)
+    db.flush()
+    return candidate
 
 
 @pytest.fixture()
@@ -78,6 +137,7 @@ def _create_tables(engine) -> None:
         Activity.__table__,
         Segment.__table__,
         SegmentEffort.__table__,
+        SegmentRoutingCandidate.__table__,
         SegmentGeometryRevision.__table__,
         RouteBook.__table__,
         RouteVersion.__table__,
@@ -175,7 +235,7 @@ def test_geometry_epoch_read_lock_blocks_activation_until_match_commits(pg_engin
         match_db.close()
 
 
-def test_concurrent_stage_serializes_on_segment_parent_lock(pg_engine):
+def test_concurrent_stage_serializes_on_segment_parent_lock(pg_engine, monkeypatch):
     _create_tables(pg_engine)
     Session = sessionmaker(bind=pg_engine, autocommit=False, autoflush=False)
     first_db = Session()
@@ -186,8 +246,8 @@ def test_concurrent_stage_serializes_on_segment_parent_lock(pg_engine):
         first_db.add(user)
         first_db.flush()
         segment = Segment(
-            name="狼坡",
-            distance=1000.0,
+            name="并发锁测试赛段",
+            distance=1417.0,
             elevation_gain=100.0,
             elevation_loss=10.0,
             avg_gradient=5.0,
@@ -210,11 +270,11 @@ def test_concurrent_stage_serializes_on_segment_parent_lock(pg_engine):
         segment_id = segment.id
         user_id = user.id
         prepared = PreparedSegmentGeometry(
-            reference_line_wkt="LINESTRING(112.4 37.7,112.405 37.715,112.41 37.71)",
+            reference_line_wkt="LINESTRING(112.4 37.7,112.405 37.70505,112.41 37.71)",
             geometry_hash=stable_line_hash(
-                "LINESTRING(112.4 37.7,112.405 37.715,112.41 37.71)"
+                "LINESTRING(112.4 37.7,112.405 37.70505,112.41 37.71)"
             ),
-            distance=1200.0,
+            distance=1418.0,
             elevation_gain=220.0,
             elevation_loss=20.0,
             avg_gradient=8.5,
@@ -227,12 +287,21 @@ def test_concurrent_stage_serializes_on_segment_parent_lock(pg_engine):
             end_lat=37.71,
             end_lon=112.41,
         )
+        observation = _install_source_observation(
+            monkeypatch,
+            observed_distance_m=prepared.distance,
+        )
+        routing_candidate = _routing_candidate(
+            first_db,
+            segment_id=segment_id,
+            prepared=prepared,
+        )
         first_revision = stage_geometry_revision(
             first_db,
             segment_id=segment_id,
             prepared=prepared,
-            source_url="https://www.strava.com/segments/1",
-            coordinate_system="gcj02",
+            source_observation_id=observation.observation_id,
+            routing_candidate_id=routing_candidate.id,
             created_by=user_id,
         )
 
@@ -243,8 +312,8 @@ def test_concurrent_stage_serializes_on_segment_parent_lock(pg_engine):
                     second_db,
                     segment_id=segment_id,
                     prepared=prepared,
-                    source_url="https://www.strava.com/segments/1",
-                    coordinate_system="gcj02",
+                    source_observation_id=observation.observation_id,
+                    routing_candidate_id=routing_candidate.id,
                     created_by=user_id,
                 )
             except Exception as exc:
@@ -270,6 +339,87 @@ def test_concurrent_stage_serializes_on_segment_parent_lock(pg_engine):
         first_db.close()
 
 
+def test_segment_delete_cascades_gate_revision_and_candidate(pg_engine, monkeypatch):
+    _create_tables(pg_engine)
+    db = sessionmaker(bind=pg_engine, autocommit=False, autoflush=False)()
+    try:
+        user = User(openid=f"delete_gate_{uuid.uuid4().hex}", nickname="delete gate")
+        db.add(user)
+        db.flush()
+        old_wkt = "LINESTRING(112.4 37.7,112.41 37.71)"
+        old_distance = _wkt_distance(old_wkt)
+        segment = Segment(
+            name="删除级联测试赛段",
+            distance=old_distance,
+            elevation_gain=100.0,
+            elevation_loss=10.0,
+            avg_gradient=5.0,
+            elevation_profile="[100,200]",
+            max_gradient=8.0,
+            difficulty="medium",
+            city="taiyuan",
+            start_lat=37.7,
+            start_lon=112.4,
+            end_lat=37.71,
+            end_lon=112.41,
+            reference_line=WKTElement(old_wkt, srid=4326),
+            match_tolerance=50.0,
+            min_match_ratio=0.8,
+        )
+        db.add(segment)
+        db.flush()
+        candidate_wkt = (
+            "LINESTRING(112.4 37.7,112.405 37.70505,112.41 37.71)"
+        )
+        prepared = PreparedSegmentGeometry(
+            reference_line_wkt=candidate_wkt,
+            geometry_hash=stable_line_hash(candidate_wkt),
+            distance=_wkt_distance(candidate_wkt),
+            elevation_gain=220.0,
+            elevation_loss=20.0,
+            avg_gradient=8.5,
+            elevation_profile_json="[100,180,320]",
+            max_gradient=12.0,
+            difficulty="hard",
+            city="taiyuan",
+            start_lat=37.7,
+            start_lon=112.4,
+            end_lat=37.71,
+            end_lon=112.41,
+        )
+        observation = _install_source_observation(
+            monkeypatch,
+            observed_distance_m=prepared.distance,
+        )
+        routing_candidate = _routing_candidate(
+            db,
+            segment_id=segment.id,
+            prepared=prepared,
+        )
+        revision = stage_geometry_revision(
+            db,
+            segment_id=segment.id,
+            prepared=prepared,
+            source_observation_id=observation.observation_id,
+            routing_candidate_id=routing_candidate.id,
+            created_by=user.id,
+        )
+        db.commit()
+        segment_id = segment.id
+        candidate_id = routing_candidate.id
+        revision_id = revision.id
+
+        db.delete(segment)
+        db.commit()
+
+        assert db.get(Segment, segment_id) is None
+        assert db.get(SegmentRoutingCandidate, candidate_id) is None
+        assert db.get(SegmentGeometryRevision, revision_id) is None
+    finally:
+        db.rollback()
+        db.close()
+
+
 def test_concurrent_retry_claim_enqueues_only_one_job(pg_engine, monkeypatch):
     _create_tables(pg_engine)
     Session = sessionmaker(bind=pg_engine, autocommit=False, autoflush=False)
@@ -279,8 +429,8 @@ def test_concurrent_retry_claim_enqueues_only_one_job(pg_engine, monkeypatch):
         setup_db.add(user)
         setup_db.flush()
         segment = Segment(
-            name="万亩生态园",
-            distance=1000.0,
+            name="重试并发测试赛段",
+            distance=1417.0,
             elevation_gain=100.0,
             elevation_loss=10.0,
             avg_gradient=5.0,
@@ -300,25 +450,16 @@ def test_concurrent_retry_claim_enqueues_only_one_job(pg_engine, monkeypatch):
         )
         setup_db.add(segment)
         setup_db.flush()
-        revision = SegmentGeometryRevision(
-            segment_id=segment.id,
-            status="failed",
-            previous_geometry_hash=stable_line_hash(
-                "LINESTRING(112.4 37.7,112.41 37.71)"
-            ),
-            candidate_geometry_hash=stable_line_hash(
-                "LINESTRING(112.4 37.7,112.405 37.715,112.41 37.71)"
-            ),
-            previous_reference_line_wkt="LINESTRING(112.4 37.7,112.41 37.71)",
-            candidate_reference_line_wkt=(
-                "LINESTRING(112.4 37.7,112.405 37.715,112.41 37.71)"
-            ),
-            previous_snapshot_json="{}",
-            distance=2200.0,
+        candidate_wkt = "LINESTRING(112.4 37.7,112.405 37.70505,112.41 37.71)"
+        candidate_distance = _wkt_distance(candidate_wkt)
+        prepared = PreparedSegmentGeometry(
+            reference_line_wkt=candidate_wkt,
+            geometry_hash=stable_line_hash(candidate_wkt),
+            distance=candidate_distance,
             elevation_gain=220.0,
             elevation_loss=20.0,
             avg_gradient=8.5,
-            elevation_profile="[100,180,320]",
+            elevation_profile_json="[100,180,320]",
             max_gradient=12.0,
             difficulty="hard",
             city="taiyuan",
@@ -326,17 +467,26 @@ def test_concurrent_retry_claim_enqueues_only_one_job(pg_engine, monkeypatch):
             start_lon=112.4,
             end_lat=37.71,
             end_lon=112.41,
-            match_tolerance=50.0,
-            min_match_ratio=0.8,
-            source_url="https://www.strava.com/segments/123",
-            routing_provider="tencent",
-            routing_mode="driving",
-            original_coordinate_system="gcj02",
-            normalization_version=SEGMENT_GEOMETRY_NORMALIZATION_VERSION,
-            created_by=user.id,
-            error_message="worker died",
         )
-        setup_db.add(revision)
+        observation = _install_source_observation(
+            monkeypatch,
+            observed_distance_m=candidate_distance,
+        )
+        routing_candidate = _routing_candidate(
+            setup_db,
+            segment_id=segment.id,
+            prepared=prepared,
+        )
+        revision = stage_geometry_revision(
+            setup_db,
+            segment_id=segment.id,
+            prepared=prepared,
+            source_observation_id=observation.observation_id,
+            routing_candidate_id=routing_candidate.id,
+            created_by=user.id,
+        )
+        revision.status = "failed"
+        revision.error_message = "worker died"
         setup_db.commit()
         segment_id = segment.id
         revision_id = revision.id
@@ -394,7 +544,10 @@ def test_concurrent_retry_claim_enqueues_only_one_job(pg_engine, monkeypatch):
     assert len(queue.calls) == 1
 
 
-def test_rebuild_swaps_geometry_efforts_and_cognition_in_one_transaction(pg_engine):
+def test_rebuild_swaps_geometry_efforts_and_cognition_in_one_transaction(
+    pg_engine,
+    monkeypatch,
+):
     _create_tables(pg_engine)
     db = sessionmaker(bind=pg_engine, autocommit=False, autoflush=False)()
     try:
@@ -402,10 +555,10 @@ def test_rebuild_swaps_geometry_efforts_and_cognition_in_one_transaction(pg_engi
         db.add(user)
         db.flush()
 
-        old_wkt = "LINESTRING(112.4 37.7,112.409 37.709)"
+        old_wkt = "LINESTRING(112.4 37.7,112.41 37.71)"
         segment = Segment(
-            name="万亩生态园",
-            distance=1300.0,
+            name="事务重建测试赛段",
+            distance=1417.0,
             elevation_gain=120.0,
             elevation_loss=5.0,
             avg_gradient=7.0,
@@ -415,8 +568,8 @@ def test_rebuild_swaps_geometry_efforts_and_cognition_in_one_transaction(pg_engi
             city="taiyuan",
             start_lat=37.7,
             start_lon=112.4,
-            end_lat=37.709,
-            end_lon=112.409,
+            end_lat=37.71,
+            end_lon=112.41,
             reference_line=WKTElement(old_wkt, srid=4326),
             match_tolerance=50.0,
             min_match_ratio=0.8,
@@ -468,19 +621,15 @@ def test_rebuild_swaps_geometry_efforts_and_cognition_in_one_transaction(pg_engi
             text("SELECT ST_AsText(ST_GeomFromText(:wkt, 4326))"),
             {"wkt": "LINESTRING(112.4 37.7,112.405 37.705,112.41 37.71)"},
         ).scalar_one()
-        revision = SegmentGeometryRevision(
-            segment_id=segment.id,
-            status="processing",
-            previous_geometry_hash=stable_line_hash(old_wkt),
-            candidate_geometry_hash=stable_line_hash(candidate_wkt),
-            previous_reference_line_wkt=old_wkt,
-            candidate_reference_line_wkt=candidate_wkt,
-            previous_snapshot_json=json.dumps({"distance": segment.distance}),
-            distance=1417.0,
+        candidate_distance = _wkt_distance(candidate_wkt)
+        prepared = PreparedSegmentGeometry(
+            reference_line_wkt=candidate_wkt,
+            geometry_hash=stable_line_hash(candidate_wkt),
+            distance=candidate_distance,
             elevation_gain=180.0,
             elevation_loss=8.0,
             avg_gradient=9.0,
-            elevation_profile="[100,180,280]",
+            elevation_profile_json="[100,180,280]",
             max_gradient=14.0,
             difficulty="hard",
             city="taiyuan",
@@ -488,18 +637,26 @@ def test_rebuild_swaps_geometry_efforts_and_cognition_in_one_transaction(pg_engi
             start_lon=112.4,
             end_lat=37.71,
             end_lon=112.41,
-            match_tolerance=50.0,
-            min_match_ratio=0.8,
-            source_url="https://www.strava.com/segments/123",
-            routing_provider="tencent",
-            routing_mode="driving",
-            original_coordinate_system="gcj02",
-            normalization_version=SEGMENT_GEOMETRY_NORMALIZATION_VERSION,
-            created_by=user.id,
-            job_id="segment-geometry-pg-attempt",
         )
-        db.add(revision)
-        db.flush()
+        observation = _install_source_observation(
+            monkeypatch,
+            observed_distance_m=candidate_distance,
+        )
+        routing_candidate = _routing_candidate(
+            db,
+            segment_id=segment.id,
+            prepared=prepared,
+        )
+        revision = stage_geometry_revision(
+            db,
+            segment_id=segment.id,
+            prepared=prepared,
+            source_observation_id=observation.observation_id,
+            routing_candidate_id=routing_candidate.id,
+            created_by=user.id,
+        )
+        revision.status = "processing"
+        revision.job_id = "segment-geometry-pg-attempt"
         judgment = JudgmentRun(
             run_type="human_review",
             status="succeeded",
@@ -559,7 +716,7 @@ def test_rebuild_swaps_geometry_efforts_and_cognition_in_one_transaction(pg_engi
         record_geometry_change(db, revision=active_revision, matched_efforts=summary.matched_efforts)
 
         assert db.get(Segment, segment.id).id == segment.id
-        assert db.get(Segment, segment.id).distance == 1417.0
+        assert db.get(Segment, segment.id).distance == pytest.approx(candidate_distance)
         rebuilt_effort = db.query(SegmentEffort).filter_by(segment_id=segment.id).one()
         assert rebuilt_effort.id == old_effort_id
         assert rebuilt_effort.elapsed_time == 100
@@ -570,6 +727,12 @@ def test_rebuild_swaps_geometry_efforts_and_cognition_in_one_transaction(pg_engi
         assert source.source_type == "map_reconstruction"
         assert source.geometry_hash == revision.candidate_geometry_hash
         assert source.quality_metrics_json["routing_mode"] == "driving"
+        assert source.quality_metrics_json["source_observation_id"] == (
+            observation.observation_id
+        )
+        assert source.quality_metrics_json["routing_candidate_id"] == (
+            routing_candidate.id
+        )
         assert db.execute(text("SELECT membership_status FROM route_segments")).scalar_one() == "deprecated"
         assert db.execute(text("SELECT membership_status FROM collection_segments")).scalar_one() == "deprecated"
         assert db.execute(text("SELECT link_status FROM segment_concept_links")).scalar_one() == "deprecated"

@@ -1,0 +1,31 @@
+{
+  "catalog_version": "segment_source_observations_v1",
+  "observations": [
+    {
+      "observation_id": "strava-33134150-2026-08-09",
+      "source_segment_id": "33134150",
+      "source_url": "https://www.strava.com/segments/33134150",
+      "observed_distance_m": 10030.0,
+      "observed_at": "2026-08-09T17:53:23+08:00",
+      "target_segment_id": 21,
+      "target_segment_names": ["天龙山网红公路爬坡", "天龙山网红桥爬坡"],
+      "expected_start_wgs84": {"lat": 37.705553, "lon": 112.429566},
+      "expected_end_wgs84": {"lat": 37.737995, "lon": 112.403277},
+      "endpoint_tolerance_m": 100.0,
+      "trusted_baseline_geometry_hash": "bc1b055807d3ddf59ac78e721fea18720c0a6ec599d58ddb024669b543a139b8"
+    },
+    {
+      "observation_id": "strava-13019992-2026-08-09",
+      "source_segment_id": "13019992",
+      "source_url": "https://www.strava.com/segments/13019992",
+      "observed_distance_m": 4250.0,
+      "observed_at": "2026-08-09T21:50:23+08:00",
+      "target_segment_id": 22,
+      "target_segment_names": ["万柏林生态园（长风口-启春阁）"],
+      "expected_start_wgs84": {"lat": 37.82347185708066, "lon": 112.47466311103472},
+      "expected_end_wgs84": {"lat": 37.82444546846213, "lon": 112.44868976687773},
+      "endpoint_tolerance_m": 100.0,
+      "trusted_baseline_geometry_hash": "6187edcd05c1452ba72e6e9680709cdcddbd985097c31a40da32d65ff786878a"
+    }
+  ]
+}

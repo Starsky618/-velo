@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from sqlalchemy.orm import Session
 
 from app.route_cognition.models import (
@@ -38,6 +40,24 @@ def record_geometry_change(
     for source in old_sources:
         source.quality_status = "deprecated"
 
+    quality_metrics = {
+        "revision_id": revision.id,
+        "routing_provider": revision.routing_provider,
+        "routing_mode": revision.routing_mode,
+        "matched_efforts": matched_efforts,
+        "source_segment_id": revision.source_segment_id,
+        "source_distance_m": revision.source_distance_m,
+        "source_observation_id": revision.source_observation_id,
+        "routing_candidate_id": revision.routing_candidate_id,
+        "candidate_payload_hash": revision.candidate_payload_hash,
+        "validation_version": revision.validation_version,
+        "validation_metrics": (
+            json.loads(revision.validation_metrics_json)
+            if revision.validation_metrics_json
+            else None
+        ),
+    }
+
     source = (
         db.query(SegmentGeometrySource)
         .filter(
@@ -56,23 +76,13 @@ def record_geometry_change(
             geometry_hash=revision.candidate_geometry_hash,
             normalization_version=revision.normalization_version,
             quality_status="verified",
-            quality_metrics_json={
-                "revision_id": revision.id,
-                "routing_provider": revision.routing_provider,
-                "routing_mode": revision.routing_mode,
-                "matched_efforts": matched_efforts,
-            },
+            quality_metrics_json=quality_metrics,
             created_by=revision.created_by,
         )
         db.add(source)
     else:
         source.quality_status = "verified"
-        source.quality_metrics_json = {
-            "revision_id": revision.id,
-            "routing_provider": revision.routing_provider,
-            "routing_mode": revision.routing_mode,
-            "matched_efforts": matched_efforts,
-        }
+        source.quality_metrics_json = quality_metrics
 
     cognition = (
         db.query(RouteCognitionSegment)

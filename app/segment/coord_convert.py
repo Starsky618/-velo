@@ -125,6 +125,26 @@ def gcj02_to_wgs84(lat: float, lon: float) -> tuple[float, float]:
     return lat * 2 - mg_lat, lon * 2 - mg_lon
 
 
+def wgs84_to_gcj02(lat: float, lon: float) -> tuple[float, float]:
+    """将 WGS-84 坐标转换为腾讯算路使用的 GCJ-02。"""
+    if not math.isfinite(lat) or not math.isfinite(lon):
+        raise ValueError("坐标必须是有限数字")
+    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        raise ValueError("坐标越界")
+    if not _is_in_china(lat, lon):
+        return lat, lon
+
+    dlat = _transform_lat(lon - 105.0, lat - 35.0)
+    dlon = _transform_lon(lon - 105.0, lat - 35.0)
+    rad_lat = lat / 180.0 * math.pi
+    magic = math.sin(rad_lat)
+    magic = 1 - _EE * magic * magic
+    sqrt_magic = math.sqrt(magic)
+    dlat = (dlat * 180.0) / ((_A * (1 - _EE)) / (magic * sqrt_magic) * math.pi)
+    dlon = (dlon * 180.0) / (_A / sqrt_magic * math.cos(rad_lat) * math.pi)
+    return lat + dlat, lon + dlon
+
+
 def convert_points_to_wgs84(
     points: list[dict],
     coordinate_system: str = "gcj02",
