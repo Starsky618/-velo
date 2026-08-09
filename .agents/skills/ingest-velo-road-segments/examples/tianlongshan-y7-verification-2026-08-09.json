@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "case_id": "tianlongshan-y7-2026-08-09",
+  "input_example": "tianlongshan-y7-public-observation-2026-08-09.json",
+  "status": "verified_regression",
+  "selected_public_segment": {
+    "name": "Y7天龙山网红桥赛段",
+    "source_url": "https://www.strava.com/segments/33134150",
+    "observed_distance_m": 10030,
+    "observed_elevation_gain_m": 536,
+    "athlete_count": 694,
+    "effort_count": 3694,
+    "star_count": 6,
+    "observed_at": "2026-08-09T17:53:23+08:00"
+  },
+  "historical_elevation_anchor": {
+    "observed_at": "2026-07-16",
+    "source": "elevation-bakeoff/outputs/tianlongshan_redteam.csv",
+    "matched_activity_length_km": 10.34,
+    "route_direction": "完整下坡，反向对应爬坡",
+    "dataset": "SRTM3-project",
+    "processing_grid_m": 20,
+    "median_filter_points": 3,
+    "smoothing_sigma_m": 150,
+    "calculation": "平滑剖面相邻下降直接累计",
+    "descent_sum_m": 561.4113779904653,
+    "role": "真实历史算法输出；用于回归和解释算法版本差异，不冒充当前生产口径"
+  },
+  "current_verified_run": {
+    "candidate_id": "70a18e5d8cae8a3ce31e5ed3",
+    "generated_at": "2026-08-09T10:12:51.458922+00:00",
+    "reviewed_at": "2026-08-09T10:13:11.245933+00:00",
+    "geometry_source": "tencent_directions",
+    "tencent_routing_profile": "driving",
+    "distance_m": 9956.42,
+    "provider_distance_m": 9955,
+    "point_count": 505,
+    "geometry_hash": "85b0d581d80a3e8bdf3d8ce25a7ac43d5a6e08f90fb2250d3bc79a9d42c7e0f1",
+    "elevation_method": "glo30_meaningful_ascent_v1",
+    "elevation_gain_m": 585.5,
+    "elevation_loss_m": 57.3,
+    "average_gradient_pct": 5.31,
+    "maximum_gradient_pct": 11.16
+  },
+  "shape_verification": {
+    "tencent_web_observation": "正确 GCJ-02 起终点显示 10 公里天龙山路；WGS-84 误贴网页会错误显示 3.7 公里隧道捷径",
+    "legacy_gpx_role": "参与历史精确起终点定位，并用于已知同轨形状回归；不作为本次腾讯几何点串或当前海拔值来源",
+    "legacy_gpx_length_m": 10046.53,
+    "hausdorff_m": 10.2,
+    "legacy_gpx_to_candidate_p95_m": 5.6,
+    "candidate_to_legacy_gpx_p95_m": 6.46,
+    "endpoint_match": "passed",
+    "direction_match": "passed",
+    "shape_match": "passed"
+  },
+  "publication": {
+    "eligible": false,
+    "blocking_gate": "gpx_independent_coordinates=regression_only",
+    "database_written": false,
+    "production_deployed": false
+  }
+}

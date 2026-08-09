@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "target_definition": {
+    "physical_role": "天龙山检查站来向后的约 10 公里连续盘山爬坡，经过半山岔口与西山旅游 2 号螺旋高架，到现有 VELO 天龙山轨迹末点",
+    "expected_direction": "晋祠方向山脚向天龙山高处爬升",
+    "expected_distance_range_m": {
+      "min": 9800,
+      "max": 10300
+    },
+    "expected_start_wgs84": {
+      "lat": 37.705553,
+      "lon": 112.429566,
+      "name": "现有 VELO 天龙山轨迹起点"
+    },
+    "expected_end_wgs84": {
+      "lat": 37.737995,
+      "lon": 112.403277,
+      "name": "现有 VELO 天龙山轨迹末点"
+    },
+    "endpoint_tolerance_m": 100,
+    "required_shape_features": [
+      "约 0.69 公里处检查站分流走左侧山路，不进右侧隧道",
+      "约 5.81 公里处半山岔口走右侧高架方向",
+      "约 6.5 至 7.5 公里经过三层螺旋高架",
+      "高架之后继续向北爬升到轨迹末点"
+    ],
+    "acceptance_sources": [
+      {
+        "type": "user_acceptance_anchor",
+        "reference": "2026-08-09 当前任务中的天龙山约 10 公里目标",
+        "note": "目标边界先于本次候选搜索；历史 561 米只作待重算线索"
+      },
+      {
+        "type": "velo_existing_route_identity",
+        "reference": "content/routes/tianlongshan/track.gpx",
+        "note": "仅用于目标身份、起终点和路形对照，不作为本次几何或海拔来源"
+      },
+      {
+        "type": "historical_page_match",
+        "reference": "https://www.strava.com/segments/33134150",
+        "note": "2026-07-27 对照记录为 10.0331 公里，和 VELO 轨迹平均偏差 1.50 米、P95 3.84 米"
+      }
+    ]
+  },
+  "segment": {
+    "name": "天龙山网红桥爬坡",
+    "city": "taiyuan",
+    "direction": "晋祠方向山脚到天龙山高处"
+  },
+  "reconstruction": {
+    "tencent_routing_profile": "driving",
+    "profile_selection_reason": "同一起终点实测：bicycling 会在螺旋高架抄近路或因密集锚点重复绕行；driving 返回 9.95 公里完整道路中心线。此选择只决定几何重建，不证明道路骑行许可。"
+  },
+  "selection": {
+    "source_segment_name": "Y7天龙山网红桥赛段",
+    "identity_check": {
+      "boundary_match": "yes",
+      "direction_match": "yes",
+      "distance_match": "yes",
+      "shape_match": "yes",
+      "checked_against": "当前 Strava 页面起终点标记和整条可见路形，对照搜索前冻结的 VELO 起终点、检查站分流、半山岔口、螺旋高架与轨迹末点",
+      "selection_basis": "页面显示 10.03 公里，方向为山脚向高处，完整路形逐段覆盖目标约 10 公里盘山走廊；不是同山体的局部坡、反爬或不同入口赛段"
+    },
+    "rejected_candidates": [
+      {
+        "name": "牛家口-天龙山",
+        "source_url": "https://www.strava.com/segments/20835564",
+        "rejection_reason": "11.69 公里、480 米且入口边界不同；不是本次冻结的约 10 公里同轨目标"
+      }
+    ]
+  },
+  "discovery": {
+    "source_type": "strava_public_page",
+    "source_url": "https://www.strava.com/segments/33134150",
+    "observed_at": "2026-08-09T17:53:23+08:00",
+    "coordinate_observation": {
+      "acquisition_mode": "legacy_verified_geometry_regression",
+      "strava_start_marker_seen": true,
+      "strava_end_marker_seen": true,
+      "alignment_method": "当前 Strava 页面 marker 与旧 VELO 同轨起终点共同确认边界；旧坐标用于回归腾讯重建链路",
+      "estimated_accuracy_m": 20,
+      "legacy_geometry_used": true,
+      "note": "精确起终点坐标含旧 VELO 同轨 GPX 依据，因此本例只能验证腾讯重建和海拔回归，不能作为新赛段已摆脱 GPX 取点的证据"
+    },
+    "start_wgs84": {
+      "lat": 37.705553,
+      "lon": 112.429566,
+      "name": "页面绿色起点标记对齐的 VELO 目标起点"
+    },
+    "end_wgs84": {
+      "lat": 37.737995,
+      "lon": 112.403277,
+      "name": "页面方格终点标记对齐的 VELO 目标末点"
+    },
+    "anchors_wgs84": [],
+    "route_shape_notes": "页面当前可见地图从东南侧绿色起点沿天龙山旅游公路连续盘升，经过检查站分流、半山密集发卡弯和三层螺旋高架，最后到北侧方格终点；本次 driving 起终点直算已还原完整道路，无需用密集锚点干扰立交层级。",
+    "observed_metrics": {
+      "distance_m": 10030,
+      "elevation_gain_m": 536,
+      "average_gradient_pct": 5.2,
+      "minimum_elevation_m": 830,
+      "maximum_elevation_m": 1356
+    },
+    "popularity": {
+      "athlete_count": 694,
+      "effort_count": 3694,
+      "star_count": 6
+    },
+    "comparison_scope": "天龙山约 10 公里完整盘山爬坡候选",
+    "nearby_comparisons": []
+  }
+}

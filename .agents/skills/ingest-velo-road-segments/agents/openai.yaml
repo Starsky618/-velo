@@ -1,0 +1,7 @@
+interface:
+  display_name: "收录 VELO 真实路段"
+  short_description: "从公开赛段线索重建、核验并沉淀 VELO 固定道路数据"
+  default_prompt: "使用 $ingest-velo-road-segments 从公开赛段线索创建一条可审计的 VELO 路段。"
+
+policy:
+  allow_implicit_invocation: false

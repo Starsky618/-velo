@@ -4,10 +4,12 @@ import pytest
 
 from app.config import settings
 from app.route_book.tencent_direction import (
+    _TENCENT_DRIVING_DIRECTION_PATH,
     _TENCENT_DIRECTION_PATH,
     _build_sig,
     _decode_polyline,
     plan_tencent_bicycling_route,
+    plan_tencent_driving_route,
 )
 
 
@@ -76,3 +78,48 @@ def test_plan_tencent_bicycling_route_parses_response(monkeypatch):
         {"lat": 37.8, "lon": 112.5},
         {"lat": 37.9, "lon": 112.6},
     ]
+
+
+def test_plan_tencent_driving_route_uses_driving_path_and_signature(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "status": 0,
+                "result": {
+                    "routes": [
+                        {
+                            "distance": 9955,
+                            "duration": 18,
+                            "polyline": [37.8, 112.5, 100000, 100000],
+                        }
+                    ]
+                },
+            }
+
+    def fake_get(url, params, timeout):
+        captured["url"] = url
+        captured["params"] = params
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(settings, "TENCENT_MAP_KEY", "test-key")
+    monkeypatch.setattr(settings, "TENCENT_MAP_SK", "test-sk")
+    monkeypatch.setattr("app.route_book.tencent_direction.httpx.get", fake_get)
+
+    result = plan_tencent_driving_route((37.8, 112.5), (37.9, 112.6))
+
+    unsigned = {key: value for key, value in captured["params"].items() if key != "sig"}
+    assert captured["url"].endswith("/ws/direction/v1/driving/")
+    assert captured["params"]["sig"] == _build_sig(
+        _TENCENT_DRIVING_DIRECTION_PATH,
+        unsigned,
+        "test-sk",
+    )
+    assert captured["timeout"] == 8.0
+    assert result["distance"] == 9955.0
+    assert result["duration"] == 18
