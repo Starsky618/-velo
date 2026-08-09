@@ -34,7 +34,12 @@ def test_segment_geometry_migration_roundtrip_and_incompatible_history_guard():
             connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
 
         settings.DATABASE_URL = temp_url.render_as_string(hide_password=False)
-        alembic_config = Config("alembic.ini")
+        # Alembic 的 fileConfig 会重置当前进程的全局 logging；本测试在 pytest
+        # 进程内运行，若不关闭会移除 caplog handler，污染后续日志断言。
+        alembic_config = Config(
+            "alembic.ini",
+            attributes={"configure_logger": False},
+        )
         command.upgrade(alembic_config, "head")
         with temp_engine.connect() as connection:
             assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
