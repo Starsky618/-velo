@@ -374,12 +374,18 @@ def _assert_segment_target_still_matches_candidate(
     segment_geometry_hash: str,
 ) -> None:
     segment = (
-        db.query(RouteCognitionSegment.segment_id, RouteCognitionSegment.geometry_hash)
+        db.query(
+            RouteCognitionSegment.segment_id,
+            RouteCognitionSegment.geometry_hash,
+            RouteCognitionSegment.eligibility_status,
+        )
         .filter(RouteCognitionSegment.segment_id == segment_id)
         .first()
     )
     if segment is None:
         raise ConceptFormalLinkWriterError("segment_id must exist in route_cognition_segments")
+    if segment.eligibility_status != "active":
+        raise ConceptFormalLinkWriterError("route_cognition_segment must be active")
     if segment.geometry_hash != segment_geometry_hash:
         raise ConceptFormalLinkWriterError("segment_geometry_hash no longer matches route_cognition_segments")
 

@@ -252,6 +252,26 @@ def test_add_collection_segment_rejects_raw_segment(db, collection_membership_wr
         )
 
 
+def test_add_collection_segment_rejects_suspended_cognition_segment(
+    db, collection_membership_writer_tables
+):
+    db.execute(
+        text(
+            "UPDATE route_cognition_segments "
+            "SET eligibility_status = 'suspended' WHERE segment_id = 1"
+        )
+    )
+
+    with pytest.raises(CollectionMembershipWriterError, match="must be active"):
+        add_collection_segment(
+            db,
+            collection_id=1,
+            segment_id=1,
+            role="core",
+            accepted_judgment_run_id=2,
+        )
+
+
 def test_add_collection_segment_rejects_non_human_judgment(db, collection_membership_writer_tables):
     with pytest.raises(CollectionMembershipWriterError):
         add_collection_segment(
@@ -542,6 +562,7 @@ def _create_collection_membership_tables(db) -> None:
             CREATE TABLE route_cognition_segments (
                 segment_id INTEGER PRIMARY KEY,
                 geometry_hash TEXT NOT NULL,
+                eligibility_status TEXT NOT NULL DEFAULT 'active',
                 UNIQUE(segment_id, geometry_hash),
                 FOREIGN KEY(segment_id) REFERENCES segments(id)
             )

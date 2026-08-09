@@ -557,6 +557,7 @@ def _create_step_c_sqlite_tables(db) -> None:
             CREATE TABLE route_cognition_segments (
                 segment_id INTEGER PRIMARY KEY,
                 geometry_hash TEXT NOT NULL,
+                eligibility_status TEXT NOT NULL DEFAULT 'active',
                 FOREIGN KEY(segment_id) REFERENCES segments(id)
             )
             """

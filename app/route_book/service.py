@@ -220,8 +220,11 @@ def _elevation_points_snapshot_from_points(points: list[dict]) -> str | None:
 
 def _line_hash(reference_line_wkt: str) -> str:
     """给路线线条算指纹；像文件校验码一样，用来判断两版路线是不是同一条线。"""
-    normalized = " ".join(reference_line_wkt.strip().split())
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    # 保留旧函数名作为兼容入口，实际算法放到中性 common，避免 segment
+    # 为了复用指纹而反向依赖 route_book。
+    from app.common.geometry_hash import stable_line_hash
+
+    return stable_line_hash(reference_line_wkt)
 
 
 def _point_count_from_wkt(reference_line_wkt: str) -> int:

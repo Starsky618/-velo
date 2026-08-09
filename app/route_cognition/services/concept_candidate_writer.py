@@ -604,12 +604,18 @@ def _route_line_hash_for_version(db: Session, *, route_book_id: int, route_versi
 
 def _segment_geometry_hash(db: Session, segment_id: int) -> str:
     segment = (
-        db.query(RouteCognitionSegment.segment_id, RouteCognitionSegment.geometry_hash)
+        db.query(
+            RouteCognitionSegment.segment_id,
+            RouteCognitionSegment.geometry_hash,
+            RouteCognitionSegment.eligibility_status,
+        )
         .filter(RouteCognitionSegment.segment_id == segment_id)
         .first()
     )
     if segment is None:
         raise ConceptCandidateWriterError("segment_id must exist in route_cognition_segments")
+    if segment.eligibility_status != "active":
+        raise ConceptCandidateWriterError("route_cognition_segment must be active")
     return segment.geometry_hash
 
 

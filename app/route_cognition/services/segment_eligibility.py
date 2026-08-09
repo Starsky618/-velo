@@ -144,6 +144,61 @@ def admit_provenance_verified_segment(
     return row
 
 
+def reactivate_provenance_verified_segment(
+    db: Session,
+    *,
+    segment_id: int,
+    primary_geometry_source_id: int,
+    accepted_judgment_run_id: int,
+    reviewer_id: int,
+    review_note: str | None = None,
+    reviewed_at: datetime | None = None,
+) -> RouteCognitionSegment:
+    """人工复核新标准线后，恢复一个 suspended segment 的认知准入。
+
+    几何变化时旧路线成员和概念关系已被 deprecated/stale，并保留旧 hash。
+    本函数只更新白名单当前指针；不会自动复活任何旧派生判断。
+    """
+    cognition = (
+        db.query(RouteCognitionSegment)
+        .filter(RouteCognitionSegment.segment_id == segment_id)
+        .with_for_update()
+        .first()
+    )
+    if cognition is None:
+        raise SegmentEligibilityError(f"segment {segment_id} is not admitted")
+    if cognition.eligibility_status != "suspended":
+        raise SegmentEligibilityError("only suspended segment can be reactivated")
+
+    reference_line_wkt = _load_segment_reference_line(db, segment_id)
+    current_segment_hash = hash_segment_geometry_wkt(reference_line_wkt)
+    _validate_human_review_judgment(db, accepted_judgment_run_id, segment_id)
+    source = _resolve_source(
+        db,
+        segment_id=segment_id,
+        reviewer_id=reviewer_id,
+        primary_geometry_source_id=primary_geometry_source_id,
+        source_input=None,
+        current_segment_hash=current_segment_hash,
+    )
+    _validate_source_for_provenance(source, segment_id, current_segment_hash)
+
+    cognition.primary_geometry_source_id = source.id
+    cognition.review_basis = "provenance_verified"
+    cognition.eligibility_status = "active"
+    cognition.geometry_hash = source.geometry_hash
+    cognition.normalization_version = source.normalization_version
+    cognition.accepted_judgment_run_id = accepted_judgment_run_id
+    cognition.reviewed_by = reviewer_id
+    cognition.reviewed_at = reviewed_at or datetime.now(timezone.utc)
+    if review_note:
+        cognition.review_note = (
+            f"{cognition.review_note}\n{review_note}" if cognition.review_note else review_note
+        )
+    db.flush()
+    return cognition
+
+
 def _load_segment_reference_line(db: Session, segment_id: int) -> str:
     row = (
         db.query(
@@ -360,7 +415,7 @@ def _validate_durable_material_pointer(
         if source_content_hash:
             return
         raise SegmentEligibilityError("activity_clip source requires source_content_hash")
-    if source_type in {"gpx_upload", "fit_upload", "admin_import"}:
+    if source_type in {"gpx_upload", "fit_upload", "admin_import", "map_reconstruction"}:
         if source_file_id or source_url or source_content_hash:
             return
         raise SegmentEligibilityError("source requires a durable material pointer")

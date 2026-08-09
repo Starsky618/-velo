@@ -997,11 +997,6 @@ class RouteSegment(Base):
         ),
         ForeignKeyConstraint(["segment_id"], ["route_cognition_segments.segment_id"], name="fk_route_segments_segment"),
         ForeignKeyConstraint(
-            ["segment_id", "segment_geometry_hash"],
-            ["route_cognition_segments.segment_id", "route_cognition_segments.geometry_hash"],
-            name="fk_route_segments_segment_hash",
-        ),
-        ForeignKeyConstraint(
             ["accepted_judgment_run_id", "accepted_judgment_run_type"],
             ["judgment_runs.id", "judgment_runs.run_type"],
             name="fk_route_segments_accepted_judgment_run",
@@ -1194,11 +1189,6 @@ class CollectionSegment(Base):
     __table_args__ = (
         ForeignKeyConstraint(["collection_id"], ["route_collections.id"], name="fk_collection_segments_collection"),
         ForeignKeyConstraint(["segment_id"], ["route_cognition_segments.segment_id"], name="fk_collection_segments_segment"),
-        ForeignKeyConstraint(
-            ["segment_id", "segment_geometry_hash"],
-            ["route_cognition_segments.segment_id", "route_cognition_segments.geometry_hash"],
-            name="fk_collection_segments_segment_hash",
-        ),
         ForeignKeyConstraint(
             ["accepted_judgment_run_id", "accepted_judgment_run_type"],
             ["judgment_runs.id", "judgment_runs.run_type"],
@@ -1523,7 +1513,8 @@ class SegmentGeometrySource(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "source_type IN ('activity_clip', 'gpx_upload', 'fit_upload', 'admin_import')",
+            "source_type IN ('activity_clip', 'gpx_upload', 'fit_upload', "
+            "'admin_import', 'map_reconstruction')",
             name="ck_segment_geometry_sources_source_type",
         ),
         CheckConstraint(
@@ -1545,7 +1536,7 @@ class SegmentGeometrySource(Base):
             "source_type = 'activity_clip' "
             "AND source_content_hash IS NOT NULL"
             ") OR ("
-            "source_type IN ('gpx_upload', 'fit_upload', 'admin_import') "
+            "source_type IN ('gpx_upload', 'fit_upload', 'admin_import', 'map_reconstruction') "
             "AND ("
             "source_file_id IS NOT NULL "
             "OR source_url IS NOT NULL "

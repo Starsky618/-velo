@@ -22,7 +22,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, DateTime, Float, Integer, JSON, MetaData,
-    String, Table, Text, UniqueConstraint, create_engine,
+    String, Table, Text, UniqueConstraint, create_engine, text,
 )
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -207,6 +207,47 @@ _segment_efforts_table = Table(
     Column("start_index", Integer, nullable=False),
     Column("end_index", Integer, nullable=False),
     Column("created_at", DateTime(timezone=True)),
+)
+
+# 标准几何替换暂存表。测试只验证 admin 暂存/派发合同；真 PostGIS 下的原子切换
+# 由独立 PG 测试覆盖。
+_segment_geometry_revisions_table = Table(
+    "segment_geometry_revisions",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("segment_id", Integer, nullable=False),
+    Column("status", String(16), nullable=False, default="staged"),
+    Column("previous_geometry_hash", String(64), nullable=False),
+    Column("candidate_geometry_hash", String(64), nullable=False),
+    Column("previous_reference_line_wkt", Text, nullable=False),
+    Column("candidate_reference_line_wkt", Text, nullable=False),
+    Column("previous_snapshot_json", Text, nullable=False),
+    Column("distance", Float, nullable=False),
+    Column("elevation_gain", Float, nullable=False),
+    Column("elevation_loss", Float, nullable=False),
+    Column("avg_gradient", Float, nullable=False),
+    Column("elevation_profile", Text, nullable=False),
+    Column("max_gradient", Float),
+    Column("difficulty", String(16), nullable=False),
+    Column("city", String(32), nullable=False),
+    Column("start_lat", Float, nullable=False),
+    Column("start_lon", Float, nullable=False),
+    Column("end_lat", Float, nullable=False),
+    Column("end_lon", Float, nullable=False),
+    Column("match_tolerance", Float, nullable=False),
+    Column("min_match_ratio", Float, nullable=False),
+    Column("source_url", Text, nullable=False),
+    Column("routing_provider", String(16), nullable=False, default="tencent"),
+    Column("routing_mode", String(16), nullable=False, default="driving"),
+    Column("original_coordinate_system", String(16), nullable=False, default="gcj02"),
+    Column("normalization_version", String(64), nullable=False),
+    Column("created_by", Integer),
+    Column("job_id", String(64)),
+    Column("dispatch_claimed_at", DateTime(timezone=True)),
+    Column("error_message", Text),
+    Column("created_at", DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")),
+    Column("started_at", DateTime(timezone=True)),
+    Column("activated_at", DateTime(timezone=True)),
 )
 
 # segment_curation_pool 表（SQLite 简化版）

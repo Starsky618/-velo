@@ -263,6 +263,27 @@ def test_raw_segment_without_route_cognition_entry_fails(db, concept_candidate_w
         )
 
 
+def test_suspended_cognition_segment_cannot_receive_new_concept_candidate(
+    db, concept_candidate_writer_sqlite_tables
+):
+    db.execute(
+        text(
+            "UPDATE route_cognition_segments "
+            "SET eligibility_status = 'suspended' WHERE segment_id = 1"
+        )
+    )
+
+    with pytest.raises(ConceptCandidateWriterError, match="must be active"):
+        propose_segment_concept_candidate(
+            db,
+            segment_id=1,
+            concept_node_id=1,
+            relation_type="has_feature",
+            proposer_kind="algorithm",
+            created_by_judgment_run_id=1,
+        )
+
+
 def test_segment_candidate_missing_concept_node_fails(db, concept_candidate_writer_sqlite_tables):
     with pytest.raises(ConceptCandidateWriterError, match="concept_node"):
         propose_segment_concept_candidate(
@@ -784,7 +805,8 @@ def _create_candidate_writer_tables(db) -> None:
             """
             CREATE TABLE route_cognition_segments (
                 segment_id INTEGER PRIMARY KEY,
-                geometry_hash TEXT NOT NULL
+                geometry_hash TEXT NOT NULL,
+                eligibility_status TEXT NOT NULL DEFAULT 'active'
             )
             """
         )

@@ -106,6 +106,18 @@ services:
     volumes:
       - heatmap_tiles_dev:/var/cache/velo/heatmap-tiles
 
+  segment-rebuild-worker:
+    build: .
+    command: python worker.py
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD:-devpass}@db:5432/velo
+      REDIS_URL: redis://redis:6379/0
+      RQ_QUEUES: "segment_rebuilds"
+    depends_on:
+      - db
+      - redis
+
   scheduler:
     build: .
     command: python scheduler.py

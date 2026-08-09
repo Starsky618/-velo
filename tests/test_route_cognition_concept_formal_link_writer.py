@@ -388,6 +388,33 @@ def test_segment_candidate_missing_cognition_segment_cannot_promote(
     assert db.execute(text("SELECT count(*) FROM segment_concept_links")).scalar_one() == 0
 
 
+def test_segment_candidate_cannot_promote_after_cognition_is_suspended(
+    db, concept_formal_link_writer_sqlite_tables
+):
+    candidate = propose_segment_concept_candidate(
+        db,
+        segment_id=1,
+        concept_node_id=1,
+        relation_type="has_feature",
+        proposer_kind="algorithm",
+        created_by_judgment_run_id=2,
+    )
+    db.execute(
+        text(
+            "UPDATE route_cognition_segments "
+            "SET eligibility_status = 'suspended' WHERE segment_id = 1"
+        )
+    )
+
+    with pytest.raises(ConceptFormalLinkWriterError, match="must be active"):
+        promote_segment_concept_candidate(
+            db,
+            candidate_id=candidate.id,
+            accepted_judgment_run_id=10,
+        )
+    assert db.execute(text("SELECT count(*) FROM segment_concept_links")).scalar_one() == 0
+
+
 def test_segment_candidate_geometry_hash_mismatch_cannot_promote(
     db, concept_formal_link_writer_sqlite_tables
 ):
@@ -755,7 +782,8 @@ def _create_formal_link_writer_tables(db) -> None:
             """
             CREATE TABLE route_cognition_segments (
                 segment_id INTEGER PRIMARY KEY,
-                geometry_hash TEXT NOT NULL
+                geometry_hash TEXT NOT NULL,
+                eligibility_status TEXT NOT NULL DEFAULT 'active'
             )
             """
         )
