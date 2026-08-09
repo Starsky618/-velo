@@ -25,7 +25,13 @@ import os
 
 from rq import Worker
 
-from app.queue import ai_drafts_queue, default_queue, heatmap_tiles_queue, redis_conn
+from app.queue import (
+    ai_drafts_queue,
+    default_queue,
+    heatmap_tiles_queue,
+    redis_conn,
+    segment_rebuilds_queue,
+)
 
 
 # 已知队列名 → Queue 实例的映射
@@ -34,6 +40,7 @@ _QUEUES_MAP = {
     "velo": default_queue,
     "ai_drafts": ai_drafts_queue,
     "heatmap_tiles": heatmap_tiles_queue,
+    "segment_rebuilds": segment_rebuilds_queue,
 }
 
 

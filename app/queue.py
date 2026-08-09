@@ -81,3 +81,6 @@ heatmap_prewarm_queue = Queue("velo", connection=heatmap_redis_conn)
 # RQ 任务不可抢占，不能只把它排在主 worker 队尾后假装不会堵骑行导入。
 heatmap_tiles_queue = Queue("heatmap_tiles", connection=heatmap_redis_conn)
 ai_drafts_queue = Queue("ai_drafts", connection=redis_conn)
+# 标准几何替换会扫描历史活动，任务不可抢占；producer 使用有界连接，consumer
+# 由独立 worker 承担，避免堵住 GPX/Strava 导入。
+segment_rebuilds_queue = Queue("segment_rebuilds", connection=heatmap_redis_conn)

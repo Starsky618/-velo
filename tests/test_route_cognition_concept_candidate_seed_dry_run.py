@@ -674,7 +674,8 @@ def _create_seed_dry_run_tables(db) -> None:
             """
             CREATE TABLE route_cognition_segments (
                 segment_id INTEGER PRIMARY KEY,
-                geometry_hash TEXT NOT NULL
+                geometry_hash TEXT NOT NULL,
+                eligibility_status TEXT NOT NULL DEFAULT 'active'
             )
             """
         )

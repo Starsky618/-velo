@@ -1,9 +1,10 @@
 """admin 模块请求/响应格式。"""
 
 from datetime import datetime
+import math
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 AiDraftStatus = Literal["pending", "human_edited", "approved", "rejected"]
 City = Literal[
@@ -177,6 +178,70 @@ class FromGpxRequest(BaseModel):
             if not (-180 <= lon <= 180):
                 raise ValueError(f"lon 越界: {lon}")
         return v
+
+
+class SegmentGeometryRebuildRequest(BaseModel):
+    """用腾讯驾车折线替换同一个现实赛段的标准几何。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reference_points: list[dict] = Field(..., min_length=2, max_length=2000)
+    source_url: HttpUrl
+    coordinate_system: Literal["gcj02", "wgs84"] = "gcj02"
+    routing_provider: Literal["tencent"] = "tencent"
+    routing_mode: Literal["driving"] = "driving"
+
+    @field_validator("reference_points")
+    @classmethod
+    def validate_points(cls, value):
+        for point in value:
+            if "lat" not in point or "lon" not in point:
+                raise ValueError("每个点必须含 lat/lon")
+            lat = point["lat"]
+            lon = point["lon"]
+            if (
+                isinstance(lat, bool)
+                or isinstance(lon, bool)
+                or not isinstance(lat, int | float)
+                or not isinstance(lon, int | float)
+            ):
+                raise ValueError("lat/lon 必须是数字")
+            if not math.isfinite(lat) or not math.isfinite(lon):
+                raise ValueError("lat/lon 必须是有限数字")
+            if not (-90 <= lat <= 90):
+                raise ValueError(f"lat 越界: {lat}")
+            if not (-180 <= lon <= 180):
+                raise ValueError(f"lon 越界: {lon}")
+        return value
+
+    @field_validator("source_url")
+    @classmethod
+    def validate_strava_segment_url(cls, value: HttpUrl):
+        host = (value.host or "").lower()
+        if host != "strava.com" and not host.endswith(".strava.com"):
+            raise ValueError("source_url 必须是 Strava 公开赛段链接")
+        if not value.path.startswith("/segments/"):
+            raise ValueError("source_url 必须指向 Strava segment 页面")
+        return value
+
+
+class SegmentGeometryRevisionResponse(BaseModel):
+    """标准几何替换任务状态。"""
+
+    id: int
+    segment_id: int
+    status: Literal["staged", "processing", "active", "superseded", "failed"]
+    previous_geometry_hash: str
+    candidate_geometry_hash: str
+    routing_provider: Literal["tencent"]
+    routing_mode: Literal["driving"]
+    source_url: str
+    job_id: str | None = None
+    dispatch_claimed_at: datetime | None = None
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    activated_at: datetime | None = None
 
 
 class TrackpointItem(BaseModel):

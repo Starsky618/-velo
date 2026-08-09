@@ -5,8 +5,15 @@ from sqlalchemy.orm import Session
 
 from app.admin.dependencies import require_admin
 from app.admin import schemas, service as admin_service
+from app.admin.segment_geometry_workflow import (
+    SegmentGeometryWorkflowError,
+    get_segment_geometry_revision,
+    request_segment_geometry_rebuild,
+    retry_segment_geometry_revision,
+)
 from app.database import get_db
 from app.segment.exceptions import InvalidSegmentRangeError, SegmentOverlapError
+from app.segment.geometry_rebuild import SegmentGeometryRevisionError
 from app.segment.dem_client import DEMServiceError
 from app.segment import service as segment_service
 from app.user.models import User
@@ -191,6 +198,88 @@ def create_segment_from_gpx_admin(
         # DEM 公共 API 抖动 → 503 让 admin 重试（同 from-activity 路径同款处理）
         db.rollback()
         raise HTTPException(status_code=503, detail=f"DEM 服务暂时不可用，请稍后重试：{e}")
+
+
+@router.post(
+    "/segments/{segment_id}/geometry-revisions",
+    response_model=schemas.SegmentGeometryRevisionResponse,
+    status_code=202,
+)
+def rebuild_segment_geometry_admin(
+    segment_id: int,
+    body: schemas.SegmentGeometryRebuildRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """暂存腾讯驾车标准线并异步重建历史成绩；不接受骑行模式。"""
+    try:
+        return request_segment_geometry_rebuild(
+            db,
+            segment_id=segment_id,
+            reference_points=body.reference_points,
+            source_url=str(body.source_url),
+            coordinate_system=body.coordinate_system,
+            admin_id=admin.id,
+        )
+    except SegmentGeometryRevisionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SegmentGeometryWorkflowError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except DEMServiceError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=f"DEM 服务暂时不可用，请稍后重试：{exc}") from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get(
+    "/segments/{segment_id}/geometry-revisions/{revision_id}",
+    response_model=schemas.SegmentGeometryRevisionResponse,
+)
+def get_segment_geometry_revision_admin(
+    segment_id: int,
+    revision_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """查询后台重建状态和失败原因。"""
+    revision = get_segment_geometry_revision(
+        db,
+        segment_id=segment_id,
+        revision_id=revision_id,
+    )
+    if revision is None:
+        raise HTTPException(status_code=404, detail="标准几何替换任务不存在")
+    return revision
+
+
+@router.post(
+    "/segments/{segment_id}/geometry-revisions/{revision_id}/retry",
+    response_model=schemas.SegmentGeometryRevisionResponse,
+    status_code=202,
+)
+def retry_segment_geometry_revision_admin(
+    segment_id: int,
+    revision_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """恢复 failed 或已超过执行租约的标准几何重建任务。"""
+    try:
+        return retry_segment_geometry_revision(
+            db,
+            segment_id=segment_id,
+            revision_id=revision_id,
+        )
+    except SegmentGeometryRevisionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SegmentGeometryWorkflowError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/segments", response_model=schemas.AdminSegmentListResponse)

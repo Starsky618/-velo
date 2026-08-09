@@ -94,6 +94,7 @@ def test_batch5_models_declare_required_checks_and_composite_fk():
     source_type_sql = _check_sql(SegmentGeometrySource.__table__, "ck_segment_geometry_sources_source_type")
     assert "activity_clip" in source_type_sql
     assert "admin_import" in source_type_sql
+    assert "map_reconstruction" in source_type_sql
     assert "legacy_existing" not in source_type_sql
 
     quality_sql = _check_sql(SegmentGeometrySource.__table__, "ck_segment_geometry_sources_quality_status")
@@ -242,7 +243,10 @@ def test_activity_clip_requires_durable_content_hash(db, batch5_sqlite_tables):
         _insert_source(db, source_type="activity_clip", source_content_hash=None)
 
 
-@pytest.mark.parametrize("source_type", ["gpx_upload", "fit_upload", "admin_import"])
+@pytest.mark.parametrize(
+    "source_type",
+    ["gpx_upload", "fit_upload", "admin_import", "map_reconstruction"],
+)
 def test_file_and_import_sources_require_a_material_pointer(db, batch5_sqlite_tables, source_type):
     _seed_batch5_base(db)
 
@@ -663,7 +667,9 @@ def _create_batch5_sqlite_tables(db) -> None:
                 quality_metrics_json TEXT,
                 created_by INTEGER,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-                CHECK (source_type IN ('activity_clip', 'gpx_upload', 'fit_upload', 'admin_import')),
+                CHECK (source_type IN (
+                    'activity_clip', 'gpx_upload', 'fit_upload', 'admin_import', 'map_reconstruction'
+                )),
                 CHECK (quality_status IN ('verified', 'needs_review', 'rejected', 'deprecated')),
                 CHECK (original_coordinate_system IS NULL OR original_coordinate_system IN ('wgs84', 'gcj02', 'unknown')),
                 CHECK (source_start_index IS NULL OR source_end_index IS NULL OR source_start_index < source_end_index),
@@ -671,7 +677,7 @@ def _create_batch5_sqlite_tables(db) -> None:
                     (source_type = 'activity_clip' AND source_content_hash IS NOT NULL)
                     OR
                     (
-                        source_type IN ('gpx_upload', 'fit_upload', 'admin_import')
+                        source_type IN ('gpx_upload', 'fit_upload', 'admin_import', 'map_reconstruction')
                         AND (
                             source_file_id IS NOT NULL
                             OR source_url IS NOT NULL

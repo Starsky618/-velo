@@ -518,6 +518,7 @@ def _create_first_visible_slice_tables(db) -> None:
             CREATE TABLE route_cognition_segments (
                 segment_id INTEGER PRIMARY KEY,
                 geometry_hash TEXT NOT NULL,
+                eligibility_status TEXT NOT NULL DEFAULT 'active',
                 UNIQUE(segment_id, geometry_hash)
             )
             """

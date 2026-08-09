@@ -322,12 +322,18 @@ def _route_version_for_book(db: Session, *, route_book_id: int, reviewed_route_v
 
 def _route_cognition_segment(db: Session, segment_id: int):
     cognition_segment = (
-        db.query(RouteCognitionSegment.segment_id, RouteCognitionSegment.geometry_hash)
+        db.query(
+            RouteCognitionSegment.segment_id,
+            RouteCognitionSegment.geometry_hash,
+            RouteCognitionSegment.eligibility_status,
+        )
         .filter(RouteCognitionSegment.segment_id == segment_id)
         .first()
     )
     if cognition_segment is None:
         raise CollectionMembershipWriterError("segment_id must exist in route_cognition_segments")
+    if cognition_segment.eligibility_status != "active":
+        raise CollectionMembershipWriterError("route_cognition_segment must be active")
     if not _has_text(cognition_segment.geometry_hash):
         raise CollectionMembershipWriterError("route_cognition_segments.geometry_hash must not be empty")
     return cognition_segment

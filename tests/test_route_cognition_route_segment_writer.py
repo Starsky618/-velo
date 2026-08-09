@@ -101,6 +101,29 @@ def test_add_route_segment_clip_rejects_raw_segment(db, route_segment_writer_tab
         )
 
 
+def test_add_route_segment_clip_rejects_suspended_cognition_segment(
+    db, route_segment_writer_tables
+):
+    db.execute(
+        text(
+            "UPDATE route_cognition_segments "
+            "SET eligibility_status = 'suspended' WHERE segment_id = 1"
+        )
+    )
+
+    with pytest.raises(RouteSegmentWriterError, match="must be active"):
+        add_route_segment_clip(
+            db,
+            route_book_id=1,
+            route_version_id=1,
+            seq=1,
+            segment_id=1,
+            component_geometry="LINESTRING(0 0, 1 1)",
+            direction="forward",
+            accepted_judgment_run_id=1,
+        )
+
+
 def test_add_route_segment_clip_rejects_route_version_book_mismatch(
     db, route_segment_writer_tables
 ):
@@ -618,6 +641,7 @@ def _create_route_segment_writer_tables(db) -> None:
             CREATE TABLE route_cognition_segments (
                 segment_id INTEGER PRIMARY KEY,
                 geometry_hash TEXT NOT NULL,
+                eligibility_status TEXT NOT NULL DEFAULT 'active',
                 UNIQUE(segment_id, geometry_hash),
                 FOREIGN KEY(segment_id) REFERENCES segments(id)
             )

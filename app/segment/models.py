@@ -1,15 +1,17 @@
 """
 赛段数据模型——"赛道图纸 + 成绩记录本 + 内容运营档案"。
 
-四张表（v5 起新增 2 张）：
+五张核心表（v5 起新增内容运营表，标准几何替换再新增 revision 表）：
 1. segments（赛道图纸）：一条固定路线的定义——名称、起终点、参考路线、匹配参数
 2. segment_efforts（成绩记录本）：每个用户在每条赛道上的骑行成绩
-3. segment_ai_drafts（AI 草稿间，v5 新增）：AI 写的赛段介绍 + 编辑改稿，状态机化审核
-4. segment_curation_pool（候选池，v5 新增）：周期性脚本算分 + 团队人工勾选精选
+3. segment_geometry_revisions（换图暂存单）：候选标准线、旧线快照和异步重建状态
+4. segment_ai_drafts（AI 草稿间，v5 新增）：AI 写的赛段介绍 + 编辑改稿，状态机化审核
+5. segment_curation_pool（候选池，v5 新增）：周期性脚本算分 + 团队人工勾选精选
 
 好比学校操场的跑道：
-- segments 是"哪条跑道、多长、从哪到哪"（跑道本身不会变）
+- segments 是"哪条跑道、多长、从哪到哪"（现实身份稳定；纠错要走 revision）
 - segment_efforts 是"张三在第一跑道跑了 12 秒，李四跑了 13 秒"（每次跑都留一条记录）
+- segment_geometry_revisions 是"新跑道测绘图 + 换图施工单"（算完全部成绩才切换）
 - segment_ai_drafts 是"赛道介绍卡的草稿盒"——AI 先写一稿，编辑改稿，主管审批
 - segment_curation_pool 是"候选名单"——脚本按热度算分推荐，团队挑出精选
 
@@ -29,7 +31,7 @@
 from geoalchemy2 import Geometry
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, DateTime, Text,
-    ForeignKey, Index, UniqueConstraint, CheckConstraint, false, func,
+    ForeignKey, Index, UniqueConstraint, CheckConstraint, false, func, text,
 )
 
 from app.database import Base
@@ -168,6 +170,106 @@ class SegmentEffort(Base):
         # PR 检测索引：查"用户在某赛段的最佳成绩"，三列支持 index-only scan
         # 好比在档案馆建立"赛段→用户→用时"的三级目录，直接翻到结果，无需全表扫描
         Index("idx_efforts_segment_user_time", "segment_id", "user_id", "elapsed_time"),
+    )
+
+
+class SegmentGeometryRevision(Base):
+    """标准几何替换的暂存单与回滚证据。
+
+    `segments` 继续代表稳定的现实赛段身份；本表只记录一次候选几何替换。
+    Worker 必须先用 candidate 计算完整成绩，最后在一个事务里切换 Segment 与
+    SegmentEffort。直接 UPDATE segments.reference_line 会绕过这条门禁。
+    """
+
+    __tablename__ = "segment_geometry_revisions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    segment_id = Column(
+        Integer,
+        ForeignKey("segments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status = Column(String(16), nullable=False, server_default="staged")
+
+    # 乐观并发门禁：激活时当前 segment 仍必须是 previous_geometry_hash。
+    previous_geometry_hash = Column(String(64), nullable=False)
+    candidate_geometry_hash = Column(String(64), nullable=False)
+    previous_reference_line_wkt = Column(Text, nullable=False)
+    candidate_reference_line_wkt = Column(Text, nullable=False)
+    previous_snapshot_json = Column(Text, nullable=False)
+
+    # candidate 的派生硬数据；只有全部准备成功后才复制到 segments。
+    distance = Column(Float, nullable=False)
+    elevation_gain = Column(Float, nullable=False)
+    elevation_loss = Column(Float, nullable=False)
+    avg_gradient = Column(Float, nullable=False)
+    elevation_profile = Column(Text, nullable=False)
+    max_gradient = Column(Float, nullable=True)
+    difficulty = Column(String(16), nullable=False)
+    city = Column(String(32), nullable=False)
+    start_lat = Column(Float, nullable=False)
+    start_lon = Column(Float, nullable=False)
+    end_lat = Column(Float, nullable=False)
+    end_lon = Column(Float, nullable=False)
+    match_tolerance = Column(Float, nullable=False)
+    min_match_ratio = Column(Float, nullable=False)
+
+    # 本轮只允许已经实测确认的腾讯驾车重建线。若未来支持别的 provider/mode，
+    # 必须显式扩约束与验收，不能悄悄把骑行线重新放进来。
+    source_url = Column(Text, nullable=False)
+    routing_provider = Column(String(16), nullable=False, server_default="tencent")
+    routing_mode = Column(String(16), nullable=False, server_default="driving")
+    original_coordinate_system = Column(String(16), nullable=False, server_default="gcj02")
+    normalization_version = Column(String(64), nullable=False)
+
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    job_id = Column(String(64), nullable=True)
+    dispatch_claimed_at = Column(DateTime(timezone=True), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    activated_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('staged', 'processing', 'active', 'superseded', 'failed')",
+            name="ck_segment_geometry_revisions_status",
+        ),
+        CheckConstraint(
+            "routing_provider = 'tencent'",
+            name="ck_segment_geometry_revisions_provider",
+        ),
+        CheckConstraint(
+            "routing_mode = 'driving'",
+            name="ck_segment_geometry_revisions_mode",
+        ),
+        CheckConstraint(
+            "original_coordinate_system IN ('gcj02', 'wgs84')",
+            name="ck_segment_geometry_revisions_coordinate_system",
+        ),
+        CheckConstraint(
+            "difficulty IN ('easy', 'medium', 'hard', 'extreme')",
+            name="ck_segment_geometry_revisions_difficulty",
+        ),
+        CheckConstraint(
+            "city IN ('beijing', 'shanghai', 'hangzhou', 'shenzhen', "
+            "'chengdu', 'taiyuan', 'unknown')",
+            name="ck_segment_geometry_revisions_city",
+        ),
+        Index("idx_segment_geometry_revisions_segment", "segment_id", "created_at"),
+        Index("idx_segment_geometry_revisions_status", "status"),
+        Index(
+            "uq_segment_geometry_revisions_one_pending",
+            "segment_id",
+            unique=True,
+            postgresql_where=text("status IN ('staged', 'processing')"),
+        ),
+        Index(
+            "uq_segment_geometry_revisions_one_active",
+            "segment_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
     )
 
 

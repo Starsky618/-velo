@@ -100,10 +100,9 @@ def test_step_d_models_declare_membership_tables_and_hard_gates():
     assert "start_fraction < end_fraction" in _check_sql(route_table, "ck_route_segments_fraction_range")
     assert "ST_IsValid" in _check_sql(route_table, "ck_route_segments_component_geometry_valid_type")
     assert _foreign_key(route_table, "fk_route_segments_segment").elements[0].column.table.name == "route_cognition_segments"
-    assert [element.parent.name for element in _foreign_key(route_table, "fk_route_segments_segment_hash").elements] == [
-        "segment_id",
-        "segment_geometry_hash",
-    ]
+    assert "fk_route_segments_segment_hash" not in {
+        constraint.name for constraint in route_table.foreign_key_constraints
+    }
     assert _foreign_key(route_table, "fk_route_segments_created_by").ondelete == "SET NULL"
     assert str(_index(route_table, "uq_route_segments_active_seq").dialect_options["postgresql"]["where"]) == (
         "membership_status = 'active'"
@@ -143,10 +142,9 @@ def test_step_d_models_declare_membership_tables_and_hard_gates():
     assert _foreign_key(collection_segment_table, "fk_collection_segments_segment").elements[0].column.table.name == (
         "route_cognition_segments"
     )
-    assert [element.parent.name for element in _foreign_key(collection_segment_table, "fk_collection_segments_segment_hash").elements] == [
-        "segment_id",
-        "segment_geometry_hash",
-    ]
+    assert "fk_collection_segments_segment_hash" not in {
+        constraint.name for constraint in collection_segment_table.foreign_key_constraints
+    }
     assert "core" in _check_sql(collection_segment_table, "ck_collection_segments_role")
     assert "candidate_accepted" not in _check_sql(collection_segment_table, "ck_collection_segments_source_kind")
     assert str(_index(collection_segment_table, "uq_collection_segments_active_segment").dialect_options["postgresql"]["where"]) == (
@@ -210,11 +208,15 @@ def test_route_segments_segment_clip_requires_component_geometry(db, membership_
         _insert_route_segment(db, component_geometry=None)
 
 
-def test_route_segments_segment_clip_rejects_wrong_segment_hash(db, membership_sqlite_tables):
+def test_route_segments_preserve_historical_hash_after_current_hash_changes(
+    db, membership_sqlite_tables
+):
     _seed_membership_base(db)
+    _insert_route_segment(db, segment_geometry_hash="historical-segment-hash")
 
-    with pytest.raises(IntegrityError):
-        _insert_route_segment(db, segment_geometry_hash="wrong-segment-hash")
+    assert db.execute(text("SELECT segment_geometry_hash FROM route_segments")).scalar_one() == (
+        "historical-segment-hash"
+    )
 
 
 def test_route_segments_custom_geometry_forbids_segment_id(db, membership_sqlite_tables):
@@ -311,11 +313,15 @@ def test_collection_segments_raw_segment_fails(db, membership_sqlite_tables):
         _insert_collection_segment(db, segment_id=2, segment_geometry_hash="raw-segment-hash")
 
 
-def test_collection_segments_wrong_segment_hash_fails(db, membership_sqlite_tables):
+def test_collection_segments_preserve_historical_hash_after_current_hash_changes(
+    db, membership_sqlite_tables
+):
     _seed_membership_base(db)
+    _insert_collection_segment(db, segment_geometry_hash="historical-segment-hash")
 
-    with pytest.raises(IntegrityError):
-        _insert_collection_segment(db, segment_geometry_hash="wrong-segment-hash")
+    assert db.execute(text("SELECT segment_geometry_hash FROM collection_segments")).scalar_one() == (
+        "historical-segment-hash"
+    )
 
 
 def test_collection_segments_active_duplicate_segment_fails(db, membership_sqlite_tables):
@@ -396,6 +402,7 @@ def _create_membership_contract_tables(db) -> None:
             CREATE TABLE route_cognition_segments (
                 segment_id INTEGER PRIMARY KEY,
                 geometry_hash TEXT NOT NULL,
+                eligibility_status TEXT NOT NULL DEFAULT 'active',
                 UNIQUE(segment_id, geometry_hash),
                 FOREIGN KEY(segment_id) REFERENCES segments(id)
             )
@@ -492,9 +499,7 @@ def _create_route_segments_sqlite_table(db) -> None:
                 ),
                 FOREIGN KEY(route_book_id) REFERENCES route_books(id),
                 FOREIGN KEY(route_version_id, route_book_id) REFERENCES route_versions(id, route_book_id),
-                FOREIGN KEY(segment_id) REFERENCES route_cognition_segments(segment_id),
-                FOREIGN KEY(segment_id, segment_geometry_hash)
-                    REFERENCES route_cognition_segments(segment_id, geometry_hash)
+                FOREIGN KEY(segment_id) REFERENCES route_cognition_segments(segment_id)
             )
             """
         )
@@ -571,9 +576,7 @@ def _create_collection_segments_sqlite_table(db) -> None:
                 CHECK (seq IS NULL OR seq >= 1),
                 CHECK (importance IS NULL OR (importance >= 0 AND importance <= 100)),
                 FOREIGN KEY(collection_id) REFERENCES route_collections(id),
-                FOREIGN KEY(segment_id) REFERENCES route_cognition_segments(segment_id),
-                FOREIGN KEY(segment_id, segment_geometry_hash)
-                    REFERENCES route_cognition_segments(segment_id, geometry_hash)
+                FOREIGN KEY(segment_id) REFERENCES route_cognition_segments(segment_id)
             )
             """
         )

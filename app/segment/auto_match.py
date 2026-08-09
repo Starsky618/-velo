@@ -20,7 +20,6 @@ Worker 解析完骑行轨迹后，调用这里的函数自动检查：
 """
 
 import logging
-import re
 
 from geoalchemy2 import Geography
 from sqlalchemy import cast, func, select
@@ -28,6 +27,11 @@ from sqlalchemy.orm import Session
 
 from app.activity.models import Activity, Trackpoint
 from app.notification.service import detect_events
+from app.segment.geometry_rebuild import (
+    acquire_geometry_match_read_lock,
+    acquire_segment_match_lock,
+    parse_linestring_wkt,
+)
 from app.segment.matcher import match_segment
 from app.segment.models import Segment, SegmentEffort
 
@@ -42,17 +46,7 @@ def _parse_linestring_wkt(wkt: str) -> list[tuple[float, float]]:
     注意 WKT 中坐标顺序是 (经度, 纬度)，我们需要返回 (纬度, 经度)，
     因为 matcher 的接口用 (lat, lon) 顺序。
     """
-    # 提取括号内的坐标字符串
-    m = re.search(r"LINESTRING\s*\((.+)\)", wkt, re.IGNORECASE)
-    if not m:
-        return []
-
-    coords = []
-    for pair in m.group(1).split(","):
-        parts = pair.strip().split()
-        lon, lat = float(parts[0]), float(parts[1])
-        coords.append((lat, lon))  # 返回 (lat, lon) 顺序
-    return coords
+    return parse_linestring_wkt(wkt)
 
 
 def match_activity_against_segments(activity_id: int, db: Session) -> None:
@@ -73,6 +67,11 @@ def match_activity_against_segments(activity_id: int, db: Session) -> None:
     if activity is None:
         return
     user_id = activity.user_id
+
+    # Activity/Trackpoint 已由导入 worker 先提交。这里在任何 segment 粗筛前拿共享
+    # epoch 锁；几何激活持排他锁完成最终追扫和切换，从而不存在“旧线粗筛漏掉、
+    # 新线已经切完”的空窗。
+    acquire_geometry_match_read_lock(db)
 
     # ===== 第 1 步：PostGIS 粗筛 =====
     # 用 ST_ConvexHull + ST_Collect 把轨迹点"套上一个最小外框"（凸包），
@@ -98,6 +97,7 @@ def match_activity_against_segments(activity_id: int, db: Session) -> None:
                 100,  # 100 米粗筛容差
             )
         )
+        .order_by(Segment.id)
         .all()
     )
 
@@ -134,9 +134,24 @@ def match_activity_against_segments(activity_id: int, db: Session) -> None:
     # 如果用 db.rollback()，会回滚整个事务（连前面赛段的成绩一起清掉）。
     # SAVEPOINT 只回滚到"存档点"，保留前面已写入的成绩。
     new_efforts = []  # 收集成功写入的 effort，commit 后逐个检测通知
-    for segment, ref_wkt in candidates:
+    for candidate_segment, _candidate_ref_wkt in candidates:
         savepoint = db.begin_nested()
         try:
+            # 标准几何激活和实时成绩写入共用一把 segment 级锁。拿锁后必须重读，
+            # 因为粗筛完成到这里之间标准线可能已经原子切换。
+            acquire_segment_match_lock(db, candidate_segment.id)
+            current = (
+                db.query(Segment, func.ST_AsText(Segment.reference_line).label("ref_wkt"))
+                .filter(Segment.id == candidate_segment.id)
+                # candidate_segment 已在粗筛查询进入 identity map；等待 advisory
+                # lock 期间标准线可能已切换，必须强制刷新距离和起终点等 ORM 字段。
+                .populate_existing()
+                .first()
+            )
+            if current is None:
+                continue
+            segment, ref_wkt = current
+
             # 检查是否已有成绩记录（防止 Worker 重试导致重复写入）
             existing = db.query(SegmentEffort).filter_by(
                 segment_id=segment.id, activity_id=activity_id,
@@ -203,7 +218,7 @@ def match_activity_against_segments(activity_id: int, db: Session) -> None:
         except Exception as e:
             # 只回滚当前赛段的 SAVEPOINT，不影响其他赛段已写入的成绩
             savepoint.rollback()
-            logger.warning(f"赛段 {segment.id} 匹配失败: {e}")
+            logger.warning(f"赛段 {candidate_segment.id} 匹配失败: {e}")
 
     # 所有赛段匹配完成后统一提交
     db.commit()

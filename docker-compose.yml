@@ -114,6 +114,19 @@ services:
     volumes:
       - heatmap_tiles:/var/cache/velo/heatmap-tiles
 
+  # 赛段标准线变化会重扫历史活动，必须与实时骑行导入 worker 隔离。
+  segment-rebuild-worker:
+    build: .
+    command: python worker.py
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://velo:${DB_PASSWORD}@db:5432/velo
+      REDIS_URL: redis://redis:6379/0
+      RQ_QUEUES: "segment_rebuilds"
+    depends_on:
+      - db
+      - redis
+
   # ===== Cleanup：定时僵尸回收 =====
   # 每 5 分钟运行一次清理脚本，回收孤儿 activity + 孤儿文件
   cleanup:
