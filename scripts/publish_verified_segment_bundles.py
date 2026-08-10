@@ -14,7 +14,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# 独立脚本不经过 FastAPI 启动链；显式注册本次写入链上所有外键目标表。
+# 缺任一项都会直到真 PostgreSQL flush 时才报 NoReferencedTableError。
+from app.activity.models import Activity  # noqa: F401
 from app.database import SessionLocal
+from app.route_book.models import RouteBook, RouteVersion  # noqa: F401
 from app.segment.verified_bundle_publisher import (
     SegmentPublicationResult,
     VerifiedSegmentBundleError,

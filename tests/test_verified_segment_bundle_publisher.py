@@ -5,6 +5,9 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
+from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -286,6 +289,36 @@ def test_overlap_gate_skips_postgis_query_on_sqlite():
 
     assert _blocking_overlap_segment_id(db, "LINESTRING(0 0,1 1)") is None
     db.execute.assert_not_called()
+
+
+def test_standalone_publisher_registers_all_foreign_key_target_tables():
+    code = """
+from scripts.publish_verified_segment_bundles import main
+from app.database import Base
+
+required = {
+    "activities",
+    "users",
+    "segments",
+    "route_books",
+    "route_versions",
+    "judgment_runs",
+    "segment_geometry_sources",
+    "route_cognition_segments",
+}
+missing = sorted(required - set(Base.metadata.tables))
+if missing:
+    raise SystemExit(f"missing ORM tables: {missing}")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 @pytest.fixture()
