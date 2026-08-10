@@ -5,23 +5,34 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
+import os
 from pathlib import Path
 import subprocess
 import sys
 from types import SimpleNamespace
 from unittest.mock import Mock
+import uuid
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import create_engine, func, text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import sessionmaker
 
+from app.activity.models import Activity
 from app.elevation.route_elevation import ROUTE_ELEVATION_METHOD, route_elevation_metadata
 from app.route_cognition.geometry_hash import (
     SEGMENT_GEOMETRY_NORMALIZATION_VERSION,
     hash_segment_geometry_wkt,
 )
-from app.route_cognition.models import SegmentGeometrySource
+from app.route_book.models import RouteBook, RouteVersion
+from app.route_cognition.models import (
+    JudgmentRun,
+    RouteCognitionSegment,
+    SegmentGeometrySource,
+)
 from app.segment._geo_utils import _haversine
 from app.segment.algorithms import calculate_max_gradient
+from app.segment.models import Segment
 from app.segment.verified_bundle_publisher import (
     SOURCE_FILE_PREFIX,
     SegmentPublicationResult,
@@ -30,6 +41,7 @@ from app.segment.verified_bundle_publisher import (
     publish_verified_segment_bundle,
     validate_verified_segment_bundle,
 )
+from app.user.models import User
 
 
 def _bundle() -> dict:
@@ -225,6 +237,9 @@ def test_publish_is_transactional_and_retry_idempotent(db, verified_bundle_table
     source = db.query(SegmentGeometrySource).one()
     assert source.source_file_id == first.source_file_id
     assert source.source_url == "https://www.strava.com/segments/12345"
+    assert source.quality_metrics_json["reviewed_geometry_hash"] == bundle["hard_knowledge"][
+        "geometry"
+    ]["geometry_hash"]
     assert source.quality_metrics_json["verified_bundle"]["candidate_id"] == first.candidate_id
 
 
@@ -319,6 +334,73 @@ if missing:
     )
 
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_publisher_uses_postgis_roundtrip_hash_for_formal_geometry():
+    database_url = os.getenv("VELO_TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    if not database_url:
+        pytest.skip("仅在显式 PostgreSQL/PostGIS 测试库运行")
+    base_engine = create_engine(database_url, pool_pre_ping=True)
+    schema_name = f"verified_bundle_publisher_{uuid.uuid4().hex}"
+    try:
+        with base_engine.begin() as connection:
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+            connection.execute(text(f"CREATE SCHEMA {schema_name}"))
+    except SQLAlchemyError as exc:
+        base_engine.dispose()
+        pytest.skip(f"PostgreSQL/PostGIS 不可用: {exc}")
+
+    engine = create_engine(
+        database_url,
+        connect_args={"options": f"-csearch_path={schema_name},public"},
+        pool_pre_ping=True,
+    )
+    try:
+        for table in (
+            User.__table__,
+            Activity.__table__,
+            Segment.__table__,
+            RouteBook.__table__,
+            RouteVersion.__table__,
+            JudgmentRun.__table__,
+            SegmentGeometrySource.__table__,
+            RouteCognitionSegment.__table__,
+        ):
+            table.create(bind=engine, checkfirst=False)
+        db = sessionmaker(bind=engine, autocommit=False, autoflush=False)()
+        try:
+            reviewer = User(
+                openid=f"verified_bundle_publisher_{uuid.uuid4().hex}",
+                nickname="verified bundle reviewer",
+                is_admin=True,
+            )
+            db.add(reviewer)
+            db.flush()
+            bundle = _bundle()
+            reviewed_hash = bundle["hard_knowledge"]["geometry"]["geometry_hash"]
+
+            result = publish_verified_segment_bundle(
+                db,
+                bundle=bundle,
+                reviewer_user_id=reviewer.id,
+            )
+            published_wkt = db.query(func.ST_AsText(Segment.reference_line)).scalar()
+            source = db.query(SegmentGeometrySource).one()
+
+            assert result.geometry_hash == hash_segment_geometry_wkt(published_wkt)
+            assert source.geometry_hash == result.geometry_hash
+            assert source.quality_metrics_json["reviewed_geometry_hash"] == reviewed_hash
+            assert result.geometry_hash != reviewed_hash
+        finally:
+            db.rollback()
+            db.close()
+    finally:
+        engine.dispose()
+        try:
+            with base_engine.begin() as connection:
+                connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
+        finally:
+            base_engine.dispose()
 
 
 @pytest.fixture()

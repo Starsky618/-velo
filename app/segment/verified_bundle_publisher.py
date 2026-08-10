@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from geoalchemy2 import WKTElement
 import numpy as np
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.elevation.route_elevation import (
@@ -404,9 +404,10 @@ def _existing_publication(
     )
     if source is None:
         return None
+    quality_metrics = source.quality_metrics_json or {}
     if (
         source.source_content_hash != validated.bundle_hash
-        or source.geometry_hash != validated.geometry_hash
+        or quality_metrics.get("reviewed_geometry_hash") != validated.geometry_hash
     ):
         raise VerifiedSegmentBundleError("同 candidate_id 已发布，但 bundle 或 geometry hash 冲突")
     return SegmentPublicationResult(
@@ -550,6 +551,14 @@ def publish_verified_segment_bundle(
     )
     db.add(segment)
     db.flush()
+    published_geometry_wkt = (
+        db.query(func.ST_AsText(Segment.reference_line))
+        .filter(Segment.id == segment.id)
+        .scalar()
+    )
+    if not published_geometry_wkt:
+        raise VerifiedSegmentBundleError("Segment 写入后无法回读 reference_line")
+    published_geometry_hash = hash_segment_geometry_wkt(published_geometry_wkt)
 
     judgment = JudgmentRun(
         run_type="human_review",
@@ -569,7 +578,8 @@ def publish_verified_segment_bundle(
         confidence_state="human_accepted",
         result_summary_json={
             "candidate_id": validated.candidate_id,
-            "geometry_hash": validated.geometry_hash,
+            "reviewed_geometry_hash": validated.geometry_hash,
+            "published_geometry_hash": published_geometry_hash,
             "source_url": validated.source_url,
             "review_note": validated.review_note,
         },
@@ -594,13 +604,15 @@ def publish_verified_segment_bundle(
             source_url=validated.source_url,
             source_content_hash=validated.bundle_hash,
             original_coordinate_system="gcj02",
-            geometry_hash=validated.geometry_hash,
+            geometry_hash=published_geometry_hash,
             normalization_version=SEGMENT_GEOMETRY_NORMALIZATION_VERSION,
             quality_status="verified",
             quality_metrics_json={
                 "publication_contract_version": PUBLICATION_CONTRACT_VERSION,
                 "candidate_id": validated.candidate_id,
                 "bundle_hash": validated.bundle_hash,
+                "reviewed_geometry_hash": validated.geometry_hash,
+                "published_geometry_hash": published_geometry_hash,
                 "verified_bundle": validated.bundle,
             },
         ),
@@ -612,6 +624,6 @@ def publish_verified_segment_bundle(
         status="published",
         candidate_id=validated.candidate_id,
         segment_id=segment.id,
-        geometry_hash=validated.geometry_hash,
+        geometry_hash=published_geometry_hash,
         source_file_id=validated.source_file_id,
     )
