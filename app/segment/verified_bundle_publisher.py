@@ -40,13 +40,15 @@ from app.segment._geo_utils import _haversine, _sample_elevation_profile
 from app.segment.algorithms import calculate_difficulty, calculate_max_gradient
 from app.segment.exceptions import SegmentOverlapError
 from app.segment.models import Segment
-from app.segment.service_create import _check_hausdorff_overlap
 from app.user.cities import ALL_CITY_CODES_WITH_UNKNOWN
 from app.user.models import User
 
 
 PUBLICATION_CONTRACT_VERSION = "verified_segment_bundle_v1"
 SOURCE_FILE_PREFIX = f"{PUBLICATION_CONTRACT_VERSION}:"
+HAUSDORFF_OVERLAP_THRESHOLD_DEG = 0.0005
+REVERSE_ENDPOINT_TOLERANCE_M = 100.0
+REVERSE_DIRECTION_MARGIN_M = 25.0
 
 
 class VerifiedSegmentBundleError(ValueError):
@@ -416,6 +418,69 @@ def _existing_publication(
     )
 
 
+def _blocking_overlap_segment_id(db: Session, geometry_wkt: str) -> int | None:
+    """返回同向/方向不明的重复赛段；明确反向的同路赛段允许共存。
+
+    Hausdorff 距离不区分折线方向，所以单独用它会把“偏桥沟爬坡”和
+    “偏桥沟下坡”误判成一条赛段。只有新线起点贴近旧线终点、且新线终点
+    贴近旧线起点，并明显优于同向配对时，才把该重叠解释为反方向。
+    环线或很短、端点无法区分方向的线仍保守阻断。
+    """
+    if db.bind is None or db.bind.dialect.name != "postgresql":
+        return None
+    overlaps = (
+        db.execute(
+            text(
+                """
+                WITH candidate AS (
+                    SELECT ST_GeomFromText(:wkt, 4326) AS geom
+                )
+                SELECT
+                    segments.id AS segment_id,
+                    ST_DistanceSphere(
+                        ST_StartPoint(segments.reference_line),
+                        ST_StartPoint(candidate.geom)
+                    ) AS same_start_m,
+                    ST_DistanceSphere(
+                        ST_EndPoint(segments.reference_line),
+                        ST_EndPoint(candidate.geom)
+                    ) AS same_end_m,
+                    ST_DistanceSphere(
+                        ST_StartPoint(segments.reference_line),
+                        ST_EndPoint(candidate.geom)
+                    ) AS reverse_start_m,
+                    ST_DistanceSphere(
+                        ST_EndPoint(segments.reference_line),
+                        ST_StartPoint(candidate.geom)
+                    ) AS reverse_end_m
+                FROM segments, candidate
+                WHERE ST_HausdorffDistance(
+                    segments.reference_line,
+                    candidate.geom
+                ) < :threshold
+                ORDER BY segments.id
+                """
+            ),
+            {"wkt": geometry_wkt, "threshold": HAUSDORFF_OVERLAP_THRESHOLD_DEG},
+        )
+        .mappings()
+        .all()
+    )
+    for overlap in overlaps:
+        same_total = float(overlap["same_start_m"]) + float(overlap["same_end_m"])
+        reverse_start = float(overlap["reverse_start_m"])
+        reverse_end = float(overlap["reverse_end_m"])
+        reverse_total = reverse_start + reverse_end
+        is_unambiguous_reverse = (
+            reverse_start <= REVERSE_ENDPOINT_TOLERANCE_M
+            and reverse_end <= REVERSE_ENDPOINT_TOLERANCE_M
+            and reverse_total + REVERSE_DIRECTION_MARGIN_M < same_total
+        )
+        if not is_unambiguous_reverse:
+            return int(overlap["segment_id"])
+    return None
+
+
 def preflight_verified_segment_bundle(
     db: Session,
     bundle: object,
@@ -425,8 +490,9 @@ def preflight_verified_segment_bundle(
     existing = _existing_publication(db, validated)
     if existing is not None:
         return existing
-    if _check_hausdorff_overlap(db, validated.geometry_wkt):
-        raise SegmentOverlapError("verified bundle 与已有赛段高度重叠")
+    overlap_id = _blocking_overlap_segment_id(db, validated.geometry_wkt)
+    if overlap_id is not None:
+        raise SegmentOverlapError(f"verified bundle 与已有赛段 id={overlap_id} 同向高度重叠")
     return validated
 
 
@@ -450,8 +516,9 @@ def publish_verified_segment_bundle(
     reviewer = db.query(User).filter(User.id == reviewer_user_id).first()
     if reviewer is None or reviewer.is_admin is not True:
         raise VerifiedSegmentBundleError("reviewer_user_id 必须对应当前管理员")
-    if _check_hausdorff_overlap(db, validated.geometry_wkt):
-        raise SegmentOverlapError("verified bundle 与已有赛段高度重叠")
+    overlap_id = _blocking_overlap_segment_id(db, validated.geometry_wkt)
+    if overlap_id is not None:
+        raise SegmentOverlapError(f"verified bundle 与已有赛段 id={overlap_id} 同向高度重叠")
 
     elevation_profile = _sample_elevation_profile(
         [{"ele": point[1]} for point in validated.elevation_profile],

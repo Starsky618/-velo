@@ -6,6 +6,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from sqlalchemy import text
@@ -22,6 +23,7 @@ from app.segment.verified_bundle_publisher import (
     SOURCE_FILE_PREFIX,
     SegmentPublicationResult,
     VerifiedSegmentBundleError,
+    _blocking_overlap_segment_id,
     publish_verified_segment_bundle,
     validate_verified_segment_bundle,
 )
@@ -233,6 +235,57 @@ def test_same_candidate_id_with_changed_bundle_is_conflict(db, verified_bundle_t
         publish_verified_segment_bundle(db, bundle=changed, reviewer_user_id=1)
 
     assert db.execute(text("SELECT count(*) FROM segments")).scalar_one() == 1
+
+
+@pytest.mark.parametrize(
+    "overlap,expected",
+    [
+        (
+            {
+                "segment_id": 15,
+                "same_start_m": 2954.8,
+                "same_end_m": 2930.9,
+                "reverse_start_m": 44.4,
+                "reverse_end_m": 7.6,
+            },
+            None,
+        ),
+        (
+            {
+                "segment_id": 8,
+                "same_start_m": 12.0,
+                "same_end_m": 18.0,
+                "reverse_start_m": 3000.0,
+                "reverse_end_m": 2980.0,
+            },
+            8,
+        ),
+        (
+            {
+                "segment_id": 9,
+                "same_start_m": 8.0,
+                "same_end_m": 9.0,
+                "reverse_start_m": 10.0,
+                "reverse_end_m": 11.0,
+            },
+            9,
+        ),
+    ],
+)
+def test_overlap_gate_allows_only_unambiguous_reverse_direction(overlap, expected):
+    db = Mock()
+    db.bind.dialect.name = "postgresql"
+    db.execute.return_value.mappings.return_value.all.return_value = [overlap]
+
+    assert _blocking_overlap_segment_id(db, "LINESTRING(0 0,1 1)") == expected
+
+
+def test_overlap_gate_skips_postgis_query_on_sqlite():
+    db = Mock()
+    db.bind.dialect.name = "sqlite"
+
+    assert _blocking_overlap_segment_id(db, "LINESTRING(0 0,1 1)") is None
+    db.execute.assert_not_called()
 
 
 @pytest.fixture()
