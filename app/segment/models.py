@@ -121,6 +121,119 @@ class Segment(Base):
     )
 
 
+class InternalRoutingConnector(Base):
+    """仅供规划器补齐已确认路网断点的内部固定几何。
+
+    它不是公开 Segment：没有公开 API、排行榜或活动自动匹配入口。
+    ``endpoint_a`` 到 ``endpoint_b`` 是规范存储方向；双向使用时只反转坐标，
+    不复制第二条记录。
+    """
+
+    __tablename__ = "internal_routing_connectors"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    slug = Column(String(128), nullable=False)
+    name = Column(String(128), nullable=False)
+    city = Column(String(32), nullable=False)
+    status = Column(String(16), nullable=False, server_default="active")
+    traversal_policy = Column(
+        String(16), nullable=False, server_default="bidirectional"
+    )
+
+    endpoint_a_segment_id = Column(
+        Integer, ForeignKey("segments.id", ondelete="RESTRICT"), nullable=False
+    )
+    endpoint_a_position = Column(String(8), nullable=False)
+    endpoint_b_segment_id = Column(
+        Integer, ForeignKey("segments.id", ondelete="RESTRICT"), nullable=False
+    )
+    endpoint_b_position = Column(String(8), nullable=False)
+
+    start_lat = Column(Float, nullable=False)
+    start_lon = Column(Float, nullable=False)
+    end_lat = Column(Float, nullable=False)
+    end_lon = Column(Float, nullable=False)
+    reference_line = Column(
+        Geometry("LINESTRING", srid=4326, spatial_index=False), nullable=False
+    )
+    geometry_hash = Column(String(64), nullable=False)
+    distance = Column(Float, nullable=False)
+
+    source_type = Column(String(32), nullable=False)
+    source_name = Column(String(255), nullable=False)
+    source_sha256 = Column(String(64), nullable=False)
+    source_point_count = Column(Integer, nullable=False)
+    input_was_reversed = Column(Boolean, nullable=False, server_default=false())
+    endpoint_a_snap_m = Column(Float, nullable=False)
+    endpoint_b_snap_m = Column(Float, nullable=False)
+    blocked_provider = Column(String(32), nullable=True)
+
+    review_note = Column(Text, nullable=False)
+    reviewed_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "city IN ('beijing', 'shanghai', 'hangzhou', 'shenzhen', "
+            "'chengdu', 'taiyuan', 'unknown')",
+            name="ck_internal_connectors_city",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'retired')",
+            name="ck_internal_connectors_status",
+        ),
+        CheckConstraint(
+            "traversal_policy IN ('bidirectional', 'a_to_b_only')",
+            name="ck_internal_connectors_policy",
+        ),
+        CheckConstraint(
+            "endpoint_a_position IN ('start', 'end')",
+            name="ck_internal_connectors_a_position",
+        ),
+        CheckConstraint(
+            "endpoint_b_position IN ('start', 'end')",
+            name="ck_internal_connectors_b_position",
+        ),
+        CheckConstraint(
+            "source_type IN ('hand_drawn_gpx', 'recorded_gpx', 'reviewed_polyline')",
+            name="ck_internal_connectors_source_type",
+        ),
+        CheckConstraint(
+            "distance > 0 AND distance <= 5000 AND source_point_count >= 3",
+            name="ck_internal_connectors_geometry",
+        ),
+        CheckConstraint(
+            "endpoint_a_snap_m BETWEEN 0 AND 100 "
+            "AND endpoint_b_snap_m BETWEEN 0 AND 100",
+            name="ck_internal_connectors_snap",
+        ),
+        CheckConstraint(
+            "endpoint_a_segment_id <> endpoint_b_segment_id",
+            name="ck_internal_connectors_distinct_segments",
+        ),
+        UniqueConstraint("slug", name="uq_internal_connectors_slug"),
+        UniqueConstraint(
+            "geometry_hash", name="uq_internal_connectors_geometry_hash"
+        ),
+        Index(
+            "idx_internal_connectors_endpoints",
+            "endpoint_a_segment_id",
+            "endpoint_b_segment_id",
+            "status",
+        ),
+        Index(
+            "idx_internal_connectors_geom",
+            "reference_line",
+            postgresql_using="gist",
+        ),
+    )
+
+
 class SegmentEffort(Base):
     """
     赛段成绩表——"每次跑赛道的计时记录"。

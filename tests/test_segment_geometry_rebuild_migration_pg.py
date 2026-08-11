@@ -8,6 +8,7 @@ import uuid
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
@@ -40,10 +41,12 @@ def test_segment_geometry_migration_roundtrip_and_incompatible_history_guard():
             "alembic.ini",
             attributes={"configure_logger": False},
         )
+        expected_head = ScriptDirectory.from_config(alembic_config).get_current_head()
         command.upgrade(alembic_config, "head")
         with temp_engine.connect() as connection:
-            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "20260809_seg_geom_gates"
+            assert (
+                connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                == expected_head
             )
             gate_columns = {
                 row[0]
@@ -147,8 +150,9 @@ def test_segment_geometry_migration_roundtrip_and_incompatible_history_guard():
         with temp_engine.connect() as connection:
             # Alembic/PostgreSQL rolls the failed downgrade back as one
             # transaction, including the preceding gate-migration downgrade.
-            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-                "20260809_seg_geom_gates"
+            assert (
+                connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                == expected_head
             )
     finally:
         settings.DATABASE_URL = original_database_url

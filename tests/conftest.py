@@ -200,6 +200,42 @@ _segments_table = Table(
     Column("updated_at", DateTime(timezone=True)),
 )
 
+# 内部路线连接段独立于公开 segments；SQLite 只模拟字段形状和用户不可见性，
+# 真实 Geometry/FK/CHECK/索引由 Alembic + 真 PostgreSQL CI 验证。
+_internal_routing_connectors_table = Table(
+    "internal_routing_connectors",
+    _test_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("slug", String(128), nullable=False, unique=True),
+    Column("name", String(128), nullable=False),
+    Column("city", String(32), nullable=False),
+    Column("status", String(16), nullable=False, default="active"),
+    Column("traversal_policy", String(16), nullable=False, default="bidirectional"),
+    Column("endpoint_a_segment_id", Integer, nullable=False),
+    Column("endpoint_a_position", String(8), nullable=False),
+    Column("endpoint_b_segment_id", Integer, nullable=False),
+    Column("endpoint_b_position", String(8), nullable=False),
+    Column("start_lat", Float, nullable=False),
+    Column("start_lon", Float, nullable=False),
+    Column("end_lat", Float, nullable=False),
+    Column("end_lon", Float, nullable=False),
+    Column("reference_line", Text, nullable=False),
+    Column("geometry_hash", String(64), nullable=False, unique=True),
+    Column("distance", Float, nullable=False),
+    Column("source_type", String(32), nullable=False),
+    Column("source_name", String(255), nullable=False),
+    Column("source_sha256", String(64), nullable=False),
+    Column("source_point_count", Integer, nullable=False),
+    Column("input_was_reversed", Boolean, nullable=False, default=False),
+    Column("endpoint_a_snap_m", Float, nullable=False),
+    Column("endpoint_b_snap_m", Float, nullable=False),
+    Column("blocked_provider", String(32)),
+    Column("review_note", Text, nullable=False),
+    Column("reviewed_by", Integer),
+    Column("reviewed_at", DateTime(timezone=True), nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")),
+)
+
 # segment_efforts 表
 _segment_efforts_table = Table(
     "segment_efforts",
