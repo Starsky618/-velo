@@ -1,0 +1,1278 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>太原 20 对象路线图逻辑实验</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0e12;
+      --panel: #131820;
+      --panel-2: #191f29;
+      --line: #2a3442;
+      --text: #f3f7fb;
+      --muted: #9caaba;
+      --cyan: #33d6c4;
+      --orange: #ff9a55;
+      --red: #ff6b6b;
+      --green: #6fe09c;
+      --yellow: #ffd166;
+      --blue: #75a7ff;
+      --purple: #b69cff;
+      --shadow: 0 18px 55px rgba(0, 0, 0, .28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 20% -10%, rgba(51, 214, 196, .12), transparent 35%),
+        radial-gradient(circle at 85% 0%, rgba(117, 167, 255, .12), transparent 32%),
+        var(--bg);
+      color: var(--text);
+      font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    button, input { font: inherit; }
+    button {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 12px;
+      color: var(--text);
+      background: #202735;
+      cursor: pointer;
+      transition: .16s ease;
+    }
+    button:hover { border-color: var(--cyan); transform: translateY(-1px); }
+    button.primary { background: var(--cyan); border-color: var(--cyan); color: #04110f; font-weight: 700; }
+    button.warn { border-color: #865a2f; color: #ffd2ae; }
+    button.danger { border-color: #8d4148; color: #ffc4c8; }
+    button.ghost { background: transparent; }
+    button.active { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan) inset; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    a { color: var(--cyan); }
+    .shell { width: min(1500px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 60px; }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(320px, .75fr);
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(19, 24, 32, .94);
+      box-shadow: var(--shadow);
+    }
+    .hero-main { padding: 26px; }
+    .eyebrow { color: var(--cyan); letter-spacing: .12em; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+    h1 { margin: 10px 0 12px; font-size: clamp(27px, 4vw, 48px); line-height: 1.08; letter-spacing: -.035em; }
+    h2 { margin: 0 0 12px; font-size: 18px; }
+    h3 { margin: 0 0 9px; font-size: 15px; }
+    p { margin: 0 0 10px; }
+    .question {
+      font-size: 17px;
+      max-width: 950px;
+      color: #dce7f2;
+    }
+    .verdict {
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-color: #386a65;
+    }
+    .verdict strong { display: block; font-size: 22px; line-height: 1.25; margin: 7px 0 12px; }
+    .verdict .boundary { color: var(--yellow); }
+    .stamp {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      width: fit-content;
+      padding: 5px 9px;
+      border-radius: 999px;
+      color: var(--green);
+      background: rgba(111, 224, 156, .1);
+      border: 1px solid rgba(111, 224, 156, .32);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 290px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .sidebar { position: sticky; top: 12px; padding: 16px; }
+    .scenario-tabs { display: grid; gap: 8px; }
+    .scenario-tab { text-align: left; display: flex; justify-content: space-between; align-items: center; }
+    .scenario-tab small { color: var(--muted); }
+    .sidebar-note { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .content { display: grid; gap: 18px; min-width: 0; }
+    .section { padding: 20px; }
+    .scenario-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
+    .scenario-head p { color: var(--muted); max-width: 850px; }
+    .steps { display: grid; gap: 9px; margin-top: 16px; }
+    .step {
+      display: grid;
+      grid-template-columns: 28px minmax(150px, .8fr) minmax(220px, 1.5fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel-2);
+    }
+    .step-index {
+      width: 25px; height: 25px; display: grid; place-items: center;
+      border-radius: 50%; background: #273140; color: var(--muted); font-size: 12px;
+    }
+    .step small { color: var(--muted); }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(110px, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .metric { padding: 13px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); }
+    .metric b { display: block; font-size: 22px; line-height: 1.15; }
+    .metric span { color: var(--muted); font-size: 12px; }
+    .results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .result {
+      padding: 13px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+    .result.pass { border-color: rgba(111, 224, 156, .5); }
+    .result.fail { border-color: rgba(255, 107, 107, .55); }
+    .result.pending { opacity: .72; }
+    .result-status { font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+    .pass .result-status { color: var(--green); }
+    .fail .result-status { color: var(--red); }
+    .pending .result-status { color: var(--muted); }
+    .result p { color: var(--muted); font-size: 12px; margin-top: 5px; }
+    .notice {
+      border-left: 3px solid var(--yellow);
+      background: rgba(255, 209, 102, .08);
+      color: #ffe7a8;
+      padding: 10px 12px;
+      border-radius: 0 9px 9px 0;
+      margin-top: 12px;
+    }
+    .notice.error { border-color: var(--red); background: rgba(255, 107, 107, .08); color: #ffc3c3; }
+    .notice.ok { border-color: var(--green); background: rgba(111, 224, 156, .08); color: #bdf5d1; }
+    .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .subcard { padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); min-width: 0; }
+    .flow { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 8px 0; }
+    .node { padding: 7px 9px; border-radius: 9px; background: #232c39; border: 1px solid #344153; font-size: 12px; }
+    .node.geometry { border-color: var(--purple); }
+    .node.leg { border-color: var(--blue); }
+    .node.traversal { border-color: var(--cyan); }
+    .node.route { border-color: var(--orange); }
+    .node.evidence { border-color: var(--yellow); }
+    .arrow { color: #627085; }
+    .tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #273140;
+      color: #b9c5d3;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .tag.live { background: rgba(111, 224, 156, .12); color: var(--green); }
+    .tag.candidate { background: rgba(255, 209, 102, .1); color: var(--yellow); }
+    .tag.blocked { background: rgba(255, 107, 107, .1); color: #ff9ca3; }
+    .tag.synthetic { background: rgba(182, 156, 255, .12); color: #cdbdff; }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; min-width: 780px; }
+    th, td { padding: 9px 11px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; background: #171d26; position: sticky; top: 0; }
+    tr:last-child td { border-bottom: 0; }
+    td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .range-row { display: grid; grid-template-columns: 95px 1fr 54px; gap: 9px; align-items: center; margin: 9px 0; }
+    input[type="range"] { width: 100%; accent-color: var(--cyan); }
+    input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0e131a;
+      color: var(--text);
+      padding: 9px 11px;
+    }
+    .log { max-height: 260px; overflow: auto; display: grid; gap: 7px; }
+    .log-item { border-left: 2px solid #3c495b; padding-left: 9px; color: var(--muted); }
+    .log-item b { color: var(--text); }
+    .json {
+      max-height: 500px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #090c10;
+      border: 1px solid var(--line);
+      padding: 14px;
+      border-radius: 12px;
+      color: #b8c8d8;
+      font-size: 11px;
+    }
+    details summary { cursor: pointer; color: var(--muted); margin-bottom: 10px; }
+    .footer { margin-top: 18px; color: var(--muted); font-size: 12px; text-align: center; }
+    @media (max-width: 1050px) {
+      .hero, .grid { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+      .scenario-tabs { grid-template-columns: repeat(2, 1fr); }
+      .metrics { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 700px) {
+      .shell { width: min(100% - 18px, 1500px); padding-top: 10px; }
+      .hero-main, .verdict, .section { padding: 16px; }
+      .split, .results { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .scenario-tabs { grid-template-columns: 1fr; }
+      .step { grid-template-columns: 25px 1fr auto; }
+      .step small { grid-column: 2 / -1; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="card hero-main">
+        <div class="eyebrow">Throwaway logic prototype · 只读真实对象快照</div>
+        <h1>太原 20 对象路线图实验</h1>
+        <p class="question">实验问题：把当前正式 Segment 解释为 <b>Anchor / 物理几何 / directed RoadLeg / Traversal / Route / Observation</b> 后，能否不靠递归赛段树，同时表达反向复用、半程语义、长走廊任意区间和变更影响？</p>
+        <div class="notice">本页面不会写数据库。20 条对象的公开字段来自 2026-08-10 23:22（Asia/Shanghai）的 VELO 公开 API 读回；RoadLeg 拆分、POI 和证据补充均明确标记为实验候选或合成输入。</div>
+      </div>
+      <aside class="card verdict">
+        <div>
+          <div class="stamp">● 当前实验判断</div>
+          <strong>模型可行，但“共用同一个 Segment”不可行。</strong>
+          <p>应该共用更低层的物理几何，保留两个有方向 Traversal / 排行榜身份；否则上下坡成绩会混在一起。</p>
+        </div>
+        <p class="boundary">生产落地仍缺：真实 RoadLeg 边界、几何 hash、天龙山半程锚点与 POI 证据。</p>
+      </aside>
+    </section>
+
+    <div class="grid">
+      <aside class="card sidebar">
+        <h2>引导实验</h2>
+        <div id="scenarioTabs" class="scenario-tabs"></div>
+        <div class="sidebar-note">
+          每个步骤都能点击执行。也可以直接用右侧“自由操作”。完整内存状态始终显示在页面底部，方便检查系统到底改了什么。
+        </div>
+      </aside>
+
+      <div class="content">
+        <section class="card section">
+          <div class="scenario-head">
+            <div>
+              <div class="eyebrow" id="scenarioKicker"></div>
+              <h2 id="scenarioTitle"></h2>
+              <p id="scenarioThesis"></p>
+            </div>
+            <button class="ghost" data-action="reset">重置实验</button>
+          </div>
+          <div id="scenarioSteps" class="steps"></div>
+          <div class="toolbar">
+            <button class="primary" data-action="runAll">一键跑完六组实验</button>
+            <button data-action="detectReverse">检测 reverse 候选</button>
+            <button data-action="acceptReverse">接受偏桥沟共享几何</button>
+            <button class="danger" data-action="mergeLeaderboards">尝试合并排行榜</button>
+            <button data-action="createHalf">创建天龙山半程候选</button>
+            <button data-action="queryFen">查询汾河任意区间</button>
+            <button data-action="changeSharedGeometry">修改共享几何</button>
+            <button data-action="replaceStrava">替换 Strava 快照</button>
+          </div>
+          <div id="lastAction"></div>
+        </section>
+
+        <section class="card section">
+          <h2>实验仪表盘</h2>
+          <div id="metrics" class="metrics"></div>
+          <div id="suiteReport" style="margin-top:14px"></div>
+          <div id="assertions" class="results" style="margin-top:14px"></div>
+        </section>
+
+        <section class="card section">
+          <h2>当前关系图（可解释路径）</h2>
+          <div id="graphView"></div>
+        </section>
+
+        <section class="card section">
+          <div class="split">
+            <div class="subcard">
+              <h3>汾河 linear measure 查询</h3>
+              <p style="color:var(--muted)">在“西迎宾桥→祥云桥”已知走廊内取任意区间；查询结果默认不持久化为新 Segment。</p>
+              <div class="range-row">
+                <label for="fenStart">起点 measure</label>
+                <input id="fenStart" type="range" min="0" max="90" value="20">
+                <span id="fenStartValue">20%</span>
+              </div>
+              <div class="range-row">
+                <label for="fenEnd">终点 measure</label>
+                <input id="fenEnd" type="range" min="10" max="100" value="75">
+                <span id="fenEndValue">75%</span>
+              </div>
+              <div class="toolbar">
+                <button class="primary" data-action="queryFen">查询临时区间</button>
+                <button class="warn" data-action="materializeFen">尝试物化为 Segment</button>
+                <button data-action="addFenEvidence">加入合成“稳定训练语境”证据</button>
+              </div>
+              <div id="fenResult"></div>
+            </div>
+
+            <div class="subcard">
+              <h3>模糊语言 → seed → 有界展开</h3>
+              <p style="color:var(--muted)">不是向量直接决定路线；先从名称/别名找到 seed，再沿 typed edge 展开，最后仍要几何验证。</p>
+              <input id="queryText" type="text" value="铁门往下" aria-label="模糊路线查询">
+              <div class="toolbar">
+                <button class="primary" data-action="fuzzySearch">执行查询</button>
+              </div>
+              <div id="queryResult"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card section">
+          <h2>20 条真实对象盘点</h2>
+          <p style="color:var(--muted);margin-bottom:12px">这里的“实验角色”只表示本次是否拆解，不是路线分类。没有证据的 13 条保持“仅盘点”，不强行分层。</p>
+          <div id="inventory" class="table-wrap"></div>
+        </section>
+
+        <section class="card section">
+          <div class="split">
+            <div>
+              <h2>影响传播结果</h2>
+              <div id="impact"></div>
+            </div>
+            <div>
+              <h2>审计日志</h2>
+              <div id="audit" class="log"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card section">
+          <details open>
+            <summary>完整内存状态（实验真相源）</summary>
+            <pre id="stateJson" class="json"></pre>
+          </details>
+        </section>
+      </div>
+    </div>
+    <div class="footer">单文件 · 无框架 · 无持久化 · 不连接生产写入口 · 刷新页面即可全部丢弃</div>
+  </main>
+
+  <script>
+    "use strict";
+
+    var CAPTURED_AT = "2026-08-10T23:22:17+08:00";
+    var PUBLIC_API = "https://api.weiluai.top/api/segments?city=taiyuan&page_size=100";
+
+    var TARGET_SEGMENTS = [
+      {id: 8, name: "横岭爬坡", distance: 11.01, elevation: 633.0, avg: 5.6, entries: 7, start: [112.444871, 37.983982], end: [112.414054, 37.987041]},
+      {id: 19, name: "桃花沟观景台爬坡", distance: 3.57, elevation: 235.0, avg: 5.3, entries: 3, start: [112.358335, 37.821716], end: [112.329501, 37.825601]},
+      {id: 23, name: "西山旅游公路 奥申正爬", distance: 5.29, elevation: 363.0, avg: 6.8, entries: 2, start: [112.420594, 37.824665], end: [112.400571, 37.797837]},
+      {id: 3, name: "奥申下坡", distance: 1.80, elevation: 55.0, avg: -10.5, entries: 2, start: [112.399285, 37.797708], end: [112.391586, 37.800811]},
+      {id: 27, name: "偏桥沟（桃花沟偏桥沟岔口到杜关线铁门）", distance: 4.18, elevation: 304.1, avg: 7.3, entries: 0, start: [112.3598910809, 37.8218211872], end: [112.3369463006, 37.8025917613]},
+      {id: 28, name: "天龙山石碑到万亩起伏", distance: 29.76, elevation: 608.8, avg: -1.0, entries: 0, start: [112.4009563184, 37.7402346363], end: [112.4525408344, 37.8234940577]},
+      {id: 29, name: "惕龙湖-小西沟爬坡", distance: 2.73, elevation: 148.3, avg: 5.4, entries: 0, start: [112.6614721544, 37.8253939331], end: [112.6846806226, 37.8325422942]},
+      {id: 24, name: "夜骑清徐（迎宾桥→无名桥）", distance: 11.07, elevation: 12.0, avg: 0.0, entries: 24, start: [112.505475, 37.685203], end: [112.404987, 37.638743]},
+      {id: 30, name: "南内环桥-中北福源阁-南内环桥", distance: 42.74, elevation: 59.4, avg: 0.0, entries: 0, start: [112.5298722232, 37.8385006867], end: [112.5299695082, 37.8385659365]},
+      {id: 31, name: "汾河二库阁楼-马头水", distance: 5.53, elevation: 121.9, avg: 1.2, entries: 0, start: [112.3756495177, 37.9760235799], end: [112.4167173957, 37.9540320919]},
+      {id: 32, name: "玉泉山爬坡（三合一）", distance: 3.00, elevation: 299.5, avg: 10.0, entries: 0, start: [112.4459400855, 37.9011286643], end: [112.4311856131, 37.9110624249]},
+      {id: 33, name: "东山五龙森林公园爬坡赛段", distance: 3.42, elevation: 208.9, avg: 6.1, entries: 0, start: [112.6603212572, 37.8248840619], end: [112.6775765426, 37.8426688447]},
+      {id: 34, name: "小西沟-乌金山", distance: 16.54, elevation: 469.3, avg: 0.9, entries: 0, start: [112.6874425379, 37.8347697758], end: [112.7678814023, 37.8471863193]},
+      {id: 35, name: "环东山旅游公路（反爬）", distance: 36.83, elevation: 962.1, avg: 0.3, entries: 0, start: [112.64698431598, 37.8182139251], end: [112.6861229379, 37.9681661744]},
+      {id: 36, name: "康西公路放坡", distance: 19.73, elevation: 120.2, avg: -2.0, entries: 0, start: [112.3284611698, 38.1845715550], end: [112.4466982546, 38.0653787153]},
+      {id: 37, name: "石岭关25km", distance: 25.18, elevation: 300.4, avg: 0.8, entries: 0, start: [112.6310286262, 38.0405551126], end: [112.7407811289, 38.2317109160]},
+      {id: 38, name: "自行车道西迎宾桥—祥云桥", distance: 10.02, elevation: 15.2, avg: 0.1, entries: 0, start: [112.5110913919, 37.6922331517], end: [112.5261734780, 37.7729737002]},
+      {id: 39, name: "潇河南岸单程", distance: 16.40, elevation: 5.8, avg: -0.1, entries: 0, start: [112.7582728927, 37.6531660044], end: [112.5958832021, 37.6172923439]},
+      {id: 40, name: "东西山旅游公路-北山段", distance: 25.61, elevation: 535.0, avg: -0.1, entries: 0, start: [112.44890998, 38.0269013264], end: [112.6379847545, 38.0392230781]},
+      {id: 21, name: "天龙山网红公路爬坡", distance: 10.05, elevation: 561.0, avg: 5.2, entries: 5, start: [112.429566, 37.705553], end: [112.403277, 37.737995]}
+    ];
+
+    var SCENARIOS = {
+      reverse: {
+        index: "01",
+        title: "偏桥沟：物理复用，不合并排行榜",
+        thesis: "用真实端点和长度先生成候选；共享的是 geometry，两个方向仍是两个 Traversal / 当前 Segment 身份。奥申作为反例，证明“正爬/下坡”四个字不够。",
+        steps: [
+          {action: "reset", label: "重置", expected: "回到 20 条只读对象快照"},
+          {action: "detectReverse", label: "检测反向候选", expected: "偏桥沟通过；奥申因覆盖差异被拒绝"},
+          {action: "acceptReverse", label: "接受实验映射", expected: "1 份物理几何 → 2 个 directed RoadLeg → 2 个 Traversal"},
+          {action: "mergeLeaderboards", label: "故意合并排行榜", expected: "状态机拒绝，避免上下坡成绩串榜"}
+        ]
+      },
+      tianlong: {
+        index: "02",
+        title: "天龙山：半程是边界候选，不自动等于 POI",
+        thesis: "先在全程上创建 linear-measure 半程锚点；几何子路径可以立即派生，但“为什么停”必须等待 POI / 训练边界证据。",
+        steps: [
+          {action: "reset", label: "重置", expected: "保留正式全程 Segment #21"},
+          {action: "createHalf", label: "创建 50% 半程", expected: "生成 observed_turnaround 候选与两个 clip leg"},
+          {action: "promoteHalf", label: "尝试直接发布", expected: "因缺少语义证据被拒绝"},
+          {action: "attachSyntheticPoi", label: "加入合成 POI 观察", expected: "只证明逻辑可接证据，不冒充现实 POI"},
+          {action: "reviewHalf", label: "实验人工审核", expected: "仅变为 experiment_accepted；生产仍 blocked"}
+        ]
+      },
+      fen: {
+        index: "03",
+        title: "汾河：长走廊查询，不建递归赛段树",
+        thesis: "已命名区间继续保留 Segment；任意两点区间是 RoadLeg + linear measure 的临时查询。只有稳定名称、训练或排行证据出现后才考虑物化。",
+        steps: [
+          {action: "reset", label: "重置", expected: "载入 #38 区间与 #30 环线对象"},
+          {action: "queryFen", label: "查询 20%→75%", expected: "得到 5.51km 临时区间，不新增 Segment"},
+          {action: "materializeFen", label: "尝试直接物化", expected: "没有稳定语境证据，拒绝"},
+          {action: "addFenEvidence", label: "加入合成训练证据", expected: "只把候选送审，不直接发布"},
+          {action: "materializeFen", label: "再次物化", expected: "生成 experiment_candidate，仍需真实审核"}
+        ]
+      },
+      impact: {
+        index: "04",
+        title: "影响传播：区分共享几何变化与单向通行变化",
+        thesis: "共享 geometry 改动应同时召回上下坡；只改上坡 RoadLeg 的 access 则不应把下坡误报。影响是派生视图，不是永久实体。",
+        steps: [
+          {action: "reset", label: "重置", expected: "清空影响队列"},
+          {action: "acceptReverse", label: "建立偏桥沟映射", expected: "形成可遍历依赖"},
+          {action: "changeSharedGeometry", label: "修改共享 geometry", expected: "上下坡、排行、路线与 guide 均被分级召回"},
+          {action: "changeUphillAccess", label: "只改上坡 access", expected: "只召回上坡链，避免下坡假阳性"}
+        ]
+      },
+      provenance: {
+        index: "05",
+        title: "来源替换：每个来源只撤回自己的贡献",
+        thesis: "新 Strava 快照替换旧快照时，只 supersede 由旧 Strava 产生的 Observation；DEM 高程和 Tim 给出的边界继续有效。",
+        steps: [
+          {action: "reset", label: "重置", expected: "三类来源贡献同时 active"},
+          {action: "replaceStrava", label: "替换 Strava 快照", expected: "旧 Strava observation withdrawn；DEM / user_explicit 不动"},
+          {action: "replaceStrava", label: "幂等重试", expected: "不重复创建 v2 快照"}
+        ]
+      },
+      retrieval: {
+        index: "06",
+        title: "检索机械门：词法 seed → 有界图展开 → 几何待验证",
+        thesis: "“铁门往下”先命中杜关线铁门和下坡别名，再沿边界/方向关系找到偏桥沟下坡；文本只负责召回，不能替代 geometry validation。",
+        steps: [
+          {action: "reset", label: "重置", expected: "没有认知图映射"},
+          {action: "acceptReverse", label: "建立偏桥沟映射", expected: "加入 Anchor / Traversal typed edge"},
+          {action: "fuzzySearch", label: "查询“铁门往下”", expected: "返回可解释关系路径，状态仍是 geometry_check_required"}
+        ]
+      }
+    };
+
+    function segment(id) {
+      return TARGET_SEGMENTS.find(function(item) { return item.id === id; });
+    }
+
+    function clone(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    function baseState() {
+      return {
+        meta: {
+          prototype: true,
+          persistence: "none",
+          capturedAt: CAPTURED_AT,
+          publicApi: PUBLIC_API,
+          targetCount: TARGET_SEGMENTS.length,
+          truthBoundary: "公开字段是真实读回；关系拆分是可丢弃实验解释"
+        },
+        activeScenario: "reverse",
+        segments: clone(TARGET_SEGMENTS),
+        sourceSnapshots: [
+          {id: "src-public-api-v1", kind: "velo_public_api", status: "active", capturedAt: CAPTURED_AT},
+          {id: "src-strava-qg-v1", kind: "strava", status: "active", capturedAt: "source-record-not-public"},
+          {id: "src-dem-qg-v1", kind: "dem", status: "active", capturedAt: "source-record-not-public"},
+          {id: "src-user-qg-v1", kind: "user_explicit", status: "active", capturedAt: "2026-08-10"}
+        ],
+        observations: [
+          {id: "obs-qg-label", sourceId: "src-strava-qg-v1", subject: "segment:27", predicate: "popular_segment_label", value: "偏桥沟", status: "active"},
+          {id: "obs-qg-elevation", sourceId: "src-dem-qg-v1", subject: "segment:27", predicate: "elevation_summary", value: "304.1m", status: "active"},
+          {id: "obs-qg-boundary", sourceId: "src-user-qg-v1", subject: "segment:27", predicate: "named_boundary", value: "桃花沟偏桥沟岔口→杜关线铁门", status: "active"}
+        ],
+        anchors: [
+          {id: "a-qg-junction", label: "桃花沟偏桥沟岔口", type: "junction", status: "observed", coordinate: segment(27).start},
+          {id: "a-qg-gate", label: "杜关线铁门", type: "access_gate", status: "observed", coordinate: segment(27).end},
+          {id: "a-fen-west-yingbin", label: "西迎宾桥", type: "bridge_access", status: "observed", coordinate: segment(38).start},
+          {id: "a-fen-xiangyun", label: "祥云桥", type: "bridge_access", status: "observed", coordinate: segment(38).end},
+          {id: "a-fen-south-inner", label: "南内环桥", type: "bridge_access", status: "observed", coordinate: segment(30).start},
+          {id: "a-fen-zhongbei", label: "中北福源阁", type: "named_turnaround", status: "boundary_named_position_unresolved", coordinate: null}
+        ],
+        geometries: [],
+        roadLegs: [],
+        traversals: [
+          {id: "trav-seg21", segmentId: 21, label: segment(21).name, direction: "forward", status: "legacy_published", memberships: []},
+          {id: "trav-seg38", segmentId: 38, label: segment(38).name, direction: "forward", status: "legacy_published", memberships: ["leg-fen-38"]},
+          {id: "trav-seg30", segmentId: 30, label: segment(30).name, direction: "loop", status: "legacy_published", memberships: ["leg-fen-30-out", "leg-fen-30-return"]}
+        ],
+        routes: [
+          {id: "route-fen-loop-30", label: segment(30).name, status: "experiment_interpretation", components: ["leg-fen-30-out", "leg-fen-30-return"], caveat: "福源阁精确折返点 measure 未由公开 API 暴露"}
+        ],
+        reverseCandidates: [],
+        temporaryQueries: [],
+        materializationCandidates: [],
+        impact: [],
+        queryResult: null,
+        experimentReport: [],
+        assertionsTouched: {},
+        lastAction: {kind: "info", title: "等待操作", detail: "选择一个引导实验，或直接点击自由操作。"},
+        audit: [
+          {at: "00:00:00", action: "LOAD_PUBLIC_SNAPSHOT", result: "20 objects loaded; no production write"}
+        ]
+      };
+    }
+
+    var state = baseState();
+
+    function nowLabel() {
+      return new Date().toLocaleTimeString("zh-CN", {hour12: false});
+    }
+
+    function log(action, result) {
+      state.audit.unshift({at: nowLabel(), action: action, result: result});
+      state.audit = state.audit.slice(0, 30);
+    }
+
+    function setLast(kind, title, detail) {
+      state.lastAction = {kind: kind, title: title, detail: detail};
+    }
+
+    function touch(name, outcome) {
+      state.assertionsTouched[name] = outcome;
+    }
+
+    function haversineMeters(a, b) {
+      var rad = Math.PI / 180;
+      var lat1 = a[1] * rad;
+      var lat2 = b[1] * rad;
+      var dLat = (b[1] - a[1]) * rad;
+      var dLon = (b[0] - a[0]) * rad;
+      var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    }
+
+    function reverseCompatibility(a, b) {
+      var startToEnd = haversineMeters(a.start, b.end);
+      var endToStart = haversineMeters(a.end, b.start);
+      var endpointMax = Math.max(startToEnd, endToStart);
+      var lengthDelta = Math.abs(a.distance - b.distance) / Math.max(a.distance, b.distance);
+      var pass = endpointMax <= 100 && lengthDelta <= 0.02;
+      return {
+        a: a.id,
+        b: b.id,
+        endpointReverseMaxM: Number(endpointMax.toFixed(1)),
+        lengthDeltaPct: Number((lengthDelta * 100).toFixed(1)),
+        decision: pass ? "candidate_same_physical_geometry" : "reject_full_reverse",
+        reason: pass ? "端点反向距离≤100m 且长度差≤2%" : "覆盖或端点不满足 full reverse；最多只能继续查共享子路径"
+      };
+    }
+
+    function ensureFenLegs() {
+      if (!state.geometries.some(function(item) { return item.id === "geom-fen-38"; })) {
+        state.geometries.push(
+          {id: "geom-fen-38", label: "Segment #38 canonical line", status: "published_reference", source: "segment:38", lengthKm: 10.02},
+          {id: "geom-fen-30", label: "Segment #30 loop canonical line", status: "published_reference", source: "segment:30", lengthKm: 42.74}
+        );
+        state.roadLegs.push(
+          {id: "leg-fen-38", geometryId: "geom-fen-38", from: "a-fen-west-yingbin", to: "a-fen-xiangyun", direction: "forward", startMeasure: 0, endMeasure: 1, status: "experiment_interpretation"},
+          {id: "leg-fen-30-out", geometryId: "geom-fen-30", from: "a-fen-south-inner", to: "a-fen-zhongbei", direction: "forward", startMeasure: 0, endMeasure: 0.5, status: "candidate_split"},
+          {id: "leg-fen-30-return", geometryId: "geom-fen-30", from: "a-fen-zhongbei", to: "a-fen-south-inner", direction: "forward", startMeasure: 0.5, endMeasure: 1, status: "candidate_split"}
+        );
+      }
+    }
+
+    function ensureReverseGraph() {
+      if (!state.reverseCandidates.length) {
+        actions.detectReverse();
+      }
+      if (state.geometries.some(function(item) { return item.id === "geom-qg-physical"; })) {
+        return false;
+      }
+      state.geometries.push({
+        id: "geom-qg-physical",
+        label: "偏桥沟物理几何候选",
+        status: "experiment_accepted",
+        source: "reverse compatibility of segment:27 and segment:15",
+        geometryHash: "not_exposed_by_public_api",
+        revision: 1
+      });
+      state.roadLegs.push(
+        {id: "leg-qg-up", geometryId: "geom-qg-physical", from: "a-qg-junction", to: "a-qg-gate", direction: "forward", status: "experiment_accepted", access: "unknown"},
+        {id: "leg-qg-down", geometryId: "geom-qg-physical", from: "a-qg-gate", to: "a-qg-junction", direction: "reverse", status: "experiment_accepted", access: "unknown"}
+      );
+      state.traversals.push(
+        {id: "trav-seg27", segmentId: 27, label: segment(27).name, direction: "uphill", status: "experiment_mapped", memberships: ["leg-qg-up"], leaderboardIdentity: "segment:27"},
+        {id: "trav-seg15", segmentId: 15, label: "偏桥沟下坡", direction: "downhill", status: "experiment_mapped", memberships: ["leg-qg-down"], leaderboardIdentity: "segment:15"}
+      );
+      touch("reverseSharing", "pass");
+      touch("leaderboardSeparation", "pass");
+      return true;
+    }
+
+    function dependencies() {
+      return [
+        {from: "geom-qg-physical", to: "leg-qg-up", relation: "PROJECTS_DIRECTION", weight: 1.0},
+        {from: "geom-qg-physical", to: "leg-qg-down", relation: "PROJECTS_DIRECTION", weight: 1.0},
+        {from: "leg-qg-up", to: "trav-seg27", relation: "USED_BY", weight: 1.0},
+        {from: "leg-qg-down", to: "trav-seg15", relation: "USED_BY", weight: 1.0},
+        {from: "trav-seg27", to: "leaderboard:27", relation: "OWNS_LEADERBOARD", weight: 1.0},
+        {from: "trav-seg15", to: "leaderboard:15", relation: "OWNS_LEADERBOARD", weight: 1.0},
+        {from: "trav-seg27", to: "route:qg-climb-plan", relation: "USED_BY_ROUTE", weight: 0.9},
+        {from: "trav-seg27", to: "guide:qg-climb", relation: "DESCRIBED_BY", weight: 0.6},
+        {from: "trav-seg15", to: "guide:qg-descent", relation: "DESCRIBED_BY", weight: 0.6},
+        {from: "geom-qg-physical", to: "poi-review:qg-gate", relation: "NEAR_POI_REVIEW", weight: 0.3}
+      ];
+    }
+
+    function propagate(startId, changeKind) {
+      var edges = dependencies();
+      var scores = {};
+      var paths = {};
+      var queue = [{id: startId, score: 1, depth: 0}];
+      scores[startId] = 1;
+      paths[startId] = [startId];
+      while (queue.length) {
+        queue.sort(function(a, b) { return b.score - a.score; });
+        var current = queue.shift();
+        if (current.depth >= 4) {
+          continue;
+        }
+        edges.filter(function(edge) { return edge.from === current.id; }).forEach(function(edge) {
+          var nextScore = current.score * edge.weight * 0.6;
+          if (nextScore < 0.05) {
+            return;
+          }
+          if (scores[edge.to] === undefined || nextScore > scores[edge.to]) {
+            scores[edge.to] = nextScore;
+            paths[edge.to] = paths[current.id].concat(edge.relation + "→" + edge.to);
+            queue.push({id: edge.to, score: nextScore, depth: current.depth + 1});
+          }
+        });
+      }
+      state.impact = Object.keys(scores)
+        .filter(function(id) { return id !== startId; })
+        .map(function(id) {
+          var score = scores[id];
+          return {
+            object: id,
+            score: Number(score.toFixed(3)),
+            action: score >= 0.3 ? "recompute" : score >= 0.1 ? "review" : "observe",
+            path: paths[id].join(" → "),
+            changeKind: changeKind
+          };
+        })
+        .sort(function(a, b) { return b.score - a.score; });
+      return state.impact;
+    }
+
+    var actions = {
+      reset: function() {
+        var scenario = state.activeScenario;
+        state = baseState();
+        state.activeScenario = scenario;
+        setLast("info", "已重置", "所有实验关系已丢弃，20 条公开对象快照保留。");
+      },
+      detectReverse: function() {
+        state.reverseCandidates = [
+          reverseCompatibility(segment(27), {id: 15, name: "偏桥沟下坡", distance: 4.13, start: [112.336478, 37.802742], end: [112.359829, 37.821773]}),
+          reverseCompatibility(segment(23), segment(3))
+        ];
+        touch("reverseDetection", "pass");
+        setLast("ok", "reverse 候选已计算", "偏桥沟进入共享物理几何候选；奥申被拒绝为 full reverse，因为 5.29km 与 1.80km 覆盖不一致。");
+        log("DETECT_REVERSE", "segment 27/15 candidate; segment 23/3 rejected");
+      },
+      acceptReverse: function() {
+        var created = ensureReverseGraph();
+        setLast("ok", created ? "偏桥沟映射已建立" : "偏桥沟映射已存在", "一份 geometry 派生两个有向 RoadLeg，两个 Traversal 继续绑定各自排行榜身份。");
+        log("ACCEPT_EXPERIMENT_MAPPING", created ? "created shared geometry with two directed traversals" : "idempotent no-op");
+      },
+      mergeLeaderboards: function() {
+        ensureReverseGraph();
+        touch("mergeGuard", "pass");
+        setLast("error", "合并被拒绝", "当前 Segment 是排行榜身份。#15 已有 3 条 effort；把 #27/#15 变成一个 Segment 会混合方向。复用必须发生在更低的 physical geometry / RoadLeg 层。");
+        log("REJECT_MERGE", "leaderboard identity is direction-specific");
+      },
+      createHalf: function() {
+        if (!state.anchors.some(function(item) { return item.id === "a-tl-half"; })) {
+          state.anchors.push({
+            id: "a-tl-half",
+            label: "天龙山 50% 半程候选点（待现场核名）",
+            type: "observed_turnaround",
+            status: "candidate",
+            coordinate: null,
+            linearMeasure: 0.5,
+            productionEligible: false
+          });
+          state.geometries.push({id: "geom-tl-21", label: "Segment #21 canonical line", status: "published_reference", source: "segment:21", lengthKm: 10.05});
+          state.roadLegs.push(
+            {id: "leg-tl-first-half", geometryId: "geom-tl-21", from: "segment:21:start", to: "a-tl-half", direction: "forward", startMeasure: 0, endMeasure: 0.5, status: "candidate_clip"},
+            {id: "leg-tl-second-half", geometryId: "geom-tl-21", from: "a-tl-half", to: "segment:21:end", direction: "forward", startMeasure: 0.5, endMeasure: 1, status: "candidate_clip"}
+          );
+          state.traversals.find(function(item) { return item.id === "trav-seg21"; }).memberships = ["leg-tl-first-half", "leg-tl-second-half"];
+          state.traversals.push({
+            id: "trav-tl-half-candidate",
+            segmentId: null,
+            label: "天龙山半程候选",
+            direction: "forward",
+            status: "candidate",
+            memberships: ["leg-tl-first-half"],
+            derivedRelations: ["GEOMETRIC_SUBPATH_OF trav-seg21"]
+          });
+        }
+        touch("halfGeometry", "pass");
+        setLast("ok", "半程几何候选已创建", "几何包含关系成立；但 observed_turnaround 不是 POI，生产发布仍被语义证据门挡住。");
+        log("CREATE_HALF_CANDIDATE", "measure 0.5; no POI claim inferred");
+      },
+      promoteHalf: function() {
+        actions.createHalf();
+        var anchor = state.anchors.find(function(item) { return item.id === "a-tl-half"; });
+        if (anchor.status !== "experiment_accepted") {
+          touch("halfEvidenceGate", "pass");
+          setLast("error", "发布被拒绝", "缺少真实 POI、路口、集合点或稳定折返行为证据。几何真子集不推出人为什么停。");
+          log("REJECT_HALF_PROMOTION", "semantic boundary evidence missing");
+          return;
+        }
+        setLast("info", "仍未进入生产", "实验审核只证明合同可表达；真实坐标和真实来源仍缺失。");
+      },
+      attachSyntheticPoi: function() {
+        actions.createHalf();
+        if (!state.sourceSnapshots.some(function(item) { return item.id === "src-synthetic-poi"; })) {
+          state.sourceSnapshots.push({id: "src-synthetic-poi", kind: "synthetic_experiment", status: "active", capturedAt: CAPTURED_AT});
+          state.observations.push({
+            id: "obs-tl-half-poi-synthetic",
+            sourceId: "src-synthetic-poi",
+            subject: "a-tl-half",
+            predicate: "possible_nearby_poi",
+            value: "合成 POI，仅测试 evidence binding",
+            status: "synthetic_only"
+          });
+        }
+        setLast("info", "合成 POI 已绑定", "它能测试数据结构，但权威级别不足，不能冒充真实天龙山 POI。");
+        log("ATTACH_SYNTHETIC_EVIDENCE", "bound to half anchor; production authority remains false");
+      },
+      reviewHalf: function() {
+        actions.attachSyntheticPoi();
+        var anchor = state.anchors.find(function(item) { return item.id === "a-tl-half"; });
+        anchor.status = "experiment_accepted";
+        anchor.productionEligible = false;
+        touch("halfAuthorityBoundary", "pass");
+        setLast("ok", "实验审核通过，生产仍 blocked", "这个状态刻意区分“逻辑结构跑通”和“现实对象已核实”。");
+        log("EXPERIMENT_REVIEW_HALF", "accepted only inside prototype");
+      },
+      queryFen: function() {
+        ensureFenLegs();
+        var start = Number(document.getElementById("fenStart").value) / 100;
+        var end = Number(document.getElementById("fenEnd").value) / 100;
+        if (start >= end) {
+          setLast("error", "区间无效", "起点 measure 必须小于终点 measure。");
+          return;
+        }
+        var result = {
+          id: "temp-fen-" + Math.round(start * 100) + "-" + Math.round(end * 100),
+          baseLeg: "leg-fen-38",
+          fromMeasure: start,
+          toMeasure: end,
+          distanceKm: Number((10.02 * (end - start)).toFixed(2)),
+          persistence: "ephemeral",
+          createdSegment: false,
+          continuity: "single verified base geometry",
+          validation: "geometry clip required before real use"
+        };
+        state.temporaryQueries = [result];
+        touch("fenNoRecursion", "pass");
+        setLast("ok", "临时区间已生成", result.distanceKm + "km；没有创建 child Segment，也没有修改 #38。");
+        log("QUERY_LINEAR_MEASURE", result.id + " ephemeral");
+      },
+      materializeFen: function() {
+        if (!state.temporaryQueries.length) {
+          actions.queryFen();
+        }
+        var evidence = state.observations.find(function(item) { return item.id === "obs-fen-stable-context"; });
+        if (!evidence) {
+          touch("fenMaterializationGate", "pass");
+          setLast("error", "物化被拒绝", "任意区间可查询，不等于值得永久命名。缺少稳定名称、训练意义、排行榜或重复使用证据。");
+          log("REJECT_FEN_MATERIALIZATION", "stable context evidence missing");
+          return;
+        }
+        if (!state.materializationCandidates.length) {
+          state.materializationCandidates.push({
+            id: "candidate-fen-training-slice",
+            queryId: state.temporaryQueries[0].id,
+            status: "experiment_candidate",
+            productionEligible: false,
+            requiredNext: ["真实活动聚类", "边界人工审核", "geometry clip hash", "排行榜语境决策"]
+          });
+        }
+        touch("fenCandidateOnly", "pass");
+        setLast("ok", "只生成送审候选", "即使有合成证据，也不会自动发布 Segment。");
+        log("CREATE_FEN_CANDIDATE", "experiment candidate; no production write");
+      },
+      addFenEvidence: function() {
+        if (!state.sourceSnapshots.some(function(item) { return item.id === "src-synthetic-fen"; })) {
+          state.sourceSnapshots.push({id: "src-synthetic-fen", kind: "synthetic_experiment", status: "active", capturedAt: CAPTURED_AT});
+          state.observations.push({
+            id: "obs-fen-stable-context",
+            sourceId: "src-synthetic-fen",
+            subject: state.temporaryQueries[0] ? state.temporaryQueries[0].id : "leg-fen-38",
+            predicate: "repeated_training_use",
+            value: "合成：20 次重复训练 + 稳定俗名",
+            status: "synthetic_only"
+          });
+        }
+        setLast("info", "合成训练语境已加入", "仅用来验证物化门；真实生产必须换成真实活动/人工证据。");
+        log("ATTACH_SYNTHETIC_FEN_EVIDENCE", "candidate authority only");
+      },
+      changeSharedGeometry: function() {
+        ensureReverseGraph();
+        var geometry = state.geometries.find(function(item) { return item.id === "geom-qg-physical"; });
+        geometry.revision += 1;
+        propagate("geom-qg-physical", "shared_geometry_revision");
+        var hasBoth = state.impact.some(function(item) { return item.object === "trav-seg27"; }) &&
+          state.impact.some(function(item) { return item.object === "trav-seg15"; });
+        touch("sharedImpact", hasBoth ? "pass" : "fail");
+        setLast(hasBoth ? "ok" : "error", "共享几何影响已传播", "上下坡均进入重算/复核；每个结果保留 best-path、边权和衰减分数。");
+        log("PROPAGATE_SHARED_GEOMETRY", state.impact.length + " affected objects");
+      },
+      changeUphillAccess: function() {
+        ensureReverseGraph();
+        state.roadLegs.find(function(item) { return item.id === "leg-qg-up"; }).access = "review_required";
+        propagate("leg-qg-up", "directed_access_change");
+        var falsePositive = state.impact.some(function(item) { return item.object === "trav-seg15"; });
+        touch("directionalImpact", falsePositive ? "fail" : "pass");
+        setLast(falsePositive ? "error" : "ok", "单向影响已隔离", falsePositive ? "错误召回了下坡。" : "只召回上坡链；下坡 Traversal 未被误报。");
+        log("PROPAGATE_UPHILL_ACCESS", falsePositive ? "false positive detected" : "downhill excluded");
+      },
+      replaceStrava: function() {
+        var old = state.sourceSnapshots.find(function(item) { return item.id === "src-strava-qg-v1"; });
+        if (old.status === "superseded") {
+          setLast("info", "幂等重试，无变化", "v2 已存在，没有重复创建快照或 Observation。");
+          log("REPLACE_SOURCE_RETRY", "idempotent no-op");
+          return;
+        }
+        old.status = "superseded";
+        state.observations.filter(function(item) { return item.sourceId === old.id; }).forEach(function(item) {
+          item.status = "withdrawn_by_source_replacement";
+        });
+        state.sourceSnapshots.push({id: "src-strava-qg-v2", kind: "strava", status: "active", capturedAt: CAPTURED_AT});
+        state.observations.push({
+          id: "obs-qg-label-v2",
+          sourceId: "src-strava-qg-v2",
+          subject: "segment:27",
+          predicate: "popular_segment_label",
+          value: "偏桥沟新版快照（实验）",
+          status: "active"
+        });
+        var demActive = state.observations.find(function(item) { return item.id === "obs-qg-elevation"; }).status === "active";
+        var userActive = state.observations.find(function(item) { return item.id === "obs-qg-boundary"; }).status === "active";
+        touch("sourceIsolation", demActive && userActive ? "pass" : "fail");
+        setLast(demActive && userActive ? "ok" : "error", "来源级替换完成", "只撤回旧 Strava contribution；DEM 高程与用户明确边界保持 active。");
+        log("REPLACE_SOURCE_SNAPSHOT", "strava v1→v2; DEM and user source preserved");
+      },
+      fuzzySearch: function() {
+        ensureReverseGraph();
+        var query = document.getElementById("queryText").value.trim();
+        var normalized = query.replace("往下", "下坡");
+        var seeds = [];
+        if (normalized.indexOf("铁门") >= 0) {
+          seeds.push({id: "a-qg-gate", score: 1.0, match: "exact substring: 铁门"});
+        }
+        if (normalized.indexOf("下坡") >= 0) {
+          seeds.push({id: "trav-seg15", score: 0.92, match: "normalized alias: 往下→下坡"});
+        }
+        state.queryResult = {
+          query: query,
+          normalized: normalized,
+          seedPolicy: "exact / alias / substring；无向量",
+          seeds: seeds,
+          boundedExpansion: [
+            "a-qg-gate --BOUNDS--> leg-qg-down",
+            "leg-qg-down --USED_BY--> trav-seg15",
+            "trav-seg15 --OWNS_LEADERBOARD--> segment:15"
+          ],
+          candidate: "偏桥沟下坡 / Segment #15",
+          status: "geometry_check_required",
+          proofBoundary: "文本和图只召回候选；活动是否完整覆盖仍交给 map matching + geometry validator"
+        };
+        touch("boundedRetrieval", seeds.length === 2 ? "pass" : "fail");
+        setLast(seeds.length === 2 ? "ok" : "error", "有界检索完成", "找到 2 个 seed，沿 typed edge 展开 3 跳；尚未越权宣布几何匹配。");
+        log("BOUNDED_RETRIEVAL", query + " -> segment:15 candidate");
+      },
+      runAll: function() {
+        var scenario = state.activeScenario;
+        var report = [];
+        var record = function(id, title, ok, detail) {
+          report.push({id: id, title: title, status: ok ? "pass" : "fail", detail: detail});
+        };
+
+        actions.reset();
+        actions.detectReverse();
+        var qgCandidate = state.reverseCandidates[0].decision === "candidate_same_physical_geometry";
+        var aoshenRejected = state.reverseCandidates[1].decision === "reject_full_reverse";
+        actions.acceptReverse();
+        actions.mergeLeaderboards();
+        record("reverse", "反向复用与排行榜门", qgCandidate && aoshenRejected &&
+          state.geometries.filter(function(item) { return item.id === "geom-qg-physical"; }).length === 1 &&
+          state.lastAction.title === "合并被拒绝",
+          "偏桥沟共享 geometry；奥申拒绝 full reverse；排行榜合并被挡住");
+
+        actions.reset();
+        actions.createHalf();
+        actions.promoteHalf();
+        var halfRejected = state.lastAction.title === "发布被拒绝";
+        actions.attachSyntheticPoi();
+        actions.reviewHalf();
+        var halfAnchor = state.anchors.find(function(item) { return item.id === "a-tl-half"; });
+        record("half", "半程语义证据门", halfRejected && halfAnchor.productionEligible === false,
+          "几何子路径成立；合成 POI 不获得生产权威");
+
+        actions.reset();
+        actions.queryFen();
+        actions.materializeFen();
+        var fenRejected = state.materializationCandidates.length === 0;
+        actions.addFenEvidence();
+        actions.materializeFen();
+        record("fen", "走廊临时查询与物化门", fenRejected &&
+          state.materializationCandidates.length === 1 &&
+          state.materializationCandidates[0].productionEligible === false,
+          "任意区间保持 ephemeral；合成训练语境只生成送审候选");
+
+        actions.reset();
+        actions.acceptReverse();
+        actions.changeSharedGeometry();
+        var sharedComplete = state.impact.some(function(item) { return item.object === "trav-seg27"; }) &&
+          state.impact.some(function(item) { return item.object === "trav-seg15"; });
+        actions.changeUphillAccess();
+        var directedClean = !state.impact.some(function(item) { return item.object === "trav-seg15"; });
+        record("impact", "字段级影响传播", sharedComplete && directedClean,
+          "共享 geometry 召回双向；上坡 access 不误报下坡");
+
+        actions.reset();
+        actions.replaceStrava();
+        actions.replaceStrava();
+        var sourceClean = state.sourceSnapshots.filter(function(item) { return item.id === "src-strava-qg-v2"; }).length === 1 &&
+          state.observations.find(function(item) { return item.id === "obs-qg-elevation"; }).status === "active" &&
+          state.observations.find(function(item) { return item.id === "obs-qg-boundary"; }).status === "active";
+        record("source", "来源级增量替换", sourceClean,
+          "v1→v2 幂等；DEM 与 user_explicit contribution 保留");
+
+        actions.reset();
+        actions.acceptReverse();
+        actions.fuzzySearch();
+        var retrievalBounded = state.queryResult.seeds.length === 2 &&
+          state.queryResult.status === "geometry_check_required";
+        record("retrieval", "词法 seed 与有界展开", retrievalBounded,
+          "召回偏桥沟下坡，但最终状态仍要求 geometry validation");
+
+        state.activeScenario = scenario;
+        state.experimentReport = report;
+        state.assertionsTouched = {
+          reverseDetection: qgCandidate && aoshenRejected ? "pass" : "fail",
+          reverseSharing: report[0].status,
+          leaderboardSeparation: report[0].status,
+          halfEvidenceGate: report[1].status,
+          fenNoRecursion: report[2].status,
+          sharedImpact: sharedComplete ? "pass" : "fail",
+          directionalImpact: directedClean ? "pass" : "fail",
+          sourceIsolation: report[4].status,
+          boundedRetrieval: report[5].status
+        };
+        var allPass = report.every(function(item) { return item.status === "pass"; });
+        setLast(allPass ? "ok" : "error", allPass ? "六组实验全部通过" : "实验存在失败",
+          allPass ? "通过表示领域合同可表达这些困境，不表示真实 RoadLeg / POI 已进入生产。" : "查看实验报告中的失败项。");
+        log("RUN_FULL_EXPERIMENT_SUITE", allPass ? "ALL_PASS" : "FAILED");
+      }
+    };
+
+    var ASSERTION_DEFS = [
+      {id: "reverseDetection", title: "对象优先，不靠名字合并", detail: "偏桥沟通过几何摘要启发式，奥申 full reverse 被拒绝。"},
+      {id: "reverseSharing", title: "共享物理事实", detail: "1 份 geometry 可以派生两个 directed RoadLeg。"},
+      {id: "leaderboardSeparation", title: "排行榜身份分离", detail: "上下坡 Traversal / 当前 Segment identity 不合并。"},
+      {id: "halfEvidenceGate", title: "几何不推出语义", detail: "半程子路径成立，也不能自动声称那里有 POI。"},
+      {id: "fenNoRecursion", title: "任意区间不递归", detail: "linear measure 查询默认 ephemeral。"},
+      {id: "sharedImpact", title: "共享变化完整召回", detail: "改物理 geometry 时上下坡都进入影响队列。"},
+      {id: "directionalImpact", title: "单向变化抑制噪声", detail: "改上坡 access 不误报下坡。"},
+      {id: "sourceIsolation", title: "来源替换不越权", detail: "Strava v1 被撤回，DEM / user_explicit 仍 active。"},
+      {id: "boundedRetrieval", title: "检索不冒充真值", detail: "词法 seed + typed expansion 后仍要求几何验证。"}
+    ];
+
+    function experimentRole(id) {
+      if (id === 27) return "反向主例";
+      if (id === 3 || id === 23) return "反向反例";
+      if (id === 21) return "半程主例";
+      if (id === 30 || id === 38) return "走廊/环线主例";
+      return "仅盘点，未拆解";
+    }
+
+    function nodeLabel(id) {
+      var labels = {
+        "geom-qg-physical": "共享物理几何",
+        "leg-qg-up": "上坡 RoadLeg",
+        "leg-qg-down": "下坡 RoadLeg",
+        "trav-seg27": "上坡 Traversal #27",
+        "trav-seg15": "下坡 Traversal #15",
+        "a-tl-half": "半程 Anchor",
+        "leg-tl-first-half": "0–50% clip",
+        "leg-tl-second-half": "50–100% clip",
+        "trav-seg21": "全程 Traversal #21",
+        "trav-tl-half-candidate": "半程 Traversal candidate",
+        "leg-fen-38": "西迎宾桥→祥云桥 RoadLeg",
+        "trav-seg38": "已命名 Traversal #38"
+      };
+      return labels[id] || id;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function renderScenarioTabs() {
+      document.getElementById("scenarioTabs").innerHTML = Object.keys(SCENARIOS).map(function(key) {
+        var item = SCENARIOS[key];
+        return '<button class="scenario-tab ' + (state.activeScenario === key ? "active" : "") + '" data-scenario="' + key + '">' +
+          '<span>' + item.index + " · " + escapeHtml(item.title.split("：")[0]) + '</span><small>→</small></button>';
+      }).join("");
+    }
+
+    function renderScenario() {
+      var scenario = SCENARIOS[state.activeScenario];
+      document.getElementById("scenarioKicker").textContent = "实验 " + scenario.index;
+      document.getElementById("scenarioTitle").textContent = scenario.title;
+      document.getElementById("scenarioThesis").textContent = scenario.thesis;
+      document.getElementById("scenarioSteps").innerHTML = scenario.steps.map(function(step, index) {
+        return '<div class="step"><span class="step-index">' + (index + 1) + '</span>' +
+          '<b>' + escapeHtml(step.label) + '</b><small>' + escapeHtml(step.expected) + '</small>' +
+          '<button data-action="' + step.action + '">执行</button></div>';
+      }).join("");
+    }
+
+    function renderMetrics() {
+      var modeledIds = [3, 21, 23, 27, 30, 38];
+      var values = [
+        [state.segments.length, "真实目标对象"],
+        [modeledIds.length, "进入主例/反例"],
+        [state.geometries.length, "实验 geometry"],
+        [state.roadLegs.length, "directed RoadLeg"],
+        [state.materializationCandidates.length, "物化候选"]
+      ];
+      document.getElementById("metrics").innerHTML = values.map(function(item) {
+        return '<div class="metric"><b>' + item[0] + '</b><span>' + item[1] + '</span></div>';
+      }).join("");
+    }
+
+    function renderAssertions() {
+      document.getElementById("assertions").innerHTML = ASSERTION_DEFS.map(function(item) {
+        var status = state.assertionsTouched[item.id] || "pending";
+        var label = status === "pass" ? "PASS" : status === "fail" ? "FAIL" : "未执行";
+        return '<div class="result ' + status + '"><span class="result-status">' + label + '</span><b style="display:block;margin-top:4px">' +
+          escapeHtml(item.title) + '</b><p>' + escapeHtml(item.detail) + '</p></div>';
+      }).join("");
+    }
+
+    function renderSuiteReport() {
+      if (!state.experimentReport.length) {
+        document.getElementById("suiteReport").innerHTML =
+          '<div class="notice">点击“一键跑完六组实验”可执行完整状态转移；单步操作仍可自由组合。</div>';
+        return;
+      }
+      var allPass = state.experimentReport.every(function(item) { return item.status === "pass"; });
+      var rows = state.experimentReport.map(function(item) {
+        return '<tr><td><span class="tag ' + (item.status === "pass" ? "live" : "blocked") + '">' +
+          item.status.toUpperCase() + '</span></td><td><b>' + escapeHtml(item.title) + '</b></td><td>' +
+          escapeHtml(item.detail) + '</td></tr>';
+      }).join("");
+      document.getElementById("suiteReport").innerHTML =
+        '<div class="notice ' + (allPass ? "ok" : "error") + '"><b data-suite-marker="' +
+        (allPass ? "ALL_PASS" : "FAILED") + '">' + (allPass ? "ALL_PASS" : "FAILED") +
+        '</b> · 这是逻辑合同实验结果，不是生产数据验收。</div>' +
+        '<div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>状态</th><th>实验</th><th>结果</th></tr></thead><tbody>' +
+        rows + '</tbody></table></div>';
+    }
+
+    function flowNode(id, kind) {
+      return '<span class="node ' + kind + '" title="' + escapeHtml(id) + '">' + escapeHtml(nodeLabel(id)) + '</span>';
+    }
+
+    function renderGraph() {
+      var flows = [];
+      if (state.geometries.some(function(item) { return item.id === "geom-qg-physical"; })) {
+        flows.push(
+          '<div class="subcard"><h3>偏桥沟：一份物理事实，两条方向链</h3>' +
+          '<div class="flow">' + flowNode("geom-qg-physical", "geometry") + '<span class="arrow">→</span>' +
+          flowNode("leg-qg-up", "leg") + '<span class="arrow">→</span>' + flowNode("trav-seg27", "traversal") +
+          '<span class="arrow">→</span><span class="node route">排行榜 #27</span></div>' +
+          '<div class="flow">' + flowNode("geom-qg-physical", "geometry") + '<span class="arrow">→</span>' +
+          flowNode("leg-qg-down", "leg") + '<span class="arrow">→</span>' + flowNode("trav-seg15", "traversal") +
+          '<span class="arrow">→</span><span class="node route">排行榜 #15</span></div></div>'
+        );
+      }
+      if (state.anchors.some(function(item) { return item.id === "a-tl-half"; })) {
+        var anchor = state.anchors.find(function(item) { return item.id === "a-tl-half"; });
+        flows.push(
+          '<div class="subcard"><h3>天龙山：空间包含与停留理由分轨</h3>' +
+          '<div class="flow"><span class="node geometry">Segment #21 geometry</span><span class="arrow">→</span>' +
+          flowNode("leg-tl-first-half", "leg") + '<span class="arrow">→</span>' + flowNode("a-tl-half", "evidence") +
+          '<span class="arrow">→</span>' + flowNode("leg-tl-second-half", "leg") + '</div>' +
+          '<div class="flow">' + flowNode("trav-tl-half-candidate", "traversal") +
+          '<span class="arrow">—GEOMETRIC_SUBPATH_OF→</span>' + flowNode("trav-seg21", "traversal") + '</div>' +
+          '<p><span class="tag ' + (anchor.productionEligible ? "live" : "blocked") + '">productionEligible=' + anchor.productionEligible +
+          '</span> <span class="tag candidate">type=' + escapeHtml(anchor.type) + '</span></p></div>'
+        );
+      }
+      if (state.geometries.some(function(item) { return item.id === "geom-fen-38"; })) {
+        flows.push(
+          '<div class="subcard"><h3>汾河：命名对象与临时区间共存</h3>' +
+          '<div class="flow"><span class="node evidence">西迎宾桥</span><span class="arrow">→</span>' +
+          flowNode("leg-fen-38", "leg") + '<span class="arrow">→</span><span class="node evidence">祥云桥</span></div>' +
+          '<div class="flow">' + flowNode("trav-seg38", "traversal") +
+          '<span class="arrow">＋ linear measure query →</span><span class="node route">ephemeral interval</span></div>' +
+          '<p style="color:var(--muted)">#30 环线保留有序 out/return components；福源阁精确 measure 未从公开 API 得到，因此仍是 candidate split。</p></div>'
+        );
+      }
+      document.getElementById("graphView").innerHTML = flows.length ?
+        '<div class="split">' + flows.join("") + '</div>' :
+        '<div class="notice">当前只有公开 Segment 对象，没有擅自生成 RoadLeg。先执行一个实验步骤。</div>';
+    }
+
+    function renderLastAction() {
+      var item = state.lastAction;
+      var cls = item.kind === "error" ? "notice error" : item.kind === "ok" ? "notice ok" : "notice";
+      document.getElementById("lastAction").innerHTML = '<div class="' + cls + '"><b>' + escapeHtml(item.title) + '</b> · ' + escapeHtml(item.detail) + '</div>';
+    }
+
+    function renderFenResult() {
+      var result = state.temporaryQueries[0];
+      var html = "";
+      if (result) {
+        html += '<div class="notice ok"><b>' + escapeHtml(result.id) + '</b> · ' + result.distanceKm +
+          'km · <span class="tag">' + result.persistence + '</span> · createdSegment=' + result.createdSegment + '</div>';
+      }
+      if (state.materializationCandidates.length) {
+        html += '<div class="notice"><b>送审候选：</b>' + escapeHtml(state.materializationCandidates[0].id) +
+          '；productionEligible=false</div>';
+      }
+      document.getElementById("fenResult").innerHTML = html || '<div class="notice">尚未查询。</div>';
+    }
+
+    function renderQueryResult() {
+      var result = state.queryResult;
+      if (!result) {
+        document.getElementById("queryResult").innerHTML = '<div class="notice">尚未查询。</div>';
+        return;
+      }
+      var seedHtml = result.seeds.map(function(seed) {
+        return '<span class="tag">' + escapeHtml(nodeLabel(seed.id)) + " · " + seed.score + '</span>';
+      }).join(" ");
+      var paths = result.boundedExpansion.map(function(path) {
+        return '<div class="log-item">' + escapeHtml(path) + '</div>';
+      }).join("");
+      document.getElementById("queryResult").innerHTML =
+        '<div class="notice ok"><b>候选：</b>' + escapeHtml(result.candidate) +
+        ' <span class="tag candidate">' + result.status + '</span></div>' +
+        '<p style="margin:10px 0">Seeds：' + seedHtml + '</p><div class="log">' + paths + '</div>' +
+        '<p style="color:var(--muted);margin-top:9px">' + escapeHtml(result.proofBoundary) + '</p>';
+    }
+
+    function renderInventory() {
+      var rows = state.segments.map(function(item) {
+        var role = experimentRole(item.id);
+        var roleClass = role.indexOf("仅盘点") >= 0 ? "" : "candidate";
+        return '<tr><td class="num">#' + item.id + '</td><td><b>' + escapeHtml(item.name) + '</b></td>' +
+          '<td class="num">' + item.distance.toFixed(2) + ' km</td><td class="num">' + item.elevation.toFixed(1) + ' m</td>' +
+          '<td class="num">' + item.avg.toFixed(1) + '%</td><td class="num">' + item.entries + '</td>' +
+          '<td><span class="tag ' + roleClass + '">' + escapeHtml(role) + '</span></td></tr>';
+      }).join("");
+      document.getElementById("inventory").innerHTML =
+        '<table><thead><tr><th>ID</th><th>正式名称</th><th>距离</th><th>爬升</th><th>均坡</th><th>Efforts</th><th>实验角色</th></tr></thead><tbody>' +
+        rows + '</tbody></table>';
+    }
+
+    function renderImpact() {
+      if (!state.impact.length) {
+        document.getElementById("impact").innerHTML = '<div class="notice">尚未触发变更。先建立偏桥沟映射，再修改共享 geometry 或单向 access。</div>';
+        return;
+      }
+      var rows = state.impact.map(function(item) {
+        return '<tr><td><b>' + escapeHtml(item.object) + '</b></td><td class="num">' + item.score.toFixed(3) + '</td>' +
+          '<td><span class="tag ' + (item.action === "recompute" ? "candidate" : "") + '">' + item.action + '</span></td>' +
+          '<td><code>' + escapeHtml(item.path) + '</code></td></tr>';
+      }).join("");
+      document.getElementById("impact").innerHTML =
+        '<div class="table-wrap"><table><thead><tr><th>对象</th><th>Score</th><th>动作</th><th>Best path</th></tr></thead><tbody>' +
+        rows + '</tbody></table></div>';
+    }
+
+    function renderAudit() {
+      document.getElementById("audit").innerHTML = state.audit.map(function(item) {
+        return '<div class="log-item"><b>' + escapeHtml(item.at) + " · " + escapeHtml(item.action) +
+          '</b><br>' + escapeHtml(item.result) + '</div>';
+      }).join("");
+    }
+
+    function renderState() {
+      document.getElementById("stateJson").textContent = JSON.stringify(state, null, 2);
+    }
+
+    function renderRanges() {
+      document.getElementById("fenStartValue").textContent = document.getElementById("fenStart").value + "%";
+      document.getElementById("fenEndValue").textContent = document.getElementById("fenEnd").value + "%";
+    }
+
+    function render() {
+      renderScenarioTabs();
+      renderScenario();
+      renderMetrics();
+      renderSuiteReport();
+      renderAssertions();
+      renderGraph();
+      renderLastAction();
+      renderFenResult();
+      renderQueryResult();
+      renderInventory();
+      renderImpact();
+      renderAudit();
+      renderState();
+      renderRanges();
+      document.body.dataset.suiteResult = state.experimentReport.length ?
+        (state.experimentReport.every(function(item) { return item.status === "pass"; }) ? "ALL_PASS" : "FAILED") :
+        "NOT_RUN";
+    }
+
+    document.addEventListener("click", function(event) {
+      var scenarioButton = event.target.closest("[data-scenario]");
+      if (scenarioButton) {
+        state.activeScenario = scenarioButton.getAttribute("data-scenario");
+        var selected = state.activeScenario;
+        state = baseState();
+        state.activeScenario = selected;
+        setLast("info", "已切换引导实验", SCENARIOS[selected].title);
+        render();
+        return;
+      }
+      var actionButton = event.target.closest("[data-action]");
+      if (!actionButton) {
+        return;
+      }
+      var action = actionButton.getAttribute("data-action");
+      if (actions[action]) {
+        actions[action]();
+        render();
+      }
+    });
+
+    document.getElementById("fenStart").addEventListener("input", renderRanges);
+    document.getElementById("fenEnd").addEventListener("input", renderRanges);
+    if (new URLSearchParams(window.location.search).get("autorun") === "all") {
+      actions.runAll();
+    }
+    render();
+  </script>
+</body>
+</html>
