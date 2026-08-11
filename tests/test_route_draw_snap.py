@@ -42,6 +42,46 @@ def _snap_payload(points=None, mode="snap", coordinate_system="gcj02"):
     }
 
 
+def test_wgs84_freehand_preview_preserves_source_geometry_without_tencent(
+    client, auth_header, monkeypatch
+):
+    def should_not_call_tencent(*args, **kwargs):
+        raise AssertionError("WGS84 freehand must not call Tencent")
+
+    monkeypatch.setattr(
+        "app.route_book.draw_snap_service.plan_tencent_bicycling_route",
+        should_not_call_tencent,
+    )
+    points = [[112.5, 37.8], [112.51, 37.801], [112.52, 37.8]]
+    res = client.post(
+        "/api/route-books/manual-drawn/snap-preview",
+        json=_snap_payload(points=points, mode="freehand", coordinate_system="wgs84"),
+        headers=auth_header,
+    )
+
+    assert res.status_code == 200
+    assert res.json()["coordinate_system"] == "wgs84"
+    assert res.json()["snapped_points"] == points
+
+
+def test_wgs84_snap_preview_is_rejected_before_tencent(client, auth_header, monkeypatch):
+    def should_not_call_tencent(*args, **kwargs):
+        raise AssertionError("WGS84 snap must not call Tencent")
+
+    monkeypatch.setattr(
+        "app.route_book.draw_snap_service.plan_tencent_bicycling_route",
+        should_not_call_tencent,
+    )
+    res = client.post(
+        "/api/route-books/manual-drawn/snap-preview",
+        json=_snap_payload(mode="snap", coordinate_system="wgs84"),
+        headers=auth_header,
+    )
+
+    assert res.status_code == 422
+    assert "snap 模式只支持 gcj02" in res.text
+
+
 def test_logged_in_user_gets_snap_preview_without_creating_route_book(
     client, db, auth_header, monkeypatch, caplog
 ):
