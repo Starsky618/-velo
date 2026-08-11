@@ -85,7 +85,7 @@ class StravaClient:
         self.db = db
         self.user = user
 
-    # ===== 公开接口 =====
+    # ===== 公开接口：三个 API 方法 =====
 
     def get_athlete_activities(
         self, before: int | None = None, per_page: int = 30
@@ -135,15 +135,6 @@ class StravaClient:
         return self._request(
             "GET", f"/activities/{activity_id}/streams", params=params
         )
-
-    def get_segment_detail(self, segment_id: int) -> dict:
-        """读取公开 Strava 赛段详情，供受控的标准几何复核使用。"""
-        if isinstance(segment_id, bool) or not isinstance(segment_id, int) or segment_id <= 0:
-            raise ValueError("Strava segment_id 必须是正整数")
-        result = self._request("GET", f"/segments/{segment_id}")
-        if not isinstance(result, dict):
-            raise ValueError("Strava 赛段详情格式异常")
-        return result
 
     # ===== 内部方法 =====
 
