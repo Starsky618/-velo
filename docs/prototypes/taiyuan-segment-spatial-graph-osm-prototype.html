@@ -194,7 +194,7 @@
       <div class="eyebrow">真实坐标 · OSM · Throwaway experiment</div>
       <h1>太原赛段空间关系图</h1>
       <p>问题：这些线到底是共线、局部重合，还是只是离得近？答案只由完整折线和坐标产生。</p>
-      <div class="verdict"><b>当前结论：</b>多数对象是独立折线，不是可直接递归嵌套的父子路线。#30、#39 的生产几何已确认错误，暂时退出关系结论；#21、#28 按骑手最新判断保留现状。</div>
+      <div class="verdict"><b>当前结论：</b>多数对象是独立折线，不是可直接递归嵌套的父子路线。#30、#39 已修正并从生产库回读，旧几何生成的关系暂不采用；#21、#28 按骑手最新判断保留现状。</div>
       <div class="source">底图 © OpenStreetMap。折线来自 VELO 生产 PostGIS 只读快照；关系用原始完整几何计算，地图显示使用约 3 米简化副本。</div>
     </section>
 
@@ -233,8 +233,8 @@
     <b>地图语言</b>
     <div class="legend-row"><span class="line-sample"></span>目标赛段完整折线</div>
     <div class="legend-row"><span class="line-sample context"></span>目标集外的空间参照</div>
-    <div class="legend-row"><span class="line-sample" style="border-color:#47a8ff"></span>Strava 原始赛段折线</div>
-    <div class="legend-row"><span class="line-sample near" style="border-color:#ff6a00"></span>被质疑的生产重建线</div>
+    <div class="legend-row"><span class="line-sample" style="border-color:#47a8ff;border-style:dashed"></span>Strava 原始赛段折线</div>
+    <div class="legend-row"><span class="line-sample" style="border-color:#42d17b"></span>已修正并回读的生产线</div>
     <div class="legend-row"><span class="line-sample near"></span>最近点连接：靠近，不代表重合</div>
     <div class="legend-row"><span class="node-sample"></span>当前线的起点 / 终点</div>
   </section>
@@ -247,6 +247,25 @@
     var RELATIONS = [{"a_id":19,"b_id":20,"a_name":"桃花沟观景台爬坡","b_name":"桃花沟爬坡","a_closest":{"type":"Point","coordinates":[112.358335,37.821716]},"b_closest":{"type":"Point","coordinates":[112.358335,37.821716]},"a_within_10":1,"a_within_30":1,"b_within_10":0.5601,"b_within_30":0.5814,"min_distance_m":0,"kind":"contained_subpath","max10":1,"min10":0.5601,"max30":1},{"a_id":14,"b_id":28,"a_name":"蒙山冶峪放坡","b_name":"天龙山石碑到万亩起伏","a_closest":{"type":"Point","coordinates":[112.450101,37.787095]},"b_closest":{"type":"Point","coordinates":[112.450101,37.787095]},"a_within_10":1,"a_within_30":1,"b_within_10":0.0997,"b_within_30":0.1011,"min_distance_m":0,"kind":"contained_subpath","max10":1,"min10":0.0997,"max30":1},{"a_id":7,"b_id":28,"a_name":"凤颐谷-万亩爬坡","b_name":"天龙山石碑到万亩起伏","a_closest":{"type":"Point","coordinates":[112.459703,37.800375]},"b_closest":{"type":"Point","coordinates":[112.459703,37.800375]},"a_within_10":1,"a_within_30":1,"b_within_10":0.1742,"b_within_30":0.176,"min_distance_m":0,"kind":"contained_subpath","max10":1,"min10":0.1742,"max30":1},{"a_id":17,"b_id":19,"a_name":"桃花沟陡坡climb","b_name":"桃花沟观景台爬坡","a_closest":{"type":"Point","coordinates":[112.330158,37.824572]},"b_closest":{"type":"Point","coordinates":[112.330158,37.824572]},"a_within_10":1,"a_within_30":1,"b_within_10":0.143,"b_within_30":0.1536,"min_distance_m":0,"kind":"contained_subpath","max10":1,"min10":0.143,"max30":1},{"a_id":16,"b_id":28,"a_name":"太山-蒙山下坡","b_name":"天龙山石碑到万亩起伏","a_closest":{"type":"Point","coordinates":[112.433672,37.765014]},"b_closest":{"type":"Point","coordinates":[112.433672,37.765014]},"a_within_10":1,"a_within_30":1,"b_within_10":0.1264,"b_within_30":0.1277,"min_distance_m":0,"kind":"contained_subpath","max10":1,"min10":0.1264,"max30":1},{"a_id":2,"b_id":23,"a_name":"奥申陡坡climb","b_name":"西山旅游公路 奥申正爬","a_closest":{"type":"Point","coordinates":[112.409679,37.796844]},"b_closest":{"type":"Point","coordinates":[112.409679,37.796844]},"a_within_10":1,"a_within_30":1,"b_within_10":0.1811,"b_within_30":0.1891,"min_distance_m":0,"kind":"contained_subpath","max10":1,"min10":0.1811,"max30":1},{"a_id":12,"b_id":28,"a_name":"龙山店头下坡","b_name":"天龙山石碑到万亩起伏","a_closest":{"type":"Point","coordinates":[112.41105,37.745431]},"b_closest":{"type":"Point","coordinates":[112.41105,37.745431]},"a_within_10":1,"a_within_30":1,"b_within_10":0.1729,"b_within_30":0.1745,"min_distance_m":0,"kind":"contained_subpath","max10":1,"min10":0.1729,"max30":1},{"a_id":8,"b_id":9,"a_name":"横岭爬坡","b_name":"横岭下坡","a_closest":{"type":"Point","coordinates":[112.441403,37.982826]},"b_closest":{"type":"Point","coordinates":[112.413402,37.987473]},"a_within_10":0.9882,"a_within_30":0.9956,"b_within_10":0.9957,"b_within_30":1,"min_distance_m":0,"kind":"same_corridor","max10":0.9957,"min10":0.9882,"max30":1},{"a_id":15,"b_id":27,"a_name":"偏桥沟下坡","b_name":"偏桥沟（桃花沟偏桥沟岔口到杜关线铁门）","a_closest":{"type":"Point","coordinates":[112.335594,37.80377]},"b_closest":{"type":"Point","coordinates":[112.358618,37.821386]},"a_within_10":0.9583,"a_within_30":1,"b_within_10":0.9365,"b_within_30":0.9872,"min_distance_m":0,"kind":"same_corridor","max10":0.9583,"min10":0.9365,"max30":1},{"a_id":33,"b_id":35,"a_name":"东山五龙森林公园爬坡赛段","b_name":"环东山旅游公路（反爬）","a_closest":{"type":"Point","coordinates":[112.660377,37.824941]},"b_closest":{"type":"Point","coordinates":[112.660377,37.824941]},"a_within_10":0.289,"a_within_30":0.2997,"b_within_10":0.0271,"b_within_30":0.0287,"min_distance_m":0,"kind":"partial_overlap","max10":0.289,"min10":0.0271,"max30":0.2997},{"a_id":22,"b_id":28,"a_name":"万柏林生态园（长风口-启春阁）","b_name":"天龙山石碑到万亩起伏","a_closest":{"type":"Point","coordinates":[112.453027,37.822451]},"b_closest":{"type":"Point","coordinates":[112.451814,37.82233]},"a_within_10":0.1725,"a_within_30":0.1823,"b_within_10":0.0239,"b_within_30":0.0252,"min_distance_m":0,"kind":"partial_overlap","max10":0.1725,"min10":0.0239,"max30":0.1823},{"a_id":37,"b_id":40,"a_name":"石岭关25km","b_name":"东西山旅游公路-北山段","a_closest":{"type":"Point","coordinates":[112.631029,38.040555]},"b_closest":{"type":"Point","coordinates":[112.631016,38.040328]},"a_within_10":0,"a_within_30":0.0002,"b_within_10":0,"b_within_30":0.0013,"min_distance_m":25.3,"kind":"nearby","max10":0,"min10":0,"max30":0.0013},{"a_id":8,"b_id":30,"a_name":"横岭爬坡","b_name":"南内环桥-中北福源阁-南内环桥","a_closest":{"type":"Point","coordinates":[112.444871,37.983982]},"b_closest":{"type":"Point","coordinates":[112.445131,37.984096]},"a_within_10":0,"a_within_30":0.0006,"b_within_10":0,"b_within_30":0.0007,"min_distance_m":26.1,"kind":"nearby","max10":0,"min10":0,"max30":0.0007},{"a_id":20,"b_id":27,"a_name":"桃花沟爬坡","b_name":"偏桥沟（桃花沟偏桥沟岔口到杜关线铁门）","a_closest":{"type":"Point","coordinates":[112.358981,37.821859]},"b_closest":{"type":"Point","coordinates":[112.359147,37.821604]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":31.9,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":19,"b_id":27,"a_name":"桃花沟观景台爬坡","b_name":"偏桥沟（桃花沟偏桥沟岔口到杜关线铁门）","a_closest":{"type":"Point","coordinates":[112.358335,37.821716]},"b_closest":{"type":"Point","coordinates":[112.358568,37.821365]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":44,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":15,"b_id":19,"a_name":"偏桥沟下坡","b_name":"桃花沟观景台爬坡","a_closest":{"type":"Point","coordinates":[112.358577,37.821368]},"b_closest":{"type":"Point","coordinates":[112.358335,37.821716]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":44.1,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":9,"b_id":30,"a_name":"横岭下坡","b_name":"南内环桥-中北福源阁-南内环桥","a_closest":{"type":"Point","coordinates":[112.444517,37.984123]},"b_closest":{"type":"Point","coordinates":[112.444981,37.984311]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":45.8,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":29,"b_id":33,"a_name":"惕龙湖-小西沟爬坡","b_name":"东山五龙森林公园爬坡赛段","a_closest":{"type":"Point","coordinates":[112.661472,37.825394]},"b_closest":{"type":"Point","coordinates":[112.660592,37.825456]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":77.8,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":29,"b_id":35,"a_name":"惕龙湖-小西沟爬坡","b_name":"环东山旅游公路（反爬）","a_closest":{"type":"Point","coordinates":[112.661472,37.825394]},"b_closest":{"type":"Point","coordinates":[112.660592,37.825456]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":77.8,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":18,"b_id":19,"a_name":"桃花沟观景台-北门climb","b_name":"桃花沟观景台爬坡","a_closest":{"type":"Point","coordinates":[112.329825,37.82682]},"b_closest":{"type":"Point","coordinates":[112.330533,37.826228]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":90.6,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":4,"b_id":31,"a_name":"柴化线岔口-横岭","b_name":"汾河二库阁楼-马头水","a_closest":{"type":"Point","coordinates":[112.417829,37.954046]},"b_closest":{"type":"Point","coordinates":[112.416717,37.954032]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":97.7,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":8,"b_id":13,"a_name":"横岭爬坡","b_name":"马头水村-横岭","a_closest":{"type":"Point","coordinates":[112.414054,37.987041]},"b_closest":{"type":"Point","coordinates":[112.413208,37.986264]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":113.8,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":4,"b_id":8,"a_name":"柴化线岔口-横岭","b_name":"横岭爬坡","a_closest":{"type":"Point","coordinates":[112.413208,37.986264]},"b_closest":{"type":"Point","coordinates":[112.414054,37.987041]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":113.8,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":3,"b_id":23,"a_name":"奥申下坡","b_name":"西山旅游公路 奥申正爬","a_closest":{"type":"Point","coordinates":[112.399285,37.797708]},"b_closest":{"type":"Point","coordinates":[112.400571,37.797837]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":114.1,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":13,"b_id":31,"a_name":"马头水村-横岭","b_name":"汾河二库阁楼-马头水","a_closest":{"type":"Point","coordinates":[112.417932,37.954498]},"b_closest":{"type":"Point","coordinates":[112.416717,37.954032]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":118.6,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":5,"b_id":31,"a_name":"柴化线岔口-马头水","b_name":"汾河二库阁楼-马头水","a_closest":{"type":"Point","coordinates":[112.417979,37.953558]},"b_closest":{"type":"Point","coordinates":[112.416717,37.954032]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":122.7,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":3,"b_id":10,"a_name":"奥申下坡","b_name":"狼坡","a_closest":{"type":"Point","coordinates":[112.391181,37.798653]},"b_closest":{"type":"Point","coordinates":[112.38787,37.798701]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":291.6,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":21,"b_id":28,"a_name":"天龙山网红公路爬坡","b_name":"天龙山石碑到万亩起伏","a_closest":{"type":"Point","coordinates":[112.403277,37.737995]},"b_closest":{"type":"Point","coordinates":[112.400956,37.740235]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":321.9,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":29,"b_id":34,"a_name":"惕龙湖-小西沟爬坡","b_name":"小西沟-乌金山","a_closest":{"type":"Point","coordinates":[112.684681,37.832542]},"b_closest":{"type":"Point","coordinates":[112.687757,37.834451]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":343.8,"kind":"nearby","max10":0,"min10":0,"max30":0},{"a_id":2,"b_id":3,"a_name":"奥申陡坡climb","b_name":"奥申下坡","a_closest":{"type":"Point","coordinates":[112.406397,37.79815]},"b_closest":{"type":"Point","coordinates":[112.399285,37.797708]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":628.2,"kind":"context_near","max10":0,"min10":0,"max30":0},{"a_id":24,"b_id":38,"a_name":"夜骑清徐（迎宾桥→无名桥）","b_name":"自行车道西迎宾桥—祥云桥","a_closest":{"type":"Point","coordinates":[112.505475,37.685203]},"b_closest":{"type":"Point","coordinates":[112.511091,37.692233]},"a_within_10":0,"a_within_30":0,"b_within_10":0,"b_within_30":0,"min_distance_m":924.1,"kind":"context_near","max10":0,"min10":0,"max30":0}];
     var TARGET_IDS = [3,8,19,21,23,24,27,28,29,30,31,32,33,34,35,36,37,38,39,40];
     var STRAVA_REFERENCES = {"21":{"strava_id":33134150,"name":"Y7天龙山网红桥赛段","distance_m":10033.1,"effort_count":3701,"start_latlng":[37.70576,112.42949],"end_latlng":[37.73757,112.40299],"polyline":"_lceFi{emTw@d@UVOBSJu@n@a@N[Tc@f@c@^QTa@^ENk@d@GJ]ZADIDKPMLUn@Mv@Af@@vAUpCCl@@^H^Vb@TPb@Ph@f@HTDXAvBGh@Kf@MXEB]h@u@x@SNe@n@SNQTURGNKDe@r@g@hAKVe@z@aAbA_@TU^c@d@S^GDa@h@{@tAkAfAW`@EBUh@]dC?LQr@EHQd@g@r@MHONIDGJ[Xu@|@Yn@Sl@kAnEQb@GHCLu@lBOTSVMBYRQBWCSQc@u@CQASP{@nBmDZ[NUFCf@BTJBFx@x@Xj@Bb@APE^GRy@tBWf@UXo@h@QDED_AN]Lc@HIDk@Je@^KZGv@?TPj@T|A`@`BBTR~@@TAl@K\\ST]X]DYJa@BYIMKMQM[I_@I_AWqBAy@D]HOPSPKPGn@GZIx@Oh@@`@P^r@Hj@PbBDTZ~@b@bAx@rAVt@Jh@?PK^IPMLUHUBq@CO@s@E]@}@R[PURQLc@f@QHm@x@IRAXYrAMb@QRc@X]D_A@EBO@GDg@Te@f@Uj@Mt@G~@Mh@QNUHQ@YCIQq@o@OAMIYAOGKBUL[CMFm@Li@D}@P[Be@ASI]_@Um@AG@YEg@Eu@KiAMe@QSQIi@CQ?c@H[^KPKZG|CGjABhAH^?HTx@^lBJPTXLLPDX@LAVE`@QXGPKj@MVKL?FEb@Q\\IVKTEb@AXBb@VLLDJJDt@pA~@fBNRFRLN@FLN\\p@JFZZTFZAF@h@QNMJE~@u@j@_@^[PIVQh@IJBXNF\\CTEHc@XGH]TWVo@b@q@n@e@Xe@Ry@TK?_@HgABgA]IEu@?uB|@SF_@FK?MDM?MD]AGCc@?[Ke@IMISGi@EIBIAg@JyAd@QAMF]Dk@\\M@[L[^Sb@Al@DTFJDPFHVRNFX@RE|@]dA[JKN[H_AE_@c@q@QGOA_@@k@PU@[Ji@XQZSp@?b@Ld@TTFHLJXB^Ex@YPC^OXQJMLYDUBc@CUI]UWWMSCM?IBa@DoBj@YL_AX[FGDI?QDaAAqAQsAMs@M]Oa@Yo@m@q@iAMa@_@a@c@UUCo@QQMWKq@k@SGEEYI_@AcAMc@K]Mg@_@Yc@Wm@U[g@a@MIa@_@m@c@]c@KWCS?SBQPm@He@LYFg@G[Qi@GOGCO?QDS?WFYXG@SNm@j@OXGPAn@HZT^HP@Hl@dAHZTd@f@ZTDf@?LNDNAV?DUNM?UEQIg@Mu@cAQ_@Kc@EKQQUKQKs@I[AyA?k@S}@SuAa@QIu@Gy@e@q@?e@GWAk@Dq@RQNQVONQFG@KCm@YOCSBOJQX]r@EDORa@v@U`@YXQ^k@v@q@RY?WEa@@IBu@f@m@REDG?EDWJg@?WE[M"},"28":{"strava_id":29463126,"name":"天龙山石碑到万亩起伏","distance_m":29050.6,"effort_count":1465,"start_latlng":[37.74024,112.40097],"end_latlng":[37.82354,112.4511],"polyline":"ocjeFai`mTy@t@[LOAMK_@Q}@Sg@U[Yc@y@g@Uk@GWFSLWH{@ROEMQKu@EqASgBe@_DQmBUiBOo@Qk@EGQq@g@{@_AeAS_@AMIKK_ABw@C{@K_@c@q@m@q@MUCY?w@Ju@JWF]BgAP{@B[C]Wy@Ea@EeAB_@FU\\i@JYBU?WIQKMM@OF[VS^g@zAaA|BMl@_@nAQ`AK`@YVM?MEKKEQ@i@XkA`BaIjAqHBu@KUMSQMQ?ULQRq@hBa@rAE\\s@jCWp@GZq@`C_@jA}AjGM\\]r@SRUJW?WEUK_@s@I_@A_@Fa@F_@t@kBVw@h@iAvAoD`@sAn@cBpAyDDY|A}ETqA?YGUMKQASHQPGXIlAMr@IX]n@UVaAx@yAxAkAbAoAv@eCjA[J[D]Dy@@cAH}@BaDTo@EUMIWCWHSNMxAu@l@W~DkAj@Wd@a@dGuJFW?]S{@m@mAgB}BgAmAk@y@g@y@e@uAOQSIQ@QJERCTDVVj@NPh@z@|BjELXFZ?x@Ov@ORSLUFW@YAq@QkAc@s@Qq@YkA_@q@E]BWFs@\\i@b@aA~@kCvBg@LQEMSCY@]NWPUnGcGZO`Bk@POJODUEWKQQEQ@yARi@Le@RcAz@y@lAQNiBzBg@d@MHMBOC{@}@{AmAWO]]M]Ea@@_@Jo@?mAEO[_AA]?u@Gs@C_B@q@DWHUNS^WPGF?HEVINKdCgAXUHSBSA_@Mc@S[AKKOSg@MOUe@[[m@WCEQ?KGQCa@MS@c@Og@EMIYKm@IEEi@Gk@@YEe@D]Am@@MD_@BGDeANEDO?SD[R]HYRKBABK@KHi@Fa@EQGYS_@e@KKQYGOMKKi@Sc@CO?_@EW@YACHO?ERc@NEHINCH@JGJBXNHFBHDBFJNj@FLBRHVb@l@DDNBP?FCd@e@Jc@ZsCFUDIXWDCTA\\LlArAHDl@l@XPPF^BRC\\MLSXy@@KHUZiBXgAl@kA\\e@`@_@LGF?JETMTUn@[Z[ZQ^]FK^[P_@J]Ho@G_@Uy@UUw@c@K?SKy@MYUKEi@KGCCESGOA_@QUEWKOMy@gAEOU_@Qa@Ue@QQQYQM[m@w@w@k@y@g@m@MK[k@QUWi@[g@KWS[EM[e@KGMOSGw@Bs@JWA_@SSYAIB[HWHUNK|@]HADEhAa@DEl@UP?FCX@RCV?RBJALDBAT@PDb@@l@HXCPDh@?VIPUHS?SGUIOKE_AOC@B?c@WMEg@g@KKE[?WBWPa@^a@HEXW?EG?CDBBXCLQTMPSLEFE|@YH?DC`@GP?j@LTA^KZSHKH]?q@Ca@GYQUQSICUA]DWHQLG@GDCFOJs@V[RO@[JUB_@AI@KAOBi@A]@_@Fc@?QEcA@}@RMLQFqAt@i@TIBa@C_@Sq@q@[e@KYE[@_@L_Aj@{B\\}BL_B?YEYGWOQc@Um@Ec@?y@EgA?c@LOJMNiAtBo@dA_@fACDMXCd@M^AL_@t@MRM\\YZm@NU?c@IYOoA_@SK]GIEw@Gc@F_@XY^Sj@G\\?n@BLLZTTlA~@TXJZB`@Gb@]|@K`@k@jA]V_@N{@LaADo@AiAKiA_@YGyCcA]Gy@W[Mo@k@S[O_@WeBQkCI[KSOMOEU@UFm@Vg@Xk@Js@FkAAo@EQGKMGS?WHWPKh@AbAFp@@XCj@YvAuB`@u@h@oARSTEVBTLj@b@RXPZVz@TzBHXLRPPTFTCPOPSb@mBXyAV}@TeADa@Bc@C]K]QYi@m@eA_As@_@[E]B[HUL{BzAaBrBc@^WFUEWKQWI[?a@Da@Ty@h@sAf@oBJ}ADqCJkBJyCD{BVyFDe@n@mBfAeCPu@AYGWQQUIUAyARoBl@a@H_@@i@CoAL]XQd@AfALlA?pAGXINODSGaByA_@s@M]G_@QeBQeAK]_@s@SSo@}@kAgAkAsA]YyAeBm@]g@Aq@Fa@LMN_@bAMb@Gr@H`BJb@Tn@DTJRXlADx@Hn@FbB?d@BL?|@GVGJi@PYGM[Uo@Kg@KkAS{@?IOi@Ec@Mm@C_@UcAK}@YcBKy@W}@Gi@Bw@Fi@Pg@v@eAdAmAPWb@a@LUv@}@DKxAgB^q@FW?c@IUMOYII?SFIDUVc@p@c@`@[d@}A~@]BIEG]Dm@x@eCNs@b@uALg@?[EYCKU]SIK?]HQNY\\eCfFm@~@c@`A{AxCi@l@aA|@uAbAQDI?QKKSGm@UmAEk@Ys@UUWMGAS@WNSVg@bB]p@_@`@[XSLi@h@}@r@m@^}Ax@e@Fi@CeB_@g@Sc@[We@e@mBAMQg@CW_@kAe@a@QI]Ac@Da@NIF]LI@o@PgBv@}@Zk@Jk@DgAMqAWcB_@}@YSQMSCYNs@Zq@Ny@H{@E]IYMWm@{@]k@m@}@MU_@g@c@}@Ya@c@]a@QgA]uAU]MwEeAg@UoAs@_A[u@QiAa@WEY@WFSNOPMXI\\K~@GxA?|DDvDCVGTKHQ?UMOUKYc@mCQ{BNgBh@eEV_BB_@?_@CWQOQGU@WPQRKXIr@CrAQxB?p@IdAAf@NbCLfAP`CCTIPOJQAQMMWKYUqCI_B@_C^}EAs@ESQMQAQDMRMl@EbC@ZGrCEXKRg@JU?i@EkA?a@E_AAO@{@IcA@YGOOOe@?YPg@Ze@h@gADMDc@Ee@GS]e@m@m@Y]IOEQASJiCPiCBgALoB@m@NiB@m@Ai@Qe@IOKMo@a@oCyAc@IQ?k@R}@r@WXuAdAi@j@WPq@p@g@^OPi@f@kA~@W`@CL?\\LZPNHBXEj@ObAc@hBg@HGrAc@`@IXFNNFJ?ZKV]RQDsBx@[F_@N]Fa@PQBSHI?QDw@^e@Hm@Rc@H[JMHYTGPAT@d@JNLJZHR?d@Kn@AFCL?\\Kl@GtAErAWx@Bf@HNLNXDNAd@KZQVIJc@NO@MFI?MDo@J_@L}AXI?ODM?KDS@_AVe@D_@Ly@Js@R{@JGDM?y@Rm@Je@^E@]j@Wx@Kb@M\\Mh@MTK\\EJ_@R]Hq@Ay@SG@MAEEk@KSKMCS?EC[AYGs@C_@GeA@u@RQH[Z]Ra@L]BYFQPc@TEHOJI@SJQPSHKNIb@Ql@E`@Sv@CRENAPEJCd@YpAGLQp@W^IJ]HKHSBQHO@QFc@Dy@VW@IDG?a@LWRMPYXI^Cj@@f@AJ?VGZIfCQbBQn@g@hAY`@SNK?MGKKGOEQDmBGo@IS_@a@_Ae@m@MiAEcCUcBGWFQNMV]|Bc@|BW~@Wr@KPYZ]J{At@[T{@`@}@h@I@GDc@?[SUe@K[G_@M_@Io@IWMUKe@]k@MME?IGCEGEg@KU?o@JQCa@HWAi@OuAQsAWo@SWQQYOa@WeA]iASkACe@?a@BeAH}@?UGSMI_@B}Ah@q@\\YJo@HSCMQA]XiAHSF]DGXwAA[CYOQQMm@CQEc@Ac@M"},"30":{"strava_id":38785617,"name":"南内环桥-中北福源阁-南内环桥","distance_m":43690,"effort_count":114,"start_latlng":[37.838474,112.529836],"end_latlng":[37.838531,112.534723],"polyline":"mi}eFmnymTi@^SHeAZq@LU?SEo@]UEU?WFcAd@SNOT{@zB_@b@WPUJy@RcCt@kFdAm@DqAM]?q@@_@Bk@RiBhAc@N[DwIZ}BNmAAeAU[AK@YJEAm@Pc@BsDC}AGiBAeEBuBNeAAa@I]U[]]y@Ya@MKQGQAi@DEE[@UDSHQLONo@rAKPONOHQBQ@kAOw@E{AAqCMwABcAAaAIaAOsA[m@Wy@m@_@MQAOBOFMJi@fAYV[H]GEDkBWiAWo@KkDC_Oi@i@KeA]w@K}@@gBV]?oBKqJa@k@Gi@Mo@[y@m@]KOAa@B}A\\m@D_@A_@EyAg@k@GO?UFGAo@Nc@BDDPACBIEy@@SAu@QsBq@]EU@]Ls@l@[R]JWB{Ga@iAD[?kBK{BUoWgA}BW_@AsB@YCg@M][a@s@MOOKQGQCc@@QFa@T{@r@[R_@N_@H_@BmB?}@Bc@Cy@U[C]DkAR_CTWHWP_AlAg@^sBh@}@f@_Bf@s@^WTu@|@_Ad@}@j@kAp@gAv@yBfBgChB_E|CWNgAh@_@XmCvBwCrBi@v@cAf@oAd@kAhAoAbAeAn@iAf@yAd@_@PQPe@x@Y\\a@\\s@b@y@d@qAXw@b@g@Ro@P_AHSHYZm@hAYX_J`F}MtGsIdDuBr@_I|B_@HaA?_@F_@P}@h@_@PgCp@yBv@gSxFsBf@gEn@_EjAiAb@sBXcA^}A\\eAN]H]Ri@h@]TODmAN}AZsBd@iBbAaB`@iBz@wBj@qErAqBz@aGfBwA^o@LoAJs@LwCx@qG|AyJhCeCj@mAP{A^aAXqALuAd@kB`@m@D}AO_@?[FqEfAkAR_@BuBI[B[NWVuA|AWTq@\\iBn@iBbAeBZiJxBuElAyEvA_GdCoFlCqChAiE|BcMbFsD~BgFjCmEpC_FtDsBdByDrDoBrBcAtAeDtDy[j`@gO|QqElF_GnHwCjDwDvEoKjMyLhO{DpEkClDcAlA_DbEaCdEeCnF}@`BsBlB_@`@Yd@Of@Ef@Cv@ObA[n@kA~AQ\\IZKfBW~BEtAE^]fAe@nBwAtHIp@Ot@KbAOv@Q`B]pCEdAQrBYdFQ|J@rDH`DBfCH~DZjRJfD?nACZa@fDSjA_ApCo@tAiAvAgBfBcCvC}@hAs@pAY`@e@f@_@VWHyAZsBVcARaAb@kAZuCxAcARw@X_@JY@_@?kAO_AQUAUD_A`@]H}CJoCD_@Fg@PQBMAECEO?QCA?FHTF@HEBl@DKf@[\\K~GYp@Iv@U\\Gj@AR?v@Nf@Dv@@XC\\Kx@Yn@Kn@Yf@Kd@YZIf@Yp@S`Ac@|Di@|@Uj@SXO^_@^g@b@y@p@eAvEqFnAsAZg@BYGgASwA]eAUi@OWYSWIo@?]Fu@^[DSEm@a@]IWBaAZSBQAOEa@SGK?On@kBp@iCPgAHgABwCMuDGgDFmFI}JAqIBaBBiA^sILsBf@mFb@mDV_C^}Bl@aDz@{Dv@uB`@qBTw@jBcEVq@Fc@Fy@Ha@dAqCnBwGbCwHnAsClAyB`D}E~@iBb@q@zCyDjCuDfD}D~@sAnJ{Ln@q@xA_An@o@nBqChFaHvAyAVa@^w@Vc@Z]~@u@\\_@z@{AXa@fEaFnBcCnN}P~I}KtCeDvFqH~GyHbB}AzAgAV_@l@gAd@q@nHeInA}AhF}ErDeC`A}@j@a@~BuAz@k@`CiAb@Q`Cq@bAc@n@c@|BiBpAu@bCkAlAs@xAeA`BuA|FyDp@W`@GNB|@ZP@XCh@OlBu@vDqAb@ItCYxCs@|@Yp@c@pBsBz@g@JMDQAQOy@?OBKJGLCnCMb@Hz@d@NBJAJE`@m@\\Y`@O`@Ir@I~AC`B[`@CbBHf@Ix@SNKXW`@e@XOpB]~Ag@jCi@`@I~@If@Wl@c@XOhDc@pBUtB]xAG|@O`Bc@bBm@`@MvCk@tBe@tAYtEwAtCy@r@OrAQPEnAo@p@SjDu@xB[hBa@hCg@ZEr@@XCXQ`Ay@f@Ur@QnCUn@O|@]lAm@pAi@xBcA|IqCzCyAjDs@xH}BlBo@|QqF~Ae@nBc@~Bw@nGcCtC}@~Ao@h@Yh@c@|AyA`B_AhBqAzDkBnLgG^ObAUn@UfCeBxDuBdDeCbCcBvAwAl@]xAq@NSVc@RSxBwA`Aw@d@SlA[JEFOHGfAi@R[^yAVa@PSzB_BzAoAl@a@ZO`@Ix@E\\M|@y@hAw@dCoA`Ak@NSLWL}@Z_@d@WnAe@d@Mf@CXBZF|@`@VDX@|EcA|@CrAKr@Oz@EfAADA@EIKA@?BFLDBX@p@HVHj@XXFN?XGVMLO`@{@PIHA|APpCL~@HB?@EQCSDs@h@?EF?BE`@WPI|CTnDAbHXtCZpAJxB?|BFpLn@jADVDVLp@|@RJH@~Dg@r@?zANl@@zACx@OPDx@d@jAn@`@JL@X?b@MRMv@q@XG^?jCHjBN|@BfANhAH`IT~@F|GZTAz@Gn@AvKVpF@h@HXPTTh@dATPVDXCTKRUh@_ATQTGpBHvATt@BfB?hBOnBAVDVRNZPl@PTXLZBLAZOJKf@w@VSTIb@ErA?dBCVEVKd@k@TIhBArAEfBC`Ia@rFOnFW^@p@L`@B\\GvBw@|@Qh@Cn@TTBb@?t@ItA[hACt@E\\KdAk@tAQ^Oj@[j@QlB@|AMl@?THb@VjAhAVHL?XMRWDODkAN]JIXKf@ErCa@fAY"},"39":{"strava_id":37160997,"name":"潇河南岸单程","distance_m":16716.5,"effort_count":611,"start_latlng":[37.653179,112.758262],"end_latlng":[37.601098,112.59692],"polyline":"icydFcbfoTZ~@h@zBzBhLvA|DrBdFh@hBb@|ATfBH~@p@pLh@hC`B`Hp@dDf@tBbAzD`@jCTbAv@|Cz@xDvAbELj@T~A`@lA~@jBzD~G^|@lCvHzBbHtB`I\\b@hAt@p@p@vDnEbDfExAhB`@VfA^^Vj@l@hExFtAlBl@rAbAtDRj@rFxMpB`GZd@jBhBnCbCxDtDpA`Ap@^vB~@t@Xt@RhA^b@RNJ|@|@vFbGzApBzCbDhAfArIlJpErFrLhNhH`InGhHjB~BjA~AfE|E|D`FnC|CvGzHjCxCbBfBxEnENPt@pAZ`@xCfDt@~@bCfDfF~GtAzAz@t@hAhAlDtDhTnWzCnDxBpC~JvLr@jAPj@n@lI\\|GPdDPpBPdDRxGfAbXPxGNnE`@rG`@nJDtBfAtZFjC?|AStOs@tPa@`PMjDAn@[|JYtH{Abh@]fHa@jLQtDO|Fs@lQcAl]GvDm@zTo@lO_@bLY|F[zJFnCf@zH\\lHCj@a@lAETEXAp@L~DPtC?dGLnGDdEA`ADnB^pHT`CPdDZfEHpB?jDFzABbEAjBEfA"}};
+
+    function reviewedCoordinates(id) {
+      var source = decodePolyline(STRAVA_REFERENCES[id].polyline, 5);
+      if (id === 30) return source.slice(0, 353).concat(source.slice(428));
+      if (id === 39) return source;
+      return null;
+    }
+
+    var reviewedGeometry = {
+      30:{distance_m:41247.8, elevation_gain:63.5},
+      39:{distance_m:16695.3, elevation_gain:3.7}
+    };
+    FEATURE_COLLECTION.features.forEach(function(feature) {
+      var reviewed = reviewedGeometry[feature.properties.id];
+      if (!reviewed) return;
+      feature.geometry = {type:"LineString", coordinates:reviewedCoordinates(feature.properties.id)};
+      feature.properties.distance_m = reviewed.distance_m;
+      feature.properties.elevation_gain = reviewed.elevation_gain;
+    });
 
     var SpatialModel = (function() {
       var targets = new Set(TARGET_IDS);
@@ -303,10 +322,10 @@
     var features = FEATURE_COLLECTION.features;
     var featureById = new Map(features.map(function(feature) { return [feature.properties.id, feature]; }));
     var relationByKey = new Map(RELATIONS.map(function(relation) { return [SpatialModel.key(relation), relation]; }));
-    var disputedIds = new Set([30,39]);
+    var correctedIds = new Set([30,39]);
     var referenceComparisons = {
-      30:{sourceWithin30:5.2, productWithin30:4.2, startError:5, endError:418, maxError:1117},
-      39:{sourceWithin30:28.7, productWithin30:29.2, startError:1, endError:1800, maxError:2278}
+      30:{sourceLengthKm:43.69, currentLengthKm:41.25, note:"已去掉最北面 2.56km 重复折返"},
+      39:{sourceLengthKm:16.72, currentLengthKm:16.70, note:"已采用完整 Strava 原折线"}
     };
     var state = SpatialModel.initial();
     var query = new URLSearchParams(window.location.search);
@@ -453,19 +472,19 @@
         var relation = selectedRelation();
         var first = relation && relation.a_id === id;
         return {
-          color:disputedIds.has(id) ? "#ff8a4c" : (relation ? (first ? "#31d5c8" : "#ef71bc") : "#ff8a4c"),
-          weight:disputedIds.has(id) ? 6 : 8,
+          color:correctedIds.has(id) ? "#42d17b" : (relation ? (first ? "#31d5c8" : "#ef71bc") : "#ff8a4c"),
+          weight:8,
           opacity:1,
-          dashArray:disputedIds.has(id) ? "9 8" : null,
+          dashArray:null,
           lineCap:"round",
           lineJoin:"round"
         };
       }
       return {
-        color:disputedIds.has(id) ? "#ff8a4c" : (target ? "#31d5c8" : "#8996a5"),
+        color:correctedIds.has(id) ? "#42d17b" : (target ? "#31d5c8" : "#8996a5"),
         weight:target ? 4 : 2,
         opacity:target ? .75 : .42,
-        dashArray:disputedIds.has(id) ? "7 7" : null,
+        dashArray:null,
         lineCap:"round",
         lineJoin:"round"
       };
@@ -540,15 +559,15 @@
       routeLayers.forEach(function(layer, id) { layer.setStyle(routeStyle(featureById.get(id))); });
       clearAuxiliary();
       var relation = selectedRelation();
-      if (state.selectedSegmentId && disputedIds.has(state.selectedSegmentId)) {
-        var disputedFeature = featureById.get(state.selectedSegmentId);
-        relationLayers.push(L.geoJSON(disputedFeature, {
+      if (state.selectedSegmentId && correctedIds.has(state.selectedSegmentId)) {
+        var correctedFeature = featureById.get(state.selectedSegmentId);
+        relationLayers.push(L.geoJSON(correctedFeature, {
           interactive:false,
-          style:{color:"#050505", weight:13, opacity:.9, dashArray:"10 8", lineCap:"round", lineJoin:"round"}
+          style:{color:"#050505", weight:13, opacity:.9, lineCap:"round", lineJoin:"round"}
         }).addTo(map));
-        relationLayers.push(L.geoJSON(disputedFeature, {
+        relationLayers.push(L.geoJSON(correctedFeature, {
           interactive:false,
-          style:{color:"#ff6a00", weight:7, opacity:1, dashArray:"10 8", lineCap:"round", lineJoin:"round"}
+          style:{color:"#42d17b", weight:8, opacity:1, lineCap:"round", lineJoin:"round"}
         }).addTo(map));
       }
       if (relation) {
@@ -556,10 +575,10 @@
           relationLayers.push(L.geoJSON(featureById.get(id), {
             interactive:false,
             style:{
-              color:disputedIds.has(id) ? "#ff8a4c" : (index === 0 ? "#31d5c8" : "#ef71bc"),
-              weight:disputedIds.has(id) ? 6 : 8,
+              color:correctedIds.has(id) ? "#42d17b" : (index === 0 ? "#31d5c8" : "#ef71bc"),
+              weight:8,
               opacity:1,
-              dashArray:disputedIds.has(id) ? "9 8" : null,
+              dashArray:null,
               lineCap:"round",
               lineJoin:"round"
             }
@@ -567,21 +586,17 @@
         });
       }
       var referenceIds = [];
-      if (state.selectedSegmentId && disputedIds.has(state.selectedSegmentId)) referenceIds.push(state.selectedSegmentId);
+      if (state.selectedSegmentId && correctedIds.has(state.selectedSegmentId)) referenceIds.push(state.selectedSegmentId);
       else if (relation) {
-        [relation.a_id, relation.b_id].forEach(function(id) { if (disputedIds.has(id)) referenceIds.push(id); });
+        [relation.a_id, relation.b_id].forEach(function(id) { if (correctedIds.has(id)) referenceIds.push(id); });
       }
       referenceIds.forEach(function(id, index) {
         var sourceFeature = stravaFeature(id);
         if (!sourceFeature) return;
         var sourceColor = referenceIds.length > 1 ? (index === 0 ? "#00e8ff" : "#ff4fd8") : "#47a8ff";
-        relationLayers.push(L.geoJSON(sourceFeature, {
-          interactive:false,
-          style:{color:"#050505", weight:14, opacity:.9, lineCap:"round", lineJoin:"round"}
-        }).addTo(map));
         var sourceLayer = L.geoJSON(sourceFeature, {
           interactive:false,
-          style:{color:sourceColor, weight:8, opacity:1, lineCap:"round", lineJoin:"round"}
+          style:{color:sourceColor, weight:4, opacity:1, dashArray:"5 6", lineCap:"round", lineJoin:"round"}
         }).addTo(map);
         relationLayers.push(sourceLayer);
         var sourceCoords = allCoordinates(sourceFeature.geometry);
@@ -630,28 +645,31 @@
 
     function segmentStateHtml(id) {
       var feature = featureById.get(id);
-      var related = RELATIONS.filter(function(r) { return r.a_id === id || r.b_id === id; });
+      var corrected = correctedIds.has(id);
+      var related = corrected ? [] : RELATIONS.filter(function(r) { return r.a_id === id || r.b_id === id; });
       var overlaps = related.filter(function(r) { return r.kind !== "nearby" && r.kind !== "context_near"; }).length;
       var nearby = related.length - overlaps;
       var comparison = referenceComparisons[id];
-      var comparisonHtml = comparison ? '<div class="chips"><span class="chip near">Strava原线30m覆盖 ' + comparison.sourceWithin30 + '%</span><span class="chip block">最大偏离 ' + comparison.maxError + 'm</span><span class="chip">终点误差 ' + comparison.endError + 'm</span></div>' : '';
-      var disputedExplanation = '橙色虚线是生产重建线，蓝色实线是 Strava 原赛段。两者大面积分离，旧的“地图已复核”结论无效。';
+      var comparisonHtml = comparison ? '<div class="chips"><span class="chip overlap">当前 ' + comparison.currentLengthKm.toFixed(2) + 'km</span><span class="chip">Strava ' + comparison.sourceLengthKm.toFixed(2) + 'km</span><span class="chip near">' + comparison.note + '</span></div>' : '';
+      var correctedExplanation = id === 30
+        ? '绿色实线是当前生产线，蓝色虚线是 Strava 原线。绿色主动跳过最北面的重复折返，其余路段沿原线；起终点保持不变。旧几何生成的空间关系暂不计数，待重算。'
+        : '绿色实线是当前生产线，蓝色虚线是 Strava 原线。两者使用同一条完整折线，应当重合；旧几何生成的空间关系暂不计数，待重算。';
       return '<div class="state-head"><div><div class="state-title">#' + id + " " + feature.properties.name + '</div>' +
         '<div class="state-sub">' + (feature.properties.distance_m / 1000).toFixed(2) + 'km · +' + Number(feature.properties.elevation_gain).toFixed(0) + 'm</div></div>' +
-        '<span class="chip ' + (disputedIds.has(id) ? "block" : (SpatialModel.targets.has(id) ? "overlap" : "")) + '">' + (disputedIds.has(id) ? "几何待复核" : (SpatialModel.targets.has(id) ? "目标20" : "上下文")) + '</span></div>' +
+        '<span class="chip ' + (corrected ? "overlap" : (SpatialModel.targets.has(id) ? "overlap" : "")) + '">' + (corrected ? "生产已修正" : (SpatialModel.targets.has(id) ? "目标20" : "上下文")) + '</span></div>' +
         '<div class="chips"><span class="chip overlap">' + overlaps + ' 组共线/局部</span><span class="chip near">' + nearby + ' 组近邻</span></div>' + comparisonHtml +
-        '<div class="explain">' + (disputedIds.has(id) ? disputedExplanation : '当前只按坐标展示真实相邻关系。点击黄色虚线或切换场景，查看“靠近但不重合”的最近点。') + '</div>' +
-        '<div class="nav"><button data-action-panel="nodes">显示起终点坐标</button><button data-action-panel="relations">查看第一组关系</button></div>';
+        '<div class="explain">' + (corrected ? correctedExplanation : '当前只按坐标展示真实相邻关系。点击黄色虚线或切换场景，查看“靠近但不重合”的最近点。') + '</div>' +
+        '<div class="nav"><button data-action-panel="nodes">显示起终点坐标</button>' + (corrected ? '' : '<button data-action-panel="relations">查看第一组关系</button>') + '</div>';
     }
 
     function overviewStateHtml() {
-      var internal = RELATIONS.filter(SpatialModel.hasBothTargets).filter(function(r) { return !disputedIds.has(r.a_id) && !disputedIds.has(r.b_id); });
+      var internal = RELATIONS.filter(SpatialModel.hasBothTargets).filter(function(r) { return !correctedIds.has(r.a_id) && !correctedIds.has(r.b_id); });
       var same = internal.filter(function(r) { return r.kind === "same_corridor"; }).length;
       var partial = internal.filter(function(r) { return r.kind === "partial_overlap" || r.kind === "contained_subpath"; }).length;
       var near = internal.filter(function(r) { return r.kind === "nearby" || r.kind === "context_near"; }).length;
       return '<div class="state-title">20 条目标线的真实空间骨架</div><div class="state-sub">拖动、缩放、点击任意实线。地图是主视图，左侧只解释当前选中的空间关系。</div>' +
         '<div class="chips"><span class="chip block">' + same + ' 组整线共线</span><span class="chip overlap">' + partial + ' 组局部共线</span><span class="chip near">' + near + ' 组 1km 内近邻</span></div>' +
-        '<div class="explain">所以这批对象不能先塞进“父子路线表”。它们首先是分散在太原各处的独立折线；少量共线和大量近邻关系，应直接在坐标图上判断。</div>';
+        '<div class="explain">所以这批对象不能先塞进“父子路线表”。它们首先是分散在太原各处的独立折线；少量共线和大量近邻关系，应直接在坐标图上判断。#30、#39 已换成修正后的生产几何，旧几何生成的关系已从这里排除，等待重算。</div>';
     }
 
     function renderState() {
@@ -701,6 +719,14 @@
       var sourceFeature = stravaFeature(id);
       if (sourceFeature) list.push(sourceFeature);
       map.fitBounds(boundsForFeatures(list), {paddingTopLeft:[440,80], paddingBottomRight:[100,80], maxZoom:16});
+    }
+
+    function focusCorrection(id) {
+      if (id !== 30) return focusSegment(id);
+      var source = decodePolyline(STRAVA_REFERENCES[id].polyline, 5).slice(330, 450);
+      map.fitBounds(boundsForFeatures([{type:"Feature", geometry:{type:"LineString", coordinates:source}}]), {
+        paddingTopLeft:[440,80], paddingBottomRight:[100,80], maxZoom:17
+      });
     }
 
     function setScenario(mode) {
@@ -765,7 +791,10 @@
 
     addRoutes();
     render();
-    if (state.selectedSegmentId) focusSegment(state.selectedSegmentId);
+    if (state.selectedSegmentId) {
+      if (query.get("detail") === "correction") focusCorrection(state.selectedSegmentId);
+      else focusSegment(state.selectedSegmentId);
+    }
     else if (state.selectedRelationKey) focusRelation(relationByKey.get(state.selectedRelationKey));
     else if (state.mode === "overview") map.fitBounds(targetBounds, {paddingTopLeft:[440,70], paddingBottomRight:[70,70]});
     else if (relevantRelations().length) focusRelation(relevantRelations()[0]);
