@@ -28,7 +28,7 @@ RouteExportBlockReason = Literal["no_route_book", "no_current_version", "not_pub
 City = Literal["beijing", "shanghai", "hangzhou", "shenzhen", "chengdu", "taiyuan", "unknown"]
 RouteBookVisibility = Literal["private", "unlisted", "public"]
 RouteBookPublishStatus = Literal["draft", "published", "archived"]
-RouteDrawCoordinateSystem = Literal["gcj02"]
+RouteDrawCoordinateSystem = Literal["wgs84", "gcj02"]
 RouteDrawMode = Literal["snap", "freehand"]
 ManualDrawnCoordinateSystem = Literal["wgs84", "gcj02"]
 

@@ -49,8 +49,8 @@ def build_snap_preview(
     points: list[tuple[float, float]],
     supports_detour_confirmation: bool = False,
 ) -> dict[str, Any]:
-    if coordinate_system != "gcj02":
-        raise ValueError("coordinate_system 只支持 gcj02")
+    if coordinate_system not in {"gcj02", "wgs84"}:
+        raise ValueError("coordinate_system 只支持 gcj02 或 wgs84")
 
     raw_points = _normalize_points(points)
     raw_distance_m = _distance_m(raw_points)
@@ -76,6 +76,8 @@ def build_snap_preview(
         }
     if mode != "snap":
         raise ValueError("mode 只支持 snap 或 freehand")
+    if coordinate_system != "gcj02":
+        raise ValueError("snap 模式只支持 gcj02；wgs84 请使用 freehand")
 
     anchor_points = _simplify_anchor_points(raw_points)
     segment_count = len(anchor_points) - 1
