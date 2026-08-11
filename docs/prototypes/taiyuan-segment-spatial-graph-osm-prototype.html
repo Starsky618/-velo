@@ -194,7 +194,7 @@
       <div class="eyebrow">真实坐标 · OSM · Throwaway experiment</div>
       <h1>太原赛段空间关系图</h1>
       <p>问题：这些线到底是共线、局部重合，还是只是离得近？答案只由完整折线和坐标产生。</p>
-      <div class="verdict"><b>当前结论：</b>多数对象是独立折线，不是可直接递归嵌套的父子路线。#21、#28、#30、#39 的生产几何已被骑手目测质疑，暂时退出关系结论，等待逐点复核。</div>
+      <div class="verdict"><b>当前结论：</b>多数对象是独立折线，不是可直接递归嵌套的父子路线。#30、#39 的生产几何已确认错误，暂时退出关系结论；#21、#28 按骑手最新判断保留现状。</div>
       <div class="source">底图 © OpenStreetMap。折线来自 VELO 生产 PostGIS 只读快照；关系用原始完整几何计算，地图显示使用约 3 米简化副本。</div>
     </section>
 
@@ -303,14 +303,11 @@
     var features = FEATURE_COLLECTION.features;
     var featureById = new Map(features.map(function(feature) { return [feature.properties.id, feature]; }));
     var relationByKey = new Map(RELATIONS.map(function(relation) { return [SpatialModel.key(relation), relation]; }));
-    var disputedIds = new Set([21,28,30,39]);
+    var disputedIds = new Set([30,39]);
     var referenceComparisons = {
-      21:{sourceWithin30:100, productWithin30:99.7, startError:24, endError:54, maxError:54},
-      28:{sourceWithin30:100, productWithin30:97.2, startError:1, endError:127, maxError:294},
       30:{sourceWithin30:5.2, productWithin30:4.2, startError:5, endError:418, maxError:1117},
       39:{sourceWithin30:28.7, productWithin30:29.2, startError:1, endError:1800, maxError:2278}
     };
-    var TIANLONG_OSM_CONNECTOR = [[112.40299,37.73757],[112.4029416,37.737526],[112.4030274,37.7376491],[112.4032366,37.7378739],[112.4032742,37.7379503],[112.4032581,37.7379927],[112.4032259,37.7380224],[112.4031293,37.7380564],[112.4029631,37.7380946],[112.4028075,37.7381497],[112.4024266,37.7383237],[112.4020028,37.7384637],[112.4017078,37.7386079],[112.4014932,37.7387861],[112.4013108,37.7391085],[112.4013028,37.7392528],[112.4012706,37.7395688],[112.4011928,37.7397873],[112.4010694,37.7399654],[112.4010453,37.7400842],[112.4009997,37.7401669],[112.40097,37.74024]];
     var state = SpatialModel.initial();
     var query = new URLSearchParams(window.location.search);
     var initialScenario = query.get("scenario");
@@ -500,16 +497,14 @@
       if (!relation || relation.kind === "same_corridor" || relation.kind === "contained_subpath" || relation.kind === "partial_overlap") return;
       var a = relation.a_closest.coordinates;
       var b = relation.b_closest.coordinates;
-      var tianlongBoundary = [relation.a_id, relation.b_id].sort(function(x,y){ return x-y; }).join("-") === "21-28";
-      var linePoints = tianlongBoundary ? TIANLONG_OSM_CONNECTOR.map(function(point) { return [point[1],point[0]]; }) : [[a[1],a[0]],[b[1],b[0]]];
-      var line = L.polyline(linePoints, {
+      var line = L.polyline([[a[1],a[0]],[b[1],b[0]]], {
         color:"#ffd166",
         weight:selected ? 4 : 2,
         opacity:selected ? 1 : .72,
         dashArray:selected ? "6 6" : "3 7",
         interactive:true
       }).addTo(map);
-      line.bindTooltip(tianlongBoundary ? "418m 天龙山公路候选补线" : Number(relation.min_distance_m).toFixed(1) + "m，仅靠近", {className:"route-label"});
+      line.bindTooltip(Number(relation.min_distance_m).toFixed(1) + "m，仅靠近", {className:"route-label"});
       line.on("click", function() { dispatch({type:"SELECT_RELATION", key:SpatialModel.key(relation)}); focusRelation(relation); });
       relationLayers.push(line);
       [a,b].forEach(function(point) {
@@ -533,21 +528,6 @@
     }
 
     function focusRelation(relation) {
-      var tianlongBoundary = [relation.a_id, relation.b_id].sort(function(a,b){ return a-b; }).join("-") === "21-28";
-      if (tianlongBoundary) {
-        var firstSource = stravaFeature(21);
-        var secondSource = stravaFeature(28);
-        var firstCoords = allCoordinates(firstSource.geometry);
-        var secondCoords = allCoordinates(secondSource.geometry);
-        var seamBounds = L.latLngBounds([
-          [firstCoords[firstCoords.length - 1][1], firstCoords[firstCoords.length - 1][0]],
-          [secondCoords[0][1], secondCoords[0][0]],
-          [relation.a_closest.coordinates[1], relation.a_closest.coordinates[0]],
-          [relation.b_closest.coordinates[1], relation.b_closest.coordinates[0]]
-        ]);
-        map.fitBounds(seamBounds, {paddingTopLeft:[440,110], paddingBottomRight:[130,110], maxZoom:16});
-        return;
-      }
       var list = [featureById.get(relation.a_id), featureById.get(relation.b_id)].filter(Boolean);
       map.fitBounds(boundsForFeatures(list), {
         paddingTopLeft:[440,80],
@@ -638,14 +618,13 @@
       var b10 = percent(relation.b_within_10);
       var chipClass = near ? "near" : "overlap";
       var coordText = "最近点 A " + relation.a_closest.coordinates.join(", ") + "<br>最近点 B " + relation.b_closest.coordinates.join(", ");
-      var tianlongBoundary = [relation.a_id, relation.b_id].sort(function(a,b){ return a-b; }).join("-") === "21-28";
       return '<div class="state-head"><div><div class="state-title">#' + relation.a_id + " ↔ #" + relation.b_id + '</div>' +
         '<div class="state-sub">' + relation.a_name + '<br>' + relation.b_name + '</div></div><span class="chip ' + chipClass + '">' + kind + '</span></div>' +
         '<div class="chips"><span class="chip ' + chipClass + '">最近 ' + Number(relation.min_distance_m).toFixed(1) + 'm</span>' +
         '<span class="chip">10m 共线带</span>' + (SpatialModel.hasBothTargets(relation) ? '<span class="chip">目标20内部</span>' : '<span class="chip">含灰色上下文</span>') + '</div>' +
         '<div class="coverage"><div class="bar-row"><span class="bar-label">' + shortName(relation.a_name) + '</span><span class="track"><span class="fill" style="width:' + a10 + '%"></span></span><span class="bar-value">' + a10 + '%</span></div>' +
         '<div class="bar-row"><span class="bar-label">' + shortName(relation.b_name) + '</span><span class="track"><span class="fill" style="width:' + b10 + '%;background:#ef71bc"></span></span><span class="bar-value">' + b10 + '%</span></div></div>' +
-        '<div class="explain">' + (tianlongBoundary ? '两条 Strava 原赛段本身仍相差约 346m。沿 OSM 的天龙山公路逐点走需要补 418m（两端贴路误差均小于 9m）。所以 #21 不是普通“近邻”，而是少收了这段终点道路，或一开始就选错了“正爬”源赛段。' : SpatialModel.explanation(relation)) + '</div><div class="coords">' + coordText + '</div>' +
+        '<div class="explain">' + SpatialModel.explanation(relation) + '</div><div class="coords">' + coordText + '</div>' +
         '<div class="nav"><button data-nav="-1">上一组</button><button data-focus="' + SpatialModel.key(relation) + '">聚焦两条线</button><button data-nav="1">下一组</button></div>';
     }
 
@@ -656,7 +635,7 @@
       var nearby = related.length - overlaps;
       var comparison = referenceComparisons[id];
       var comparisonHtml = comparison ? '<div class="chips"><span class="chip near">Strava原线30m覆盖 ' + comparison.sourceWithin30 + '%</span><span class="chip block">最大偏离 ' + comparison.maxError + 'm</span><span class="chip">终点误差 ' + comparison.endError + 'm</span></div>' : '';
-      var disputedExplanation = id === 21 || id === 28 ? '这两条各自基本复制了所选 Strava 赛段，但所选对象的边界不符合骑手对“正爬接石碑”的认知；问题在对象身份，不在描线精度。' : '橙色虚线是生产重建线，蓝色实线是 Strava 原赛段。两者大面积分离，旧的“地图已复核”结论无效。';
+      var disputedExplanation = '橙色虚线是生产重建线，蓝色实线是 Strava 原赛段。两者大面积分离，旧的“地图已复核”结论无效。';
       return '<div class="state-head"><div><div class="state-title">#' + id + " " + feature.properties.name + '</div>' +
         '<div class="state-sub">' + (feature.properties.distance_m / 1000).toFixed(2) + 'km · +' + Number(feature.properties.elevation_gain).toFixed(0) + 'm</div></div>' +
         '<span class="chip ' + (disputedIds.has(id) ? "block" : (SpatialModel.targets.has(id) ? "overlap" : "")) + '">' + (disputedIds.has(id) ? "几何待复核" : (SpatialModel.targets.has(id) ? "目标20" : "上下文")) + '</span></div>' +
