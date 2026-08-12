@@ -218,11 +218,8 @@ def fetch_segment_observation(
         "distance_m": _float_or_none(source.get("distance")),
         "average_gradient_pct": _float_or_none(source.get("average_grade")),
         "maximum_gradient_pct": _float_or_none(detail.get("maximum_grade")),
-        "elevation_gain_m": _float_or_none(
-            source.get("total_elevation_gain")
-            if source.get("total_elevation_gain") is not None
-            else source.get("elevation_difference")
-        ),
+        # Strava 的来源爬升不进入 VELO 硬知识；审核后的几何统一交给 GLO-30。
+        "elevation_gain_m": None,
         "elevation_high_m": _float_or_none(detail.get("elevation_high")),
         "elevation_low_m": _float_or_none(detail.get("elevation_low")),
         "athlete_count": _int_or_none(detail.get("athlete_count")),
