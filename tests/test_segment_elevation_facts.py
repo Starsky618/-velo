@@ -311,13 +311,19 @@ def test_postgres_elevation_fact_tables_are_append_only():
                     'strava_source_line_lonlat_7dp_v1', 1,
                     repeat('0', 64), 'completed_with_failures',
                     1, 0, 1,
-                    '[{"source_observation_id":1,"source_segment_id":"1",'
-                    '"reasons":["test"]}]'::jsonb,
+                    CAST(:source_incomplete AS jsonb),
                     0, 0, now(), now()
                 )
                 """
             ),
-            {"id": fact_batch_id, "census_id": census_id},
+            {
+                "id": fact_batch_id,
+                "census_id": census_id,
+                "source_incomplete": (
+                    '[{"source_observation_id":1,"source_segment_id":"1",'
+                    '"reasons":["test"]}]'
+                ),
+            },
         )
         trigger_names = connection.execute(
             text(

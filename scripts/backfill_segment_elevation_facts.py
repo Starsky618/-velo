@@ -371,6 +371,9 @@ def _commit_fact_batch(db, batch, facts) -> dict | None:
     ):
         raise RuntimeError("提交前来源 exact-set 与事实/不完整账不一致")
     db.add(batch)
+    # 复合外键同时绑定 batch/census/algorithm/normalization。显式先落父行，
+    # 仍留在同一事务内，避免 SQLAlchemy 在没有 ORM relationship 时先 flush facts。
+    db.flush()
     db.add_all(facts)
     db.flush()
     stored_count = (
