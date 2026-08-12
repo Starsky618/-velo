@@ -40,8 +40,8 @@ logger = logging.getLogger(__name__)
 _API_BASE = "https://www.strava.com/api/v3"
 
 # 限流阈值（全 App 共享，不是 per-user）
-# Strava 官方限制：每天 1000 次读取、每 15 分钟 200 次
-_DAILY_LIMIT = 1000
+# 生产 API 的 X-ReadRateLimit-Limit：每天 2000 次读取、每 15 分钟 200 次。
+_DAILY_LIMIT = 2000
 _WINDOW_15MIN_LIMIT = 200
 
 # Redis 键名前缀（与 rq 的 rq: 前缀隔离）

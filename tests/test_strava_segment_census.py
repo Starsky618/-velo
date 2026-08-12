@@ -95,7 +95,7 @@ class FakeDetailClient:
             "distance": 1234.5,
             "average_grade": 4.2,
             "maximum_grade": 11.0,
-            "elevation_difference": 55.0,
+            "total_elevation_gain": 55.0,
             "elevation_high": 1000.0,
             "elevation_low": 945.0,
             "athlete_count": 99,
@@ -140,10 +140,58 @@ def test_observation_keeps_exact_geometry_but_discards_extra_streams():
     )
     assert result["query_bounds_relation"] == "inside"
     assert result["region_membership"] == "crosses"
+    assert result["elevation_gain_m"] == 55.0
     assert result["kom_time_s"] == 992
     assert result["qom_time_s"] == 3723
     assert "distance_stream" not in result
     assert result["failure_json"] is None
+
+
+def test_observation_accepts_legacy_elevation_difference():
+    client = FakeDetailClient()
+    original = client.get_segment_detail
+
+    def legacy_detail(segment_id):
+        detail = original(segment_id)
+        detail["elevation_difference"] = detail.pop("total_elevation_gain")
+        return detail
+
+    client.get_segment_detail = legacy_detail
+    result = fetch_segment_observation(
+        client,
+        25967365,
+        {},
+        seen_passes={"1": ["a"]},
+        root_bounds=Bounds(37.65, 112.23, 38.02, 112.49),
+        region_polygon=POLYGON_LON_LAT,
+        observed_at=datetime.now(timezone.utc),
+    )
+
+    assert result["elevation_gain_m"] == 55.0
+
+
+def test_observation_preserves_zero_total_elevation_gain():
+    client = FakeDetailClient()
+    original = client.get_segment_detail
+
+    def flat_detail(segment_id):
+        detail = original(segment_id)
+        detail["total_elevation_gain"] = 0
+        detail["elevation_difference"] = 55.0
+        return detail
+
+    client.get_segment_detail = flat_detail
+    result = fetch_segment_observation(
+        client,
+        25967365,
+        {},
+        seen_passes={"1": ["a"]},
+        root_bounds=Bounds(37.65, 112.23, 38.02, 112.49),
+        region_polygon=POLYGON_LON_LAT,
+        observed_at=datetime.now(timezone.utc),
+    )
+
+    assert result["elevation_gain_m"] == 0.0
 
 
 def test_incomplete_stream_is_explicit_failure():
@@ -234,6 +282,8 @@ def test_shared_strava_rate_limit_reserves_both_counters_atomically(monkeypatch)
 
     assert len(calls) == 1
     assert calls[0][1] == 2
+    assert calls[0][4] == 2000
+    assert calls[0][5] == 200
 
 
 def test_shared_strava_rate_limit_rejects_full_window(monkeypatch):
