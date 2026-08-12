@@ -37,14 +37,28 @@ class SegmentCensusBatch(Base):
     activity_type = Column(String(16), nullable=False)
     protocol_version = Column(String(64), nullable=False)
     visibility_context = Column(String(64), nullable=False)
+    region_definition_json = Column(JSONB, nullable=False)
+    region_polygon = Column(
+        Geometry("POLYGON", srid=4326, spatial_index=False),
+        nullable=False,
+    )
     root_south = Column(Float, nullable=False)
     root_west = Column(Float, nullable=False)
     root_north = Column(Float, nullable=False)
     root_east = Column(Float, nullable=False)
     max_depth = Column(Integer, nullable=False)
-    status = Column(String(32), nullable=False)
+    run_status = Column(String(32), nullable=False)
+    enumeration_status = Column(String(32), nullable=False)
+    request_status = Column(String(16), nullable=False)
+    snapshot_status = Column(String(16), nullable=False)
+    detail_status = Column(String(16), nullable=False)
+    geometry_status = Column(String(16), nullable=False)
+    leaderboard_status = Column(String(16), nullable=False)
     request_count = Column(Integer, nullable=False)
     unique_segment_count = Column(Integer, nullable=False)
+    included_segment_count = Column(Integer, nullable=False)
+    outside_segment_count = Column(Integer, nullable=False)
+    unknown_membership_count = Column(Integer, nullable=False)
     detail_complete_count = Column(Integer, nullable=False)
     geometry_complete_count = Column(Integer, nullable=False)
     leaderboard_complete_count = Column(Integer, nullable=False)
@@ -61,19 +75,42 @@ class SegmentCensusBatch(Base):
         CheckConstraint("source_platform = 'strava'", name="ck_segment_census_batches_source"),
         CheckConstraint("activity_type = 'riding'", name="ck_segment_census_batches_activity"),
         CheckConstraint(
-            "status IN ('source_visible_complete', 'indeterminate')",
-            name="ck_segment_census_batches_status",
+            "run_status IN ('completed', 'completed_with_errors')",
+            name="ck_segment_census_batches_run_status",
+        ),
+        CheckConstraint(
+            "enumeration_status IN ('source_visible_complete', 'indeterminate')",
+            name="ck_segment_census_batches_enumeration_status",
+        ),
+        CheckConstraint(
+            "request_status IN ('complete', 'incomplete') "
+            "AND snapshot_status IN ('complete', 'partial', 'failed') "
+            "AND detail_status IN ('not_collected', 'complete', 'partial', 'failed') "
+            "AND geometry_status IN ('not_collected', 'complete', 'partial', 'failed') "
+            "AND leaderboard_status IN ('not_collected', 'partial', 'complete')",
+            name="ck_segment_census_batches_axis_statuses",
         ),
         CheckConstraint(
             "root_south < root_north AND root_west < root_east",
             name="ck_segment_census_batches_bounds",
         ),
         CheckConstraint(
+            "ST_IsValid(region_polygon)",
+            name="ck_segment_census_batches_polygon_valid",
+        ),
+        CheckConstraint(
             "max_depth >= 0 AND request_count >= 0 AND unique_segment_count >= 0 "
+            "AND included_segment_count >= 0 AND outside_segment_count >= 0 "
+            "AND unknown_membership_count >= 0 "
             "AND detail_complete_count >= 0 AND geometry_complete_count >= 0 "
             "AND leaderboard_complete_count >= 0 "
             "AND saturated_cell_count >= 0 AND error_count >= 0",
             name="ck_segment_census_batches_counts",
+        ),
+        CheckConstraint(
+            "included_segment_count + outside_segment_count + unknown_membership_count "
+            "= unique_segment_count",
+            name="ck_segment_census_batches_membership_counts",
         ),
         CheckConstraint(
             "detail_complete_count <= unique_segment_count "
@@ -82,7 +119,7 @@ class SegmentCensusBatch(Base):
             name="ck_segment_census_batches_complete_counts",
         ),
         Index("idx_segment_census_batches_region_created", "region_key", "created_at"),
-        Index("idx_segment_census_batches_status", "status"),
+        Index("idx_segment_census_batches_status", "run_status", "enumeration_status"),
     )
 
 
@@ -135,6 +172,7 @@ class SegmentSourceObservation(Base):
     geometry_original_size = Column(Integer, nullable=True)
     geometry_resolution = Column(String(16), nullable=True)
     query_bounds_relation = Column(String(16), nullable=False)
+    region_membership = Column(String(16), nullable=False)
     seen_passes_json = Column(JSONB, nullable=False)
     detail_status = Column(String(16), nullable=False)
     geometry_status = Column(String(16), nullable=False)
@@ -160,6 +198,10 @@ class SegmentSourceObservation(Base):
         CheckConstraint(
             "query_bounds_relation IN ('inside', 'crosses', 'outside', 'unknown')",
             name="ck_segment_source_obs_bounds_relation",
+        ),
+        CheckConstraint(
+            "region_membership IN ('inside', 'crosses', 'outside', 'unknown')",
+            name="ck_segment_source_obs_region_membership",
         ),
         CheckConstraint(
             "(detail_status = 'complete' AND distance_m > 0) OR detail_status = 'failed'",

@@ -75,9 +75,9 @@ def enumerate_source_visible_segments(
 
     def visit(bounds: Bounds, depth: int) -> None:
         cell_key = bounds.key(depth)
-        before_request()
-        result.request_count += 1
         try:
+            before_request()
+            result.request_count += 1
             payload = client.explore_segments(bounds.as_tuple())
             segments = payload.get("segments") if isinstance(payload, dict) else None
             if not isinstance(segments, list):
@@ -154,13 +154,14 @@ def fetch_segment_observation(
     *,
     seen_passes: dict[str, list[str]],
     root_bounds: Bounds,
+    region_polygon: tuple[tuple[float, float], ...],
     before_request: RequestHook = lambda: None,
     observed_at: datetime,
 ) -> dict:
     """抓详情和原始经纬度流，并压成数据库所需的最小事实。"""
     failures: dict[str, str] = {}
-    before_request()
     try:
+        before_request()
         detail = client.get_segment_detail(segment_id)
         if not isinstance(detail, dict) or int(detail.get("id", 0)) != segment_id:
             raise ValueError("segment detail id 不一致")
@@ -170,8 +171,8 @@ def fetch_segment_observation(
         detail_status = "failed"
         failures["detail"] = _bounded_error(exc)
 
-    before_request()
     try:
+        before_request()
         stream_payload = client.get_segment_latlng_stream(segment_id)
         latlng = stream_payload.get("latlng") if isinstance(stream_payload, dict) else None
         if not isinstance(latlng, dict) or not isinstance(latlng.get("data"), list):
@@ -235,6 +236,7 @@ def fetch_segment_observation(
         "geometry_original_size": original_size,
         "geometry_resolution": _text_or_none(latlng.get("resolution")),
         "query_bounds_relation": _bounds_relation(points, root_bounds),
+        "region_membership": _polygon_relation(points, region_polygon),
         "seen_passes_json": seen_passes,
         "detail_status": detail_status,
         "geometry_status": geometry_status,
@@ -271,6 +273,97 @@ def _bounds_relation(points: list[tuple[float, float]], bounds: Bounds) -> str:
     if any(inside):
         return "crosses"
     return "outside"
+
+
+def _polygon_relation(
+    points: list[tuple[float, float]],
+    polygon_lon_lat: tuple[tuple[float, float], ...],
+) -> str:
+    if not points:
+        return "unknown"
+    polygon = tuple((lat, lon) for lon, lat in polygon_lon_lat)
+    inside = [_point_in_polygon(point, polygon) for point in points]
+    if all(inside):
+        return "inside"
+    if any(inside) or _polyline_crosses_polygon(points, polygon):
+        return "crosses"
+    return "outside"
+
+
+def _point_in_polygon(
+    point: tuple[float, float],
+    polygon: tuple[tuple[float, float], ...],
+) -> bool:
+    y, x = point
+    inside = False
+    previous = polygon[-1]
+    for current in polygon:
+        y1, x1 = previous
+        y2, x2 = current
+        if _point_on_segment(point, previous, current):
+            return True
+        if (y1 > y) != (y2 > y):
+            crossing_x = (x2 - x1) * (y - y1) / (y2 - y1) + x1
+            if x <= crossing_x:
+                inside = not inside
+        previous = current
+    return inside
+
+
+def _polyline_crosses_polygon(
+    points: list[tuple[float, float]],
+    polygon: tuple[tuple[float, float], ...],
+) -> bool:
+    polygon_edges = list(zip(polygon, (*polygon[1:], polygon[0])))
+    for line_start, line_end in zip(points, points[1:]):
+        if any(
+            _segments_intersect(line_start, line_end, edge_start, edge_end)
+            for edge_start, edge_end in polygon_edges
+        ):
+            return True
+    return False
+
+
+def _point_on_segment(point, start, end, epsilon: float = 1e-10) -> bool:
+    py, px = point
+    sy, sx = start
+    ey, ex = end
+    cross = (px - sx) * (ey - sy) - (py - sy) * (ex - sx)
+    if abs(cross) > epsilon:
+        return False
+    return (
+        min(sx, ex) - epsilon <= px <= max(sx, ex) + epsilon
+        and min(sy, ey) - epsilon <= py <= max(sy, ey) + epsilon
+    )
+
+
+def _segments_intersect(a, b, c, d) -> bool:
+    def orientation(p, q, r):
+        py, px = p
+        qy, qx = q
+        ry, rx = r
+        value = (qx - px) * (ry - py) - (qy - py) * (rx - px)
+        if abs(value) <= 1e-10:
+            return 0
+        return 1 if value > 0 else -1
+
+    orientations = (
+        orientation(a, b, c),
+        orientation(a, b, d),
+        orientation(c, d, a),
+        orientation(c, d, b),
+    )
+    if orientations[0] != orientations[1] and orientations[2] != orientations[3]:
+        return True
+    return any(
+        turn == 0 and _point_on_segment(point, start, end)
+        for turn, point, start, end in (
+            (orientations[0], c, a, b),
+            (orientations[1], d, a, b),
+            (orientations[2], a, c, d),
+            (orientations[3], b, c, d),
+        )
+    )
 
 
 def _parse_datetime(value: object) -> datetime | None:

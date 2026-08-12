@@ -3,6 +3,7 @@ import os
 from uuid import uuid4
 
 import pytest
+import httpx
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DBAPIError
 
@@ -13,7 +14,13 @@ from app.route_cognition.strava_census import (
     fetch_segment_observation,
     parse_duration_seconds,
 )
-from app.strava.client import StravaClient
+from app.strava.client import (
+    StravaClient,
+    StravaRateLimitError,
+    reserve_strava_read_attempt,
+)
+from app.route_cognition.xishan_region import POLYGON_LON_LAT
+from scripts.census_strava_segments import CensusAttemptGovernor, _post_commit_result
 
 
 class FakeExploreClient:
@@ -115,6 +122,7 @@ def test_observation_keeps_exact_geometry_but_discards_extra_streams():
         {"id": 25967365, "name": "summary"},
         seen_passes={"1": ["a"], "2": ["a"]},
         root_bounds=Bounds(37.65, 112.23, 38.02, 112.46),
+        region_polygon=POLYGON_LON_LAT,
         observed_at=observed_at,
     )
 
@@ -126,6 +134,7 @@ def test_observation_keeps_exact_geometry_but_discards_extra_streams():
         "LINESTRING (112.3000000 37.8000000, 112.3100000 37.8100000)"
     )
     assert result["query_bounds_relation"] == "inside"
+    assert result["region_membership"] == "crosses"
     assert result["kom_time_s"] == 992
     assert result["qom_time_s"] == 3723
     assert "distance_stream" not in result
@@ -147,6 +156,7 @@ def test_incomplete_stream_is_explicit_failure():
         {},
         seen_passes={"1": ["a"]},
         root_bounds=Bounds(37.65, 112.23, 38.02, 112.46),
+        region_polygon=POLYGON_LON_LAT,
         observed_at=datetime.now(timezone.utc),
     )
 
@@ -191,6 +201,89 @@ def test_strava_client_uses_official_segment_endpoints():
     ]
 
 
+def test_strava_retry_passes_same_attempt_governor(monkeypatch):
+    attempts = []
+    user = type("User", (), {"id": 7, "strava_access_token": "token"})()
+    monkeypatch.setattr(
+        "app.strava.client.ensure_valid_token",
+        lambda _db, _user_id: (user, "token"),
+    )
+    responses = iter(
+        [httpx.Response(500, json={}), httpx.Response(200, json={"ok": True})]
+    )
+    monkeypatch.setattr("app.strava.client.httpx.request", lambda *a, **k: next(responses))
+    client = StravaClient(object(), user, attempt_governor=lambda: attempts.append(1))
+
+    assert client._request("GET", "/segments/1") == {"ok": True}
+    assert len(attempts) == 2
+
+
+def test_shared_strava_rate_limit_reserves_both_counters_atomically(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "app.strava.client._redis.eval",
+        lambda *args: calls.append(args) or [1, 12, 7],
+    )
+
+    reserve_strava_read_attempt(fail_closed=True)
+
+    assert len(calls) == 1
+    assert calls[0][1] == 2
+
+
+def test_shared_strava_rate_limit_rejects_full_window(monkeypatch):
+    monkeypatch.setattr(
+        "app.strava.client._redis.eval",
+        lambda *_args: [0, 500, 200],
+    )
+
+    with pytest.raises(StravaRateLimitError, match="配额已满"):
+        reserve_strava_read_attempt(fail_closed=True)
+
+
+def test_census_governor_reserves_before_counting(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "scripts.census_strava_segments.reserve_strava_read_attempt",
+        lambda **kwargs: calls.append(kwargs),
+    )
+    governor = CensusAttemptGovernor(4.6, 2)
+    governor.before_http_attempt()
+
+    assert governor.count == 1
+    assert governor.blocked_attempt_count == 0
+    assert len(calls) == 1
+
+
+def test_census_governor_fails_closed_when_redis_is_unavailable(monkeypatch):
+    def fail(**_kwargs):
+        raise ConnectionError("redis down")
+
+    monkeypatch.setattr(
+        "scripts.census_strava_segments.reserve_strava_read_attempt",
+        fail,
+    )
+    governor = CensusAttemptGovernor(4.6, 2)
+
+    with pytest.raises(RuntimeError, match="未获共享配额"):
+        governor.before_http_attempt()
+    assert governor.count == 0
+    assert governor.blocked_attempt_count == 1
+
+
+def test_post_commit_readback_failure_is_not_reported_as_uncommitted(monkeypatch):
+    monkeypatch.setattr(
+        "scripts.census_strava_segments._readback_batch",
+        lambda _batch_id: (_ for _ in ()).throw(ConnectionError("readback down")),
+    )
+
+    result = _post_commit_result("xishan-test")
+
+    assert result["database_status"] == "committed_outcome_unknown"
+    assert result["batch_id"] == "xishan-test"
+    assert "--readback-batch-id xishan-test" in result["reconcile_with"]
+
+
 def test_postgres_census_snapshots_are_append_only():
     database_url = os.getenv("VELO_TEST_DATABASE_URL")
     if not database_url:
@@ -205,15 +298,24 @@ def test_postgres_census_snapshots_are_append_only():
                     id, region_key, region_version, source_platform,
                     activity_type, protocol_version, visibility_context,
                     root_south, root_west, root_north, root_east, max_depth,
-                    status, request_count, unique_segment_count,
+                    run_status, enumeration_status, request_status,
+                    snapshot_status, detail_status, geometry_status,
+                    leaderboard_status, request_count, unique_segment_count,
+                    included_segment_count, outside_segment_count,
+                    unknown_membership_count,
                     detail_complete_count, geometry_complete_count,
                     leaderboard_complete_count, saturated_cell_count, error_count,
+                    region_definition_json, region_polygon,
                     pass_summaries_json, pass_diff_json, raw_response_retained,
                     started_at, finished_at
                 ) VALUES (
                     :id, 'test', 'test_v1', 'strava', 'riding', 'test_v1',
-                    'test', 37, 112, 38, 113, 0, 'source_visible_complete',
-                    2, 0, 0, 0, 0, 0, 0, '[]'::jsonb, '{}'::jsonb, false,
+                    'test', 37, 112, 38, 113, 0, 'completed',
+                    'source_visible_complete', 'complete', 'complete',
+                    'not_collected', 'not_collected', 'not_collected',
+                    2, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    '{}'::jsonb, ST_GeomFromText('POLYGON((112 37,113 37,113 38,112 38,112 37))', 4326),
+                    '[]'::jsonb, '{}'::jsonb, false,
                     now(), now()
                 )
                 """
@@ -241,6 +343,9 @@ def test_postgres_census_snapshots_are_append_only():
     with pytest.raises(DBAPIError, match="append-only"):
         with engine.begin() as connection:
             connection.execute(
-                text("UPDATE segment_census_batches SET status='indeterminate' WHERE id=:id"),
+                text(
+                    "UPDATE segment_census_batches "
+                    "SET run_status='completed_with_errors' WHERE id=:id"
+                ),
                 {"id": batch_id},
             )

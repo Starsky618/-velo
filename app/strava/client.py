@@ -25,6 +25,7 @@ Strava API 客户端——"外交官"。
 import logging
 import time
 from datetime import date
+from typing import Callable
 
 import httpx
 from sqlalchemy.orm import Session
@@ -46,6 +47,18 @@ _WINDOW_15MIN_LIMIT = 200
 # Redis 键名前缀（与 rq 的 rq: 前缀隔离）
 _RATE_KEY_DAILY = "strava:rate:daily:{date}"
 _RATE_KEY_15MIN = "strava:rate:15m:{window}"
+_RATE_RESERVATION_SCRIPT = """
+local daily = tonumber(redis.call('GET', KEYS[1]) or '0')
+local window = tonumber(redis.call('GET', KEYS[2]) or '0')
+if daily >= tonumber(ARGV[1]) or window >= tonumber(ARGV[2]) then
+  return {0, daily, window}
+end
+daily = redis.call('INCR', KEYS[1])
+window = redis.call('INCR', KEYS[2])
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
+redis.call('EXPIRE', KEYS[2], tonumber(ARGV[4]))
+return {1, daily, window}
+"""
 
 # get_activity_streams 请求的数据类型列表
 # 这 8 种是 from_streams() 适配器需要的全部字段，硬编码因为项目里不会变
@@ -63,6 +76,35 @@ class StravaRateLimitError(Exception):
     pass
 
 
+def reserve_strava_read_attempt(*, fail_closed: bool) -> None:
+    """在发请求前原子占用日配额和 15 分钟配额。"""
+    today = date.today().isoformat()
+    window_id = int(time.time() / 900)
+    try:
+        reserved, daily_count, window_count = _redis.eval(
+            _RATE_RESERVATION_SCRIPT,
+            2,
+            _RATE_KEY_DAILY.format(date=today),
+            _RATE_KEY_15MIN.format(window=window_id),
+            _DAILY_LIMIT,
+            _WINDOW_15MIN_LIMIT,
+            172800,
+            1800,
+        )
+    except Exception as exc:
+        if fail_closed:
+            raise RuntimeError("Redis 不可用，拒绝绕过 Strava 共享配额") from exc
+        logger.warning("Redis 不可用，Strava 限流降级放行")
+        return
+    if int(reserved) != 1:
+        logger.warning(
+            "Strava 共享读取配额已满 daily=%s window=%s",
+            daily_count,
+            window_count,
+        )
+        raise StravaRateLimitError("Strava API 读取配额已满")
+
+
 class StravaClient:
     """
     Strava API 客户端。
@@ -72,7 +114,13 @@ class StravaClient:
     遇到闭门羹知道该重试还是该放弃。
     """
 
-    def __init__(self, db: Session, user: User):
+    def __init__(
+        self,
+        db: Session,
+        user: User,
+        *,
+        attempt_governor: Callable[[], None] | None = None,
+    ):
         """
         创建客户端实例。
 
@@ -84,6 +132,7 @@ class StravaClient:
         """
         self.db = db
         self.user = user
+        self.attempt_governor = attempt_governor
 
     # ===== 公开接口 =====
 
@@ -188,7 +237,7 @@ class StravaClient:
         查配额 → 拿通行证 → 去办事 → 打卡记录 → 处理结果。
         """
         # 第 1 步：检查限流——还有配额吗？
-        self._check_rate_limit()
+        self._begin_http_attempt()
 
         # 第 2 步：确保 token 有效
         # v5 task-0.2：函数返回 (锁后 user, token) 元组——回写 self.user
@@ -211,7 +260,7 @@ class StravaClient:
             raise
 
         # 第 4 步：记录限流计数（无论成功失败，Strava 都会计入配额）
-        self._increment_rate_counter()
+        self._finish_http_attempt()
 
         # 第 5 步：处理响应
         return self._handle_response(resp, method, path, params)
@@ -258,6 +307,7 @@ class StravaClient:
 
             # 用新 token 重试一次（不再递归，最多刷新 1 次）
             headers = {"Authorization": f"Bearer {token}"}
+            self._begin_http_attempt()
             try:
                 resp = httpx.request(
                     method, f"{_API_BASE}{path}", headers=headers,
@@ -270,7 +320,7 @@ class StravaClient:
                 )
                 raise
 
-            self._increment_rate_counter()
+            self._finish_http_attempt()
 
             if resp.status_code == 200:
                 try:
@@ -313,6 +363,7 @@ class StravaClient:
                 "Strava 服务端错误 user_id=%d path=%s status=%d，重试 1 次",
                 self.user.id, path, status,
             )
+            self._begin_http_attempt()
             try:
                 resp = httpx.request(
                     method, f"{_API_BASE}{path}",
@@ -322,7 +373,7 @@ class StravaClient:
             except httpx.HTTPError:
                 raise ValueError("Strava 服务端错误（重试失败）")
 
-            self._increment_rate_counter()
+            self._finish_http_attempt()
 
             if resp.status_code == 200:
                 try:
@@ -341,69 +392,13 @@ class StravaClient:
 
     # ===== 限流管理 =====
 
-    def _check_rate_limit(self) -> None:
-        """
-        请求前检查限流——还有配额吗？
+    def _begin_http_attempt(self) -> None:
+        """每一次真实 HTTP 尝试都必须先通过同一个门，包括重试。"""
+        if self.attempt_governor is not None:
+            self.attempt_governor()
+            return
+        reserve_strava_read_attempt(fail_closed=False)
 
-        用 Redis 计数器实现两级限流：
-        - 每天 1000 次（全 App 共享）
-        - 每 15 分钟 200 次（全 App 共享）
-
-        超限时不发请求，直接抛 StravaRateLimitError，
-        调用方（调度器）捕获后停止当前批次，等下一个窗口再继续。
-
-        为什么主动限流而不是等 Strava 返回 429？
-        因为 429 时 Strava 可能已经开始计入"违规次数"，
-        累积多了可能被临时封禁。主动限流是"守法公民"的做法。
-        """
-        # Redis 降级策略：如果 Redis 不可用，限流检查跳过（放行），记录 warning。
-        # 限流是保护性措施，Redis 短暂宕机时不应阻断所有 Strava 请求。
-        try:
-            # 检查日限额
-            today = date.today().isoformat()
-            daily_key = _RATE_KEY_DAILY.format(date=today)
-            daily_count = _redis.get(daily_key)
-            if daily_count is not None and int(daily_count) >= _DAILY_LIMIT:
-                logger.warning("Strava 日限额已满 count=%s", daily_count)
-                raise StravaRateLimitError("Strava API 日限额已满")
-
-            # 检查 15 分钟窗口限额
-            # window_id = 当前时间戳 / 900（每 900 秒一个窗口），自动轮转
-            window_id = int(time.time() / 900)
-            window_key = _RATE_KEY_15MIN.format(window=window_id)
-            window_count = _redis.get(window_key)
-            if window_count is not None and int(window_count) >= _WINDOW_15MIN_LIMIT:
-                logger.warning("Strava 15 分钟限额已满 count=%s", window_count)
-                raise StravaRateLimitError("Strava API 15 分钟限额已满")
-        except StravaRateLimitError:
-            raise  # 限额满是正常的业务逻辑，不吞掉
-        except Exception:
-            logger.warning("Redis 不可用，限流检查跳过（降级放行）")
-
-    def _increment_rate_counter(self) -> None:
-        """
-        请求后递增限流计数器。
-
-        无论请求成功还是失败，Strava 服务端都会计入配额，
-        所以我们也必须无条件递增。
-
-        用 Redis 的 INCR + EXPIRE 实现：
-        - INCR 是原子操作，多个 Worker 并发递增也不会计数错乱
-        - EXPIRE 让键自动过期，不需要手动清理
-        """
-        today = date.today().isoformat()
-        daily_key = _RATE_KEY_DAILY.format(date=today)
-        window_id = int(time.time() / 900)
-        window_key = _RATE_KEY_15MIN.format(window=window_id)
-
-        # 用 pipeline 批量执行，减少网络往返
-        # Redis 不可用时静默跳过（降级：不计数但不阻断请求）
-        try:
-            pipe = _redis.pipeline()
-            pipe.incr(daily_key)
-            pipe.expire(daily_key, 86400)       # 24 小时后自动清理
-            pipe.incr(window_key)
-            pipe.expire(window_key, 900)        # 15 分钟后自动清理
-            pipe.execute()
-        except Exception:
-            logger.warning("Redis 不可用，限流计数跳过")
+    def _finish_http_attempt(self) -> None:
+        # 请求前已经原子占额；完成后无需再计数。
+        return None

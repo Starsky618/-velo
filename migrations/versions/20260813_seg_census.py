@@ -26,14 +26,29 @@ def upgrade() -> None:
         sa.Column("activity_type", sa.String(length=16), nullable=False),
         sa.Column("protocol_version", sa.String(length=64), nullable=False),
         sa.Column("visibility_context", sa.String(length=64), nullable=False),
+        sa.Column("region_definition_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column(
+            "region_polygon",
+            Geometry("POLYGON", srid=4326, spatial_index=False),
+            nullable=False,
+        ),
         sa.Column("root_south", sa.Float(), nullable=False),
         sa.Column("root_west", sa.Float(), nullable=False),
         sa.Column("root_north", sa.Float(), nullable=False),
         sa.Column("root_east", sa.Float(), nullable=False),
         sa.Column("max_depth", sa.Integer(), nullable=False),
-        sa.Column("status", sa.String(length=32), nullable=False),
+        sa.Column("run_status", sa.String(length=32), nullable=False),
+        sa.Column("enumeration_status", sa.String(length=32), nullable=False),
+        sa.Column("request_status", sa.String(length=16), nullable=False),
+        sa.Column("snapshot_status", sa.String(length=16), nullable=False),
+        sa.Column("detail_status", sa.String(length=16), nullable=False),
+        sa.Column("geometry_status", sa.String(length=16), nullable=False),
+        sa.Column("leaderboard_status", sa.String(length=16), nullable=False),
         sa.Column("request_count", sa.Integer(), nullable=False),
         sa.Column("unique_segment_count", sa.Integer(), nullable=False),
+        sa.Column("included_segment_count", sa.Integer(), nullable=False),
+        sa.Column("outside_segment_count", sa.Integer(), nullable=False),
+        sa.Column("unknown_membership_count", sa.Integer(), nullable=False),
         sa.Column("detail_complete_count", sa.Integer(), nullable=False),
         sa.Column("geometry_complete_count", sa.Integer(), nullable=False),
         sa.Column("leaderboard_complete_count", sa.Integer(), nullable=False),
@@ -48,19 +63,42 @@ def upgrade() -> None:
         sa.CheckConstraint("source_platform = 'strava'", name="ck_segment_census_batches_source"),
         sa.CheckConstraint("activity_type = 'riding'", name="ck_segment_census_batches_activity"),
         sa.CheckConstraint(
-            "status IN ('source_visible_complete', 'indeterminate')",
-            name="ck_segment_census_batches_status",
+            "run_status IN ('completed', 'completed_with_errors')",
+            name="ck_segment_census_batches_run_status",
+        ),
+        sa.CheckConstraint(
+            "enumeration_status IN ('source_visible_complete', 'indeterminate')",
+            name="ck_segment_census_batches_enumeration_status",
+        ),
+        sa.CheckConstraint(
+            "request_status IN ('complete', 'incomplete') "
+            "AND snapshot_status IN ('complete', 'partial', 'failed') "
+            "AND detail_status IN ('not_collected', 'complete', 'partial', 'failed') "
+            "AND geometry_status IN ('not_collected', 'complete', 'partial', 'failed') "
+            "AND leaderboard_status IN ('not_collected', 'partial', 'complete')",
+            name="ck_segment_census_batches_axis_statuses",
         ),
         sa.CheckConstraint(
             "root_south < root_north AND root_west < root_east",
             name="ck_segment_census_batches_bounds",
         ),
         sa.CheckConstraint(
+            "ST_IsValid(region_polygon)",
+            name="ck_segment_census_batches_polygon_valid",
+        ),
+        sa.CheckConstraint(
             "max_depth >= 0 AND request_count >= 0 AND unique_segment_count >= 0 "
+            "AND included_segment_count >= 0 AND outside_segment_count >= 0 "
+            "AND unknown_membership_count >= 0 "
             "AND detail_complete_count >= 0 AND geometry_complete_count >= 0 "
             "AND leaderboard_complete_count >= 0 "
             "AND saturated_cell_count >= 0 AND error_count >= 0",
             name="ck_segment_census_batches_counts",
+        ),
+        sa.CheckConstraint(
+            "included_segment_count + outside_segment_count + unknown_membership_count "
+            "= unique_segment_count",
+            name="ck_segment_census_batches_membership_counts",
         ),
         sa.CheckConstraint(
             "detail_complete_count <= unique_segment_count "
@@ -78,7 +116,7 @@ def upgrade() -> None:
     op.create_index(
         "idx_segment_census_batches_status",
         "segment_census_batches",
-        ["status"],
+        ["run_status", "enumeration_status"],
     )
 
     op.create_table(
@@ -124,6 +162,7 @@ def upgrade() -> None:
         sa.Column("geometry_original_size", sa.Integer(), nullable=True),
         sa.Column("geometry_resolution", sa.String(length=16), nullable=True),
         sa.Column("query_bounds_relation", sa.String(length=16), nullable=False),
+        sa.Column("region_membership", sa.String(length=16), nullable=False),
         sa.Column("seen_passes_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("detail_status", sa.String(length=16), nullable=False),
         sa.Column("geometry_status", sa.String(length=16), nullable=False),
@@ -147,6 +186,10 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "query_bounds_relation IN ('inside', 'crosses', 'outside', 'unknown')",
             name="ck_segment_source_obs_bounds_relation",
+        ),
+        sa.CheckConstraint(
+            "region_membership IN ('inside', 'crosses', 'outside', 'unknown')",
+            name="ck_segment_source_obs_region_membership",
         ),
         sa.CheckConstraint(
             "(detail_status = 'complete' AND distance_m > 0) OR detail_status = 'failed'",

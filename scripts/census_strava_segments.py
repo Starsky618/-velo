@@ -30,32 +30,47 @@ from app.route_cognition.strava_census import (
     enumerate_source_visible_segments,
     fetch_segment_observation,
 )
-from app.strava.client import StravaClient
+from app.strava.client import StravaClient, reserve_strava_read_attempt
 from app.user.models import User
+from app.route_cognition.xishan_region import (
+    POLYGON_LON_LAT,
+    QUERY_BOUNDS,
+    REGION_KEY,
+    REGION_VERSION,
+    polygon_wkt,
+    region_definition,
+)
 
 
-REGION_KEY = "taiyuan_xishan"
-REGION_VERSION = "taiyuan_xishan_v1"
-ROOT_BOUNDS = Bounds(37.65, 112.23, 38.02, 112.46)
+ROOT_BOUNDS = Bounds(*QUERY_BOUNDS)
 PROTOCOL_VERSION = "strava_explore_quadtree_v1"
 VISIBILITY_CONTEXT = "authorized_athlete_public_segments"
 
 
-class RequestPacer:
+class CensusAttemptGovernor:
+    """对每个真实 HTTP attempt 限速，并在共享 Redis 中原子占额。"""
+
     def __init__(self, interval_seconds: float, max_requests: int) -> None:
         self.interval_seconds = interval_seconds
         self.max_requests = max_requests
         self.count = 0
+        self.blocked_attempt_count = 0
         self._last_request_started: float | None = None
 
-    def before_request(self) -> None:
+    def before_http_attempt(self) -> None:
         if self.count >= self.max_requests:
+            self.blocked_attempt_count += 1
             raise RuntimeError(f"本批次 API 请求超过上限 {self.max_requests}")
         now = time.monotonic()
         if self._last_request_started is not None:
             remaining = self.interval_seconds - (now - self._last_request_started)
             if remaining > 0:
                 time.sleep(remaining)
+        try:
+            reserve_strava_read_attempt(fail_closed=True)
+        except Exception as exc:
+            self.blocked_attempt_count += 1
+            raise RuntimeError(f"批量普查请求未获共享配额：{exc}") from exc
         self._last_request_started = time.monotonic()
         self.count += 1
         if self.count == 1 or self.count % 20 == 0:
@@ -69,8 +84,9 @@ class RequestPacer:
 class ShortLivedStravaClient:
     """每次 API 调用独占一个短 session，避免整批普查长期持有用户行锁。"""
 
-    def __init__(self, user_id: int) -> None:
+    def __init__(self, user_id: int, attempt_governor: CensusAttemptGovernor) -> None:
         self.user_id = user_id
+        self.attempt_governor = attempt_governor
 
     def _call(self, method_name: str, *args):
         db = SessionLocal()
@@ -78,7 +94,11 @@ class ShortLivedStravaClient:
             user = db.get(User, self.user_id)
             if user is None:
                 raise RuntimeError("Strava 授权用户已不存在")
-            client = StravaClient(db, user)
+            client = StravaClient(
+                db,
+                user,
+                attempt_governor=self.attempt_governor.before_http_attempt,
+            )
             return getattr(client, method_name)(*args)
         finally:
             db.close()
@@ -105,6 +125,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--apply",
         action="store_true",
         help="抓详情和来源几何，并在末尾一次性写入数据库",
+    )
+    mode.add_argument(
+        "--readback-batch-id",
+        help="不访问 Strava，只按 batch id 对账已提交批次",
     )
     parser.add_argument("--strava-user-id", type=int)
     parser.add_argument("--batch-id")
@@ -173,22 +197,92 @@ def _result_summary(*, batch_id: str | None, status: str, passes: list, diff: di
     }
 
 
+def _axis_status(total: int, complete: int) -> str:
+    if total == 0:
+        return "not_collected"
+    if complete == total:
+        return "complete"
+    if complete == 0:
+        return "failed"
+    return "partial"
+
+
+def _readback_batch(batch_id: str) -> dict:
+    db = SessionLocal()
+    try:
+        stored = db.get(SegmentCensusBatch, batch_id)
+        if stored is None:
+            return {"database_status": "not_found", "batch_id": batch_id}
+        stored_count = (
+            db.query(func.count(SegmentSourceObservation.id))
+            .filter(SegmentSourceObservation.census_batch_id == batch_id)
+            .scalar()
+        )
+        if stored_count != stored.unique_segment_count:
+            raise RuntimeError(
+                "已提交批次观测数量不一致："
+                f"expected={stored.unique_segment_count} actual={stored_count}"
+            )
+        return {
+            "database_status": "committed_and_read_back",
+            "batch_id": batch_id,
+            "region_version": stored.region_version,
+            "run_status": stored.run_status,
+            "enumeration_status": stored.enumeration_status,
+            "request_status": stored.request_status,
+            "snapshot_status": stored.snapshot_status,
+            "detail_status": stored.detail_status,
+            "geometry_status": stored.geometry_status,
+            "leaderboard_status": stored.leaderboard_status,
+            "stored_observation_count": stored_count,
+            "unique_segment_count": stored.unique_segment_count,
+            "included_segment_count": stored.included_segment_count,
+            "outside_segment_count": stored.outside_segment_count,
+            "unknown_membership_count": stored.unknown_membership_count,
+            "detail_complete_count": stored.detail_complete_count,
+            "geometry_complete_count": stored.geometry_complete_count,
+            "error_count": stored.error_count,
+        }
+    finally:
+        db.close()
+
+
+def _post_commit_result(batch_id: str) -> dict:
+    try:
+        result = _readback_batch(batch_id)
+        if result.get("database_status") != "committed_and_read_back":
+            raise RuntimeError("数据库回读与提交结果不一致")
+        return result
+    except Exception as exc:
+        return {
+            "database_status": "committed_outcome_unknown",
+            "batch_id": batch_id,
+            "reconcile_with": f"--readback-batch-id {batch_id}",
+            "readback_error": f"{type(exc).__name__}:{str(exc)[:160]}",
+        }
+
+
 def run(args: argparse.Namespace) -> dict:
+    if args.readback_batch_id:
+        return _readback_batch(args.readback_batch_id)
     started_at = datetime.now(timezone.utc)
-    pacer = RequestPacer(args.request_interval_seconds, args.max_api_requests)
+    governor = CensusAttemptGovernor(
+        args.request_interval_seconds,
+        args.max_api_requests,
+    )
     bootstrap_db = SessionLocal()
     try:
         user_id = _select_strava_user(bootstrap_db, args.strava_user_id).id
     finally:
         bootstrap_db.close()
 
-    client = ShortLivedStravaClient(user_id)
+    client = ShortLivedStravaClient(user_id, governor)
     passes = [
         enumerate_source_visible_segments(
             client,
             ROOT_BOUNDS,
             max_depth=args.max_depth,
-            before_request=pacer.before_request,
+            before_request=lambda: None,
         )
         for _ in range(2)
     ]
@@ -200,7 +294,7 @@ def run(args: argparse.Namespace) -> dict:
             status=status,
             passes=passes,
             diff=diff,
-            request_count=pacer.count,
+            request_count=governor.count,
         )
 
     batch_id = args.batch_id or _default_batch_id(started_at)
@@ -215,8 +309,9 @@ def run(args: argparse.Namespace) -> dict:
             summaries[segment_id],
             seen_passes=_seen_passes(segment_id, passes),
             root_bounds=ROOT_BOUNDS,
-            before_request=pacer.before_request,
+            before_request=lambda: None,
             observed_at=datetime.now(timezone.utc),
+            region_polygon=POLYGON_LON_LAT,
         )
         observations.append(observation)
 
@@ -233,6 +328,24 @@ def run(args: argparse.Namespace) -> dict:
     observation_error_count = sum(
         len(item["failure_json"] or {}) for item in observations
     )
+    included_segment_count = sum(
+        item["region_membership"] in {"inside", "crosses"} for item in observations
+    )
+    outside_segment_count = sum(
+        item["region_membership"] == "outside" for item in observations
+    )
+    unknown_membership_count = sum(
+        item["region_membership"] == "unknown" for item in observations
+    )
+    request_status = "incomplete" if governor.blocked_attempt_count else "complete"
+    detail_status = _axis_status(len(observations), detail_complete_count)
+    geometry_status = _axis_status(len(observations), geometry_complete_count)
+    has_errors = (
+        status != "source_visible_complete"
+        or request_status != "complete"
+        or detail_status != "complete"
+        or geometry_status != "complete"
+    )
     batch = SegmentCensusBatch(
         id=batch_id,
         region_key=REGION_KEY,
@@ -241,14 +354,25 @@ def run(args: argparse.Namespace) -> dict:
         activity_type="riding",
         protocol_version=PROTOCOL_VERSION,
         visibility_context=VISIBILITY_CONTEXT,
+        region_definition_json=region_definition(),
+        region_polygon=WKTElement(polygon_wkt(), srid=4326),
         root_south=ROOT_BOUNDS.south,
         root_west=ROOT_BOUNDS.west,
         root_north=ROOT_BOUNDS.north,
         root_east=ROOT_BOUNDS.east,
         max_depth=args.max_depth,
-        status=status,
-        request_count=pacer.count,
+        run_status="completed_with_errors" if has_errors else "completed",
+        enumeration_status=status,
+        request_status=request_status,
+        snapshot_status="complete",
+        detail_status=detail_status,
+        geometry_status=geometry_status,
+        leaderboard_status="not_collected",
+        request_count=governor.count,
         unique_segment_count=len(observations),
+        included_segment_count=included_segment_count,
+        outside_segment_count=outside_segment_count,
+        unknown_membership_count=unknown_membership_count,
         detail_complete_count=detail_complete_count,
         geometry_complete_count=geometry_complete_count,
         leaderboard_complete_count=leaderboard_complete_count,
@@ -274,6 +398,14 @@ def run(args: argparse.Namespace) -> dict:
                     **item,
                 )
             )
+        write_db.flush()
+        transaction_count = (
+            write_db.query(func.count(SegmentSourceObservation.id))
+            .filter(SegmentSourceObservation.census_batch_id == batch_id)
+            .scalar()
+        )
+        if transaction_count != len(observations):
+            raise RuntimeError("提交前事务内观测数量校验失败")
         write_db.commit()
     except Exception:
         write_db.rollback()
@@ -281,36 +413,7 @@ def run(args: argparse.Namespace) -> dict:
     finally:
         write_db.close()
 
-    readback = SessionLocal()
-    try:
-        stored = readback.get(SegmentCensusBatch, batch_id)
-        stored_count = (
-            readback.query(func.count(SegmentSourceObservation.id))
-            .filter(SegmentSourceObservation.census_batch_id == batch_id)
-            .scalar()
-        )
-        if stored is None or stored_count != stored.unique_segment_count:
-            raise RuntimeError("数据库回读与提交结果不一致")
-        result = _result_summary(
-            batch_id=batch_id,
-            status=stored.status,
-            passes=passes,
-            diff=diff,
-            request_count=stored.request_count,
-        )
-        result.update(
-            {
-                "database_status": "committed_and_read_back",
-                "stored_observation_count": stored_count,
-                "detail_complete_count": stored.detail_complete_count,
-                "geometry_complete_count": stored.geometry_complete_count,
-                "leaderboard_complete_count": stored.leaderboard_complete_count,
-                "error_count": stored.error_count,
-            }
-        )
-        return result
-    finally:
-        readback.close()
+    return _post_commit_result(batch_id)
 
 
 def main() -> int:
@@ -327,7 +430,7 @@ def main() -> int:
         )
         return 2
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    return 0
+    return 3 if result.get("database_status") == "committed_outcome_unknown" else 0
 
 
 if __name__ == "__main__":
