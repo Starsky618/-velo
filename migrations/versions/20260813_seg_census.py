@@ -44,7 +44,11 @@ def upgrade() -> None:
         sa.Column("detail_status", sa.String(length=16), nullable=False),
         sa.Column("geometry_status", sa.String(length=16), nullable=False),
         sa.Column("leaderboard_status", sa.String(length=16), nullable=False),
-        sa.Column("request_count", sa.Integer(), nullable=False),
+        sa.Column("planned_request_count", sa.Integer(), nullable=False),
+        sa.Column("attempted_request_count", sa.Integer(), nullable=False),
+        sa.Column("succeeded_request_count", sa.Integer(), nullable=False),
+        sa.Column("failed_request_count", sa.Integer(), nullable=False),
+        sa.Column("blocked_request_count", sa.Integer(), nullable=False),
         sa.Column("unique_segment_count", sa.Integer(), nullable=False),
         sa.Column("included_segment_count", sa.Integer(), nullable=False),
         sa.Column("outside_segment_count", sa.Integer(), nullable=False),
@@ -87,13 +91,28 @@ def upgrade() -> None:
             name="ck_segment_census_batches_polygon_valid",
         ),
         sa.CheckConstraint(
-            "max_depth >= 0 AND request_count >= 0 AND unique_segment_count >= 0 "
+            "max_depth >= 0 AND planned_request_count >= 0 "
+            "AND attempted_request_count >= 0 AND succeeded_request_count >= 0 "
+            "AND failed_request_count >= 0 AND blocked_request_count >= 0 "
+            "AND unique_segment_count >= 0 "
             "AND included_segment_count >= 0 AND outside_segment_count >= 0 "
             "AND unknown_membership_count >= 0 "
             "AND detail_complete_count >= 0 AND geometry_complete_count >= 0 "
             "AND leaderboard_complete_count >= 0 "
             "AND saturated_cell_count >= 0 AND error_count >= 0",
             name="ck_segment_census_batches_counts",
+        ),
+        sa.CheckConstraint(
+            "succeeded_request_count + failed_request_count + blocked_request_count "
+            "= planned_request_count",
+            name="ck_segment_census_batches_request_accounting",
+        ),
+        sa.CheckConstraint(
+            "(request_status = 'complete' AND failed_request_count = 0 "
+            "AND blocked_request_count = 0) OR "
+            "(request_status = 'incomplete' AND "
+            "(failed_request_count > 0 OR blocked_request_count > 0))",
+            name="ck_segment_census_batches_request_status",
         ),
         sa.CheckConstraint(
             "included_segment_count + outside_segment_count + unknown_membership_count "

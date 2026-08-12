@@ -20,7 +20,12 @@ from app.strava.client import (
     reserve_strava_read_attempt,
 )
 from app.route_cognition.xishan_region import POLYGON_LON_LAT
-from scripts.census_strava_segments import CensusAttemptGovernor, _post_commit_result
+from scripts.census_strava_segments import (
+    CensusAttemptGovernor,
+    _commit_census_transaction,
+    _post_commit_result,
+    _request_status,
+)
 
 
 class FakeExploreClient:
@@ -250,8 +255,8 @@ def test_census_governor_reserves_before_counting(monkeypatch):
     governor = CensusAttemptGovernor(4.6, 2)
     governor.before_http_attempt()
 
-    assert governor.count == 1
-    assert governor.blocked_attempt_count == 0
+    assert governor.attempted_request_count == 1
+    assert governor.blocked_request_count == 0
     assert len(calls) == 1
 
 
@@ -267,8 +272,33 @@ def test_census_governor_fails_closed_when_redis_is_unavailable(monkeypatch):
 
     with pytest.raises(RuntimeError, match="未获共享配额"):
         governor.before_http_attempt()
-    assert governor.count == 0
-    assert governor.blocked_attempt_count == 1
+    assert governor.attempted_request_count == 0
+
+
+def test_request_status_is_incomplete_for_failed_or_blocked_calls():
+    governor = CensusAttemptGovernor(4.6, 2)
+    governor.begin_logical_request()
+    governor.fail_logical_request(blocked=False)
+
+    assert _request_status(governor) == "incomplete"
+    assert governor.planned_request_count == 1
+    assert governor.failed_request_count == 1
+
+    governor = CensusAttemptGovernor(4.6, 2)
+    governor.begin_logical_request()
+    governor.fail_logical_request(blocked=True)
+
+    assert _request_status(governor) == "incomplete"
+    assert governor.blocked_request_count == 1
+
+
+def test_request_status_is_complete_only_when_all_planned_calls_succeed():
+    governor = CensusAttemptGovernor(4.6, 2)
+    governor.begin_logical_request()
+    governor.finish_logical_request()
+
+    assert _request_status(governor) == "complete"
+    assert governor.succeeded_request_count == governor.planned_request_count == 1
 
 
 def test_post_commit_readback_failure_is_not_reported_as_uncommitted(monkeypatch):
@@ -282,6 +312,38 @@ def test_post_commit_readback_failure_is_not_reported_as_uncommitted(monkeypatch
     assert result["database_status"] == "committed_outcome_unknown"
     assert result["batch_id"] == "xishan-test"
     assert "--readback-batch-id xishan-test" in result["reconcile_with"]
+
+
+def test_commit_ack_failure_is_reported_as_outcome_unknown():
+    class CountQuery:
+        def filter(self, *_args):
+            return self
+
+        def scalar(self):
+            return 3
+
+    class CommitAckLostSession:
+        def flush(self):
+            return None
+
+        def query(self, *_args):
+            return CountQuery()
+
+        def commit(self):
+            raise ConnectionError("commit ack lost")
+
+        def rollback(self):
+            return None
+
+    result = _commit_census_transaction(
+        CommitAckLostSession(),
+        batch_id="xishan-ack-lost",
+        expected_observation_count=3,
+    )
+
+    assert result["database_status"] == "committed_outcome_unknown"
+    assert result["batch_id"] == "xishan-ack-lost"
+    assert "--readback-batch-id xishan-ack-lost" in result["reconcile_with"]
 
 
 def test_postgres_census_snapshots_are_append_only():
@@ -300,7 +362,10 @@ def test_postgres_census_snapshots_are_append_only():
                     root_south, root_west, root_north, root_east, max_depth,
                     run_status, enumeration_status, request_status,
                     snapshot_status, detail_status, geometry_status,
-                    leaderboard_status, request_count, unique_segment_count,
+                    leaderboard_status, planned_request_count,
+                    attempted_request_count, succeeded_request_count,
+                    failed_request_count, blocked_request_count,
+                    unique_segment_count,
                     included_segment_count, outside_segment_count,
                     unknown_membership_count,
                     detail_complete_count, geometry_complete_count,
@@ -313,7 +378,7 @@ def test_postgres_census_snapshots_are_append_only():
                     'test', 37, 112, 38, 113, 0, 'completed',
                     'source_visible_complete', 'complete', 'complete',
                     'not_collected', 'not_collected', 'not_collected',
-                    2, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     '{}'::jsonb, ST_GeomFromText('POLYGON((112 37,113 37,113 38,112 38,112 37))', 4326),
                     '[]'::jsonb, '{}'::jsonb, false,
                     now(), now()

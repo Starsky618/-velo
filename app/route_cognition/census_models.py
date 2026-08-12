@@ -54,7 +54,11 @@ class SegmentCensusBatch(Base):
     detail_status = Column(String(16), nullable=False)
     geometry_status = Column(String(16), nullable=False)
     leaderboard_status = Column(String(16), nullable=False)
-    request_count = Column(Integer, nullable=False)
+    planned_request_count = Column(Integer, nullable=False)
+    attempted_request_count = Column(Integer, nullable=False)
+    succeeded_request_count = Column(Integer, nullable=False)
+    failed_request_count = Column(Integer, nullable=False)
+    blocked_request_count = Column(Integer, nullable=False)
     unique_segment_count = Column(Integer, nullable=False)
     included_segment_count = Column(Integer, nullable=False)
     outside_segment_count = Column(Integer, nullable=False)
@@ -99,13 +103,28 @@ class SegmentCensusBatch(Base):
             name="ck_segment_census_batches_polygon_valid",
         ),
         CheckConstraint(
-            "max_depth >= 0 AND request_count >= 0 AND unique_segment_count >= 0 "
+            "max_depth >= 0 AND planned_request_count >= 0 "
+            "AND attempted_request_count >= 0 AND succeeded_request_count >= 0 "
+            "AND failed_request_count >= 0 AND blocked_request_count >= 0 "
+            "AND unique_segment_count >= 0 "
             "AND included_segment_count >= 0 AND outside_segment_count >= 0 "
             "AND unknown_membership_count >= 0 "
             "AND detail_complete_count >= 0 AND geometry_complete_count >= 0 "
             "AND leaderboard_complete_count >= 0 "
             "AND saturated_cell_count >= 0 AND error_count >= 0",
             name="ck_segment_census_batches_counts",
+        ),
+        CheckConstraint(
+            "succeeded_request_count + failed_request_count + blocked_request_count "
+            "= planned_request_count",
+            name="ck_segment_census_batches_request_accounting",
+        ),
+        CheckConstraint(
+            "(request_status = 'complete' AND failed_request_count = 0 "
+            "AND blocked_request_count = 0) OR "
+            "(request_status = 'incomplete' AND "
+            "(failed_request_count > 0 OR blocked_request_count > 0))",
+            name="ck_segment_census_batches_request_status",
         ),
         CheckConstraint(
             "included_segment_count + outside_segment_count + unknown_membership_count "

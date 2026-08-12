@@ -47,20 +47,38 @@ PROTOCOL_VERSION = "strava_explore_quadtree_v1"
 VISIBILITY_CONTEXT = "authorized_athlete_public_segments"
 
 
+class CensusRequestBlockedError(RuntimeError):
+    """一次计划中的来源请求在真正发出前被额度门阻断。"""
+
+
 class CensusAttemptGovernor:
     """对每个真实 HTTP attempt 限速，并在共享 Redis 中原子占额。"""
 
     def __init__(self, interval_seconds: float, max_requests: int) -> None:
         self.interval_seconds = interval_seconds
         self.max_requests = max_requests
-        self.count = 0
-        self.blocked_attempt_count = 0
+        self.planned_request_count = 0
+        self.attempted_request_count = 0
+        self.succeeded_request_count = 0
+        self.failed_request_count = 0
+        self.blocked_request_count = 0
         self._last_request_started: float | None = None
 
+    def begin_logical_request(self) -> None:
+        self.planned_request_count += 1
+
+    def finish_logical_request(self) -> None:
+        self.succeeded_request_count += 1
+
+    def fail_logical_request(self, *, blocked: bool) -> None:
+        if blocked:
+            self.blocked_request_count += 1
+        else:
+            self.failed_request_count += 1
+
     def before_http_attempt(self) -> None:
-        if self.count >= self.max_requests:
-            self.blocked_attempt_count += 1
-            raise RuntimeError(f"本批次 API 请求超过上限 {self.max_requests}")
+        if self.attempted_request_count >= self.max_requests:
+            raise CensusRequestBlockedError(f"本批次 API 请求超过上限 {self.max_requests}")
         now = time.monotonic()
         if self._last_request_started is not None:
             remaining = self.interval_seconds - (now - self._last_request_started)
@@ -69,13 +87,12 @@ class CensusAttemptGovernor:
         try:
             reserve_strava_read_attempt(fail_closed=True)
         except Exception as exc:
-            self.blocked_attempt_count += 1
-            raise RuntimeError(f"批量普查请求未获共享配额：{exc}") from exc
+            raise CensusRequestBlockedError(f"批量普查请求未获共享配额：{exc}") from exc
         self._last_request_started = time.monotonic()
-        self.count += 1
-        if self.count == 1 or self.count % 20 == 0:
+        self.attempted_request_count += 1
+        if self.attempted_request_count == 1 or self.attempted_request_count % 20 == 0:
             print(
-                json.dumps({"progress_api_requests": self.count}),
+                json.dumps({"progress_api_requests": self.attempted_request_count}),
                 file=sys.stderr,
                 flush=True,
             )
@@ -89,8 +106,10 @@ class ShortLivedStravaClient:
         self.attempt_governor = attempt_governor
 
     def _call(self, method_name: str, *args):
-        db = SessionLocal()
+        self.attempt_governor.begin_logical_request()
+        db = None
         try:
+            db = SessionLocal()
             user = db.get(User, self.user_id)
             if user is None:
                 raise RuntimeError("Strava 授权用户已不存在")
@@ -99,9 +118,19 @@ class ShortLivedStravaClient:
                 user,
                 attempt_governor=self.attempt_governor.before_http_attempt,
             )
-            return getattr(client, method_name)(*args)
+            result = getattr(client, method_name)(*args)
+        except CensusRequestBlockedError:
+            self.attempt_governor.fail_logical_request(blocked=True)
+            raise
+        except Exception:
+            self.attempt_governor.fail_logical_request(blocked=False)
+            raise
+        else:
+            self.attempt_governor.finish_logical_request()
+            return result
         finally:
-            db.close()
+            if db is not None:
+                db.close()
 
     def explore_segments(self, bounds):
         return self._call("explore_segments", bounds)
@@ -181,7 +210,17 @@ def _enumeration_status(passes: list, diff: dict) -> str:
     return "source_visible_complete" if clean and diff["identical"] else "indeterminate"
 
 
-def _result_summary(*, batch_id: str | None, status: str, passes: list, diff: dict, request_count: int) -> dict:
+def _request_counts(governor: CensusAttemptGovernor) -> dict[str, int]:
+    return {
+        "planned_request_count": governor.planned_request_count,
+        "attempted_request_count": governor.attempted_request_count,
+        "succeeded_request_count": governor.succeeded_request_count,
+        "failed_request_count": governor.failed_request_count,
+        "blocked_request_count": governor.blocked_request_count,
+    }
+
+
+def _result_summary(*, batch_id: str | None, status: str, passes: list, diff: dict, governor: CensusAttemptGovernor) -> dict:
     union_ids = sorted(set().union(*(item.segment_ids for item in passes)))
     return {
         "batch_id": batch_id,
@@ -193,7 +232,7 @@ def _result_summary(*, batch_id: str | None, status: str, passes: list, diff: di
         "passes_identical": diff["identical"],
         "saturated_cell_count": sum(len(item.saturated_cells) for item in passes),
         "enumeration_error_count": sum(len(item.errors) for item in passes),
-        "api_request_count": request_count,
+        **_request_counts(governor),
     }
 
 
@@ -205,6 +244,14 @@ def _axis_status(total: int, complete: int) -> str:
     if complete == 0:
         return "failed"
     return "partial"
+
+
+def _request_status(governor: CensusAttemptGovernor) -> str:
+    return (
+        "incomplete"
+        if governor.failed_request_count or governor.blocked_request_count
+        else "complete"
+    )
 
 
 def _readback_batch(batch_id: str) -> dict:
@@ -234,6 +281,11 @@ def _readback_batch(batch_id: str) -> dict:
             "detail_status": stored.detail_status,
             "geometry_status": stored.geometry_status,
             "leaderboard_status": stored.leaderboard_status,
+            "planned_request_count": stored.planned_request_count,
+            "attempted_request_count": stored.attempted_request_count,
+            "succeeded_request_count": stored.succeeded_request_count,
+            "failed_request_count": stored.failed_request_count,
+            "blocked_request_count": stored.blocked_request_count,
             "stored_observation_count": stored_count,
             "unique_segment_count": stored.unique_segment_count,
             "included_segment_count": stored.included_segment_count,
@@ -260,6 +312,32 @@ def _post_commit_result(batch_id: str) -> dict:
             "reconcile_with": f"--readback-batch-id {batch_id}",
             "readback_error": f"{type(exc).__name__}:{str(exc)[:160]}",
         }
+
+
+def _commit_census_transaction(write_db, *, batch_id: str, expected_observation_count: int) -> dict | None:
+    """提交前同事务核数；commit 回执异常只能报告结果未知。"""
+    write_db.flush()
+    transaction_count = (
+        write_db.query(func.count(SegmentSourceObservation.id))
+        .filter(SegmentSourceObservation.census_batch_id == batch_id)
+        .scalar()
+    )
+    if transaction_count != expected_observation_count:
+        raise RuntimeError("提交前事务内观测数量校验失败")
+    try:
+        write_db.commit()
+    except Exception as exc:
+        try:
+            write_db.rollback()
+        except Exception:
+            pass
+        return {
+            "database_status": "committed_outcome_unknown",
+            "batch_id": batch_id,
+            "reconcile_with": f"--readback-batch-id {batch_id}",
+            "commit_error": f"{type(exc).__name__}:{str(exc)[:160]}",
+        }
+    return None
 
 
 def run(args: argparse.Namespace) -> dict:
@@ -294,7 +372,7 @@ def run(args: argparse.Namespace) -> dict:
             status=status,
             passes=passes,
             diff=diff,
-            request_count=governor.count,
+            governor=governor,
         )
 
     batch_id = args.batch_id or _default_batch_id(started_at)
@@ -337,7 +415,7 @@ def run(args: argparse.Namespace) -> dict:
     unknown_membership_count = sum(
         item["region_membership"] == "unknown" for item in observations
     )
-    request_status = "incomplete" if governor.blocked_attempt_count else "complete"
+    request_status = _request_status(governor)
     detail_status = _axis_status(len(observations), detail_complete_count)
     geometry_status = _axis_status(len(observations), geometry_complete_count)
     has_errors = (
@@ -368,7 +446,7 @@ def run(args: argparse.Namespace) -> dict:
         detail_status=detail_status,
         geometry_status=geometry_status,
         leaderboard_status="not_collected",
-        request_count=governor.count,
+        **_request_counts(governor),
         unique_segment_count=len(observations),
         included_segment_count=included_segment_count,
         outside_segment_count=outside_segment_count,
@@ -385,6 +463,7 @@ def run(args: argparse.Namespace) -> dict:
         finished_at=finished_at,
     )
     write_db = SessionLocal()
+    commit_outcome = None
     try:
         if write_db.get(SegmentCensusBatch, batch_id) is not None:
             raise RuntimeError(f"batch_id 已存在：{batch_id}")
@@ -398,22 +477,18 @@ def run(args: argparse.Namespace) -> dict:
                     **item,
                 )
             )
-        write_db.flush()
-        transaction_count = (
-            write_db.query(func.count(SegmentSourceObservation.id))
-            .filter(SegmentSourceObservation.census_batch_id == batch_id)
-            .scalar()
+        commit_outcome = _commit_census_transaction(
+            write_db,
+            batch_id=batch_id,
+            expected_observation_count=len(observations),
         )
-        if transaction_count != len(observations):
-            raise RuntimeError("提交前事务内观测数量校验失败")
-        write_db.commit()
     except Exception:
         write_db.rollback()
         raise
     finally:
         write_db.close()
 
-    return _post_commit_result(batch_id)
+    return commit_outcome or _post_commit_result(batch_id)
 
 
 def main() -> int:
