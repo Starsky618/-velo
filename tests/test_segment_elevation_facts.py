@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import os
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -9,6 +10,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
 
 from app.elevation.route_elevation import ROUTE_ELEVATION_METHOD, RouteElevationResult
+from app.route_cognition.census_models import SegmentElevationFact
 from app.route_cognition.segment_elevation_facts import (
     SOURCE_GEOMETRY_NORMALIZATION_VERSION,
     build_segment_elevation_fact,
@@ -17,9 +19,12 @@ from app.route_cognition.segment_elevation_facts import (
     source_geometry_hash,
 )
 from scripts.backfill_segment_elevation_facts import (
+    _audit_source_incomplete_items,
     _commit_fact_batch,
+    _partition_source_rows,
     _post_commit_result,
     compute_fact_batch,
+    main,
     readback_fact_batch,
 )
 
@@ -112,6 +117,85 @@ def test_dem_failure_is_a_saved_fact_outcome_not_a_missing_row():
     )
 
 
+def test_geometry_eligibility_does_not_depend_on_detail_status():
+    observation = SimpleNamespace(
+        id=9,
+        source_segment_id="40127008",
+        detail_status="failed",
+        geometry_status="complete",
+        geometry_point_count=3,
+    )
+    rows = [
+        (
+            observation,
+            "LINESTRING(112.3 37.8,112.31 37.81,112.32 37.82)",
+        )
+    ]
+
+    eligible, incomplete = _partition_source_rows(rows)
+
+    assert eligible == rows
+    assert incomplete == []
+
+
+def test_zero_length_source_geometry_is_incomplete_before_fact_building():
+    observation = SimpleNamespace(
+        id=10,
+        source_segment_id="40127009",
+        detail_status="complete",
+        geometry_status="complete",
+        geometry_point_count=2,
+    )
+
+    eligible, incomplete = _partition_source_rows(
+        [(observation, "LINESTRING(112.3 37.8,112.3 37.8)")]
+    )
+
+    assert eligible == []
+    assert incomplete[0]["source_segment_id"] == "40127009"
+    assert incomplete[0]["reasons"][0].startswith("geometry_invalid:ValueError:")
+
+
+def test_nullable_jsonb_fact_columns_bind_python_none_as_sql_null():
+    for name in (
+        "elevation_snapshot_json",
+        "elevation_profile_json",
+        "failure_json",
+    ):
+        assert SegmentElevationFact.__table__.c[name].type.none_as_null is True
+
+
+def test_source_incomplete_account_binds_observation_id_segment_id_and_reasons():
+    valid_ids, valid_errors = _audit_source_incomplete_items(
+        [
+            {
+                "source_observation_id": 7,
+                "source_segment_id": "25967365",
+                "reasons": ["geometry_status:failed"],
+            }
+        ],
+        {7: "25967365"},
+    )
+    invalid_ids, invalid_errors = _audit_source_incomplete_items(
+        [
+            {
+                "source_observation_id": 7,
+                "source_segment_id": "wrong",
+                "reasons": [],
+            }
+        ],
+        {7: "25967365"},
+    )
+
+    assert valid_ids == {7}
+    assert valid_errors == []
+    assert invalid_ids == {7}
+    assert invalid_errors == [
+        "item_0:source_segment_id_mismatch",
+        "item_0:invalid_reasons",
+    ]
+
+
 @pytest.mark.parametrize(
     "value",
     [
@@ -135,6 +219,26 @@ def test_migration_has_short_revision_and_append_only_fact_tables():
     assert "segment_elevation_facts" in migration
     assert "reject_segment_census_mutation" in migration
     assert "complete_count + failed_count = eligible_geometry_count" in migration
+    assert "uq_segment_elev_fact_batch_observation" in migration
+    assert "uq_segment_elev_fact_batch_attempt" in migration
+    assert "input_observation_set_hash" in migration
+
+
+def test_cli_returns_nonzero_when_an_attempt_has_failures(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "scripts.backfill_segment_elevation_facts._parse_args",
+        lambda: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "scripts.backfill_segment_elevation_facts.run",
+        lambda _args: {
+            "database_status": "committed_and_read_back",
+            "run_status": "completed_with_failures",
+        },
+    )
+
+    assert main() == 4
+    assert "completed_with_failures" in capsys.readouterr().out
 
 
 def test_post_commit_readback_failure_reports_unknown_not_uncommitted(monkeypatch):
@@ -196,15 +300,20 @@ def test_postgres_elevation_fact_tables_are_append_only():
                 """
                 INSERT INTO segment_elevation_fact_batches (
                     id, census_batch_id, scope, algorithm_version,
-                    geometry_normalization_version, run_status,
+                    geometry_normalization_version, attempt_number,
+                    input_observation_set_hash, run_status,
                     input_observation_count, eligible_geometry_count,
                     source_incomplete_count, source_incomplete_json,
                     complete_count, failed_count, started_at, finished_at
                 ) VALUES (
                     :id, :census_id, 'inside_or_crosses',
                     'glo30_meaningful_ascent_v1',
-                    'strava_source_line_lonlat_7dp_v1', 'completed',
-                    0, 0, 0, '[]'::jsonb, 0, 0, now(), now()
+                    'strava_source_line_lonlat_7dp_v1', 1,
+                    repeat('0', 64), 'completed_with_failures',
+                    1, 0, 1,
+                    '[{"source_observation_id":1,"source_segment_id":"1",'
+                    '"reasons":["test"]}]'::jsonb,
+                    0, 0, now(), now()
                 )
                 """
             ),
@@ -233,7 +342,7 @@ def test_postgres_elevation_fact_tables_are_append_only():
             connection.execute(
                 text(
                     "UPDATE segment_elevation_fact_batches "
-                    "SET run_status='completed_with_failures' WHERE id=:id"
+                    "SET run_status='completed' WHERE id=:id"
                 ),
                 {"id": fact_batch_id},
             )
@@ -245,7 +354,8 @@ def test_postgres_fact_writer_accounts_every_selected_observation():
         pytest.skip("仅在 CI 的临时 PostgreSQL/PostGIS 上验证事实 writer 与回读")
     engine = create_engine(database_url)
     census_id = f"test-{uuid4().hex}"
-    fact_batch_id = f"fact-{uuid4().hex}"
+    failed_batch_id = f"fact-failed-{uuid4().hex}"
+    fact_batch_id = f"fact-complete-{uuid4().hex}"
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -310,10 +420,27 @@ def test_postgres_fact_writer_accounts_every_selected_observation():
     Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
     db = Session()
     try:
+        failed_batch, failed_facts = compute_fact_batch(
+            db,
+            census_batch_id=census_id,
+            batch_id=failed_batch_id,
+            attempt_number=1,
+            elevation_builder=lambda _points: (_ for _ in ()).throw(
+                ConnectionError("temporary tile failure")
+            ),
+        )
+        assert failed_batch.run_status == "completed_with_failures"
+        assert failed_batch.failed_count == 1
+        assert _commit_fact_batch(db, failed_batch, failed_facts) is None
+        failed_result = readback_fact_batch(db, failed_batch_id)
+        assert failed_result["database_status"] == "committed_and_read_back"
+        assert failed_result["elevation_fact_batch_status"] == "incomplete"
+
         batch, facts = compute_fact_batch(
             db,
             census_batch_id=census_id,
             batch_id=fact_batch_id,
+            attempt_number=2,
             elevation_builder=_result_for,
         )
         assert batch.input_observation_count == 1
@@ -329,5 +456,60 @@ def test_postgres_fact_writer_accounts_every_selected_observation():
         assert result["distinct_source_id_count"] == 1
         assert result["point_mismatch_count"] == 0
         assert result["method_mismatch_count"] == 0
+        assert result["attempt_number"] == 2
+        assert result["exact_observation_set_match"] is True
+        assert result["elevation_fact_batch_status"] == "complete"
+        assert result["single_segment_foundation_status"] == (
+            "not_certified_axes_reported_separately"
+        )
+        sql_null = db.execute(
+            text(
+                "SELECT failure_json IS NULL "
+                "FROM segment_elevation_facts WHERE fact_batch_id=:batch_id"
+            ),
+            {"batch_id": fact_batch_id},
+        ).scalar_one()
+        assert sql_null is True
+        failed_sql_nulls = db.execute(
+            text(
+                "SELECT elevation_snapshot_json IS NULL, "
+                "elevation_profile_json IS NULL, failure_json IS NOT NULL "
+                "FROM segment_elevation_facts WHERE fact_batch_id=:batch_id"
+            ),
+            {"batch_id": failed_batch_id},
+        ).one()
+        assert tuple(failed_sql_nulls) == (True, True, True)
+
+        db.execute(
+            text(
+                """
+                INSERT INTO segment_source_observations (
+                    census_batch_id, source_platform, source_segment_id,
+                    source_url, source_name, observed_at, activity_type,
+                    distance_m, start_lat, start_lon, end_lat, end_lon,
+                    source_line, geometry_point_count, geometry_original_size,
+                    geometry_resolution, query_bounds_relation, region_membership,
+                    seen_passes_json, detail_status, geometry_status,
+                    leaderboard_status
+                ) VALUES (
+                    :batch_id, 'strava', '40127007',
+                    'https://www.strava.com/segments/40127007', '后插赛段', now(),
+                    'Ride', 2800.0, 37.8, 112.3, 37.82, 112.32,
+                    ST_GeomFromText(
+                        'LINESTRING(112.3 37.8,112.31 37.81,112.32 37.82)',
+                        4326
+                    ),
+                    3, 3, 'high', 'inside', 'inside',
+                    '{"1":["cell"],"2":["cell"]}'::jsonb,
+                    'complete', 'complete', 'not_collected'
+                )
+                """
+            ),
+            {"batch_id": census_id},
+        )
+        db.commit()
+        drifted_result = readback_fact_batch(db, fact_batch_id)
+        assert drifted_result["database_status"] == "readback_mismatch"
+        assert drifted_result["exact_observation_set_match"] is False
     finally:
         db.close()

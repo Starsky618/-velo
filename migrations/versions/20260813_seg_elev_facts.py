@@ -17,9 +17,9 @@ depends_on = None
 
 def upgrade() -> None:
     op.create_unique_constraint(
-        "uq_segment_source_obs_id_batch",
+        "uq_segment_source_obs_id_batch_source_id",
         "segment_source_observations",
-        ["id", "census_batch_id"],
+        ["id", "census_batch_id", "source_segment_id"],
     )
 
     op.create_table(
@@ -29,6 +29,8 @@ def upgrade() -> None:
         sa.Column("scope", sa.String(length=32), nullable=False),
         sa.Column("algorithm_version", sa.String(length=64), nullable=False),
         sa.Column("geometry_normalization_version", sa.String(length=64), nullable=False),
+        sa.Column("attempt_number", sa.Integer(), nullable=False),
+        sa.Column("input_observation_set_hash", sa.String(length=64), nullable=False),
         sa.Column("run_status", sa.String(length=32), nullable=False),
         sa.Column("input_observation_count", sa.Integer(), nullable=False),
         sa.Column("eligible_geometry_count", sa.Integer(), nullable=False),
@@ -53,10 +55,15 @@ def upgrade() -> None:
             name="ck_segment_elev_fact_batch_status",
         ),
         sa.CheckConstraint(
-            "input_observation_count >= 0 AND eligible_geometry_count >= 0 "
+            "attempt_number >= 1 AND input_observation_count > 0 "
+            "AND eligible_geometry_count >= 0 "
             "AND source_incomplete_count >= 0 AND complete_count >= 0 "
             "AND failed_count >= 0",
             name="ck_segment_elev_fact_batch_counts",
+        ),
+        sa.CheckConstraint(
+            "input_observation_set_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_segment_elev_fact_batch_input_hash",
         ),
         sa.CheckConstraint(
             "eligible_geometry_count + source_incomplete_count = input_observation_count "
@@ -78,14 +85,17 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "id",
             "census_batch_id",
-            name="uq_segment_elev_fact_batch_id_census",
+            "algorithm_version",
+            "geometry_normalization_version",
+            name="uq_segment_elev_fact_batch_identity",
         ),
         sa.UniqueConstraint(
             "census_batch_id",
             "algorithm_version",
             "geometry_normalization_version",
             "scope",
-            name="uq_segment_elev_fact_batch_inputs",
+            "attempt_number",
+            name="uq_segment_elev_fact_batch_attempt",
         ),
     )
     op.create_index(
@@ -106,8 +116,16 @@ def upgrade() -> None:
         sa.Column("algorithm_version", sa.String(length=64), nullable=False),
         sa.Column("fact_status", sa.String(length=16), nullable=False),
         sa.Column("method_metadata_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column("elevation_snapshot_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("elevation_profile_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column(
+            "elevation_snapshot_json",
+            postgresql.JSONB(none_as_null=True, astext_type=sa.Text()),
+            nullable=True,
+        ),
+        sa.Column(
+            "elevation_profile_json",
+            postgresql.JSONB(none_as_null=True, astext_type=sa.Text()),
+            nullable=True,
+        ),
         sa.Column("source_point_count", sa.Integer(), nullable=False),
         sa.Column("elevation_point_count", sa.Integer(), nullable=True),
         sa.Column("derived_distance_m", sa.Float(), nullable=True),
@@ -123,7 +141,11 @@ def upgrade() -> None:
         sa.Column("maximum_gradient_window_m", sa.Float(), nullable=True),
         sa.Column("source_distance_difference_pct", sa.Float(), nullable=True),
         sa.Column("quality_flags_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column("failure_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column(
+            "failure_json",
+            postgresql.JSONB(none_as_null=True, astext_type=sa.Text()),
+            nullable=True,
+        ),
         sa.Column("computed_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column(
             "created_at",
@@ -143,6 +165,10 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "source_distance_difference_pct IS NULL OR source_distance_difference_pct >= 0",
             name="ck_segment_elev_fact_distance_diff",
+        ),
+        sa.CheckConstraint(
+            "source_geometry_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_segment_elev_fact_geometry_hash",
         ),
         sa.CheckConstraint(
             "(fact_status = 'complete' AND elevation_snapshot_json IS NOT NULL "
@@ -165,29 +191,36 @@ def upgrade() -> None:
             name="ck_segment_elev_fact_payload",
         ),
         sa.ForeignKeyConstraint(
-            ["fact_batch_id", "census_batch_id"],
+            [
+                "fact_batch_id",
+                "census_batch_id",
+                "algorithm_version",
+                "geometry_normalization_version",
+            ],
             [
                 "segment_elevation_fact_batches.id",
                 "segment_elevation_fact_batches.census_batch_id",
+                "segment_elevation_fact_batches.algorithm_version",
+                "segment_elevation_fact_batches.geometry_normalization_version",
             ],
             ondelete="RESTRICT",
             name="fk_segment_elev_fact_batch_census",
         ),
         sa.ForeignKeyConstraint(
-            ["source_observation_id", "census_batch_id"],
+            ["source_observation_id", "census_batch_id", "source_segment_id"],
             [
                 "segment_source_observations.id",
                 "segment_source_observations.census_batch_id",
+                "segment_source_observations.source_segment_id",
             ],
             ondelete="RESTRICT",
             name="fk_segment_elev_fact_source_observation",
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
+            "fact_batch_id",
             "source_observation_id",
-            "source_geometry_hash",
-            "algorithm_version",
-            name="uq_segment_elev_fact_input_version",
+            name="uq_segment_elev_fact_batch_observation",
         ),
     )
     op.create_index(
@@ -233,7 +266,7 @@ def downgrade() -> None:
     )
     op.drop_table("segment_elevation_fact_batches")
     op.drop_constraint(
-        "uq_segment_source_obs_id_batch",
+        "uq_segment_source_obs_id_batch_source_id",
         "segment_source_observations",
         type_="unique",
     )

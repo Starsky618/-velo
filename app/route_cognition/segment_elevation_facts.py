@@ -58,6 +58,19 @@ def source_geometry_hash(points: list[list[float]]) -> str:
     return stable_line_hash(canonical_source_line_wkt(points))
 
 
+def validated_source_geometry(
+    source_line_wkt: str,
+    source_point_count: int,
+) -> tuple[list[list[float]], str, float]:
+    """一次完成来源几何资格校验，供分账和事实构建共用。"""
+    points = points_from_linestring_wkt(source_line_wkt)
+    if len(points) != source_point_count:
+        raise ValueError("来源几何点数与观测账不一致")
+    geometry_hash = source_geometry_hash(points)
+    derived_distance_m = _route_distance_m(points)
+    return points, geometry_hash, derived_distance_m
+
+
 def build_segment_elevation_fact(
     *,
     source_observation_id: int,
@@ -69,11 +82,10 @@ def build_segment_elevation_fact(
     computed_at: datetime | None = None,
 ) -> dict:
     """返回一条 complete/failed 事实；DEM 失败也保留输入 hash 和失败账。"""
-    points = points_from_linestring_wkt(source_line_wkt)
-    if len(points) != source_point_count:
-        raise ValueError("来源几何点数与观测账不一致")
-    geometry_hash = source_geometry_hash(points)
-    derived_distance_m = _route_distance_m(points)
+    points, geometry_hash, derived_distance_m = validated_source_geometry(
+        source_line_wkt,
+        source_point_count,
+    )
     distance_difference_pct = _distance_difference_pct(
         source_distance_m,
         derived_distance_m,
