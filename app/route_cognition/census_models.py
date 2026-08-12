@@ -6,12 +6,14 @@
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Column,
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -251,6 +253,11 @@ class SegmentSourceObservation(Base):
             "source_segment_id",
             name="uq_segment_source_obs_batch_source_id",
         ),
+        UniqueConstraint(
+            "id",
+            "census_batch_id",
+            name="uq_segment_source_obs_id_batch",
+        ),
         Index(
             "idx_segment_source_obs_source_id",
             "source_platform",
@@ -259,4 +266,171 @@ class SegmentSourceObservation(Base):
         ),
         Index("idx_segment_source_obs_batch", "census_batch_id"),
         Index("idx_segment_source_obs_line", "source_line", postgresql_using="gist"),
+    )
+
+
+class SegmentElevationFactBatch(Base):
+    """对一个冻结普查批次逐条生成的不可变 GLO-30 事实批次。"""
+
+    __tablename__ = "segment_elevation_fact_batches"
+
+    id = Column(String(64), primary_key=True)
+    census_batch_id = Column(
+        String(64),
+        ForeignKey("segment_census_batches.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    scope = Column(String(32), nullable=False)
+    algorithm_version = Column(String(64), nullable=False)
+    geometry_normalization_version = Column(String(64), nullable=False)
+    run_status = Column(String(32), nullable=False)
+    input_observation_count = Column(Integer, nullable=False)
+    eligible_geometry_count = Column(Integer, nullable=False)
+    source_incomplete_count = Column(Integer, nullable=False)
+    source_incomplete_json = Column(JSONB, nullable=False)
+    complete_count = Column(Integer, nullable=False)
+    failed_count = Column(Integer, nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "scope = 'inside_or_crosses'",
+            name="ck_segment_elev_fact_batch_scope",
+        ),
+        CheckConstraint(
+            "run_status IN ('completed', 'completed_with_failures')",
+            name="ck_segment_elev_fact_batch_status",
+        ),
+        CheckConstraint(
+            "input_observation_count >= 0 AND eligible_geometry_count >= 0 "
+            "AND source_incomplete_count >= 0 AND complete_count >= 0 "
+            "AND failed_count >= 0",
+            name="ck_segment_elev_fact_batch_counts",
+        ),
+        CheckConstraint(
+            "eligible_geometry_count + source_incomplete_count = input_observation_count "
+            "AND complete_count + failed_count = eligible_geometry_count",
+            name="ck_segment_elev_fact_batch_accounting",
+        ),
+        CheckConstraint(
+            "(run_status = 'completed' AND source_incomplete_count = 0 AND failed_count = 0) "
+            "OR (run_status = 'completed_with_failures' "
+            "AND (source_incomplete_count > 0 OR failed_count > 0))",
+            name="ck_segment_elev_fact_batch_outcome",
+        ),
+        UniqueConstraint(
+            "id",
+            "census_batch_id",
+            name="uq_segment_elev_fact_batch_id_census",
+        ),
+        UniqueConstraint(
+            "census_batch_id",
+            "algorithm_version",
+            "geometry_normalization_version",
+            "scope",
+            name="uq_segment_elev_fact_batch_inputs",
+        ),
+        Index("idx_segment_elev_fact_batch_census", "census_batch_id"),
+    )
+
+
+class SegmentElevationFact(Base):
+    """一条来源线在固定 hash 和算法版本上的 GLO-30 派生事实。"""
+
+    __tablename__ = "segment_elevation_facts"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    fact_batch_id = Column(String(64), nullable=False)
+    census_batch_id = Column(String(64), nullable=False)
+    source_observation_id = Column(Integer, nullable=False)
+    source_segment_id = Column(String(64), nullable=False)
+    source_geometry_hash = Column(String(64), nullable=False)
+    geometry_normalization_version = Column(String(64), nullable=False)
+    algorithm_version = Column(String(64), nullable=False)
+    fact_status = Column(String(16), nullable=False)
+    method_metadata_json = Column(JSONB, nullable=False)
+    elevation_snapshot_json = Column(JSONB, nullable=True)
+    elevation_profile_json = Column(JSONB, nullable=True)
+    source_point_count = Column(Integer, nullable=False)
+    elevation_point_count = Column(Integer, nullable=True)
+    derived_distance_m = Column(Float, nullable=True)
+    climb_m = Column(Float, nullable=True)
+    descent_m = Column(Float, nullable=True)
+    start_elevation_m = Column(Float, nullable=True)
+    end_elevation_m = Column(Float, nullable=True)
+    minimum_elevation_m = Column(Float, nullable=True)
+    maximum_elevation_m = Column(Float, nullable=True)
+    net_elevation_change_m = Column(Float, nullable=True)
+    average_gradient_pct = Column(Float, nullable=True)
+    maximum_gradient_pct = Column(Float, nullable=True)
+    maximum_gradient_window_m = Column(Float, nullable=True)
+    source_distance_difference_pct = Column(Float, nullable=True)
+    quality_flags_json = Column(JSONB, nullable=False)
+    failure_json = Column(JSONB, nullable=True)
+    computed_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["fact_batch_id", "census_batch_id"],
+            [
+                "segment_elevation_fact_batches.id",
+                "segment_elevation_fact_batches.census_batch_id",
+            ],
+            ondelete="RESTRICT",
+            name="fk_segment_elev_fact_batch_census",
+        ),
+        ForeignKeyConstraint(
+            ["source_observation_id", "census_batch_id"],
+            [
+                "segment_source_observations.id",
+                "segment_source_observations.census_batch_id",
+            ],
+            ondelete="RESTRICT",
+            name="fk_segment_elev_fact_source_observation",
+        ),
+        CheckConstraint(
+            "fact_status IN ('complete', 'failed')",
+            name="ck_segment_elev_fact_status",
+        ),
+        CheckConstraint(
+            "source_point_count >= 2 AND "
+            "(elevation_point_count IS NULL OR elevation_point_count >= 2)",
+            name="ck_segment_elev_fact_point_counts",
+        ),
+        CheckConstraint(
+            "source_distance_difference_pct IS NULL OR source_distance_difference_pct >= 0",
+            name="ck_segment_elev_fact_distance_diff",
+        ),
+        CheckConstraint(
+            "(fact_status = 'complete' AND elevation_snapshot_json IS NOT NULL "
+            "AND elevation_profile_json IS NOT NULL "
+            "AND elevation_point_count = source_point_count "
+            "AND derived_distance_m > 0 AND climb_m >= 0 AND descent_m >= 0 "
+            "AND start_elevation_m IS NOT NULL AND end_elevation_m IS NOT NULL "
+            "AND minimum_elevation_m IS NOT NULL AND maximum_elevation_m IS NOT NULL "
+            "AND net_elevation_change_m IS NOT NULL AND average_gradient_pct IS NOT NULL "
+            "AND maximum_gradient_pct IS NOT NULL AND maximum_gradient_window_m > 0 "
+            "AND failure_json IS NULL) OR "
+            "(fact_status = 'failed' AND elevation_snapshot_json IS NULL "
+            "AND elevation_profile_json IS NULL AND elevation_point_count IS NULL "
+            "AND derived_distance_m IS NULL AND climb_m IS NULL AND descent_m IS NULL "
+            "AND start_elevation_m IS NULL AND end_elevation_m IS NULL "
+            "AND minimum_elevation_m IS NULL AND maximum_elevation_m IS NULL "
+            "AND net_elevation_change_m IS NULL AND average_gradient_pct IS NULL "
+            "AND maximum_gradient_pct IS NULL AND maximum_gradient_window_m IS NULL "
+            "AND failure_json IS NOT NULL)",
+            name="ck_segment_elev_fact_payload",
+        ),
+        UniqueConstraint(
+            "source_observation_id",
+            "source_geometry_hash",
+            "algorithm_version",
+            name="uq_segment_elev_fact_input_version",
+        ),
+        Index("idx_segment_elev_fact_batch", "fact_batch_id"),
+        Index("idx_segment_elev_fact_source", "source_segment_id"),
+        Index("idx_segment_elev_fact_geometry_hash", "source_geometry_hash"),
     )
