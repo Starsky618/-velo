@@ -87,6 +87,11 @@ jobs:
       - name: Upgrade a fresh PostGIS database
         run: python -m alembic upgrade head
 
+      - name: Verify latest migration downgrade and re-upgrade
+        run: |
+          python -m alembic downgrade -1
+          python -m alembic upgrade head
+
       - name: Run tests and reject silent skips
         run: |
           pytest tests/ -q --junitxml=/tmp/tests.xml
