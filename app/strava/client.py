@@ -94,7 +94,7 @@ def reserve_strava_read_attempt(*, fail_closed: bool) -> None:
     except Exception as exc:
         if fail_closed:
             raise RuntimeError("Redis 不可用，拒绝绕过 Strava 共享配额") from exc
-        logger.warning("Redis 不可用，Strava 限流降级放行")
+        logger.exception("Redis 不可用，Strava 限流降级放行")
         return
     if int(reserved) != 1:
         logger.warning(
