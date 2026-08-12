@@ -85,7 +85,7 @@ class StravaClient:
         self.db = db
         self.user = user
 
-    # ===== 公开接口：三个 API 方法 =====
+    # ===== 公开接口 =====
 
     def get_athlete_activities(
         self, before: int | None = None, per_page: int = 30
@@ -134,6 +134,47 @@ class StravaClient:
         }
         return self._request(
             "GET", f"/activities/{activity_id}/streams", params=params
+        )
+
+    def explore_segments(
+        self,
+        bounds: tuple[float, float, float, float],
+        *,
+        activity_type: str = "riding",
+    ) -> dict:
+        """查询一个矩形内 Strava 返回的前 10 条赛段。
+
+        该接口没有分页，因此调用方必须继续细分返回恰好 10 条的空间单元，
+        不能把单次结果称为区域全量。
+        """
+        if activity_type != "riding":
+            raise ValueError("VELO 区域赛段普查只支持 riding")
+        south, west, north, east = bounds
+        if not (-90 <= south < north <= 90 and -180 <= west < east <= 180):
+            raise ValueError("赛段查询 bounds 无效")
+        return self._request(
+            "GET",
+            "/segments/explore",
+            params={
+                "bounds": f"{south:.7f},{west:.7f},{north:.7f},{east:.7f}",
+                "activity_type": activity_type,
+            },
+        )
+
+    def get_segment_detail(self, segment_id: int) -> dict:
+        """获取一条公开 Strava 赛段的结构化详情。"""
+        if segment_id <= 0:
+            raise ValueError("segment_id 必须为正整数")
+        return self._request("GET", f"/segments/{segment_id}")
+
+    def get_segment_latlng_stream(self, segment_id: int) -> dict:
+        """只请求来源几何所需的经纬度流；不持久化返回中的距离流。"""
+        if segment_id <= 0:
+            raise ValueError("segment_id 必须为正整数")
+        return self._request(
+            "GET",
+            f"/segments/{segment_id}/streams",
+            params={"keys": "latlng", "key_by_type": "true"},
         )
 
     # ===== 内部方法 =====
