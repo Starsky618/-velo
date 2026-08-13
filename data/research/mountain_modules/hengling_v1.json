@@ -24,14 +24,7 @@
     "observation_set_sha256": "604878cc272bf6810ee7dc922a41a778674c5cf4f37bfbaea9c292a4f1d2e50f"
   },
   "holdout_observation_ids": [40, 82],
-  "excluded_source_segment_ids": [
-    "33133333",
-    "39979642",
-    "40127007",
-    "40437410",
-    "40589205",
-    "40835241"
-  ],
+  "excluded_source_segment_ids": [],
   "axis_profile_observation_id": 2,
   "role_requirements": [
     {
@@ -129,5 +122,5 @@
     "direct_hengling_taohuagou_connection": "not_claimed",
     "transit_accounting": "完整过境路径单独重算距离、爬升、access与证据覆盖；无赛段热度记unobserved，不记0"
   },
-  "boundary": "横岭公路主走廊目的地积木；横岭 XC 保持排除；o40/o82 只作 off-axis holdout。赛段终点不代表道路终点，不在此凭空生成山顶往返。"
+  "boundary": "横岭公路主走廊目的地积木；非公路 XC 已从活跃数据链删除；o40/o82 只作 off-axis holdout。赛段终点不代表道路终点，不在此凭空生成山顶往返。"
 }

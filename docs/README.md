@@ -134,6 +134,7 @@ docs/                产品、规格、架构、运行规则和历史档案
 | 文档 | 怎么使用 |
 |---|---|
 | [research/README.md](research/README.md) | 路线认知资料索引 |
+| [research/2026-08-13-xishan-multisegment-reproduction-v1.md](research/2026-08-13-xishan-multisegment-reproduction-v1.md) | 西山旧多赛段实验历史证据恢复与当前 TransitPath treatment |
 | [research/route_cognition_v1_1_completion_report.md](research/route_cognition_v1_1_completion_report.md) | DB foundation 完成态 |
 | [research/route_cognition_v1_1_operationalization_plan.md](research/route_cognition_v1_1_operationalization_plan.md) | 地基之后的内部 writer / 审核 / seed 边界 |
 | [research/route_cognition_v1_1_operationalization_slice_completion_report.md](research/route_cognition_v1_1_operationalization_slice_completion_report.md) | internal writer 与 seed dry-run 证据；First Visible Slice 在该报告中仍是建议的下一阶段 |

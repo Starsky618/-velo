@@ -23,7 +23,7 @@
 
 ## 🟡 P2 `[SCALE-TRIGGER]`：西山道路投影先做单走廊确定性 research core，暂不引入全国本地图引擎（2026-08-13）
 
-**当前选择**：桃花沟首刀保留为单走廊投影实验；横岭第二刀改用 Strava 完整来源线作参考轴，通过同一套无地域机械程序 + 区域 manifest 生成有向积木、端口、区间热度和阻塞边。两者均为 `research_shadow`，不生成正式路线，也不把单一参考线升格为 `RoadCarrierGraph`。横岭流程不使用 OSM。
+**当前选择**：桃花沟首刀保留为单走廊投影实验；横岭第二刀改用 Strava 完整来源线作参考轴，通过同一套无地域机械程序 + 区域 manifest 生成有向积木、端口和区间热度。跨积木的第三刀只在有限 destination port pair 之间生成完整 `TransitPath`，再把来源赛段按方向和区间投影为证据；不把赛段 observation 当路网节点，也不做赛段 DFS 全排列。三者均为 `research_shadow`，不生成正式路线，也不把单一参考线升格为 `RoadCarrierGraph`。横岭与 TransitPath 流程不使用 OSM。
 
 **暂缓方案**：本轮不把 pyogrio/Shapely 等本机临时分析依赖加入生产镜像，不导入全国 OSM，不建立 GraphHopper/Valhalla 常驻服务，不设计道路图数据库 schema，也不对 81 条一次性做 provider bake-off。全国方案仍以签名组、ArcSlice posting、局部不可变版本和分层搜索为目标，不做 observation 全配对。
 
@@ -35,7 +35,7 @@
 4. 任一来源线出现多个 carrier hypothesis 分数接近、graph missing/raw conflict，且会影响关系或热度 attribution；
 5. 增量 observation 达到 1,000 条，或一次局部 projection replay 超过 10 分钟。
 
-**检查入口**：`scripts/analyze_taohuagou_carrier_projection.py` 保留首个投影实验；`scripts/export_mountain_module_snapshot.py` 与 `scripts/analyze_mountain_module.py` 按 manifest 只读导出并离线重放山区积木。`tests/test_route_cognition_carrier_projection.py` 锁定重复 fact 幂等、方向隔离、refinement invariance 和稳定 hash，`tests/test_mountain_modules.py` / `tests/test_analyze_mountain_module.py` 锁 exact set、角色覆盖、端口方向、阻塞状态和无地域字面量。扩量前必须新增 corridor gold 与错误唯一吸附指标，不能把 raw matcher 自己的结果当真值 recall。
+**检查入口**：`scripts/analyze_taohuagou_carrier_projection.py` 保留首个投影实验；`scripts/export_mountain_module_snapshot.py` 与 `scripts/analyze_mountain_module.py` 按 manifest 只读导出并离线重放山区积木；`scripts/analyze_xishan_transit_path.py` 直接遍历活跃的 81 条公路 source facts，并对 provider path 的完整距离、GLO 结构与方向 coverage 做 hash 对账；`scripts/analyze_xishan_route_heat.py` 组装完整积木并输出路线级热度向量与确定性 Pareto 排序。相关 tests 锁 exact set、角色覆盖、端口方向、方向热度、重叠去重和连接路 unobserved 语义。扩量前必须新增 corridor gold 与错误唯一吸附指标，不能把 raw matcher 自己的结果当真值 recall。
 
 **越线风险**：继续沿用单 carrier 会把平行道路、桥隧、岔路和 graph missing 压成一个看似精确的 measure，继而错误去重热度或伪造连通；直接把本机 GIS 环境当运行时又会造成 CI/容器不可复现。
 

@@ -1,0 +1,39 @@
+{
+  "baseline_hashes": {
+    "build_xishan_route_network.py": "474cc26e87cc2e7d7deb98b9a64264928b7e4c6d0985f173b6c525d73044660f",
+    "enrich_xishan_route_network.py": "37724cf0487cd576c6e9db4d506ed16c987192df4ca4a2bc2659a0cecbe25467",
+    "find_xishan_component_bridges.py": "89b59f55962c288f2720ecfa1611430c0e6c99e0d5d69b4c0e0e2d2d1b5efd18",
+    "refine_xishan_long_routes.py": "96b953c6568a5b4bdee1931f61f2f00140cc28d777194b9d9b223941c8888ba2",
+    "render_xishan_backbone_visual.py": "fa02569bad7ff25e5df1e4c1485ed11bf953ffd5954b582fab567a069f2f30e9",
+    "xishan-component-bridge-scan.json": "d7cd25136160e3d35017f064e95f4cc82175902c186eff40858c48a3d3ab745a",
+    "xishan-long-route-refinement.json": "8c1b03ffa5a753a61a0e8c3c47bdd1f298d9b1540689001dc4df050d5c997f4c",
+    "xishan-route-network-enriched.json": "8c7fd60be29728b52675f21236afb2284d087e7e1cfad48b0be45ec76c74001e",
+    "xishan-route-network.json": "5c6987fb6976994eb246823b7f89af8f48bd751404200299b08f56d13d3b1ab3"
+  },
+  "falsified_assumptions": [
+    "赛段或旧 route GPX 的端点邻接可以充当道路图邻接",
+    "40m 网格独立道路率可以识别立即反向复走",
+    "默认驾车 profile 足以代表桃花沟真实骑法",
+    "临时核心阈值可以形成稳定路线家族",
+    "把热度字段带入节点即等于路线排序使用了热度"
+  ],
+  "funnel": {
+    "displayed_over_70km": 5,
+    "long_candidates": 1975,
+    "provisional_families": 23,
+    "raw_directed_chains": 4933,
+    "road_reuse_passed": 615
+  },
+  "generated_at": "2026-08-12",
+  "input_breakdown": {
+    "legacy_content_route_gpx": 5,
+    "tencent_reconstructed_strava_candidates": 20
+  },
+  "input_count": 25,
+  "manifest_sha256": "472b34524a20e3a6e3cd74430ce43583baa2294c856bc9bad9d82689c1ab60a3",
+  "reproduction_boundary": "这些 hash 证明本机旧工件身份，不足以精确重跑在线腾讯响应；原输入和代码均未进入 Git。",
+  "schema_version": "xishan_multisegment_baseline_manifest_v1",
+  "source_artifact_commit_status": "never_committed",
+  "source_artifact_location": "/tmp",
+  "status": "historical_research_baseline_not_route_truth"
+}

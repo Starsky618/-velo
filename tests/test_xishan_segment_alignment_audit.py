@@ -15,7 +15,7 @@ PROFILE = Path("data/research/xishan_relation_input_profile_v1.json")
 LEGACY = Path("data/research/taiyuan_strava_local_48_20260812_v1.json")
 
 
-def test_checked_in_alignment_is_exact_87_81_6_and_48_11_37():
+def test_checked_in_alignment_is_exact_active_81_and_48_11_37():
     profile, legacy = load_inputs(PROFILE, LEGACY)
     expected = {
         item["source_segment_id"]
@@ -28,15 +28,9 @@ def test_checked_in_alignment_is_exact_87_81_6_and_48_11_37():
         if item["scope_decision"] == "user_confirmed_outside_xishan"
     }
 
-    assert (profile["candidate_count"], profile["included_count"], profile["excluded_count"]) == (87, 81, 6)
-    assert set(profile["excluded_source_segment_ids"]) == {
-        "33133333",
-        "39979642",
-        "40127007",
-        "40437410",
-        "40589205",
-        "40835241",
-    }
+    assert (profile["candidate_count"], profile["included_count"], profile["excluded_count"]) == (81, 81, 0)
+    assert profile["excluded_source_segment_ids"] == []
+    assert profile["production_cleanup_observation_ids"] == [56, 106, 108, 109, 110, 111]
     assert len(expected) == 11
     assert len(outside) == 37
     assert len(expected | outside) == 48
@@ -84,7 +78,7 @@ def _toy_snapshot():
         },
         {
             "source_observation_id": 2,
-            "source_segment_id": "40127007",
+            "source_segment_id": "90000002",
             "source_geometry_hash": "b" * 64,
             "geometry_normalization_version": "norm-v1",
             "decision": "excluded",
@@ -119,7 +113,7 @@ def _toy_snapshot():
         "candidate_count": 2,
         "included_count": 1,
         "excluded_count": 1,
-        "excluded_source_segment_ids": ["40127007"],
+        "excluded_source_segment_ids": ["90000002"],
         "exclusion_reason_code": "human_confirmed_out_of_road_relation_scope",
         "exclusion_note": "pure_xc",
     }
@@ -192,9 +186,9 @@ def test_snapshot_audit_accepts_only_exact_selection_glo_and_legacy_partitions()
     assert result["legacy_current_xishan_all_included"] is True
 
 
-def test_snapshot_audit_rejects_replaced_xc_even_when_counts_still_add_up():
+def test_snapshot_audit_rejects_replaced_exclusion_even_when_counts_still_add_up():
     profile, legacy, judgment, fact_batch, facts, readback = _toy_snapshot()
-    judgment.result_summary_json["items"][1]["source_segment_id"] = "40437410"
+    judgment.result_summary_json["items"][1]["source_segment_id"] = "90000003"
     profile["selection_payload_sha256"] = canonical_sha256(
         {
             key: value

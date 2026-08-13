@@ -1,7 +1,7 @@
 # 西山公路路线规划确定性算法设计（对抗性审查后最终版 v2）
 
 > 基线：`Starsky618/-velo@21731a1bcf87cc7e6122d4522fdedaa80be7f3a8`  
-> 输入范围：`xishan-road-relation-input-20260813-v1`，87 条候选来源观测中 81 条 included、6 条 excluded  
+> 当前活跃输入范围：`xishan-road-relation-input-20260813-v2`，exact 81 条公路来源观测；历史候选范围已经被用户后续删除决定取代
 > 适用任务：西山公路骑行路线候选生成、机械验证与确定性排序  
 > 不在本设计范围：来源采集、授权、allowlist、人工 scope 审核、现有 route/source persistence 重构、骑中实时导航  
 > 结论性质：算法与评测规范；任何未经实验校准的米数、百分比、权重和搜索预算均不在本文硬编码

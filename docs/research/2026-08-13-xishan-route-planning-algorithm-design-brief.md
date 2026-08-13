@@ -77,15 +77,16 @@ VELO 面向中国城市里的严肃公路车骑手。路线规划输出的是静
 - 2 条 source distance difference 超过当前质量提示阈值，需要作为质量 flag 保留，不能静默删除；
 - leaderboard 没有采集，原始 Strava 响应也不能完整重放。现有热度只能使用已保存的 aggregate 字段并诚实表达缺失。
 
-人工范围审核把 87 条精确分成：
+历史人工范围审核曾把 87 条精确分成：
 
 - 81 条公路关系分析输入；
-- 6 条纯 XC/山地越野来源观测，仅从“公路关系分析输入”中排除；
-- 6 条的 observation、原始 Strava 信息、geometry 和 GLO fact 全部保留，不删除、不改写成全局 `is_road=false`。
+- 6 条纯 XC/山地越野来源观测。
+
+当前本地活跃来源切片是 exact 81，6 条 XC 已永久退出本地活跃数据、关系分析和推荐输入。生产中的历史残留不在本地研究任务中冒险删除，只登记为下次授权部署的清理项。
 
 排除的 Strava ID 是：
 
-`33133333, 39979642, 40127007, 40437410, 40589205, 40835241`
+非公路来源已从活跃关系输入永久删除；生产残留只按内部 observation 编号在下次授权部署时清理，不再进入路线分析。
 
 旧 48 条本地来源集合与当前集合的机械对账是：
 
@@ -101,7 +102,7 @@ VELO 面向中国城市里的严肃公路车骑手。路线规划输出的是静
 - append-only census 与 GLO fact；
 - source ID、observation ID、geometry hash、算法版本和 GLO 事实的 exact-set 回读；
 - 人工确认的 87→81+6 逐条 JudgmentRun；
-- 本次基础交付不新增重复的关系输入表：保留现有逐条 JudgmentRun，另用版本化 scope profile 固定 `87=81+6`、六个 XC ID 和审核 payload hash；只读审计器把它与 87 条 GLO/source readback 及旧 48 清单机械对齐。
+- 当前活跃关系输入直接固定为 81 条公路 observation；非公路来源已移出活跃分析，生产残留等待下一次授权部署清理。
 
 尚未正式实现：
 
@@ -144,7 +145,7 @@ Direction 轴：
 - 阈值附近、geometry 不完整、map matching 多解或 provider 冲突时返回 `indeterminate`；
 - 每条事实绑定双方 observation ID、Strava ID、geometry hash、normalization、algorithm/parameter version；
 - 任一 geometry hash 或道路图版本变化，旧投影、旧关系和相关路线候选必须失效，而不是原地覆盖；
-- 原始 observation 和 GLO fact 永久保留，关系事实按新批次追加。
+- 范围内来源 observation/GLO 与关系事实按新批次保留；明确授权清理的范围外对象可从活跃生产删除，但必须留下不含活跃几何的审计记录。
 
 ## 5. 需要 GPT Pro 正式设计的算法
 
@@ -244,7 +245,7 @@ Direction 轴：
 
 - LLM、名称正则、端点距离或地图缩略图决定 exact/包含/重叠/反向；
 - 把 81 条说成西山完整枚举，掩盖 enumeration indeterminate；
-- 删除六条 XC 的 observation/geometry/GLO，或把局部公路范围决定写成全局真相；
+- 未经授权、未留审计记录就删除来源事实，或把局部公路范围决定写成全局真相；
 - 旧候选 GPX 推翻完整来源 geometry 或用户确认的 37 条非西山边界；
 - 全域永久计算和存储所有 `n²` 对，新增一个对象就全量重跑；
 - 用 overlap connected components 链式吞并不同道路范围；
@@ -306,9 +307,9 @@ GPT Pro 的设计稿必须包含：
 
 关系层：
 
-- 87 条输入必须机械对账为 81 include + 6 exclude，逐条绑定 source observation、Strava ID、geometry hash 和 complete GLO fact；
+- 当前本地活跃输入必须机械对账为 exact 81，逐条绑定 source observation、Strava ID、geometry hash 和 complete GLO fact，且历史 6 条 XC 为零命中；
 - 旧 48 必须对账为 11 当前命中 + 37 用户确认非西山，11 条全部 included、0 条落入 XC 排除；
-- 六条 XC 不生成公路 pair relation，但原始 observation/GLO 仍可回读；
+- 六条 XC 不进入本地活跃来源切片、pair relation 或推荐输入；生产残留仅待下次授权部署清理；
 - 几何或版本变化使相关旧事实失效；
 - exact/equivalent 的分组不因输入顺序变化；overlap 链不能误合并。
 
@@ -346,7 +347,7 @@ Holdout：
 - `app/route_cognition/census_models.py`、`scripts/census_strava_segments.py`：正式 census/observation 事实；
 - `app/route_cognition/segment_elevation_facts.py`、`scripts/backfill_segment_elevation_facts.py`：GLO-30 与 exact-set 回读；
 - `data/research/taiyuan_strava_local_48_20260812_v1.json`：旧 48 的 11+37 范围对账。
-- `data/research/xishan_relation_input_profile_v1.json`：当前 87=81+6、六个 XC ID 和审核 payload hash；
+- `data/research/xishan_relation_input_profile_v1.json`：当前活跃公路 exact 81，以及生产待清理的内部 observation 编号；
 - `scripts/audit_xishan_segment_alignment.py`：对生产 JudgmentRun、source observation、geometry hash、GLO fact 和两份清单做零写入机械回读。
 
 本任务书已经把此前 Grilling、研究文档和 episodes 中与算法有关的目标、反例和底线自包含地写入正文；接收 GPT Pro 的一方不需要拿到那些本地临时/未提交材料。此前材料只提供设计证据，是否已实现仍必须以当前代码、数据库 readback、CI 和部署结果分别判断。

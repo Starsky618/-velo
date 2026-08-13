@@ -1,0 +1,17 @@
+{
+  "boundary": "public pointer only; complete 81 bindings stay in private evidence ledger",
+  "candidate_count": 81,
+  "census_batch_id": "xishan-20260813-v1",
+  "database_write_count": 0,
+  "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+  "excluded_count": 0,
+  "excluded_source_segment_ids": [],
+  "included_binding_sha256": "cb06ecb03b70bae0cf555e890088424e858a52d86a54441776966387b82da14e",
+  "included_count": 81,
+  "manifest_sha256": "5b13d2597198f901ce055d327fddd73c7b11d099ad07ce5ab26d2d4b26c401bf",
+  "profile_key": "xishan-road-relation-input-20260813-v2",
+  "relation_profile_sha256": "eaed05262e3bd516a2f85ef9edc41a3ecbfeaddfd577c3750727fbcf54313cd6",
+  "schema_version": "xishan_relation_selection_snapshot_v2",
+  "snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+  "source_slice_sha256": "ea2043afdb48bad87107c33659de03597511fce7cf5e12dc52100e7f1fe3cf0c"
+}

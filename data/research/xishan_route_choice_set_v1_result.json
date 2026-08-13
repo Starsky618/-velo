@@ -1,0 +1,627 @@
+{
+  "algorithm_version": "route_pattern_assembly_v1",
+  "candidates": [
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 532,
+          "athlete_rank": 11,
+          "comparison_population": 81,
+          "effort_count": 3603,
+          "effort_rank": 9,
+          "efforts_per_athlete": 6.773,
+          "source_name": "横岭11km爬坡",
+          "source_observation_id": 2,
+          "source_segment_id": "14942511",
+          "star_count": 179,
+          "star_rank": 2
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "hengling-ascent-core",
+      "candidate_sha256": "3163adf31607eed2e7ff59c564ee4502f32cecf194c983c1739c79ffd3055b89",
+      "choice_name": "横岭完整爬坡核心段",
+      "comparison_scope": "destination_core",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "hengling-ascent-core",
+        "climb_m": 622.2,
+        "components": [
+          {
+            "climb_m": 622.2,
+            "component_key": "hengling-ascent-core:occurrence-1",
+            "descent_m": 3.4,
+            "distance_km": 10.932,
+            "observed_distance_km": 10.932,
+            "reach_lower_person_km": 6041.453,
+            "reach_upper_person_km": 9329.124,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 6.315526,
+        "connector_ratio": 1.9e-05,
+        "descent_m": 3.4,
+        "distance_km": 10.932,
+        "evidence_coverage": 0.999981,
+        "heat_vector_sha256": "f7df757c48d904ecb49271097a1a0c2f82968e427c31b10b63b8b0e70f946598",
+        "intent_proxy": 3.763763,
+        "intent_proxy_coverage": 0.999981,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.999081,
+        "reach_lower_person_km": 6041.453,
+        "reach_uncertainty_width_person_km": 3287.671,
+        "reach_upper_person_km": 9329.124,
+        "repeat_proxy": 5.750106,
+        "repeat_proxy_coverage": 0.999981,
+        "snapshot_comparability": "same_cohort",
+        "uncertainty": 0.364635,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "block_key": "taiyuan_xishan_hengling:full-ascent",
+          "block_name": "横岭完整爬坡",
+          "climb_m": 622.2,
+          "component_extent_m": [
+            0.0,
+            10931.789
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "7992a1e8d43e113a0762ad0cfd234fe8b03112a45b5eab77bb3934f2f330b2f1",
+          "descent_m": 3.4,
+          "direction": "forward",
+          "distance_km": 10.932,
+          "kind": "mountain_block",
+          "module_key": "taiyuan_xishan_hengling",
+          "module_run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9",
+          "mountain_block_sha256": "0e20c85f56c78c4bbd397687b57c2c8334b4e0c06a8ff462d86354ff1e153d6a",
+          "occurrence_id": "hengling-ascent-core:occurrence-1",
+          "physical_geometry_reuse": "stored_geometry",
+          "traversal_direction": "stored",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为10.932公里、+622.2米/-3.4米。",
+          "仅为横岭山区爬坡核心段，不含市区接驳、离开与返程；不是完整出行距离。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 56.9,
+          "directional_evidence_coverage": 0.999981,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 1.9e-05
+        },
+        "suitable_for": "适合愿意完成约10.9公里山区核心段、承担约622米累计爬升，并接受本卡不含市区接驳与返程的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "横岭11km爬坡：532名骑手（第11）、3603次（第9）、收藏179（第2），人均记录6.77次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖100.0%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 376,
+          "athlete_rank": 18,
+          "comparison_population": 81,
+          "effort_count": 961,
+          "effort_rank": 20,
+          "efforts_per_athlete": 2.556,
+          "source_name": "桃花沟爬坡",
+          "source_observation_id": 22,
+          "source_segment_id": "25967365",
+          "star_count": 29,
+          "star_rank": 6
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "taohuagou-ascent-core",
+      "candidate_sha256": "e58fbfff651b9477f63c8283129a9fb0051fc12f2c35edf1b2b825cdc07fe3bc",
+      "choice_name": "桃花沟爬坡核心段",
+      "comparison_scope": "destination_core",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "taohuagou-ascent-core",
+        "climb_m": 377.9,
+        "components": [
+          {
+            "climb_m": 377.9,
+            "component_key": "taohuagou-ascent-core:occurrence-1",
+            "descent_m": 0.0,
+            "distance_km": 6.363,
+            "observed_distance_km": 6.363,
+            "reach_lower_person_km": 2585.94,
+            "reach_upper_person_km": 6081.793,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 6.007656,
+        "connector_ratio": 1.3e-05,
+        "descent_m": 0.0,
+        "distance_km": 6.363,
+        "evidence_coverage": 0.999987,
+        "heat_vector_sha256": "99c4231810b1ff570e9e0b3d1aa7a823eb073270053069087cf752c51937a5b1",
+        "intent_proxy": 2.105222,
+        "intent_proxy_coverage": 0.999987,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.999987,
+        "reach_lower_person_km": 2585.94,
+        "reach_uncertainty_width_person_km": 3495.853,
+        "reach_upper_person_km": 6081.793,
+        "repeat_proxy": 1.492713,
+        "repeat_proxy_coverage": 0.999987,
+        "snapshot_comparability": "same_cohort",
+        "uncertainty": 0.835457,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 377.9,
+          "component_extent_m": [
+            0.0,
+            6362.8
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "bcb7e633d54e4f68a10d86265643b804d070b80d54b2340abc015963da463e1e",
+          "descent_m": 0.0,
+          "direction": "forward",
+          "distance_km": 6.363,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 17,
+          "kind": "source_corridor",
+          "occurrence_id": "taohuagou-ascent-core:occurrence-1",
+          "source_geometry_hash": "34c6242005bd9ee7e7138667658c9673c00bc276341c32ebbd601b4199a709ac",
+          "source_name": "桃花沟爬坡",
+          "source_observation_id": 22,
+          "source_segment_id": "25967365",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为6.363公里、+377.9米/-0.0米。",
+          "暂以当前最完整的桃花沟爬坡来源线作为核心段，不含进山、出山、市区接驳与返程。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 59.4,
+          "directional_evidence_coverage": 0.999987,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 1.3e-05
+        },
+        "suitable_for": "适合愿意完成约6.4公里山区核心段、承担约378米累计爬升，并接受本卡不含市区接驳与返程的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "桃花沟爬坡：376名骑手（第18）、961次（第20）、收藏29（第6），人均记录2.56次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖100.0%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 532,
+          "athlete_rank": 11,
+          "comparison_population": 81,
+          "effort_count": 3603,
+          "effort_rank": 9,
+          "efforts_per_athlete": 6.773,
+          "source_name": "横岭11km爬坡",
+          "source_observation_id": 2,
+          "source_segment_id": "14942511",
+          "star_count": 179,
+          "star_rank": 2
+        },
+        {
+          "athlete_count": 151,
+          "athlete_rank": 47,
+          "comparison_population": 81,
+          "effort_count": 385,
+          "effort_rank": 46,
+          "efforts_per_athlete": 2.55,
+          "source_name": "化客头-桃花沟起伏",
+          "source_observation_id": 6,
+          "source_segment_id": "22350861",
+          "star_count": 21,
+          "star_rank": 8
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "hengling-to-taohuagou-regional-chain",
+      "candidate_sha256": "6c3fd6f662fbedd57c30794ec1ab9991974a417c954464e2c5e3d86cbb052c2d",
+      "choice_name": "横岭—化客头—桃花沟山区串联",
+      "comparison_scope": "regional_chain",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "hengling-to-taohuagou-regional-chain",
+        "climb_m": 1100.3,
+        "components": [
+          {
+            "climb_m": 622.2,
+            "component_key": "hengling-ascent:occurrence-1",
+            "descent_m": 3.4,
+            "distance_km": 10.932,
+            "observed_distance_km": 10.932,
+            "reach_lower_person_km": 6041.453,
+            "reach_upper_person_km": 9329.124,
+            "snapshot_comparability": "same_cohort"
+          },
+          {
+            "climb_m": 211.7,
+            "component_key": "hengling-huaketou-transit:occurrence-1",
+            "descent_m": 324.1,
+            "distance_km": 16.856,
+            "observed_distance_km": 0.0,
+            "reach_lower_person_km": 0.0,
+            "reach_upper_person_km": 0.0,
+            "snapshot_comparability": "not_applicable_unobserved"
+          },
+          {
+            "climb_m": 266.4,
+            "component_key": "huaketou-taohuagou:occurrence-1",
+            "descent_m": 62.8,
+            "distance_km": 10.1,
+            "observed_distance_km": 10.1,
+            "reach_lower_person_km": 1525.04,
+            "reach_upper_person_km": 1525.04,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 5.695258,
+        "connector_ratio": 0.4449,
+        "descent_m": 390.3,
+        "distance_km": 37.888,
+        "evidence_coverage": 0.5551,
+        "heat_vector_sha256": "4b34b4bd7988c635b2d5e9b76161ff2cf78362752d0ca038522639404ade435f",
+        "intent_proxy": 3.440692,
+        "intent_proxy_coverage": 0.5551,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.55484,
+        "reach_lower_person_km": 7566.493,
+        "reach_uncertainty_width_person_km": 3287.671,
+        "reach_upper_person_km": 10854.163,
+        "repeat_proxy": 3.73315,
+        "repeat_proxy_coverage": 0.5551,
+        "snapshot_comparability": "same_cohort_with_unobserved_connectors",
+        "uncertainty": 0.105211,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "block_key": "taiyuan_xishan_hengling:full-ascent",
+          "block_name": "横岭完整爬坡",
+          "climb_m": 622.2,
+          "component_extent_m": [
+            0.0,
+            10931.789
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "7992a1e8d43e113a0762ad0cfd234fe8b03112a45b5eab77bb3934f2f330b2f1",
+          "descent_m": 3.4,
+          "direction": "forward",
+          "distance_km": 10.932,
+          "kind": "mountain_block",
+          "module_key": "taiyuan_xishan_hengling",
+          "module_run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9",
+          "mountain_block_sha256": "0e20c85f56c78c4bbd397687b57c2c8334b4e0c06a8ff462d86354ff1e153d6a",
+          "occurrence_id": "hengling-ascent:occurrence-1",
+          "physical_geometry_reuse": "stored_geometry",
+          "traversal_direction": "stored",
+          "traversal_orientation": "forward"
+        },
+        {
+          "climb_m": 211.7,
+          "component_extent_m": [
+            0.0,
+            16856.0
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "14550e5fc4c240c4b5a287e431c7180146a6b8ccca6854f39cb8a6041ea4848b",
+          "descent_m": 324.1,
+          "distance_km": 16.856,
+          "kind": "transit_path",
+          "occurrence_id": "hengling-huaketou-transit:occurrence-1",
+          "physical_geometry_reuse": "stored_geometry",
+          "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+          "transit_key": "hengling-upper-to-taohuagou-huaketou",
+          "transit_result_sha256": "d9b61d808b158c84dc7822ffccba248bb68a27735f23fd1f81a36e58803a635a",
+          "traversal_direction": "stored",
+          "traversal_orientation": "forward"
+        },
+        {
+          "climb_m": 266.4,
+          "component_extent_m": [
+            0.0,
+            10099.6
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "bbba2bb6086df92741ed2282484c37de180463b052e07a488dac93b2ab4dbea8",
+          "descent_m": 62.8,
+          "direction": "forward",
+          "distance_km": 10.1,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 3,
+          "kind": "source_corridor",
+          "occurrence_id": "huaketou-taohuagou:occurrence-1",
+          "source_geometry_hash": "83c54e668da078a017ef48544fa3e76e145b03cfa4c49e1de1f6174abc03996e",
+          "source_name": "化客头-桃花沟起伏",
+          "source_observation_id": 6,
+          "source_segment_id": "22350861",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为37.888公里、+1100.3米/-390.3米。",
+          "约44.5%的距离没有当前方向赛段热度，含义是未知，不是冷门。",
+          "仅为山区内部串联，不含市区出发与桃花沟后的最终回城；不是完整骑行日程。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 29.0,
+          "directional_evidence_coverage": 0.5551,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 0.4449
+        },
+        "suitable_for": "适合愿意承担约37.9公里山区内部行程、约1100米累计爬升和约390米累计下降，并接受整趟爬升占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "横岭11km爬坡：532名骑手（第11）、3603次（第9）、收藏179（第2），人均记录6.77次；比较范围为当前81条。",
+          "化客头-桃花沟起伏：151名骑手（第47）、385次（第46）、收藏21（第8），人均记录2.55次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖55.5%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 151,
+          "athlete_rank": 47,
+          "comparison_population": 81,
+          "effort_count": 385,
+          "effort_rank": 46,
+          "efforts_per_athlete": 2.55,
+          "source_name": "化客头-桃花沟起伏",
+          "source_observation_id": 6,
+          "source_segment_id": "22350861",
+          "star_count": 21,
+          "star_rank": 8
+        },
+        {
+          "athlete_count": 459,
+          "athlete_rank": 12,
+          "comparison_population": 81,
+          "effort_count": 2539,
+          "effort_rank": 12,
+          "efforts_per_athlete": 5.532,
+          "source_name": "横岭下坡",
+          "source_observation_id": 16,
+          "source_segment_id": "24197317",
+          "star_count": 20,
+          "star_rank": 11
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "taohuagou-to-hengling-regional-chain",
+      "candidate_sha256": "d5e2b5a611b2698ab0215af2293f70947c25ff1e52e19cec696ac10b4a064d3a",
+      "choice_name": "桃花沟—化客头—横岭山区反向串联",
+      "comparison_scope": "regional_chain",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "taohuagou-to-hengling-regional-chain",
+        "climb_m": 390.3,
+        "components": [
+          {
+            "climb_m": 62.8,
+            "component_key": "taohuagou-huaketou:occurrence-1",
+            "descent_m": 266.4,
+            "distance_km": 10.1,
+            "observed_distance_km": 1.67,
+            "reach_lower_person_km": 614.744,
+            "reach_upper_person_km": 614.744,
+            "snapshot_comparability": "same_cohort"
+          },
+          {
+            "climb_m": 324.1,
+            "component_key": "huaketou-hengling-transit:occurrence-1",
+            "descent_m": 211.7,
+            "distance_km": 16.856,
+            "observed_distance_km": 8.433,
+            "reach_lower_person_km": 2423.758,
+            "reach_upper_person_km": 2423.758,
+            "snapshot_comparability": "same_cohort"
+          },
+          {
+            "climb_m": 3.4,
+            "component_key": "hengling-descent:occurrence-1",
+            "descent_m": 622.2,
+            "distance_km": 10.932,
+            "observed_distance_km": 10.932,
+            "reach_lower_person_km": 5017.691,
+            "reach_upper_person_km": 5017.691,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 5.925264,
+        "connector_ratio": 0.4448,
+        "descent_m": 1100.3,
+        "distance_km": 37.888,
+        "evidence_coverage": 0.5552,
+        "heat_vector_sha256": "a6cef1b62d66a34a77ac6dd6565d72b9b8ffa83f43d11ff1c41f3a5442de76b9",
+        "intent_proxy": 2.471305,
+        "intent_proxy_coverage": 0.5552,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.554217,
+        "reach_lower_person_km": 8056.193,
+        "reach_uncertainty_width_person_km": 0.0,
+        "reach_upper_person_km": 8056.193,
+        "repeat_proxy": 2.935553,
+        "repeat_proxy_coverage": 0.5552,
+        "snapshot_comparability": "same_cohort_with_unobserved_connectors",
+        "uncertainty": 0.0,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 62.8,
+          "component_extent_m": [
+            0.0,
+            10099.6
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "bbba2bb6086df92741ed2282484c37de180463b052e07a488dac93b2ab4dbea8",
+          "descent_m": 266.4,
+          "direction": "reverse",
+          "distance_km": 10.1,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 3,
+          "kind": "source_corridor",
+          "occurrence_id": "taohuagou-huaketou:occurrence-1",
+          "source_geometry_hash": "83c54e668da078a017ef48544fa3e76e145b03cfa4c49e1de1f6174abc03996e",
+          "source_name": "化客头-桃花沟起伏",
+          "source_observation_id": 6,
+          "source_segment_id": "22350861",
+          "traversal_orientation": "reverse"
+        },
+        {
+          "climb_m": 324.1,
+          "component_extent_m": [
+            0.0,
+            16856.0
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "14550e5fc4c240c4b5a287e431c7180146a6b8ccca6854f39cb8a6041ea4848b",
+          "descent_m": 211.7,
+          "distance_km": 16.856,
+          "kind": "transit_path",
+          "occurrence_id": "huaketou-hengling-transit:occurrence-1",
+          "physical_geometry_reuse": "same_geometry_reversed",
+          "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+          "transit_key": "hengling-upper-to-taohuagou-huaketou",
+          "transit_result_sha256": "d9b61d808b158c84dc7822ffccba248bb68a27735f23fd1f81a36e58803a635a",
+          "traversal_direction": "reverse",
+          "traversal_orientation": "reverse"
+        },
+        {
+          "block_key": "taiyuan_xishan_hengling:full-ascent",
+          "block_name": "横岭完整爬坡",
+          "climb_m": 3.4,
+          "component_extent_m": [
+            0.0,
+            10931.789
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "7992a1e8d43e113a0762ad0cfd234fe8b03112a45b5eab77bb3934f2f330b2f1",
+          "descent_m": 622.2,
+          "direction": "reverse",
+          "distance_km": 10.932,
+          "kind": "mountain_block",
+          "module_key": "taiyuan_xishan_hengling",
+          "module_run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9",
+          "mountain_block_sha256": "0e20c85f56c78c4bbd397687b57c2c8334b4e0c06a8ff462d86354ff1e153d6a",
+          "occurrence_id": "hengling-descent:occurrence-1",
+          "physical_geometry_reuse": "same_geometry_reversed",
+          "traversal_direction": "reverse",
+          "traversal_orientation": "reverse"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为37.888公里、+390.3米/-1100.3米。",
+          "约44.5%的距离没有当前方向赛段热度，含义是未知，不是冷门。",
+          "仅为山区内部反向串联，不含桃花沟前的市区接驳与横岭后的最终回城；不是完整骑行日程。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 10.3,
+          "directional_evidence_coverage": 0.5552,
+          "resource_shape": "descent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 0.4448
+        },
+        "suitable_for": "适合愿意承担约37.9公里山区内部行程、约390米累计爬升和约1100米累计下降，并接受整趟累计下降占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "化客头-桃花沟起伏：151名骑手（第47）、385次（第46）、收藏21（第8），人均记录2.55次；比较范围为当前81条。",
+          "横岭下坡：459名骑手（第12）、2539次（第12）、收藏20（第11），人均记录5.53次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖55.5%的物理距离；其余保持未观测。"
+        ]
+      }
+    }
+  ],
+  "choice_set_key": "taiyuan-xishan-four-hard-data-choices-v1",
+  "choice_spec_sha256": "d63a70a07a8b10a85f50f99bb41ddfa29032d6b50c7c7e8b75756833db073481",
+  "comparison_rule": "choices with different rider jobs or directions are compared by hard facts side by side; no global popularity ranking is forced",
+  "database_write_count": 0,
+  "hard_fact_contrasts": [
+    {
+      "comparison_scope": "destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "hengling-ascent-core",
+      "left_minus_right": {
+        "climb_m": 244.3,
+        "descent_m": 3.4,
+        "directional_evidence_coverage": -6e-06,
+        "distance_km": 4.569
+      },
+      "right_candidate_id": "taohuagou-ascent-core"
+    },
+    {
+      "comparison_scope": "regional_chain",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "hengling-to-taohuagou-regional-chain",
+      "left_minus_right": {
+        "climb_m": 710.0,
+        "descent_m": -710.0,
+        "directional_evidence_coverage": -0.0001,
+        "distance_km": 0.0
+      },
+      "right_candidate_id": "taohuagou-to-hengling-regional-chain"
+    }
+  ],
+  "network_request_count": 0,
+  "ranking_status": "not_ranked_across_distinct_rider_jobs",
+  "result_sha256": "d118b5289b1b5b7f706f167627889371799a89a6c880a49f408c6c1a4cbcfe36",
+  "reverse_traversal_rule": "one frozen physical road geometry; reverse traversal reuses it in reverse, swaps climb/descent, and reads reverse-direction evidence",
+  "schema_version": "route_pattern_choice_set_v1",
+  "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+  "source_slice_sha256": "ea2043afdb48bad87107c33659de03597511fce7cf5e12dc52100e7f1fe3cf0c"
+}
