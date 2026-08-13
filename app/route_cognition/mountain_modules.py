@@ -1,8 +1,10 @@
 """Deterministic mountain route-block views over one reference source axis.
 
 This research core keeps regional data outside the algorithm.  It can assemble
-directed evidence and auditable route-block summaries, but it does not prove
-off-axis topology, access, turnarounds, or complete ride-plan feasibility.
+directed evidence and auditable destination-block summaries, but a source
+segment endpoint is not a road endpoint.  Transit paths, access, verified road
+terminals/turnarounds, and complete ride-plan feasibility belong to later route
+assembly.
 """
 
 from __future__ import annotations
@@ -26,14 +28,10 @@ from app.route_cognition.carrier_projection import (
 )
 
 
-MOUNTAIN_MODULE_ALGORITHM_VERSION = "reference_axis_mountain_module_v1"
-MOUNTAIN_MODULE_CONFIG_VERSION = "mountain_module_contract_v1"
+MOUNTAIN_MODULE_ALGORITHM_VERSION = "reference_axis_mountain_module_v2"
+MOUNTAIN_MODULE_CONFIG_VERSION = "mountain_module_contract_v2"
 MOUNTAIN_MODULE_EVIDENCE_STATUS = "research_shadow"
 MIN_RESOURCE_ALIGNMENT_RATIO = 0.99
-MOUNTAIN_BLOCKER_CODES = {
-    "connection_evidence_missing",
-    "complete_route_boundary_missing",
-}
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -53,6 +51,9 @@ MOUNTAIN_MODULE_CONFIG_SHA256 = _canonical_sha256(
         "projection_config": CARRIER_PROJECTION_CONFIG_V1.to_dict(),
         "route_resource_accounting": "sum_each_traversed_full_source_fact_once",
         "port_identity": "reference_geometry_hash_axis_measure_direction_role",
+        "segment_endpoint_semantics": "observation_boundary_not_road_terminal",
+        "route_assembly": "destination_blocks_plus_explicit_transit_paths",
+        "ranking_policy": "hard_gate_pareto_intent_lexicographic_optional_ml",
         "min_resource_alignment_ratio": MIN_RESOURCE_ALIGNMENT_RATIO,
     }
 )
@@ -221,7 +222,8 @@ def analyze_mountain_module(
         "directed_evidence": arrangement.to_dict(),
         "boundary": (
             "单 Strava 来源线参考轴 research shadow；可证明轴上 occurrence、方向、"
-            "原子区间和热度证据范围，不证明 off-axis 拓扑、access、掉头或完整路线可达性。"
+            "原子区间和热度证据范围。来源赛段端点不是道路端点；过境路径、access、"
+            "真实断头路掉头和完整路线可达性由后续路线组装证明。"
         ),
     }
     payload["analysis_sha256"] = _canonical_sha256(payload)
@@ -229,7 +231,7 @@ def analyze_mountain_module(
 
 
 def heat_evidence_explanation(analysis: dict[str, Any]) -> dict[str, Any]:
-    """Expose ranking dimensions without inventing an uncalibrated scalar."""
+    """Expose the final-manual ranking strategy and its learnable boundary."""
 
     observed = [
         cell
@@ -237,7 +239,11 @@ def heat_evidence_explanation(analysis: dict[str, Any]) -> dict[str, Any]:
         if cell["support_state"] == "observed"
     ]
     return {
-        "ranking_mode": "pareto_vector_unweighted",
+        "heat_evidence_mode": "partial_identification_vector",
+        "ranking_status": "not_run_by_single_module_slice",
+        "ranking_strategy_ref": (
+            "final_v2_hard_gate_pareto_intent_lexicographic_v1"
+        ),
         "dimensions": [
             {
                 "key": "reach_lower_bound_surface",
@@ -274,7 +280,21 @@ def heat_evidence_explanation(analysis: dict[str, Any]) -> dict[str, Any]:
             "重叠赛段只切细区间并收紧/提高该区间证据范围；不增加物理距离、"
             "整线爬升，也不直接相加成唯一骑手数。"
         ),
-        "scalar_weight_status": "not_calibrated_no_rider_choice_rejection_gold",
+        "deterministic_fallback": (
+            "hard gate -> Pareto non-dominated set -> versioned intent-specific "
+            "lexicographic policy -> stable tie-break"
+        ),
+        "learned_utility": {
+            "status": "defined_not_executed_by_single_module_slice",
+            "scope": "rerank_hard_feasible_pareto_candidates_only",
+            "training_evidence": (
+                "同一次候选集内的展示、位置概率、选择/拒绝和完成/放弃 episode"
+            ),
+            "guardrail": (
+                "模型不决定几何、连通、access、硬可行性或重叠去重"
+            ),
+        },
+        "fixed_scalar_weight_status": "rejected_by_design",
         "observed_cell_count": len(observed),
     }
 
@@ -288,32 +308,17 @@ def summarize_route_block(
     distance_m: float,
     climb_m: float,
     descent_m: float,
-    recommendation_status: str,
     recommendation_reasons: Sequence[str],
-    blockers: Sequence[dict[str, str]] = (),
     traversal_port_keys: Sequence[tuple[str, str]] | None = None,
     arrangement: DirectedEvidenceArrangement | None = None,
 ) -> dict[str, Any]:
     """Summarize one explicit route block without inventing a scalar heat score."""
 
-    if recommendation_status not in {
-        "evidence_candidate",
-        "blocked_unknown_connection",
-    }:
-        raise ValueError("unsupported recommendation status")
-    blocker_items = tuple(blockers)
-    if recommendation_status.startswith("blocked_") and not blocker_items:
-        raise ValueError("blocked route block requires typed blockers")
-    if recommendation_status == "evidence_candidate" and blocker_items:
-        raise ValueError("evidence candidate cannot carry blockers")
-    for blocker in blocker_items:
-        if blocker.get("code") not in MOUNTAIN_BLOCKER_CODES:
-            raise ValueError("unsupported route blocker code")
-        if not blocker.get("reason"):
-            raise ValueError("route blocker reason is required")
     if distance_m < 0 or climb_m < 0 or descent_m < 0:
         raise ValueError("route resources must be non-negative")
     traversal_items = tuple(traversals)
+    if len(traversal_items) != 1:
+        raise ValueError("destination evidence block requires exactly one traversal")
     port_keys = tuple(traversal_port_keys or ())
     if port_keys and len(port_keys) != len(traversal_items):
         raise ValueError("traversal port keys must match traversals")
@@ -327,7 +332,7 @@ def summarize_route_block(
     payload = {
         "block_key": block_key,
         "block_name": block_name,
-        "recommendation_status": recommendation_status,
+        "recommendation_status": "evidence_candidate",
         "distance_km": round(distance_m / 1000, 3),
         "climb_m": round(climb_m, 1),
         "descent_m": round(descent_m, 1),
@@ -355,11 +360,11 @@ def summarize_route_block(
             "meaning": "方向化 reach 证据范围，不是唯一骑手人数或单一热度分",
         },
         "recommendation_policy": (
-            "hard feasibility first; heat dimensions rank only feasible candidates; "
-            "no scalar weights before rider-choice calibration"
+            "hard gate -> Pareto -> intent-specific lexicographic fallback; "
+            "optional learned utility may rerank only hard-feasible Pareto candidates"
         ),
         "recommendation_reasons": list(recommendation_reasons),
-        "blockers": list(blocker_items),
+        "blockers": [],
         "evidence_status": MOUNTAIN_MODULE_EVIDENCE_STATUS,
     }
     for index, item in enumerate(traversal_items):
@@ -392,6 +397,7 @@ def summarize_route_block(
                 ],
                 "axis_measure_m": round(measure, 3),
                 "direction": item.direction,
+                "boundary_semantics": "source_observation_boundary_not_road_terminal",
             }
             port["port_sha256"] = _canonical_sha256(port)
             ports.append(port)
