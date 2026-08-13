@@ -165,9 +165,9 @@
       ]
     }
   ],
-  "run_sha256": "d2a2109e986e59e46323d0b77e1727f57692b5a6d54e7c8890525a45d4b4aee0",
+  "run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9",
   "schema_version": "mountain_module_run_pointer_v2",
-  "source_slice_sha256": "02c43103577f00aeb96ee5d9c1db060c075b9931549af4fbc898796e2e07c0ef",
-  "spec_sha256": "ec4508b0a8cf523232d2e8bb6350a94cfedab2250615626e129c06c8644221b4",
+  "source_slice_sha256": "1ab23e91566934aa0c625ba9ef1b0c4464a3a191ef60e6b592cbe52e3c0a26e9",
+  "spec_sha256": "d3f6e3cf6950ae7c30e431d7e7c659e9efe274d87cf262683da36324df18de73",
   "status": "research_shadow"
 }

@@ -1,0 +1,274 @@
+{
+  "algorithm_version": "destination_port_transit_path_v1",
+  "boundary": "provider 提出完整过境道路；来源赛段只投影贡献方向化证据，不成为必须访问的 waypoint，也不自动证明骑行 access。",
+  "database_write_count": 0,
+  "derived_geometry_distance_m": 16866.2,
+  "elevation": {
+    "algorithm_version": "glo30_meaningful_ascent_v1",
+    "climb_m": 211.7,
+    "descent_m": 324.1,
+    "point_count": 647
+  },
+  "evidence_coverage": {
+    "by_direction": {
+      "indeterminate": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "mixed_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "reverse_direction": {
+        "coverage_lower_bound_ratio": 0.500291,
+        "covered_intervals_m": [
+          [
+            106.7,
+            4696.9
+          ],
+          [
+            12818.0,
+            12929.0
+          ],
+          [
+            12955.3,
+            16687.0
+          ]
+        ],
+        "covered_length_lower_bound_m": 8432.9
+      },
+      "same_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      }
+    },
+    "coverage_lower_bound_ratio": 0.500291,
+    "covered_intervals_m": [
+      [
+        106.7,
+        4696.9
+      ],
+      [
+        12818.0,
+        12929.0
+      ],
+      [
+        12955.3,
+        16687.0
+      ]
+    ],
+    "covered_length_lower_bound_m": 8432.9,
+    "diagnostic_indeterminate_fact_count": 0,
+    "mode": "interval_union_lower_bound",
+    "semantic_role": "geometry_coverage_qa_not_directional_heat_score",
+    "uncovered_state": "unobserved_not_zero"
+  },
+  "evidence_facts": [
+    {
+      "athlete_count": 313,
+      "direction_relation": "reverse_direction",
+      "effort_count": 644,
+      "evidence_status": "admitted_directional_evidence",
+      "extent_relation": "a_contains_b",
+      "reason_codes": [
+        "right_fully_embedded_in_left",
+        "raw_geometry_only_not_road_identity"
+      ],
+      "shared_length_m": 3842.6,
+      "source_coverage_ratio": 0.996018,
+      "source_geometry_hash": "377912d69ef5f0f6077c39a7c992ad2df29a35dd62948184e2339b42aad45870",
+      "source_length_m": 3876.6,
+      "source_name": "柴化线下坡 化客头-大窊村",
+      "source_observation_id": 53,
+      "source_segment_id": "32294452",
+      "star_count": 6,
+      "transit_coverage_ratio": 0.227968,
+      "transit_intervals_m": [
+        [
+          12955.3,
+          16687.0
+        ],
+        [
+          12818.0,
+          12929.0
+        ]
+      ]
+    },
+    {
+      "athlete_count": 266,
+      "direction_relation": "reverse_direction",
+      "effort_count": 608,
+      "evidence_status": "admitted_directional_evidence",
+      "extent_relation": "a_contains_b",
+      "reason_codes": [
+        "right_fully_embedded_in_left",
+        "raw_geometry_only_not_road_identity"
+      ],
+      "shared_length_m": 4590.2,
+      "source_coverage_ratio": 1.0,
+      "source_geometry_hash": "7c1ace5fd3c2c9637896bbf9e5234cda93e38a01cab4e7d29a650a1a9b61d8ff",
+      "source_length_m": 4598.8,
+      "source_name": "马头水岔口-横岭",
+      "source_observation_id": 82,
+      "source_segment_id": "35453765",
+      "star_count": 5,
+      "transit_coverage_ratio": 0.272319,
+      "transit_intervals_m": [
+        [
+          106.7,
+          4696.9
+        ]
+      ]
+    }
+  ],
+  "evidence_snapshot_sha256": "25a934adca0b76e40bf154e2d4ba9b94028a45f228f609d7d8c85a61f1d41d6a",
+  "from": {
+    "binding_type": "canonical_module_port",
+    "lonlat": [
+      112.413748,
+      37.987282
+    ],
+    "module_key": "taiyuan_xishan_hengling",
+    "module_port_sha256": "8db88a4de20bd138d0f210ca989dcf0864f2739f522eb16f3f0ce729f2c46ff3",
+    "port_key": "full-ascent:upper-observation-boundary-exit",
+    "source_geometry_hash": null,
+    "source_observation_id": null
+  },
+  "geometry_point_count": 647,
+  "ordered_road_summary": [
+    {
+      "distance_m": 40.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 219.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 905.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 1975.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 262.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 128.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 92.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 361.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 454.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 322.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 101.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 97.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 636.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 650.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 1548.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 1427.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 1714.0,
+      "road_name": "柴化线"
+    },
+    {
+      "distance_m": 1218.0,
+      "road_name": "柴化线"
+    },
+    {
+      "distance_m": 494.0,
+      "road_name": "柴化线"
+    },
+    {
+      "distance_m": 2419.0,
+      "road_name": "柴化线"
+    },
+    {
+      "distance_m": 1773.0,
+      "road_name": "柴化线"
+    },
+    {
+      "distance_m": 10.0,
+      "road_name": "S104"
+    }
+  ],
+  "persistence_role": "research_provider_candidate_not_internal_routing_connector_or_road_truth",
+  "port_endpoint_offsets_m": {
+    "from": 0.5,
+    "maximum_allowed": 30.0,
+    "to": 10.7
+  },
+  "provider": "tencent_driving",
+  "provider_distance_m": 16856.0,
+  "provider_duration_raw": 29,
+  "provider_duration_unit": "unknown_not_used",
+  "provider_observed_at": "2026-08-13",
+  "provider_snapshot_sha256": "a057fdc4f16eae35f7ae90222f55160cccc9bb75ae5db8c060d7c2b361735653",
+  "provider_status": "research_candidate_not_bicycling_verified",
+  "public_manifest_sha256": "bd3f8b36594a8ebd863fec60159f100b3e20bb4d5ee2fb39c3bce453fc417ba4",
+  "relation_input": {
+    "candidate_count": 81,
+    "excluded_count": 0,
+    "included_binding_sha256": "cb06ecb03b70bae0cf555e890088424e858a52d86a54441776966387b82da14e",
+    "included_count": 81,
+    "profile_key": "xishan-road-relation-input-20260813-v2",
+    "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e"
+  },
+  "research_verdict": "connection_candidate",
+  "result_sha256": "d9b61d808b158c84dc7822ffccba248bb68a27735f23fd1f81a36e58803a635a",
+  "road_summary_m": {
+    "S104": 10.0,
+    "未命名道路": 9217.0,
+    "柴化线": 7618.0
+  },
+  "schema_version": "transit_path_research_v1",
+  "to": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.390696,
+      37.879234
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "taohuagou:huaketou-entry",
+    "source_geometry_hash": "83c54e668da078a017ef48544fa3e76e145b03cfa4c49e1de1f6174abc03996e",
+    "source_observation_id": 6
+  },
+  "transit_key": "hengling-upper-to-taohuagou-huaketou"
+}

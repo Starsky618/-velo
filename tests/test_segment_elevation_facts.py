@@ -97,7 +97,7 @@ def test_dem_failure_is_a_saved_fact_outcome_not_a_missing_row():
 
     fact = build_segment_elevation_fact(
         source_observation_id=8,
-        source_segment_id="40127007",
+        source_segment_id="90000002",
         source_line_wkt=(
             "LINESTRING(112.3 37.8,112.31 37.81,112.32 37.82)"
         ),
@@ -500,8 +500,8 @@ def test_postgres_fact_writer_accounts_every_selected_observation():
                     seen_passes_json, detail_status, geometry_status,
                     leaderboard_status
                 ) VALUES (
-                    :batch_id, 'strava', '40127007',
-                    'https://www.strava.com/segments/40127007', '后插赛段', now(),
+                    :batch_id, 'strava', '90000002',
+                    'https://www.strava.com/segments/90000002', '后插赛段', now(),
                     'Ride', 2800.0, 37.8, 112.3, 37.82, 112.32,
                     ST_GeomFromText(
                         'LINESTRING(112.3 37.8,112.31 37.81,112.32 37.82)',

@@ -1,0 +1,128 @@
+{
+  "schema_version": "regional_route_cognition_spec_v1",
+  "batch_key": "xishan_south_destination_network_v1",
+  "bbox": {
+    "min_lon": 112.36,
+    "max_lon": 112.48,
+    "min_lat": 37.67,
+    "max_lat": 37.78,
+    "selection_rule": "source geometry bbox intersects window"
+  },
+  "exact_observation_ids": [
+    4, 8, 9, 17, 18, 21, 28, 49, 50, 51, 55, 57, 78, 79, 85, 87, 89, 93, 96, 97, 98
+  ],
+  "observation_set_sha256": "c271ee163879bcbf4348b595be0609cf2298a790a0447a3123fbafb469a2e2ce",
+  "source_slice_sha256": "ea2043afdb48bad87107c33659de03597511fce7cf5e12dc52100e7f1fe3cf0c",
+  "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+  "heat_snapshot_cohort": "xishan-20260813-v1",
+  "primary_dispositions": [
+    {
+      "disposition": "niujiakou_south_road_family",
+      "observation_ids": [4, 55, 89, 97],
+      "basis": "o4 canonical axis; o55 same-direction local; o89 reverse local; o97 shared ordered witness"
+    },
+    {
+      "disposition": "tianlongshan_east_main_climb_family",
+      "observation_ids": [17, 18, 57, 87, 96],
+      "basis": "o17 canonical axis with four same-direction local projections"
+    },
+    {
+      "disposition": "tianlongshan_north_longshan_diantou_family",
+      "observation_ids": [8, 21, 50, 93, 98],
+      "basis": "o8 canonical axis; o21 reverse; o50/o93/o98 same-direction local evidence"
+    },
+    {
+      "disposition": "tianlongshan_west_gate_family",
+      "observation_ids": [78, 79],
+      "basis": "oracle equivalent plus reverse; store one canonical geometry"
+    },
+    {
+      "disposition": "diantou_mengshan_family",
+      "observation_ids": [9],
+      "basis": "independent complete source axis; no same-carrier exact21 witness"
+    },
+    {
+      "disposition": "taigu_transit_range_family",
+      "observation_ids": [49, 85],
+      "basis": "o49 is same-direction local containment evidence on o85; transit/range role only"
+    },
+    {
+      "disposition": "local_spurs_pending_connectivity",
+      "observation_ids": [28, 51],
+      "basis": "short local climbs are raw-disjoint from family axes; do not borrow full-line GLO"
+    }
+  ],
+  "families": [
+    {
+      "family_key": "taiyuan_xishan_niujiakou_south",
+      "family_name": "牛家口—天龙山南线",
+      "family_role": "destination_module",
+      "reference_observation_id": 4,
+      "resource_observation_id": 4,
+      "evidence_observation_ids": [4, 55, 89, 97]
+    },
+    {
+      "family_key": "taiyuan_xishan_tianlongshan_east",
+      "family_name": "天龙山东侧热门主爬",
+      "family_role": "destination_module",
+      "reference_observation_id": 17,
+      "resource_observation_id": 17,
+      "evidence_observation_ids": [17, 18, 57, 87, 96]
+    },
+    {
+      "family_key": "taiyuan_xishan_tianlongshan_north",
+      "family_name": "天龙山北侧—龙山店头",
+      "family_role": "destination_module",
+      "reference_observation_id": 8,
+      "resource_observation_id": 8,
+      "evidence_observation_ids": [8, 21, 50, 93, 98]
+    },
+    {
+      "family_key": "taiyuan_xishan_tianlongshan_west_gate",
+      "family_name": "天龙山石碑—西门起伏",
+      "family_role": "destination_module",
+      "reference_observation_id": 78,
+      "resource_observation_id": 78,
+      "evidence_observation_ids": [78, 79]
+    },
+    {
+      "family_key": "taiyuan_xishan_diantou_mengshan",
+      "family_name": "店头—蒙山",
+      "family_role": "destination_module",
+      "reference_observation_id": 9,
+      "resource_observation_id": 9,
+      "evidence_observation_ids": [9]
+    },
+    {
+      "family_key": "taiyuan_xishan_taigu_transit_range",
+      "family_name": "太古路东口—狼坡范围轴",
+      "family_role": "transit_range_axis",
+      "reference_observation_id": 85,
+      "resource_observation_id": 85,
+      "evidence_observation_ids": [85, 49]
+    }
+  ],
+  "expected_oracle_pairs": [
+    {
+      "pair_key": "78:79",
+      "extent_relation": "equivalent",
+      "direction_relation": "reverse_direction"
+    },
+    {
+      "pair_key": "55:89",
+      "extent_relation": "b_contains_a",
+      "direction_relation": "reverse_direction"
+    },
+    {
+      "pair_key": "8:93",
+      "extent_relation": "a_contains_b",
+      "direction_relation": "same_direction"
+    },
+    {
+      "pair_key": "4:17",
+      "extent_relation": "indeterminate",
+      "direction_relation": "same_direction"
+    }
+  ],
+  "boundary": "Research-only downstream holdout over active 81. Strava observations are evidence boundaries, not road terminals or formal Segment geometry."
+}

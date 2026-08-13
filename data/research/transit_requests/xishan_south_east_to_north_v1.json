@@ -1,0 +1,21 @@
+{
+  "schema_version": "transit_provider_request_v1",
+  "transit_key": "xishan-south-east-summit-to-north-summit",
+  "routing_profile": "bicycling",
+  "provider_observed_at": "2026-08-14",
+  "research_verdict": "connection_candidate",
+  "from": {
+    "port_key": "tianlongshan-east:summit-exit",
+    "binding_type": "source_observation_candidate",
+    "source_observation_id": 17,
+    "source_geometry_hash": "1b3ac6985da578a2e310721a5c72daf939b7804da9d3e1c46bf90088143dcd0b",
+    "lonlat": [112.403226, 37.737805]
+  },
+  "to": {
+    "port_key": "tianlongshan-north:summit-entry",
+    "binding_type": "source_observation_candidate",
+    "source_observation_id": 8,
+    "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc",
+    "lonlat": [112.402853, 37.737131]
+  }
+}

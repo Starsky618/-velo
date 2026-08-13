@@ -492,6 +492,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     profile, legacy = load_inputs(args.profile, args.legacy_alignment)
+    if profile.get("production_alignment_status") == "pending_next_deployment_cleanup":
+        raise RuntimeError(
+            "production cleanup pending; replay the frozen local 81-observation source slice"
+        )
     db = SessionLocal()
     try:
         foundation, observations = _read_database_inputs(

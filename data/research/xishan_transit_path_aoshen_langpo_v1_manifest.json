@@ -1,0 +1,159 @@
+{
+  "algorithm_version": "destination_port_transit_path_v1",
+  "boundary": "provider 提出完整过境道路；来源赛段只投影贡献方向化证据，不成为必须访问的 waypoint，也不自动证明骑行 access。",
+  "database_write_count": 0,
+  "derived_geometry_distance_m": 2248.2,
+  "elevation": {
+    "algorithm_version": "glo30_meaningful_ascent_v1",
+    "climb_m": 19.9,
+    "descent_m": 195.4,
+    "metadata": {
+      "ascent_minimum_span_m": 100.0,
+      "ascent_prominence_m": 3.0,
+      "calibration_role": "ALOS+FIT+authorized_Strava_offline_evidence",
+      "dataset_id": "COP-DEM_GLO-30-DGED",
+      "grid_registration": "RasterPixelIsPoint",
+      "maximum_processing_distance_m": 1000000.0,
+      "median_filter_points": 3,
+      "processing_grid_m": 20.0,
+      "smoothing_sigma_m": 100.0,
+      "vertical_datum": "EGM2008 (EPSG:3855)"
+    },
+    "point_count": 102
+  },
+  "evidence_coverage": {
+    "by_direction": {
+      "indeterminate": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "mixed_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "reverse_direction": {
+        "coverage_lower_bound_ratio": 0.819156,
+        "covered_intervals_m": [
+          [
+            0.0,
+            1843.1
+          ]
+        ],
+        "covered_length_lower_bound_m": 1843.1
+      },
+      "same_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      }
+    },
+    "coverage_lower_bound_ratio": 0.819156,
+    "covered_intervals_m": [
+      [
+        0.0,
+        1843.1
+      ]
+    ],
+    "covered_length_lower_bound_m": 1843.1,
+    "diagnostic_indeterminate_fact_count": 0,
+    "mode": "interval_union_lower_bound",
+    "semantic_role": "geometry_coverage_qa_not_directional_heat_score",
+    "uncovered_state": "unobserved_not_zero"
+  },
+  "evidence_facts": [
+    {
+      "athlete_count": 119,
+      "direction_relation": "reverse_direction",
+      "effort_count": 292,
+      "evidence_status": "admitted_directional_evidence",
+      "extent_relation": "a_contains_b",
+      "reason_codes": [
+        "right_fully_embedded_in_left",
+        "raw_geometry_only_not_road_identity"
+      ],
+      "shared_length_m": 1843.1,
+      "source_coverage_ratio": 0.999993,
+      "source_geometry_hash": "cdc3f1d7ecccff4a2e7d465ebfa5c87aceb7bea34aebc298c6d8145a0dc4cc57",
+      "source_length_m": 1876.7,
+      "source_name": "奥申反爬",
+      "source_observation_id": 7,
+      "source_segment_id": "22350878",
+      "star_count": 11,
+      "transit_coverage_ratio": 0.819167,
+      "transit_intervals_m": [
+        [
+          0.0,
+          1843.1
+        ]
+      ]
+    }
+  ],
+  "evidence_snapshot_sha256": "cf5a2ca54a190e7260926fe29428fe56cc582cf20f7e2c2b94d2c76c249833cb",
+  "from": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.399969,
+      37.797878
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "aoshen-upper-exit",
+    "source_geometry_hash": "355c28134b901c58d5ed391b73faeb72b9bff7ba60ccb33750563b4b5b015742",
+    "source_observation_id": 27
+  },
+  "geometry_point_count": 102,
+  "ordered_road_summary": [
+    {
+      "distance_m": 1699.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 549.0,
+      "road_name": "官地街"
+    }
+  ],
+  "persistence_role": "research_provider_candidate_not_internal_routing_connector_or_road_truth",
+  "port_endpoint_offsets_m": {
+    "from": 0.1,
+    "maximum_allowed": 30.0,
+    "to": 1.2
+  },
+  "provider": "tencent_driving_shadow",
+  "provider_distance_m": 2250.0,
+  "provider_duration_raw": 5,
+  "provider_duration_unit": "unknown_not_used",
+  "provider_observed_at": "2026-08-13T13:48:33.466231Z",
+  "provider_snapshot_sha256": "ff6411bb21233dc492de0a96724eab9ebe4685a4e018419609c4ce451cfb97cc",
+  "provider_status": "provider_path_not_bicycling_verified",
+  "public_manifest_sha256": "08ea26acb48c1514f1bd402a218835126a8d8fedcdcc4053af0f3606328b6efa",
+  "relation_input": {
+    "candidate_count": 81,
+    "excluded_count": 0,
+    "included_binding_sha256": "cb06ecb03b70bae0cf555e890088424e858a52d86a54441776966387b82da14e",
+    "included_count": 81,
+    "profile_key": "xishan-road-relation-input-20260813-v2",
+    "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e"
+  },
+  "research_verdict": "connection_candidate",
+  "result_sha256": "be158954cda1153fc05072de6b2dc38408578c24da548bbf968c1b096c056601",
+  "road_summary_m": {
+    "官地街": 549.0,
+    "未命名道路": 1699.0
+  },
+  "schema_version": "transit_path_research_v1",
+  "to": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.387865,
+      37.798712
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "langpo-base-entry",
+    "source_geometry_hash": "f352aba455aceb8c5c377a3639ede8b7b2a5b1f3b149d259d01c0421dd674bc1",
+    "source_observation_id": 38
+  },
+  "transit_key": "aoshen-upper-to-langpo-base"
+}

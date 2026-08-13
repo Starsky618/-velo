@@ -1,0 +1,219 @@
+{
+  "algorithm_version": "destination_port_transit_path_v1",
+  "boundary": "provider 提出完整过境道路；来源赛段只投影贡献方向化证据，不成为必须访问的 waypoint，也不自动证明骑行 access。",
+  "database_write_count": 0,
+  "derived_geometry_distance_m": 9779.5,
+  "elevation": {
+    "algorithm_version": "glo30_meaningful_ascent_v1",
+    "climb_m": 285.0,
+    "descent_m": 261.6,
+    "point_count": 724
+  },
+  "evidence_coverage": {
+    "by_direction": {
+      "indeterminate": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "mixed_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "reverse_direction": {
+        "coverage_lower_bound_ratio": 0.530276,
+        "covered_intervals_m": [
+          [
+            4596.5,
+            9777.3
+          ]
+        ],
+        "covered_length_lower_bound_m": 5180.8
+      },
+      "same_direction": {
+        "coverage_lower_bound_ratio": 0.058731,
+        "covered_intervals_m": [
+          [
+            218.4,
+            792.2
+          ]
+        ],
+        "covered_length_lower_bound_m": 573.8
+      }
+    },
+    "coverage_lower_bound_ratio": 0.589007,
+    "covered_intervals_m": [
+      [
+        218.4,
+        792.2
+      ],
+      [
+        4596.5,
+        9777.3
+      ]
+    ],
+    "covered_length_lower_bound_m": 5754.6,
+    "diagnostic_indeterminate_fact_count": 0,
+    "mode": "interval_union_lower_bound",
+    "semantic_role": "geometry_coverage_qa_not_directional_heat_score",
+    "uncovered_state": "unobserved_not_zero"
+  },
+  "evidence_facts": [
+    {
+      "athlete_count": 263,
+      "direction_relation": "reverse_direction",
+      "effort_count": 991,
+      "evidence_status": "admitted_directional_evidence",
+      "extent_relation": "a_contains_b",
+      "reason_codes": [
+        "right_fully_embedded_in_left",
+        "raw_geometry_only_not_road_identity"
+      ],
+      "shared_length_m": 5180.8,
+      "source_coverage_ratio": 1.0,
+      "source_geometry_hash": "fab6da213ce39b29662da57ef0801f89a466603f8fd77c5a2b3cb9f1db405058",
+      "source_length_m": 5192.7,
+      "source_name": "店头-蒙山",
+      "source_observation_id": 9,
+      "source_segment_id": "22350896",
+      "star_count": 10,
+      "transit_coverage_ratio": 0.530272,
+      "transit_intervals_m": [
+        [
+          4596.5,
+          9777.3
+        ]
+      ]
+    },
+    {
+      "athlete_count": 106,
+      "direction_relation": "same_direction",
+      "effort_count": 233,
+      "evidence_status": "admitted_directional_evidence",
+      "extent_relation": "a_contains_b",
+      "reason_codes": [
+        "right_fully_embedded_in_left",
+        "raw_geometry_only_not_road_identity"
+      ],
+      "shared_length_m": 573.8,
+      "source_coverage_ratio": 0.999997,
+      "source_geometry_hash": "23fe3fe2262e4815d7d19caf2c9ddc24a574027a9df8e7c42496f36a786503f6",
+      "source_length_m": 584.7,
+      "source_name": "店头古堡最陡坡",
+      "source_observation_id": 28,
+      "source_segment_id": "28884424",
+      "star_count": 6,
+      "transit_coverage_ratio": 0.058733,
+      "transit_intervals_m": [
+        [
+          218.4,
+          792.2
+        ]
+      ]
+    }
+  ],
+  "evidence_snapshot_sha256": "7d7df9fac887133e5e13253a32b5e6ec58ef8cf24742a5b1168935389350627f",
+  "from": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.422855,
+      37.750718
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "taigu-road:diantou-castle-exit",
+    "source_geometry_hash": "6660bd99d9c7063c063bd98bcc33c7b7cdd7165575fad92ed91de20673b5f0cf",
+    "source_observation_id": 49
+  },
+  "geometry_point_count": 724,
+  "ordered_road_summary": [
+    {
+      "distance_m": 21.0,
+      "road_name": "凤峪街"
+    },
+    {
+      "distance_m": 16.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 36.0,
+      "road_name": "店头村桥"
+    },
+    {
+      "distance_m": 481.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 249.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 2988.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 2182.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 3314.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 294.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 168.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 15.0,
+      "road_name": "未命名道路"
+    }
+  ],
+  "persistence_role": "research_provider_candidate_not_internal_routing_connector_or_road_truth",
+  "port_endpoint_offsets_m": {
+    "from": 0.3,
+    "maximum_allowed": 30.0,
+    "to": 2.7
+  },
+  "provider": "tencent_bicycling_shadow",
+  "provider_distance_m": 9770.0,
+  "provider_duration_raw": 49,
+  "provider_duration_unit": "unknown_not_used",
+  "provider_observed_at": "2026-08-14",
+  "provider_snapshot_sha256": "90b4495278db20b2376c912fd6a22e114fa004aadab47f362b25c5d60c32a802",
+  "provider_status": "connectivity_shadow_not_access_verified",
+  "public_manifest_sha256": "3fa37bb98b5f5acb01b3a951ed63b2ba343328e272b097b8b4126bf3bd8425c3",
+  "relation_input": {
+    "candidate_count": 81,
+    "excluded_count": 0,
+    "included_binding_sha256": "cb06ecb03b70bae0cf555e890088424e858a52d86a54441776966387b82da14e",
+    "included_count": 81,
+    "profile_key": "xishan-road-relation-input-20260813-v2",
+    "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e"
+  },
+  "research_verdict": "connection_candidate",
+  "result_sha256": "d2c97fc5aa06fbb92f1b3119eb3d65d86cb510defa3ec44c568f37b386d5a5cc",
+  "road_summary_m": {
+    "凤峪街": 21.0,
+    "店头村桥": 36.0,
+    "未命名道路": 9707.0
+  },
+  "schema_version": "transit_path_research_v1",
+  "to": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.448187,
+      37.773993
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "diantou-mengshan:diantou-entry",
+    "source_geometry_hash": "fab6da213ce39b29662da57ef0801f89a466603f8fd77c5a2b3cb9f1db405058",
+    "source_observation_id": 9
+  },
+  "transit_key": "xishan-south-taigu-diantou-to-mengshan-entry"
+}

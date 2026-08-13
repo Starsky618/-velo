@@ -1,0 +1,100 @@
+{
+  "algorithm_version": "route_heat_partial_identification_v1",
+  "candidate": {
+    "candidate_id": "hengling-ascent-huaketou-taohuagou",
+    "hard_failure_codes": [],
+    "hard_gate_scope": "regional_destination_pattern_research",
+    "heat_vector": {
+      "algorithm_version": "route_heat_partial_identification_v1",
+      "candidate_id": "hengling-ascent-huaketou-taohuagou",
+      "climb_m": 1100.3,
+      "components": [
+        {
+          "climb_m": 622.2,
+          "component_key": "hengling:full-ascent",
+          "descent_m": 3.4,
+          "distance_km": 10.932,
+          "observed_distance_km": 10.932,
+          "reach_lower_person_km": 6041.453,
+          "reach_upper_person_km": 9329.124,
+          "snapshot_comparability": "same_cohort"
+        },
+        {
+          "climb_m": 211.7,
+          "component_key": "hengling-upper:huaketou-transit",
+          "descent_m": 324.1,
+          "distance_km": 16.856,
+          "observed_distance_km": 0.0,
+          "reach_lower_person_km": 0.0,
+          "reach_upper_person_km": 0.0,
+          "snapshot_comparability": "not_applicable_unobserved"
+        },
+        {
+          "climb_m": 266.4,
+          "component_key": "huaketou:taohuagou",
+          "descent_m": 62.8,
+          "distance_km": 10.1,
+          "observed_distance_km": 10.1,
+          "reach_lower_person_km": 1525.04,
+          "reach_upper_person_km": 1525.04,
+          "snapshot_comparability": "same_cohort"
+        }
+      ],
+      "conditional_support_lower_bound": 5.695258,
+      "connector_ratio": 0.444899,
+      "descent_m": 390.3,
+      "distance_km": 37.888,
+      "evidence_coverage": 0.555101,
+      "heat_vector_sha256": "cb84f82d35d608d05ab12c9c1327b25c3dc15793878d1f9c19208367a9591720",
+      "intent_proxy": 3.440712,
+      "intent_proxy_coverage": 0.555101,
+      "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+      "projection_quality_coverage": 0.554841,
+      "reach_lower_person_km": 7566.493,
+      "reach_uncertainty_width_person_km": 3287.671,
+      "reach_upper_person_km": 10854.163,
+      "repeat_proxy": 3.732991,
+      "repeat_proxy_coverage": 0.555101,
+      "snapshot_comparability": "same_cohort_with_unobserved_connectors",
+      "uncertainty": 0.105211,
+      "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+    },
+    "ordered_component_keys": [
+      "hengling:full-ascent",
+      "hengling-upper:huaketou-transit",
+      "huaketou:taohuagou"
+    ]
+  },
+  "database_write_count": 0,
+  "input_bindings": {
+    "active_source_slice_sha256": "ea2043afdb48bad87107c33659de03597511fce7cf5e12dc52100e7f1fe3cf0c",
+    "full_ascent_exit_port_sha256": "8db88a4de20bd138d0f210ca989dcf0864f2739f522eb16f3f0ce729f2c46ff3",
+    "mountain_module_run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9",
+    "transit_result_sha256": "d9b61d808b158c84dc7822ffccba248bb68a27735f23fd1f81a36e58803a635a"
+  },
+  "manifest_sha256": "0d483475a64ea152ddfe2963cbf56e1f2879689632af76448d0f8ea561395de0",
+  "network_request_count": 0,
+  "policy_version": "popular_reliable_lexicographic_v1",
+  "provider_mode_boundary": "Tencent driving/bicycling is treated as the same connectivity proposal for this research stage; it is not public access truth",
+  "ranking": {
+    "algorithm_version": "route_heat_partial_identification_v1",
+    "hard_feasible_count": 1,
+    "hard_rejected": [],
+    "learned_rerank_status": "disabled_until_frozen_choice_outcome_episodes",
+    "pareto_count": 1,
+    "policy_version": "popular_reliable_lexicographic_v1",
+    "ranked_candidate_ids": [
+      "hengling-ascent-huaketou-taohuagou"
+    ],
+    "ranking_sha256": "ed40b3ae010cc5423fac5ea55b498abe16add8101fcc0f40946f5524d24a1454",
+    "rule": "hard gate -> Pareto -> popular reliable lexicographic policy -> stable candidate id"
+  },
+  "recommendation_reasons": [
+    "横岭完整爬坡、完整过境道路、化客头—桃花沟三段已经顺序接通",
+    "总距离和GLO爬升逐段只记一次，赛段重叠不会重复增加里程或爬升",
+    "热度只使用当前骑行方向；中间无同向赛段证据的道路保持未观测",
+    "横岭重叠赛段只提高区间热度证据密度与上下界，不相加成唯一骑手数"
+  ],
+  "recommendation_status": "recommended_research_pattern",
+  "schema_version": "xishan_route_heat_recommendation_v1"
+}

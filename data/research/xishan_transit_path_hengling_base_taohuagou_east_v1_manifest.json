@@ -1,0 +1,249 @@
+{
+  "algorithm_version": "destination_port_transit_path_v1",
+  "boundary": "provider 提出完整过境道路；来源赛段只投影贡献方向化证据，不成为必须访问的 waypoint，也不自动证明骑行 access。",
+  "database_write_count": 0,
+  "derived_geometry_distance_m": 28547.6,
+  "elevation": {
+    "algorithm_version": "glo30_meaningful_ascent_v1",
+    "climb_m": 417.9,
+    "descent_m": 85.8,
+    "point_count": 447
+  },
+  "evidence_coverage": {
+    "by_direction": {
+      "indeterminate": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "mixed_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "reverse_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "same_direction": {
+        "coverage_lower_bound_ratio": 0.039805,
+        "covered_intervals_m": [
+          [
+            27235.8,
+            28371.6
+          ]
+        ],
+        "covered_length_lower_bound_m": 1135.8
+      }
+    },
+    "coverage_lower_bound_ratio": 0.039805,
+    "covered_intervals_m": [
+      [
+        27235.8,
+        28371.6
+      ]
+    ],
+    "covered_length_lower_bound_m": 1135.8,
+    "diagnostic_indeterminate_fact_count": 1,
+    "mode": "interval_union_lower_bound",
+    "semantic_role": "geometry_coverage_qa_not_directional_heat_score",
+    "uncovered_state": "unobserved_not_zero"
+  },
+  "evidence_facts": [
+    {
+      "athlete_count": 170,
+      "direction_relation": "same_direction",
+      "effort_count": 471,
+      "evidence_status": "diagnostic_indeterminate",
+      "extent_relation": "indeterminate",
+      "reason_codes": [
+        "multiple_projection_measures",
+        "raw_geometry_only_not_road_identity",
+        "self_overlap_requires_topology_review"
+      ],
+      "shared_length_m": 103.2,
+      "source_coverage_ratio": 0.027649,
+      "source_geometry_hash": "2968b1c37a68800c09941cfe9df923698d5b3aab4e178328188c6e60b65fa69d",
+      "source_length_m": 4340.1,
+      "source_name": "偏桥沟(桃花沟偏桥沟岔口到杜关线铁门)",
+      "source_observation_id": 13,
+      "source_segment_id": "23813357",
+      "star_count": 15,
+      "transit_coverage_ratio": 0.003617,
+      "transit_intervals_m": [
+        [
+          28411.4,
+          28514.5
+        ]
+      ]
+    },
+    {
+      "athlete_count": 298,
+      "direction_relation": "same_direction",
+      "effort_count": 1014,
+      "evidence_status": "admitted_directional_evidence",
+      "extent_relation": "a_contains_b",
+      "reason_codes": [
+        "right_fully_embedded_in_left",
+        "raw_geometry_only_not_road_identity"
+      ],
+      "shared_length_m": 1135.9,
+      "source_coverage_ratio": 0.999638,
+      "source_geometry_hash": "50db9ca517500c5053a8ccdaeacbd9e883ac99eb6e35b3f9409cbd9ca2086bc4",
+      "source_length_m": 1132.2,
+      "source_name": "帅的人已经先冲了",
+      "source_observation_id": 91,
+      "source_segment_id": "36581244",
+      "star_count": 3,
+      "transit_coverage_ratio": 0.039807,
+      "transit_intervals_m": [
+        [
+          27235.8,
+          28371.6
+        ]
+      ]
+    }
+  ],
+  "evidence_snapshot_sha256": "72d5df619cbffc689c571832ba0d7d0eb41aa0774a9353c4a4f6cfc53e8b9c3f",
+  "from": {
+    "binding_type": "canonical_module_port",
+    "lonlat": [
+      112.44472,
+      37.984082
+    ],
+    "module_key": "taiyuan_xishan_hengling",
+    "module_port_sha256": "2b773e11ffa1d6bc22406747fcb2e629e69dd01c64077988abbe27eff6ccab5a",
+    "port_key": "full-descent:base-exit",
+    "source_geometry_hash": null,
+    "source_observation_id": null
+  },
+  "geometry_point_count": 447,
+  "ordered_road_summary": [
+    {
+      "distance_m": 42.0,
+      "road_name": "汾河二库路"
+    },
+    {
+      "distance_m": 30.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 9776.0,
+      "road_name": "汾西北路"
+    },
+    {
+      "distance_m": 237.0,
+      "road_name": "多福路"
+    },
+    {
+      "distance_m": 1389.0,
+      "road_name": "多福路"
+    },
+    {
+      "distance_m": 4568.0,
+      "road_name": "西中环路"
+    },
+    {
+      "distance_m": 1121.0,
+      "road_name": "南内环西街"
+    },
+    {
+      "distance_m": 794.0,
+      "road_name": "南内环西街"
+    },
+    {
+      "distance_m": 1746.0,
+      "road_name": "虎峪河北沿岸"
+    },
+    {
+      "distance_m": 154.0,
+      "road_name": "虎峪河北沿岸"
+    },
+    {
+      "distance_m": 365.0,
+      "road_name": "虎峪河北沿岸"
+    },
+    {
+      "distance_m": 623.0,
+      "road_name": "虎峪河北沿岸"
+    },
+    {
+      "distance_m": 1515.0,
+      "road_name": "虎峪河北沿岸"
+    },
+    {
+      "distance_m": 1716.0,
+      "road_name": "虎峪河北沿岸"
+    },
+    {
+      "distance_m": 2691.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 345.0,
+      "road_name": "杜儿坪街"
+    },
+    {
+      "distance_m": 48.0,
+      "road_name": "内部道路"
+    },
+    {
+      "distance_m": 1252.0,
+      "road_name": "内部道路"
+    },
+    {
+      "distance_m": 114.0,
+      "road_name": "内部道路"
+    }
+  ],
+  "persistence_role": "research_provider_candidate_not_internal_routing_connector_or_road_truth",
+  "port_endpoint_offsets_m": {
+    "from": 1.8,
+    "maximum_allowed": 30.0,
+    "to": 7.4
+  },
+  "provider": "tencent_driving",
+  "provider_distance_m": 28534.0,
+  "provider_duration_raw": 41,
+  "provider_duration_unit": "unknown_not_used",
+  "provider_observed_at": "2026-08-13",
+  "provider_snapshot_sha256": "2a7ed39b26b2e8241907d3082ebea882fbecfdc8d3bb93779fd1673e12f89a51",
+  "provider_status": "research_candidate_not_bicycling_verified",
+  "public_manifest_sha256": "50300627bac1c623f02822c4418be98aee28c738fce4252762e426f1091fcbf1",
+  "relation_input": {
+    "candidate_count": 81,
+    "excluded_count": 0,
+    "included_binding_sha256": "cb06ecb03b70bae0cf555e890088424e858a52d86a54441776966387b82da14e",
+    "included_count": 81,
+    "profile_key": "xishan-road-relation-input-20260813-v2",
+    "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e"
+  },
+  "research_verdict": "portal_pair_control",
+  "result_sha256": "54c55894d258f9864a9be25f9356a70fcd6bd61a8d32fc4462bfc363203bdbf3",
+  "road_summary_m": {
+    "内部道路": 1414.0,
+    "南内环西街": 1915.0,
+    "多福路": 1626.0,
+    "未命名道路": 2721.0,
+    "杜儿坪街": 345.0,
+    "汾河二库路": 42.0,
+    "汾西北路": 9776.0,
+    "虎峪河北沿岸": 6119.0,
+    "西中环路": 4568.0
+  },
+  "schema_version": "transit_path_research_v1",
+  "to": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.359046,
+      37.821916
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "taohuagou:east-base-entry",
+    "source_geometry_hash": "34c6242005bd9ee7e7138667658c9673c00bc276341c32ebbd601b4199a709ac",
+    "source_observation_id": 22
+  },
+  "transit_key": "hengling-base-to-taohuagou-east-base"
+}

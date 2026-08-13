@@ -51,7 +51,10 @@ def sorted_unique_lines_sha256(values: list[str]) -> str:
 def load_inputs(profile_path: Path, legacy_path: Path) -> tuple[dict, dict]:
     profile = json.loads(profile_path.read_text(encoding="utf-8"))
     legacy = json.loads(legacy_path.read_text(encoding="utf-8"))
-    if profile.get("schema_version") != "relation_input_scope_profile_v1":
+    if profile.get("schema_version") not in {
+        "relation_input_scope_profile_v1",
+        "relation_input_scope_profile_v2",
+    }:
         raise ValueError("scope profile schema_version 不受支持")
     if legacy.get("schema_version") != "source_scope_alignment_v1":
         raise ValueError("legacy alignment schema_version 不受支持")
@@ -260,6 +263,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def run(args: argparse.Namespace) -> dict:
     profile, legacy = load_inputs(args.profile, args.legacy_alignment)
+    if profile.get("production_alignment_status") == "pending_next_deployment_cleanup":
+        return {
+            "status": "pending_next_deployment_cleanup",
+            "candidate_count": profile["candidate_count"],
+            "included_count": profile["included_count"],
+            "database_write_count": 0,
+            "boundary": (
+                "活跃本地分析已是公路81条；生产删除留到下一次授权部署，"
+                "本次不连接或修改生产数据库。"
+            ),
+        }
     db = SessionLocal()
     try:
         judgment = db.get(JudgmentRun, profile["human_review_judgment_run_id"])

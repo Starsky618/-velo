@@ -1,0 +1,21 @@
+{
+  "schema_version": "transit_provider_request_v1",
+  "transit_key": "xishan-south-taigu-diantou-to-mengshan-entry",
+  "routing_profile": "bicycling",
+  "provider_observed_at": "2026-08-14",
+  "research_verdict": "connection_candidate",
+  "from": {
+    "port_key": "taigu-road:diantou-castle-exit",
+    "binding_type": "source_observation_candidate",
+    "source_observation_id": 49,
+    "source_geometry_hash": "6660bd99d9c7063c063bd98bcc33c7b7cdd7165575fad92ed91de20673b5f0cf",
+    "lonlat": [112.422855, 37.750718]
+  },
+  "to": {
+    "port_key": "diantou-mengshan:diantou-entry",
+    "binding_type": "source_observation_candidate",
+    "source_observation_id": 9,
+    "source_geometry_hash": "fab6da213ce39b29662da57ef0801f89a466603f8fd77c5a2b3cb9f1db405058",
+    "lonlat": [112.448187, 37.773993]
+  }
+}

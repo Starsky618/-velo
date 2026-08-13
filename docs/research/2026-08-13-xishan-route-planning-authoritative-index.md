@@ -18,7 +18,7 @@
 
 ## 已冻结的核心决定
 
-- `SourceObservation` 是来源观测，不是道路；完整原始线永远保留。
+- `SourceObservation` 是来源观测，不是道路；范围内完整原始线保留。明确授权清理的范围外对象可退出活跃生产，但保留不含活跃几何的审计记录。
 - 道路范围和骑行方向是两个独立轴：`ExtentSequence` 判断 exact、包含、重叠，`DirectedRideSignature` 判断同向、反向、混合。
 - 关系事实保存连续、有序、保留重复次数的 witness；模糊等价不做并查集，近似包含不做传递闭包。
 - 全国规模不做 observation 全配对。用 exact signature group、ArcSlice posting、interval arrangement 和查询 envelope 召回局部候选；最终仍由确定性验证器判真。
@@ -29,7 +29,9 @@
 
 ## 当前西山执行位置
 
-当前真实冻结输入是 87 条候选中的 81 条公路关系输入；6 条纯 XC 只退出本次公路关系分析，原始 observation、Strava 字段、geometry 与 GLO-30 事实都保留。
+> 2026-08-14 状态更新：下述 3,240 对与桃花沟内容是已经完成的纵切记录，不再是当前“下一步”。后续又完成横岭 MountainModule、西山 TransitPath、路线热度与四选择组装。当前执行入口改为 [`2026-08-14-city-route-cognition-sop.md`](./2026-08-14-city-route-cognition-sop.md)；新 Session 按 [`2026-08-14-xishan-south-experiment-handoff.md`](./2026-08-14-xishan-south-experiment-handoff.md) 一次处理西山南部 21 条候选、多个目的地积木和区域组合。
+
+历史范围审核曾把 87 条候选分成 81 条公路输入和 6 条纯 XC。当前本地活跃输入已经收口为 exact 81，6 条 XC 不再进入来源切片、关系分析或路线推荐；生产残留只在下次获得部署授权时清理。
 
 本轮“西山最小纵切”只推进主体实施阶段 0：
 
@@ -53,11 +55,11 @@
 
 详细冻结摘要见 [`data/research/xishan_relation_oracle_v1_manifest.json`](../../data/research/xishan_relation_oracle_v1_manifest.json)。完整可重放产物位于 gitignored 的 `outputs/xishan-relation-oracle-v1/`；它包含 81 条无坐标输入摘要、3,240 条 pair witness 和 90 条 review 子集，不进入 Git。
 
-这里的“100% 召回”只是当前算法 full-pair oracle 对候选器的回归，不是人工真值准确率。下一步必须人工核对所有 equivalent、containment、partial、indeterminate 和边界样本，形成 corridor-aware gold，再决定是否晋级这些米数和比例阈值。
+这里的“100% 召回”只是当前算法 full-pair oracle 对候选器的回归，不是人工真值准确率。任何阈值晋级前仍必须人工核对 equivalent、containment、partial、indeterminate 和边界样本，形成 corridor-aware gold；这项债务不阻止当前 research shadow，但不能被当前实验冒充完成。
 
-### 2026-08-13 下一纵切：桃花沟
+### 2026-08-13 当时的下一纵切：桃花沟（已完成 research shadow）
 
-下一步没有直接枚举路线，而是选择桃花沟 7 条来源观察做第一个 Carrier / Projection / 方向热度 research shadow：先证明多条正反向、包含和部分重叠赛段能落到同一条有版本道路载体候选，再在道路 measure 区间上做 provenance 去重和 reach bounds。
+当时没有直接枚举路线，而是选择桃花沟 7 条来源观察做第一个 Carrier / Projection / 方向热度 research shadow：先证明多条正反向、包含和部分重叠赛段能落到同一条有版本道路载体候选，再在道路 measure 区间上做 provenance 去重和 reach bounds。
 
 执行边界与证据见 [`2026-08-13-taohuagou-carrier-projection-slice.md`](./2026-08-13-taohuagou-carrier-projection-slice.md)。该切片不是完整 `RoadCarrierGraph`，不证明 access，也不生成用户可用路线。
 

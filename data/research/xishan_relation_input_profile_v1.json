@@ -1,25 +1,17 @@
 {
-  "schema_version": "relation_input_scope_profile_v1",
-  "profile_key": "xishan-road-relation-input-20260813-v1",
+  "schema_version": "relation_input_scope_profile_v2",
+  "profile_key": "xishan-road-relation-input-20260813-v2",
   "census_batch_id": "xishan-20260813-v1",
   "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
-  "candidate_observation_set_hash": "338d827646ebbf44eaefb32ec495be22fdf327dbca320392cdcacc330ded0a62",
-  "selection_policy_version": "human_scope_selection_v1",
-  "human_review_judgment_run_id": 20,
-  "human_review_declared_hash": "e4c29780f739e5061eeba0d9ad09b70b6e038f9ef68990c74799aba03168bc2c",
-  "selection_payload_sha256": "8b1334d4c653e095bee027d5c40dc225516da03b1885d08fd1dbaaec4c1c53c9",
+  "candidate_observation_set_hash": "ad9ebfecbc44ee21adbac23df6b693fbe35928225b4932069da177383510526d",
+  "candidate_observation_set_hash_version": "sorted_source_observation_ids_v1",
+  "selection_policy_version": "user_confirmed_road_only_permanent_v2",
   "legacy_alignment_sha256": "2f7df2d013a528b8c451b1743e5ff0c5ed0b330e7a9885874c9ed52a73a59159",
-  "candidate_count": 87,
+  "candidate_count": 81,
   "included_count": 81,
-  "excluded_count": 6,
-  "excluded_source_segment_ids": [
-    "33133333",
-    "39979642",
-    "40127007",
-    "40437410",
-    "40589205",
-    "40835241"
-  ],
-  "exclusion_reason_code": "human_confirmed_out_of_road_relation_scope",
-  "exclusion_note": "pure_xc_mtb_user_confirmed_2026-08-13"
+  "excluded_count": 0,
+  "excluded_source_segment_ids": [],
+  "production_alignment_status": "pending_next_deployment_cleanup",
+  "production_cleanup_observation_ids": [56, 106, 108, 109, 110, 111],
+  "boundary": "Active road analysis contains exact 81 observations. Six off-road observations are absent from every active input and will be deleted from production during the next authorized deployment."
 }

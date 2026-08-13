@@ -1,0 +1,238 @@
+{
+  "algorithm_version": "destination_port_transit_path_v1",
+  "boundary": "provider 提出完整过境道路；来源赛段只投影贡献方向化证据，不成为必须访问的 waypoint，也不自动证明骑行 access。",
+  "database_write_count": 0,
+  "derived_geometry_distance_m": 14949.9,
+  "elevation": {
+    "algorithm_version": "glo30_meaningful_ascent_v1",
+    "climb_m": 231.3,
+    "descent_m": 247.0,
+    "metadata": {
+      "ascent_minimum_span_m": 100.0,
+      "ascent_prominence_m": 3.0,
+      "calibration_role": "ALOS+FIT+authorized_Strava_offline_evidence",
+      "dataset_id": "COP-DEM_GLO-30-DGED",
+      "grid_registration": "RasterPixelIsPoint",
+      "maximum_processing_distance_m": 1000000.0,
+      "median_filter_points": 3,
+      "processing_grid_m": 20.0,
+      "smoothing_sigma_m": 100.0,
+      "vertical_datum": "EGM2008 (EPSG:3855)"
+    },
+    "point_count": 353
+  },
+  "evidence_coverage": {
+    "by_direction": {
+      "indeterminate": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "mixed_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "reverse_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "same_direction": {
+        "coverage_lower_bound_ratio": 0.075964,
+        "covered_intervals_m": [
+          [
+            13637.9,
+            14774.1
+          ]
+        ],
+        "covered_length_lower_bound_m": 1136.2
+      }
+    },
+    "coverage_lower_bound_ratio": 0.075964,
+    "covered_intervals_m": [
+      [
+        13637.9,
+        14774.1
+      ]
+    ],
+    "covered_length_lower_bound_m": 1136.2,
+    "diagnostic_indeterminate_fact_count": 1,
+    "mode": "interval_union_lower_bound",
+    "semantic_role": "geometry_coverage_qa_not_directional_heat_score",
+    "uncovered_state": "unobserved_not_zero"
+  },
+  "evidence_facts": [
+    {
+      "athlete_count": 170,
+      "direction_relation": "same_direction",
+      "effort_count": 471,
+      "evidence_status": "diagnostic_indeterminate",
+      "extent_relation": "indeterminate",
+      "reason_codes": [
+        "multiple_projection_measures",
+        "raw_geometry_only_not_road_identity",
+        "self_overlap_requires_topology_review"
+      ],
+      "shared_length_m": 103.2,
+      "source_coverage_ratio": 0.027649,
+      "source_geometry_hash": "2968b1c37a68800c09941cfe9df923698d5b3aab4e178328188c6e60b65fa69d",
+      "source_length_m": 4340.1,
+      "source_name": "偏桥沟(桃花沟偏桥沟岔口到杜关线铁门)",
+      "source_observation_id": 13,
+      "source_segment_id": "23813357",
+      "star_count": 15,
+      "transit_coverage_ratio": 0.0069,
+      "transit_intervals_m": [
+        [
+          14813.3,
+          14916.5
+        ]
+      ]
+    },
+    {
+      "athlete_count": 298,
+      "direction_relation": "same_direction",
+      "effort_count": 1014,
+      "evidence_status": "admitted_directional_evidence",
+      "extent_relation": "a_contains_b",
+      "reason_codes": [
+        "right_fully_embedded_in_left",
+        "raw_geometry_only_not_road_identity"
+      ],
+      "shared_length_m": 1136.2,
+      "source_coverage_ratio": 0.999943,
+      "source_geometry_hash": "50db9ca517500c5053a8ccdaeacbd9e883ac99eb6e35b3f9409cbd9ca2086bc4",
+      "source_length_m": 1132.2,
+      "source_name": "帅的人已经先冲了",
+      "source_observation_id": 91,
+      "source_segment_id": "36581244",
+      "star_count": 3,
+      "transit_coverage_ratio": 0.075965,
+      "transit_intervals_m": [
+        [
+          13637.9,
+          14774.1
+        ]
+      ]
+    }
+  ],
+  "evidence_snapshot_sha256": "3f06086788813571e9d8b06da6230e7e03ea1e80879aebe1acb68a96ca317072",
+  "from": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.387865,
+      37.798712
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "langpo-base-entry",
+    "source_geometry_hash": "f352aba455aceb8c5c377a3639ede8b7b2a5b1f3b149d259d01c0421dd674bc1",
+    "source_observation_id": 38
+  },
+  "geometry_point_count": 353,
+  "ordered_road_summary": [
+    {
+      "distance_m": 387.0,
+      "road_name": "官地街"
+    },
+    {
+      "distance_m": 502.0,
+      "road_name": "官地街"
+    },
+    {
+      "distance_m": 1586.0,
+      "road_name": "官地街"
+    },
+    {
+      "distance_m": 17.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 500.0,
+      "road_name": "白家庄路"
+    },
+    {
+      "distance_m": 3531.0,
+      "road_name": "白家庄路"
+    },
+    {
+      "distance_m": 931.0,
+      "road_name": "白家庄路"
+    },
+    {
+      "distance_m": 1330.0,
+      "road_name": "虎峪河北沿岸"
+    },
+    {
+      "distance_m": 1716.0,
+      "road_name": "虎峪河北沿岸"
+    },
+    {
+      "distance_m": 2691.0,
+      "road_name": "未命名道路"
+    },
+    {
+      "distance_m": 345.0,
+      "road_name": "杜儿坪街"
+    },
+    {
+      "distance_m": 48.0,
+      "road_name": "内部道路"
+    },
+    {
+      "distance_m": 1252.0,
+      "road_name": "内部道路"
+    },
+    {
+      "distance_m": 114.0,
+      "road_name": "内部道路"
+    }
+  ],
+  "persistence_role": "research_provider_candidate_not_internal_routing_connector_or_road_truth",
+  "port_endpoint_offsets_m": {
+    "from": 1.2,
+    "maximum_allowed": 30.0,
+    "to": 7.4
+  },
+  "provider": "tencent_driving_shadow",
+  "provider_distance_m": 14957.0,
+  "provider_duration_raw": 24,
+  "provider_duration_unit": "unknown_not_used",
+  "provider_observed_at": "2026-08-13T13:52:00.928410Z",
+  "provider_snapshot_sha256": "6a457f65d44fa9500ce3f99a1e4343b702badd26bda9bb5b22c56e22c181ac62",
+  "provider_status": "provider_path_not_bicycling_verified",
+  "public_manifest_sha256": "42cea4980dcce48c67c8da8d2204c8924f91aacbd84bb4dd18780d4b43971709",
+  "relation_input": {
+    "candidate_count": 81,
+    "excluded_count": 0,
+    "included_binding_sha256": "cb06ecb03b70bae0cf555e890088424e858a52d86a54441776966387b82da14e",
+    "included_count": 81,
+    "profile_key": "xishan-road-relation-input-20260813-v2",
+    "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e"
+  },
+  "research_verdict": "portal_pair_control_not_completed_destination_traversal",
+  "result_sha256": "a212a683f80a2320582a9c3402886d2c1fa0d9dd247f30f1cd669226575b19a1",
+  "road_summary_m": {
+    "内部道路": 1414.0,
+    "官地街": 2475.0,
+    "未命名道路": 2708.0,
+    "杜儿坪街": 345.0,
+    "白家庄路": 4962.0,
+    "虎峪河北沿岸": 3046.0
+  },
+  "schema_version": "transit_path_research_v1",
+  "to": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.359046,
+      37.821916
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "taohuagou-east-base",
+    "source_geometry_hash": "34c6242005bd9ee7e7138667658c9673c00bc276341c32ebbd601b4199a709ac",
+    "source_observation_id": 22
+  },
+  "transit_key": "langpo-base-to-taohuagou-east"
+}

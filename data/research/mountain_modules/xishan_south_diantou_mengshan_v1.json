@@ -1,0 +1,21 @@
+{
+  "schema_version": "mountain_module_spec_v2",
+  "module_key": "taiyuan_xishan_diantou_mengshan",
+  "module_name": "店头—蒙山",
+  "module_role": "destination_block",
+  "artifact_location": "outputs/xishan-south-diantou-mengshan-module-v1",
+  "status": "research_shadow_pending_glo_profile_export",
+  "census_batch_id": "xishan-20260813-v1",
+  "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+  "heat_snapshot_cohort": "xishan-20260813-v1",
+  "reference_axis": {"source_observation_id": 9, "source_segment_id": "22350896", "source_geometry_hash": "fab6da213ce39b29662da57ef0801f89a466603f8fd77c5a2b3cb9f1db405058", "direction_semantics": {"forward": "diantou_to_mengshan", "reverse": "mengshan_to_diantou"}, "selection_basis": "independent_complete_destination_axis"},
+  "source_selection": {"mode": "exact_observation_ids", "observation_ids": [9], "observation_set_sha256": "19581e27de7ced00ff1ce50b2047e7a567c76b1cbaebabe5ef03f7c3017bb5b7"},
+  "holdout_observation_ids": [28, 49],
+  "excluded_source_segment_ids": [],
+  "axis_profile_observation_id": 9,
+  "role_requirements": [{"role_key": "full_ascent", "observation_id": 9, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.99}],
+  "route_blocks": [{"block_key_suffix": "full-ascent", "name_suffix": "完整爬升", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 9, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "full-ascent:diantou-entry", "exit_port_key": "full-ascent:mengshan-exit"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["o9 supplies one complete independent destination resource", "o28/o49 are not borrowed as same-carrier resources"]}],
+  "connections": [],
+  "route_assembly_boundary": {"segment_endpoint_semantics": "observation_boundary_not_road_terminal", "inter_module_pattern": "destination_blocks_plus_transit_path", "transit_accounting": "provider route first; source observations only project heat"},
+  "boundary": "No same-carrier exact21 evidence beyond o9; full GLO profile export remains pending."
+}

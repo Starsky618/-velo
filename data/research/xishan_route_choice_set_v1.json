@@ -1,0 +1,108 @@
+{
+  "schema_version": "route_pattern_choice_spec_v1",
+  "choice_set_key": "taiyuan-xishan-four-hard-data-choices-v1",
+  "heat_snapshot_cohort": "xishan-20260813-v1",
+  "source_slice_sha256": "ea2043afdb48bad87107c33659de03597511fce7cf5e12dc52100e7f1fe3cf0c",
+  "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+  "candidates": [
+    {
+      "candidate_id": "hengling-ascent-core",
+      "choice_name": "横岭完整爬坡核心段",
+      "comparison_scope": "destination_core",
+      "anchor_observation_ids": [2],
+      "outing_boundary": "仅为横岭山区爬坡核心段，不含市区接驳、离开与返程；不是完整出行距离。",
+      "components": [
+        {
+          "kind": "mountain_block",
+          "occurrence_id": "hengling-ascent-core:occurrence-1",
+          "module_key": "taiyuan_xishan_hengling",
+          "block_key": "taiyuan_xishan_hengling:full-ascent",
+          "run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9"
+        }
+      ]
+    },
+    {
+      "candidate_id": "taohuagou-ascent-core",
+      "choice_name": "桃花沟爬坡核心段",
+      "comparison_scope": "destination_core",
+      "anchor_observation_ids": [22],
+      "outing_boundary": "暂以当前最完整的桃花沟爬坡来源线作为核心段，不含进山、出山、市区接驳与返程。",
+      "components": [
+        {
+          "kind": "source_corridor",
+          "occurrence_id": "taohuagou-ascent-core:occurrence-1",
+          "source_observation_id": 22,
+          "source_segment_id": "25967365",
+          "source_geometry_hash": "34c6242005bd9ee7e7138667658c9673c00bc276341c32ebbd601b4199a709ac",
+          "direction": "forward"
+        }
+      ]
+    },
+    {
+      "candidate_id": "hengling-to-taohuagou-regional-chain",
+      "choice_name": "横岭—化客头—桃花沟山区串联",
+      "comparison_scope": "regional_chain",
+      "anchor_observation_ids": [2, 6],
+      "outing_boundary": "仅为山区内部串联，不含市区出发与桃花沟后的最终回城；不是完整骑行日程。",
+      "components": [
+        {
+          "kind": "mountain_block",
+          "occurrence_id": "hengling-ascent:occurrence-1",
+          "module_key": "taiyuan_xishan_hengling",
+          "block_key": "taiyuan_xishan_hengling:full-ascent",
+          "run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9"
+        },
+        {
+          "kind": "transit_path",
+          "occurrence_id": "hengling-huaketou-transit:occurrence-1",
+          "transit_key": "hengling-upper-to-taohuagou-huaketou",
+          "result_sha256": "d9b61d808b158c84dc7822ffccba248bb68a27735f23fd1f81a36e58803a635a",
+          "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+          "traversal_direction": "stored"
+        },
+        {
+          "kind": "source_corridor",
+          "occurrence_id": "huaketou-taohuagou:occurrence-1",
+          "source_observation_id": 6,
+          "source_segment_id": "22350861",
+          "source_geometry_hash": "83c54e668da078a017ef48544fa3e76e145b03cfa4c49e1de1f6174abc03996e",
+          "direction": "forward"
+        }
+      ]
+    },
+    {
+    "candidate_id": "taohuagou-to-hengling-regional-chain",
+    "reverse_of_candidate_id": "hengling-to-taohuagou-regional-chain",
+      "choice_name": "桃花沟—化客头—横岭山区反向串联",
+      "comparison_scope": "regional_chain",
+      "anchor_observation_ids": [6, 16],
+      "outing_boundary": "仅为山区内部反向串联，不含桃花沟前的市区接驳与横岭后的最终回城；不是完整骑行日程。",
+      "components": [
+        {
+          "kind": "source_corridor",
+          "occurrence_id": "taohuagou-huaketou:occurrence-1",
+          "source_observation_id": 6,
+          "source_segment_id": "22350861",
+          "source_geometry_hash": "83c54e668da078a017ef48544fa3e76e145b03cfa4c49e1de1f6174abc03996e",
+          "direction": "reverse"
+        },
+        {
+          "kind": "transit_path",
+          "occurrence_id": "huaketou-hengling-transit:occurrence-1",
+          "transit_key": "hengling-upper-to-taohuagou-huaketou",
+          "result_sha256": "d9b61d808b158c84dc7822ffccba248bb68a27735f23fd1f81a36e58803a635a",
+          "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+          "traversal_direction": "reverse"
+        },
+      {
+        "kind": "mountain_block",
+        "occurrence_id": "hengling-descent:occurrence-1",
+        "module_key": "taiyuan_xishan_hengling",
+        "block_key": "taiyuan_xishan_hengling:full-ascent",
+        "run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9",
+        "traversal_direction": "reverse"
+      }
+      ]
+    }
+  ]
+}
