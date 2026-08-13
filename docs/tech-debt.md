@@ -23,19 +23,19 @@
 
 ## 🟡 P2 `[SCALE-TRIGGER]`：西山道路投影先做单走廊确定性 research core，暂不引入全国本地图引擎（2026-08-13）
 
-**当前选择**：先用桃花沟 7 条冻结 Strava 来源线和一个双快照一致的 OSM way candidate，验证无外部路由引擎参与的保序方向投影、道路 measure 区间和部分识别热度不变量。该实现明确标为 `research_shadow`；OSM access 缺失保持 `unknown`，不生成正式路线，也不把单 way 升格为 `RoadCarrierGraph`。
+**当前选择**：桃花沟首刀保留为单走廊投影实验；横岭第二刀改用 Strava 完整来源线作参考轴，通过同一套无地域机械程序 + 区域 manifest 生成有向积木、端口、区间热度和阻塞边。两者均为 `research_shadow`，不生成正式路线，也不把单一参考线升格为 `RoadCarrierGraph`。横岭流程不使用 OSM。
 
 **暂缓方案**：本轮不把 pyogrio/Shapely 等本机临时分析依赖加入生产镜像，不导入全国 OSM，不建立 GraphHopper/Valhalla 常驻服务，不设计道路图数据库 schema，也不对 81 条一次性做 provider bake-off。全国方案仍以签名组、ArcSlice posting、局部不可变版本和分层搜索为目标，不做 observation 全配对。
 
 **触发条件（任一满足即升级）**：
 
-1. 准备把桃花沟之外第 2 条走廊或全 81 条 observation 投影结果用于正式关系、热度或规划；
+1. 准备把任一 research-shadow 走廊投影结果用于正式关系、热度排序或路线规划（新增第 2 个仅作算法 holdout 的山区积木不触发）；
 2. 需要判断道路连通、转向、桥隧、双幅路、access 或 connector，而单折线 candidate 无法表达；
 3. 冻结走廊 gold 中，单 carrier matcher 的 `accepted_unique` 覆盖率低于 95%，或错误唯一吸附率超过 1%；
 4. 任一来源线出现多个 carrier hypothesis 分数接近、graph missing/raw conflict，且会影响关系或热度 attribution；
 5. 增量 observation 达到 1,000 条，或一次局部 projection replay 超过 10 分钟。
 
-**检查入口**：`scripts/analyze_taohuagou_carrier_projection.py` 的 manifest 记录 accepted/abstained counts、距离/覆盖分布、方向账、input/output hash 和 database write count；`tests/test_route_cognition_carrier_projection.py` 锁定重复 fact 幂等、方向隔离、refinement invariance 和稳定 hash。扩量前必须新增 corridor gold 与错误唯一吸附指标，不能把 raw matcher 自己的结果当真值 recall。
+**检查入口**：`scripts/analyze_taohuagou_carrier_projection.py` 保留首个投影实验；`scripts/export_mountain_module_snapshot.py` 与 `scripts/analyze_mountain_module.py` 按 manifest 只读导出并离线重放山区积木。`tests/test_route_cognition_carrier_projection.py` 锁定重复 fact 幂等、方向隔离、refinement invariance 和稳定 hash，`tests/test_mountain_modules.py` / `tests/test_analyze_mountain_module.py` 锁 exact set、角色覆盖、端口方向、阻塞状态和无地域字面量。扩量前必须新增 corridor gold 与错误唯一吸附指标，不能把 raw matcher 自己的结果当真值 recall。
 
 **越线风险**：继续沿用单 carrier 会把平行道路、桥隧、岔路和 graph missing 压成一个看似精确的 measure，继而错误去重热度或伪造连通；直接把本机 GIS 环境当运行时又会造成 CI/容器不可复现。
 
