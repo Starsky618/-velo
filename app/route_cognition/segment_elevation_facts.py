@@ -8,7 +8,11 @@ import re
 from types import SimpleNamespace
 from typing import Callable
 
-from app.common.geometry_hash import stable_line_hash
+from app.common.geometry_hash import (
+    STRAVA_SOURCE_GEOMETRY_NORMALIZATION_VERSION,
+    canonical_strava_source_line_wkt,
+    strava_source_geometry_hash,
+)
 from app.elevation.route_elevation import (
     ROUTE_ELEVATION_METHOD,
     RouteElevationResult,
@@ -19,7 +23,9 @@ from app.parsing.geo_math import haversine
 from app.segment.algorithms import calculate_max_gradient
 
 
-SOURCE_GEOMETRY_NORMALIZATION_VERSION = "strava_source_line_lonlat_7dp_v1"
+SOURCE_GEOMETRY_NORMALIZATION_VERSION = (
+    STRAVA_SOURCE_GEOMETRY_NORMALIZATION_VERSION
+)
 SOURCE_DISTANCE_ANOMALY_THRESHOLD_PCT = 5.0
 MAXIMUM_GRADIENT_REQUESTED_WINDOW_M = 500.0
 ElevationBuilder = Callable[[list[list[float]]], RouteElevationResult]
@@ -49,13 +55,11 @@ def points_from_linestring_wkt(value: str) -> list[list[float]]:
 
 def canonical_source_line_wkt(points: list[list[float]]) -> str:
     """固定到 census 已保存精度，避免 PostGIS 文本格式差异改变 hash。"""
-    return "LINESTRING (" + ", ".join(
-        f"{float(lon):.7f} {float(lat):.7f}" for lon, lat in points
-    ) + ")"
+    return canonical_strava_source_line_wkt(points)
 
 
 def source_geometry_hash(points: list[list[float]]) -> str:
-    return stable_line_hash(canonical_source_line_wkt(points))
+    return strava_source_geometry_hash(points)
 
 
 def validated_source_geometry(

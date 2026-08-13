@@ -1,0 +1,48 @@
+{
+  "schema_version": "taohuagou_carrier_projection_manifest_v1",
+  "generated_at": "2026-08-13",
+  "evidence_status": "research_shadow",
+  "parameter_promotion_status": "research_probe_unpromoted",
+  "evidence_eligibility": "shadow_only_not_route_ranking_input",
+  "boundary": "单 OSM way 的研究投影，不证明道路身份、access、拓扑、正式 ProjectionSet、唯一骑手热度或路线可推荐。",
+  "artifact_location": "outputs/taohuagou-carrier-projection-v1",
+  "inputs": {
+    "carrier_candidate": "data/research/taohuagou_carrier_candidate_v1.json",
+    "carrier_input_sha256": "8e72a0866d37724dddd29c5d5f2e3fa5fc46efcb34bfef2487c4c9ee35635da5",
+    "projection_slice": "data/research/taohuagou_projection_slice_v1.json",
+    "slice_input_sha256": "78ad27dfbd98832776131473b64949f0ad88bfb4e4c9c04ec2d77dc2fd81812b"
+  },
+  "carrier_candidate_id": "osm-way-840111674-v6",
+  "carrier_length_m": 12824.158,
+  "observation_count": 7,
+  "accepted_projection_count": 7,
+  "accepted_posting_count": 12,
+  "abstained_projection_count": 0,
+  "projection_status_counts": {
+    "research_projected": 7
+  },
+  "projection_direction_counts": {
+    "forward": 5,
+    "reverse": 2
+  },
+  "directed_evidence_cell_count": 26,
+  "directed_evidence_support_state_counts": {
+    "observed": 18,
+    "unobserved": 8
+  },
+  "maximum_cell_source_fact_count": 3,
+  "calibration_gray_cases": [
+    {
+      "source_observation_id": 70,
+      "source_segment_id": "35189935",
+      "source_coverage_ratio": 0.434,
+      "reason": "当前7条中覆盖率最低；只保留为shadow阈值校准样本，不作为晋级正例。"
+    }
+  ],
+  "run_sha256": "f57c0ed2c2082e891964b4ccaee5a747130a6acd77014ec4c5141de03a89bb0e",
+  "projection_artifact_sha256": "b69c4b1cf87ff9a1f4e8d32a3d0f80b85d5b36a29cc45e02b60d9086660eeb6e",
+  "evidence_artifact_sha256": "9d7f336ceeca176c19a9bd61958e047ee4d78e1031db5cf984a24e47f1aa81b8",
+  "directed_evidence_result_sha256": "bc5e2233fcc6f0c490eecec3b154fa90c407fbe3e2b83e5b00f68f3199993f3b",
+  "database_write_count": 0,
+  "network_request_count": 0
+}

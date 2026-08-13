@@ -55,6 +55,12 @@
 
 这里的“100% 召回”只是当前算法 full-pair oracle 对候选器的回归，不是人工真值准确率。下一步必须人工核对所有 equivalent、containment、partial、indeterminate 和边界样本，形成 corridor-aware gold，再决定是否晋级这些米数和比例阈值。
 
+### 2026-08-13 下一纵切：桃花沟
+
+下一步没有直接枚举路线，而是选择桃花沟 7 条来源观察做第一个 Carrier / Projection / 方向热度 research shadow：先证明多条正反向、包含和部分重叠赛段能落到同一条有版本道路载体候选，再在道路 measure 区间上做 provenance 去重和 reach bounds。
+
+执行边界与证据见 [`2026-08-13-taohuagou-carrier-projection-slice.md`](./2026-08-13-taohuagou-carrier-projection-slice.md)。该切片不是完整 `RoadCarrierGraph`，不证明 access，也不生成用户可用路线。
+
 ## 实施时必须补上的一个细节
 
 最终修正说明的双向 containment 要求已经明确，但其 `containers_of` 伪代码最后一行只展示了正向 exact embedding。实现必须对正序和整体反向都做 occurrence-preserving exact embedding，再单独判断 direction，不能只召回反向候选却用正向验证把它漏掉。
