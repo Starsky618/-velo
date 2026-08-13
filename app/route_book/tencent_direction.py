@@ -124,10 +124,25 @@ def _plan_tencent_route(
 
     route = routes[0]
     points = _decode_polyline(route.get("polyline") or [])
+    steps = []
+    for raw in route.get("steps") or []:
+        distance = float(raw.get("distance") or 0)
+        if not math.isfinite(distance) or distance < 0:
+            raise TencentMapError("腾讯路线道路步骤距离异常")
+        steps.append(
+            {
+                "road_name": str(raw.get("road_name") or "未命名道路"),
+                "distance_m": distance,
+                "instruction": raw.get("instruction"),
+                "act_desc": raw.get("act_desc"),
+            }
+        )
     return {
         "distance": float(route.get("distance") or 0),
         "duration": route.get("duration"),
         "points": points,
+        # 路书调用方可以忽略；研究态 TransitPath 必须保留完整有序道路账。
+        "steps": steps,
     }
 
 

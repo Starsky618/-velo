@@ -1,0 +1,43 @@
+{
+  "schema_version": "mountain_module_spec_v2",
+  "module_key": "taiyuan_xishan_niujiakou_south",
+  "module_name": "牛家口—天龙山南线",
+  "module_role": "destination_block",
+  "artifact_location": "outputs/xishan-south-niujiakou-module-v1",
+  "status": "research_shadow_pending_glo_profile_export",
+  "census_batch_id": "xishan-20260813-v1",
+  "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+  "heat_snapshot_cohort": "xishan-20260813-v1",
+  "reference_axis": {
+    "source_observation_id": 4,
+    "source_segment_id": "20835564",
+    "source_geometry_hash": "729a5e062c2ddb74e3949444d95ec4a5e7cb3fac23b92fbb846f3e8d81c8ab8c",
+    "direction_semantics": {"forward": "niujiakou_to_tianlongshan", "reverse": "tianlongshan_to_niujiakou"},
+    "selection_basis": "projection_supported_longest_complete_south_axis"
+  },
+  "source_selection": {
+    "mode": "exact_observation_ids",
+    "observation_ids": [4, 55, 89, 97],
+    "observation_set_sha256": "00f243090bb7a52f916809003de3a15239065f854219571ffaa12293ed073d55"
+  },
+  "holdout_observation_ids": [17],
+  "excluded_source_segment_ids": [],
+  "axis_profile_observation_id": 4,
+  "role_requirements": [
+    {"role_key": "full_ascent", "observation_id": 4, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.99},
+    {"role_key": "reverse_local_niujiakou", "observation_id": 89, "expected_direction": "reverse", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.60},
+    {"role_key": "tofu_shop_local", "observation_id": 55, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.30},
+    {"role_key": "shared_upper_witness", "observation_id": 97, "expected_direction": "forward", "min_source_coverage_ratio": 0.90, "min_axis_coverage_ratio": 0.70}
+  ],
+  "route_blocks": [{
+    "block_key_suffix": "full-ascent",
+    "name_suffix": "完整南线爬升",
+    "block_role": "destination_traversal",
+    "traversals": [{"resource_observation_id": 4, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "full-ascent:niujiakou-entry", "exit_port_key": "full-ascent:tianlongshan-upper-exit"}],
+    "recommendation_status": "evidence_candidate",
+    "recommendation_reasons": ["o4 provides one complete direction and GLO total", "o55/o89/o97 project as local or reverse evidence without duplicating physical distance"]
+  }],
+  "connections": [],
+  "route_assembly_boundary": {"segment_endpoint_semantics": "observation_boundary_not_road_terminal", "inter_module_pattern": "destination_blocks_plus_transit_path", "transit_accounting": "provider route first; source observations only project heat"},
+  "boundary": "Full GLO profile export is pending production read-only access; totals and geometry projection are reconciled."
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": "transit_provider_request_v1",
+  "transit_key": "xishan-south-mengshan-to-north-base",
+  "routing_profile": "bicycling",
+  "provider_observed_at": "2026-08-14",
+  "research_verdict": "connection_candidate",
+  "from": {
+    "port_key": "diantou-mengshan:mengshan-exit",
+    "binding_type": "source_observation_candidate",
+    "source_observation_id": 9,
+    "source_geometry_hash": "fab6da213ce39b29662da57ef0801f89a466603f8fd77c5a2b3cb9f1db405058",
+    "lonlat": [112.435651, 37.759044]
+  },
+  "to": {
+    "port_key": "tianlongshan-north:base-entry",
+    "binding_type": "source_observation_candidate",
+    "source_observation_id": 8,
+    "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc",
+    "lonlat": [112.415163, 37.75414]
+  }
+}

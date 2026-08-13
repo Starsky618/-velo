@@ -95,6 +95,16 @@ def test_transit_path_rejects_unaccounted_step_distance() -> None:
         _run(steps=[TransitStep("测试路", 100.0)])
 
 
+def test_bicycling_profile_remains_connectivity_shadow() -> None:
+    result = _run(
+        provider="tencent_bicycling_shadow",
+        provider_status="connectivity_shadow_not_access_verified",
+    )
+
+    assert result["provider"] == "tencent_bicycling_shadow"
+    assert result["provider_status"] == "connectivity_shadow_not_access_verified"
+
+
 def test_transit_path_rejects_duplicate_evidence_observation() -> None:
     with pytest.raises(ValueError, match="unique"):
         _run(evidence_facts=[_fact(), _fact()])
@@ -142,6 +152,48 @@ def test_transit_path_keeps_directional_coverage_separate() -> None:
     assert coverage["semantic_role"] == (
         "geometry_coverage_qa_not_directional_heat_score"
     )
+
+
+def test_short_transit_accepts_its_own_tenth_metre_interval_quantization() -> None:
+    fact = TransitEvidenceFact(
+        **{
+            **_fact().__dict__,
+            "shared_length_m": 78.29,
+            "transit_intervals_m": ((6.551, 84.841),),
+            "transit_coverage_ratio": 78.29 / 85.0,
+        }
+    )
+    result = _run(
+        from_port=TransitPort(
+            "a:exit",
+            112.4,
+            37.9,
+            "source_observation_candidate",
+            source_observation_id=1,
+            source_geometry_hash="d" * 64,
+        ),
+        to_port=TransitPort(
+            "b:entry",
+            112.40097,
+            37.9,
+            "source_observation_candidate",
+            source_observation_id=2,
+            source_geometry_hash="e" * 64,
+        ),
+        provider_distance_m=85.0,
+        geometry_wgs84=[[112.4, 37.9], [112.40097, 37.9]],
+        steps=[TransitStep("测试路", 85.0)],
+        elevation={
+            "algorithm_version": "glo30_meaningful_ascent_v1",
+            "point_count": 2,
+            "climb_m": 0.0,
+            "descent_m": 0.0,
+            "profile": [[0.0, 100.0], [0.085, 100.0]],
+        },
+        evidence_facts=[fact],
+    )
+
+    assert result["evidence_facts"][0]["transit_intervals_m"] == [[6.6, 84.8]]
 
 
 def test_transit_path_keeps_indeterminate_fact_out_of_directional_coverage() -> None:

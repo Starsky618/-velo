@@ -1,0 +1,27 @@
+{
+  "schema_version": "mountain_module_spec_v2",
+  "module_key": "taiyuan_xishan_tianlongshan_north",
+  "module_name": "天龙山北侧—龙山店头",
+  "module_role": "destination_block",
+  "artifact_location": "outputs/xishan-south-tianlongshan-north-module-v1",
+  "status": "research_shadow_pending_glo_profile_export",
+  "census_batch_id": "xishan-20260813-v1",
+  "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+  "heat_snapshot_cohort": "xishan-20260813-v1",
+  "reference_axis": {"source_observation_id": 8, "source_segment_id": "22350888", "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc", "direction_semantics": {"forward": "diantou_longshan_to_stone", "reverse": "stone_to_diantou_longshan"}, "selection_basis": "complete_north_approach_axis_distinct_from_east_climb"},
+  "source_selection": {"mode": "exact_observation_ids", "observation_ids": [8, 21, 50, 93, 98], "observation_set_sha256": "62c67b5478d31d6367e4d66488458a6b97a8db449192309561f155d4ad0fb959"},
+  "holdout_observation_ids": [17],
+  "excluded_source_segment_ids": [],
+  "axis_profile_observation_id": 8,
+  "role_requirements": [
+    {"role_key": "full_ascent", "observation_id": 8, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.99},
+    {"role_key": "reverse_diantou_descent", "observation_id": 21, "expected_direction": "reverse", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.70},
+    {"role_key": "longshan_steep_local", "observation_id": 50, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.05},
+    {"role_key": "alternate_ascent", "observation_id": 93, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.80},
+    {"role_key": "longshan_viewpoint", "observation_id": 98, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.70}
+  ],
+  "route_blocks": [{"block_key_suffix": "full-ascent", "name_suffix": "完整北侧爬升", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 8, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "full-ascent:north-base-entry", "exit_port_key": "full-ascent:stone-exit"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["o8 is the complete north approach", "o21/o50/o93/o98 remain direction-aware local evidence"]}],
+  "connections": [],
+  "route_assembly_boundary": {"segment_endpoint_semantics": "observation_boundary_not_road_terminal", "inter_module_pattern": "destination_blocks_plus_transit_path", "transit_accounting": "provider route first; source observations only project heat"},
+  "boundary": "Distinct approach from o17; full GLO profile export remains pending."
+}

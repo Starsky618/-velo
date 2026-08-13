@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from app.route_cognition.transit_paths import canonical_sha256
-from scripts.analyze_route_choice_set import index_run_files, main
+from scripts.analyze_route_choice_set import index_run_files, main, replay_route_choice_set
 
 
 def _write(path: Path, payload: dict) -> None:
@@ -71,3 +71,60 @@ def test_generic_cli_rejects_duplicate_run_keys(tmp_path: Path) -> None:
         index_run_files(
             [first, second], key_field="module_key", label="mountain module"
         )
+
+
+def test_generic_replay_ranks_only_declared_scope_and_intent(monkeypatch) -> None:
+    assembled = {
+        "candidates": [
+            {
+                "candidate_id": "a",
+                "comparison_scope": "short",
+                "hard_failure_codes": [],
+                "heat_vector": {
+                    "evidence_coverage": 1.0,
+                    "conditional_support_lower_bound": 2.0,
+                    "uncertainty": 0.0,
+                    "repeat_proxy": 2.0,
+                    "intent_proxy": 1.0,
+                    "projection_quality_coverage": 1.0,
+                },
+            },
+            {
+                "candidate_id": "b",
+                "comparison_scope": "short",
+                "hard_failure_codes": [],
+                "heat_vector": {
+                    "evidence_coverage": 0.5,
+                    "conditional_support_lower_bound": 1.0,
+                    "uncertainty": 0.0,
+                    "repeat_proxy": 1.0,
+                    "intent_proxy": 1.0,
+                    "projection_quality_coverage": 0.5,
+                },
+            },
+        ],
+        "ranking_status": "not_ranked_across_distinct_rider_jobs",
+        "result_sha256": "old",
+    }
+    monkeypatch.setattr(
+        "scripts.analyze_route_choice_set.assemble_choice_set",
+        lambda *args, **kwargs: assembled,
+    )
+    spec = {
+        "candidates": [
+            {"candidate_id": "a", "rider_intent": "popular_reliable"},
+            {"candidate_id": "b", "rider_intent": "popular_reliable"},
+        ]
+    }
+
+    result = replay_route_choice_set(
+        choice_spec=spec,
+        source_slice={},
+        selection_snapshot={},
+        module_runs={},
+        transit_runs={},
+    )
+
+    assert result["ranking_status"] == "ranked_within_same_scope_and_rider_intent"
+    assert result["ranking_groups"][0]["ranked_candidate_ids"] == ["a"]
+    assert result["result_sha256"] != "old"

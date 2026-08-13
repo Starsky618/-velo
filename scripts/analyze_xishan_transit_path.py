@@ -286,7 +286,7 @@ def _validate_port_bindings(
     provider_snapshot: dict,
     selection_snapshot: dict,
     source_slice: dict | None,
-    module_manifest: dict | None,
+    module_manifests: list[dict] | None,
 ) -> None:
     included = {
         int(item["source_observation_id"]): item
@@ -297,13 +297,20 @@ def _validate_port_bindings(
         for item in ((source_slice or {}).get("observations") or [])
     }
     module_ports: dict[tuple[str, str, str], dict] = {}
-    for block in (module_manifest or {}).get("route_blocks") or []:
-        for traversal in block.get("traversal_ports") or []:
-            for role in ("entry", "exit"):
-                item = traversal[role]
-                module_ports[
-                    (item["module_key"], item["port_key"], item["port_sha256"])
-                ] = item
+    manifests = (
+        [module_manifests]
+        if isinstance(module_manifests, dict)
+        else (module_manifests or [])
+    )
+    for module_manifest in manifests:
+        for block in module_manifest.get("route_blocks") or []:
+            for traversal in block.get("traversal_ports") or []:
+                for role in ("entry", "exit"):
+                    item = traversal[role]
+                    key = (item["module_key"], item["port_key"], item["port_sha256"])
+                    if key in module_ports:
+                        raise ValueError("duplicate canonical module port")
+                    module_ports[key] = item
     for endpoint_name in ("from", "to"):
         endpoint = provider_snapshot[endpoint_name]
         if endpoint["binding_type"] == "source_observation_candidate":
@@ -370,7 +377,7 @@ def build_run(
     selection_snapshot: dict,
     relation_profile: dict,
     source_slice: dict | None = None,
-    module_manifest: dict | None = None,
+    module_manifests: list[dict] | None = None,
 ) -> dict:
     included = _validate_selection(selection_snapshot, relation_profile)
     declared_hash = provider_snapshot.get("snapshot_sha256")
@@ -385,7 +392,7 @@ def build_run(
         provider_snapshot,
         selection_snapshot,
         source_slice,
-        module_manifest,
+        module_manifests,
     )
     if source_slice is not None:
         derived_evidence = derive_evidence_snapshot(
@@ -563,7 +570,7 @@ def main() -> int:
     parser.add_argument("--evidence-snapshot", type=Path, required=True)
     parser.add_argument("--selection-snapshot", type=Path, required=True)
     parser.add_argument("--source-slice", type=Path, required=True)
-    parser.add_argument("--module-manifest", type=Path, required=True)
+    parser.add_argument("--module-manifest", type=Path, action="append", default=[])
     parser.add_argument(
         "--relation-profile",
         type=Path,
@@ -581,7 +588,10 @@ def main() -> int:
     evidence = json.loads(args.evidence_snapshot.read_text(encoding="utf-8"))
     selection = json.loads(args.selection_snapshot.read_text(encoding="utf-8"))
     source_slice = json.loads(args.source_slice.read_text(encoding="utf-8"))
-    module_manifest = json.loads(args.module_manifest.read_text(encoding="utf-8"))
+    module_manifests = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in args.module_manifest
+    ]
     relation_profile = json.loads(args.relation_profile.read_text(encoding="utf-8"))
     run = build_run(
         provider,
@@ -589,7 +599,7 @@ def main() -> int:
         selection,
         relation_profile,
         source_slice,
-        module_manifest,
+        module_manifests,
     )
     output_payload = public_manifest(run) if args.visibility == "public" else run
     _write_json_atomic(args.output, output_payload)

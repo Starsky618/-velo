@@ -1,0 +1,105 @@
+{
+  "algorithm_version": "destination_port_transit_path_v1",
+  "boundary": "provider 提出完整过境道路；来源赛段只投影贡献方向化证据，不成为必须访问的 waypoint，也不自动证明骑行 access。",
+  "database_write_count": 0,
+  "derived_geometry_distance_m": 4706.0,
+  "elevation": {
+    "algorithm_version": "glo30_meaningful_ascent_v1",
+    "climb_m": 15.4,
+    "descent_m": 222.6,
+    "point_count": 346
+  },
+  "evidence_coverage": {
+    "by_direction": {
+      "indeterminate": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "mixed_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "reverse_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "same_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      }
+    },
+    "coverage_lower_bound_ratio": 0.0,
+    "covered_intervals_m": [],
+    "covered_length_lower_bound_m": 0,
+    "diagnostic_indeterminate_fact_count": 0,
+    "mode": "interval_union_lower_bound",
+    "semantic_role": "geometry_coverage_qa_not_directional_heat_score",
+    "uncovered_state": "unobserved_not_zero"
+  },
+  "evidence_facts": [],
+  "evidence_snapshot_sha256": "ee1d0d4a99261d2a155f6b73c70aa79a8a584cf935ea6c24196ee6865c84034c",
+  "from": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.435651,
+      37.759044
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "diantou-mengshan:mengshan-exit",
+    "source_geometry_hash": "fab6da213ce39b29662da57ef0801f89a466603f8fd77c5a2b3cb9f1db405058",
+    "source_observation_id": 9
+  },
+  "geometry_point_count": 346,
+  "ordered_road_summary": [
+    {
+      "distance_m": 4701.0,
+      "road_name": "未命名道路"
+    }
+  ],
+  "persistence_role": "research_provider_candidate_not_internal_routing_connector_or_road_truth",
+  "port_endpoint_offsets_m": {
+    "from": 7.4,
+    "maximum_allowed": 30.0,
+    "to": 6.8
+  },
+  "provider": "tencent_bicycling_shadow",
+  "provider_distance_m": 4702.0,
+  "provider_duration_raw": 24,
+  "provider_duration_unit": "unknown_not_used",
+  "provider_observed_at": "2026-08-14",
+  "provider_snapshot_sha256": "ab7906cbb64caba3cb3c33a1a872e40e3d054b115df08b878afb62aec7587006",
+  "provider_status": "connectivity_shadow_not_access_verified",
+  "public_manifest_sha256": "0ad95c53e5c14aa668bc7a7b5e7df461388a2421656414c75710af9569614624",
+  "relation_input": {
+    "candidate_count": 81,
+    "excluded_count": 0,
+    "included_binding_sha256": "cb06ecb03b70bae0cf555e890088424e858a52d86a54441776966387b82da14e",
+    "included_count": 81,
+    "profile_key": "xishan-road-relation-input-20260813-v2",
+    "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e"
+  },
+  "research_verdict": "connection_candidate",
+  "result_sha256": "c76da0172c21c7c1d16fc1e7713bc8152edd660c99ab2e59c6ddd67f6176650b",
+  "road_summary_m": {
+    "未命名道路": 4701.0
+  },
+  "schema_version": "transit_path_research_v1",
+  "to": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.415163,
+      37.75414
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "tianlongshan-north:base-entry",
+    "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc",
+    "source_observation_id": 8
+  },
+  "transit_key": "xishan-south-mengshan-to-north-base"
+}

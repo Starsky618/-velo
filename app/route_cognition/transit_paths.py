@@ -163,13 +163,19 @@ def build_transit_path(
         raise ValueError("provider snapshot SHA-256 is invalid")
     if not _SHA256_PATTERN.fullmatch(evidence_snapshot_sha256):
         raise ValueError("evidence snapshot SHA-256 is invalid")
-    if provider not in {"tencent_driving", "tencent_driving_shadow"}:
+    if provider not in {
+        "tencent_driving",
+        "tencent_driving_shadow",
+        "tencent_bicycling",
+        "tencent_bicycling_shadow",
+    }:
         raise ValueError("unsupported transit provider")
     if provider_status not in {
         "research_candidate_not_bicycling_verified",
         "provider_path_not_bicycling_verified",
+        "connectivity_shadow_not_access_verified",
     }:
-        raise ValueError("transit path is missing the bicycling verification boundary")
+        raise ValueError("transit path is missing the access verification boundary")
     if research_verdict not in {
         "connection_candidate",
         "portal_pair_control",
@@ -260,7 +266,14 @@ def build_transit_path(
         ):
             raise ValueError("transit evidence shared length and intervals drift")
         expected_transit_coverage = interval_length_m / provider_distance_m
-        if abs(row["transit_coverage_ratio"] - expected_transit_coverage) > 0.001:
+        # Fact intervals are serialized to 0.1m before this gate.  On a very
+        # short connector the two rounded endpoints can move coverage by more
+        # than the old fixed 0.001 even though the original witness is exact.
+        coverage_quantization_tolerance = max(0.001, 0.11 / provider_distance_m)
+        if (
+            abs(row["transit_coverage_ratio"] - expected_transit_coverage)
+            > coverage_quantization_tolerance
+        ):
             raise ValueError("transit evidence path coverage and intervals drift")
         if not 0 <= row["source_coverage_ratio"] <= 1:
             raise ValueError("transit evidence source coverage must stay within [0, 1]")

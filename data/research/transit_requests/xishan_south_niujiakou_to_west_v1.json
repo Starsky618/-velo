@@ -1,0 +1,21 @@
+{
+  "schema_version": "transit_provider_request_v1",
+  "transit_key": "xishan-south-niujiakou-upper-to-west-stone",
+  "routing_profile": "bicycling",
+  "provider_observed_at": "2026-08-14",
+  "research_verdict": "connection_candidate",
+  "from": {
+    "port_key": "niujiakou-south:upper-exit",
+    "binding_type": "source_observation_candidate",
+    "source_observation_id": 4,
+    "source_geometry_hash": "729a5e062c2ddb74e3949444d95ec4a5e7cb3fac23b92fbb846f3e8d81c8ab8c",
+    "lonlat": [112.40458, 37.730894]
+  },
+  "to": {
+    "port_key": "tianlongshan-west:stone-entry",
+    "binding_type": "source_observation_candidate",
+    "source_observation_id": 78,
+    "source_geometry_hash": "5e3315df7e54291ef790a220e34f1a103ab96a00b5c34461063f42b3959407ee",
+    "lonlat": [112.399042, 37.740096]
+  }
+}

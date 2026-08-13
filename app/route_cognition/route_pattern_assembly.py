@@ -61,6 +61,7 @@ class _AssembledComponent:
     exit: _Endpoint
     heat: Any
     evidence_source_ids: frozenset[int]
+    full_source_traversals: frozenset[tuple[int, str]]
     public_facts: Mapping[str, Any]
 
 
@@ -281,6 +282,7 @@ def _source_corridor_component(
         exit=exit,
         heat=heat,
         evidence_source_ids=frozenset({observation_id}),
+        full_source_traversals=frozenset({(observation_id, direction)}),
         public_facts={
             "occurrence_id": occurrence_id,
             "kind": "source_corridor",
@@ -472,6 +474,7 @@ def _mountain_component(
         exit=exit,
         heat=heat,
         evidence_source_ids=frozenset(directional_source_ids),
+        full_source_traversals=frozenset(),
         public_facts={
             "occurrence_id": occurrence_id,
             "kind": "mountain_block",
@@ -602,6 +605,7 @@ def _transit_component(
         "reverse" if traversal_direction == "reverse" else "forward"
     )
     admitted_source_ids: set[int] = set()
+    full_source_traversals: set[tuple[int, str]] = set()
     for fact in run.get("evidence_facts") or []:
         source = source_by_id.get(int(fact["source_observation_id"]))
         if source is None:
@@ -624,6 +628,15 @@ def _transit_component(
         direction = direction_map.get(fact["direction_relation"])
         if fact.get("evidence_status") != "admitted_directional_evidence" or not direction:
             continue
+        traversal_evidence_direction = direction
+        if traversal_direction == "reverse":
+            traversal_evidence_direction = (
+                "reverse" if direction == "forward" else "forward"
+            )
+        if float(fact.get("source_coverage_ratio") or 0) >= 0.95:
+            full_source_traversals.add(
+                (int(fact["source_observation_id"]), traversal_evidence_direction)
+            )
         if direction == selected_heat_direction:
             admitted_source_ids.add(int(fact["source_observation_id"]))
         for interval in fact["transit_intervals_m"]:
@@ -641,8 +654,15 @@ def _transit_component(
                 )
             )
     distance_m = float(run["provider_distance_m"])
+    measure_distance_m = float(run.get("derived_geometry_distance_m", distance_m))
     component_geometry_sha256 = _component_geometry_sha256(run["geometry_wgs84"])
-    arrangement = arrange_directed_evidence(transit_key, distance_m, postings)
+    # Projection intervals are measured on the retained provider geometry, not
+    # on the provider's rounded summary distance.  TransitPath already gates
+    # those two measures to within 3%; keep the geometric measure for atomic
+    # evidence and the provider measure for the rider-facing route total.
+    arrangement = arrange_directed_evidence(
+        transit_key, max(distance_m, measure_distance_m), postings
+    )
     climb = float(run["elevation"]["climb_m"])
     descent = float(run["elevation"]["descent_m"])
     heat_direction = selected_heat_direction
@@ -666,6 +686,7 @@ def _transit_component(
         exit=_transit_endpoint(raw_exit, source_by_id, module_ports),
         heat=heat,
         evidence_source_ids=frozenset(admitted_source_ids),
+        full_source_traversals=frozenset(full_source_traversals),
         public_facts={
             "occurrence_id": occurrence_id,
             "kind": "transit_path",
@@ -881,6 +902,17 @@ def assemble_candidate(
                 raise RoutePatternAssemblyError(
                     "component_boundary_mismatch",
                     f"{previous.occurrence_id} does not join {current.occurrence_id}",
+                )
+            previous_by_source = dict(previous.full_source_traversals)
+            current_by_source = dict(current.full_source_traversals)
+            if any(
+                current_by_source.get(source_id) not in {None, direction}
+                for source_id, direction in previous_by_source.items()
+            ):
+                raise RoutePatternAssemblyError(
+                    "immediate_full_source_retrace",
+                    f"{previous.occurrence_id} immediately retraces a complete source "
+                    f"in {current.occurrence_id}",
                 )
         allowed_anchor_ids = set().union(
             *(set(item.evidence_source_ids) for item in assembled)

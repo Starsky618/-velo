@@ -1,0 +1,201 @@
+{
+  "schema_version": "regional_route_cognition_public_manifest_v1",
+  "batch_key": "xishan_south_destination_network_v1",
+  "status": "research_shadow_profile_resources_pending",
+  "bbox": {
+    "min_lon": 112.36,
+    "max_lon": 112.48,
+    "min_lat": 37.67,
+    "max_lat": 37.78,
+    "selection_rule": "source_geometry_bbox_intersects_window"
+  },
+  "exact_observation_ids": [4, 8, 9, 17, 18, 21, 28, 49, 50, 51, 55, 57, 78, 79, 85, 87, 89, 93, 96, 97, 98],
+  "observation_set_sha256": "c271ee163879bcbf4348b595be0609cf2298a790a0447a3123fbafb469a2e2ce",
+  "source_slice_sha256": "ea2043afdb48bad87107c33659de03597511fce7cf5e12dc52100e7f1fe3cf0c",
+  "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+  "regional_spec_sha256": "cb60c4c1d942e68a9e870800ca43e991ce34191dc3c796d00dc718d3ebb4b04d",
+  "regional_run_sha256": "c1631bce4ee09441199b9f0eaab17418a12bae4f0a1f8898d120ff8fed8b3cf8",
+  "fact_reconciliation": {
+    "observation_count": 21,
+    "unique_source_segment_count": 21,
+    "unique_source_geometry_count": 21,
+    "unique_glo_fact_count": 21,
+    "heat_complete_count": 21,
+    "source_geometry_hash_recomputed_count": 21,
+    "glo_algorithm_version": "glo30_meaningful_ascent_v1"
+  },
+  "oracle_subset": {
+    "pair_count": 210,
+    "complete_count": 210,
+    "extent_counts": {
+      "a_contains_b": 5,
+      "b_contains_a": 3,
+      "disjoint": 180,
+      "equivalent": 2,
+      "indeterminate": 19,
+      "partial_overlap": 1
+    },
+    "direction_counts": {
+      "same_direction": 20,
+      "reverse_direction": 10,
+      "indeterminate": 180
+    },
+    "input_boundary": "read the exact 210-pair subset from the existing 3240-pair oracle; no full oracle rerun"
+  },
+  "destination_families": [
+    {
+      "family_key": "taiyuan_xishan_niujiakou_south",
+      "reference_observation_id": 4,
+      "evidence_observation_ids": [4, 55, 89, 97],
+      "family_sha256": "9b96075f772eda790f19d2f8d702d77fbad956763234d57411889331a31328b7"
+    },
+    {
+      "family_key": "taiyuan_xishan_tianlongshan_east",
+      "reference_observation_id": 17,
+      "evidence_observation_ids": [17, 18, 57, 87, 96],
+      "family_sha256": "81b30f243c1283510aeb08c7c6266caad26c624bff7423e765f5979419839e5f"
+    },
+    {
+      "family_key": "taiyuan_xishan_tianlongshan_north",
+      "reference_observation_id": 8,
+      "evidence_observation_ids": [8, 21, 50, 93, 98],
+      "family_sha256": "8ea2b421814a6d8754b81818ba3621d66921be2b323db5ab1d13a11cce300456"
+    },
+    {
+      "family_key": "taiyuan_xishan_tianlongshan_west_gate",
+      "reference_observation_id": 78,
+      "evidence_observation_ids": [78, 79],
+      "family_sha256": "08941f910868409ff27f7738c0c92dbe52aca56ff9288e3089cb830f75d03309"
+    },
+    {
+      "family_key": "taiyuan_xishan_diantou_mengshan",
+      "reference_observation_id": 9,
+      "evidence_observation_ids": [9],
+      "family_sha256": "139361583a4169dc7c345422b38f4c5740bbadfc0e1af7a32d3c626b311c0483"
+    }
+  ],
+  "transit_range_boundary": {
+    "family_key": "taiyuan_xishan_taigu_transit_range",
+    "reference_observation_id": 85,
+    "evidence_observation_ids": [85, 49],
+    "family_sha256": "abd0fdef6c16e05e8c32d0ff62f6164112dead28f50f113a2ed2f7c141cb6bbe",
+    "role": "long_range_transit_boundary_not_destination_module"
+  },
+  "mountain_module_specs": [
+    {
+      "path": "data/research/mountain_modules/xishan_south_niujiakou_v1.json",
+      "spec_sha256": "9bc9d8e4b635a1f0614dc6fc3a882e4c02e0fc933dae31cb9ff530e4a9134b81"
+    },
+    {
+      "path": "data/research/mountain_modules/xishan_south_tianlongshan_east_v1.json",
+      "spec_sha256": "8fc202d541f1c90a20524c9e634d61589cfde5312458c81dd2555d2a9bb89172"
+    },
+    {
+      "path": "data/research/mountain_modules/xishan_south_tianlongshan_north_v1.json",
+      "spec_sha256": "78799d2db9b8499284541a9c629e5017cd832c616e56b06404e9d4df6adf61c7"
+    },
+    {
+      "path": "data/research/mountain_modules/xishan_south_tianlongshan_west_gate_v1.json",
+      "spec_sha256": "913111e4b3c57502c86ac01ef40943a99cddf88383cf29f6c8e6bad4607d634d"
+    },
+    {
+      "path": "data/research/mountain_modules/xishan_south_diantou_mengshan_v1.json",
+      "spec_sha256": "da182f20b0a63bc2578b235234509719703580b6c11f03a1cffe479ba239c6c0"
+    }
+  ],
+  "mountain_module_resource_ledger": {
+    "status": "glo_profile_pending_readonly_export",
+    "planned_module_count": 5,
+    "published_module_run_count": 0,
+    "ready_facts": "21 stored GLO identities, totals, heat facts and source geometries are reconciled",
+    "pending_fact": "full stored elevation snapshots for exact 21",
+    "required_next_action": "after production read-only access is granted, run the existing exporter once for exact 21 with zero database writes and zero GLO recomputation"
+  },
+  "transit_paths": [
+    {
+      "transit_key": "xishan-south-east-summit-to-north-summit",
+      "distance_m": 85.0,
+      "climb_m": 0.0,
+      "descent_m": 0.0,
+      "result_sha256": "30d61ce94bcb106710a1db50c4b8fd4841ccd09f063fcb28ad18d7b854715780"
+    },
+    {
+      "transit_key": "xishan-south-east-summit-to-west-stone",
+      "distance_m": 470.0,
+      "climb_m": 3.7,
+      "descent_m": 9.8,
+      "result_sha256": "34125d72f1054f4f9b3c524fe344b4103fe57f7b69a7c0f7878739b741df5ac0"
+    },
+    {
+      "transit_key": "xishan-south-north-summit-to-west-stone",
+      "distance_m": 555.0,
+      "climb_m": 3.7,
+      "descent_m": 12.2,
+      "result_sha256": "7ac280b391c04b6f26c022771fd083a3f40f1b349f63f1f0395802faad17357a"
+    },
+    {
+      "transit_key": "xishan-south-niujiakou-upper-to-west-stone",
+      "distance_m": 1343.0,
+      "climb_m": 31.1,
+      "descent_m": 10.2,
+      "result_sha256": "d400994988d1887a42b75993fd58a5419314518e4e17aae53e4c5b7e21c5337d"
+    },
+    {
+      "transit_key": "xishan-south-mengshan-to-north-base",
+      "distance_m": 4702.0,
+      "climb_m": 15.4,
+      "descent_m": 222.6,
+      "result_sha256": "c76da0172c21c7c1d16fc1e7713bc8152edd660c99ab2e59c6ddd67f6176650b"
+    },
+    {
+      "transit_key": "xishan-south-taigu-diantou-to-mengshan-entry",
+      "distance_m": 9770.0,
+      "climb_m": 285.0,
+      "descent_m": 261.6,
+      "result_sha256": "d2c97fc5aa06fbb92f1b3119eb3d65d86cb510defa3ec44c568f37b386d5a5cc"
+    }
+  ],
+  "route_choices": {
+    "choice_spec_sha256": "4bc56e9ae58b76ad3cdfc1dec67195f3833583f7fbb34556b02924f996fd5441",
+    "result_sha256": "b815dfe77a29d60e26396548b0b13de243a038056db3e77ab69d14e08039d87e",
+    "candidate_count": 12,
+    "hard_feasible_count": 11,
+    "hard_rejected_count": 1,
+    "declared_scope_counts": {
+      "short_destination_core": 5,
+      "medium_destination_chain": 4,
+      "long_regional_chain": 3
+    },
+    "hard_feasible_scope_counts": {
+      "short_destination_core": 5,
+      "medium_destination_chain": 4,
+      "long_regional_chain": 2
+    },
+    "hard_rejections": [
+      {
+        "candidate_id": "long-taigu-diantou-mengshan-north-west",
+        "failure_code": "immediate_full_source_retrace"
+      }
+    ],
+    "execution_mode": "source_corridor_shadow_pending_mountain_module_runs",
+    "module_to_choice_replay_status": "not_executed_until_exact21_stored_glo_profiles_are_exported_read_only",
+    "module_retrace_gate_status": "pending_full_source_traversal_binding_for_mountain_blocks_before_module_to_choice_claim",
+    "ranking_boundary": "Pareto and popular_reliable ordering run only within the same comparison scope and rider intent"
+  },
+  "regression": {
+    "hengling_frozen_result_sha256": "d118b5289b1b5b7f706f167627889371799a89a6c880a49f408c6c1a4cbcfe36",
+    "replay_result_sha256": "d118b5289b1b5b7f706f167627889371799a89a6c880a49f408c6c1a4cbcfe36",
+    "exact_match": true
+  },
+  "execution_accounting": {
+    "strava_request_count": 0,
+    "full_oracle_rerun_count": 0,
+    "tencent_provider_request_count": 6,
+    "transit_glo_query_invocation_count": 6,
+    "transit_glo_tile_network_count": "not_instrumented_cache_or_download",
+    "database_write_count": 0,
+    "production_delete_count": 0
+  },
+  "boundary": "All outputs remain research candidates. Tencent bicycling shadows prove a provider connection candidate only, not access, safety, traffic, surface, construction state, public RouteBook publication or nationwide generalization.",
+  "manifest_sha256": "c31408a2e0dc4b0e98337d31e5fd9f4e371cbc992d318bc9c25711c2cd27c6ad"
+}

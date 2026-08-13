@@ -1,0 +1,21 @@
+{
+  "schema_version": "transit_provider_request_v1",
+  "transit_key": "xishan-south-east-summit-to-west-stone",
+  "routing_profile": "bicycling",
+  "provider_observed_at": "2026-08-14",
+  "research_verdict": "connection_candidate",
+  "from": {
+    "port_key": "tianlongshan-east:summit-exit",
+    "binding_type": "source_observation_candidate",
+    "source_observation_id": 17,
+    "source_geometry_hash": "1b3ac6985da578a2e310721a5c72daf939b7804da9d3e1c46bf90088143dcd0b",
+    "lonlat": [112.403226, 37.737805]
+  },
+  "to": {
+    "port_key": "tianlongshan-west:stone-entry",
+    "binding_type": "source_observation_candidate",
+    "source_observation_id": 78,
+    "source_geometry_hash": "5e3315df7e54291ef790a220e34f1a103ab96a00b5c34461063f42b3959407ee",
+    "lonlat": [112.399042, 37.740096]
+  }
+}

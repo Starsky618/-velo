@@ -1,0 +1,220 @@
+{
+  "algorithm_version": "destination_port_transit_path_v1",
+  "boundary": "provider 提出完整过境道路；来源赛段只投影贡献方向化证据，不成为必须访问的 waypoint，也不自动证明骑行 access。",
+  "database_write_count": 0,
+  "derived_geometry_distance_m": 554.7,
+  "elevation": {
+    "algorithm_version": "glo30_meaningful_ascent_v1",
+    "climb_m": 3.7,
+    "descent_m": 12.2,
+    "point_count": 43
+  },
+  "evidence_coverage": {
+    "by_direction": {
+      "indeterminate": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "mixed_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "reverse_direction": {
+        "coverage_lower_bound_ratio": 0.0,
+        "covered_intervals_m": [],
+        "covered_length_lower_bound_m": 0
+      },
+      "same_direction": {
+        "coverage_lower_bound_ratio": 0.143604,
+        "covered_intervals_m": [
+          [
+            0.0,
+            79.7
+          ]
+        ],
+        "covered_length_lower_bound_m": 79.7
+      }
+    },
+    "coverage_lower_bound_ratio": 0.143604,
+    "covered_intervals_m": [
+      [
+        0.0,
+        79.7
+      ]
+    ],
+    "covered_length_lower_bound_m": 79.7,
+    "diagnostic_indeterminate_fact_count": 3,
+    "mode": "interval_union_lower_bound",
+    "semantic_role": "geometry_coverage_qa_not_directional_heat_score",
+    "uncovered_state": "unobserved_not_zero"
+  },
+  "evidence_facts": [
+    {
+      "athlete_count": 244,
+      "direction_relation": "reverse_direction",
+      "effort_count": 730,
+      "evidence_status": "diagnostic_indeterminate",
+      "extent_relation": "indeterminate",
+      "reason_codes": [
+        "coverage_in_policy_gray_zone",
+        "raw_geometry_only_not_road_identity"
+      ],
+      "shared_length_m": 315.9,
+      "source_coverage_ratio": 0.046887,
+      "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc",
+      "source_length_m": 6932.6,
+      "source_name": "天龙山反爬",
+      "source_observation_id": 8,
+      "source_segment_id": "22350888",
+      "star_count": 34,
+      "transit_coverage_ratio": 0.5692,
+      "transit_intervals_m": [
+        [
+          0.0,
+          315.9
+        ]
+      ]
+    },
+    {
+      "athlete_count": 708,
+      "direction_relation": "same_direction",
+      "effort_count": 3899,
+      "evidence_status": "diagnostic_indeterminate",
+      "extent_relation": "indeterminate",
+      "reason_codes": [
+        "raw_geometry_only_not_road_identity",
+        "self_overlap_requires_topology_review"
+      ],
+      "shared_length_m": 84.8,
+      "source_coverage_ratio": 0.011812,
+      "source_geometry_hash": "1b3ac6985da578a2e310721a5c72daf939b7804da9d3e1c46bf90088143dcd0b",
+      "source_length_m": 9282.2,
+      "source_name": "天龙山网红公路爬坡",
+      "source_observation_id": 17,
+      "source_segment_id": "24481149",
+      "star_count": 181,
+      "transit_coverage_ratio": 0.152705,
+      "transit_intervals_m": [
+        [
+          0.0,
+          84.8
+        ]
+      ]
+    },
+    {
+      "athlete_count": 833,
+      "direction_relation": "same_direction",
+      "effort_count": 4395,
+      "evidence_status": "admitted_directional_evidence",
+      "extent_relation": "partial_overlap",
+      "reason_codes": [
+        "raw_geometry_only_not_road_identity",
+        "significant_partial_coverage"
+      ],
+      "shared_length_m": 79.7,
+      "source_coverage_ratio": 0.102347,
+      "source_geometry_hash": "57355854d40f729f69197287523fa2c3f19de421bb00e3249b3f29f4d398df01",
+      "source_length_m": 977.5,
+      "source_name": "天龙山最后1公里sprint",
+      "source_observation_id": 87,
+      "source_segment_id": "36442639",
+      "star_count": 3,
+      "transit_coverage_ratio": 0.143677,
+      "transit_intervals_m": [
+        [
+          0.0,
+          79.7
+        ]
+      ]
+    },
+    {
+      "athlete_count": 132,
+      "direction_relation": "same_direction",
+      "effort_count": 191,
+      "evidence_status": "diagnostic_indeterminate",
+      "extent_relation": "indeterminate",
+      "reason_codes": [
+        "raw_geometry_only_not_road_identity",
+        "self_overlap_requires_topology_review"
+      ],
+      "shared_length_m": 78.3,
+      "source_coverage_ratio": 0.01046,
+      "source_geometry_hash": "280ab19ec25a4beb409ce5928585e60e932b100fa3bc72ead3a39815c30fcb03",
+      "source_length_m": 9663.6,
+      "source_name": "2019环太原石碑-天龙山石碑",
+      "source_observation_id": 97,
+      "source_segment_id": "37170432",
+      "star_count": 0,
+      "transit_coverage_ratio": 0.141061,
+      "transit_intervals_m": [
+        [
+          0.0,
+          78.3
+        ]
+      ]
+    }
+  ],
+  "evidence_snapshot_sha256": "aa94bbba551f52820f07d910b21dd5ed01e4121e3a93b98eb44cf3550464327d",
+  "from": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.402853,
+      37.737131
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "tianlongshan-north:summit-exit",
+    "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc",
+    "source_observation_id": 8
+  },
+  "geometry_point_count": 43,
+  "ordered_road_summary": [
+    {
+      "distance_m": 554.0,
+      "road_name": "天龙山路"
+    }
+  ],
+  "persistence_role": "research_provider_candidate_not_internal_routing_connector_or_road_truth",
+  "port_endpoint_offsets_m": {
+    "from": 0.4,
+    "maximum_allowed": 30.0,
+    "to": 0.8
+  },
+  "provider": "tencent_bicycling_shadow",
+  "provider_distance_m": 555.0,
+  "provider_duration_raw": 3,
+  "provider_duration_unit": "unknown_not_used",
+  "provider_observed_at": "2026-08-14",
+  "provider_snapshot_sha256": "051220586131b4f4e59e4cd63e66062bb354639dedda58aba8b61611260c054b",
+  "provider_status": "connectivity_shadow_not_access_verified",
+  "public_manifest_sha256": "c75ca1f9cc32fe8afa5f6cf80f19103e04821115ede335d062cecc62a29d3da9",
+  "relation_input": {
+    "candidate_count": 81,
+    "excluded_count": 0,
+    "included_binding_sha256": "cb06ecb03b70bae0cf555e890088424e858a52d86a54441776966387b82da14e",
+    "included_count": 81,
+    "profile_key": "xishan-road-relation-input-20260813-v2",
+    "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e"
+  },
+  "research_verdict": "connection_candidate",
+  "result_sha256": "7ac280b391c04b6f26c022771fd083a3f40f1b349f63f1f0395802faad17357a",
+  "road_summary_m": {
+    "天龙山路": 554.0
+  },
+  "schema_version": "transit_path_research_v1",
+  "to": {
+    "binding_type": "source_observation_candidate",
+    "lonlat": [
+      112.399042,
+      37.740096
+    ],
+    "module_key": null,
+    "module_port_sha256": null,
+    "port_key": "tianlongshan-west:stone-entry",
+    "source_geometry_hash": "5e3315df7e54291ef790a220e34f1a103ab96a00b5c34461063f42b3959407ee",
+    "source_observation_id": 78
+  },
+  "transit_key": "xishan-south-north-summit-to-west-stone"
+}

@@ -1,0 +1,153 @@
+{
+  "schema_version": "route_pattern_choice_spec_v1",
+  "choice_set_key": "xishan-south-short-medium-long-v1",
+  "heat_snapshot_cohort": "xishan-20260813-v1",
+  "source_slice_sha256": "ea2043afdb48bad87107c33659de03597511fce7cf5e12dc52100e7f1fe3cf0c",
+  "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+  "candidates": [
+    {
+      "candidate_id": "short-tianlongshan-east-main",
+      "choice_name": "天龙山东侧热门主爬",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [17],
+      "outing_boundary": "仅为东侧完整主爬，不含市区接驳、返程与西门延伸。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-east:o17", "source_observation_id": 17, "source_segment_id": "24481149", "source_geometry_hash": "1b3ac6985da578a2e310721a5c72daf939b7804da9d3e1c46bf90088143dcd0b", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "short-niujiakou-south",
+      "choice_name": "牛家口—天龙山南线",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [4],
+      "outing_boundary": "仅为牛家口南线完整来源边界，不含到达牛家口与上端离开。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-niujiakou:o4", "source_observation_id": 4, "source_segment_id": "20835564", "source_geometry_hash": "729a5e062c2ddb74e3949444d95ec4a5e7cb3fac23b92fbb846f3e8d81c8ab8c", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "short-tianlongshan-north",
+      "choice_name": "天龙山北侧—龙山店头爬升",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [8],
+      "outing_boundary": "仅为北侧完整来源边界，不含店头外接驳与西门延伸。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-north:o8", "source_observation_id": 8, "source_segment_id": "22350888", "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "short-diantou-mengshan",
+      "choice_name": "店头—蒙山爬升",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [9],
+      "outing_boundary": "仅为店头到蒙山的来源边界，不含店头接驳和蒙山后离开。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-mengshan:o9", "source_observation_id": 9, "source_segment_id": "22350896", "source_geometry_hash": "fab6da213ce39b29662da57ef0801f89a466603f8fd77c5a2b3cb9f1db405058", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "short-west-gate-to-stone",
+      "choice_name": "天龙山西门—石碑起伏",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [78],
+      "outing_boundary": "仅为西门到石碑起伏段；o78/o79 同一物理轴正反分账。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-west:o78", "source_observation_id": 78, "source_segment_id": "35402170", "source_geometry_hash": "5e3315df7e54291ef790a220e34f1a103ab96a00b5c34461063f42b3959407ee", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "medium-east-climb-to-west-gate",
+      "choice_name": "东侧主爬—石碑—西门",
+      "comparison_scope": "medium_destination_chain",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [17, 78],
+      "outing_boundary": "从东侧主爬入口到西门，不含进山前与西门后返程。",
+      "components": [
+        {"kind": "source_corridor", "occurrence_id": "medium-east-west:east", "source_observation_id": 17, "source_segment_id": "24481149", "source_geometry_hash": "1b3ac6985da578a2e310721a5c72daf939b7804da9d3e1c46bf90088143dcd0b", "direction": "forward"},
+        {"kind": "transit_path", "occurrence_id": "medium-east-west:stone-link", "transit_key": "xishan-south-east-summit-to-west-stone", "result_sha256": "34125d72f1054f4f9b3c524fe344b4103fe57f7b69a7c0f7878739b741df5ac0", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "medium-east-west:west", "source_observation_id": 78, "source_segment_id": "35402170", "source_geometry_hash": "5e3315df7e54291ef790a220e34f1a103ab96a00b5c34461063f42b3959407ee", "direction": "reverse"}
+      ]
+    },
+    {
+      "candidate_id": "medium-north-climb-to-west-gate",
+      "choice_name": "北侧爬升—石碑—西门",
+      "comparison_scope": "medium_destination_chain",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [8, 78],
+      "outing_boundary": "从龙山店头北侧入口到西门，不含入口前与西门后返程。",
+      "components": [
+        {"kind": "source_corridor", "occurrence_id": "medium-north-west:north", "source_observation_id": 8, "source_segment_id": "22350888", "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc", "direction": "forward"},
+        {"kind": "transit_path", "occurrence_id": "medium-north-west:stone-link", "transit_key": "xishan-south-north-summit-to-west-stone", "result_sha256": "7ac280b391c04b6f26c022771fd083a3f40f1b349f63f1f0395802faad17357a", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "medium-north-west:west", "source_observation_id": 78, "source_segment_id": "35402170", "source_geometry_hash": "5e3315df7e54291ef790a220e34f1a103ab96a00b5c34461063f42b3959407ee", "direction": "reverse"}
+      ]
+    },
+    {
+      "candidate_id": "medium-niujiakou-to-west-gate",
+      "choice_name": "牛家口南线—石碑—西门",
+      "comparison_scope": "medium_destination_chain",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [4, 78],
+      "outing_boundary": "从牛家口南线来源起点到西门，不含牛家口前与西门后返程。",
+      "components": [
+        {"kind": "source_corridor", "occurrence_id": "medium-niu-west:niu", "source_observation_id": 4, "source_segment_id": "20835564", "source_geometry_hash": "729a5e062c2ddb74e3949444d95ec4a5e7cb3fac23b92fbb846f3e8d81c8ab8c", "direction": "forward"},
+        {"kind": "transit_path", "occurrence_id": "medium-niu-west:stone-link", "transit_key": "xishan-south-niujiakou-upper-to-west-stone", "result_sha256": "d400994988d1887a42b75993fd58a5419314518e4e17aae53e4c5b7e21c5337d", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "medium-niu-west:west", "source_observation_id": 78, "source_segment_id": "35402170", "source_geometry_hash": "5e3315df7e54291ef790a220e34f1a103ab96a00b5c34461063f42b3959407ee", "direction": "reverse"}
+      ]
+    },
+    {
+      "candidate_id": "medium-east-up-north-down",
+      "choice_name": "东侧上—北侧下穿越",
+      "comparison_scope": "medium_destination_chain",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [17, 8],
+      "outing_boundary": "从东侧主爬入口穿到北侧店头出口，不含两端市区接驳。",
+      "components": [
+        {"kind": "source_corridor", "occurrence_id": "medium-east-north:east", "source_observation_id": 17, "source_segment_id": "24481149", "source_geometry_hash": "1b3ac6985da578a2e310721a5c72daf939b7804da9d3e1c46bf90088143dcd0b", "direction": "forward"},
+        {"kind": "transit_path", "occurrence_id": "medium-east-north:summit-link", "transit_key": "xishan-south-east-summit-to-north-summit", "result_sha256": "30d61ce94bcb106710a1db50c4b8fd4841ccd09f063fcb28ad18d7b854715780", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "medium-east-north:north-down", "source_observation_id": 8, "source_segment_id": "22350888", "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc", "direction": "reverse"}
+      ]
+    },
+    {
+      "candidate_id": "long-diantou-mengshan-north-west",
+      "choice_name": "店头—蒙山—北侧—西门",
+      "comparison_scope": "long_regional_chain",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [9, 8, 78],
+      "outing_boundary": "南部目的地内部串联，不含店头前与西门后的市区往返。",
+      "components": [
+        {"kind": "source_corridor", "occurrence_id": "long-meng-north-west:meng", "source_observation_id": 9, "source_segment_id": "22350896", "source_geometry_hash": "fab6da213ce39b29662da57ef0801f89a466603f8fd77c5a2b3cb9f1db405058", "direction": "forward"},
+        {"kind": "transit_path", "occurrence_id": "long-meng-north-west:meng-north", "transit_key": "xishan-south-mengshan-to-north-base", "result_sha256": "c76da0172c21c7c1d16fc1e7713bc8152edd660c99ab2e59c6ddd67f6176650b", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "long-meng-north-west:north", "source_observation_id": 8, "source_segment_id": "22350888", "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc", "direction": "forward"},
+        {"kind": "transit_path", "occurrence_id": "long-meng-north-west:north-west", "transit_key": "xishan-south-north-summit-to-west-stone", "result_sha256": "7ac280b391c04b6f26c022771fd083a3f40f1b349f63f1f0395802faad17357a", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "long-meng-north-west:west", "source_observation_id": 78, "source_segment_id": "35402170", "source_geometry_hash": "5e3315df7e54291ef790a220e34f1a103ab96a00b5c34461063f42b3959407ee", "direction": "reverse"}
+      ]
+    },
+    {
+      "candidate_id": "long-east-north-mengshan-diantou",
+      "choice_name": "东侧上—北侧下—蒙山—店头",
+      "comparison_scope": "long_regional_chain",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [17, 8, 9],
+      "outing_boundary": "从东侧入口穿越到店头，不含两端市区往返。",
+      "components": [
+        {"kind": "source_corridor", "occurrence_id": "long-east-diantou:east", "source_observation_id": 17, "source_segment_id": "24481149", "source_geometry_hash": "1b3ac6985da578a2e310721a5c72daf939b7804da9d3e1c46bf90088143dcd0b", "direction": "forward"},
+        {"kind": "transit_path", "occurrence_id": "long-east-diantou:east-north", "transit_key": "xishan-south-east-summit-to-north-summit", "result_sha256": "30d61ce94bcb106710a1db50c4b8fd4841ccd09f063fcb28ad18d7b854715780", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "long-east-diantou:north-down", "source_observation_id": 8, "source_segment_id": "22350888", "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc", "direction": "reverse"},
+        {"kind": "transit_path", "occurrence_id": "long-east-diantou:north-meng", "transit_key": "xishan-south-mengshan-to-north-base", "result_sha256": "c76da0172c21c7c1d16fc1e7713bc8152edd660c99ab2e59c6ddd67f6176650b", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "reverse"},
+        {"kind": "source_corridor", "occurrence_id": "long-east-diantou:meng-down", "source_observation_id": 9, "source_segment_id": "22350896", "source_geometry_hash": "fab6da213ce39b29662da57ef0801f89a466603f8fd77c5a2b3cb9f1db405058", "direction": "reverse"}
+      ]
+    },
+    {
+      "candidate_id": "long-taigu-diantou-mengshan-north-west",
+      "choice_name": "太古路—店头—蒙山—北侧—西门",
+      "comparison_scope": "long_regional_chain",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [49, 9, 8, 78],
+      "outing_boundary": "最长南部内部串联，不含太古路入口前与西门后的市区往返。",
+      "components": [
+        {"kind": "source_corridor", "occurrence_id": "long-taigu-west:taigu", "source_observation_id": 49, "source_segment_id": "31912051", "source_geometry_hash": "6660bd99d9c7063c063bd98bcc33c7b7cdd7165575fad92ed91de20673b5f0cf", "direction": "forward"},
+        {"kind": "transit_path", "occurrence_id": "long-taigu-west:diantou-link", "transit_key": "xishan-south-taigu-diantou-to-mengshan-entry", "result_sha256": "d2c97fc5aa06fbb92f1b3119eb3d65d86cb510defa3ec44c568f37b386d5a5cc", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "long-taigu-west:meng", "source_observation_id": 9, "source_segment_id": "22350896", "source_geometry_hash": "fab6da213ce39b29662da57ef0801f89a466603f8fd77c5a2b3cb9f1db405058", "direction": "forward"},
+        {"kind": "transit_path", "occurrence_id": "long-taigu-west:meng-north", "transit_key": "xishan-south-mengshan-to-north-base", "result_sha256": "c76da0172c21c7c1d16fc1e7713bc8152edd660c99ab2e59c6ddd67f6176650b", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "long-taigu-west:north", "source_observation_id": 8, "source_segment_id": "22350888", "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc", "direction": "forward"},
+        {"kind": "transit_path", "occurrence_id": "long-taigu-west:north-west", "transit_key": "xishan-south-north-summit-to-west-stone", "result_sha256": "7ac280b391c04b6f26c022771fd083a3f40f1b349f63f1f0395802faad17357a", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "long-taigu-west:west", "source_observation_id": 78, "source_segment_id": "35402170", "source_geometry_hash": "5e3315df7e54291ef790a220e34f1a103ab96a00b5c34461063f42b3959407ee", "direction": "reverse"}
+      ]
+    }
+  ]
+}

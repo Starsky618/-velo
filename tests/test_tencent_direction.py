@@ -47,6 +47,14 @@ def test_plan_tencent_bicycling_route_parses_response(monkeypatch):
                             "distance": 6800,
                             "duration": 1800,
                             "polyline": [37.8, 112.5, 100000, 100000],
+                            "steps": [
+                                {
+                                    "road_name": "测试路",
+                                    "distance": 6800,
+                                    "instruction": "沿测试路行驶",
+                                    "act_desc": "直行",
+                                }
+                            ],
                         }
                     ]
                 },
@@ -76,3 +84,39 @@ def test_plan_tencent_bicycling_route_parses_response(monkeypatch):
         {"lat": 37.8, "lon": 112.5},
         {"lat": 37.9, "lon": 112.6},
     ]
+    assert result["steps"] == [
+        {
+            "road_name": "测试路",
+            "distance_m": 6800.0,
+            "instruction": "沿测试路行驶",
+            "act_desc": "直行",
+        }
+    ]
+
+
+def test_plan_tencent_route_rejects_invalid_step_distance(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "status": 0,
+                "result": {
+                    "routes": [
+                        {
+                            "distance": 100,
+                            "duration": 60,
+                            "polyline": [37.8, 112.5, 1000, 1000],
+                            "steps": [{"road_name": "坏账", "distance": "nan"}],
+                        }
+                    ]
+                },
+            }
+
+    monkeypatch.setattr(settings, "TENCENT_MAP_KEY", "test-key")
+    monkeypatch.setattr(settings, "TENCENT_MAP_SK", "test-sk")
+    monkeypatch.setattr("app.route_book.tencent_direction.httpx.get", lambda *args, **kwargs: FakeResponse())
+
+    with pytest.raises(ValueError, match="道路步骤距离异常"):
+        plan_tencent_bicycling_route((37.8, 112.5), (37.9, 112.6))

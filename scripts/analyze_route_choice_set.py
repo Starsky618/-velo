@@ -17,6 +17,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.route_cognition.route_pattern_assembly import assemble_choice_set
+from app.route_cognition.route_heat import rank_heat_candidates
+from app.route_cognition.transit_paths import canonical_sha256
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -49,13 +51,36 @@ def replay_route_choice_set(
     module_runs: dict[str, dict[str, Any]],
     transit_runs: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    return assemble_choice_set(
+    result = assemble_choice_set(
         choice_spec,
         source_slice=source_slice,
         selection_snapshot=selection_snapshot,
         module_runs=module_runs,
         transit_runs=transit_runs,
     )
+    candidate_specs = {
+        str(item["candidate_id"]): item for item in choice_spec["candidates"]
+    }
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for candidate in result["candidates"]:
+        definition = candidate_specs[str(candidate["candidate_id"])]
+        intent = definition.get("rider_intent")
+        if not isinstance(intent, str) or not intent:
+            continue
+        key = (str(candidate["comparison_scope"]), intent)
+        groups.setdefault(key, []).append(candidate)
+    if groups:
+        result["ranking_groups"] = []
+        for (scope, intent), candidates in sorted(groups.items()):
+            ranking = rank_heat_candidates(candidates)
+            result["ranking_groups"].append(
+                {"comparison_scope": scope, "rider_intent": intent, **ranking}
+            )
+        result["ranking_status"] = "ranked_within_same_scope_and_rider_intent"
+        result["result_sha256"] = canonical_sha256(
+            {key: value for key, value in result.items() if key != "result_sha256"}
+        )
+    return result
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
