@@ -1,7 +1,8 @@
 {
-  "schema_version": "mountain_module_spec_v1",
+  "schema_version": "mountain_module_spec_v2",
   "module_key": "taiyuan_xishan_hengling",
   "module_name": "横岭",
+  "module_role": "destination_block",
   "artifact_location": "outputs/hengling-mountain-module-v1",
   "status": "research_shadow",
   "census_batch_id": "xishan-20260813-v1",
@@ -80,6 +81,7 @@
     {
       "block_key_suffix": "full-ascent",
       "name_suffix": "完整爬坡",
+      "block_role": "destination_traversal",
       "traversals": [
         {
           "resource_observation_id": 2,
@@ -88,7 +90,7 @@
           "start_measure": "axis_start",
           "end_measure": "axis_end",
           "entry_port_key": "full-ascent:base-entry",
-          "exit_port_key": "full-ascent:summit-exit"
+          "exit_port_key": "full-ascent:upper-observation-boundary-exit"
         }
       ],
       "recommendation_status": "evidence_candidate",
@@ -101,6 +103,7 @@
     {
       "block_key_suffix": "full-descent",
       "name_suffix": "完整下坡",
+      "block_role": "destination_traversal",
       "traversals": [
         {
           "resource_observation_id": 16,
@@ -108,7 +111,7 @@
           "direction": "reverse",
           "start_measure": "axis_start",
           "end_measure": "axis_end",
-          "entry_port_key": "full-descent:summit-entry",
+          "entry_port_key": "full-descent:upper-observation-boundary-entry",
           "exit_port_key": "full-descent:base-exit"
         }
       ],
@@ -117,63 +120,14 @@
         "完整反向来源线覆盖横岭主走廊",
         "正反向热度分账，不借用上坡证据抬高下坡"
       ]
-    },
-    {
-      "block_key_suffix": "out-and-back-candidate",
-      "name_suffix": "爬升往返",
-      "traversals": [
-        {
-          "resource_observation_id": 2,
-          "min_resource_alignment_ratio": 0.99,
-          "direction": "forward",
-          "start_measure": "axis_start",
-          "end_measure": "axis_end",
-          "entry_port_key": "round-trip:base-entry",
-          "exit_port_key": "round-trip:summit-arrival"
-        },
-        {
-          "resource_observation_id": 16,
-          "min_resource_alignment_ratio": 0.99,
-          "direction": "reverse",
-          "start_measure": "axis_start",
-          "end_measure": "axis_end",
-          "entry_port_key": "round-trip:summit-departure",
-          "exit_port_key": "round-trip:base-exit"
-        }
-      ],
-      "recommendation_status": "blocked_unknown_connection",
-      "recommendation_reasons": [
-        "上坡与下坡分别有接近完整的正反向来源线和热度证据"
-      ],
-      "blockers": [
-        {
-          "code": "connection_evidence_missing",
-          "reason": "山顶掉头连接尚未由当前来源线/拓扑事实证明"
-        },
-        {
-          "code": "complete_route_boundary_missing",
-          "reason": "当前输出不是完整城市出发—返回路线"
-        }
-      ]
     }
   ],
-  "connections": [
-    {
-      "connection_key_suffix": "summit-turnaround",
-      "from_port_key": "full-ascent:summit-exit",
-      "to_port_key": "full-descent:summit-entry",
-      "status": "blocked_unknown_connection",
-      "evidence_ref": null,
-      "reason": "两条来源线都到达参考轴山顶，但没有独立事实证明可在此安全掉头拼接"
-    },
-    {
-      "connection_key_suffix": "base-turnaround",
-      "from_port_key": "full-descent:base-exit",
-      "to_port_key": "full-ascent:base-entry",
-      "status": "blocked_unknown_connection",
-      "evidence_ref": null,
-      "reason": "两条来源线都到达参考轴山脚，但没有独立事实证明可在此安全掉头拼接"
-    }
-  ],
-  "boundary": "横岭公路主走廊；横岭 XC 保持排除；o40/o82 只作 off-axis holdout，不伪造接入关系。"
+  "connections": [],
+  "route_assembly_boundary": {
+    "segment_endpoint_semantics": "observation_boundary_not_road_terminal",
+    "inter_module_pattern": "destination_blocks_plus_transit_path",
+    "direct_hengling_taohuagou_connection": "not_claimed",
+    "transit_accounting": "完整过境路径单独重算距离、爬升、access与证据覆盖；无赛段热度记unobserved，不记0"
+  },
+  "boundary": "横岭公路主走廊目的地积木；横岭 XC 保持排除；o40/o82 只作 off-axis holdout。赛段终点不代表道路终点，不在此凭空生成山顶往返。"
 }

@@ -87,7 +87,9 @@ def test_module_projects_forward_reverse_and_subsegments_without_heat_sum():
     assert overlapping[0]["reach_union_lower_bound"] == 120
     assert overlapping[0]["reach_union_upper_bound"] == 330
     explanation = heat_evidence_explanation(result)
-    assert explanation["ranking_mode"] == "pareto_vector_unweighted"
+    assert explanation["heat_evidence_mode"] == "partial_identification_vector"
+    assert explanation["ranking_status"] == "not_run_by_single_module_slice"
+    assert explanation["fixed_scalar_weight_status"] == "rejected_by_design"
     assert explanation["observed_cell_count"] == len(forward_cells) + 1
 
 
@@ -132,11 +134,10 @@ def test_route_block_state_machine_and_reverse_ports():
         block_key="fixture:reverse",
         block_name="reverse",
         traversals=(DirectedTraversal("reverse", 0.0, 1000.0),),
-        traversal_port_keys=(("summit", "base"),),
+        traversal_port_keys=(("upper-boundary", "lower-boundary"),),
         distance_m=1000.0,
         climb_m=0.0,
         descent_m=100.0,
-        recommendation_status="evidence_candidate",
         recommendation_reasons=("reverse evidence",),
     )
     ports = block["traversal_ports"][0]
@@ -144,15 +145,20 @@ def test_route_block_state_machine_and_reverse_ports():
     assert ports["exit"]["axis_measure_m"] == 0.0
     assert ports["entry"]["port_sha256"]
 
-    with pytest.raises(ValueError, match="requires typed blockers"):
+    assert block["recommendation_status"] == "evidence_candidate"
+    assert block["blockers"] == []
+
+    with pytest.raises(ValueError, match="exactly one traversal"):
         summarize_route_block(
             analysis,
-            block_key="fixture:blocked",
-            block_name="blocked",
-            traversals=(DirectedTraversal("forward", 0.0, 1000.0),),
-            distance_m=1000.0,
+            block_key="fixture:invented-round-trip",
+            block_name="invented round trip",
+            traversals=(
+                DirectedTraversal("forward", 0.0, 1000.0),
+                DirectedTraversal("reverse", 0.0, 1000.0),
+            ),
+            distance_m=2000.0,
             climb_m=100.0,
-            descent_m=0.0,
-            recommendation_status="blocked_unknown_connection",
-            recommendation_reasons=("candidate",),
+            descent_m=100.0,
+            recommendation_reasons=("must fail closed",),
         )

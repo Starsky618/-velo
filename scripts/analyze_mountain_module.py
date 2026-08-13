@@ -33,7 +33,7 @@ from app.route_cognition.mountain_modules import (
 )
 
 
-RUN_SCHEMA_VERSION = "mountain_module_run_v1"
+RUN_SCHEMA_VERSION = "mountain_module_run_v2"
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -59,8 +59,10 @@ def _set_sha256(values: list[int]) -> str:
 def _load_inputs(spec_path: Path, snapshot_path: Path) -> tuple[dict, dict]:
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
-    if spec.get("schema_version") != "mountain_module_spec_v1":
+    if spec.get("schema_version") != "mountain_module_spec_v2":
         raise ValueError("unsupported mountain module spec schema")
+    if spec.get("module_role") != "destination_block":
+        raise ValueError("mountain module must declare destination_block role")
     if spec.get("source_selection", {}).get("mode") != "exact_observation_ids":
         raise ValueError("mountain module requires exact observation selection")
     direction_semantics = spec.get("reference_axis", {}).get(
@@ -125,14 +127,29 @@ def _load_inputs(spec_path: Path, snapshot_path: Path) -> tuple[dict, dict]:
     if not resource_ids or not set(resource_ids) <= observation_ids:
         raise ValueError("route block resources must belong to exact set")
     for block in spec["route_blocks"]:
+        if block.get("block_role") != "destination_traversal":
+            raise ValueError("route block must declare destination_traversal role")
+        if block.get("recommendation_status") != "evidence_candidate":
+            raise ValueError("destination traversal cannot embed route blockers")
+        if block.get("blockers"):
+            raise ValueError("destination traversal cannot embed route blockers")
         block_resources = [
             item["resource_observation_id"] for item in block["traversals"]
         ]
+        if len(block_resources) != 1:
+            raise ValueError(
+                "destination traversal v2 requires exactly one traversal"
+            )
         if len(block_resources) != len(set(block_resources)):
             raise ValueError("route block cannot count one source fact twice")
     block_suffixes = [item["block_key_suffix"] for item in spec["route_blocks"]]
     if len(block_suffixes) != len(set(block_suffixes)):
         raise ValueError("route block suffixes must be unique")
+    if spec.get("connections"):
+        raise ValueError(
+            "single destination module cannot embed route connections; "
+            "assemble full transit-road traversals later"
+        )
     return spec, snapshot
 
 
@@ -209,18 +226,6 @@ def _traversal_coverage_ratio(
     )
 
 
-def _block_ports(blocks: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    ports: dict[str, dict[str, Any]] = {}
-    for block in blocks:
-        for traversal in block["traversal_ports"]:
-            for role in ("entry", "exit"):
-                port = traversal[role]
-                if port["port_key"] in ports:
-                    raise ValueError("route block port keys must be globally unique")
-                ports[port["port_key"]] = port
-    return ports
-
-
 def _observations(snapshot: dict) -> tuple[MountainObservation, ...]:
     observations = tuple(
         MountainObservation(
@@ -261,6 +266,24 @@ def _observations(snapshot: dict) -> tuple[MountainObservation, ...]:
 
 
 def build_run(spec_data: dict, snapshot: dict) -> dict[str, Any]:
+    if spec_data.get("schema_version") != "mountain_module_spec_v2":
+        raise ValueError("unsupported mountain module spec schema")
+    if spec_data.get("module_role") != "destination_block":
+        raise ValueError("mountain module must declare destination_block role")
+    if spec_data.get("connections"):
+        raise ValueError(
+            "single destination module cannot embed route connections; "
+            "assemble full transit-road traversals later"
+        )
+    for block in spec_data.get("route_blocks", []):
+        if block.get("block_role") != "destination_traversal":
+            raise ValueError("route block must declare destination_traversal role")
+        if block.get("recommendation_status") != "evidence_candidate":
+            raise ValueError("destination traversal cannot embed route blockers")
+        if block.get("blockers"):
+            raise ValueError("destination traversal cannot embed route blockers")
+        if len(block.get("traversals", [])) != 1:
+            raise ValueError("destination traversal v2 requires exactly one traversal")
     observations = _observations(snapshot)
     spec = MountainModuleSpec(
         module_key=spec_data["module_key"],
@@ -342,39 +365,12 @@ def build_run(spec_data: dict, snapshot: dict) -> dict[str, Any]:
                 distance_m=sum(item.derived_distance_m for item in resources),
                 climb_m=sum(item.climb_m for item in resources),
                 descent_m=sum(item.descent_m for item in resources),
-                recommendation_status=definition["recommendation_status"],
                 recommendation_reasons=definition["recommendation_reasons"],
-                blockers=definition.get("blockers", []),
                 traversal_port_keys=tuple(
                     (item["entry_port_key"], item["exit_port_key"])
                     for item in traversal_definitions
                 ),
             )
-        )
-    ports = _block_ports(blocks)
-    connections = []
-    for definition in spec_data.get("connections", []):
-        status = definition["status"]
-        evidence_ref = definition.get("evidence_ref")
-        if status != "blocked_unknown_connection":
-            raise ValueError("unsupported route connection status")
-        if evidence_ref:
-            raise ValueError("blocked unknown connection cannot carry evidence_ref")
-        from_port = ports[definition["from_port_key"]]
-        to_port = ports[definition["to_port_key"]]
-        connections.append(
-            {
-                "connection_key": (
-                    f"{spec.module_key}:{definition['connection_key_suffix']}"
-                ),
-                "from_port_key": from_port["port_key"],
-                "from_port_sha256": from_port["port_sha256"],
-                "to_port_key": to_port["port_key"],
-                "to_port_sha256": to_port["port_sha256"],
-                "status": status,
-                "evidence_ref": evidence_ref,
-                "reason": definition["reason"],
-            }
         )
     payload = {
         "schema_version": RUN_SCHEMA_VERSION,
@@ -383,6 +379,7 @@ def build_run(spec_data: dict, snapshot: dict) -> dict[str, Any]:
         "config_sha256": MOUNTAIN_MODULE_CONFIG_SHA256,
         "module_key": spec.module_key,
         "module_name": spec_data["module_name"],
+        "module_role": spec_data["module_role"],
         "direction_semantics": spec_data["reference_axis"][
             "direction_semantics"
         ],
@@ -393,7 +390,7 @@ def build_run(spec_data: dict, snapshot: dict) -> dict[str, Any]:
         "heat_evidence_explanation": heat_evidence_explanation(analysis),
         "reference_axis_elevation_profile": axis_profile,
         "route_blocks": blocks,
-        "connections": connections,
+        "connections": [],
         "holdout_observation_ids": spec_data["holdout_observation_ids"],
         "holdout_status": "off_axis_connection_not_proven",
         "database_write_count": 0,
@@ -417,9 +414,10 @@ def _atomic_write(path: Path, content: bytes) -> None:
 def public_manifest(result: dict[str, Any]) -> dict[str, Any]:
     """Return a coordinate-free pointer safe to keep with the repository."""
 
-    return {
-        "schema_version": "mountain_module_run_pointer_v1",
+    payload = {
+        "schema_version": "mountain_module_run_pointer_v2",
         "module_key": result["module_key"],
+        "module_role": result["module_role"],
         "direction_semantics": result["direction_semantics"],
         "status": "research_shadow",
         "spec_sha256": result["spec_sha256"],
@@ -465,10 +463,11 @@ def public_manifest(result: dict[str, Any]) -> dict[str, Any]:
         "network_request_count": result["network_request_count"],
         "artifact_location": result["artifact_location"],
         "boundary": (
-            "完整来源坐标和 GLO snapshot 位于 gitignored artifact；仓库仅保存 hash、"
+            "完整来源坐标和 GLO snapshot 位于本机 evidence ledger；仓库仅保存 hash、"
             "算法版本、积木摘要和 research 边界。"
         ),
     }
+    return payload
 
 
 def region_summary(result: dict[str, Any]) -> dict[str, Any]:
@@ -476,9 +475,10 @@ def region_summary(result: dict[str, Any]) -> dict[str, Any]:
 
     analysis = result["analysis"]
     return {
-        "schema_version": "mountain_module_visual_summary_v1",
+        "schema_version": "mountain_module_visual_summary_v2",
         "module_key": result["module_key"],
         "module_name": result["module_name"],
+        "module_role": result["module_role"],
         "direction_semantics": result["direction_semantics"],
         "run_sha256": result["run_sha256"],
         "reference_axis_length_m": analysis["reference_axis_length_m"],

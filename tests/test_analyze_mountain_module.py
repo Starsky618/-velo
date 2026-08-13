@@ -80,7 +80,9 @@ def _snapshot() -> dict:
     return payload
 
 
-def test_runner_is_offline_and_reports_blocked_round_trip(tmp_path, monkeypatch):
+def test_runner_is_offline_and_does_not_invent_endpoint_turnaround(
+    tmp_path, monkeypatch
+):
     spec_data = json.loads(
         (
             REPO_ROOT / "data/research/mountain_modules/hengling_v1.json"
@@ -114,19 +116,23 @@ def test_runner_is_offline_and_reports_blocked_round_trip(tmp_path, monkeypatch)
     assert [item["recommendation_status"] for item in payload["route_blocks"]] == [
         "evidence_candidate",
         "evidence_candidate",
-        "blocked_unknown_connection",
     ]
     assert payload["reference_axis_elevation_profile"]
-    assert payload["heat_evidence_explanation"]["ranking_mode"] == (
-        "pareto_vector_unweighted"
+    assert payload["heat_evidence_explanation"]["heat_evidence_mode"] == (
+        "partial_identification_vector"
     )
-    assert {item["status"] for item in payload["connections"]} == {
-        "blocked_unknown_connection"
-    }
-    assert payload["connections"][0]["from_port_key"] == (
-        "full-ascent:summit-exit"
+    assert payload["heat_evidence_explanation"]["ranking_status"] == (
+        "not_run_by_single_module_slice"
     )
-    assert payload["connections"][0]["from_port_sha256"]
+    assert payload["connections"] == []
+    assert all(
+        port[role]["boundary_semantics"]
+        == "source_observation_boundary_not_road_terminal"
+        for block in payload["route_blocks"]
+        for port in block["traversal_ports"]
+        for role in ("entry", "exit")
+    )
+    assert "out-and-back" not in json.dumps(payload["route_blocks"])
 
 
 def test_loader_rejects_slice_hash_drift(tmp_path):
@@ -137,6 +143,38 @@ def test_loader_rejects_slice_hash_drift(tmp_path):
     snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
 
     with pytest.raises(ValueError, match="hash"):
+        runner._load_inputs(spec_path, snapshot_path)
+
+
+def test_loader_rejects_legacy_v1_and_route_layer_blocker(tmp_path):
+    spec = json.loads(
+        (
+            REPO_ROOT / "data/research/mountain_modules/hengling_v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    snapshot = _snapshot()
+    spec_path = tmp_path / "spec.json"
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+    legacy = json.loads(json.dumps(spec))
+    legacy["schema_version"] = "mountain_module_spec_v1"
+    spec_path.write_text(json.dumps(legacy), encoding="utf-8")
+    with pytest.raises(ValueError, match="unsupported mountain module spec schema"):
+        runner._load_inputs(spec_path, snapshot_path)
+
+    blocked = json.loads(json.dumps(spec))
+    blocked["route_blocks"][0]["recommendation_status"] = (
+        "blocked_dead_end_turnaround_evidence_missing"
+    )
+    blocked["route_blocks"][0]["blockers"] = [
+        {
+            "code": "dead_end_turnaround_evidence_missing",
+            "reason": "unsupported in destination evidence layer",
+        }
+    ]
+    spec_path.write_text(json.dumps(blocked), encoding="utf-8")
+    with pytest.raises(ValueError, match="cannot embed route blockers"):
         runner._load_inputs(spec_path, snapshot_path)
 
 
@@ -162,8 +200,8 @@ def test_public_manifest_drops_coordinates_and_profiles():
     assert manifest["database_write_count"] == 0
     assert manifest["network_request_count"] == 0
     assert manifest["connections"] == payload["connections"]
-    assert manifest["heat_evidence_explanation"]["scalar_weight_status"] == (
-        "not_calibrated_no_rider_choice_rejection_gold"
+    assert manifest["heat_evidence_explanation"]["learned_utility"]["status"] == (
+        "defined_not_executed_by_single_module_slice"
     )
 
 
@@ -176,6 +214,7 @@ def test_same_runner_accepts_a_different_one_way_module_shape():
     )
     spec["module_key"] = "fixture_other_mountain"
     spec["module_name"] = "测试山区"
+    spec["module_role"] = "destination_block"
     spec["reference_axis"]["direction_semantics"] = {
         "forward": "clockwise",
         "reverse": "counterclockwise",
@@ -197,6 +236,7 @@ def test_same_runner_accepts_a_different_one_way_module_shape():
         {
             "block_key_suffix": "one-way",
             "name_suffix": "单程",
+            "block_role": "destination_traversal",
             "traversals": [
                 {
                     "resource_observation_id": 2,
@@ -258,7 +298,7 @@ def test_role_gate_rejects_short_segment_as_full_axis_role():
         runner.build_run(spec, snapshot)
 
 
-def test_route_resource_cannot_be_short_duplicated_or_false_connected():
+def test_route_resource_cannot_be_short_duplicated_or_false_connected(tmp_path):
     snapshot = _snapshot()
     spec = json.loads(
         (
@@ -298,19 +338,52 @@ def test_route_resource_cannot_be_short_duplicated_or_false_connected():
         duplicate_spec["route_blocks"][0]["traversals"][0],
         duplicate_spec["route_blocks"][0]["traversals"][0],
     ]
-    with pytest.raises(ValueError, match="count one source fact twice"):
+    duplicate_spec_path = tmp_path / "duplicate-spec.json"
+    duplicate_snapshot_path = tmp_path / "duplicate-snapshot.json"
+    duplicate_spec_path.write_text(json.dumps(duplicate_spec), encoding="utf-8")
+    duplicate_snapshot_without_hash = dict(snapshot)
+    duplicate_snapshot_without_hash.pop("slice_sha256", None)
+    snapshot["slice_sha256"] = runner._canonical_sha256(
+        duplicate_snapshot_without_hash
+    )
+    duplicate_snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+    with pytest.raises(ValueError, match="exactly one traversal"):
+        runner._load_inputs(duplicate_spec_path, duplicate_snapshot_path)
+    with pytest.raises(ValueError, match="exactly one traversal"):
         runner.build_run(duplicate_spec, snapshot)
 
     connection_spec = json.loads(json.dumps(spec))
     connection_spec["route_blocks"][0]["traversals"][0][
         "resource_observation_id"
     ] = 2
-    connection_spec["connections"][0]["status"] = "verified_connected"
-    with pytest.raises(ValueError, match="unsupported route connection status"):
-        runner.build_run(connection_spec, snapshot)
+    connection_spec["connections"] = [
+        {
+            "connection_key_suffix": "invented-direct-edge",
+            "from_port_key": "full-ascent:base-entry",
+            "to_port_key": "full-ascent:upper-observation-boundary-exit",
+            "status": "verified_connected",
+            "evidence_ref": "fake",
+            "reason": "fixture",
+        }
+    ]
+    connection_spec_path = tmp_path / "connection-spec.json"
+    connection_snapshot_path = tmp_path / "connection-snapshot.json"
+    connection_spec_path.write_text(
+        json.dumps(connection_spec), encoding="utf-8"
+    )
+    connection_snapshot_without_hash = dict(snapshot)
+    connection_snapshot_without_hash.pop("slice_sha256", None)
+    snapshot["slice_sha256"] = runner._canonical_sha256(
+        connection_snapshot_without_hash
+    )
+    connection_snapshot_path.write_text(
+        json.dumps(snapshot), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="cannot embed route connections"):
+        runner._load_inputs(connection_spec_path, connection_snapshot_path)
 
     partial_spec = json.loads(json.dumps(connection_spec))
-    partial_spec["connections"][0]["status"] = "blocked_unknown_connection"
+    partial_spec["connections"] = []
     partial_spec["route_blocks"][0]["traversals"][0]["end_measure"] = 500.0
     with pytest.raises(ValueError, match="does not align"):
         runner.build_run(partial_spec, snapshot)
