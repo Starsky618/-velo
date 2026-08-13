@@ -1,0 +1,40 @@
+{
+  "artifact_location": "outputs/xishan-relation-oracle-v1",
+  "boundary": "这是 81 条完整来源折线的全 3240 对 raw-geometry 研究 oracle，不是人工 gold、道路身份、拓扑或正式关系真值。",
+  "candidate_index": {
+    "candidate_pair_count": 138,
+    "candidate_reduction_ratio": 0.957407,
+    "relation_relevant_candidate_recall": 1.0,
+    "relation_relevant_pair_count": 90,
+    "version": "raw_subcurve_bbox_candidate_v1"
+  },
+  "database_write_count": 0,
+  "input": {
+    "candidate_observation_set_hash": "338d827646ebbf44eaefb32ec495be22fdf327dbca320392cdcacc330ded0a62",
+    "census_batch_id": "xishan-20260813-v1",
+    "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+    "included_count": 81,
+    "included_observation_set_hash": "ad9ebfecbc44ee21adbac23df6b693fbe35928225b4932069da177383510526d",
+    "included_source_segment_set_hash": "5b85483bcfcc327596c057f3027c0d7ed4a223580cd41b5074c01ada9814e7a1",
+    "judgment_run_id": 20
+  },
+  "pair_counts": {
+    "a_contains_b": 25,
+    "b_contains_a": 7,
+    "disjoint": 3150,
+    "equivalent": 6,
+    "indeterminate": 46,
+    "partial_overlap": 6,
+    "source_geometry_identical": 0,
+    "total": 3240
+  },
+  "parameter_manifest_hash": "54336a50a7fb1aff3e43707ff6a56c0abdb23b266c15588cbb8154d04eb94cfd",
+  "parameter_promotion_status": "research_probe_unpromoted",
+  "ordered_output_sha256": "34cd2cdc81318c606972fe84f7b2d582b39e2ce54a2ccdb25c616249095ab9ae",
+  "pair_artifact_sha256": "7d6c1ad0ec8a4cae172051c15ac84f5dbab3d89e6f5b952828b326999a267605",
+  "review_artifact_sha256": "4add5fecd82a66879d1c8c7417d7a22afc03551970dc12bbe19a0ca3b64adeac",
+  "relation_algorithm_version": "raw_spatial_relation_witness_v1",
+  "run_id": "90a912411b843c147fc195d8",
+  "run_status": "complete",
+  "schema_version": "xishan_relation_oracle_pointer_v1"
+}
