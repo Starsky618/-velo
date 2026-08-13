@@ -6,12 +6,12 @@
 
 | 文件 | 是什么 | 状态 |
 |---|---|---|
-| **2026-08-14-tianlongshan-experiment-handoff.md** | 新 Session 继续“天龙山—牛家口”下游纵切的精确工作树、权威输入、候选对象、反例、执行顺序与完成标准 | **当前实验启动单**。先读它，避免在桌面 main 重做、重算 active 81 或把本纵切冒充 relation 全链路 holdout |
-| **2026-08-14-city-route-cognition-sop.md** | 从多赛段闭账、关系/投影、山区积木、过境路、路线组合到硬数据骑友解释的通用状态流；同时标明 replay loop 与尚未形成的产品 learning loop | **当前执行 SOP**。下一块以“天龙山—牛家口”作南部下游纵切，不复制区域算法；它不冒充 relation 全链路 holdout |
+| **2026-08-14-xishan-south-experiment-handoff.md** | 新 Session 一次处理牛家口、天龙山多入口、天龙山西门、龙山、店头和蒙山的区域级批处理启动单 | **当前实验启动单**。active-81 地理窗口机械得到 exact 21；批量产出多个积木、有限连接和真实选择，不再只做牛家口小纵切 |
+| **2026-08-14-city-route-cognition-sop.md** | 从多赛段闭账、关系/投影、山区积木、过境路、路线组合到硬数据骑友解释的通用状态流；同时标明 replay loop 与尚未形成的产品 learning loop | **当前执行 SOP**。下一块一次处理西山南部 destination network，不复制区域算法；它不冒充 relation 全链路 holdout |
 | **2026-08-13-xishan-multisegment-reproduction-v1.md** | 西山旧多赛段 DFS/地图桥实验的历史证据恢复，以及两条连接候选、两个 portal-pair 对照和一个回走失败样本 | **当前跨积木实证**。provider 先产完整过境路，赛段只投影方向化证据；腾讯 driving shadow 不等于骑行准入 |
 | **2026-08-13-hengling-mountain-module-slice.md** | 横岭公路主走廊第二个山区目的地积木 research slice：通用 Strava 参考轴投影、方向化重叠热度与完整上/下坡证据 | **当前第二走廊实证**。赛段端点不是道路终点；不使用 OSM，不声称直接连接桃花沟，也不证明 o40/o82 接入或完整路线可达 |
 | **route_cognition_v1_1_completion_report.md** | route cognition v1.1 数据库地基最终收口报告：最终 Alembic head、commit 链、表清单、验证摘要、已完成/未完成范围 | **最终完成态事实源**。判断 v1.1 DB foundation 是否完成先看这里 |
-| **route_cognition_v1_1_operationalization_plan.md** | DB 地基完成后的运营化计划：内部 writer、审核流程、安全 seed、未来只读 API 与后置工作 | **DB foundation 专线的后续计划**，不是当前天龙山实验入口；不要继续为本实验加 schema |
+| **route_cognition_v1_1_operationalization_plan.md** | DB 地基完成后的运营化计划：内部 writer、审核流程、安全 seed、未来只读 API 与后置工作 | **DB foundation 专线的后续计划**，不是当前西山南部实验入口；不要继续为本实验加 schema |
 | **route_cognition_v1_1_status.md** | route cognition v1.1 当前实现状态与批次边界 | **当前事实源**。后续窗口先看这里，再看仓库 live files |
 | **route_cognition_v1_1_scope_reset.md** | 2026-06-18 暂停扩张时的范围复位文档，记录为什么不再使用 Batch 8、为什么把后续拆成 Step A-D | **历史决策轨迹**。已被 completion report + operationalization plan 接管当前状态 |
 | **route_cognition_schema_FINAL.md** | 路线认知数据库历史 schema（双异源审 + Tim 全拍定） | **已被 v1.1 supersede**。只保留作历史审查轨迹，不再作为建表依据 |

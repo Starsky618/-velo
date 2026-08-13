@@ -142,7 +142,7 @@ Backbone 3 在 S104 下去再爬回，又沿柴化线回走，仍以约 86.5% �
 
 ## 历史后续 backlog
 
-> 2026-08-14 状态更新：本节列出的奥申/狼坡工作仍是未完成 backlog，但不再是紧接本报告的当前实验。当前下一纵切已由 [`2026-08-14-tianlongshan-experiment-handoff.md`](./2026-08-14-tianlongshan-experiment-handoff.md) 接管。
+> 2026-08-14 状态更新：本节列出的奥申/狼坡工作仍是未完成 backlog，但不再是紧接本报告的当前实验。当前西山南部区域级批处理已由 [`2026-08-14-xishan-south-experiment-handoff.md`](./2026-08-14-xishan-south-experiment-handoff.md) 接管。
 
 当时建议以这条 treatment 做最小闭环，而不是恢复 25 对象 DFS：
 

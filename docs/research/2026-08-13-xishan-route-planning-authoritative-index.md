@@ -29,7 +29,7 @@
 
 ## 当前西山执行位置
 
-> 2026-08-14 状态更新：下述 3,240 对与桃花沟内容是已经完成的纵切记录，不再是当前“下一步”。后续又完成横岭 MountainModule、西山 TransitPath、路线热度与四选择组装。当前执行入口改为 [`2026-08-14-city-route-cognition-sop.md`](./2026-08-14-city-route-cognition-sop.md)；新 Session 的下一实验按 [`2026-08-14-tianlongshan-experiment-handoff.md`](./2026-08-14-tianlongshan-experiment-handoff.md) 做天龙山—牛家口下游纵切。
+> 2026-08-14 状态更新：下述 3,240 对与桃花沟内容是已经完成的纵切记录，不再是当前“下一步”。后续又完成横岭 MountainModule、西山 TransitPath、路线热度与四选择组装。当前执行入口改为 [`2026-08-14-city-route-cognition-sop.md`](./2026-08-14-city-route-cognition-sop.md)；新 Session 按 [`2026-08-14-xishan-south-experiment-handoff.md`](./2026-08-14-xishan-south-experiment-handoff.md) 一次处理西山南部 21 条候选、多个目的地积木和区域组合。
 
 历史范围审核曾把 87 条候选分成 81 条公路输入和 6 条纯 XC。当前本地活跃输入已经收口为 exact 81，6 条 XC 不再进入来源切片、关系分析或路线推荐；生产残留只在下次获得部署授权时清理。
 
