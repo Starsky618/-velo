@@ -18,6 +18,7 @@ from app.route_cognition.segment_elevation_facts import (
     points_from_linestring_wkt,
     source_geometry_hash,
 )
+from app.common.geometry_hash import strava_source_geometry_hash
 from scripts.backfill_segment_elevation_facts import (
     _audit_source_incomplete_items,
     _commit_fact_batch,
@@ -54,6 +55,7 @@ def test_source_geometry_hash_is_stable_across_postgis_wkt_formatting():
         "112.3200000 37.8200000)"
     )
     assert source_geometry_hash(compact) == source_geometry_hash(padded)
+    assert source_geometry_hash(compact) == strava_source_geometry_hash(compact)
 
 
 def test_complete_fact_separates_profile_ascent_net_change_and_gradient():
