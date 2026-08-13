@@ -1,0 +1,253 @@
+{
+  "accepted_posting_count": 6,
+  "algorithm_version": "reference_axis_mountain_module_v1",
+  "analysis_sha256": "819bfcc98a2e6a511f5bb02301e40f5285c00b9288b19c0a2a181ca78d82479f",
+  "artifact_location": "outputs/hengling-mountain-module-v1",
+  "boundary": "完整来源坐标和 GLO snapshot 位于 gitignored artifact；仓库仅保存 hash、算法版本、积木摘要和 research 边界。",
+  "config_sha256": "0de97117e7b901483ce26d5f731465a67a04a564479a7a822886af93283808e1",
+  "config_version": "mountain_module_contract_v1",
+  "connections": [
+    {
+      "connection_key": "taiyuan_xishan_hengling:summit-turnaround",
+      "evidence_ref": null,
+      "from_port_key": "full-ascent:summit-exit",
+      "from_port_sha256": "727cfb5d569315d9f48fc9cbe0f16240c612a46310f08bfd9f994a05377a9f2e",
+      "reason": "两条来源线都到达参考轴山顶，但没有独立事实证明可在此安全掉头拼接",
+      "status": "blocked_unknown_connection",
+      "to_port_key": "full-descent:summit-entry",
+      "to_port_sha256": "b99aa353764b35acd4fbebf3989abbfeaf85f8ea29a5204aca3237daf91df8d4"
+    },
+    {
+      "connection_key": "taiyuan_xishan_hengling:base-turnaround",
+      "evidence_ref": null,
+      "from_port_key": "full-descent:base-exit",
+      "from_port_sha256": "50afe26cd8284743f3458710b87ea87a047493225086e3c67d79b9ddb0277fce",
+      "reason": "两条来源线都到达参考轴山脚，但没有独立事实证明可在此安全掉头拼接",
+      "status": "blocked_unknown_connection",
+      "to_port_key": "full-ascent:base-entry",
+      "to_port_sha256": "6857074c7eb754f31e7a2badad35efc94764a4cf4060416121750ccb599b9892"
+    }
+  ],
+  "database_write_count": 0,
+  "direction_semantics": {
+    "forward": "ascent",
+    "reverse": "descent"
+  },
+  "evidence_algorithm_version": "directed_evidence_arrangement_v1",
+  "heat_evidence_explanation": {
+    "density_effect": "重叠赛段只切细区间并收紧/提高该区间证据范围；不增加物理距离、整线爬升，也不直接相加成唯一骑手数。",
+    "dimensions": [
+      {
+        "direction": "higher_is_better",
+        "key": "reach_lower_bound_surface",
+        "meaning": "至少被多少骑手证据覆盖；重叠 facts 取 max"
+      },
+      {
+        "direction": "lower_is_better",
+        "key": "reach_uncertainty_width",
+        "meaning": "唯一骑手不可识别造成的上下界宽度"
+      },
+      {
+        "direction": "higher_is_more_repeat_evidence",
+        "key": "repeat_proxy_range",
+        "meaning": "effort/athlete 派生的复骑强度范围"
+      },
+      {
+        "direction": "higher_is_more_intent_evidence",
+        "key": "star_proxy_range",
+        "meaning": "log1p(star) 收藏意图证据范围"
+      },
+      {
+        "direction": "higher_is_better",
+        "key": "evidence_coverage",
+        "meaning": "路线有同方向来源事实支持的距离比例"
+      },
+      {
+        "direction": "higher_is_better",
+        "key": "projection_quality_floor",
+        "meaning": "参与区间的最低几何投影覆盖质量"
+      }
+    ],
+    "observed_cell_count": 8,
+    "ranking_mode": "pareto_vector_unweighted",
+    "scalar_weight_status": "not_calibrated_no_rider_choice_rejection_gold"
+  },
+  "holdout_observation_ids": [
+    40,
+    82
+  ],
+  "holdout_status": "off_axis_connection_not_proven",
+  "module_key": "taiyuan_xishan_hengling",
+  "network_request_count": 0,
+  "observation_count": 6,
+  "projection_algorithm_version": "single_carrier_monotone_projection_v1",
+  "route_blocks": [
+    {
+      "block_key": "taiyuan_xishan_hengling:full-ascent",
+      "block_name": "横岭完整爬坡",
+      "block_sha256": "93b7d1099d33c8f8de8573f3433adf5a949fcc762ecfc5b396b6695d89b540f5",
+      "blockers": [],
+      "climb_m": 622.2,
+      "descent_m": 3.4,
+      "distance_km": 10.932,
+      "heat_evidence": {
+        "covered_distance_km": 10.932,
+        "meaning": "方向化 reach 证据范围，不是唯一骑手人数或单一热度分",
+        "reach_lower_person_km": 6041.453,
+        "reach_upper_person_km": 9329.124
+      },
+      "recommendation_policy": "hard feasibility first; heat dimensions rank only feasible candidates; no scalar weights before rider-choice calibration",
+      "recommendation_reasons": [
+        "完整来源线一次覆盖主爬坡，短赛段仅补充区间热度证据",
+        "总距离和总爬升直接取同一条完整来源/GLO 事实，没有重叠相加",
+        "同方向多条来源事实形成分区热度证据"
+      ],
+      "recommendation_status": "evidence_candidate",
+      "traversal_ports": [
+        {
+          "entry": {
+            "axis_measure_m": 0.0,
+            "direction": "forward",
+            "module_key": "taiyuan_xishan_hengling",
+            "port_key": "full-ascent:base-entry",
+            "port_sha256": "6857074c7eb754f31e7a2badad35efc94764a4cf4060416121750ccb599b9892",
+            "reference_source_geometry_hash": "92825916bf11afe781f1c38aab6492a4dcba246d797e41d7131c7b7ef02edf2a",
+            "role": "entry"
+          },
+          "exit": {
+            "axis_measure_m": 10931.789,
+            "direction": "forward",
+            "module_key": "taiyuan_xishan_hengling",
+            "port_key": "full-ascent:summit-exit",
+            "port_sha256": "727cfb5d569315d9f48fc9cbe0f16240c612a46310f08bfd9f994a05377a9f2e",
+            "reference_source_geometry_hash": "92825916bf11afe781f1c38aab6492a4dcba246d797e41d7131c7b7ef02edf2a",
+            "role": "exit"
+          },
+          "traversal_index": 0
+        }
+      ]
+    },
+    {
+      "block_key": "taiyuan_xishan_hengling:full-descent",
+      "block_name": "横岭完整下坡",
+      "block_sha256": "3fe19409b5ff0dd525770d94872dff2fd996e1cc44fa18446d4806b772c1580f",
+      "blockers": [],
+      "climb_m": 0.0,
+      "descent_m": 620.1,
+      "distance_km": 10.948,
+      "heat_evidence": {
+        "covered_distance_km": 10.932,
+        "meaning": "方向化 reach 证据范围，不是唯一骑手人数或单一热度分",
+        "reach_lower_person_km": 5017.691,
+        "reach_upper_person_km": 5017.691
+      },
+      "recommendation_policy": "hard feasibility first; heat dimensions rank only feasible candidates; no scalar weights before rider-choice calibration",
+      "recommendation_reasons": [
+        "完整反向来源线覆盖横岭主走廊",
+        "正反向热度分账，不借用上坡证据抬高下坡"
+      ],
+      "recommendation_status": "evidence_candidate",
+      "traversal_ports": [
+        {
+          "entry": {
+            "axis_measure_m": 10931.789,
+            "direction": "reverse",
+            "module_key": "taiyuan_xishan_hengling",
+            "port_key": "full-descent:summit-entry",
+            "port_sha256": "b99aa353764b35acd4fbebf3989abbfeaf85f8ea29a5204aca3237daf91df8d4",
+            "reference_source_geometry_hash": "92825916bf11afe781f1c38aab6492a4dcba246d797e41d7131c7b7ef02edf2a",
+            "role": "entry"
+          },
+          "exit": {
+            "axis_measure_m": 0.0,
+            "direction": "reverse",
+            "module_key": "taiyuan_xishan_hengling",
+            "port_key": "full-descent:base-exit",
+            "port_sha256": "50afe26cd8284743f3458710b87ea87a047493225086e3c67d79b9ddb0277fce",
+            "reference_source_geometry_hash": "92825916bf11afe781f1c38aab6492a4dcba246d797e41d7131c7b7ef02edf2a",
+            "role": "exit"
+          },
+          "traversal_index": 0
+        }
+      ]
+    },
+    {
+      "block_key": "taiyuan_xishan_hengling:out-and-back-candidate",
+      "block_name": "横岭爬升往返",
+      "block_sha256": "16e81a3ac9362a737c8ec0f66077c837c83160f08cfc529a73e23e5fb8da4479",
+      "blockers": [
+        {
+          "code": "connection_evidence_missing",
+          "reason": "山顶掉头连接尚未由当前来源线/拓扑事实证明"
+        },
+        {
+          "code": "complete_route_boundary_missing",
+          "reason": "当前输出不是完整城市出发—返回路线"
+        }
+      ],
+      "climb_m": 622.2,
+      "descent_m": 623.5,
+      "distance_km": 21.88,
+      "heat_evidence": {
+        "covered_distance_km": 21.864,
+        "meaning": "方向化 reach 证据范围，不是唯一骑手人数或单一热度分",
+        "reach_lower_person_km": 11059.144,
+        "reach_upper_person_km": 14346.815
+      },
+      "recommendation_policy": "hard feasibility first; heat dimensions rank only feasible candidates; no scalar weights before rider-choice calibration",
+      "recommendation_reasons": [
+        "上坡与下坡分别有接近完整的正反向来源线和热度证据"
+      ],
+      "recommendation_status": "blocked_unknown_connection",
+      "traversal_ports": [
+        {
+          "entry": {
+            "axis_measure_m": 0.0,
+            "direction": "forward",
+            "module_key": "taiyuan_xishan_hengling",
+            "port_key": "round-trip:base-entry",
+            "port_sha256": "4858152b9e7f13e88b2ea8deb63cf42d8251cdb31b01d35840aa412e1bfb3d1e",
+            "reference_source_geometry_hash": "92825916bf11afe781f1c38aab6492a4dcba246d797e41d7131c7b7ef02edf2a",
+            "role": "entry"
+          },
+          "exit": {
+            "axis_measure_m": 10931.789,
+            "direction": "forward",
+            "module_key": "taiyuan_xishan_hengling",
+            "port_key": "round-trip:summit-arrival",
+            "port_sha256": "b8d777b0de7459a08866e568193e7f9273670f14ad445b205872689d2d95d298",
+            "reference_source_geometry_hash": "92825916bf11afe781f1c38aab6492a4dcba246d797e41d7131c7b7ef02edf2a",
+            "role": "exit"
+          },
+          "traversal_index": 0
+        },
+        {
+          "entry": {
+            "axis_measure_m": 10931.789,
+            "direction": "reverse",
+            "module_key": "taiyuan_xishan_hengling",
+            "port_key": "round-trip:summit-departure",
+            "port_sha256": "82d94d6764c6981de71b3aa7f184f14a9e4cc0f35150e4b018598b852527f6b1",
+            "reference_source_geometry_hash": "92825916bf11afe781f1c38aab6492a4dcba246d797e41d7131c7b7ef02edf2a",
+            "role": "entry"
+          },
+          "exit": {
+            "axis_measure_m": 0.0,
+            "direction": "reverse",
+            "module_key": "taiyuan_xishan_hengling",
+            "port_key": "round-trip:base-exit",
+            "port_sha256": "acf86e95ba674b91f3631dacd3f4e256e782bf2955aaccfcbd0e1cc200eb900b",
+            "reference_source_geometry_hash": "92825916bf11afe781f1c38aab6492a4dcba246d797e41d7131c7b7ef02edf2a",
+            "role": "exit"
+          },
+          "traversal_index": 1
+        }
+      ]
+    }
+  ],
+  "run_sha256": "50217db280fec6c14aabdf78e445f6462ceda95f082a2707d7d0c05ecf6b6f02",
+  "schema_version": "mountain_module_run_pointer_v1",
+  "source_slice_sha256": "02c43103577f00aeb96ee5d9c1db060c075b9931549af4fbc898796e2e07c0ef",
+  "spec_sha256": "03c02233fa183955981afd166735cd59cb2ccedc63c19603cbba73c45e60d4b0",
+  "status": "research_shadow"
+}

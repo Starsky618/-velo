@@ -6,6 +6,7 @@
 
 | 文件 | 是什么 | 状态 |
 |---|---|---|
+| **2026-08-13-hengling-mountain-module-slice.md** | 横岭公路主走廊第二个山区积木 research slice：通用 Strava 参考轴投影、方向化重叠热度、完整上/下坡与受阻往返组合 | **当前第二走廊实证**。不使用 OSM，不证明 o40/o82 接入或完整路线可达 |
 | **route_cognition_v1_1_completion_report.md** | route cognition v1.1 数据库地基最终收口报告：最终 Alembic head、commit 链、表清单、验证摘要、已完成/未完成范围 | **最终完成态事实源**。判断 v1.1 DB foundation 是否完成先看这里 |
 | **route_cognition_v1_1_operationalization_plan.md** | DB 地基完成后的运营化计划：内部 writer、审核流程、安全 seed、未来只读 API 与后置工作 | **当前下一步计划**。后续不要继续加 schema，先看这里 |
 | **route_cognition_v1_1_status.md** | route cognition v1.1 当前实现状态与批次边界 | **当前事实源**。后续窗口先看这里，再看仓库 live files |
