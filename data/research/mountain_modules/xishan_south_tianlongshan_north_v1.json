@@ -9,7 +9,7 @@
   "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
   "heat_snapshot_cohort": "xishan-20260813-v1",
   "reference_axis": {"source_observation_id": 8, "source_segment_id": "22350888", "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc", "direction_semantics": {"forward": "diantou_longshan_to_stone", "reverse": "stone_to_diantou_longshan"}, "selection_basis": "complete_north_approach_axis_distinct_from_east_climb"},
-  "source_selection": {"mode": "exact_observation_ids", "observation_ids": [8, 21, 50, 93, 98], "observation_set_sha256": "62c67b5478d31d6367e4d66488458a6b97a8db449192309561f155d4ad0fb959"},
+  "source_selection": {"mode": "exact_observation_ids", "observation_ids": [8, 21, 50, 93, 98], "observation_set_sha256": "1aa385ea6719bf346ede29325fb719c87e916c6fe3190990df701d62b379273a"},
   "holdout_observation_ids": [17],
   "excluded_source_segment_ids": [],
   "axis_profile_observation_id": 8,

@@ -1,0 +1,135 @@
+{
+  "schema_version": "route_pattern_choice_spec_v1",
+  "choice_set_key": "xishan-remaining-short-medium-long-v1",
+  "heat_snapshot_cohort": "xishan-20260813-v1",
+  "source_slice_sha256": "ea2043afdb48bad87107c33659de03597511fce7cf5e12dc52100e7f1fe3cf0c",
+  "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+  "candidates": [
+    {
+      "candidate_id": "short-wanmu-aoshen-main",
+      "choice_name": "万亩侧—奥申主爬",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [27],
+      "outing_boundary": "只含万亩侧到奥申上端的来源主轴；启春阁支线、进山接驳、狼坡与返程另算。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-aoshen:o27", "source_observation_id": 27, "source_segment_id": "28690246", "source_geometry_hash": "355c28134b901c58d5ed391b73faeb72b9bff7ba60ccb33750563b4b5b015742", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "short-langpo-main",
+      "choice_name": "狼坡完整主爬",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [38],
+      "outing_boundary": "只含狼坡主轴，不含到达狼坡、桃花沟串联或返程。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-langpo:o38", "source_observation_id": 38, "source_segment_id": "29621779", "source_geometry_hash": "f352aba455aceb8c5c377a3639ede8b7b2a5b1f3b149d259d01c0421dd674bc1", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "short-pianqiaogou-main",
+      "choice_name": "偏桥沟完整爬升",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [13],
+      "outing_boundary": "只含桃花沟岔口到杜关线铁门的偏桥沟轴；不含桃花沟、经典杜关及回城。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-pianqiao:o13", "source_observation_id": 13, "source_segment_id": "23813357", "source_geometry_hash": "2968b1c37a68800c09941cfe9df923698d5b3aab4e178328188c6e60b65fa69d", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "short-duguan-classic",
+      "choice_name": "经典杜关线杜儿坪—太古路",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [23],
+      "outing_boundary": "只含经典杜关完整来源轴；不等于新修的 14.9 公里杜关旅游路，也不含两端接驳。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-duguan:o23", "source_observation_id": 23, "source_segment_id": "27517293", "source_geometry_hash": "685039ca8e2128589929f5d8708841037514cbc166f9611499f60158ed391b38", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "short-wangfeng-yixiantian",
+      "choice_name": "王封一线天沟底—景区石碑",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [19],
+      "outing_boundary": "只含一线天景观核心轴；大窊村接驳、豆腐店延伸和返程另算。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-yixiantian:o19", "source_observation_id": 19, "source_segment_id": "25239069", "source_geometry_hash": "8bac0283a1b92931cce62117916df0cf8c71a04339af4265842eba4218846adf", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "short-erku-gelou-matoushui",
+      "choice_name": "汾河二库阁楼—马头水",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [40],
+      "outing_boundary": "只含阁楼到马头水的山中起伏走廊；不含市区到二库、横岭或返程。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-erku:o40", "source_observation_id": 40, "source_segment_id": "29860666", "source_geometry_hash": "e615b7434e6b2f219218a0c66f68d4d111f6b6c70a04a6e5a56d171573e188f4", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "short-yuquanshan-main",
+      "choice_name": "玉泉山南侧完整主爬",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [15],
+      "outing_boundary": "只含玉泉山南侧主爬；石膏厂、北侧和南下变体是不同物理选择。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-yuquan:o15", "source_observation_id": 15, "source_segment_id": "24146976", "source_geometry_hash": "dd99f25f6cc9a750acb6badce100fbcad7cec76d6b78341d254c131d8b658d4b", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "short-chaihua-main",
+      "choice_name": "柴化线完整爬升",
+      "comparison_scope": "short_destination_core",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [20],
+      "outing_boundary": "只含柴化线完整主轴；化客头—大窊村连接和玉泉山接驳另算。",
+      "components": [{"kind": "source_corridor", "occurrence_id": "short-chaihua:o20", "source_observation_id": 20, "source_segment_id": "25733595", "source_geometry_hash": "ea4ad197ab04ac47854ac648a994d7f14ec768aa2f0dec388b1fc0f20cd8f238", "direction": "forward"}]
+    },
+    {
+      "candidate_id": "medium-wanmu-aoshen-langpo",
+      "choice_name": "万亩—奥申—狼坡双爬",
+      "comparison_scope": "medium_destination_chain",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [27, 38],
+      "outing_boundary": "从万亩侧进入奥申，经冻结腾讯连接到狼坡底再爬狼坡；不含启春阁、市区接驳与狼坡后返程。",
+      "components": [
+        {"kind": "source_corridor", "occurrence_id": "medium-aoshen-langpo:aoshen", "source_observation_id": 27, "source_segment_id": "28690246", "source_geometry_hash": "355c28134b901c58d5ed391b73faeb72b9bff7ba60ccb33750563b4b5b015742", "direction": "forward"},
+        {"kind": "transit_path", "occurrence_id": "medium-aoshen-langpo:link", "transit_key": "aoshen-upper-to-langpo-base", "result_sha256": "be158954cda1153fc05072de6b2dc38408578c24da548bbf968c1b096c056601", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "medium-aoshen-langpo:langpo", "source_observation_id": 38, "source_segment_id": "29621779", "source_geometry_hash": "f352aba455aceb8c5c377a3639ede8b7b2a5b1f3b149d259d01c0421dd674bc1", "direction": "forward"}
+      ]
+    },
+    {
+      "candidate_id": "medium-langpo-aoshen-wanmu-reverse",
+      "reverse_of_candidate_id": "medium-wanmu-aoshen-langpo",
+      "choice_name": "狼坡—奥申—万亩反向双坡",
+      "comparison_scope": "medium_destination_chain",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [38, 27],
+      "outing_boundary": "从狼坡上端下到狼坡底，经同一冻结连接反向到奥申上端，再下到万亩侧；不含两端市区接驳。",
+      "components": [
+        {"kind": "source_corridor", "occurrence_id": "medium-langpo-aoshen:langpo-down", "source_observation_id": 38, "source_segment_id": "29621779", "source_geometry_hash": "f352aba455aceb8c5c377a3639ede8b7b2a5b1f3b149d259d01c0421dd674bc1", "direction": "reverse"},
+        {"kind": "transit_path", "occurrence_id": "medium-langpo-aoshen:link-reverse", "transit_key": "aoshen-upper-to-langpo-base", "result_sha256": "be158954cda1153fc05072de6b2dc38408578c24da548bbf968c1b096c056601", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "reverse"},
+        {"kind": "source_corridor", "occurrence_id": "medium-langpo-aoshen:aoshen-down", "source_observation_id": 27, "source_segment_id": "28690246", "source_geometry_hash": "355c28134b901c58d5ed391b73faeb72b9bff7ba60ccb33750563b4b5b015742", "direction": "reverse"}
+      ]
+    },
+    {
+      "candidate_id": "long-hengling-huaketou-taohuagou",
+      "choice_name": "横岭上—化客头—桃花沟山区长线",
+      "comparison_scope": "long_regional_chain",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [2, 6],
+      "outing_boundary": "从横岭主爬底到桃花沟北口的山中长线；不含市区到横岭及桃花沟后的回城。",
+      "components": [
+        {"kind": "mountain_block", "occurrence_id": "long-hengling-taohua:hengling-up", "module_key": "taiyuan_xishan_hengling", "block_key": "taiyuan_xishan_hengling:full-ascent", "run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9"},
+        {"kind": "transit_path", "occurrence_id": "long-hengling-taohua:huaketou-link", "transit_key": "hengling-upper-to-taohuagou-huaketou", "result_sha256": "d9b61d808b158c84dc7822ffccba248bb68a27735f23fd1f81a36e58803a635a", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "stored"},
+        {"kind": "source_corridor", "occurrence_id": "long-hengling-taohua:rolling", "source_observation_id": 6, "source_segment_id": "22350861", "source_geometry_hash": "83c54e668da078a017ef48544fa3e76e145b03cfa4c49e1de1f6174abc03996e", "direction": "forward"}
+      ]
+    },
+    {
+      "candidate_id": "long-taohuagou-huaketou-hengling-reverse",
+      "reverse_of_candidate_id": "long-hengling-huaketou-taohuagou",
+      "choice_name": "桃花沟—化客头—横岭反向长线",
+      "comparison_scope": "long_regional_chain",
+      "rider_intent": "popular_reliable",
+      "anchor_observation_ids": [6, 16],
+      "outing_boundary": "从桃花沟北口沿化客头起伏反向串到横岭底；不含两端市区接驳。",
+      "components": [
+        {"kind": "source_corridor", "occurrence_id": "long-taohua-hengling:rolling-reverse", "source_observation_id": 6, "source_segment_id": "22350861", "source_geometry_hash": "83c54e668da078a017ef48544fa3e76e145b03cfa4c49e1de1f6174abc03996e", "direction": "reverse"},
+        {"kind": "transit_path", "occurrence_id": "long-taohua-hengling:huaketou-link-reverse", "transit_key": "hengling-upper-to-taohuagou-huaketou", "result_sha256": "d9b61d808b158c84dc7822ffccba248bb68a27735f23fd1f81a36e58803a635a", "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e", "traversal_direction": "reverse"},
+        {"kind": "mountain_block", "occurrence_id": "long-taohua-hengling:hengling-down", "module_key": "taiyuan_xishan_hengling", "block_key": "taiyuan_xishan_hengling:full-ascent", "run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9", "traversal_direction": "reverse"}
+      ]
+    }
+  ]
+}

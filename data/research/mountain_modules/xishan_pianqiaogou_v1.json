@@ -1,0 +1,17 @@
+{
+  "schema_version": "mountain_module_spec_v2",
+  "module_key": "taiyuan_xishan_pianqiaogou",
+  "module_name": "偏桥沟",
+  "module_role": "destination_block",
+  "artifact_location": "outputs/xishan-pianqiaogou-module-v1",
+  "status": "research_shadow_pending_glo_profile_export",
+  "census_batch_id": "xishan-20260813-v1", "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1", "heat_snapshot_cohort": "xishan-20260813-v1",
+  "reference_axis": {"source_observation_id": 13, "source_segment_id": "23813357", "source_geometry_hash": "2968b1c37a68800c09941cfe9df923698d5b3aab4e178328188c6e60b65fa69d", "direction_semantics": {"forward": "taohuagou_junction_to_duguan_gate", "reverse": "duguan_gate_to_taohuagou_junction"}, "selection_basis": "projection-supported complete forward-reverse family"},
+  "source_selection": {"mode": "exact_observation_ids", "observation_ids": [13, 31], "observation_set_sha256": "2c15e062a968da30823f6b859b9431364fd01684329e93142d1596ef14b76243"},
+  "holdout_observation_ids": [71], "excluded_source_segment_ids": [], "axis_profile_observation_id": 13,
+  "role_requirements": [{"role_key": "full_ascent", "observation_id": 13, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.99}, {"role_key": "full_descent", "observation_id": 31, "expected_direction": "reverse", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.93}],
+  "route_blocks": [{"block_key_suffix": "full-ascent", "name_suffix": "完整爬升", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 13, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "full-ascent:taohuagou-junction", "exit_port_key": "full-ascent:duguan-gate"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["正反来源投影到同一 canonical axis", "o71 composite is excluded from physical distance"]}],
+  "connections": [],
+  "route_assembly_boundary": {"segment_endpoint_semantics": "observation_boundary_not_road_terminal", "inter_module_pattern": "destination_blocks_plus_transit_path", "transit_accounting": "provider route first; source observations only project heat"},
+  "boundary": "Raw oracle self-overlap ambiguity is resolved only for family projection; road access remains unverified."
+}

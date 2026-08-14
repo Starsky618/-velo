@@ -1,0 +1,11 @@
+{
+  "schema_version": "mountain_module_spec_v2", "module_key": "taiyuan_xishan_erku_gelou_matoushui", "module_name": "汾河二库阁楼—马头水", "module_role": "destination_block", "artifact_location": "outputs/xishan-erku-gelou-matoushui-module-v1", "status": "research_shadow_pending_glo_profile_export",
+  "census_batch_id": "xishan-20260813-v1", "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1", "heat_snapshot_cohort": "xishan-20260813-v1",
+  "reference_axis": {"source_observation_id": 40, "source_segment_id": "29860666", "source_geometry_hash": "e615b7434e6b2f219218a0c66f68d4d111f6b6c70a04a6e5a56d171573e188f4", "direction_semantics": {"forward": "erku_gelou_to_matoushui", "reverse": "matoushui_to_erku_gelou"}, "selection_basis": "complete named scenic rolling corridor"},
+  "source_selection": {"mode": "exact_observation_ids", "observation_ids": [40], "observation_set_sha256": "d59eced1ded07f84c145592f65bdf854358e009c5cd705f5215bf18697fed103"},
+  "holdout_observation_ids": [82, 102, 114], "excluded_source_segment_ids": [], "axis_profile_observation_id": 40,
+  "role_requirements": [{"role_key": "full_corridor", "observation_id": 40, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.99}],
+  "route_blocks": [{"block_key_suffix": "full-corridor", "name_suffix": "阁楼—马头水完整走廊", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 40, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "full-corridor:erku-gelou", "exit_port_key": "full-corridor:matoushui"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["named route has independent rolling distance and climb/descent facts"]}],
+  "connections": [], "route_assembly_boundary": {"segment_endpoint_semantics": "observation_boundary_not_road_terminal", "inter_module_pattern": "destination_blocks_plus_transit_path", "transit_accounting": "provider route first; source observations only project heat"},
+  "boundary": "This scenic traverse is not Hengling and is not the separate west-side switchback climb."
+}

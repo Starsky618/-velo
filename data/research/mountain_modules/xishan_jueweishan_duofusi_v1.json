@@ -1,0 +1,17 @@
+{
+  "schema_version": "mountain_module_spec_v2",
+  "module_key": "taiyuan_xishan_jueweishan_duofusi",
+  "module_name": "崛围山—多福寺",
+  "module_role": "destination_block",
+  "artifact_location": "outputs/xishan-jueweishan-duofusi-module-v1",
+  "status": "research_shadow_pending_glo_profile_export",
+  "census_batch_id": "xishan-20260813-v1", "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1", "heat_snapshot_cohort": "xishan-20260813-v1",
+  "reference_axis": {"source_observation_id": 14, "source_segment_id": "24146881", "source_geometry_hash": "ca23070fedc1017f25a4bcf190a1a1ca86237470b562400cc118c0680d85c359", "direction_semantics": {"forward": "parking_to_duofusi", "reverse": "duofusi_to_parking"}, "selection_basis": "named scenic destination core"},
+  "source_selection": {"mode": "exact_observation_ids", "observation_ids": [14, 67, 76], "observation_set_sha256": "56631fdb2beaa64407920b498ca33737c454381775235af0f03b6fa1d0b525e3"},
+  "holdout_observation_ids": [], "excluded_source_segment_ids": [], "axis_profile_observation_id": 14,
+  "role_requirements": [{"role_key": "destination_core", "observation_id": 14, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.99}, {"role_key": "reverse_continuation", "observation_id": 67, "expected_direction": "reverse", "min_source_coverage_ratio": 0.84, "min_axis_coverage_ratio": 0.97}, {"role_key": "long_approach", "observation_id": 76, "expected_direction": "forward", "min_source_coverage_ratio": 0.66, "min_axis_coverage_ratio": 0.99}],
+  "route_blocks": [{"block_key_suffix": "destination-core", "name_suffix": "多福寺核心爬升", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 14, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "destination-core:parking", "exit_port_key": "destination-core:duofusi"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["核心景点轴独立计距", "长引道和反向线只作为覆盖证据"]}],
+  "connections": [],
+  "route_assembly_boundary": {"segment_endpoint_semantics": "observation_boundary_not_road_terminal", "inter_module_pattern": "destination_blocks_plus_transit_path", "transit_accounting": "provider route first; source observations only project heat"},
+  "boundary": "Stored GLO totals are reconciled; full profile export is pending read-only production access."
+}

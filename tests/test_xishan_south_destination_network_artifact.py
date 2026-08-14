@@ -50,9 +50,14 @@ def test_module_specs_use_one_canonical_axis_and_remain_profile_pending() -> Non
     west = _read(
         RESEARCH / "mountain_modules/xishan_south_tianlongshan_west_gate_v1.json"
     )
-    assert {block["traversals"][0]["direction"] for block in west["route_blocks"]} == {
-        "forward", "reverse"
-    }
+    assert [
+        block["traversals"][0]["direction"] for block in west["route_blocks"]
+    ] == ["forward"]
+    assert any(
+        requirement["expected_direction"] == "reverse"
+        for requirement in west["role_requirements"]
+    )
+    assert "reverse choices reuse the block" in west["boundary"]
 
 
 def test_six_transit_public_manifests_are_hash_bound_and_coordinate_reduced() -> None:

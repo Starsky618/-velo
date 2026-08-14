@@ -1,0 +1,11 @@
+{
+  "schema_version": "mountain_module_spec_v2", "module_key": "taiyuan_xishan_jiaoziai", "module_name": "角子崖", "module_role": "destination_block", "artifact_location": "outputs/xishan-jiaoziai-module-v1", "status": "research_shadow_pending_glo_profile_export",
+  "census_batch_id": "xishan-20260813-v1", "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1", "heat_snapshot_cohort": "xishan-20260813-v1",
+  "reference_axis": {"source_observation_id": 107, "source_segment_id": "40079687", "source_geometry_hash": "62e3b417c16b336515969d139af8109519c62771065880d2fd4d699016432a97", "direction_semantics": {"forward": "jiaoziai_base_to_upper", "reverse": "jiaoziai_upper_to_base"}, "selection_basis": "independent far-west named destination climb"},
+  "source_selection": {"mode": "exact_observation_ids", "observation_ids": [107], "observation_set_sha256": "3346f2bbf6c34bd2dbe28bd1bb657d0e9c37392a1d5ec9929e6a5df4763ddc2d"},
+  "holdout_observation_ids": [], "excluded_source_segment_ids": [], "axis_profile_observation_id": 107,
+  "role_requirements": [{"role_key": "full_ascent", "observation_id": 107, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.99}],
+  "route_blocks": [{"block_key_suffix": "full-ascent", "name_suffix": "完整爬升", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 107, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "full-ascent:base", "exit_port_key": "full-ascent:upper"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["independent source geometry and GLO totals define one bounded destination axis"]}],
+  "connections": [], "route_assembly_boundary": {"segment_endpoint_semantics": "observation_boundary_not_road_terminal", "inter_module_pattern": "destination_blocks_plus_transit_path", "transit_accounting": "provider route first; source observations only project heat"},
+  "boundary": "Far-west standalone destination; no automatic integration into the main loop without a provider connector."
+}

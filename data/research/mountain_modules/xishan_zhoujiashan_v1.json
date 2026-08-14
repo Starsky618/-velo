@@ -1,0 +1,11 @@
+{
+  "schema_version": "mountain_module_spec_v2", "module_key": "taiyuan_xishan_zhoujiashan", "module_name": "周家山西侧走廊", "module_role": "destination_block", "artifact_location": "outputs/xishan-zhoujiashan-module-v1", "status": "research_shadow_pending_glo_profile_export",
+  "census_batch_id": "xishan-20260813-v1", "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1", "heat_snapshot_cohort": "xishan-20260813-v1",
+  "reference_axis": {"source_observation_id": 45, "source_segment_id": "31350024", "source_geometry_hash": "6f8b05e8a8c42613439bb3c49233ef0fdd31ca8f3c3d0daae104c4891eec0e12", "direction_semantics": {"forward": "yannanshan_tunnel_to_zhoujiashan_descent", "reverse": "zhoujiashan_to_yannanshan_tunnel_climb"}, "selection_basis": "independent far-west named corridor"},
+  "source_selection": {"mode": "exact_observation_ids", "observation_ids": [45], "observation_set_sha256": "811786ad1ae74adfdd20dd0372abaaebc6246e343aebd01da0bfc4c02bf0106c"},
+  "holdout_observation_ids": [], "excluded_source_segment_ids": [], "axis_profile_observation_id": 45,
+  "role_requirements": [{"role_key": "observed_descent", "observation_id": 45, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.99}],
+  "route_blocks": [{"block_key_suffix": "observed-descent", "name_suffix": "岩南山隧道—周家山", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 45, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "observed-descent:tunnel", "exit_port_key": "observed-descent:zhoujiashan"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["only the observed descent is claimed; reverse climb swaps the same geometry and climb/descent"]}],
+  "connections": [], "route_assembly_boundary": {"segment_endpoint_semantics": "observation_boundary_not_road_terminal", "inter_module_pattern": "destination_blocks_plus_transit_path", "transit_accounting": "provider route first; source observations only project heat"},
+  "boundary": "No access, surface or tunnel-safety claim is made."
+}

@@ -1,0 +1,89 @@
+{
+  "schema_version": "regional_route_pattern_plan_v1",
+  "pattern_set_key": "xishan_backbone_route_patterns_v1",
+  "status": "mixed_replayable_cores_and_pending_end_to_end_connectors",
+  "patterns": [
+    {
+      "pattern_key": "full-west-backbone-south-to-north",
+      "name": "西山旅游公路南到北主脊",
+      "rider_job": "一次吃完整个西山主脊，把南部天龙山群、中段狼坡桃花沟、北段玉泉横岭二库串起来",
+      "ordered_places": ["牛家口", "天龙山", "蒙山", "万亩/奥申", "狼坡", "桃花沟/杜关选择口", "S104/柴化", "玉泉山", "马头水", "横岭/崛围山", "汾河二库"],
+      "replayable_cores": ["xishan_south_destination_network_v1", "medium-wanmu-aoshen-langpo", "long-hengling-huaketou-taohuagou"],
+      "assembly_status": "pending_end_to_end_provider_geometry",
+      "typed_blockers": ["tianlong_west_to_wanmu_port_missing", "langpo_to_duguan_taohuagou_natural_port_missing", "taohuagou_to_yuquanshan_backbone_port_missing", "matoushui_to_hengling_erku_port_missing"],
+      "cost_boundary": "No exact end-to-end distance, GLO climb or hard-feasible claim until all natural ports are frozen."
+    },
+    {
+      "pattern_key": "full-west-backbone-north-to-south",
+      "reverse_of_pattern_key": "full-west-backbone-south-to-north",
+      "name": "反爬环西山主脊",
+      "rider_job": "从二库/横岭方向先吃北段，再反向穿回天龙山南部",
+      "ordered_places": ["汾河二库", "横岭/崛围山", "马头水", "玉泉山", "柴化/S104", "桃花沟/杜关选择口", "狼坡", "奥申/万亩", "蒙山", "天龙山", "牛家口"],
+      "replayable_cores": ["long-taohuagou-huaketou-hengling-reverse", "medium-langpo-aoshen-wanmu-reverse", "xishan_south_destination_network_v1 reverse traversals"],
+      "assembly_status": "pending_end_to_end_provider_geometry",
+      "typed_blockers": ["same_physical_ports_as_forward_missing", "reverse_full_day_return_not_frozen"],
+      "cost_boundary": "Reverse means reusing identical geometry and swapping climb/descent; it is not a second stored route."
+    },
+    {
+      "pattern_key": "south-half-tianlong-wanmu-langpo",
+      "name": "南半爬：天龙山—万亩奥申—狼坡",
+      "rider_job": "想要南中段连续爬坡，但不承担二库方向的全日长度",
+      "ordered_places": ["牛家口或天龙山东/北入口", "天龙山西门", "万亩/启春阁选择口", "奥申", "狼坡", "杜儿坪/桃花沟退出"],
+      "replayable_cores": ["xishan_south_destination_network_v1", "short-wanmu-aoshen-main", "short-langpo-main", "medium-wanmu-aoshen-langpo"],
+      "assembly_status": "partial_hard_replay",
+      "typed_blockers": ["tianlong_west_to_wanmu_port_missing", "langpo_exit_port_missing"],
+      "cost_boundary": "The Aoshen-Langpo double climb is exact; the complete half-day line is not."
+    },
+    {
+      "pattern_key": "north-half-taohuagou-yuquan-erku",
+      "name": "北半爬：桃花沟—玉泉—横岭二库",
+      "rider_job": "避开天龙山南段，集中体验北侧连续山路与二库景点",
+      "ordered_places": ["杜儿坪/桃花沟", "化客头/S104", "柴化", "玉泉山", "马头水", "横岭", "汾河二库阁楼"],
+      "replayable_cores": ["short-yuquanshan-main", "short-chaihua-main", "short-erku-gelou-matoushui", "long-hengling-huaketou-taohuagou"],
+      "assembly_status": "partial_hard_replay",
+      "typed_blockers": ["taohuagou_to_yuquan_port_missing", "matoushui_to_hengling_erku_short_ports_missing"],
+      "cost_boundary": "The constituent roads are fact-closed; the road-to-road joins are not yet one route."
+    },
+    {
+      "pattern_key": "duguan-classic-pianqiao-choice",
+      "name": "经典杜关/偏桥沟二选一",
+      "rider_job": "从杜儿坪—桃花沟一带选择更长主线或更短支沟，不重复累计相交部分",
+      "ordered_places": ["杜儿坪/桃花沟东口", "偏桥沟岔口", "杜关铁门", "太古路"],
+      "choice_cores": ["short-duguan-classic", "short-pianqiaogou-main"],
+      "assembly_status": "two_hard_replayable_destination_cores_pending_shared_port",
+      "typed_blockers": ["pianqiao_duguan_shared_port_provider_path_missing"],
+      "cost_boundary": "o71 is composite overlap evidence and is never added as a third road resource."
+    },
+    {
+      "pattern_key": "duguan-new-tourism-road",
+      "name": "新杜关旅游公路长爬",
+      "rider_job": "想骑比经典杜关更长、更西的一条新旅游路",
+      "ordered_places": ["西侧新路起点", "新修旅游公路", "东侧岔口"],
+      "supplemental_resource_key": "duguan_new_tourism_road_source_37687861",
+      "assembly_status": "supplemental_pending_glo_and_active_binding",
+      "typed_blockers": ["source_geometry_not_active", "glo_profile_missing", "current_road_state_unverified", "east_port_to_classic_network_missing"],
+      "cost_boundary": "The 14.9 km and +303 m values are old source facts, not active GLO route totals."
+    },
+    {
+      "pattern_key": "zaodu-forced-out-and-back",
+      "name": "枣杜公路进出折返",
+      "rider_job": "专门去吃枣杜全爬，接受断头路原路返回",
+      "ordered_places": ["枣杜入口", "枣杜完整爬升", "上端掉头", "同轴反向返回"],
+      "supplemental_resource_key": "zaodu_full_climb_source_34856789",
+      "assembly_status": "supplemental_pending_glo_and_active_binding",
+      "typed_blockers": ["source_geometry_not_active", "glo_profile_missing", "forced_turnaround_port_not_frozen", "south_network_connector_missing"],
+      "cost_boundary": "A valid out-and-back must reuse one geometry and swap climb/descent; it must not store or sum a duplicate reverse road."
+    },
+    {
+      "pattern_key": "closed-xishan-fenhe-full-day-loop",
+      "name": "环西山—汾河全日闭环",
+      "rider_job": "山脊南北贯通后沿汾河/城市平路返回起点，形成真正闭环大长线",
+      "ordered_places": ["西山南端", "西山旅游公路主脊", "汾河二库", "汾河/城市返回线", "起点"],
+      "assembly_status": "topology_only_not_hard_feasible",
+      "typed_blockers": ["full_west_backbone_missing", "erku_to_river_return_missing", "river_return_geometry_missing", "end_to_end_glo_missing"],
+      "cost_boundary": "The promoted 环西山—汾河 concept does not supply one exact GPX, distance or climb total."
+    }
+  ],
+  "accounting": {"hard_replayable_complete_patterns": 0, "partially_replayable_patterns": 4, "supplemental_patterns": 2, "topology_only_patterns": 2, "database_write_count": 0, "new_provider_request_count": 0},
+  "boundary": "Pattern plan only. A named place order is not a traversable waypoint graph; every missing natural port remains typed and local."
+}

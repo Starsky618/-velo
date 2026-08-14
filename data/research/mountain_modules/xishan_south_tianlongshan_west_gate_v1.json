@@ -18,10 +18,9 @@
     {"role_key": "full_stone_to_west", "observation_id": 79, "expected_direction": "reverse", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.99}
   ],
   "route_blocks": [
-    {"block_key_suffix": "west-to-stone", "name_suffix": "西门到石碑", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 78, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "west-to-stone:west-entry", "exit_port_key": "west-to-stone:stone-exit"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["o78 supplies the forward resource"]},
-    {"block_key_suffix": "stone-to-west", "name_suffix": "石碑到西门", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 78, "min_resource_alignment_ratio": 0.99, "direction": "reverse", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "stone-to-west:stone-entry", "exit_port_key": "stone-to-west:west-exit"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["o78 canonical geometry is traversed in reverse; o79 contributes reverse heat evidence without a second physical resource"]}
+    {"block_key_suffix": "west-to-stone", "name_suffix": "西门到石碑", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 78, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "west-to-stone:west-entry", "exit_port_key": "west-to-stone:stone-exit"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["o78 supplies the forward resource; reverse choices reuse this block with traversal_direction=reverse and swap climb/descent"]}
   ],
   "connections": [],
   "route_assembly_boundary": {"segment_endpoint_semantics": "observation_boundary_not_road_terminal", "inter_module_pattern": "destination_blocks_plus_transit_path", "transit_accounting": "provider route first; source observations only project heat"},
-  "boundary": "One canonical physical axis, two traversals; full GLO profile export remains pending."
+  "boundary": "One canonical physical axis and one stored forward block; reverse choices reuse the block at assembly time. Full GLO profile export remains pending."
 }
