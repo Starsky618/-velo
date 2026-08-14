@@ -1,0 +1,68 @@
+{
+  "schema_version": "mountain_module_spec_v2",
+  "module_key": "taiyuan_xishan_zaodu_road",
+  "module_name": "枣杜公路",
+  "module_role": "destination_block",
+  "artifact_location": "outputs/xishan-zaodu-road-module-v1",
+  "status": "research_shadow_glo_profile_ready_full_candidate",
+  "census_batch_id": "xishan-exact-climbs-20260814-v1",
+  "elevation_fact_batch_id": "xishan-exact-climbs-20260814-v1-glo30-v1",
+  "heat_snapshot_cohort": "xishan-exact-climbs-20260814-v1",
+  "reference_axis": {
+    "source_observation_id": 116,
+    "source_segment_id": "34856789",
+    "source_geometry_hash": "8796f05b3fa45d0ffb22ea875fc6f80fe809e7c06aa7f3318feaa8d48f754037",
+    "direction_semantics": {
+      "forward": "source_start_to_source_end",
+      "reverse": "source_end_to_source_start"
+    },
+    "selection_basis": "exact requested complete Strava source axis with production GLO profile; canonical named base and summit remain pending"
+  },
+  "source_selection": {
+    "mode": "exact_observation_ids",
+    "observation_ids": [116],
+    "observation_set_sha256": "e5b861a6d8a966dfca7e7341cd3eb6be9901688d547a72ebed0b1f5e14f3d08d"
+  },
+  "holdout_observation_ids": [],
+  "excluded_source_segment_ids": [],
+  "axis_profile_observation_id": 116,
+  "role_requirements": [
+    {
+      "role_key": "complete_source_axis_candidate",
+      "observation_id": 116,
+      "expected_direction": "forward",
+      "min_source_coverage_ratio": 0.99,
+      "min_axis_coverage_ratio": 0.99
+    }
+  ],
+  "route_blocks": [
+    {
+      "block_key_suffix": "source-axis-forward",
+      "name_suffix": "来源全轴正向",
+      "block_role": "destination_traversal",
+      "traversals": [
+        {
+          "resource_observation_id": 116,
+          "min_resource_alignment_ratio": 0.99,
+          "direction": "forward",
+          "start_measure": "axis_start",
+          "end_measure": "axis_end",
+          "entry_port_key": "source-axis-forward:start",
+          "exit_port_key": "source-axis-forward:end"
+        }
+      ],
+      "recommendation_status": "evidence_candidate",
+      "recommendation_reasons": [
+        "the exact requested source provides one complete high-resolution physical geometry",
+        "production GLO replaces the old source elevation total and rejects the source maximum-gradient outlier"
+      ]
+    }
+  ],
+  "connections": [],
+  "route_assembly_boundary": {
+    "segment_endpoint_semantics": "observation_boundary_not_canonical_named_climb_anchor",
+    "inter_module_pattern": "destination_blocks_plus_transit_path",
+    "transit_accounting": "provider route first; source observations only project heat"
+  },
+  "boundary": "The complete Strava source segment and production GLO profile are verified. Canonical Zaodu named-climb base/summit, access, surface, and the connector to the south network remain pending, so this axis is full_candidate rather than full_verified."
+}

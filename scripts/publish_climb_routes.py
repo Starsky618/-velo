@@ -88,6 +88,7 @@ class ProjectionInput:
     projection_identity_sha256: str
     component_provenance: tuple[dict, ...] = ()
     transit_provider_statuses: tuple[str, ...] = ()
+    fact_batch_ids: tuple[str, ...] = ()
 
 
 VERIFIED_TRANSIT_PROVIDER_STATUSES = frozenset({"bicycling_access_verified"})
@@ -128,6 +129,9 @@ def _projection_elevation_metadata(
             "source_geometry_hash": projection.source_geometry_hash,
             "glo_fact_id": projection.fact_id,
             "glo_fact_batch_id": projection.fact_batch_id,
+            "glo_fact_batch_ids": list(
+                projection.fact_batch_ids or (projection.fact_batch_id,)
+            ),
             "traversal_direction": projection.traversal_direction,
             "component_provenance": list(projection.component_provenance),
             "transit_provider_statuses": list(projection.transit_provider_statuses),
@@ -198,7 +202,12 @@ def _line_wkt(points: Sequence[Sequence[float]]) -> str:
     ) + ")"
 
 
-def _production_profile_row(db, catalog: dict, observation_id: int):
+def _production_profile_row(
+    db,
+    census_batch_id: str,
+    elevation_fact_batch_id: str,
+    observation_id: int,
+):
     row = (
         db.query(
             SegmentSourceObservation,
@@ -222,8 +231,8 @@ def _production_profile_row(db, catalog: dict, observation_id: int):
         )
         .filter(
             SegmentSourceObservation.id == observation_id,
-            SegmentSourceObservation.census_batch_id == catalog["census_batch_id"],
-            SegmentElevationFact.fact_batch_id == catalog["elevation_fact_batch_id"],
+            SegmentSourceObservation.census_batch_id == census_batch_id,
+            SegmentElevationFact.fact_batch_id == elevation_fact_batch_id,
         )
         .one_or_none()
     )
@@ -243,6 +252,22 @@ def _production_profile_row(db, catalog: dict, observation_id: int):
     return observation, fact, points, elevations
 
 
+def _observation_batch_bindings(catalog: dict) -> dict[int, tuple[str, str]]:
+    bindings: dict[int, tuple[str, str]] = {}
+    for axis in catalog.get("axes") or []:
+        spec = _load_json(REPO_ROOT / axis["module_spec"])
+        binding = (spec["census_batch_id"], spec["elevation_fact_batch_id"])
+        for observation_id in spec["source_selection"]["observation_ids"]:
+            observation_id = int(observation_id)
+            previous = bindings.get(observation_id)
+            if previous is not None and previous != binding:
+                raise ValueError(
+                    f"observation {observation_id} has conflicting source batches"
+                )
+            bindings[observation_id] = binding
+    return bindings
+
+
 def _preflight_projections(db, catalog: dict, catalog_result: dict) -> list[ProjectionInput]:
     exclusions = {row["module_key"] for row in catalog["publication_exclusions"]}
     public_axes = {row["module_key"]: row for row in catalog_result["axes"]}
@@ -257,7 +282,10 @@ def _preflight_projections(db, catalog: dict, catalog_result: dict) -> list[Proj
             raise ValueError(f"public axis result missing for {module_key}")
         observation_id = int(spec["axis_profile_observation_id"])
         observation, fact, points, elevations = _production_profile_row(
-            db, catalog, observation_id
+            db,
+            spec["census_batch_id"],
+            spec["elevation_fact_batch_id"],
+            observation_id,
         )
         reference = spec["reference_axis"]
         if (
@@ -350,6 +378,7 @@ def _preflight_projections(db, catalog: dict, catalog_result: dict) -> list[Proj
                             "traversal_direction": direction,
                         },
                     ),
+                    fact_batch_ids=(fact.fact_batch_id,),
                 )
             )
     expected = (len(catalog["axes"]) - len(exclusions)) * 2
@@ -367,6 +396,7 @@ def _preflight_long_route_projections(
 ) -> list[ProjectionInput]:
     projections: list[ProjectionInput] = []
     profile_cache: dict[int, tuple[Any, Any, list[list[float]], list[float]]] = {}
+    observation_batch_bindings = _observation_batch_bindings(catalog)
     for route in catalog_result["long_routes"]:
         if route["status"] == "hard_rejected":
             continue
@@ -375,6 +405,7 @@ def _preflight_long_route_projections(
         source_observation_ids: list[int] = []
         source_hashes: list[str] = []
         fact_ids: list[int] = []
+        fact_batch_ids: list[str] = []
         transit_provider_statuses: list[str] = []
         for component in route["ordered_components"]:
             direction = component["traversal_direction"]
@@ -405,7 +436,21 @@ def _preflight_long_route_projections(
                 observation_id = int(component["source_observation_id"])
                 row = profile_cache.get(observation_id)
                 if row is None:
-                    row = _production_profile_row(db, catalog, observation_id)
+                    binding = observation_batch_bindings.get(observation_id)
+                    if binding is None:
+                        default_census = catalog.get("census_batch_id")
+                        default_facts = catalog.get("elevation_fact_batch_id")
+                        if not default_census or not default_facts:
+                            raise ValueError(
+                                f"source batch binding missing for observation {observation_id}"
+                            )
+                        binding = (default_census, default_facts)
+                    row = _production_profile_row(
+                        db,
+                        binding[0],
+                        binding[1],
+                        observation_id,
+                    )
                     profile_cache[observation_id] = row
                 observation, fact, points, elevations = row
                 if fact.source_geometry_hash != component["source_geometry_hash"]:
@@ -416,6 +461,7 @@ def _preflight_long_route_projections(
                 source_observation_ids.append(observation_id)
                 source_hashes.append(fact.source_geometry_hash)
                 fact_ids.append(int(fact.id))
+                fact_batch_ids.append(fact.fact_batch_id)
                 provenance.append(
                     {
                         "kind": component["kind"],
@@ -486,7 +532,7 @@ def _preflight_long_route_projections(
                 source_geometry_hash=geometry_hash,
                 source_line_wkt=source_line_wkt,
                 fact_id=fact_ids[0],
-                fact_batch_id=catalog["elevation_fact_batch_id"],
+                fact_batch_id=fact_batch_ids[0],
                 derived_distance_m=float(elevation_result.climb_plan["route_distance_m"]),
                 stored_climb_m=float(totals["climb_m"]),
                 stored_descent_m=float(totals["descent_m"]),
@@ -496,6 +542,7 @@ def _preflight_long_route_projections(
                 transit_provider_statuses=tuple(
                     dict.fromkeys(transit_provider_statuses)
                 ),
+                fact_batch_ids=tuple(dict.fromkeys(fact_batch_ids)),
             )
         )
     expected = int(catalog_result["long_route_hard_feasible_count"])

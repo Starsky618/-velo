@@ -119,6 +119,8 @@ def test_axis_preflight_emits_forward_and_reverse_from_one_physical_geometry(
     spec = {
         "module_key": "test-axis",
         "module_name": "测试整轴",
+        "census_batch_id": "census-v2",
+        "elevation_fact_batch_id": "facts-v2",
         "axis_profile_observation_id": 1,
         "reference_axis": {
             "source_segment_id": "123",
@@ -131,7 +133,13 @@ def test_axis_preflight_emits_forward_and_reverse_from_one_physical_geometry(
     spec_path.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(publisher, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(publisher, "_load_json", lambda _path: spec)
-    monkeypatch.setattr(publisher, "_production_profile_row", lambda *_args: _row())
+    source_binding_calls = []
+
+    def source_row(*args):
+        source_binding_calls.append(args[1:])
+        return _row()
+
+    monkeypatch.setattr(publisher, "_production_profile_row", source_row)
     catalog = {
         "axes": [
             {
@@ -162,6 +170,8 @@ def test_axis_preflight_emits_forward_and_reverse_from_one_physical_geometry(
     assert projections[0].stored_climb_m == projections[1].stored_descent_m == 20.0
     assert projections[0].stored_descent_m == projections[1].stored_climb_m == 10.0
     assert projections[0].source_line_wkt != projections[1].source_line_wkt
+    assert source_binding_calls == [("census-v2", "facts-v2", 1)]
+    assert projections[0].fact_batch_ids == ("facts-v1",)
 
 
 def test_long_route_preflight_persists_complete_composition_climb_plan(monkeypatch):
@@ -212,7 +222,7 @@ def test_long_route_preflight_persists_complete_composition_climb_plan(monkeypat
 
     projections = publisher._preflight_long_route_projections(
         object(),
-        {"elevation_fact_batch_id": "facts-v1"},
+        {"census_batch_id": "census-v1", "elevation_fact_batch_id": "facts-v1"},
         result,
         transit_runs={},
     )
@@ -224,6 +234,7 @@ def test_long_route_preflight_persists_complete_composition_climb_plan(monkeypat
     assert projection.elevation_result.climb_plan["input_contract"][
         "extent_status"
     ] == "complete_route_composition"
+    assert projection.fact_batch_ids == ("facts-v1",)
 
 
 def test_routebook_identity_does_not_change_with_canonical_segment_revision(monkeypatch):

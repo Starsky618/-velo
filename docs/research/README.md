@@ -6,7 +6,7 @@
 
 | 文件 | 是什么 | 状态 |
 |---|---|---|
-| **2026-08-14-velo-climb-planner-v1-algorithm-benchmark.md** | Garmin/Strava 公布门槛、整坡/半坡身份门、连续爬坡检测、Cat+坡型、多坡组成、功率物理估时和置信度的 Climb Planner v1 一手资料合同 | **当前纵向路线算法基准**。typed identity gate 已接入；`xishan_climb_catalog_v1` 已把 23 条西山物理轴重放为 46 个方向（3 verified、14 candidate、其余走廊/景观/identity pending），并保存 6 个父轴局部段与 10 条长路线的完整 ClimbPro。旧 content GPX 已退役，生产投影入口为 `scripts/publish_climb_routes.py`；含未验证 TransitPath 的长路线只能保存为不可导出的草稿，不能冒充公开骑行路线 |
+| **2026-08-14-velo-climb-planner-v1-algorithm-benchmark.md** | Garmin/Strava 公布门槛、整坡/半坡身份门、连续爬坡检测、Cat+坡型、多坡组成、功率物理估时和置信度的 Climb Planner v1 一手资料合同 | **当前纵向路线算法基准**。typed identity gate 已接入；`xishan_climb_catalog_v1` 已把 25 条西山物理轴重放为 50 个方向（3 verified、15 candidate、其余走廊/景观/identity pending），并保存 6 个父轴局部段与 10 条长路线的完整 ClimbPro。枣杜是 Cat 2 长持续坡候选；新杜关是无合格 ClimbPro occurrence 的完整 3D 道路走廊。旧 content GPX 已退役，生产投影入口为 `scripts/publish_climb_routes.py`；含未验证 TransitPath 的长路线只能保存为不可导出的草稿，不能冒充公开骑行路线 |
 | **2026-08-14-xishan-south-experiment-handoff.md** | 新 Session 一次处理牛家口、天龙山多入口、天龙山西门、龙山、店头和蒙山的区域级批处理启动单 | **当前实验启动单**。active-81 地理窗口机械得到 exact 21；批量产出多个积木、有限连接和真实选择，不再只做牛家口小纵切 |
 | **2026-08-14-city-route-cognition-sop.md** | 从多赛段闭账、关系/投影、山区积木、过境路、路线组合到硬数据骑友解释的通用状态流；同时标明 replay loop 与尚未形成的产品 learning loop | **当前执行 SOP**。下一块一次处理西山南部 destination network，不复制区域算法；它不冒充 relation 全链路 holdout |
 | **2026-08-13-xishan-multisegment-reproduction-v1.md** | 西山旧多赛段 DFS/地图桥实验的历史证据恢复，以及两条连接候选、两个 portal-pair 对照和一个回走失败样本 | **当前跨积木实证**。provider 先产完整过境路，赛段只投影方向化证据；腾讯 driving shadow 不等于骑行准入 |

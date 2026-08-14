@@ -1,7 +1,7 @@
 {
   "schema_version": "xishan_climb_catalog_result_v1",
   "catalog_key": "taiyuan_xishan_climb_catalog_v1",
-  "catalog_spec_sha256": "bd9b9286bfaf85b08e9f4f6e4d07570e72f3cef8744ed419d76961cd4041e23a",
+  "catalog_spec_sha256": "c8e0b308dd3df252a1e821b285fec0eaa67188ad7517956edb5304e9e3c78a77",
   "algorithm_version": "velo_climb_plan_v1",
   "source_profile_method": "glo30_meaningful_ascent_v1_snapshot_replay_v1",
   "network_request_count": 0,
@@ -9,8 +9,20 @@
   "glo_recomputation_count": 0,
   "privacy_boundary": "Public results may contain distance/elevation profiles and hashes, but never source coordinates or private provider geometry.",
   "identity_rule": "full_verified means the complete curated Strava cycling-climb axis from its named lower boundary to its named upper boundary; it does not claim that the road itself ends there or that access and surface are verified.",
-  "axis_count": 23,
-  "directional_axis_result_count": 46,
+  "source_batches": [
+    {
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "role": "bounded_xishan_census"
+    },
+    {
+      "census_batch_id": "xishan-exact-climbs-20260814-v1",
+      "elevation_fact_batch_id": "xishan-exact-climbs-20260814-v1-glo30-v1",
+      "role": "exact_supplemental_axes"
+    }
+  ],
+  "axis_count": 25,
+  "directional_axis_result_count": 50,
   "partial_climb_count": 6,
   "long_route_count": 11,
   "long_route_hard_feasible_count": 10,
@@ -27,6 +39,9 @@
       "source_observation_id": 2,
       "source_segment_id": "14942511",
       "source_geometry_hash": "92825916bf11afe781f1c38aab6492a4dcba246d797e41d7131c7b7ef02edf2a",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 1,
       "geometry_point_count": 899,
       "directions": {
         "forward": {
@@ -1417,7 +1432,7 @@
         }
       },
       "publication_boundary": "横岭公路主走廊目的地积木；非公路 XC 已从活跃数据链删除；o40/o82 只作 off-axis holdout。赛段终点不代表道路终点，不在此凭空生成山顶往返。",
-      "axis_result_sha256": "64ac17b4efe43e6430556643d716afe70fc0f18b05c31d6cb10a9b5674ec0d8c"
+      "axis_result_sha256": "30c8befa680fc492cca4e86f186b72de2064b42fdf80f29fda0f26c8d9608528"
     },
     {
       "module_key": "taiyuan_xishan_chaihua",
@@ -1430,6 +1445,9 @@
       "source_observation_id": 20,
       "source_segment_id": "25733595",
       "source_geometry_hash": "ea4ad197ab04ac47854ac648a994d7f14ec768aa2f0dec388b1fc0f20cd8f238",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 15,
       "geometry_point_count": 491,
       "directions": {
         "forward": {
@@ -2816,7 +2834,7 @@
         }
       },
       "publication_boundary": "The separate Huaketou-Dawacun downhill is connector evidence, not part of this stored axis.",
-      "axis_result_sha256": "b0bf475aef9c74012ac2eead59e8631a40c1bfc74e2ff59c85cd0a60db5c1663"
+      "axis_result_sha256": "c8779193dc9cb41e5ba996e59da069f5deb604acbe7bae0de645648ab0206cb5"
     },
     {
       "module_key": "taiyuan_xishan_duguan_classic",
@@ -2829,6 +2847,9 @@
       "source_observation_id": 23,
       "source_segment_id": "27517293",
       "source_geometry_hash": "685039ca8e2128589929f5d8708841037514cbc166f9611499f60158ed391b38",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 18,
       "geometry_point_count": 586,
       "directions": {
         "forward": {
@@ -4215,7 +4236,1033 @@
         }
       },
       "publication_boundary": "This is not the 14.9 km new Duguan tourism road; that supplemental candidate is tracked separately.",
-      "axis_result_sha256": "5d8853a6248c89e552253728acfa2273ffe32008f85934c73b8a58ac5c738f91"
+      "axis_result_sha256": "fc0e1829d18db2a34155b44e0d7ac49bcdc00720670c987831ba2eebe2d02888"
+    },
+    {
+      "module_key": "taiyuan_xishan_duguan_new_tourism",
+      "module_name": "杜关线新修旅游公路（到岔口）",
+      "scope_kind": "road_corridor",
+      "extent_status": "not_applicable_corridor",
+      "module_spec_path": "data/research/mountain_modules/xishan_duguan_new_tourism_v1.json",
+      "module_spec_sha256": "61a0b82f9c0ed4fb07c062258bc43043a198dd51d0b63266e9fe823bda2ddb07",
+      "source_slice_sha256": "67743822c7d63f4daae0ca3e6e17f462f6833dfbf1297d4123dc4d83694d06e7",
+      "source_observation_id": 117,
+      "source_segment_id": "37687861",
+      "source_geometry_hash": "b03184f0450b0873f90b3999c97b90276b143d9c0256a02bfcf9bc55d64b8bf3",
+      "census_batch_id": "xishan-exact-climbs-20260814-v1",
+      "elevation_fact_batch_id": "xishan-exact-climbs-20260814-v1-glo30-v1",
+      "glo_fact_id": 89,
+      "geometry_point_count": 1955,
+      "directions": {
+        "forward": {
+          "route_distance_m": 15022.5,
+          "stored_glo_meaningful_ascent_m": 296.8,
+          "stored_glo_meaningful_descent_m": 13.3,
+          "snapshot_replay_meaningful_ascent_m": 291.4,
+          "snapshot_replay_meaningful_descent_m": 9.9,
+          "elevation_profile": [
+            [
+              0.0,
+              1279.5
+            ],
+            [
+              0.152,
+              1284.0
+            ],
+            [
+              0.303,
+              1290.1
+            ],
+            [
+              0.455,
+              1295.5
+            ],
+            [
+              0.607,
+              1299.8
+            ],
+            [
+              0.759,
+              1301.2
+            ],
+            [
+              0.91,
+              1300.2
+            ],
+            [
+              1.062,
+              1300.8
+            ],
+            [
+              1.214,
+              1304.6
+            ],
+            [
+              1.366,
+              1309.8
+            ],
+            [
+              1.517,
+              1315.2
+            ],
+            [
+              1.669,
+              1317.6
+            ],
+            [
+              1.821,
+              1317.4
+            ],
+            [
+              1.973,
+              1318.6
+            ],
+            [
+              2.124,
+              1321.6
+            ],
+            [
+              2.276,
+              1324.7
+            ],
+            [
+              2.428,
+              1328.4
+            ],
+            [
+              2.58,
+              1332.4
+            ],
+            [
+              2.731,
+              1335.6
+            ],
+            [
+              2.883,
+              1339.1
+            ],
+            [
+              3.035,
+              1341.1
+            ],
+            [
+              3.187,
+              1341.2
+            ],
+            [
+              3.338,
+              1343.2
+            ],
+            [
+              3.49,
+              1347.6
+            ],
+            [
+              3.642,
+              1352.5
+            ],
+            [
+              3.794,
+              1358.1
+            ],
+            [
+              3.945,
+              1362.9
+            ],
+            [
+              4.097,
+              1365.8
+            ],
+            [
+              4.249,
+              1368.1
+            ],
+            [
+              4.401,
+              1369.9
+            ],
+            [
+              4.552,
+              1370.8
+            ],
+            [
+              4.704,
+              1372.6
+            ],
+            [
+              4.856,
+              1377.0
+            ],
+            [
+              5.007,
+              1382.8
+            ],
+            [
+              5.159,
+              1385.6
+            ],
+            [
+              5.311,
+              1385.5
+            ],
+            [
+              5.463,
+              1386.9
+            ],
+            [
+              5.614,
+              1390.7
+            ],
+            [
+              5.766,
+              1394.0
+            ],
+            [
+              5.918,
+              1397.5
+            ],
+            [
+              6.07,
+              1403.0
+            ],
+            [
+              6.221,
+              1410.2
+            ],
+            [
+              6.373,
+              1417.3
+            ],
+            [
+              6.525,
+              1423.6
+            ],
+            [
+              6.677,
+              1430.2
+            ],
+            [
+              6.828,
+              1433.9
+            ],
+            [
+              6.98,
+              1432.9
+            ],
+            [
+              7.132,
+              1429.4
+            ],
+            [
+              7.284,
+              1428.2
+            ],
+            [
+              7.435,
+              1432.7
+            ],
+            [
+              7.587,
+              1437.6
+            ],
+            [
+              7.739,
+              1439.2
+            ],
+            [
+              7.891,
+              1440.7
+            ],
+            [
+              8.042,
+              1442.3
+            ],
+            [
+              8.194,
+              1443.5
+            ],
+            [
+              8.346,
+              1445.1
+            ],
+            [
+              8.498,
+              1448.9
+            ],
+            [
+              8.649,
+              1453.3
+            ],
+            [
+              8.801,
+              1455.3
+            ],
+            [
+              8.953,
+              1456.6
+            ],
+            [
+              9.105,
+              1458.8
+            ],
+            [
+              9.256,
+              1461.4
+            ],
+            [
+              9.408,
+              1465.1
+            ],
+            [
+              9.56,
+              1470.5
+            ],
+            [
+              9.712,
+              1477.8
+            ],
+            [
+              9.863,
+              1485.3
+            ],
+            [
+              10.015,
+              1490.3
+            ],
+            [
+              10.167,
+              1491.9
+            ],
+            [
+              10.318,
+              1490.6
+            ],
+            [
+              10.47,
+              1489.1
+            ],
+            [
+              10.622,
+              1488.3
+            ],
+            [
+              10.774,
+              1488.0
+            ],
+            [
+              10.925,
+              1488.9
+            ],
+            [
+              11.077,
+              1490.2
+            ],
+            [
+              11.229,
+              1491.6
+            ],
+            [
+              11.381,
+              1493.3
+            ],
+            [
+              11.532,
+              1495.5
+            ],
+            [
+              11.684,
+              1497.3
+            ],
+            [
+              11.836,
+              1499.6
+            ],
+            [
+              11.988,
+              1502.7
+            ],
+            [
+              12.139,
+              1505.3
+            ],
+            [
+              12.291,
+              1507.7
+            ],
+            [
+              12.443,
+              1510.6
+            ],
+            [
+              12.595,
+              1513.7
+            ],
+            [
+              12.746,
+              1516.4
+            ],
+            [
+              12.898,
+              1519.4
+            ],
+            [
+              13.05,
+              1522.8
+            ],
+            [
+              13.202,
+              1526.0
+            ],
+            [
+              13.353,
+              1529.5
+            ],
+            [
+              13.505,
+              1533.0
+            ],
+            [
+              13.657,
+              1535.1
+            ],
+            [
+              13.809,
+              1537.1
+            ],
+            [
+              13.96,
+              1540.6
+            ],
+            [
+              14.112,
+              1544.3
+            ],
+            [
+              14.264,
+              1546.7
+            ],
+            [
+              14.416,
+              1547.7
+            ],
+            [
+              14.567,
+              1549.7
+            ],
+            [
+              14.719,
+              1553.5
+            ],
+            [
+              14.871,
+              1558.0
+            ],
+            [
+              15.022,
+              1561.0
+            ]
+          ],
+          "climb_plan": {
+            "algorithm_version": "velo_climb_plan_v1",
+            "classification_system": "garmin_public_2026",
+            "traversal_direction": "forward",
+            "source": {
+              "method": "glo30_meaningful_ascent_v1_snapshot_replay_v1",
+              "horizontal_resolution_m": null,
+              "confidence": "terrain_estimate",
+              "sustained_grade_windows_m": [
+                500,
+                1000
+              ],
+              "profile_hash": "af55ccdd8baadc98b4e2273de5a3d7d2ab0e9dad70887c8d2b3a364a29350d30",
+              "residual_mad_m": 0.25,
+              "sampling_interval_m": 20.0,
+              "maximum_sampling_interval_m": 20.0,
+              "missing_point_count": 0,
+              "duplicate_distance_count": 0,
+              "quality_checks": {
+                "finite_values": true,
+                "strictly_increasing_distance": true,
+                "profile_complete_for_route": false,
+                "profile_complete_for_input_extent": true,
+                "profile_complete_for_named_climb": false,
+                "profile_complete_for_named_climb_candidate": false
+              }
+            },
+            "parameters": {
+              "minimum_climb_length_m": 500.0,
+              "minimum_average_grade_pct": 3.0,
+              "minimum_climb_score": 1500.0,
+              "turning_prominence_m": 15.0,
+              "hard_split_minimum_span_m": 500.0,
+              "hard_split_descent_m": 20.0,
+              "main_smoothing_m": 100,
+              "stability_smoothing_variants_m": [
+                80,
+                150
+              ]
+            },
+            "route_distance_m": 15022.5,
+            "climbs": [],
+            "partition_alternatives": {
+              "80m": [],
+              "150m": []
+            },
+            "composition": {
+              "climb_count": 0,
+              "categorized_climb_count": 0,
+              "category_counts": {
+                "HC": 0,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0,
+                "uncategorized": 0
+              },
+              "total_climbing_distance_m": 0,
+              "total_climb_gain_m": 0,
+              "categorized_ascent_m": 0,
+              "uncategorized_ascent_m": 0,
+              "unobserved_profile_distance_m": 0.0,
+              "highest_category": null,
+              "hardest_climb_order": null,
+              "sequence_label": "无显著爬坡",
+              "finish_type": "rolling",
+              "boundary_status": "stable",
+              "input_scope_kind": "road_corridor",
+              "input_extent_status": "not_applicable_corridor"
+            },
+            "input_contract": {
+              "scope_key": "taiyuan_xishan_duguan_new_tourism",
+              "scope_kind": "road_corridor",
+              "extent_status": "not_applicable_corridor",
+              "traversal_direction": "forward",
+              "geometry_source": "strava_full_segment_projection",
+              "start_anchor": "source_start_to_named_fork",
+              "end_anchor": "named_fork_to_source_start",
+              "geometry_coverage_ratio": 1.0,
+              "elevation_profile_coverage_ratio": 1.0,
+              "source_observation_ids": [
+                117
+              ],
+              "source_geometry_hashes": [
+                "b03184f0450b0873f90b3999c97b90276b143d9c0256a02bfcf9bc55d64b8bf3"
+              ],
+              "anchor_evidence_refs": [],
+              "parent_scope_key": null,
+              "start_offset_m": null,
+              "end_offset_m": null,
+              "schema_version": "climb_profile_contract_v1"
+            }
+          },
+          "direction_result_sha256": "28da46bb22de6c6c585ac61c1e5a8a8b08c9ef8163e8d9662a73e1288e0bb84a"
+        },
+        "reverse": {
+          "route_distance_m": 15022.5,
+          "stored_glo_meaningful_ascent_m": 13.3,
+          "stored_glo_meaningful_descent_m": 296.8,
+          "snapshot_replay_meaningful_ascent_m": 9.9,
+          "snapshot_replay_meaningful_descent_m": 291.4,
+          "elevation_profile": [
+            [
+              0.0,
+              1561.0
+            ],
+            [
+              0.152,
+              1558.0
+            ],
+            [
+              0.303,
+              1553.5
+            ],
+            [
+              0.455,
+              1549.7
+            ],
+            [
+              0.607,
+              1547.7
+            ],
+            [
+              0.759,
+              1546.7
+            ],
+            [
+              0.91,
+              1544.3
+            ],
+            [
+              1.062,
+              1540.6
+            ],
+            [
+              1.214,
+              1537.1
+            ],
+            [
+              1.366,
+              1535.1
+            ],
+            [
+              1.517,
+              1533.0
+            ],
+            [
+              1.669,
+              1529.5
+            ],
+            [
+              1.821,
+              1526.0
+            ],
+            [
+              1.973,
+              1522.8
+            ],
+            [
+              2.124,
+              1519.4
+            ],
+            [
+              2.276,
+              1516.4
+            ],
+            [
+              2.428,
+              1513.7
+            ],
+            [
+              2.58,
+              1510.6
+            ],
+            [
+              2.731,
+              1507.7
+            ],
+            [
+              2.883,
+              1505.3
+            ],
+            [
+              3.035,
+              1502.7
+            ],
+            [
+              3.187,
+              1499.6
+            ],
+            [
+              3.338,
+              1497.3
+            ],
+            [
+              3.49,
+              1495.5
+            ],
+            [
+              3.642,
+              1493.3
+            ],
+            [
+              3.794,
+              1491.6
+            ],
+            [
+              3.945,
+              1490.2
+            ],
+            [
+              4.097,
+              1488.9
+            ],
+            [
+              4.249,
+              1488.0
+            ],
+            [
+              4.401,
+              1488.3
+            ],
+            [
+              4.552,
+              1489.1
+            ],
+            [
+              4.704,
+              1490.6
+            ],
+            [
+              4.856,
+              1491.9
+            ],
+            [
+              5.007,
+              1490.3
+            ],
+            [
+              5.159,
+              1485.3
+            ],
+            [
+              5.311,
+              1477.8
+            ],
+            [
+              5.463,
+              1470.5
+            ],
+            [
+              5.614,
+              1465.1
+            ],
+            [
+              5.766,
+              1461.4
+            ],
+            [
+              5.918,
+              1458.8
+            ],
+            [
+              6.07,
+              1456.6
+            ],
+            [
+              6.221,
+              1455.3
+            ],
+            [
+              6.373,
+              1453.3
+            ],
+            [
+              6.525,
+              1448.9
+            ],
+            [
+              6.677,
+              1445.1
+            ],
+            [
+              6.828,
+              1443.5
+            ],
+            [
+              6.98,
+              1442.3
+            ],
+            [
+              7.132,
+              1440.7
+            ],
+            [
+              7.284,
+              1439.2
+            ],
+            [
+              7.435,
+              1437.6
+            ],
+            [
+              7.587,
+              1432.7
+            ],
+            [
+              7.739,
+              1428.2
+            ],
+            [
+              7.891,
+              1429.4
+            ],
+            [
+              8.042,
+              1432.9
+            ],
+            [
+              8.194,
+              1433.9
+            ],
+            [
+              8.346,
+              1430.2
+            ],
+            [
+              8.498,
+              1423.6
+            ],
+            [
+              8.649,
+              1417.3
+            ],
+            [
+              8.801,
+              1410.2
+            ],
+            [
+              8.953,
+              1403.0
+            ],
+            [
+              9.105,
+              1397.5
+            ],
+            [
+              9.256,
+              1394.0
+            ],
+            [
+              9.408,
+              1390.7
+            ],
+            [
+              9.56,
+              1386.9
+            ],
+            [
+              9.712,
+              1385.5
+            ],
+            [
+              9.863,
+              1385.6
+            ],
+            [
+              10.015,
+              1382.8
+            ],
+            [
+              10.167,
+              1377.0
+            ],
+            [
+              10.318,
+              1372.6
+            ],
+            [
+              10.47,
+              1370.8
+            ],
+            [
+              10.622,
+              1369.9
+            ],
+            [
+              10.774,
+              1368.1
+            ],
+            [
+              10.925,
+              1365.8
+            ],
+            [
+              11.077,
+              1362.9
+            ],
+            [
+              11.229,
+              1358.1
+            ],
+            [
+              11.381,
+              1352.5
+            ],
+            [
+              11.532,
+              1347.6
+            ],
+            [
+              11.684,
+              1343.2
+            ],
+            [
+              11.836,
+              1341.2
+            ],
+            [
+              11.988,
+              1341.1
+            ],
+            [
+              12.139,
+              1339.1
+            ],
+            [
+              12.291,
+              1335.6
+            ],
+            [
+              12.443,
+              1332.4
+            ],
+            [
+              12.595,
+              1328.4
+            ],
+            [
+              12.746,
+              1324.7
+            ],
+            [
+              12.898,
+              1321.6
+            ],
+            [
+              13.05,
+              1318.6
+            ],
+            [
+              13.202,
+              1317.4
+            ],
+            [
+              13.353,
+              1317.6
+            ],
+            [
+              13.505,
+              1315.2
+            ],
+            [
+              13.657,
+              1309.8
+            ],
+            [
+              13.809,
+              1304.6
+            ],
+            [
+              13.96,
+              1300.8
+            ],
+            [
+              14.112,
+              1300.2
+            ],
+            [
+              14.264,
+              1301.2
+            ],
+            [
+              14.416,
+              1299.8
+            ],
+            [
+              14.567,
+              1295.5
+            ],
+            [
+              14.719,
+              1290.1
+            ],
+            [
+              14.871,
+              1284.0
+            ],
+            [
+              15.022,
+              1279.5
+            ]
+          ],
+          "climb_plan": {
+            "algorithm_version": "velo_climb_plan_v1",
+            "classification_system": "garmin_public_2026",
+            "traversal_direction": "reverse",
+            "source": {
+              "method": "glo30_meaningful_ascent_v1_snapshot_replay_v1",
+              "horizontal_resolution_m": null,
+              "confidence": "terrain_estimate",
+              "sustained_grade_windows_m": [
+                500,
+                1000
+              ],
+              "profile_hash": "dd856e5f715c4fdba4efb87892b932b2b16bf1f87c830d11729777fc91703abe",
+              "residual_mad_m": 0.25,
+              "sampling_interval_m": 20.0,
+              "maximum_sampling_interval_m": 20.0,
+              "missing_point_count": 0,
+              "duplicate_distance_count": 0,
+              "quality_checks": {
+                "finite_values": true,
+                "strictly_increasing_distance": true,
+                "profile_complete_for_route": false,
+                "profile_complete_for_input_extent": true,
+                "profile_complete_for_named_climb": false,
+                "profile_complete_for_named_climb_candidate": false
+              }
+            },
+            "parameters": {
+              "minimum_climb_length_m": 500.0,
+              "minimum_average_grade_pct": 3.0,
+              "minimum_climb_score": 1500.0,
+              "turning_prominence_m": 15.0,
+              "hard_split_minimum_span_m": 500.0,
+              "hard_split_descent_m": 20.0,
+              "main_smoothing_m": 100,
+              "stability_smoothing_variants_m": [
+                80,
+                150
+              ]
+            },
+            "route_distance_m": 15022.5,
+            "climbs": [],
+            "partition_alternatives": {
+              "80m": [],
+              "150m": []
+            },
+            "composition": {
+              "climb_count": 0,
+              "categorized_climb_count": 0,
+              "category_counts": {
+                "HC": 0,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0,
+                "uncategorized": 0
+              },
+              "total_climbing_distance_m": 0,
+              "total_climb_gain_m": 0,
+              "categorized_ascent_m": 0,
+              "uncategorized_ascent_m": 0,
+              "unobserved_profile_distance_m": 0.0,
+              "highest_category": null,
+              "hardest_climb_order": null,
+              "sequence_label": "无显著爬坡",
+              "finish_type": "descent",
+              "boundary_status": "stable",
+              "input_scope_kind": "road_corridor",
+              "input_extent_status": "not_applicable_corridor"
+            },
+            "input_contract": {
+              "scope_key": "taiyuan_xishan_duguan_new_tourism",
+              "scope_kind": "road_corridor",
+              "extent_status": "not_applicable_corridor",
+              "traversal_direction": "reverse",
+              "geometry_source": "strava_full_segment_projection",
+              "start_anchor": "named_fork_to_source_start",
+              "end_anchor": "source_start_to_named_fork",
+              "geometry_coverage_ratio": 1.0,
+              "elevation_profile_coverage_ratio": 1.0,
+              "source_observation_ids": [
+                117
+              ],
+              "source_geometry_hashes": [
+                "b03184f0450b0873f90b3999c97b90276b143d9c0256a02bfcf9bc55d64b8bf3"
+              ],
+              "anchor_evidence_refs": [],
+              "parent_scope_key": null,
+              "start_offset_m": null,
+              "end_offset_m": null,
+              "schema_version": "climb_profile_contract_v1"
+            }
+          },
+          "direction_result_sha256": "fbd2c128eca809751d37b3dabfd250c5dc3b7b55cd55fab1030f2e64344b88db"
+        }
+      },
+      "publication_boundary": "This source is the 14.9 km new Duguan tourism-road segment to the named fork, not classic Duguan o23. Its complete geometry and production GLO profile are verified, but the full axis averages below the ClimbPro climb threshold and is a road corridor rather than one named climb. Current road state, access, and the connector to the classic network remain pending.",
+      "axis_result_sha256": "9f3083935144bf667745fdf32f8ae769cc82fa6fe36c024fb455e96702e437ea"
     },
     {
       "module_key": "taiyuan_xishan_erku_gelou_matoushui",
@@ -4228,6 +5275,9 @@
       "source_observation_id": 40,
       "source_segment_id": "29860666",
       "source_geometry_hash": "e615b7434e6b2f219218a0c66f68d4d111f6b6c70a04a6e5a56d171573e188f4",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 30,
       "geometry_point_count": 1184,
       "directions": {
         "forward": {
@@ -5238,7 +6288,7 @@
         }
       },
       "publication_boundary": "This scenic traverse is not Hengling and is not the separate west-side switchback climb.",
-      "axis_result_sha256": "405d11b71ae3a4c845595c5f831ac86eaeff725785053b25947dc1a8f52ed98a"
+      "axis_result_sha256": "eec0cb1443ddf27eca8f0ed9680605d1236566d0b6d37776665edb323a01906b"
     },
     {
       "module_key": "taiyuan_xishan_erku_west_switchback",
@@ -5251,6 +6301,9 @@
       "source_observation_id": 114,
       "source_segment_id": "41578571",
       "source_geometry_hash": "4485e7cc4e09653204b384ee756c91b3fdedb3d991beaed197ac637c0b1d6109",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 86,
       "geometry_point_count": 1187,
       "directions": {
         "forward": {
@@ -6759,7 +7812,7 @@
         }
       },
       "publication_boundary": "The road family is a projection-supported research candidate, not a proven access or safety claim.",
-      "axis_result_sha256": "4b96961da76d21737a57aa97f5ebcc847f1a3f8c126c6db92bda4356069e814a"
+      "axis_result_sha256": "ff72ceecfc09d572d2b719f7a9aaff3ce3eb248aee9ffcd596fcbee653e21e67"
     },
     {
       "module_key": "taiyuan_xishan_huaketou_taohuagou",
@@ -6772,6 +7825,9 @@
       "source_observation_id": 6,
       "source_segment_id": "22350861",
       "source_geometry_hash": "83c54e668da078a017ef48544fa3e76e145b03cfa4c49e1de1f6174abc03996e",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 3,
       "geometry_point_count": 1844,
       "directions": {
         "forward": {
@@ -8268,7 +9324,7 @@
         }
       },
       "publication_boundary": "Stored GLO totals are reconciled; full profile export is pending read-only production access.",
-      "axis_result_sha256": "3ff34b1be1577322b9b586a9f241ed90cfab99044798a4557e86401c26eff070"
+      "axis_result_sha256": "317d1ff86c0e1aa91c435a9deafb0ec5b62d8b3d1c716ea42713478c8119c85b"
     },
     {
       "module_key": "taiyuan_xishan_jiaoziai",
@@ -8281,6 +9337,9 @@
       "source_observation_id": 107,
       "source_segment_id": "40079687",
       "source_geometry_hash": "62e3b417c16b336515969d139af8109519c62771065880d2fd4d699016432a97",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 81,
       "geometry_point_count": 1482,
       "directions": {
         "forward": {
@@ -9632,7 +10691,7 @@
         }
       },
       "publication_boundary": "Far-west standalone destination; no automatic integration into the main loop without a provider connector.",
-      "axis_result_sha256": "22eeafad005875e45542359f1674265b5dc0998e0c4fee094aa3363e8c08287b"
+      "axis_result_sha256": "66268e2756848f3ead9affe47f43a10546fd0379fbc7ef639b64d8fc783073c8"
     },
     {
       "module_key": "taiyuan_xishan_jueweishan_duofusi",
@@ -9645,6 +10704,9 @@
       "source_observation_id": 14,
       "source_segment_id": "24146881",
       "source_geometry_hash": "ca23070fedc1017f25a4bcf190a1a1ca86237470b562400cc118c0680d85c359",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 9,
       "geometry_point_count": 313,
       "directions": {
         "forward": {
@@ -10898,7 +11960,7 @@
         }
       },
       "publication_boundary": "Stored GLO totals are reconciled; full profile export is pending read-only production access.",
-      "axis_result_sha256": "6d853c1fbdadee6e13771dbe9a28e7791ffb1179aeff67db6e1416bd0180d3bf"
+      "axis_result_sha256": "165404cbd575b896303227aa621a5a204fc3a921579472edc798d2a8d8f0f161"
     },
     {
       "module_key": "taiyuan_xishan_langpo",
@@ -10911,6 +11973,9 @@
       "source_observation_id": 38,
       "source_segment_id": "29621779",
       "source_geometry_hash": "f352aba455aceb8c5c377a3639ede8b7b2a5b1f3b149d259d01c0421dd674bc1",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 28,
       "geometry_point_count": 276,
       "directions": {
         "forward": {
@@ -12191,7 +13256,7 @@
         }
       },
       "publication_boundary": "The previously frozen Langpo-upper connector that retraces the full source remains rejected.",
-      "axis_result_sha256": "257f0af3be9c0ada41f8c5cf7362644d3a1d364f2a6f632cb4d931ed716750ef"
+      "axis_result_sha256": "0c63a0f3e431090bfbe9a2d82a381dece27de198f14e7cbbf8d63f6f4962adfc"
     },
     {
       "module_key": "taiyuan_xishan_miaoqianshan_1812_candidate",
@@ -12204,6 +13269,9 @@
       "source_observation_id": 73,
       "source_segment_id": "35236008",
       "source_geometry_hash": "6c9b5f90c016789d79a6b47070eb83ab7c980cfc6d36732d141e104a29c127c3",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 53,
       "geometry_point_count": 463,
       "directions": {
         "forward": {
@@ -13475,7 +14543,7 @@
         }
       },
       "publication_boundary": "Do not publish as a confirmed Miaoqianshan route until the road endpoint is bound to the landmark; stored GLO totals exist but the full profile remains pending.",
-      "axis_result_sha256": "619c29577033297801f013cbfbbecb333e6f6dbc5b270b6b83164ba4aaf1011f"
+      "axis_result_sha256": "0c84998e7610020656e1be15b33ac45d35f174dc5274ae42d785e9e30b933d8b"
     },
     {
       "module_key": "taiyuan_xishan_pianqiaogou",
@@ -13488,6 +14556,9 @@
       "source_observation_id": 13,
       "source_segment_id": "23813357",
       "source_geometry_hash": "2968b1c37a68800c09941cfe9df923698d5b3aab4e178328188c6e60b65fa69d",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 8,
       "geometry_point_count": 308,
       "directions": {
         "forward": {
@@ -14787,7 +15858,7 @@
         }
       },
       "publication_boundary": "Raw oracle self-overlap ambiguity is resolved only for family projection; road access remains unverified.",
-      "axis_result_sha256": "3bbb7200622102298b0d4c1425ef70f4437214f6c774ae7ef49d026112d8006f"
+      "axis_result_sha256": "7a0098facfe0412e56b62288c02ba1e98da4daf44b25f2c85176994e4dfa0c06"
     },
     {
       "module_key": "taiyuan_xishan_s104_huaketou",
@@ -14800,6 +15871,9 @@
       "source_observation_id": 11,
       "source_segment_id": "23547468",
       "source_geometry_hash": "9985d4b78603752c859092b46af6b3721f90e1a900125f6a9c100793595207d7",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 7,
       "geometry_point_count": 1443,
       "directions": {
         "forward": {
@@ -16131,7 +17205,7 @@
         }
       },
       "publication_boundary": "Stored GLO totals are reconciled; full profile export is pending read-only production access.",
-      "axis_result_sha256": "afcc02a4bc7aefad2e555f1d0c4ec01943b6a6df63b747c519e2c7a66322b488"
+      "axis_result_sha256": "075c2ae413d4474d3ebe6a10caf5ff8ef14e49c17cb04e33c844d6e43742a70d"
     },
     {
       "module_key": "taiyuan_xishan_diantou_mengshan",
@@ -16144,6 +17218,9 @@
       "source_observation_id": 9,
       "source_segment_id": "22350896",
       "source_geometry_hash": "fab6da213ce39b29662da57ef0801f89a466603f8fd77c5a2b3cb9f1db405058",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 6,
       "geometry_point_count": 1313,
       "directions": {
         "forward": {
@@ -17498,7 +18575,7 @@
         }
       },
       "publication_boundary": "No same-carrier exact21 evidence beyond o9; full GLO profile export remains pending.",
-      "axis_result_sha256": "64053a9a3a85755593b2d0dbd64d4167d6ac9c52d4fc8c4e8ddb73fee0495f6f"
+      "axis_result_sha256": "86f8351e38e9984107718451971b79c2165795a2dac91ead7ae1a1e6ca8ddbab"
     },
     {
       "module_key": "taiyuan_xishan_niujiakou_south",
@@ -17511,6 +18588,9 @@
       "source_observation_id": 4,
       "source_segment_id": "20835564",
       "source_geometry_hash": "729a5e062c2ddb74e3949444d95ec4a5e7cb3fac23b92fbb846f3e8d81c8ab8c",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 2,
       "geometry_point_count": 2023,
       "directions": {
         "forward": {
@@ -18923,7 +20003,7 @@
         }
       },
       "publication_boundary": "Full GLO profile export is pending production read-only access; totals and geometry projection are reconciled.",
-      "axis_result_sha256": "ee36efb67c6aea413b7dc3c53832e9c1bbc6af34e97fab33a9cd79cac4d006ab"
+      "axis_result_sha256": "bb67c01849419b26d74d37fda252f04691a0b402f3848b1e16f4c1f3af54d193"
     },
     {
       "module_key": "taiyuan_xishan_tianlongshan_east",
@@ -18936,6 +20016,9 @@
       "source_observation_id": 17,
       "source_segment_id": "24481149",
       "source_geometry_hash": "1b3ac6985da578a2e310721a5c72daf939b7804da9d3e1c46bf90088143dcd0b",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 12,
       "geometry_point_count": 1953,
       "directions": {
         "forward": {
@@ -20372,7 +21455,7 @@
         }
       },
       "publication_boundary": "o4/o97 share upper witnesses but are not promoted to the same complete entrance; full GLO profile export remains pending.",
-      "axis_result_sha256": "e39895a4a5e1d78bde9c391e5a3e2f0707275389af4cc6c42d917ee2a259d768"
+      "axis_result_sha256": "e3b5d2d591cfa04163310731a76b99274f0343a24a0bf4648fc40c4ecea7e7d1"
     },
     {
       "module_key": "taiyuan_xishan_tianlongshan_north",
@@ -20385,6 +21468,9 @@
       "source_observation_id": 8,
       "source_segment_id": "22350888",
       "source_geometry_hash": "7a45aa1060ee6cb45a5000713c1605101ea0cc8916e1573f202a7c671e41fcdc",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 5,
       "geometry_point_count": 1980,
       "directions": {
         "forward": {
@@ -21769,7 +22855,7 @@
         }
       },
       "publication_boundary": "Distinct approach from o17; full GLO profile export remains pending.",
-      "axis_result_sha256": "5b43e3a997734fc3ea8fdbdf8b86de6783051c11bf509004b0b596488ce8a6fb"
+      "axis_result_sha256": "a1fd65c3ed88c92b7ad62427e7b43de92f9ca9b4482f17d36b262016d2eb96b3"
     },
     {
       "module_key": "taiyuan_xishan_tianlongshan_west_gate",
@@ -21782,6 +22868,9 @@
       "source_observation_id": 78,
       "source_segment_id": "35402170",
       "source_geometry_hash": "5e3315df7e54291ef790a220e34f1a103ab96a00b5c34461063f42b3959407ee",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 57,
       "geometry_point_count": 614,
       "directions": {
         "forward": {
@@ -23240,7 +24329,7 @@
         }
       },
       "publication_boundary": "One canonical physical axis and one stored forward block; reverse choices reuse the block at assembly time. Full GLO profile export remains pending.",
-      "axis_result_sha256": "2b0dd334a6bfec55540555a9f0d2cd7cbdfa5e1e37807f07aebedffe899d2381"
+      "axis_result_sha256": "55af62297d7eaf75f65ba60bf4407250b922cb2ffaa72d7c9d369bcf9507bd8c"
     },
     {
       "module_key": "taiyuan_xishan_taohuagou",
@@ -23253,6 +24342,9 @@
       "source_observation_id": 22,
       "source_segment_id": "25967365",
       "source_geometry_hash": "34c6242005bd9ee7e7138667658c9673c00bc276341c32ebbd601b4199a709ac",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 17,
       "geometry_point_count": 409,
       "directions": {
         "forward": {
@@ -24612,7 +25704,7 @@
         }
       },
       "publication_boundary": "No local segment is used as a waypoint; all connector geometry remains separate.",
-      "axis_result_sha256": "3cb377493fef9431931307ddbd008d583be5ab58387839cafb90ba5e4e1cbf6d"
+      "axis_result_sha256": "fd54fd905055531d67444236628adfc48ff93936d680f6be2e5837a866229a34"
     },
     {
       "module_key": "taiyuan_xishan_wangfeng_yixiantian",
@@ -24625,6 +25717,9 @@
       "source_observation_id": 19,
       "source_segment_id": "25239069",
       "source_geometry_hash": "8bac0283a1b92931cce62117916df0cf8c71a04339af4265842eba4218846adf",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 14,
       "geometry_point_count": 210,
       "directions": {
         "forward": {
@@ -25852,7 +26947,7 @@
         }
       },
       "publication_boundary": "Scenic identity is source-name evidence; opening hours, surface and access are not verified.",
-      "axis_result_sha256": "4d3f67cd23b13febcd5b958c725fa0ff6550ab63029aa7cbfbed1f76c89108a5"
+      "axis_result_sha256": "55299de781c2bc35c4d102181e31ae784f94d24bfd5e347f1b9b3a641372c452"
     },
     {
       "module_key": "taiyuan_xishan_wanmu_aoshen",
@@ -25865,6 +26960,9 @@
       "source_observation_id": 27,
       "source_segment_id": "28690246",
       "source_geometry_hash": "355c28134b901c58d5ed391b73faeb72b9bff7ba60ccb33750563b4b5b015742",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 22,
       "geometry_point_count": 333,
       "directions": {
         "forward": {
@@ -27217,7 +28315,7 @@
         }
       },
       "publication_boundary": "The curated Qichunge climb and o7 local reverse link are related destination knowledge but are not this physical axis.",
-      "axis_result_sha256": "a889fe9c652e5f4ecf705d17ef99f19d96ca8be975628e16a5ec1b4bbb3e353e"
+      "axis_result_sha256": "cb843154b057a99201d21cdac12c9289cc2dc5413f2c939f8556b2694c0c6c54"
     },
     {
       "module_key": "taiyuan_xishan_yuquanshan_gypsum",
@@ -27230,6 +28328,9 @@
       "source_observation_id": 88,
       "source_segment_id": "36556250",
       "source_geometry_hash": "44636fc062cc4057f21c148cd60377a3b8429e783a8b75846e3ce37fb512992f",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 64,
       "geometry_point_count": 1854,
       "directions": {
         "forward": {
@@ -28626,7 +29727,7 @@
         }
       },
       "publication_boundary": "Shared Yuquanshan upper geometry does not make the main and gypsum approaches interchangeable.",
-      "axis_result_sha256": "eda7ad5a85a2ac7e4c9c80292cb4e7f621f5f0279cde1dcd6903505052c4bdc5"
+      "axis_result_sha256": "2b01f0e8b215a3de29bf749410264968d207195660d8ec3b33ea73715b3632a9"
     },
     {
       "module_key": "taiyuan_xishan_yuquanshan_main",
@@ -28639,6 +29740,9 @@
       "source_observation_id": 15,
       "source_segment_id": "24146976",
       "source_geometry_hash": "dd99f25f6cc9a750acb6badce100fbcad7cec76d6b78341d254c131d8b658d4b",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 10,
       "geometry_point_count": 545,
       "directions": {
         "forward": {
@@ -29979,7 +31083,1395 @@
         }
       },
       "publication_boundary": "South descent, gypsum approach and north approach are separate physical variants, not duplicates of this module.",
-      "axis_result_sha256": "16fb87e34ec021d18d806695882d82c237efa105f7b4a5d340069fe8216afab7"
+      "axis_result_sha256": "fe77ef615e03918985aff3e69c0ae7f009efc9cb2673413dcbd894634d5cecc7"
+    },
+    {
+      "module_key": "taiyuan_xishan_zaodu_road",
+      "module_name": "枣杜公路",
+      "scope_kind": "named_climb",
+      "extent_status": "full_candidate",
+      "module_spec_path": "data/research/mountain_modules/xishan_zaodu_road_v1.json",
+      "module_spec_sha256": "76bd18a89a8ec568e2bad0ca34a382cb95b1bcb65eb9abc7b00151cdb3c8e4a6",
+      "source_slice_sha256": "959c1ef3c3206decc76f08ff53d7330bf43ae4aa7d77a05a2d1d933c8d653175",
+      "source_observation_id": 116,
+      "source_segment_id": "34856789",
+      "source_geometry_hash": "8796f05b3fa45d0ffb22ea875fc6f80fe809e7c06aa7f3318feaa8d48f754037",
+      "census_batch_id": "xishan-exact-climbs-20260814-v1",
+      "elevation_fact_batch_id": "xishan-exact-climbs-20260814-v1-glo30-v1",
+      "glo_fact_id": 88,
+      "geometry_point_count": 3151,
+      "directions": {
+        "forward": {
+          "route_distance_m": 8825.4,
+          "stored_glo_meaningful_ascent_m": 469.9,
+          "stored_glo_meaningful_descent_m": 0.0,
+          "snapshot_replay_meaningful_ascent_m": 468.1,
+          "snapshot_replay_meaningful_descent_m": 0.0,
+          "elevation_profile": [
+            [
+              0.0,
+              877.4
+            ],
+            [
+              0.089,
+              880.1
+            ],
+            [
+              0.178,
+              884.2
+            ],
+            [
+              0.267,
+              889.0
+            ],
+            [
+              0.357,
+              894.1
+            ],
+            [
+              0.446,
+              899.6
+            ],
+            [
+              0.535,
+              905.1
+            ],
+            [
+              0.624,
+              910.4
+            ],
+            [
+              0.713,
+              915.1
+            ],
+            [
+              0.802,
+              919.1
+            ],
+            [
+              0.891,
+              922.7
+            ],
+            [
+              0.981,
+              925.8
+            ],
+            [
+              1.07,
+              928.4
+            ],
+            [
+              1.159,
+              931.0
+            ],
+            [
+              1.248,
+              933.8
+            ],
+            [
+              1.337,
+              937.1
+            ],
+            [
+              1.426,
+              940.6
+            ],
+            [
+              1.515,
+              944.2
+            ],
+            [
+              1.605,
+              947.8
+            ],
+            [
+              1.694,
+              951.6
+            ],
+            [
+              1.783,
+              955.8
+            ],
+            [
+              1.872,
+              960.5
+            ],
+            [
+              1.961,
+              965.1
+            ],
+            [
+              2.05,
+              969.1
+            ],
+            [
+              2.139,
+              972.9
+            ],
+            [
+              2.229,
+              977.4
+            ],
+            [
+              2.318,
+              982.7
+            ],
+            [
+              2.407,
+              988.3
+            ],
+            [
+              2.496,
+              993.3
+            ],
+            [
+              2.585,
+              997.2
+            ],
+            [
+              2.674,
+              1000.3
+            ],
+            [
+              2.764,
+              1003.1
+            ],
+            [
+              2.853,
+              1006.3
+            ],
+            [
+              2.942,
+              1010.5
+            ],
+            [
+              3.031,
+              1015.4
+            ],
+            [
+              3.12,
+              1020.5
+            ],
+            [
+              3.209,
+              1025.4
+            ],
+            [
+              3.298,
+              1030.3
+            ],
+            [
+              3.388,
+              1035.0
+            ],
+            [
+              3.477,
+              1039.3
+            ],
+            [
+              3.566,
+              1043.0
+            ],
+            [
+              3.655,
+              1046.0
+            ],
+            [
+              3.744,
+              1048.2
+            ],
+            [
+              3.833,
+              1050.3
+            ],
+            [
+              3.922,
+              1052.8
+            ],
+            [
+              4.012,
+              1056.2
+            ],
+            [
+              4.101,
+              1060.3
+            ],
+            [
+              4.19,
+              1064.5
+            ],
+            [
+              4.279,
+              1068.8
+            ],
+            [
+              4.368,
+              1073.6
+            ],
+            [
+              4.457,
+              1079.1
+            ],
+            [
+              4.546,
+              1085.3
+            ],
+            [
+              4.636,
+              1092.1
+            ],
+            [
+              4.725,
+              1099.6
+            ],
+            [
+              4.814,
+              1108.1
+            ],
+            [
+              4.903,
+              1117.0
+            ],
+            [
+              4.992,
+              1125.6
+            ],
+            [
+              5.081,
+              1133.4
+            ],
+            [
+              5.17,
+              1140.3
+            ],
+            [
+              5.26,
+              1146.9
+            ],
+            [
+              5.349,
+              1153.5
+            ],
+            [
+              5.438,
+              1160.3
+            ],
+            [
+              5.527,
+              1167.2
+            ],
+            [
+              5.616,
+              1174.2
+            ],
+            [
+              5.705,
+              1181.2
+            ],
+            [
+              5.794,
+              1187.9
+            ],
+            [
+              5.884,
+              1194.0
+            ],
+            [
+              5.973,
+              1199.3
+            ],
+            [
+              6.062,
+              1203.7
+            ],
+            [
+              6.151,
+              1207.2
+            ],
+            [
+              6.24,
+              1210.2
+            ],
+            [
+              6.329,
+              1213.4
+            ],
+            [
+              6.418,
+              1218.2
+            ],
+            [
+              6.508,
+              1224.7
+            ],
+            [
+              6.597,
+              1232.4
+            ],
+            [
+              6.686,
+              1240.4
+            ],
+            [
+              6.775,
+              1248.3
+            ],
+            [
+              6.864,
+              1256.1
+            ],
+            [
+              6.953,
+              1263.5
+            ],
+            [
+              7.042,
+              1270.5
+            ],
+            [
+              7.132,
+              1277.6
+            ],
+            [
+              7.221,
+              1284.9
+            ],
+            [
+              7.31,
+              1292.2
+            ],
+            [
+              7.399,
+              1298.9
+            ],
+            [
+              7.488,
+              1304.5
+            ],
+            [
+              7.577,
+              1309.2
+            ],
+            [
+              7.666,
+              1313.3
+            ],
+            [
+              7.756,
+              1316.9
+            ],
+            [
+              7.845,
+              1320.1
+            ],
+            [
+              7.934,
+              1322.8
+            ],
+            [
+              8.023,
+              1324.8
+            ],
+            [
+              8.112,
+              1326.6
+            ],
+            [
+              8.201,
+              1328.9
+            ],
+            [
+              8.291,
+              1332.2
+            ],
+            [
+              8.38,
+              1336.2
+            ],
+            [
+              8.469,
+              1340.0
+            ],
+            [
+              8.558,
+              1342.8
+            ],
+            [
+              8.647,
+              1344.3
+            ],
+            [
+              8.736,
+              1345.1
+            ],
+            [
+              8.825,
+              1345.5
+            ]
+          ],
+          "climb_plan": {
+            "algorithm_version": "velo_climb_plan_v1",
+            "classification_system": "garmin_public_2026",
+            "traversal_direction": "forward",
+            "source": {
+              "method": "glo30_meaningful_ascent_v1_snapshot_replay_v1",
+              "horizontal_resolution_m": null,
+              "confidence": "terrain_estimate",
+              "sustained_grade_windows_m": [
+                500,
+                1000
+              ],
+              "profile_hash": "f961f31c1d4faaed27cd656e7a0c315b3a4b4deee31089526c7b89d06efa414d",
+              "residual_mad_m": 0.28,
+              "sampling_interval_m": 20.0,
+              "maximum_sampling_interval_m": 20.0,
+              "missing_point_count": 0,
+              "duplicate_distance_count": 0,
+              "quality_checks": {
+                "finite_values": true,
+                "strictly_increasing_distance": true,
+                "profile_complete_for_route": false,
+                "profile_complete_for_input_extent": true,
+                "profile_complete_for_named_climb": false,
+                "profile_complete_for_named_climb_candidate": true
+              }
+            },
+            "parameters": {
+              "minimum_climb_length_m": 500.0,
+              "minimum_average_grade_pct": 3.0,
+              "minimum_climb_score": 1500.0,
+              "turning_prominence_m": 15.0,
+              "hard_split_minimum_span_m": 500.0,
+              "hard_split_descent_m": 20.0,
+              "main_smoothing_m": 100,
+              "stability_smoothing_variants_m": [
+                80,
+                150
+              ]
+            },
+            "route_distance_m": 8825.4,
+            "climbs": [
+              {
+                "order": 1,
+                "start_distance_m": 0.0,
+                "end_distance_m": 8825.4,
+                "length_m": 8825.4,
+                "start_elevation_m": 877.4,
+                "summit_elevation_m": 1345.5,
+                "elevation_gain_m": 468.1,
+                "elevation_loss_m": 0.0,
+                "net_gain_m": 468.1,
+                "average_grade_pct": 5.3,
+                "score": 46808,
+                "category": "2",
+                "category_system": "garmin_public_2026",
+                "category_version": "2026-08-14",
+                "category_status": "candidate",
+                "shape": "long_sustained",
+                "shape_label": "长持续坡",
+                "shape_tags": [
+                  "long_sustained"
+                ],
+                "shape_labels": [
+                  "长持续坡"
+                ],
+                "shape_rule_version": "velo_shape_v1_2026-08-14",
+                "max_sustained_grade_pct": {
+                  "500m": 9.1,
+                  "1000m": 8.4
+                },
+                "max_sustained_grade_windows": {
+                  "500m": {
+                    "grade_pct": 9.1,
+                    "start_distance_m": 4600.0,
+                    "end_distance_m": 5100.0,
+                    "position_fraction": 0.55
+                  },
+                  "1000m": {
+                    "grade_pct": 8.4,
+                    "start_distance_m": 4600.0,
+                    "end_distance_m": 5600.0,
+                    "position_fraction": 0.578
+                  }
+                },
+                "grade_band_distance_m": {
+                  "descent": 0.0,
+                  "flat": 125.4,
+                  "relief": 1000.0,
+                  "gentle": 4800.0,
+                  "steep": 2600.0,
+                  "very_steep": 300.0,
+                  "wall": 0.0
+                },
+                "grade_band_share": {
+                  "descent": 0.0,
+                  "flat": 0.0142,
+                  "relief": 0.1133,
+                  "gentle": 0.5439,
+                  "steep": 0.2946,
+                  "very_steep": 0.034,
+                  "wall": 0.0
+                },
+                "rolling_grade_500m": {
+                  "p10": 3.2,
+                  "p50": 5.1,
+                  "p90": 8.2,
+                  "iqr": 3.0,
+                  "p90_p10": 5.0
+                },
+                "rolling_grade_1000m": {
+                  "p10": 3.9,
+                  "p50": 4.9,
+                  "p90": 7.9,
+                  "iqr": 2.4,
+                  "p90_p10": 4.1
+                },
+                "child_sections": [
+                  {
+                    "section_role": "recovery",
+                    "start_distance_m": 8700.0,
+                    "end_distance_m": 8825.4,
+                    "length_m": 125.4,
+                    "average_grade_pct": 0.5,
+                    "elevation_gain_m": 0.7,
+                    "elevation_loss_m": 0.0,
+                    "rolling_grade_500m": 2.3,
+                    "rolling_grade_1000m": 2.6,
+                    "position_fraction": 0.993
+                  }
+                ],
+                "boundary_status": "stable",
+                "boundary_stability": 1.0,
+                "boundary_max_drift_m": 0.0,
+                "category_stability": 1.0,
+                "profile": [
+                  [
+                    0.0,
+                    877.4
+                  ],
+                  [
+                    149.6,
+                    882.8
+                  ],
+                  [
+                    299.2,
+                    890.8
+                  ],
+                  [
+                    448.7,
+                    899.8
+                  ],
+                  [
+                    598.3,
+                    908.9
+                  ],
+                  [
+                    747.9,
+                    916.7
+                  ],
+                  [
+                    897.5,
+                    922.9
+                  ],
+                  [
+                    1047.1,
+                    927.8
+                  ],
+                  [
+                    1196.7,
+                    932.1
+                  ],
+                  [
+                    1346.2,
+                    937.4
+                  ],
+                  [
+                    1495.8,
+                    943.4
+                  ],
+                  [
+                    1645.4,
+                    949.5
+                  ],
+                  [
+                    1795.0,
+                    956.4
+                  ],
+                  [
+                    1944.6,
+                    964.2
+                  ],
+                  [
+                    2094.2,
+                    971.0
+                  ],
+                  [
+                    2243.7,
+                    978.2
+                  ],
+                  [
+                    2393.3,
+                    987.5
+                  ],
+                  [
+                    2542.9,
+                    995.5
+                  ],
+                  [
+                    2692.5,
+                    1000.9
+                  ],
+                  [
+                    2842.1,
+                    1005.9
+                  ],
+                  [
+                    2991.7,
+                    1013.2
+                  ],
+                  [
+                    3141.2,
+                    1021.7
+                  ],
+                  [
+                    3290.8,
+                    1029.9
+                  ],
+                  [
+                    3440.4,
+                    1037.6
+                  ],
+                  [
+                    3590.0,
+                    1043.9
+                  ],
+                  [
+                    3739.6,
+                    1048.1
+                  ],
+                  [
+                    3889.1,
+                    1051.7
+                  ],
+                  [
+                    4038.7,
+                    1057.4
+                  ],
+                  [
+                    4188.3,
+                    1064.4
+                  ],
+                  [
+                    4337.9,
+                    1071.9
+                  ],
+                  [
+                    4487.5,
+                    1081.1
+                  ],
+                  [
+                    4637.1,
+                    1092.2
+                  ],
+                  [
+                    4786.6,
+                    1105.4
+                  ],
+                  [
+                    4936.2,
+                    1120.3
+                  ],
+                  [
+                    5085.8,
+                    1133.7
+                  ],
+                  [
+                    5235.4,
+                    1145.1
+                  ],
+                  [
+                    5385.0,
+                    1156.2
+                  ],
+                  [
+                    5534.6,
+                    1167.8
+                  ],
+                  [
+                    5684.1,
+                    1179.6
+                  ],
+                  [
+                    5833.7,
+                    1190.7
+                  ],
+                  [
+                    5983.3,
+                    1199.9
+                  ],
+                  [
+                    6132.9,
+                    1206.6
+                  ],
+                  [
+                    6282.5,
+                    1211.6
+                  ],
+                  [
+                    6432.1,
+                    1219.1
+                  ],
+                  [
+                    6581.6,
+                    1231.1
+                  ],
+                  [
+                    6731.2,
+                    1244.4
+                  ],
+                  [
+                    6880.8,
+                    1257.6
+                  ],
+                  [
+                    7030.4,
+                    1269.6
+                  ],
+                  [
+                    7180.0,
+                    1281.5
+                  ],
+                  [
+                    7329.5,
+                    1293.8
+                  ],
+                  [
+                    7479.1,
+                    1304.0
+                  ],
+                  [
+                    7628.7,
+                    1311.6
+                  ],
+                  [
+                    7778.3,
+                    1317.8
+                  ],
+                  [
+                    7927.9,
+                    1322.6
+                  ],
+                  [
+                    8077.5,
+                    1325.9
+                  ],
+                  [
+                    8227.0,
+                    1329.7
+                  ],
+                  [
+                    8376.6,
+                    1336.1
+                  ],
+                  [
+                    8526.2,
+                    1341.9
+                  ],
+                  [
+                    8675.8,
+                    1344.6
+                  ],
+                  [
+                    8825.4,
+                    1345.5
+                  ]
+                ],
+                "recovery_after_m": 0.0,
+                "cumulative_distance_before_m": 0.0,
+                "cumulative_ascent_before_m": 0.0,
+                "distance_from_previous_climb_m": 0.0,
+                "descent_from_previous_climb_m": 0.0
+              }
+            ],
+            "partition_alternatives": {
+              "80m": [
+                {
+                  "start_distance_m": 0.0,
+                  "end_distance_m": 8825.4,
+                  "length_m": 8825.4,
+                  "net_gain_m": 468.5,
+                  "average_grade_pct": 5.31,
+                  "score": 46847,
+                  "category": "2"
+                }
+              ],
+              "150m": [
+                {
+                  "start_distance_m": 0.0,
+                  "end_distance_m": 8825.4,
+                  "length_m": 8825.4,
+                  "net_gain_m": 467.0,
+                  "average_grade_pct": 5.29,
+                  "score": 46704,
+                  "category": "2"
+                }
+              ]
+            },
+            "composition": {
+              "climb_count": 1,
+              "categorized_climb_count": 1,
+              "category_counts": {
+                "HC": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0,
+                "4": 0,
+                "uncategorized": 0
+              },
+              "total_climbing_distance_m": 8825.4,
+              "total_climb_gain_m": 468.1,
+              "categorized_ascent_m": 468.1,
+              "uncategorized_ascent_m": 0,
+              "unobserved_profile_distance_m": 0.0,
+              "highest_category": "2",
+              "hardest_climb_order": 1,
+              "sequence_label": "Cat 2",
+              "finish_type": "summit",
+              "boundary_status": "stable",
+              "input_scope_kind": "named_climb",
+              "input_extent_status": "full_candidate"
+            },
+            "input_contract": {
+              "scope_key": "taiyuan_xishan_zaodu_road",
+              "scope_kind": "named_climb",
+              "extent_status": "full_candidate",
+              "traversal_direction": "forward",
+              "geometry_source": "strava_full_segment_projection",
+              "start_anchor": "source_start_to_source_end",
+              "end_anchor": "source_end_to_source_start",
+              "geometry_coverage_ratio": 1.0,
+              "elevation_profile_coverage_ratio": 1.0,
+              "source_observation_ids": [
+                116
+              ],
+              "source_geometry_hashes": [
+                "8796f05b3fa45d0ffb22ea875fc6f80fe809e7c06aa7f3318feaa8d48f754037"
+              ],
+              "anchor_evidence_refs": [],
+              "parent_scope_key": null,
+              "start_offset_m": null,
+              "end_offset_m": null,
+              "schema_version": "climb_profile_contract_v1"
+            }
+          },
+          "direction_result_sha256": "a0b25a4ed197f28c00066e0a2fbbf0516a4f86fc2baa4d015417a28ea83e1827"
+        },
+        "reverse": {
+          "route_distance_m": 8825.4,
+          "stored_glo_meaningful_ascent_m": 0.0,
+          "stored_glo_meaningful_descent_m": 469.9,
+          "snapshot_replay_meaningful_ascent_m": 0.0,
+          "snapshot_replay_meaningful_descent_m": 468.1,
+          "elevation_profile": [
+            [
+              0.0,
+              1345.5
+            ],
+            [
+              0.089,
+              1345.1
+            ],
+            [
+              0.178,
+              1344.3
+            ],
+            [
+              0.267,
+              1342.8
+            ],
+            [
+              0.357,
+              1340.0
+            ],
+            [
+              0.446,
+              1336.2
+            ],
+            [
+              0.535,
+              1332.2
+            ],
+            [
+              0.624,
+              1328.9
+            ],
+            [
+              0.713,
+              1326.6
+            ],
+            [
+              0.802,
+              1324.8
+            ],
+            [
+              0.891,
+              1322.8
+            ],
+            [
+              0.981,
+              1320.1
+            ],
+            [
+              1.07,
+              1316.9
+            ],
+            [
+              1.159,
+              1313.3
+            ],
+            [
+              1.248,
+              1309.2
+            ],
+            [
+              1.337,
+              1304.5
+            ],
+            [
+              1.426,
+              1298.9
+            ],
+            [
+              1.515,
+              1292.2
+            ],
+            [
+              1.605,
+              1284.9
+            ],
+            [
+              1.694,
+              1277.6
+            ],
+            [
+              1.783,
+              1270.5
+            ],
+            [
+              1.872,
+              1263.5
+            ],
+            [
+              1.961,
+              1256.1
+            ],
+            [
+              2.05,
+              1248.3
+            ],
+            [
+              2.139,
+              1240.4
+            ],
+            [
+              2.229,
+              1232.4
+            ],
+            [
+              2.318,
+              1224.7
+            ],
+            [
+              2.407,
+              1218.2
+            ],
+            [
+              2.496,
+              1213.4
+            ],
+            [
+              2.585,
+              1210.2
+            ],
+            [
+              2.674,
+              1207.2
+            ],
+            [
+              2.764,
+              1203.7
+            ],
+            [
+              2.853,
+              1199.3
+            ],
+            [
+              2.942,
+              1194.0
+            ],
+            [
+              3.031,
+              1187.9
+            ],
+            [
+              3.12,
+              1181.2
+            ],
+            [
+              3.209,
+              1174.2
+            ],
+            [
+              3.298,
+              1167.2
+            ],
+            [
+              3.388,
+              1160.3
+            ],
+            [
+              3.477,
+              1153.5
+            ],
+            [
+              3.566,
+              1146.9
+            ],
+            [
+              3.655,
+              1140.3
+            ],
+            [
+              3.744,
+              1133.4
+            ],
+            [
+              3.833,
+              1125.6
+            ],
+            [
+              3.922,
+              1117.0
+            ],
+            [
+              4.012,
+              1108.1
+            ],
+            [
+              4.101,
+              1099.6
+            ],
+            [
+              4.19,
+              1092.1
+            ],
+            [
+              4.279,
+              1085.3
+            ],
+            [
+              4.368,
+              1079.1
+            ],
+            [
+              4.457,
+              1073.6
+            ],
+            [
+              4.546,
+              1068.8
+            ],
+            [
+              4.636,
+              1064.5
+            ],
+            [
+              4.725,
+              1060.3
+            ],
+            [
+              4.814,
+              1056.2
+            ],
+            [
+              4.903,
+              1052.8
+            ],
+            [
+              4.992,
+              1050.3
+            ],
+            [
+              5.081,
+              1048.2
+            ],
+            [
+              5.17,
+              1046.0
+            ],
+            [
+              5.26,
+              1043.0
+            ],
+            [
+              5.349,
+              1039.3
+            ],
+            [
+              5.438,
+              1035.0
+            ],
+            [
+              5.527,
+              1030.3
+            ],
+            [
+              5.616,
+              1025.4
+            ],
+            [
+              5.705,
+              1020.5
+            ],
+            [
+              5.794,
+              1015.4
+            ],
+            [
+              5.884,
+              1010.5
+            ],
+            [
+              5.973,
+              1006.3
+            ],
+            [
+              6.062,
+              1003.1
+            ],
+            [
+              6.151,
+              1000.3
+            ],
+            [
+              6.24,
+              997.2
+            ],
+            [
+              6.329,
+              993.3
+            ],
+            [
+              6.418,
+              988.3
+            ],
+            [
+              6.508,
+              982.7
+            ],
+            [
+              6.597,
+              977.4
+            ],
+            [
+              6.686,
+              972.9
+            ],
+            [
+              6.775,
+              969.1
+            ],
+            [
+              6.864,
+              965.1
+            ],
+            [
+              6.953,
+              960.5
+            ],
+            [
+              7.042,
+              955.8
+            ],
+            [
+              7.132,
+              951.6
+            ],
+            [
+              7.221,
+              947.8
+            ],
+            [
+              7.31,
+              944.2
+            ],
+            [
+              7.399,
+              940.6
+            ],
+            [
+              7.488,
+              937.1
+            ],
+            [
+              7.577,
+              933.8
+            ],
+            [
+              7.666,
+              931.0
+            ],
+            [
+              7.756,
+              928.4
+            ],
+            [
+              7.845,
+              925.8
+            ],
+            [
+              7.934,
+              922.7
+            ],
+            [
+              8.023,
+              919.1
+            ],
+            [
+              8.112,
+              915.1
+            ],
+            [
+              8.201,
+              910.4
+            ],
+            [
+              8.291,
+              905.1
+            ],
+            [
+              8.38,
+              899.6
+            ],
+            [
+              8.469,
+              894.1
+            ],
+            [
+              8.558,
+              889.0
+            ],
+            [
+              8.647,
+              884.2
+            ],
+            [
+              8.736,
+              880.1
+            ],
+            [
+              8.825,
+              877.4
+            ]
+          ],
+          "climb_plan": {
+            "algorithm_version": "velo_climb_plan_v1",
+            "classification_system": "garmin_public_2026",
+            "traversal_direction": "reverse",
+            "source": {
+              "method": "glo30_meaningful_ascent_v1_snapshot_replay_v1",
+              "horizontal_resolution_m": null,
+              "confidence": "terrain_estimate",
+              "sustained_grade_windows_m": [
+                500,
+                1000
+              ],
+              "profile_hash": "2fe915ca1f322e30ee1ca8cf377869aba8670b194179d35f419aea7e99092c4c",
+              "residual_mad_m": 0.28,
+              "sampling_interval_m": 20.0,
+              "maximum_sampling_interval_m": 20.0,
+              "missing_point_count": 0,
+              "duplicate_distance_count": 0,
+              "quality_checks": {
+                "finite_values": true,
+                "strictly_increasing_distance": true,
+                "profile_complete_for_route": false,
+                "profile_complete_for_input_extent": true,
+                "profile_complete_for_named_climb": false,
+                "profile_complete_for_named_climb_candidate": true
+              }
+            },
+            "parameters": {
+              "minimum_climb_length_m": 500.0,
+              "minimum_average_grade_pct": 3.0,
+              "minimum_climb_score": 1500.0,
+              "turning_prominence_m": 15.0,
+              "hard_split_minimum_span_m": 500.0,
+              "hard_split_descent_m": 20.0,
+              "main_smoothing_m": 100,
+              "stability_smoothing_variants_m": [
+                80,
+                150
+              ]
+            },
+            "route_distance_m": 8825.4,
+            "climbs": [],
+            "partition_alternatives": {
+              "80m": [],
+              "150m": []
+            },
+            "composition": {
+              "climb_count": 0,
+              "categorized_climb_count": 0,
+              "category_counts": {
+                "HC": 0,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0,
+                "uncategorized": 0
+              },
+              "total_climbing_distance_m": 0,
+              "total_climb_gain_m": 0,
+              "categorized_ascent_m": 0,
+              "uncategorized_ascent_m": 0,
+              "unobserved_profile_distance_m": 0.0,
+              "highest_category": null,
+              "hardest_climb_order": null,
+              "sequence_label": "无显著爬坡",
+              "finish_type": "descent",
+              "boundary_status": "stable",
+              "input_scope_kind": "named_climb",
+              "input_extent_status": "full_candidate"
+            },
+            "input_contract": {
+              "scope_key": "taiyuan_xishan_zaodu_road",
+              "scope_kind": "named_climb",
+              "extent_status": "full_candidate",
+              "traversal_direction": "reverse",
+              "geometry_source": "strava_full_segment_projection",
+              "start_anchor": "source_end_to_source_start",
+              "end_anchor": "source_start_to_source_end",
+              "geometry_coverage_ratio": 1.0,
+              "elevation_profile_coverage_ratio": 1.0,
+              "source_observation_ids": [
+                116
+              ],
+              "source_geometry_hashes": [
+                "8796f05b3fa45d0ffb22ea875fc6f80fe809e7c06aa7f3318feaa8d48f754037"
+              ],
+              "anchor_evidence_refs": [],
+              "parent_scope_key": null,
+              "start_offset_m": null,
+              "end_offset_m": null,
+              "schema_version": "climb_profile_contract_v1"
+            }
+          },
+          "direction_result_sha256": "0e4eeed6b1419608068788816b16599c4d01754aff2a308b87fb2a67b1b2e5eb"
+        }
+      },
+      "publication_boundary": "The complete Strava source segment and production GLO profile are verified. Canonical Zaodu named-climb base/summit, access, surface, and the connector to the south network remain pending, so this axis is full_candidate rather than full_verified.",
+      "axis_result_sha256": "43c90468cdb15fab6abffe714396797073eb7c3bb4f1b3e9113819686d682520"
     },
     {
       "module_key": "taiyuan_xishan_zhoujiashan",
@@ -29992,6 +32484,9 @@
       "source_observation_id": 45,
       "source_segment_id": "31350024",
       "source_geometry_hash": "6f8b05e8a8c42613439bb3c49233ef0fdd31ca8f3c3d0daae104c4891eec0e12",
+      "census_batch_id": "xishan-20260813-v1",
+      "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+      "glo_fact_id": 34,
       "geometry_point_count": 371,
       "directions": {
         "forward": {
@@ -31327,7 +33822,7 @@
         }
       },
       "publication_boundary": "No access, surface or tunnel-safety claim is made.",
-      "axis_result_sha256": "e3a0602bb81f08d451b4b4af4c9a41c9f819e62d42656e710587efe09bc1e686"
+      "axis_result_sha256": "18b366e12449f11dbd454c6d442ed1f27b81c3ea3e6b6c7beaf6aaec1284aa5f"
     }
   ],
   "partial_climbs": [
@@ -46044,5 +48539,5 @@
       "replacement_status": "retire_outside_xishan_climb_scope"
     }
   ],
-  "result_sha256": "c98541a83d9a70ea94caa08bd2875be03f25e314f37df33ed4e004f2c91ae50f"
+  "result_sha256": "4de770f067d34ef0f316aa3eb0d81eb00595a29dee5d2879a000d1687ef833e4"
 }

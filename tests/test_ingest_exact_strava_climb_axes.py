@@ -26,6 +26,10 @@ def test_exact_ingest_spec_names_only_two_missing_full_axes():
         "34856789",
         "37687861",
     ]
+    assert [row["future_module_key"] for row in spec["segments"]] == [
+        "taiyuan_xishan_zaodu_road",
+        "taiyuan_xishan_duguan_new_tourism",
+    ]
     assert "no explore enumeration" in spec["request_boundary"]
 
 
