@@ -37,11 +37,11 @@
     {
       "resource_key": "qichunge_curated_destination",
       "route_name": "启春阁（万亩单独目的地）",
-      "resource_status": "curated_route_geometry_outside_active_evidence_binding",
-      "curated_artifacts": ["content/routes/wanmu/meta.json", "content/routes/wanmu/track.gpx", "content/routes/wanmu/guide.md"],
+      "resource_status": "curated_destination_content_geometry_retired_identity_pending",
+      "curated_artifacts": ["content/routes/wanmu/meta.json", "content/routes/wanmu/guide.md"],
       "curated_measurements": {"distance_km": 4.17, "climb_m_legacy_not_glo": 263.0},
       "pending": ["active source-observation binding", "stored GLO-30 facts", "current access and surface verification"],
-      "boundary": "Keep the dedicated destination explanation and GPX, but do not add its legacy climb figure to active-81 route totals."
+      "boundary": "Keep the dedicated destination explanation and photos. The legacy GPX is retired; do not add its legacy climb figure to active-81 route totals or replace it with the Aoshen axis."
     },
     {
       "resource_key": "miaoqianshan_curated_destination",

@@ -2,7 +2,7 @@
 
 日期：2026-08-14
 
-状态：外部一手资料研究；实现前合同，不代表代码或产品已经具备该能力
+状态：外部一手资料基准 + 已实现 v1 机械内核 + 已接入整坡/半坡 typed gate；西山 23 条物理道路轴已用生产落库 GLO 快照完成 46 个方向重放
 
 ## 一句话结论
 
@@ -104,6 +104,75 @@ climb_score = 100 × net_gain_m
 | 多坡组成与疲劳传递 | VELO 规划层 | 保留顺序、坡间恢复和累计负担 |
 | FTP / PDC / CP / W' 个性化 | 论文支持的模型组件 | 仅在个人输入充分时启用 |
 | “能否完成”“预计耗时” | VELO 预测 | 输出区间与证据质量，不作无条件承诺 |
+
+### 2.1 先分清三种对象
+
+VELO 后续不得再把下面三种对象压成一个“路线”：
+
+1. **RouteGuide** 是内容介绍。生产现有 11 条旧路线属于这一层；名字、文字、总距离或一条无海拔 GPX 都不能证明它是一条完整爬坡。
+2. **Named Climb** 是骑手共同认知的固定有向爬坡，例如“从哪一个公认基座开始，到哪一个公认坡顶结束”。它的身份边界先由道路、锚点和本地语义证明。
+3. **Climb Occurrence** 是 Climb Planner 在完整有向高程剖面上检测出的地形爬升区间。它可能只占 Named Climb 的一部分；一条 Named Climb 也可能因真实长下降被拆成多段 occurrence。
+
+因此，“完整奥申”和“算法检测到的一段 Cat 3”不是同义词。先证明输入覆盖完整奥申，再在该 traversal 上检测有几段坡、各是什么 Cat 和坡型。
+
+### 2.2 整坡 / 半坡输入硬门
+
+每个准备进入真实 Climb Planner 的命名坡，先冻结以下身份合同：
+
+```text
+named_climb_key / canonical_name
+physical_axis_hash / traversal_direction
+base_anchor / summit_anchor
+extent_status = full_verified | full_candidate | partial | unknown
+parent_named_climb_key + start/end offsets（partial 时必填）
+geometry_coverage_ratio / elevation_profile_coverage_ratio
+profile_fact_id / profile_hash / elevation algorithm version
+```
+
+只有同时满足以下条件，才能标 `full_verified`：
+
+1. base 和 summit 是命名坡的真实语义锚点，不是“某条赛段刚好从这里开始/结束”；
+2. 同一条连续有向物理几何从 base 覆盖到 summit，没有缺口、跳线、立即折返或重复累计；
+3. 逐点高程与该几何同轴、同方向，覆盖率至少 99%，并通过 profile 质量门；
+4. 正反方向分别建立 Traversal；反向必须反转剖面后重新检测，不能复制正爬 Cat；
+5. 多个长短 Strava 赛段只投影为身份、局部热度或 effort 证据，不能投票决定整坡边界；
+6. 入口存在多种本地公认上法时，分别建立 named-climb variant，不把两条 approach 拼成一条“平均整坡”。
+
+以下任一情况只能标 `partial` 或 `unknown`：缺 base、缺 summit、只覆盖末段墙/前段、赛段端点尚未绑定地标、只有总爬升没有逐点 profile、旧 GPX 与当前 canonical axis 未对齐。半坡仍可分析其已观察区间，但产品必须显示“从半坡开始”；若它嵌套于 full top-level occurrence，则只保存为 child ramp，不另给第二份 top-level Cat，也不重复累计爬升。
+
+`app/elevation/climb_profile_contract.py` 现已把上述身份合同接在 Climb Planner 前：完整输入剖面、完整命名坡、普通走廊、身份候选和完整长路线组合分别出具不同布尔门。底层 `build_climb_plan()` 仍只负责地形；真实西山批处理和生产投影只能走合同包装器。半坡缺少 `parent_scope_key`、覆盖率低于 99%，或普通走廊冒充命名整坡都会 typed reject。
+
+### 2.3 旧 11 条 RouteGuide 的退役账
+
+2026-08-14 对生产公开 API 与仓库 `content/routes/` 逐条回读：确有 11 条旧 RouteGuide，且 11 条全部 `climb_plan=pending`。其中 6 份旧 GPX 全部没有逐点海拔，现已从内容目录删除；`guide.md` 与照片继续保留。路线几何改由 `scripts/publish_climb_routes.py` 从完整 Strava source observation 和同轴落库 GLO snapshot 原子投影。
+
+| 旧路线 | 当前几何/海拔事实 | 进入整坡 ClimbPro 前的结论 |
+|---|---|---|
+| 奥申 | 旧 267 点 GPX 已退役 | o27 完整轴及逐点 GLO snapshot 已重放，正式结果 Cat 2 / 末段墙 |
+| 横岭 | 旧 518 点 GPX 已退役 | o2 完整轴及逐点 GLO snapshot 已重放，正式结果 Cat 2 / 末段墙 |
+| 环太原汾河自行车道 | 无正式 RouteBook/GPX | 不是命名爬坡，不套 ClimbPro 模板 |
+| 崛围山 | 旧 Guide 无正式 RouteBook | o14 崛围山—多福寺完整赛段剖面已重放，Cat 2 / 短陡墙；canonical base/summit 仍按 `full_candidate` 展示 |
+| 狼坡 | 旧 228 点 GPX 已退役 | o38/o42 是正反整轴；正式结果 Cat 3 / 短陡墙，局部邀月阁/前段只作 child evidence |
+| 庙前山 | 无正式 RouteBook/GPX | o73 仍是 1812 top/228 台身份候选，未闭合前不得称完整庙前山 |
+| 清徐夜骑 | 旧 160 点 GPX 已退役 | 社交/夜骑路线，不是西山命名爬坡；不拿它生成 ClimbPro |
+| 天龙山盘山公路 | 旧 411 点 GPX 已退役 | 已拆成东侧、北侧、牛家口南线和西门起伏四个对象，分别重放 |
+| 启春阁 | 旧 110 点 GPX 已退役 | 仍是独立目的地内容；没有 Strava/GLO 身份绑定前不借奥申 o27 替换 |
+| 小西沟 | 无正式 RouteBook/GPX | 先闭合道路身份与 base/summit |
+| 玉泉山 | 旧 Guide 无正式 RouteBook | 南侧主爬 o15 与石膏厂入口 o88 分别重放，不能合并 |
+
+经典杜关不在这 11 条旧 RouteGuide 里。当前研究态 o23 表示“杜儿坪—太古路”的经典杜关整轴候选；新修杜关旅游公路是另一条道路对象，不能共享一份 Cat 或完整性结论。
+
+### 2.4 西山全轴 3D 重放结果
+
+`data/research/xishan_climb_catalog_v1_result.json` 是公开安全结果：不含来源经纬度，但保留每条轴正反方向的距离—海拔曲线、GLO 总爬降、ClimbPro occurrence、Cat、坡型、500m/1km 持续坡度、child ramps 与完整 hash 链。私有 exact source geometry 只存在证据账和生产数据库。
+
+- 23 条物理轴全部重放正反方向，共 46 份有向结果；目前只有横岭、奥申、狼坡 3 条在内容证据中明确绑定 canonical base/summit，标 `full_verified`；其余 14 条命名坡虽有完整赛段剖面，但 canonical 锚点证据仍不足，严格标 `full_candidate`。另有 4 条普通走廊、王封一线天景观核心轴和身份待确认的庙前山 o73。
+- 狼坡 o52/o95、奥申 o103、经典杜关 o60/o72/o94 共 6 个已知半坡/局部段，均绑定父坡与轴上 start/end offsets，从父轴同一份 GLO snapshot 裁切重放；它们不另存物理几何，也不重复累计成第二条整坡。
+- 奥申为 Cat 2、5.225 km、GLO +343.3m、末段墙，最难持续 1km 约 11.5%；狼坡为 Cat 3、3.415 km、+271.7m、短陡墙，最难持续 1km 约 11.6%。两者都不再描述为“稳定主爬”。
+- 经典杜关为 Cat 2、9.286 km、+551.2m、阶梯坡；它和 14.9km 新杜关旅游路仍是两个对象。
+- 现有真实连接组成 10 条完整 profile 长路线并重跑多坡顺序；另 1 条太古路—店头—蒙山—北侧—西门因立即完整反向重走被 typed reject，没有进入工作量或排序。
+- 生产发布器会把排除庙前山身份候选后的 22 条轴发布成 44 个有向 RouteBook；每个方向都携带对应 ClimbPlan。上述 10 条组合也会保存完整路线几何、3D profile 和 ClimbPlan，但它们使用的腾讯 TransitPath 仍是 `provider_path_not_bicycling_verified` / `connectivity_shadow_not_access_verified`：发布器必须将其保持为 `unlisted + draft + navigation pending`，写入 typed warning，不能进入公开列表或导出。只有连接段自行车准入另行验证后才能升级成公开长路线。此处仍只是代码与冻结 artifact 能力，必须在迁移、生产 preflight/apply 和公开 API 回读通过后才能称线上生效。
+- stored GLO 爬降是权威总量；ClimbPlan occurrence 来自已落库逐点 snapshot 的确定性重放。两者都没有发起新 GLO 查询，重放因再次做坡型平滑可能与 stored 总量有数米差异，结果同时保留两列，不能偷偷择优。
 
 ## 3. 连续爬坡检测：可实现的 v1
 
@@ -528,6 +597,7 @@ input_hash / result_hash
 - 西山至少覆盖稳定长坡、末段墙、短墙、阶梯坡和多坡路线；
 - category 与 shape 不因同一物理几何重复累计；
 - profile 缺失、边界不稳和阈值跨级会诚实降级；
+- Named Climb 的 base/summit、整坡/半坡与 profile 覆盖由 typed identity gate 证明，调用方不能自行声称 `profile_complete_for_route=true`；
 - 个性化估时明确区分实测参数与默认场景；
 - CP/W' 只在个人参数充分时启用，并经过真实历史 holdout；
 - 最终用户能同时看到路线组成、坡型、适合谁、耗时范围和代价，而不是只有一条海拔折线。

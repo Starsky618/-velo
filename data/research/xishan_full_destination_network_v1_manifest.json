@@ -50,9 +50,9 @@
   ],
   "route_choices": {"choice_spec_sha256": "0c0380acec566efdbc7e3c0efdf416826c265f8b02e94ade2b60c6878d9db22b", "result_sha256": "4d192c77fa20669e84de9940fa81aaa989f51aac818a820afe45aa672755d5c4", "candidate_count": 12, "hard_feasible_count": 12, "hard_rejected_count": 0, "scope_counts": {"short_destination_core": 8, "medium_destination_chain": 2, "long_regional_chain": 2}, "execution_mode": "source_corridors_plus_existing_hengling_module_and_frozen_transits", "ranking_boundary": "Pareto and popular_reliable ordering only within the same comparison scope and rider intent"},
   "backbone_patterns": {"path": "data/research/xishan_backbone_route_patterns_v1.json", "artifact_sha256": "b6ef6011b1b79a8e3505f182694ce77ee075144b81943b1304f70cd8319d814f", "pattern_count": 8, "hard_complete_count": 0, "partially_replayable_count": 4, "supplemental_count": 2, "topology_only_count": 2},
-  "supplemental_resources": {"path": "data/research/xishan_remaining_supplemental_resource_ledger_v1.json", "artifact_sha256": "da0b0f5ed243fab80053bcb2dbc5703079e5d11101e0364f2f822fb70d3769c5", "resource_count": 5, "includes": ["枣杜全线", "新杜关旅游公路", "启春阁", "庙前山", "西山旅游公路官方主脊"]},
+  "supplemental_resources": {"path": "data/research/xishan_remaining_supplemental_resource_ledger_v1.json", "artifact_sha256": "e1011f7d285ff91f641445f9f9e9b8edbd92beb22e98ba69d8354c9864b1e0ef", "resource_count": 5, "includes": ["枣杜全线", "新杜关旅游公路", "启春阁", "庙前山", "西山旅游公路官方主脊"]},
   "regression": {"south_choice_result_sha256": "b815dfe77a29d60e26396548b0b13de243a038056db3e77ab69d14e08039d87e", "hengling_choice_result_sha256": "d118b5289b1b5b7f706f167627889371799a89a6c880a49f408c6c1a4cbcfe36", "regression_status": "exact_hash_match"},
   "execution_accounting": {"strava_request_count": 0, "full_oracle_rerun_count": 0, "new_tencent_provider_request_count": 0, "glo_recomputation_count": 0, "database_write_count": 0, "production_delete_count": 0},
   "boundary": "All outputs remain research candidates. Existing Tencent shadows prove connection candidates only. Full/half/reverse Xishan loops remain topology plans until every natural port, end-to-end geometry, GLO profile and current access state are closed.",
-  "manifest_sha256": "3a31503c91a9a1721c87a7fa0b2d3c7e7e702c141dd5c4f49a64403ae6670187"
+  "manifest_sha256": "d5acd7c4b10cae52942eab817293e1443af989d1f17be8d68ca00e1a415725a9"
 }

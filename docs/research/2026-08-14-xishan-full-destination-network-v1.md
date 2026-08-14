@@ -49,7 +49,7 @@
 
 ### 启春阁（万亩）
 
-这是离城市更近的单独爬坡目的地，不应被“奥申”吞掉。仓库已有 4.17 公里、legacy +263 米的 curated GPX 和 Tim 的照片；它适合短时单点骑、看城市和盘山路。代价是当前还没有 active observation/GLO 绑定，所以 +263 米不能加进本批硬总量。奥申 o27 的下端在万亩侧，但那只是奥申主轴入口关系，不等于启春阁路线本身。
+这是离城市更近的单独爬坡目的地，不应被“奥申”吞掉。Tim 的照片和专门介绍继续保留；旧 4.17 公里、legacy +263 米 GPX 已退出产品数据源。它适合短时单点骑、看城市和盘山路，但当前还没有 active observation/GLO 绑定，所以不能生成整坡 ClimbPro，也不能借奥申 o27 替换。奥申 o27 的下端在万亩侧，只是奥申主轴入口关系，不等于启春阁路线本身。
 
 ### 汾河二库阁楼
 
@@ -76,7 +76,7 @@
 - 固定窗口 112.24..112.48 / 37.67..38.01 机械重现 active 81；81 个 source identity、81 个 geometry hash、81 个 GLO fact、81 份热度全部对账。
 - 读取已有 3,240 对 oracle，0 次重跑；结果为 equivalent 6、contains 32、partial overlap 6、indeterminate 46、disjoint 3,150。
 - 形成 24 个 canonical 道路族，其中 23 个目标 MountainModule、1 个太古路 transit-range axis；同一物理几何只保存一次。
-- 新增 17 份剩余区域 MountainModule spec；已有横岭和南部 5 份模块继续复用。除横岭外，full elevation profile 仍待生产只读一次导出，0 DB write、0 GLO 重算。
+- 新增 17 份剩余区域 MountainModule spec；已有横岭和南部 5 份模块继续复用。23 条轴的 production GLO snapshot 已只读一次导出并完成 46 个方向 ClimbPro 重放，0 DB write、0 GLO 重算。
 - 复用 2 条已经冻结的腾讯连接：奥申上端—狼坡底 2.250 公里、横岭上端—化客头 16.856 公里。当前没有腾讯 key，因此没有伪造新 provider 路径。
 - 枣杜全线和新杜关旅游路各有 2026-08-11 的旧 source 快照及 sparse-reference 腾讯候选，但都在 active-81 外；source elevation gain 不是 GLO。
-- 全部输出是 research candidate；没有验证施工、封路、路面、车流、补给、景区开放或真机 RouteBook，也没有部署、生产写入或删除。
+- 3D/ClimbPro 结果已经是可重放 artifact；施工、封路、路面、车流、补给、景区开放仍未验证。单轴 RouteBook 可在生产投影后公开；当前 10 条组合所用 TransitPath 仍未验证自行车准入，只能落为不可导出的草稿。生产 preflight/apply、公开 API、真机显示与部署是后续独立验收层，不能由本地 JSON 冒充。

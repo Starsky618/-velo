@@ -118,6 +118,8 @@ def test_generic_create_source_excludes_tencent_direction():
     assert "manual_drawn" in get_args(schemas.RouteBookSource)
     assert "curated_composite" in get_args(schemas.RouteBookSource)
     assert "ai_generated" in get_args(schemas.RouteBookSource)
+    assert "strava_projection" in get_args(schemas.RouteBookSource)
+    assert "strava_projection" not in get_args(schemas.RouteBookCreateSource)
 
 
 def _activity(db, user_id: int, **overrides):
@@ -236,6 +238,26 @@ def _install_dynamic_linestring_ewkb_stub(db):
     driver_connection = getattr(raw_connection, "driver_connection", raw_connection)
     driver_connection.create_function("AsEWKB", 1, ewkb_from_ewkt)
     driver_connection.create_function("ST_AsEWKB", 1, ewkb_from_ewkt)
+
+
+def test_public_strava_projection_is_listable_and_readable(client, db, admin_user):
+    route, _version = _route_with_current_version(
+        db,
+        admin_user.id,
+        name="奥申完整赛段投影",
+        source="strava_projection",
+        file_id="strava:module:taiyuan_xishan_wanmu_aoshen",
+        file_type=None,
+    )
+
+    listed = client.get("/api/route-books?city=taiyuan")
+    assert listed.status_code == 200
+    item = next(row for row in listed.json()["items"] if row["id"] == route.id)
+    assert item["source"] == "strava_projection"
+
+    detail = client.get(f"/api/route-books/{route.id}")
+    assert detail.status_code == 200
+    assert detail.json()["source"] == "strava_projection"
 
 
 def test_public_route_export_creates_downloadable_gpx_without_leaking_file_id(client, db, admin_user, monkeypatch):

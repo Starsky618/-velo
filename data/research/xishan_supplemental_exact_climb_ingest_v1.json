@@ -1,0 +1,13 @@
+{
+  "schema_version": "exact_strava_climb_ingest_spec_v1",
+  "batch_id": "xishan-exact-climbs-20260814-v1",
+  "region_key": "taiyuan_xishan_supplemental_exact_climbs",
+  "region_version": "xishan_supplemental_exact_climbs_v1",
+  "query_bounds": {"south": 37.65, "west": 112.17, "north": 37.82, "east": 112.40},
+  "segments": [
+    {"source_segment_id": "34856789", "expected_name": "枣杜公路全爬", "future_module_key": "taiyuan_xishan_zaodu_full_climb"},
+    {"source_segment_id": "37687861", "expected_name": "杜关线新修旅游公路", "future_module_key": "taiyuan_xishan_duguan_new_tourism_road"}
+  ],
+  "request_boundary": "Exactly two detail requests and two complete latlng stream requests; no explore enumeration and no leaderboard pagination.",
+  "truth_boundary": "A successful stream closes source geometry only. GLO, road access, construction state and regional connectors remain separate facts."
+}

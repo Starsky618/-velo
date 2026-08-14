@@ -1,0 +1,68 @@
+{
+  "schema_version": "xishan_climb_catalog_spec_v1",
+  "catalog_key": "taiyuan_xishan_climb_catalog_v1",
+  "census_batch_id": "xishan-20260813-v1",
+  "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+  "profile_source_method": "glo30_meaningful_ascent_v1_snapshot_replay_v1",
+  "partial_projection_artifact": "data/research/xishan_full_destination_network_v1_run.json",
+  "partial_projection_artifact_sha256": "be51b3833237ea047eea9fbd7d115fbe882dc2990beaa1865c6b7239460f9804",
+  "privacy_boundary": "Public results may contain distance/elevation profiles and hashes, but never source coordinates or private provider geometry.",
+  "identity_rule": "full_verified means the complete curated Strava cycling-climb axis from its named lower boundary to its named upper boundary; it does not claim that the road itself ends there or that access and surface are verified.",
+  "axes": [
+    {"module_spec": "data/research/mountain_modules/hengling_v1.json", "scope_kind": "named_climb", "extent_status": "full_verified", "base_anchor": "daliucun_riverside_entry", "summit_anchor": "hengling_village", "anchor_evidence_refs": ["content/routes/hengling/guide.md#给真要去的骑友"]},
+    {"module_spec": "data/research/mountain_modules/xishan_chaihua_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_duguan_classic_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_erku_gelou_matoushui_v1.json", "scope_kind": "road_corridor", "extent_status": "not_applicable_corridor"},
+    {"module_spec": "data/research/mountain_modules/xishan_erku_west_switchback_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_huaketou_taohuagou_v1.json", "scope_kind": "road_corridor", "extent_status": "not_applicable_corridor"},
+    {"module_spec": "data/research/mountain_modules/xishan_jiaoziai_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_jueweishan_duofusi_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_langpo_v1.json", "scope_kind": "named_climb", "extent_status": "full_verified", "base_anchor": "shiziya_scenic_gate", "summit_anchor": "langpo_upper_1444m", "anchor_evidence_refs": ["content/routes/langpo/guide.md#怎么骑"]},
+    {"module_spec": "data/research/mountain_modules/xishan_miaoqianshan_1812_candidate_v1.json", "scope_kind": "identity_candidate", "extent_status": "identity_pending"},
+    {"module_spec": "data/research/mountain_modules/xishan_pianqiaogou_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_s104_huaketou_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_south_diantou_mengshan_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_south_niujiakou_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_south_tianlongshan_east_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_south_tianlongshan_north_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_south_tianlongshan_west_gate_v1.json", "scope_kind": "road_corridor", "extent_status": "not_applicable_corridor"},
+    {"module_spec": "data/research/mountain_modules/xishan_taohuagou_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_wangfeng_yixiantian_v1.json", "scope_kind": "scenic_axis", "extent_status": "not_applicable_corridor"},
+    {"module_spec": "data/research/mountain_modules/xishan_wanmu_aoshen_v1.json", "scope_kind": "named_climb", "extent_status": "full_verified", "base_anchor": "wanmu_ecopark_backroad_entry", "summit_anchor": "langpo_shiziya_entry", "anchor_evidence_refs": ["content/routes/aoshen/guide.md#怎么骑"]},
+    {"module_spec": "data/research/mountain_modules/xishan_yuquanshan_gypsum_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_yuquanshan_main_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_zhoujiashan_v1.json", "scope_kind": "road_corridor", "extent_status": "not_applicable_corridor"}
+  ],
+  "partial_climbs": [
+    {"partial_key": "langpo_yaoyuege_local", "name": "狼坡邀月阁局部坡", "parent_module_key": "taiyuan_xishan_langpo", "evidence_observation_id": 52, "evidence_source_geometry_hash": "c10961c15b621aa84259ae93e9c70f0c76c97c866da23e8522e65b2c80c5aa57", "projection_result_sha256": "c659e47a39670d798f3cc9c923459b140ba68fba68d9ec951e3f9a4839f21959", "source_coverage_ratio": 0.762, "traversal_direction": "forward", "start_offset_m": 0.0, "end_offset_m": 1907.419},
+    {"partial_key": "langpo_front_local", "name": "狼坡前段局部坡", "parent_module_key": "taiyuan_xishan_langpo", "evidence_observation_id": 95, "evidence_source_geometry_hash": "72863e0769c08f4aac4bd5e9184beb760974183f02e4f40f26910a68845540fd", "projection_result_sha256": "c4890e40c1e964916ba21d4568dda073b5c0707dab31e1567f8195d122dfc62f", "source_coverage_ratio": 1.0, "traversal_direction": "forward", "start_offset_m": 212.089, "end_offset_m": 1533.780},
+    {"partial_key": "aoshen_reverse_partial", "name": "奥申反向局部段", "parent_module_key": "taiyuan_xishan_wanmu_aoshen", "evidence_observation_id": 103, "evidence_source_geometry_hash": "15601613429a1701d09895c3f846c2fbe16f2586d7ec591b399d6d1b6fb10410", "projection_result_sha256": "97abe5e55ac34a8fac6d13ccc7ce4d10e4e0447b335696ad3f0eb599c1f41466", "source_coverage_ratio": 0.997, "traversal_direction": "reverse", "start_offset_m": 84.694, "end_offset_m": 3571.793},
+    {"partial_key": "duguan_steep_local", "name": "杜关最陡局部坡", "parent_module_key": "taiyuan_xishan_duguan_classic", "evidence_observation_id": 60, "evidence_source_geometry_hash": "4a358d0424710c2a642567cd05d89c388414916763147c1dd8d8cb82aec271e8", "projection_result_sha256": "9855c17f42d0ed68207c6404302d60505fb7df90a7cf58c1dc96d789109fc62a", "source_coverage_ratio": 1.0, "traversal_direction": "forward", "start_offset_m": 3510.081, "end_offset_m": 4078.472},
+    {"partial_key": "duguan_upper_local", "name": "杜关后四公里局部坡", "parent_module_key": "taiyuan_xishan_duguan_classic", "evidence_observation_id": 72, "evidence_source_geometry_hash": "c5cde92c4c51604ba145db292858855c45892aa78c0ae0992a4ff948b3ecb1e6", "projection_result_sha256": "d4269866cc4ef4bba6d0bf47ab53531e4a27b988e04adb0721532fb54ea39604", "source_coverage_ratio": 1.0, "traversal_direction": "forward", "start_offset_m": 5501.782, "end_offset_m": 9232.738},
+    {"partial_key": "duguan_gate_upper_local", "name": "杜关铁门后局部坡", "parent_module_key": "taiyuan_xishan_duguan_classic", "evidence_observation_id": 94, "evidence_source_geometry_hash": "537c9def981e221316ccd9007e69136e7d3f0f36cd09e30c928b2cc609c4bb8d", "projection_result_sha256": "db20bf6e370821fbf35e0e77a03f1eac968e56c677d2aa027784a820ac24e311", "source_coverage_ratio": 1.0, "traversal_direction": "forward", "start_offset_m": 7450.194, "end_offset_m": 9245.147}
+  ],
+  "long_route_choices": [
+    {"choice_spec": "data/research/xishan_route_choice_set_v1.json", "choice_result": "data/research/xishan_route_choice_set_v1_result.json", "candidate_ids": ["hengling-to-taohuagou-regional-chain", "taohuagou-to-hengling-regional-chain"]},
+    {"choice_spec": "data/research/xishan_remaining_route_choice_set_v1.json", "choice_result": "data/research/xishan_remaining_route_choice_set_v1_result.json", "candidate_ids": ["medium-wanmu-aoshen-langpo", "medium-langpo-aoshen-wanmu-reverse"]},
+    {"choice_spec": "data/research/xishan_south_route_choice_set_v1.json", "choice_result": "data/research/xishan_south_route_choice_set_v1_result.json", "candidate_ids": ["medium-east-climb-to-west-gate", "medium-north-climb-to-west-gate", "medium-niujiakou-to-west-gate", "medium-east-up-north-down", "long-diantou-mengshan-north-west", "long-east-north-mengshan-diantou", "long-taigu-diantou-mengshan-north-west"]}
+  ],
+  "route_guide_bindings": [
+    {"guide_name": "奥申", "module_key": "taiyuan_xishan_wanmu_aoshen"},
+    {"guide_name": "横岭", "module_key": "taiyuan_xishan_hengling"},
+    {"guide_name": "狼坡", "module_key": "taiyuan_xishan_langpo"},
+    {"guide_name": "天龙山盘山公路", "module_key": "taiyuan_xishan_tianlongshan_east"},
+    {"guide_name": "崛围山", "module_key": "taiyuan_xishan_jueweishan_duofusi"},
+    {"guide_name": "玉泉山", "module_key": "taiyuan_xishan_yuquanshan_main"}
+  ],
+  "publication_exclusions": [
+    {"module_key": "taiyuan_xishan_miaoqianshan_1812_candidate", "reason": "landmark-to-road endpoint identity remains pending"}
+  ],
+  "legacy_geometry_retirement": [
+    {"path": "content/routes/aoshen/track.gpx", "replacement_module_key": "taiyuan_xishan_wanmu_aoshen", "replacement_status": "ready"},
+    {"path": "content/routes/hengling/track.gpx", "replacement_module_key": "taiyuan_xishan_hengling", "replacement_status": "ready"},
+    {"path": "content/routes/langpo/track.gpx", "replacement_module_key": "taiyuan_xishan_langpo", "replacement_status": "ready"},
+    {"path": "content/routes/tianlongshan/track.gpx", "replacement_module_key": "taiyuan_xishan_tianlongshan_east", "replacement_status": "ready"},
+    {"path": "content/routes/wanmu/track.gpx", "replacement_module_key": null, "replacement_status": "retire_without_replacement_identity_pending"},
+    {"path": "content/routes/qingxu/track.gpx", "replacement_module_key": null, "replacement_status": "retire_outside_xishan_climb_scope"}
+  ]
+}
