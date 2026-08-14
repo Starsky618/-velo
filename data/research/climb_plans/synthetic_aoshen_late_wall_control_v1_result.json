@@ -1,0 +1,559 @@
+{
+  "schema_version": "climb_plan_result_v1",
+  "route_key": "synthetic-aoshen-late-wall-control-v1",
+  "geometry_hash": "ee719130e037ad46b3df2355650d21d40c70862fc5e018d9143a413dc501ed79",
+  "traversal": "forward",
+  "input_sha256": "7c8407e13b3af44634f134956f297adb1088250a0eac3b6977bec215123459fa",
+  "climb_plan": {
+    "algorithm_version": "velo_climb_plan_v1",
+    "classification_system": "garmin_public_2026",
+    "traversal_direction": "forward",
+    "source": {
+      "method": "synthetic_control_profile_v1",
+      "horizontal_resolution_m": null,
+      "confidence": "low",
+      "sustained_grade_windows_m": [
+        500,
+        1000
+      ],
+      "profile_hash": "3ffdeacf3b33c62a67a3cf09c586a058bc691b74a7a4c38d0e9ce451e700e1b3",
+      "residual_mad_m": 0.0,
+      "sampling_interval_m": 2612.7,
+      "maximum_sampling_interval_m": 4225.4,
+      "missing_point_count": 0,
+      "duplicate_distance_count": 0,
+      "quality_checks": {
+        "finite_values": true,
+        "strictly_increasing_distance": true,
+        "profile_complete_for_route": true
+      }
+    },
+    "parameters": {
+      "minimum_climb_length_m": 500.0,
+      "minimum_average_grade_pct": 3.0,
+      "minimum_climb_score": 1500.0,
+      "turning_prominence_m": 15.0,
+      "hard_split_minimum_span_m": 500.0,
+      "hard_split_descent_m": 20.0,
+      "main_smoothing_m": 100,
+      "stability_smoothing_variants_m": [
+        80,
+        150
+      ]
+    },
+    "route_distance_m": 5225.4,
+    "climbs": [
+      {
+        "order": 1,
+        "start_distance_m": 0.0,
+        "end_distance_m": 5225.4,
+        "length_m": 5225.4,
+        "start_elevation_m": 700.0,
+        "summit_elevation_m": 1043.3,
+        "elevation_gain_m": 343.3,
+        "elevation_loss_m": 0.0,
+        "net_gain_m": 343.3,
+        "average_grade_pct": 6.57,
+        "score": 34330,
+        "category": "2",
+        "category_system": "garmin_public_2026",
+        "category_version": "2026-08-14",
+        "category_status": "candidate",
+        "shape": "late_wall",
+        "shape_label": "末段墙",
+        "shape_tags": [
+          "late_wall"
+        ],
+        "shape_labels": [
+          "末段墙"
+        ],
+        "shape_rule_version": "velo_shape_v1_2026-08-14",
+        "max_sustained_grade_pct": {
+          "500m": 12.0,
+          "1000m": 12.0
+        },
+        "max_sustained_grade_windows": {
+          "500m": {
+            "grade_pct": 12.0,
+            "start_distance_m": 4300.0,
+            "end_distance_m": 4800.0,
+            "position_fraction": 0.871
+          },
+          "1000m": {
+            "grade_pct": 12.0,
+            "start_distance_m": 4225.4,
+            "end_distance_m": 5225.4,
+            "position_fraction": 0.904
+          }
+        },
+        "grade_band_distance_m": {
+          "descent": 0.0,
+          "flat": 0.0,
+          "relief": 0.0,
+          "gentle": 4200.0,
+          "steep": 0.0,
+          "very_steep": 100.0,
+          "wall": 925.4
+        },
+        "grade_band_share": {
+          "descent": 0.0,
+          "flat": 0.0,
+          "relief": 0.0,
+          "gentle": 0.8038,
+          "steep": 0.0,
+          "very_steep": 0.0191,
+          "wall": 0.1771
+        },
+        "rolling_grade_500m": {
+          "p10": 5.3,
+          "p50": 5.3,
+          "p90": 12.0,
+          "iqr": 0.0,
+          "p90_p10": 6.7
+        },
+        "rolling_grade_1000m": {
+          "p10": 5.3,
+          "p50": 5.3,
+          "p90": 9.6,
+          "iqr": 0.1,
+          "p90_p10": 4.3
+        },
+        "child_sections": [
+          {
+            "section_role": "ramp",
+            "start_distance_m": 4300.0,
+            "end_distance_m": 4800.0,
+            "length_m": 500.0,
+            "average_grade_pct": 12.0,
+            "elevation_gain_m": 60.0,
+            "elevation_loss_m": 0.0,
+            "rolling_grade_500m": 12.0,
+            "rolling_grade_1000m": 10.8,
+            "position_fraction": 0.871
+          }
+        ],
+        "boundary_status": "stable",
+        "boundary_stability": 1.0,
+        "boundary_max_drift_m": 0.0,
+        "category_stability": 1.0,
+        "profile": [
+          [
+            0.0,
+            700.0
+          ],
+          [
+            98.6,
+            705.2
+          ],
+          [
+            197.2,
+            710.4
+          ],
+          [
+            295.8,
+            715.6
+          ],
+          [
+            394.4,
+            720.8
+          ],
+          [
+            493.0,
+            726.1
+          ],
+          [
+            591.6,
+            731.3
+          ],
+          [
+            690.1,
+            736.5
+          ],
+          [
+            788.7,
+            741.7
+          ],
+          [
+            887.3,
+            746.9
+          ],
+          [
+            985.9,
+            752.1
+          ],
+          [
+            1084.5,
+            757.3
+          ],
+          [
+            1183.1,
+            762.5
+          ],
+          [
+            1281.7,
+            767.7
+          ],
+          [
+            1380.3,
+            772.9
+          ],
+          [
+            1478.9,
+            778.2
+          ],
+          [
+            1577.5,
+            783.4
+          ],
+          [
+            1676.1,
+            788.6
+          ],
+          [
+            1774.7,
+            793.8
+          ],
+          [
+            1873.3,
+            799.0
+          ],
+          [
+            1971.8,
+            804.2
+          ],
+          [
+            2070.4,
+            809.4
+          ],
+          [
+            2169.0,
+            814.6
+          ],
+          [
+            2267.6,
+            819.8
+          ],
+          [
+            2366.2,
+            825.0
+          ],
+          [
+            2464.8,
+            830.3
+          ],
+          [
+            2563.4,
+            835.5
+          ],
+          [
+            2662.0,
+            840.7
+          ],
+          [
+            2760.6,
+            845.9
+          ],
+          [
+            2859.2,
+            851.1
+          ],
+          [
+            2957.8,
+            856.3
+          ],
+          [
+            3056.4,
+            861.5
+          ],
+          [
+            3155.0,
+            866.7
+          ],
+          [
+            3253.6,
+            871.9
+          ],
+          [
+            3352.1,
+            877.2
+          ],
+          [
+            3450.7,
+            882.4
+          ],
+          [
+            3549.3,
+            887.6
+          ],
+          [
+            3647.9,
+            892.8
+          ],
+          [
+            3746.5,
+            898.0
+          ],
+          [
+            3845.1,
+            903.2
+          ],
+          [
+            3943.7,
+            908.4
+          ],
+          [
+            4042.3,
+            913.6
+          ],
+          [
+            4140.9,
+            918.8
+          ],
+          [
+            4239.5,
+            925.0
+          ],
+          [
+            4338.1,
+            936.8
+          ],
+          [
+            4436.7,
+            948.7
+          ],
+          [
+            4535.3,
+            960.5
+          ],
+          [
+            4633.8,
+            972.3
+          ],
+          [
+            4732.4,
+            984.1
+          ],
+          [
+            4831.0,
+            996.0
+          ],
+          [
+            4929.6,
+            1007.8
+          ],
+          [
+            5028.2,
+            1019.6
+          ],
+          [
+            5126.8,
+            1031.5
+          ],
+          [
+            5225.4,
+            1043.3
+          ]
+        ],
+        "recovery_after_m": 0.0,
+        "cumulative_distance_before_m": 0.0,
+        "cumulative_ascent_before_m": 0.0,
+        "distance_from_previous_climb_m": 0.0,
+        "descent_from_previous_climb_m": 0.0
+      }
+    ],
+    "partition_alternatives": {
+      "80m": [
+        {
+          "start_distance_m": 0.0,
+          "end_distance_m": 5225.4,
+          "length_m": 5225.4,
+          "net_gain_m": 343.3,
+          "average_grade_pct": 6.57,
+          "score": 34330,
+          "category": "2"
+        }
+      ],
+      "150m": [
+        {
+          "start_distance_m": 0.0,
+          "end_distance_m": 5225.4,
+          "length_m": 5225.4,
+          "net_gain_m": 343.3,
+          "average_grade_pct": 6.57,
+          "score": 34330,
+          "category": "2"
+        }
+      ]
+    },
+    "composition": {
+      "climb_count": 1,
+      "categorized_climb_count": 1,
+      "category_counts": {
+        "HC": 0,
+        "1": 0,
+        "2": 1,
+        "3": 0,
+        "4": 0,
+        "uncategorized": 0
+      },
+      "total_climbing_distance_m": 5225.4,
+      "total_climb_gain_m": 343.3,
+      "categorized_ascent_m": 343.3,
+      "uncategorized_ascent_m": 0,
+      "unobserved_profile_distance_m": 0.0,
+      "highest_category": "2",
+      "hardest_climb_order": 1,
+      "sequence_label": "Cat 2",
+      "finish_type": "summit",
+      "boundary_status": "stable"
+    }
+  },
+  "rider_plan": {
+    "status": "estimated",
+    "missing_fields": [],
+    "confidence": "medium",
+    "basis": "ftp_weight_power_curve",
+    "physiology_model": "pdc_only",
+    "ftp_w_per_kg": 4.0,
+    "power_curve_coverage": {
+      "minimum_duration_s": 300,
+      "maximum_duration_s": 3600,
+      "evaluated_climb_scenarios": 3,
+      "covered_climb_scenarios": 3,
+      "coverage_fraction": 1.0
+    },
+    "confidence_dimensions": {
+      "profile_quality": "low",
+      "boundary_quality": "stable",
+      "physiology_quality": "power_duration_curve",
+      "environment_quality": "scenario_defaults"
+    },
+    "multi_climb_context": {
+      "status": "not_applicable_single_climb",
+      "ordered_climb_count": 1,
+      "recovery_credit_modeled": false,
+      "cp_wprime_used": false
+    },
+    "assumptions": [
+      "9kg 整车与随身装备估值",
+      "无风、干燥铺装、CdA 0.32、Crr 0.004",
+      "耗时范围用轻装低滚阻到逆风高滚阻情景计算，不是统计置信区间",
+      "功率曲线只约束其实际覆盖的预计耗时，超出区间退回 FTP 低置信度计划",
+      "多坡 PDC 按累计爬坡时长保守限功；没有可信 CP/W′ 时不模拟坡间恢复",
+      "只估已识别爬坡时间，不是整条路线到达时间"
+    ],
+    "scenarios": [
+      {
+        "key": "finish",
+        "label": "稳稳骑完",
+        "target_power_w": 218,
+        "target_w_per_kg": 3.11,
+        "target_power_range_w": [
+          218,
+          218
+        ],
+        "target_w_per_kg_range": [
+          3.11,
+          3.11
+        ],
+        "estimated_climbing_time_min": 23.5,
+        "estimated_climbing_time_range_min": [
+          22.7,
+          26.4
+        ],
+        "climbs": [
+          {
+            "order": 1,
+            "target_power_w": 218,
+            "target_w_per_kg": 3.12,
+            "estimated_time_min": 23.5,
+            "estimated_time_range_min": [
+              22.7,
+              26.4
+            ],
+            "cumulative_climbing_time_before_min": 0.0,
+            "pdc_effective_duration_min": 23.5,
+            "recovery_credit_status": "not_applicable_single_climb"
+          }
+        ]
+      },
+      {
+        "key": "steady",
+        "label": "持续推进",
+        "target_power_w": 246,
+        "target_w_per_kg": 3.51,
+        "target_power_range_w": [
+          246,
+          246
+        ],
+        "target_w_per_kg_range": [
+          3.51,
+          3.51
+        ],
+        "estimated_climbing_time_min": 21.1,
+        "estimated_climbing_time_range_min": [
+          20.4,
+          23.8
+        ],
+        "climbs": [
+          {
+            "order": 1,
+            "target_power_w": 246,
+            "target_w_per_kg": 3.52,
+            "estimated_time_min": 21.1,
+            "estimated_time_range_min": [
+              20.4,
+              23.8
+            ],
+            "cumulative_climbing_time_before_min": 0.0,
+            "pdc_effective_duration_min": 21.1,
+            "recovery_credit_status": "not_applicable_single_climb"
+          }
+        ]
+      },
+      {
+        "key": "hard",
+        "label": "接近全力",
+        "target_power_w": 274,
+        "target_w_per_kg": 3.91,
+        "target_power_range_w": [
+          274,
+          274
+        ],
+        "target_w_per_kg_range": [
+          3.91,
+          3.91
+        ],
+        "estimated_climbing_time_min": 19.2,
+        "estimated_climbing_time_range_min": [
+          18.5,
+          21.7
+        ],
+        "climbs": [
+          {
+            "order": 1,
+            "target_power_w": 274,
+            "target_w_per_kg": 3.92,
+            "estimated_time_min": 19.2,
+            "estimated_time_range_min": [
+              18.5,
+              21.7
+            ],
+            "cumulative_climbing_time_before_min": 0.0,
+            "pdc_effective_duration_min": 19.2,
+            "recovery_credit_status": "not_applicable_single_climb"
+          }
+        ]
+      }
+    ],
+    "climbs": [
+      {
+        "order": 1,
+        "category": "2",
+        "shape": "late_wall",
+        "shape_label": "末段墙"
+      }
+    ]
+  },
+  "result_sha256": "8f7254cb144d59c08ed5dec0f212fde46ec5320f4a3cf0dc9f0e1f5066db166b"
+}

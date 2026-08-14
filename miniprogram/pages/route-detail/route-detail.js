@@ -4,6 +4,7 @@ const { wgs84ToGcj02 } = require('../../utils/coords')
 const mapTheme = require('../../utils/map-theme')
 const routeThumb = require('../../utils/route-thumb')
 const routeMapNav = require('../../utils/route-map-nav')
+const climbPlanUi = require('../../utils/climb-plan')
 
 function buildRoutePreview(points) {
   if (!Array.isArray(points) || points.length < 2) {
@@ -62,16 +63,20 @@ function buildSections(markdown) {
     })
 }
 
-// 常显数据卡：距离/爬升/均坡——有哪项放哪项，缺的不进数组（no-dash 原则：不显示占位）
+// 常显数据卡：全程累计爬升不能冒充爬坡均坡；有 ClimbPlan 时展示显著爬坡数。
 function buildStats(guide) {
   var stats = []
   var d = Number(guide.distance)
   var c = Number(guide.climb)
   if (Number.isFinite(d) && d > 0) stats.push({ v: d.toFixed(1), u: 'km', k: '距离' })
   if (Number.isFinite(c) && c > 0) stats.push({ v: String(Math.round(c)), u: 'm', k: '爬升' })
-  if (Number.isFinite(d) && d > 0 && Number.isFinite(c) && c > 0) {
-    // 均坡 = 爬升(米) / 距离(公里×1000) ×100；API 距离返 km、爬升返米（项目约定）
-    stats.push({ v: (c / (d * 1000) * 100).toFixed(1), u: '%', k: '均坡' })
+  var climbPlan = climbPlanUi.normalizeClimbPlan(guide && guide.climb_plan)
+  if (climbPlan) {
+    stats.push({
+      v: String(Number(climbPlan.composition.climb_count) || 0),
+      u: '段',
+      k: '显著爬坡',
+    })
   }
   return stats
 }
@@ -113,6 +118,7 @@ Page({
     gallerySrcs: [],   // 实景图完整 URL 数组；空 = 不渲染长廊（no-dash：缺内容整块消失）
     hasElevation: false,
     routeStats: [],
+    climbPlanView: climbPlanUi.buildView(null, null),
     routePreviewVisible: false,
     routePreviewCenter: { latitude: 37.8706, longitude: 112.5489 },
     routePreviewMarkers: [],
@@ -163,6 +169,7 @@ Page({
             .filter(Boolean),
           hasElevation: hasElevation,
           routeStats: buildStats(guide),
+          climbPlanView: climbPlanUi.buildView(guide.climb_plan, guide.rider_climb_plan),
           exportHint: exportBlockHint(guide),
           lastExportFilename: '',
           lastExportTempPath: '',
@@ -257,6 +264,16 @@ Page({
     ctx.closePath()
     ctx.setFillStyle('rgba(255, 149, 0, 0.10)')
     ctx.fill()
+    var climbPlan = climbPlanUi.normalizeClimbPlan(this.data.guide && this.data.guide.climb_plan)
+    ;(climbPlan && climbPlan.climbs ? climbPlan.climbs : []).forEach(function (climb) {
+      var startKm = Number(climb.start_distance_m) / 1000
+      var endKm = Number(climb.end_distance_m) / 1000
+      if (!Number.isFinite(startKm) || !Number.isFinite(endKm) || endKm <= startKm) return
+      ctx.setGlobalAlpha(0.12)
+      ctx.setFillStyle(climbPlanUi.categoryColor(climb.category))
+      ctx.fillRect((startKm - minD) / spanD * width, padY, (endKm - startKm) / spanD * width, height - padY * 2)
+      ctx.setGlobalAlpha(1)
+    })
     ctx.beginPath()
     points.forEach(function (pt, i) {
       if (i === 0) ctx.moveTo(pt.x, pt.y)
@@ -417,3 +434,10 @@ Page({
     })
   },
 })
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    buildStats: buildStats,
+    buildClimbPlanView: climbPlanUi.buildView,
+  }
+}

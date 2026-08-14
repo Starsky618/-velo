@@ -1,9 +1,13 @@
 """路线百科 API 测试——验证官方路线手册列表和详情能稳定喂给小程序。"""
 
 from datetime import datetime, timezone
+import json
 
 from sqlalchemy import text
 
+from app.dependencies import get_optional_user
+from app.elevation.climb_planner import build_climb_plan
+from app.main import app
 from app.route_book.models import RouteBook, RouteGuide, RouteVersion
 
 
@@ -39,6 +43,14 @@ def _route_book(db, name="天龙山路书"):
 
 
 def _attach_current_version(db, route, **overrides):
+    elevations = [701.2, 735.8]
+    climb_plan = build_climb_plan(
+        [0.0, route.distance],
+        elevations,
+        source_method="glo30_meaningful_ascent_v1",
+        horizontal_resolution_m=30.0,
+        smoothing_variants={"80m": elevations, "150m": elevations},
+    )
     data = {
         "route_book_id": route.id,
         "version_no": 1,
@@ -51,22 +63,27 @@ def _attach_current_version(db, route, **overrides):
         "distance": route.distance,
         "climb": route.climb,
         "elevation_points_snapshot": "[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
-        "navigation_metadata_json": (
-            "{\"elevation\":{\"method\":\"glo30_meaningful_ascent_v1\","
-            "\"source_name\":\"Copernicus DEM GLO-30 Public\","
-            "\"license_id\":\"Copernicus DEM Licence\","
-            "\"accuracy_m\":4.0,"
-            "\"horizontal_resolution_m\":30.0,"
-            "\"processing_grid_m\":20.0,"
-            "\"median_filter_points\":3,"
-            "\"smoothing_sigma_m\":100.0,"
-            "\"ascent_prominence_m\":3.0,"
-            "\"ascent_minimum_span_m\":100.0,"
-            "\"maximum_processing_distance_m\":1000000.0,"
-            "\"dataset_id\":\"COP-DEM_GLO-30-DGED\","
-            "\"vertical_datum\":\"EGM2008 (EPSG:3855)\","
-            "\"grid_registration\":\"RasterPixelIsPoint\","
-            "\"point_count\":2}}"
+        "navigation_metadata_json": json.dumps(
+            {
+                "elevation": {
+                    "method": "glo30_meaningful_ascent_v1",
+                    "source_name": "Copernicus DEM GLO-30 Public",
+                    "license_id": "Copernicus DEM Licence",
+                    "accuracy_m": 4.0,
+                    "horizontal_resolution_m": 30.0,
+                    "processing_grid_m": 20.0,
+                    "median_filter_points": 3,
+                    "smoothing_sigma_m": 100.0,
+                    "ascent_prominence_m": 3.0,
+                    "ascent_minimum_span_m": 100.0,
+                    "maximum_processing_distance_m": 1000000.0,
+                    "dataset_id": "COP-DEM_GLO-30-DGED",
+                    "vertical_datum": "EGM2008 (EPSG:3855)",
+                    "grid_registration": "RasterPixelIsPoint",
+                    "point_count": 2,
+                },
+                "climb_plan": climb_plan,
+            }
         ),
         "point_count": 2,
     }
@@ -150,6 +167,8 @@ def test_detail_ready_true_returns_profile_preview_and_km_distance(client, db):
         assert body["climb"] == 456.0
         assert body["elevation_profile"] == [[0, 780], [3.5, 920], [12.34, 1100]]
         assert body["preview_points"] == [[112.5, 37.8], [112.6, 37.9]]
+        assert body["climb_plan"] is None
+        assert body["rider_climb_plan"] is None
         assert body["export_ready"] is False
         assert body["export_formats"] == []
         assert body["export_block_reason"] == "no_current_version"
@@ -172,7 +191,51 @@ def test_detail_export_ready_only_for_public_published_current_version(client, d
         assert body["export_ready"] is True
         assert body["export_formats"] == ["gpx", "tcx"]
         assert body["export_block_reason"] is None
+        assert body["climb_plan"]["algorithm_version"] == "velo_climb_plan_v1"
+        assert body["climb_plan"]["source"]["confidence"] == "terrain_estimate"
     finally:
+        _drop_route_guides_table(db)
+
+
+def test_detail_adds_only_the_current_riders_climb_plan_when_logged_in(
+    client,
+    db,
+    auth_header,
+):
+    _create_route_guides_table(db)
+    try:
+        route = _route_book(db)
+        version = _attach_current_version(db, route)
+        guide = _guide(db, route_book_id=route.id, source_route_version_id=version.id)
+
+        anonymous = client.get(f"/api/route-guides/{guide.id}").json()
+        logged_in = client.get(
+            f"/api/route-guides/{guide.id}",
+            headers=auth_header,
+        ).json()
+
+        assert anonymous["rider_climb_plan"] is None
+        assert logged_in["rider_climb_plan"]["status"] == "needs_profile"
+        assert logged_in["rider_climb_plan"]["basis"] == "route_only"
+    finally:
+        _drop_route_guides_table(db)
+
+
+def test_detail_with_stale_authenticated_user_degrades_rider_plan_to_null(client, db):
+    _create_route_guides_table(db)
+    app.dependency_overrides[get_optional_user] = lambda: 999_999_999
+    try:
+        route = _route_book(db)
+        version = _attach_current_version(db, route)
+        guide = _guide(db, route_book_id=route.id, source_route_version_id=version.id)
+
+        response = client.get(f"/api/route-guides/{guide.id}")
+
+        assert response.status_code == 200
+        assert response.json()["climb_plan"]["algorithm_version"] == "velo_climb_plan_v1"
+        assert response.json()["rider_climb_plan"] is None
+    finally:
+        app.dependency_overrides.pop(get_optional_user, None)
         _drop_route_guides_table(db)
 
 

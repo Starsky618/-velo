@@ -1,4 +1,5 @@
 const api = require('../../utils/api')
+const climbPlanUi = require('../../utils/climb-plan')
 
 const DEFAULT_CENTER = { latitude: 37.8706, longitude: 112.5489 }
 const MAX_SNAP_POINTS = 120
@@ -166,7 +167,23 @@ function normalizeElevationPreview(value) {
     climb_m: climbM,
     descent_m: descentM,
     elevation_profile: profile,
+    climb_plan: climbPlanUi.normalizeClimbPlan(value.climb_plan),
+    rider_climb_plan: value.rider_climb_plan && typeof value.rider_climb_plan === 'object'
+      ? value.rider_climb_plan
+      : null,
   }
+}
+
+function climbCategoryColor(category) {
+  return climbPlanUi.categoryColor(category)
+}
+
+function buildClimbPlanView(elevationPreview) {
+  var preview = normalizeElevationPreview(elevationPreview)
+  return climbPlanUi.buildView(
+    preview && preview.climb_plan,
+    preview && preview.rider_climb_plan
+  )
 }
 
 function geometryKey(points) {
@@ -179,24 +196,22 @@ function buildRouteStats(points, elevationPreview, elevationStatus) {
   var normalized = normalizeLonLatPoints(points)
   var distanceM = distanceOf(normalized)
   var km = distanceM / 1000
-  var estimatedMinutes = distanceM > 0 ? Math.max(1, Math.round(distanceM / 1000 / 20 * 60)) : 0
   var preview = normalizeElevationPreview(elevationPreview)
   var climbText = '—'
   if (normalized.length >= 2 && elevationStatus === 'loading') climbText = '计算中'
   if (normalized.length >= 2 && elevationStatus === 'error') climbText = '待重试'
   if (preview && elevationStatus === 'ready') climbText = Math.round(preview.climb_m) + ' m'
-  var etaText = '0 分钟'
-  if (estimatedMinutes >= 60) {
-    etaText = Math.floor(estimatedMinutes / 60) + ' 小时 ' + (estimatedMinutes % 60) + ' 分钟'
-  } else if (estimatedMinutes > 0) {
-    etaText = estimatedMinutes + ' 分钟'
-  }
+  var climbSequenceText = '—'
+  if (preview && preview.climb_plan && elevationStatus === 'ready') {
+    climbSequenceText = String(preview.climb_plan.composition.sequence_label || '无显著爬坡')
+  } else if (normalized.length >= 2 && elevationStatus === 'loading') climbSequenceText = '计算中'
+  else if (normalized.length >= 2 && elevationStatus === 'error') climbSequenceText = '待重试'
   return {
     distanceM: distanceM,
     distanceText: distanceM > 0 ? (km >= 10 ? km.toFixed(1) : km.toFixed(2)) + ' km' : '0 km',
     pointCount: normalized.length,
     climbText: climbText,
-    etaText: etaText,
+    climbSequenceText: climbSequenceText,
   }
 }
 
@@ -745,6 +760,7 @@ Page({
     markers: [],
     drawPolylines: [],
     routeStats: buildRouteStats([], null, 'idle'),
+    climbPlanView: buildClimbPlanView(null),
     elevationStatus: 'idle',
     elevationPreview: null,
     elevationGeometryKey: '',
@@ -886,6 +902,7 @@ Page({
       warnings: flattenWarnings(view.segmentWarnings, view.pendingWarnings),
       drawPolylines: buildDrawPolylines(displayConfirmedPoints, view.currentRawPoints, view.previewPoints),
       routeStats: buildRouteStats(view.confirmedPoints, nextElevationPreview, nextElevationStatus),
+      climbPlanView: buildClimbPlanView(nextElevationPreview),
       elevationStatus: nextElevationStatus,
       elevationPreview: nextElevationPreview,
       elevationGeometryKey: nextElevationGeometryKey,
@@ -1536,6 +1553,7 @@ Page({
         ? next.elevationMessage
         : this.data.elevationMessage,
       routeStats: buildRouteStats(this._confirmedPoints || [], preview, status),
+      climbPlanView: buildClimbPlanView(preview),
     })
   },
 
@@ -1659,6 +1677,17 @@ Page({
       context.closePath()
       context.fillStyle = '#E5E5EA'
       context.fill()
+
+      var climbPlan = preview.climb_plan
+      ;(climbPlan && Array.isArray(climbPlan.climbs) ? climbPlan.climbs : []).forEach(function (climb) {
+        var startKm = Number(climb.start_distance_m) / 1000
+        var endKm = Number(climb.end_distance_m) / 1000
+        if (!Number.isFinite(startKm) || !Number.isFinite(endKm) || endKm <= startKm) return
+        context.globalAlpha = 0.12
+        context.fillStyle = climbCategoryColor(climb.category)
+        context.fillRect(startKm / maxDistance * width, top, (endKm - startKm) / maxDistance * width, bottom - top)
+        context.globalAlpha = 1
+      })
 
       context.beginPath()
       context.moveTo(toX(profile[0]), toY(profile[0]))
@@ -2103,6 +2132,8 @@ if (typeof module !== 'undefined') {
     geometryKey: geometryKey,
     mapPointFromSketchViewport: mapPointFromSketchViewport,
     normalizeElevationPreview: normalizeElevationPreview,
+    buildClimbPlanView: buildClimbPlanView,
+    climbCategoryColor: climbCategoryColor,
     sketchViewportFromParts: sketchViewportFromParts,
     simplifyForSave: simplifyForSave,
     simplifyForDisplay: simplifyForDisplay,

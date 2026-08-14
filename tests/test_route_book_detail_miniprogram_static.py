@@ -55,7 +55,9 @@ def test_route_book_detail_page_shows_map_elevation_and_export_actions():
     assert 'wx:if="{{routePreviewVisible}}"' in wxml
 
     assert "buildStats(route)" in js
-    assert "climb / distance * 100" in js
+    assert "climb / distance * 100" not in js
+    assert "climbPlanUi.normalizeClimbPlan" in js
+    assert "这条路线由哪些坡组成" in wxml
     assert "NaN" not in js
     assert "drawElevationThumb" in js
     assert "缺少完整逐点海拔" in wxml
@@ -116,6 +118,16 @@ def test_route_book_detail_build_stats_uses_meter_units_and_zero_climb():
                   zeroClimb: detail.buildStats({ distance: 5000, climb: 0 }),
                   missingClimb: detail.buildStats({ distance: 5000, climb: null }),
                   badDistance: detail.buildStats({ distance: 0, climb: 120 }),
+                  withClimbs: detail.buildStats({
+                    distance: 18240.5,
+                    climb: 365.2,
+                    climb_plan: {
+                      algorithm_version: 'velo_climb_plan_v1',
+                      source: {},
+                      composition: { climb_count: 2 },
+                      climbs: [],
+                    },
+                  }),
                 }
                 process.stdout.write(JSON.stringify(rows))
                 """
@@ -131,15 +143,14 @@ def test_route_book_detail_build_stats_uses_meter_units_and_zero_climb():
     assert rows["longRoute"] == [
         {"v": "18.2", "u": "km", "k": "距离"},
         {"v": "365", "u": "m", "k": "爬升"},
-        {"v": "2.0", "u": "%", "k": "均坡"},
     ]
     assert rows["zeroClimb"] == [
         {"v": "5.00", "u": "km", "k": "距离"},
         {"v": "0", "u": "m", "k": "爬升"},
-        {"v": "0.0", "u": "%", "k": "均坡"},
     ]
     assert rows["missingClimb"] == [{"v": "5.00", "u": "km", "k": "距离"}]
     assert rows["badDistance"] == [{"v": "120", "u": "m", "k": "爬升"}]
+    assert rows["withClimbs"][-1] == {"v": "2", "u": "段", "k": "显著爬坡"}
 
 
 def test_route_requests_have_watchdogs_when_wechat_callbacks_are_lost():

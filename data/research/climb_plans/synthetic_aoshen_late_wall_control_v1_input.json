@@ -1,0 +1,41 @@
+{
+  "schema_version": "climb_plan_input_v1",
+  "route_key": "synthetic-aoshen-late-wall-control-v1",
+  "geometry_hash": "ee719130e037ad46b3df2355650d21d40c70862fc5e018d9143a413dc501ed79",
+  "geometry_status": "synthetic_1d_axis_not_geographic_geometry",
+  "geometry_hash_basis": "sha256:synthetic_1d_axis_v1:0,4225.4,5225.4",
+  "traversal": "forward",
+  "evidence_status": "synthetic_control_not_real_elevation_profile",
+  "source": {
+    "method": "synthetic_control_profile_v1",
+    "horizontal_resolution_m": null,
+    "residual_mad_m": 0
+  },
+  "profile": [
+    [0, 700],
+    [4225.4, 923.3],
+    [5225.4, 1043.3]
+  ],
+  "smoothing_variants": {
+    "80m": [
+      [0, 700],
+      [4225.4, 923.3],
+      [5225.4, 1043.3]
+    ],
+    "150m": [
+      [0, 700],
+      [4225.4, 923.3],
+      [5225.4, 1043.3]
+    ]
+  },
+  "rider_profile": {
+    "ftp_w": 280,
+    "rider_mass_kg": 70,
+    "bike_type": "road",
+    "power_curve_w": {
+      "300": 340,
+      "1200": 295,
+      "3600": 255
+    }
+  }
+}

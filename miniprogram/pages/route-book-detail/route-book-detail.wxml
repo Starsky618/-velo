@@ -20,6 +20,34 @@
       <view wx:else class="elevation-pending">缺少完整逐点海拔</view>
     </view>
 
+    <view wx:if="{{climbPlanView.ready}}" class="climb-plan-card">
+      <view class="section-title">这条路线由哪些坡组成</view>
+      <view class="climb-sequence">{{climbPlanView.sequence}}</view>
+      <view wx:if="{{climbPlanView.climbs.length}}" class="climb-list">
+        <view wx:for="{{climbPlanView.climbs}}" wx:key="order" class="climb-row">
+          <view class="climb-category" style="background: {{item.color}}">{{item.category}}</view>
+          <view class="climb-copy">
+            <view class="climb-main">第{{item.order}}坡 · {{item.shapeLabels || item.shape}}</view>
+            <view class="climb-sub">{{item.distance}} / 均坡{{item.grade}} / +{{item.gain}}</view>
+            <view class="climb-sub">路线第{{item.startKm}}–{{item.endKm}}km {{item.max500}} {{item.candidate ? '· 地形候选' : ''}}</view>
+          </view>
+        </view>
+      </view>
+      <view wx:else class="climb-empty">没有达到 500m / 3% / score 1500 的显著爬坡</view>
+      <view wx:if="{{climbPlanView.riderScenarios.length}}" class="rider-scenario-list">
+        <view wx:for="{{climbPlanView.riderScenarios}}" wx:key="key" class="rider-scenario-row">
+          <view class="rider-scenario-label">{{item.label}}</view>
+          <view class="rider-scenario-value">{{item.power}} · {{item.powerPerKg}} · {{item.time}}</view>
+          <view wx:if="{{item.timeRange}}" class="rider-scenario-range">情景范围 {{item.timeRange}}</view>
+          <view wx:if="{{item.climbTargets}}" class="rider-scenario-range">{{item.climbTargets}}</view>
+        </view>
+      </view>
+      <view wx:if="{{climbPlanView.riderLine}}" class="rider-climb-line">{{climbPlanView.riderLine}}</view>
+      <view wx:if="{{climbPlanView.riderContextLine}}" class="climb-boundary-hint">{{climbPlanView.riderContextLine}}</view>
+      <view wx:if="{{climbPlanView.boundaryStatus === 'ambiguous'}}" class="climb-boundary-hint">地形边界在不同平滑尺度下不稳定，类别仅作候选。</view>
+      <view wx:if="{{climbPlanView.boundaryStatus === 'not_assessed'}}" class="climb-boundary-hint">缺少多尺度边界复核，本次坡段边界尚未评估。</view>
+    </view>
+
     <view class="map-section">
       <view class="section-title">路线预览</view>
       <map

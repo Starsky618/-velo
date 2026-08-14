@@ -229,6 +229,7 @@ def preview_manual_drawn_snap(
 def preview_manual_drawn_elevation(
     payload: schemas.ManualDrawnElevationPreviewRequest,
     current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     check_rate_limit_by_user(
         current_user_id,
@@ -240,6 +241,8 @@ def preview_manual_drawn_elevation(
         return service.preview_manual_drawn_elevation(
             points=payload.points,
             coordinate_system=payload.coordinate_system,
+            db=db,
+            current_user_id=current_user_id,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))

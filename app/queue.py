@@ -51,10 +51,9 @@ redis_conn = Redis.from_url(
     socket_keepalive_options={},
 )
 
-# 热图会在请求线程上读写 Redis，还有后台续租线程。通用 redis_conn
-# 不设 socket_timeout，因为 RQ 的阻塞取队列需要长读；热图必须使用
-# 独立有界连接池，否则 Redis 网络黑洞会把请求和续租线程永久卡住。
-heatmap_redis_conn = Redis.from_url(
+# 请求线程只能使用这个有界连接池；通用 redis_conn 不设 socket_timeout，
+# 因为 RQ 的阻塞取队列需要长读。网络黑洞不能永久卡住 HTTP 请求。
+request_redis_conn = Redis.from_url(
     settings.REDIS_URL,
     decode_responses=False,
     socket_keepalive=True,
@@ -63,6 +62,9 @@ heatmap_redis_conn = Redis.from_url(
     socket_timeout=1.0,
     retry_on_timeout=False,
 )
+
+# 兼容现有热图调用名；两者是同一个 request-safe client，不创建第二套配置。
+heatmap_redis_conn = request_redis_conn
 
 
 # RQ Queue 实例——v5 用到的所有队列在此 expose，禁止 caller 就地构造

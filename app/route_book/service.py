@@ -37,12 +37,18 @@ from app.elevation.route_elevation import (
     build_route_elevation_result,
     route_elevation_metadata,
 )
+from app.elevation.climb_planner import (
+    CLIMB_PLAN_ALGORITHM_VERSION,
+    build_climb_plan,
+    build_rider_climb_plan,
+)
 from app.parsing.fit_parser import FITParser, FITParseError
 from app.parsing.geo_math import haversine
 from app.parsing.gpx_parser import GPXParser, GPXParseError
 from app.route_book.elevation_quality import has_trusted_route_elevation
 from app.route_book.elevation_workflow import write_route_elevation_result
 from app.route_book.export_service import can_export_route
+from app.route_book import schemas as route_book_schemas
 from app.route_book.models import (
     RouteBook,
     RouteExportArtifact,
@@ -55,6 +61,7 @@ from app.route_book.tencent_direction import plan_tencent_bicycling_route
 from app.segment.coord_convert import convert_points_to_wgs84
 from app.storage.local import LocalStorage
 from app.user.models import User
+from app.user.service_stats import get_cached_user_power_curve
 
 
 logger = logging.getLogger(__name__)
@@ -718,6 +725,9 @@ def create_route_book_from_manual_drawn(
 def preview_manual_drawn_elevation(
     points: list[tuple[float, float]],
     coordinate_system: str = "gcj02",
+    *,
+    db: Session | None = None,
+    current_user_id: int | None = None,
 ) -> dict:
     """为已贴路的草稿生成海拔预览，不开启数据库事务或写正式路线。"""
     started_at = time.perf_counter()
@@ -757,12 +767,22 @@ def preview_manual_drawn_elevation(
         len(points_wgs84),
         (time.perf_counter() - started_at) * 1000,
     )
+    climb_plan = elevation_result.climb_plan or _empty_climb_plan(
+        distance_m=float(payload["distance"]),
+        source_method=ROUTE_ELEVATION_METHOD,
+    )
     return {
         "coordinate_system": coordinate_system,
         "distance_m": float(payload["distance"]),
         "climb_m": elevation_result.climb,
         "descent_m": elevation_result.descent,
         "elevation_profile": elevation_result.profile,
+        "climb_plan": climb_plan,
+        "rider_climb_plan": rider_climb_plan_for_user(
+            db,
+            current_user_id=current_user_id,
+            climb_plan=climb_plan,
+        ),
     }
 
 
@@ -815,7 +835,15 @@ def get_route_book_detail(
     current_user_id: int | None = None,
 ) -> tuple[RouteBook, bool, list[str], str | None]:
     route = get_route_book(db, route_book_id, current_user_id)
-    _ensure_route_preview_points_for_detail(db, route)
+    version = _ensure_route_preview_points_for_detail(db, route)
+    climb_plan = climb_plan_from_version(version)
+    if climb_plan is not None:
+        route._climb_plan_override = climb_plan
+        route._rider_climb_plan_override = rider_climb_plan_for_user(
+            db,
+            current_user_id=current_user_id,
+            climb_plan=climb_plan,
+        )
     export_ready, export_formats, export_block_reason = _route_book_export_state(
         db,
         route,
@@ -824,9 +852,11 @@ def get_route_book_detail(
     return route, export_ready, export_formats, export_block_reason
 
 
-def _ensure_route_preview_points_for_detail(db: Session, route: RouteBook) -> None:
+def _ensure_route_preview_points_for_detail(
+    db: Session, route: RouteBook
+) -> RouteVersion | None:
     if route.current_version_id is None:
-        return
+        return None
     row = (
         db.query(RouteVersion, func.ST_AsText(RouteVersion.reference_line_snapshot))
         .filter(
@@ -836,13 +866,85 @@ def _ensure_route_preview_points_for_detail(db: Session, route: RouteBook) -> No
         .first()
     )
     if row is None:
-        return
+        return None
     version, reference_line_wkt = row
     preview_points = _preview_points_from_wkt(reference_line_wkt) if reference_line_wkt else []
     if not preview_points:
         preview_points = _preview_points_from_geometry(version.reference_line_snapshot)
     if preview_points:
         route._preview_points_override = preview_points
+    return version
+
+
+def climb_plan_from_version(version: RouteVersion | None) -> dict | None:
+    if version is None:
+        return None
+    try:
+        metadata = json.loads(version.navigation_metadata_json or "{}")
+    except (TypeError, json.JSONDecodeError):
+        metadata = {}
+    candidate = metadata.get("climb_plan") if isinstance(metadata, dict) else None
+    if not isinstance(candidate, dict):
+        return None
+    source = candidate.get("source") if isinstance(candidate.get("source"), dict) else {}
+    profile_key = str(source.get("profile_hash") or "missing")[:16]
+    if candidate.get("algorithm_version") != CLIMB_PLAN_ALGORITHM_VERSION:
+        logger.warning(
+            "climb_plan stored_unsupported version=%s profile_key=%s",
+            candidate.get("algorithm_version"),
+            profile_key,
+        )
+        return None
+    try:
+        validated = route_book_schemas.RouteClimbPlanResponse.model_validate(candidate)
+    except Exception as exc:
+        logger.warning(
+            "climb_plan stored_invalid profile_key=%s error=%s",
+            profile_key,
+            type(exc).__name__,
+        )
+        return None
+    return validated.model_dump(mode="json")
+
+
+def rider_climb_plan_for_user(
+    db: Session | None,
+    *,
+    current_user_id: int | None,
+    climb_plan: dict,
+) -> dict | None:
+    if db is None or current_user_id is None:
+        return None
+    user = db.query(User).filter(User.id == current_user_id).first()
+    if user is None:
+        return None
+    power_curve = None
+    if user.ftp and user.weight:
+        try:
+            cached_curve = get_cached_user_power_curve(current_user_id, "last_90_days")
+            power_curve = cached_curve.get("buckets") if cached_curve else None
+        except Exception as exc:
+            # request-safe Redis 已有 1 秒硬超时；任何失败都退回 FTP+体重。
+            logger.warning(
+                "route_climb_rider_plan power_curve_cache_unavailable error=%s",
+                type(exc).__name__,
+            )
+    return build_rider_climb_plan(
+        climb_plan,
+        ftp_w=user.ftp,
+        rider_mass_kg=user.weight,
+        bike_type=user.bike_type,
+        power_curve_w=power_curve,
+    )
+
+
+def _empty_climb_plan(*, distance_m: float, source_method: str) -> dict:
+    return build_climb_plan(
+        [0.0, max(float(distance_m), 1.0)],
+        [0.0, 0.0],
+        source_method=source_method,
+        horizontal_resolution_m=GLO30_HORIZONTAL_RESOLUTION_M,
+    )
 
 
 def _preview_points_from_geometry(value: object) -> list[list[float]]:
