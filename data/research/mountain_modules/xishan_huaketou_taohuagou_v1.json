@@ -1,0 +1,24 @@
+{
+  "schema_version": "mountain_module_spec_v2",
+  "module_key": "taiyuan_xishan_huaketou_taohuagou",
+  "module_name": "化客头—桃花沟起伏",
+  "module_role": "destination_block",
+  "artifact_location": "outputs/xishan-huaketou-taohuagou-module-v1",
+  "status": "research_shadow_pending_glo_profile_export",
+  "census_batch_id": "xishan-20260813-v1",
+  "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+  "heat_snapshot_cohort": "xishan-20260813-v1",
+  "reference_axis": {"source_observation_id": 6, "source_segment_id": "22350861", "source_geometry_hash": "83c54e668da078a017ef48544fa3e76e145b03cfa4c49e1de1f6174abc03996e", "direction_semantics": {"forward": "huaketou_to_taohuagou", "reverse": "taohuagou_to_huaketou"}, "selection_basis": "complete named rolling corridor"},
+  "source_selection": {"mode": "exact_observation_ids", "observation_ids": [6, 58], "observation_set_sha256": "c1b4488b8eaa0c5e91d337f765241ffc07db82201495e7b918aa06e8b5194e07"},
+  "holdout_observation_ids": [],
+  "excluded_source_segment_ids": [],
+  "axis_profile_observation_id": 6,
+  "role_requirements": [
+    {"role_key": "full_corridor", "observation_id": 6, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.99},
+    {"role_key": "reverse_local", "observation_id": 58, "expected_direction": "reverse", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.15}
+  ],
+  "route_blocks": [{"block_key_suffix": "full-corridor", "name_suffix": "完整起伏连接", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 6, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "full-corridor:huaketou", "exit_port_key": "full-corridor:taohuagou"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["完整来源只计一次距离和爬降", "o58 only contributes reverse interval heat"]}],
+  "connections": [],
+  "route_assembly_boundary": {"segment_endpoint_semantics": "observation_boundary_not_road_terminal", "inter_module_pattern": "destination_blocks_plus_transit_path", "transit_accounting": "provider route first; source observations only project heat"},
+  "boundary": "Stored GLO totals are reconciled; full profile export is pending read-only production access."
+}

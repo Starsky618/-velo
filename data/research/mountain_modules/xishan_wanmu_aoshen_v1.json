@@ -1,0 +1,11 @@
+{
+  "schema_version": "mountain_module_spec_v2", "module_key": "taiyuan_xishan_wanmu_aoshen", "module_name": "万亩—奥申主爬", "module_role": "destination_block", "artifact_location": "outputs/xishan-wanmu-aoshen-module-v1", "status": "research_shadow_pending_glo_profile_export",
+  "census_batch_id": "xishan-20260813-v1", "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1", "heat_snapshot_cohort": "xishan-20260813-v1",
+  "reference_axis": {"source_observation_id": 27, "source_segment_id": "28690246", "source_geometry_hash": "355c28134b901c58d5ed391b73faeb72b9bff7ba60ccb33750563b4b5b015742", "direction_semantics": {"forward": "wanmu_side_to_aoshen_upper", "reverse": "aoshen_upper_to_wanmu_side"}, "selection_basis": "complete named Xishan tourism-road Aoshen climb"},
+  "source_selection": {"mode": "exact_observation_ids", "observation_ids": [27, 103], "observation_set_sha256": "6fda795f59d3e79621861f5045c7f4a177daaacaf00bf20c1b8ae696738f9fe9"},
+  "holdout_observation_ids": [7], "excluded_source_segment_ids": [], "axis_profile_observation_id": 27,
+  "role_requirements": [{"role_key": "full_ascent", "observation_id": 27, "expected_direction": "forward", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.99}, {"role_key": "aoshen_to_wanmu_descent", "observation_id": 103, "expected_direction": "reverse", "min_source_coverage_ratio": 0.99, "min_axis_coverage_ratio": 0.66}],
+  "route_blocks": [{"block_key_suffix": "full-ascent", "name_suffix": "万亩侧—奥申完整主爬", "block_role": "destination_traversal", "traversals": [{"resource_observation_id": 27, "min_resource_alignment_ratio": 0.99, "direction": "forward", "start_measure": "axis_start", "end_measure": "axis_end", "entry_port_key": "full-ascent:wanmu-side", "exit_port_key": "full-ascent:aoshen-upper"}], "recommendation_status": "evidence_candidate", "recommendation_reasons": ["o27 is the complete main axis", "o103 is reverse partial heat and is not a second road"]}],
+  "connections": [], "route_assembly_boundary": {"segment_endpoint_semantics": "observation_boundary_not_road_terminal", "inter_module_pattern": "destination_blocks_plus_transit_path", "transit_accounting": "provider route first; source observations only project heat"},
+  "boundary": "The curated Qichunge climb and o7 local reverse link are related destination knowledge but are not this physical axis."
+}

@@ -1,0 +1,70 @@
+{
+  "schema_version": "xishan_supplemental_resource_ledger_v1",
+  "ledger_key": "xishan_remaining_supplemental_resources_v1",
+  "active_selection_boundary": {
+    "source_slice_sha256": "ea2043afdb48bad87107c33659de03597511fce7cf5e12dc52100e7f1fe3cf0c",
+    "exact_active_observation_count": 81,
+    "rule": "Supplemental resources do not become active-81 facts and are never mixed into active GLO or heat reconciliation."
+  },
+  "resources": [
+    {
+      "resource_key": "zaodu_full_climb_source_34856789",
+      "route_name": "枣杜公路全爬",
+      "resource_status": "supplemental_source_snapshot_with_sparse_provider_candidate",
+      "source_segment_id": "34856789",
+      "source_observed_at": "2026-08-11T16:07:44.669Z",
+      "source_measurements": {"distance_m": 8797.099609375, "source_elevation_gain_m_not_glo": 446.2000122070313, "average_gradient_pct": 5.033480167388916},
+      "source_heat": {"athlete_count": 30, "effort_count": 48, "star_count": 1},
+      "source_ports_wgs84": {"start": [112.380439, 37.67387], "end": [112.339045, 37.721736]},
+      "provider_candidate": {"profile": "driving", "distance_m": 8846.0, "point_count": 536, "candidate_sha256": "5c0fc7b8de93a2d9937d6458bec4010214d72d58533214d47a1c7794d870190d", "review_status": "map_review_passed_source_reference_unverified"},
+      "active_81_local_witnesses": [65, 66],
+      "pending": ["complete source geometry identity", "stored GLO-30 profile and totals", "provider access and road-state verification", "connection from the south network to the road ports"],
+      "boundary": "The active observations prove two local climbs only; the full road candidate remains supplemental and cannot enter hard-feasible route choices."
+    },
+    {
+      "resource_key": "duguan_new_tourism_road_source_37687861",
+      "route_name": "杜关线新修旅游公路",
+      "resource_status": "supplemental_source_snapshot_with_sparse_provider_candidate",
+      "source_segment_id": "37687861",
+      "source_observed_at": "2026-08-11T16:07:24.132Z",
+      "source_measurements": {"distance_m": 14910.7001953125, "source_elevation_gain_m_not_glo": 303.0, "average_gradient_pct": 1.7920000553131104},
+      "source_heat": {"athlete_count": 37, "effort_count": 50, "star_count": 1},
+      "source_ports_wgs84": {"start": [112.195128, 37.734213], "end": [112.31999, 37.801561]},
+      "provider_candidate": {"profile": "driving", "distance_m": 15034.0, "point_count": 313, "candidate_sha256": "fc5529525a8a298177dae53f761b33834bab7bb9d000fa66784a26b30786c1d7", "review_status": "map_review_passed_source_reference_unverified"},
+      "pending": ["complete source geometry identity", "stored GLO-30 profile and totals", "provider access and current construction-state verification", "natural-port connector into classic Duguan/Pianqiaogou"],
+      "boundary": "This is physically distinct from active o23 classic Duerping-Taigu Duguan and cannot borrow o23 heat or GLO totals."
+    },
+    {
+      "resource_key": "qichunge_curated_destination",
+      "route_name": "启春阁（万亩单独目的地）",
+      "resource_status": "curated_route_geometry_outside_active_evidence_binding",
+      "curated_artifacts": ["content/routes/wanmu/meta.json", "content/routes/wanmu/track.gpx", "content/routes/wanmu/guide.md"],
+      "curated_measurements": {"distance_km": 4.17, "climb_m_legacy_not_glo": 263.0},
+      "pending": ["active source-observation binding", "stored GLO-30 facts", "current access and surface verification"],
+      "boundary": "Keep the dedicated destination explanation and GPX, but do not add its legacy climb figure to active-81 route totals."
+    },
+    {
+      "resource_key": "miaoqianshan_curated_destination",
+      "route_name": "庙前山（228 台）",
+      "resource_status": "curated_destination_with_probable_active_road_candidate",
+      "curated_artifacts": ["content/routes/miaoqianshan/meta.json", "content/routes/miaoqianshan/guide.md", "content/routes/miaoqianshan/01_庙前山_Tim拍_山顶228台发射塔群.jpg", "content/routes/miaoqianshan/02_庙前山_Tim拍_观景台俯瞰太原全城.jpg"],
+      "probable_active_candidate": {"source_observation_id": 73, "source_segment_id": "35236008", "source_name": "3,5 km 1812 top", "distance_m": 3648.2, "glo_climb_m": 212.5, "glo_descent_m": 0.0, "athlete_count": 191, "effort_count": 471, "star_count": 10},
+      "identity_basis": "o73 ends near the documented Miaoqianshan ridge and names an 1812 top; the source itself does not name Miaoqianshan or 228 station.",
+      "pending": ["landmark-to-road endpoint binding", "current access and surface verification"],
+      "boundary": "Explain the destination and the strongest road candidate separately until identity binding is closed."
+    },
+    {
+      "resource_key": "xishan_tourism_road_official_backbone",
+      "route_name": "西山旅游公路南北主脊",
+      "resource_status": "official_topology_without_one_frozen_end_to_end_geometry",
+      "official_sequences": [
+        {"scope": "promoted_west_riding_sequence", "sequence": ["晋祠", "牛家口", "天龙山", "蒙山", "凤颐谷", "田家沟", "狼坡", "杜儿坪桃花沟", "玉泉山", "马头水", "崛围山", "汾河二库"], "source_url": "https://www.jcgov.gov.cn/dtxx/zxts/202410/t20241017_2049628.shtml"},
+        {"scope": "2024_race_west_stage", "sequence": ["太原古县城", "天龙山路", "太原旅游公路西段", "太古路", "杜关线", "太原旅游公路西段", "S104", "柴化路", "玉兰路", "玉泉山"], "source_url": "https://www.sx.news.cn/20241029/905056efee2a4bd98763517b4fd3aad4/c.html"}
+      ],
+      "pending": ["one frozen south-to-north provider geometry", "reverse traversal replay", "river-side return geometry for a closed city loop", "current access, safety and works verification"],
+      "boundary": "Official place order proves a backbone concept, not a hard-feasible route or exact distance/climb."
+    }
+  ],
+  "accounting": {"active_81_facts_added": 0, "database_write_count": 0, "glo_recomputation_count": 0, "strava_request_count": 0, "new_provider_request_count": 0},
+  "boundary": "Supplemental ledger only; no resource here is published to RouteBook or merged into active-81 hard facts."
+}

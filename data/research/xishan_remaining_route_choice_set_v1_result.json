@@ -1,0 +1,2025 @@
+{
+  "algorithm_version": "route_pattern_assembly_v1",
+  "candidates": [
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 436,
+          "athlete_rank": 13,
+          "comparison_population": 81,
+          "effort_count": 1268,
+          "effort_rank": 15,
+          "efforts_per_athlete": 2.908,
+          "source_name": "西山旅游公路 奥申正爬",
+          "source_observation_id": 27,
+          "source_segment_id": "28690246",
+          "star_count": 19,
+          "star_rank": 13
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "short-wanmu-aoshen-main",
+      "candidate_sha256": "26fedc275e73020e2a0f75f8578670113c0057ea96abdeb0b716364bb9e3c2ac",
+      "choice_name": "万亩侧—奥申主爬",
+      "comparison_scope": "short_destination_core",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "short-wanmu-aoshen-main",
+        "climb_m": 343.3,
+        "components": [
+          {
+            "climb_m": 343.3,
+            "component_key": "short-aoshen:o27",
+            "descent_m": 0.0,
+            "distance_km": 5.225,
+            "observed_distance_km": 5.225,
+            "reach_lower_person_km": 2278.274,
+            "reach_upper_person_km": 2278.274,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 6.079933,
+        "connector_ratio": 0.0,
+        "descent_m": 0.0,
+        "distance_km": 5.225,
+        "evidence_coverage": 1.0,
+        "heat_vector_sha256": "41d1f16fcdfb12c7765d82e72e6c48cc33426720fdc991b4f738883557258b0d",
+        "intent_proxy": 2.996,
+        "intent_proxy_coverage": 1.0,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 1.0,
+        "reach_lower_person_km": 2278.274,
+        "reach_uncertainty_width_person_km": 0.0,
+        "reach_upper_person_km": 2278.274,
+        "repeat_proxy": 1.908,
+        "repeat_proxy_coverage": 1.0,
+        "snapshot_comparability": "same_cohort",
+        "uncertainty": 0.0,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 343.3,
+          "component_extent_m": [
+            0.0,
+            5225.4
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "927bb3b901a6683f694924cd99712efe2f5ec9ca85ff02d4ae355f28283da528",
+          "descent_m": 0.0,
+          "direction": "forward",
+          "distance_km": 5.225,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 22,
+          "kind": "source_corridor",
+          "occurrence_id": "short-aoshen:o27",
+          "source_geometry_hash": "355c28134b901c58d5ed391b73faeb72b9bff7ba60ccb33750563b4b5b015742",
+          "source_name": "西山旅游公路 奥申正爬",
+          "source_observation_id": 27,
+          "source_segment_id": "28690246",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为5.225公里、+343.3米/-0.0米。",
+          "只含万亩侧到奥申上端的来源主轴；启春阁支线、进山接驳、狼坡与返程另算。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 65.7,
+          "directional_evidence_coverage": 1.0,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 0.0
+        },
+        "suitable_for": "适合愿意承担约5.2公里山区内部行程、约343米累计爬升和约0米累计下降，并接受整趟爬升占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "西山旅游公路 奥申正爬：436名骑手（第13）、1268次（第15）、收藏19（第13），人均记录2.91次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖100.0%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 386,
+          "athlete_rank": 17,
+          "comparison_population": 81,
+          "effort_count": 799,
+          "effort_rank": 29,
+          "efforts_per_athlete": 2.07,
+          "source_name": "狼坡",
+          "source_observation_id": 38,
+          "source_segment_id": "29621779",
+          "star_count": 30,
+          "star_rank": 5
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "short-langpo-main",
+      "candidate_sha256": "4378472edfa37e1a6d2a956748c293ab26c8f85d447e51ce85f0fb0949c2ef51",
+      "choice_name": "狼坡完整主爬",
+      "comparison_scope": "short_destination_core",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "short-langpo-main",
+        "climb_m": 271.7,
+        "components": [
+          {
+            "climb_m": 271.7,
+            "component_key": "short-langpo:o38",
+            "descent_m": 0.0,
+            "distance_km": 3.415,
+            "observed_distance_km": 3.415,
+            "reach_lower_person_km": 1356.48,
+            "reach_upper_person_km": 2044.043,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 5.986392,
+        "connector_ratio": 0.0,
+        "descent_m": 0.0,
+        "distance_km": 3.415,
+        "evidence_coverage": 1.0,
+        "heat_vector_sha256": "a4cfeae196a4096aff8263334fa8a9b6dce50c52087043d141ac465e9211f288",
+        "intent_proxy": 2.290074,
+        "intent_proxy_coverage": 1.0,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.867063,
+        "reach_lower_person_km": 1356.48,
+        "reach_uncertainty_width_person_km": 687.563,
+        "reach_upper_person_km": 2044.043,
+        "repeat_proxy": 0.838757,
+        "repeat_proxy_coverage": 1.0,
+        "snapshot_comparability": "same_cohort",
+        "uncertainty": 0.333463,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 271.7,
+          "component_extent_m": [
+            0.0,
+            3414.9
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "e2e27f452e781d21f054e839742394e5fcdc1b8609ff38499cb5e24e8edefe91",
+          "descent_m": 0.0,
+          "direction": "forward",
+          "distance_km": 3.415,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 28,
+          "kind": "source_corridor",
+          "occurrence_id": "short-langpo:o38",
+          "source_geometry_hash": "f352aba455aceb8c5c377a3639ede8b7b2a5b1f3b149d259d01c0421dd674bc1",
+          "source_name": "狼坡",
+          "source_observation_id": 38,
+          "source_segment_id": "29621779",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为3.415公里、+271.7米/-0.0米。",
+          "只含狼坡主轴，不含到达狼坡、桃花沟串联或返程。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 79.6,
+          "directional_evidence_coverage": 1.0,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 0.0
+        },
+        "suitable_for": "适合愿意承担约3.4公里山区内部行程、约272米累计爬升和约0米累计下降，并接受整趟爬升占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "狼坡：386名骑手（第17）、799次（第29）、收藏30（第5），人均记录2.07次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖100.0%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 170,
+          "athlete_rank": 44,
+          "comparison_population": 81,
+          "effort_count": 471,
+          "effort_rank": 38,
+          "efforts_per_athlete": 2.771,
+          "source_name": "偏桥沟(桃花沟偏桥沟岔口到杜关线铁门)",
+          "source_observation_id": 13,
+          "source_segment_id": "23813357",
+          "star_count": 15,
+          "star_rank": 18
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "short-pianqiaogou-main",
+      "candidate_sha256": "a4d14227f6472cc497f6eef0b4ed5efe4e4a8a3ab20b95ecbd430fc8bd2598ab",
+      "choice_name": "偏桥沟完整爬升",
+      "comparison_scope": "short_destination_core",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "short-pianqiaogou-main",
+        "climb_m": 305.8,
+        "components": [
+          {
+            "climb_m": 305.8,
+            "component_key": "short-pianqiao:o13",
+            "descent_m": 0.0,
+            "distance_km": 4.34,
+            "observed_distance_km": 4.34,
+            "reach_lower_person_km": 737.813,
+            "reach_upper_person_km": 1366.908,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 5.141664,
+        "connector_ratio": 5e-06,
+        "descent_m": 0.0,
+        "distance_km": 4.34,
+        "evidence_coverage": 0.999995,
+        "heat_vector_sha256": "23e906de4f5910cdde58e27582af52605ef564689e75a6745bae1a4075c735bf",
+        "intent_proxy": 0.145899,
+        "intent_proxy_coverage": 0.999995,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.716728,
+        "reach_lower_person_km": 737.813,
+        "reach_uncertainty_width_person_km": 629.095,
+        "reach_upper_person_km": 1366.908,
+        "repeat_proxy": 1.554049,
+        "repeat_proxy_coverage": 0.999995,
+        "snapshot_comparability": "same_cohort",
+        "uncertainty": 0.605452,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 305.8,
+          "component_extent_m": [
+            0.0,
+            4340.1
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "848250ac8ca3a69723fabf126847318e24134b348f9a33eb4e7b65c2010c7045",
+          "descent_m": 0.0,
+          "direction": "forward",
+          "distance_km": 4.34,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 8,
+          "kind": "source_corridor",
+          "occurrence_id": "short-pianqiao:o13",
+          "source_geometry_hash": "2968b1c37a68800c09941cfe9df923698d5b3aab4e178328188c6e60b65fa69d",
+          "source_name": "偏桥沟(桃花沟偏桥沟岔口到杜关线铁门)",
+          "source_observation_id": 13,
+          "source_segment_id": "23813357",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为4.340公里、+305.8米/-0.0米。",
+          "只含桃花沟岔口到杜关线铁门的偏桥沟轴；不含桃花沟、经典杜关及回城。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 70.5,
+          "directional_evidence_coverage": 0.999995,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 5e-06
+        },
+        "suitable_for": "适合愿意承担约4.3公里山区内部行程、约306米累计爬升和约0米累计下降，并接受整趟爬升占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "偏桥沟(桃花沟偏桥沟岔口到杜关线铁门)：170名骑手（第44）、471次（第38）、收藏15（第18），人均记录2.77次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖100.0%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 131,
+          "athlete_rank": 54,
+          "comparison_population": 81,
+          "effort_count": 279,
+          "effort_rank": 53,
+          "efforts_per_athlete": 2.13,
+          "source_name": "杜关线 杜儿坪-太古路",
+          "source_observation_id": 23,
+          "source_segment_id": "27517293",
+          "star_count": 8,
+          "star_rank": 27
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "short-duguan-classic",
+      "candidate_sha256": "735288daa1206817c6c653c42dbe5628147fa23369f51bb1d52fbb2030e836f1",
+      "choice_name": "经典杜关线杜儿坪—太古路",
+      "comparison_scope": "short_destination_core",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "short-duguan-classic",
+        "climb_m": 551.2,
+        "components": [
+          {
+            "climb_m": 551.2,
+            "component_key": "short-duguan:o23",
+            "descent_m": 12.6,
+            "distance_km": 9.286,
+            "observed_distance_km": 9.286,
+            "reach_lower_person_km": 1412.488,
+            "reach_upper_person_km": 2501.791,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 5.006515,
+        "connector_ratio": 3e-06,
+        "descent_m": 12.6,
+        "distance_km": 9.286,
+        "evidence_coverage": 0.999997,
+        "heat_vector_sha256": "0c3696a29882a5b4989441bd99e016d3c9a9066268fd957ef2b401f33672ee06",
+        "intent_proxy": 1.548486,
+        "intent_proxy_coverage": 0.999997,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.865324,
+        "reach_lower_person_km": 1412.488,
+        "reach_uncertainty_width_person_km": 1089.303,
+        "reach_upper_person_km": 2501.791,
+        "repeat_proxy": 1.093026,
+        "repeat_proxy_coverage": 0.999997,
+        "snapshot_comparability": "same_cohort",
+        "uncertainty": 0.381594,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 551.2,
+          "component_extent_m": [
+            0.0,
+            9286.2
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "b094e65179df29f8cd92e36a29b85e84a9dd0db240a20f2e232dbca197b11dc6",
+          "descent_m": 12.6,
+          "direction": "forward",
+          "distance_km": 9.286,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 18,
+          "kind": "source_corridor",
+          "occurrence_id": "short-duguan:o23",
+          "source_geometry_hash": "685039ca8e2128589929f5d8708841037514cbc166f9611499f60158ed391b38",
+          "source_name": "杜关线 杜儿坪-太古路",
+          "source_observation_id": 23,
+          "source_segment_id": "27517293",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为9.286公里、+551.2米/-12.6米。",
+          "只含经典杜关完整来源轴；不等于新修的 14.9 公里杜关旅游路，也不含两端接驳。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 59.4,
+          "directional_evidence_coverage": 0.999997,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 3e-06
+        },
+        "suitable_for": "适合愿意承担约9.3公里山区内部行程、约551米累计爬升和约13米累计下降，并接受整趟爬升占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "杜关线 杜儿坪-太古路：131名骑手（第54）、279次（第53）、收藏8（第27），人均记录2.13次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖100.0%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 82,
+          "athlete_rank": 60,
+          "comparison_population": 81,
+          "effort_count": 132,
+          "effort_rank": 60,
+          "efforts_per_athlete": 1.61,
+          "source_name": "王封一线天(沟底到景区石碑)",
+          "source_observation_id": 19,
+          "source_segment_id": "25239069",
+          "star_count": 5,
+          "star_rank": 34
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "short-wangfeng-yixiantian",
+      "candidate_sha256": "5ac18ace96101b8f221ef08e20b5621bb51899457828d368d9d5640bcd9cbb72",
+      "choice_name": "王封一线天沟底—景区石碑",
+      "comparison_scope": "short_destination_core",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "short-wangfeng-yixiantian",
+        "climb_m": 167.5,
+        "components": [
+          {
+            "climb_m": 167.5,
+            "component_key": "short-yixiantian:o19",
+            "descent_m": 0.0,
+            "distance_km": 2.598,
+            "observed_distance_km": 2.598,
+            "reach_lower_person_km": 213.044,
+            "reach_upper_person_km": 426.088,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 4.418841,
+        "connector_ratio": 0.0,
+        "descent_m": 0.0,
+        "distance_km": 2.598,
+        "evidence_coverage": 1.0,
+        "heat_vector_sha256": "ac0be9fb5c238d2f7f0525843954621f50759f8f3a993bfca3c82c6954537798",
+        "intent_proxy": 1.099,
+        "intent_proxy_coverage": 1.0,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.704,
+        "reach_lower_person_km": 213.044,
+        "reach_uncertainty_width_person_km": 213.044,
+        "reach_upper_person_km": 426.088,
+        "repeat_proxy": 0.598,
+        "repeat_proxy_coverage": 1.0,
+        "snapshot_comparability": "same_cohort",
+        "uncertainty": 0.687105,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 167.5,
+          "component_extent_m": [
+            0.0,
+            2598.1
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "04a5f085575d2cb9dce245039e9fcf9f8f184458e1c40c3b3b9d8b9f0f464b09",
+          "descent_m": 0.0,
+          "direction": "forward",
+          "distance_km": 2.598,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 14,
+          "kind": "source_corridor",
+          "occurrence_id": "short-yixiantian:o19",
+          "source_geometry_hash": "8bac0283a1b92931cce62117916df0cf8c71a04339af4265842eba4218846adf",
+          "source_name": "王封一线天(沟底到景区石碑)",
+          "source_observation_id": 19,
+          "source_segment_id": "25239069",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为2.598公里、+167.5米/-0.0米。",
+          "只含一线天景观核心轴；大窊村接驳、豆腐店延伸和返程另算。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 64.5,
+          "directional_evidence_coverage": 1.0,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 0.0
+        },
+        "suitable_for": "适合愿意承担约2.6公里山区内部行程、约168米累计爬升和约0米累计下降，并接受整趟爬升占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "王封一线天(沟底到景区石碑)：82名骑手（第60）、132次（第60）、收藏5（第34），人均记录1.61次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖100.0%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 220,
+          "athlete_rank": 37,
+          "comparison_population": 81,
+          "effort_count": 461,
+          "effort_rank": 40,
+          "efforts_per_athlete": 2.095,
+          "source_name": "汾河二库阁楼-马头水",
+          "source_observation_id": 40,
+          "source_segment_id": "29860666",
+          "star_count": 8,
+          "star_rank": 27
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "short-erku-gelou-matoushui",
+      "candidate_sha256": "3115c8b977e8a71e79b38457f20f7ef7f7eda60f2c923f99671e078f2ada170e",
+      "choice_name": "汾河二库阁楼—马头水",
+      "comparison_scope": "short_destination_core",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "short-erku-gelou-matoushui",
+        "climb_m": 119.2,
+        "components": [
+          {
+            "climb_m": 119.2,
+            "component_key": "short-erku:o40",
+            "descent_m": 57.0,
+            "distance_km": 5.653,
+            "observed_distance_km": 5.652,
+            "reach_lower_person_km": 1243.547,
+            "reach_upper_person_km": 1243.547,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 5.398163,
+        "connector_ratio": 2e-05,
+        "descent_m": 57.0,
+        "distance_km": 5.653,
+        "evidence_coverage": 0.99998,
+        "heat_vector_sha256": "fc5f57bfdb3f40e5215ec991c3c761125c8017ab5718728853b01334ce809306",
+        "intent_proxy": 2.197,
+        "intent_proxy_coverage": 0.99998,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.99998,
+        "reach_lower_person_km": 1243.547,
+        "reach_uncertainty_width_person_km": 0.0,
+        "reach_upper_person_km": 1243.547,
+        "repeat_proxy": 1.095,
+        "repeat_proxy_coverage": 0.99998,
+        "snapshot_comparability": "same_cohort",
+        "uncertainty": 0.0,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 119.2,
+          "component_extent_m": [
+            0.0,
+            5652.6
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "941f9c48d9792ce5470f7a8f095b3c9b1b08c298af65c3e7b3485693587ee8b7",
+          "descent_m": 57.0,
+          "direction": "forward",
+          "distance_km": 5.653,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 30,
+          "kind": "source_corridor",
+          "occurrence_id": "short-erku:o40",
+          "source_geometry_hash": "e615b7434e6b2f219218a0c66f68d4d111f6b6c70a04a6e5a56d171573e188f4",
+          "source_name": "汾河二库阁楼-马头水",
+          "source_observation_id": 40,
+          "source_segment_id": "29860666",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为5.653公里、+119.2米/-57.0米。",
+          "只含阁楼到马头水的山中起伏走廊；不含市区到二库、横岭或返程。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 21.1,
+          "directional_evidence_coverage": 0.99998,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 2e-05
+        },
+        "suitable_for": "适合愿意承担约5.7公里山区内部行程、约119米累计爬升和约57米累计下降，并接受整趟爬升占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "汾河二库阁楼-马头水：220名骑手（第37）、461次（第40）、收藏8（第27），人均记录2.10次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖100.0%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 67,
+          "athlete_rank": 62,
+          "comparison_population": 81,
+          "effort_count": 110,
+          "effort_rank": 64,
+          "efforts_per_athlete": 1.642,
+          "source_name": "玉泉山爬坡",
+          "source_observation_id": 15,
+          "source_segment_id": "24146976",
+          "star_count": 34,
+          "star_rank": 3
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "short-yuquanshan-main",
+      "candidate_sha256": "d5c6322390feb0e6a9785e8a3bb4c158726f6c866e5c5611dc3729278f098be4",
+      "choice_name": "玉泉山南侧完整主爬",
+      "comparison_scope": "short_destination_core",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "short-yuquanshan-main",
+        "climb_m": 377.1,
+        "components": [
+          {
+            "climb_m": 377.1,
+            "component_key": "short-yuquan:o15",
+            "descent_m": 0.0,
+            "distance_km": 4.728,
+            "observed_distance_km": 4.728,
+            "reach_lower_person_km": 564.59,
+            "reach_upper_person_km": 1131.873,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 4.729043,
+        "connector_ratio": 0.0,
+        "descent_m": 0.0,
+        "distance_km": 4.728,
+        "evidence_coverage": 1.0,
+        "heat_vector_sha256": "b5b93b04d6d9dba9d053a9bd8a2cf06919c79f9bf3b112872dfc89ced1b2bcaa",
+        "intent_proxy": 1.596443,
+        "intent_proxy_coverage": 1.0,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.676283,
+        "reach_lower_person_km": 564.59,
+        "reach_uncertainty_width_person_km": 567.282,
+        "reach_upper_person_km": 1131.873,
+        "repeat_proxy": 0.635853,
+        "repeat_proxy_coverage": 1.0,
+        "snapshot_comparability": "same_cohort",
+        "uncertainty": 0.542414,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 377.1,
+          "component_extent_m": [
+            0.0,
+            4728.0
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "7ef50958f4176c4815573f7c966cae7cab7d3e49310c99d13d543d4f9ba5b78f",
+          "descent_m": 0.0,
+          "direction": "forward",
+          "distance_km": 4.728,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 10,
+          "kind": "source_corridor",
+          "occurrence_id": "short-yuquan:o15",
+          "source_geometry_hash": "dd99f25f6cc9a750acb6badce100fbcad7cec76d6b78341d254c131d8b658d4b",
+          "source_name": "玉泉山爬坡",
+          "source_observation_id": 15,
+          "source_segment_id": "24146976",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为4.728公里、+377.1米/-0.0米。",
+          "只含玉泉山南侧主爬；石膏厂、北侧和南下变体是不同物理选择。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 79.8,
+          "directional_evidence_coverage": 1.0,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 0.0
+        },
+        "suitable_for": "适合愿意承担约4.7公里山区内部行程、约377米累计爬升和约0米累计下降，并接受整趟爬升占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "玉泉山爬坡：67名骑手（第62）、110次（第64）、收藏34（第3），人均记录1.64次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖100.0%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 165,
+          "athlete_rank": 45,
+          "comparison_population": 81,
+          "effort_count": 427,
+          "effort_rank": 42,
+          "efforts_per_athlete": 2.588,
+          "source_name": "柴化线爬坡",
+          "source_observation_id": 20,
+          "source_segment_id": "25733595",
+          "star_count": 20,
+          "star_rank": 11
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "short-chaihua-main",
+      "candidate_sha256": "aaff7d20fe677978c878fc916f627ffdb9144daa13a14f772e306bea64a1160f",
+      "choice_name": "柴化线完整爬升",
+      "comparison_scope": "short_destination_core",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "short-chaihua-main",
+        "climb_m": 458.9,
+        "components": [
+          {
+            "climb_m": 458.9,
+            "component_key": "short-chaihua:o20",
+            "descent_m": 0.0,
+            "distance_km": 8.206,
+            "observed_distance_km": 8.206,
+            "reach_lower_person_km": 1406.301,
+            "reach_upper_person_km": 2560.611,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 5.149585,
+        "connector_ratio": 2e-06,
+        "descent_m": 0.0,
+        "distance_km": 8.206,
+        "evidence_coverage": 0.999998,
+        "heat_vector_sha256": "9b7bef2b6e112bcc048c08e1a09729ab4e42f5c79ecbea22e4ec9e2134db9573",
+        "intent_proxy": 1.728506,
+        "intent_proxy_coverage": 0.999998,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.999998,
+        "reach_lower_person_km": 1406.301,
+        "reach_uncertainty_width_person_km": 1154.31,
+        "reach_upper_person_km": 2560.611,
+        "repeat_proxy": 1.541904,
+        "repeat_proxy_coverage": 0.999998,
+        "snapshot_comparability": "same_cohort",
+        "uncertainty": 0.569841,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 458.9,
+          "component_extent_m": [
+            0.0,
+            8205.7
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "de3660f71793b04c6f7d866522d881465fd35edbbd52ee36aa07df2b773b54b9",
+          "descent_m": 0.0,
+          "direction": "forward",
+          "distance_km": 8.206,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 15,
+          "kind": "source_corridor",
+          "occurrence_id": "short-chaihua:o20",
+          "source_geometry_hash": "ea4ad197ab04ac47854ac648a994d7f14ec768aa2f0dec388b1fc0f20cd8f238",
+          "source_name": "柴化线爬坡",
+          "source_observation_id": 20,
+          "source_segment_id": "25733595",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为8.206公里、+458.9米/-0.0米。",
+          "只含柴化线完整主轴；化客头—大窊村连接和玉泉山接驳另算。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 55.9,
+          "directional_evidence_coverage": 0.999998,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 2e-06
+        },
+        "suitable_for": "适合愿意承担约8.2公里山区内部行程、约459米累计爬升和约0米累计下降，并接受整趟爬升占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "柴化线爬坡：165名骑手（第45）、427次（第42）、收藏20（第11），人均记录2.59次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖100.0%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 436,
+          "athlete_rank": 13,
+          "comparison_population": 81,
+          "effort_count": 1268,
+          "effort_rank": 15,
+          "efforts_per_athlete": 2.908,
+          "source_name": "西山旅游公路 奥申正爬",
+          "source_observation_id": 27,
+          "source_segment_id": "28690246",
+          "star_count": 19,
+          "star_rank": 13
+        },
+        {
+          "athlete_count": 386,
+          "athlete_rank": 17,
+          "comparison_population": 81,
+          "effort_count": 799,
+          "effort_rank": 29,
+          "efforts_per_athlete": 2.07,
+          "source_name": "狼坡",
+          "source_observation_id": 38,
+          "source_segment_id": "29621779",
+          "star_count": 30,
+          "star_rank": 5
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "medium-wanmu-aoshen-langpo",
+      "candidate_sha256": "6a34b2a189a791a2981c902569365c671407652c2b5bf885e64e1d66f78a1c9f",
+      "choice_name": "万亩—奥申—狼坡双爬",
+      "comparison_scope": "medium_destination_chain",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "medium-wanmu-aoshen-langpo",
+        "climb_m": 634.9,
+        "components": [
+          {
+            "climb_m": 343.3,
+            "component_key": "medium-aoshen-langpo:aoshen",
+            "descent_m": 0.0,
+            "distance_km": 5.225,
+            "observed_distance_km": 5.225,
+            "reach_lower_person_km": 2278.274,
+            "reach_upper_person_km": 2278.274,
+            "snapshot_comparability": "same_cohort"
+          },
+          {
+            "climb_m": 19.9,
+            "component_key": "medium-aoshen-langpo:link",
+            "descent_m": 195.4,
+            "distance_km": 2.25,
+            "observed_distance_km": 0.0,
+            "reach_lower_person_km": 0.0,
+            "reach_upper_person_km": 0.0,
+            "snapshot_comparability": "not_applicable_unobserved"
+          },
+          {
+            "climb_m": 271.7,
+            "component_key": "medium-aoshen-langpo:langpo",
+            "descent_m": 0.0,
+            "distance_km": 3.415,
+            "observed_distance_km": 3.415,
+            "reach_lower_person_km": 1356.48,
+            "reach_upper_person_km": 2044.043,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 6.042963,
+        "connector_ratio": 0.206606,
+        "descent_m": 195.4,
+        "distance_km": 10.89,
+        "evidence_coverage": 0.793394,
+        "heat_vector_sha256": "e15ab78e578c0aa1008d073626af7829a0996feb3e5ef6b1ffb23e90e8a448a6",
+        "intent_proxy": 2.716997,
+        "intent_proxy_coverage": 0.793394,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.751709,
+        "reach_lower_person_km": 3634.755,
+        "reach_uncertainty_width_person_km": 687.563,
+        "reach_upper_person_km": 4322.318,
+        "repeat_proxy": 1.485404,
+        "repeat_proxy_coverage": 0.793394,
+        "snapshot_comparability": "same_cohort_with_unobserved_connectors",
+        "uncertainty": 0.104565,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 343.3,
+          "component_extent_m": [
+            0.0,
+            5225.4
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "927bb3b901a6683f694924cd99712efe2f5ec9ca85ff02d4ae355f28283da528",
+          "descent_m": 0.0,
+          "direction": "forward",
+          "distance_km": 5.225,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 22,
+          "kind": "source_corridor",
+          "occurrence_id": "medium-aoshen-langpo:aoshen",
+          "source_geometry_hash": "355c28134b901c58d5ed391b73faeb72b9bff7ba60ccb33750563b4b5b015742",
+          "source_name": "西山旅游公路 奥申正爬",
+          "source_observation_id": 27,
+          "source_segment_id": "28690246",
+          "traversal_orientation": "forward"
+        },
+        {
+          "climb_m": 19.9,
+          "component_extent_m": [
+            0.0,
+            2250.0
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "f961876a680171501cda1c5a08479e39590ae29d644a31d646df1387e4a766de",
+          "descent_m": 195.4,
+          "distance_km": 2.25,
+          "kind": "transit_path",
+          "occurrence_id": "medium-aoshen-langpo:link",
+          "physical_geometry_reuse": "stored_geometry",
+          "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+          "transit_key": "aoshen-upper-to-langpo-base",
+          "transit_result_sha256": "be158954cda1153fc05072de6b2dc38408578c24da548bbf968c1b096c056601",
+          "traversal_direction": "stored",
+          "traversal_orientation": "forward"
+        },
+        {
+          "climb_m": 271.7,
+          "component_extent_m": [
+            0.0,
+            3414.9
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "e2e27f452e781d21f054e839742394e5fcdc1b8609ff38499cb5e24e8edefe91",
+          "descent_m": 0.0,
+          "direction": "forward",
+          "distance_km": 3.415,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 28,
+          "kind": "source_corridor",
+          "occurrence_id": "medium-aoshen-langpo:langpo",
+          "source_geometry_hash": "f352aba455aceb8c5c377a3639ede8b7b2a5b1f3b149d259d01c0421dd674bc1",
+          "source_name": "狼坡",
+          "source_observation_id": 38,
+          "source_segment_id": "29621779",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为10.890公里、+634.9米/-195.4米。",
+          "约20.7%的距离没有当前方向赛段热度，含义是未知，不是冷门。",
+          "从万亩侧进入奥申，经冻结腾讯连接到狼坡底再爬狼坡；不含启春阁、市区接驳与狼坡后返程。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 58.3,
+          "directional_evidence_coverage": 0.793394,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 0.206606
+        },
+        "suitable_for": "适合愿意承担约10.9公里山区内部行程、约635米累计爬升和约195米累计下降，并接受整趟爬升占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "西山旅游公路 奥申正爬：436名骑手（第13）、1268次（第15）、收藏19（第13），人均记录2.91次；比较范围为当前81条。",
+          "狼坡：386名骑手（第17）、799次（第29）、收藏30（第5），人均记录2.07次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖79.3%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 386,
+          "athlete_rank": 17,
+          "comparison_population": 81,
+          "effort_count": 799,
+          "effort_rank": 29,
+          "efforts_per_athlete": 2.07,
+          "source_name": "狼坡",
+          "source_observation_id": 38,
+          "source_segment_id": "29621779",
+          "star_count": 30,
+          "star_rank": 5
+        },
+        {
+          "athlete_count": 436,
+          "athlete_rank": 13,
+          "comparison_population": 81,
+          "effort_count": 1268,
+          "effort_rank": 15,
+          "efforts_per_athlete": 2.908,
+          "source_name": "西山旅游公路 奥申正爬",
+          "source_observation_id": 27,
+          "source_segment_id": "28690246",
+          "star_count": 19,
+          "star_rank": 13
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "medium-langpo-aoshen-wanmu-reverse",
+      "candidate_sha256": "0903a3122a442a18e9f9f889765fb07be0e5ce4073f941805991fcbbdb45084d",
+      "choice_name": "狼坡—奥申—万亩反向双坡",
+      "comparison_scope": "medium_destination_chain",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "medium-langpo-aoshen-wanmu-reverse",
+        "climb_m": 195.4,
+        "components": [
+          {
+            "climb_m": 0.0,
+            "component_key": "medium-langpo-aoshen:langpo-down",
+            "descent_m": 271.7,
+            "distance_km": 3.415,
+            "observed_distance_km": 3.337,
+            "reach_lower_person_km": 477.17,
+            "reach_upper_person_km": 477.17,
+            "snapshot_comparability": "same_cohort"
+          },
+          {
+            "climb_m": 195.4,
+            "component_key": "medium-langpo-aoshen:link-reverse",
+            "descent_m": 19.9,
+            "distance_km": 2.25,
+            "observed_distance_km": 1.843,
+            "reach_lower_person_km": 219.329,
+            "reach_upper_person_km": 219.329,
+            "snapshot_comparability": "same_cohort"
+          },
+          {
+            "climb_m": 0.0,
+            "component_key": "medium-langpo-aoshen:aoshen-down",
+            "descent_m": 343.3,
+            "distance_km": 5.225,
+            "observed_distance_km": 3.487,
+            "reach_lower_person_km": 509.116,
+            "reach_upper_person_km": 509.116,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 4.939338,
+        "connector_ratio": 0.204149,
+        "descent_m": 634.9,
+        "distance_km": 10.89,
+        "evidence_coverage": 0.795851,
+        "heat_vector_sha256": "f392475e9d6cee0d03e855e2d8965b9b47a7ad37e635d36e7756b74a7d303d23",
+        "intent_proxy": 1.230391,
+        "intent_proxy_coverage": 0.795851,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.79489,
+        "reach_lower_person_km": 1205.616,
+        "reach_uncertainty_width_person_km": 0.0,
+        "reach_upper_person_km": 1205.616,
+        "repeat_proxy": 1.816463,
+        "repeat_proxy_coverage": 0.795851,
+        "snapshot_comparability": "same_cohort_with_unobserved_connectors",
+        "uncertainty": 0.0,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 0.0,
+          "component_extent_m": [
+            0.0,
+            3414.9
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "e2e27f452e781d21f054e839742394e5fcdc1b8609ff38499cb5e24e8edefe91",
+          "descent_m": 271.7,
+          "direction": "reverse",
+          "distance_km": 3.415,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 28,
+          "kind": "source_corridor",
+          "occurrence_id": "medium-langpo-aoshen:langpo-down",
+          "source_geometry_hash": "f352aba455aceb8c5c377a3639ede8b7b2a5b1f3b149d259d01c0421dd674bc1",
+          "source_name": "狼坡",
+          "source_observation_id": 38,
+          "source_segment_id": "29621779",
+          "traversal_orientation": "reverse"
+        },
+        {
+          "climb_m": 195.4,
+          "component_extent_m": [
+            0.0,
+            2250.0
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "f961876a680171501cda1c5a08479e39590ae29d644a31d646df1387e4a766de",
+          "descent_m": 19.9,
+          "distance_km": 2.25,
+          "kind": "transit_path",
+          "occurrence_id": "medium-langpo-aoshen:link-reverse",
+          "physical_geometry_reuse": "same_geometry_reversed",
+          "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+          "transit_key": "aoshen-upper-to-langpo-base",
+          "transit_result_sha256": "be158954cda1153fc05072de6b2dc38408578c24da548bbf968c1b096c056601",
+          "traversal_direction": "reverse",
+          "traversal_orientation": "reverse"
+        },
+        {
+          "climb_m": 0.0,
+          "component_extent_m": [
+            0.0,
+            5225.4
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "927bb3b901a6683f694924cd99712efe2f5ec9ca85ff02d4ae355f28283da528",
+          "descent_m": 343.3,
+          "direction": "reverse",
+          "distance_km": 5.225,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 22,
+          "kind": "source_corridor",
+          "occurrence_id": "medium-langpo-aoshen:aoshen-down",
+          "source_geometry_hash": "355c28134b901c58d5ed391b73faeb72b9bff7ba60ccb33750563b4b5b015742",
+          "source_name": "西山旅游公路 奥申正爬",
+          "source_observation_id": 27,
+          "source_segment_id": "28690246",
+          "traversal_orientation": "reverse"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为10.890公里、+195.4米/-634.9米。",
+          "约20.4%的距离没有当前方向赛段热度，含义是未知，不是冷门。",
+          "从狼坡上端下到狼坡底，经同一冻结连接反向到奥申上端，再下到万亩侧；不含两端市区接驳。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 17.9,
+          "directional_evidence_coverage": 0.795851,
+          "resource_shape": "descent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 0.204149
+        },
+        "suitable_for": "适合愿意承担约10.9公里山区内部行程、约195米累计爬升和约635米累计下降，并接受整趟累计下降占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "狼坡：386名骑手（第17）、799次（第29）、收藏30（第5），人均记录2.07次；比较范围为当前81条。",
+          "西山旅游公路 奥申正爬：436名骑手（第13）、1268次（第15）、收藏19（第13），人均记录2.91次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖79.6%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 532,
+          "athlete_rank": 11,
+          "comparison_population": 81,
+          "effort_count": 3603,
+          "effort_rank": 9,
+          "efforts_per_athlete": 6.773,
+          "source_name": "横岭11km爬坡",
+          "source_observation_id": 2,
+          "source_segment_id": "14942511",
+          "star_count": 179,
+          "star_rank": 2
+        },
+        {
+          "athlete_count": 151,
+          "athlete_rank": 47,
+          "comparison_population": 81,
+          "effort_count": 385,
+          "effort_rank": 46,
+          "efforts_per_athlete": 2.55,
+          "source_name": "化客头-桃花沟起伏",
+          "source_observation_id": 6,
+          "source_segment_id": "22350861",
+          "star_count": 21,
+          "star_rank": 8
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "long-hengling-huaketou-taohuagou",
+      "candidate_sha256": "a0c2c6e4a0af4526a9f860db868840f1b3b0c5febab33b2187227bb5416a5546",
+      "choice_name": "横岭上—化客头—桃花沟山区长线",
+      "comparison_scope": "long_regional_chain",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "long-hengling-huaketou-taohuagou",
+        "climb_m": 1100.3,
+        "components": [
+          {
+            "climb_m": 622.2,
+            "component_key": "long-hengling-taohua:hengling-up",
+            "descent_m": 3.4,
+            "distance_km": 10.932,
+            "observed_distance_km": 10.932,
+            "reach_lower_person_km": 6041.453,
+            "reach_upper_person_km": 9329.124,
+            "snapshot_comparability": "same_cohort"
+          },
+          {
+            "climb_m": 211.7,
+            "component_key": "long-hengling-taohua:huaketou-link",
+            "descent_m": 324.1,
+            "distance_km": 16.856,
+            "observed_distance_km": 0.0,
+            "reach_lower_person_km": 0.0,
+            "reach_upper_person_km": 0.0,
+            "snapshot_comparability": "not_applicable_unobserved"
+          },
+          {
+            "climb_m": 266.4,
+            "component_key": "long-hengling-taohua:rolling",
+            "descent_m": 62.8,
+            "distance_km": 10.1,
+            "observed_distance_km": 10.1,
+            "reach_lower_person_km": 1525.04,
+            "reach_upper_person_km": 1525.04,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 5.695258,
+        "connector_ratio": 0.4449,
+        "descent_m": 390.3,
+        "distance_km": 37.888,
+        "evidence_coverage": 0.5551,
+        "heat_vector_sha256": "86559d24c9955ae5348b0434ac25ca2c4a5dc7009f58676192ab464698cce344",
+        "intent_proxy": 3.440692,
+        "intent_proxy_coverage": 0.5551,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.55484,
+        "reach_lower_person_km": 7566.493,
+        "reach_uncertainty_width_person_km": 3287.671,
+        "reach_upper_person_km": 10854.163,
+        "repeat_proxy": 3.73315,
+        "repeat_proxy_coverage": 0.5551,
+        "snapshot_comparability": "same_cohort_with_unobserved_connectors",
+        "uncertainty": 0.105211,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "block_key": "taiyuan_xishan_hengling:full-ascent",
+          "block_name": "横岭完整爬坡",
+          "climb_m": 622.2,
+          "component_extent_m": [
+            0.0,
+            10931.789
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "7992a1e8d43e113a0762ad0cfd234fe8b03112a45b5eab77bb3934f2f330b2f1",
+          "descent_m": 3.4,
+          "direction": "forward",
+          "distance_km": 10.932,
+          "kind": "mountain_block",
+          "module_key": "taiyuan_xishan_hengling",
+          "module_run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9",
+          "mountain_block_sha256": "0e20c85f56c78c4bbd397687b57c2c8334b4e0c06a8ff462d86354ff1e153d6a",
+          "occurrence_id": "long-hengling-taohua:hengling-up",
+          "physical_geometry_reuse": "stored_geometry",
+          "traversal_direction": "stored",
+          "traversal_orientation": "forward"
+        },
+        {
+          "climb_m": 211.7,
+          "component_extent_m": [
+            0.0,
+            16856.0
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "14550e5fc4c240c4b5a287e431c7180146a6b8ccca6854f39cb8a6041ea4848b",
+          "descent_m": 324.1,
+          "distance_km": 16.856,
+          "kind": "transit_path",
+          "occurrence_id": "long-hengling-taohua:huaketou-link",
+          "physical_geometry_reuse": "stored_geometry",
+          "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+          "transit_key": "hengling-upper-to-taohuagou-huaketou",
+          "transit_result_sha256": "d9b61d808b158c84dc7822ffccba248bb68a27735f23fd1f81a36e58803a635a",
+          "traversal_direction": "stored",
+          "traversal_orientation": "forward"
+        },
+        {
+          "climb_m": 266.4,
+          "component_extent_m": [
+            0.0,
+            10099.6
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "bbba2bb6086df92741ed2282484c37de180463b052e07a488dac93b2ab4dbea8",
+          "descent_m": 62.8,
+          "direction": "forward",
+          "distance_km": 10.1,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 3,
+          "kind": "source_corridor",
+          "occurrence_id": "long-hengling-taohua:rolling",
+          "source_geometry_hash": "83c54e668da078a017ef48544fa3e76e145b03cfa4c49e1de1f6174abc03996e",
+          "source_name": "化客头-桃花沟起伏",
+          "source_observation_id": 6,
+          "source_segment_id": "22350861",
+          "traversal_orientation": "forward"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为37.888公里、+1100.3米/-390.3米。",
+          "约44.5%的距离没有当前方向赛段热度，含义是未知，不是冷门。",
+          "从横岭主爬底到桃花沟北口的山中长线；不含市区到横岭及桃花沟后的回城。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 29.0,
+          "directional_evidence_coverage": 0.5551,
+          "resource_shape": "ascent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 0.4449
+        },
+        "suitable_for": "适合愿意承担约37.9公里山区内部行程、约1100米累计爬升和约390米累计下降，并接受整趟爬升占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "横岭11km爬坡：532名骑手（第11）、3603次（第9）、收藏179（第2），人均记录6.77次；比较范围为当前81条。",
+          "化客头-桃花沟起伏：151名骑手（第47）、385次（第46）、收藏21（第8），人均记录2.55次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖55.5%的物理距离；其余保持未观测。"
+        ]
+      }
+    },
+    {
+      "anchor_heat_facts": [
+        {
+          "athlete_count": 151,
+          "athlete_rank": 47,
+          "comparison_population": 81,
+          "effort_count": 385,
+          "effort_rank": 46,
+          "efforts_per_athlete": 2.55,
+          "source_name": "化客头-桃花沟起伏",
+          "source_observation_id": 6,
+          "source_segment_id": "22350861",
+          "star_count": 21,
+          "star_rank": 8
+        },
+        {
+          "athlete_count": 459,
+          "athlete_rank": 12,
+          "comparison_population": 81,
+          "effort_count": 2539,
+          "effort_rank": 12,
+          "efforts_per_athlete": 5.532,
+          "source_name": "横岭下坡",
+          "source_observation_id": 16,
+          "source_segment_id": "24197317",
+          "star_count": 20,
+          "star_rank": 11
+        }
+      ],
+      "assembly_status": "hard_feasible_research_candidate",
+      "candidate_id": "long-taohuagou-huaketou-hengling-reverse",
+      "candidate_sha256": "c970ccf3dfefa67802b622ad4bde68b8e8c1034bef2d7c1b414e3c9ee1b0f3bf",
+      "choice_name": "桃花沟—化客头—横岭反向长线",
+      "comparison_scope": "long_regional_chain",
+      "hard_failure_codes": [],
+      "heat_vector": {
+        "algorithm_version": "route_heat_partial_identification_v1",
+        "candidate_id": "long-taohuagou-huaketou-hengling-reverse",
+        "climb_m": 390.3,
+        "components": [
+          {
+            "climb_m": 62.8,
+            "component_key": "long-taohua-hengling:rolling-reverse",
+            "descent_m": 266.4,
+            "distance_km": 10.1,
+            "observed_distance_km": 1.67,
+            "reach_lower_person_km": 614.744,
+            "reach_upper_person_km": 614.744,
+            "snapshot_comparability": "same_cohort"
+          },
+          {
+            "climb_m": 324.1,
+            "component_key": "long-taohua-hengling:huaketou-link-reverse",
+            "descent_m": 211.7,
+            "distance_km": 16.856,
+            "observed_distance_km": 8.433,
+            "reach_lower_person_km": 2423.758,
+            "reach_upper_person_km": 2423.758,
+            "snapshot_comparability": "same_cohort"
+          },
+          {
+            "climb_m": 3.4,
+            "component_key": "long-taohua-hengling:hengling-down",
+            "descent_m": 622.2,
+            "distance_km": 10.932,
+            "observed_distance_km": 10.932,
+            "reach_lower_person_km": 5017.691,
+            "reach_upper_person_km": 5017.691,
+            "snapshot_comparability": "same_cohort"
+          }
+        ],
+        "conditional_support_lower_bound": 5.925264,
+        "connector_ratio": 0.4448,
+        "descent_m": 1100.3,
+        "distance_km": 37.888,
+        "evidence_coverage": 0.5552,
+        "heat_vector_sha256": "233e71719eb801ec8d32c705e79fff56feb5589698f36781acec4542e25197cb",
+        "intent_proxy": 2.471305,
+        "intent_proxy_coverage": 0.5552,
+        "overlap_accounting": "atomic directed cells count physical distance once; reach lower=max and upper=sum were resolved before route integration",
+        "projection_quality_coverage": 0.554217,
+        "reach_lower_person_km": 8056.193,
+        "reach_uncertainty_width_person_km": 0.0,
+        "reach_upper_person_km": 8056.193,
+        "repeat_proxy": 2.935553,
+        "repeat_proxy_coverage": 0.5552,
+        "snapshot_comparability": "same_cohort_with_unobserved_connectors",
+        "uncertainty": 0.0,
+        "unobserved_semantics": "missing evidence is unknown, not zero popularity"
+      },
+      "ordered_components": [
+        {
+          "climb_m": 62.8,
+          "component_extent_m": [
+            0.0,
+            10099.6
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "bbba2bb6086df92741ed2282484c37de180463b052e07a488dac93b2ab4dbea8",
+          "descent_m": 266.4,
+          "direction": "reverse",
+          "distance_km": 10.1,
+          "glo_algorithm_version": "glo30_meaningful_ascent_v1",
+          "glo_fact_id": 3,
+          "kind": "source_corridor",
+          "occurrence_id": "long-taohua-hengling:rolling-reverse",
+          "source_geometry_hash": "83c54e668da078a017ef48544fa3e76e145b03cfa4c49e1de1f6174abc03996e",
+          "source_name": "化客头-桃花沟起伏",
+          "source_observation_id": 6,
+          "source_segment_id": "22350861",
+          "traversal_orientation": "reverse"
+        },
+        {
+          "climb_m": 324.1,
+          "component_extent_m": [
+            0.0,
+            16856.0
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "14550e5fc4c240c4b5a287e431c7180146a6b8ccca6854f39cb8a6041ea4848b",
+          "descent_m": 211.7,
+          "distance_km": 16.856,
+          "kind": "transit_path",
+          "occurrence_id": "long-taohua-hengling:huaketou-link-reverse",
+          "physical_geometry_reuse": "same_geometry_reversed",
+          "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+          "transit_key": "hengling-upper-to-taohuagou-huaketou",
+          "transit_result_sha256": "d9b61d808b158c84dc7822ffccba248bb68a27735f23fd1f81a36e58803a635a",
+          "traversal_direction": "reverse",
+          "traversal_orientation": "reverse"
+        },
+        {
+          "block_key": "taiyuan_xishan_hengling:full-ascent",
+          "block_name": "横岭完整爬坡",
+          "climb_m": 3.4,
+          "component_extent_m": [
+            0.0,
+            10931.789
+          ],
+          "component_geometry_normalization_version": "lonlat_7dp_directionless_v1",
+          "component_geometry_sha256": "7992a1e8d43e113a0762ad0cfd234fe8b03112a45b5eab77bb3934f2f330b2f1",
+          "descent_m": 622.2,
+          "direction": "reverse",
+          "distance_km": 10.932,
+          "kind": "mountain_block",
+          "module_key": "taiyuan_xishan_hengling",
+          "module_run_sha256": "0f365fb7707c140008cdabfee3f239a74dcf3732dedc79bc9c2b7726a38c6ba9",
+          "mountain_block_sha256": "0e20c85f56c78c4bbd397687b57c2c8334b4e0c06a8ff462d86354ff1e153d6a",
+          "occurrence_id": "long-taohua-hengling:hengling-down",
+          "physical_geometry_reuse": "same_geometry_reversed",
+          "traversal_direction": "reverse",
+          "traversal_orientation": "reverse"
+        }
+      ],
+      "rider_explanation": {
+        "costs": [
+          "硬工作量为37.888公里、+390.3米/-1100.3米。",
+          "约44.5%的距离没有当前方向赛段热度，含义是未知，不是冷门。",
+          "从桃花沟北口沿化客头起伏反向串到横岭底；不含两端市区接驳。"
+        ],
+        "forbidden_inferences": [
+          "不由累计爬升推断新手/高手、危险、路面或技术难度",
+          "不由赛段热度推断完整路线已被多数骑友这样骑过",
+          "不在没有风景、交通、补给事实时编造体验描述"
+        ],
+        "hard_fact_views": {
+          "climb_density_m_per_km": 10.3,
+          "directional_evidence_coverage": 0.5552,
+          "resource_shape": "descent_dominant",
+          "road_surface_evidence_status": "not_provided",
+          "scenery_evidence_status": "not_provided",
+          "supply_evidence_status": "not_provided",
+          "traffic_evidence_status": "not_provided",
+          "unobserved_distance_ratio": 0.4448
+        },
+        "suitable_for": "适合愿意承担约37.9公里山区内部行程、约390米累计爬升和约1100米累计下降，并接受整趟累计下降占主导的骑手。",
+        "version": "hard_fact_rider_explanation_v1",
+        "why": [
+          "化客头-桃花沟起伏：151名骑手（第47）、385次（第46）、收藏21（第8），人均记录2.55次；比较范围为当前81条。",
+          "横岭下坡：459名骑手（第12）、2539次（第12）、收藏20（第11），人均记录5.53次；比较范围为当前81条。",
+          "当前骑行方向有热度证据覆盖55.5%的物理距离；其余保持未观测。"
+        ]
+      }
+    }
+  ],
+  "choice_set_key": "xishan-remaining-short-medium-long-v1",
+  "choice_spec_sha256": "0c0380acec566efdbc7e3c0efdf416826c265f8b02e94ade2b60c6878d9db22b",
+  "comparison_rule": "choices with different rider jobs or directions are compared by hard facts side by side; no global popularity ranking is forced",
+  "database_write_count": 0,
+  "hard_fact_contrasts": [
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-wanmu-aoshen-main",
+      "left_minus_right": {
+        "climb_m": 71.6,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 0.0,
+        "distance_km": 1.81
+      },
+      "right_candidate_id": "short-langpo-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-wanmu-aoshen-main",
+      "left_minus_right": {
+        "climb_m": 37.5,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 5e-06,
+        "distance_km": 0.885
+      },
+      "right_candidate_id": "short-pianqiaogou-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-wanmu-aoshen-main",
+      "left_minus_right": {
+        "climb_m": -207.9,
+        "descent_m": -12.6,
+        "directional_evidence_coverage": 3e-06,
+        "distance_km": -4.061
+      },
+      "right_candidate_id": "short-duguan-classic"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-wanmu-aoshen-main",
+      "left_minus_right": {
+        "climb_m": 175.8,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 0.0,
+        "distance_km": 2.627
+      },
+      "right_candidate_id": "short-wangfeng-yixiantian"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-wanmu-aoshen-main",
+      "left_minus_right": {
+        "climb_m": 224.1,
+        "descent_m": -57.0,
+        "directional_evidence_coverage": 2e-05,
+        "distance_km": -0.428
+      },
+      "right_candidate_id": "short-erku-gelou-matoushui"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-wanmu-aoshen-main",
+      "left_minus_right": {
+        "climb_m": -33.8,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 0.0,
+        "distance_km": 0.497
+      },
+      "right_candidate_id": "short-yuquanshan-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-wanmu-aoshen-main",
+      "left_minus_right": {
+        "climb_m": -115.6,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 2e-06,
+        "distance_km": -2.981
+      },
+      "right_candidate_id": "short-chaihua-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-langpo-main",
+      "left_minus_right": {
+        "climb_m": -34.1,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 5e-06,
+        "distance_km": -0.925
+      },
+      "right_candidate_id": "short-pianqiaogou-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-langpo-main",
+      "left_minus_right": {
+        "climb_m": -279.5,
+        "descent_m": -12.6,
+        "directional_evidence_coverage": 3e-06,
+        "distance_km": -5.871
+      },
+      "right_candidate_id": "short-duguan-classic"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-langpo-main",
+      "left_minus_right": {
+        "climb_m": 104.2,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 0.0,
+        "distance_km": 0.817
+      },
+      "right_candidate_id": "short-wangfeng-yixiantian"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-langpo-main",
+      "left_minus_right": {
+        "climb_m": 152.5,
+        "descent_m": -57.0,
+        "directional_evidence_coverage": 2e-05,
+        "distance_km": -2.238
+      },
+      "right_candidate_id": "short-erku-gelou-matoushui"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-langpo-main",
+      "left_minus_right": {
+        "climb_m": -105.4,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 0.0,
+        "distance_km": -1.313
+      },
+      "right_candidate_id": "short-yuquanshan-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-langpo-main",
+      "left_minus_right": {
+        "climb_m": -187.2,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 2e-06,
+        "distance_km": -4.791
+      },
+      "right_candidate_id": "short-chaihua-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-pianqiaogou-main",
+      "left_minus_right": {
+        "climb_m": -245.4,
+        "descent_m": -12.6,
+        "directional_evidence_coverage": -2e-06,
+        "distance_km": -4.946
+      },
+      "right_candidate_id": "short-duguan-classic"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-pianqiaogou-main",
+      "left_minus_right": {
+        "climb_m": 138.3,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": -5e-06,
+        "distance_km": 1.742
+      },
+      "right_candidate_id": "short-wangfeng-yixiantian"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-pianqiaogou-main",
+      "left_minus_right": {
+        "climb_m": 186.6,
+        "descent_m": -57.0,
+        "directional_evidence_coverage": 1.5e-05,
+        "distance_km": -1.313
+      },
+      "right_candidate_id": "short-erku-gelou-matoushui"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-pianqiaogou-main",
+      "left_minus_right": {
+        "climb_m": -71.3,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": -5e-06,
+        "distance_km": -0.388
+      },
+      "right_candidate_id": "short-yuquanshan-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-pianqiaogou-main",
+      "left_minus_right": {
+        "climb_m": -153.1,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": -3e-06,
+        "distance_km": -3.866
+      },
+      "right_candidate_id": "short-chaihua-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-duguan-classic",
+      "left_minus_right": {
+        "climb_m": 383.7,
+        "descent_m": 12.6,
+        "directional_evidence_coverage": -3e-06,
+        "distance_km": 6.688
+      },
+      "right_candidate_id": "short-wangfeng-yixiantian"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-duguan-classic",
+      "left_minus_right": {
+        "climb_m": 432.0,
+        "descent_m": -44.4,
+        "directional_evidence_coverage": 1.7e-05,
+        "distance_km": 3.633
+      },
+      "right_candidate_id": "short-erku-gelou-matoushui"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-duguan-classic",
+      "left_minus_right": {
+        "climb_m": 174.1,
+        "descent_m": 12.6,
+        "directional_evidence_coverage": -3e-06,
+        "distance_km": 4.558
+      },
+      "right_candidate_id": "short-yuquanshan-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-duguan-classic",
+      "left_minus_right": {
+        "climb_m": 92.3,
+        "descent_m": 12.6,
+        "directional_evidence_coverage": -1e-06,
+        "distance_km": 1.08
+      },
+      "right_candidate_id": "short-chaihua-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-wangfeng-yixiantian",
+      "left_minus_right": {
+        "climb_m": 48.3,
+        "descent_m": -57.0,
+        "directional_evidence_coverage": 2e-05,
+        "distance_km": -3.055
+      },
+      "right_candidate_id": "short-erku-gelou-matoushui"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-wangfeng-yixiantian",
+      "left_minus_right": {
+        "climb_m": -209.6,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 0.0,
+        "distance_km": -2.13
+      },
+      "right_candidate_id": "short-yuquanshan-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-wangfeng-yixiantian",
+      "left_minus_right": {
+        "climb_m": -291.4,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 2e-06,
+        "distance_km": -5.608
+      },
+      "right_candidate_id": "short-chaihua-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-erku-gelou-matoushui",
+      "left_minus_right": {
+        "climb_m": -257.9,
+        "descent_m": 57.0,
+        "directional_evidence_coverage": -2e-05,
+        "distance_km": 0.925
+      },
+      "right_candidate_id": "short-yuquanshan-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-erku-gelou-matoushui",
+      "left_minus_right": {
+        "climb_m": -339.7,
+        "descent_m": 57.0,
+        "directional_evidence_coverage": -1.8e-05,
+        "distance_km": -2.553
+      },
+      "right_candidate_id": "short-chaihua-main"
+    },
+    {
+      "comparison_scope": "short_destination_core",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "short-yuquanshan-main",
+      "left_minus_right": {
+        "climb_m": -81.8,
+        "descent_m": 0.0,
+        "directional_evidence_coverage": 2e-06,
+        "distance_km": -3.478
+      },
+      "right_candidate_id": "short-chaihua-main"
+    },
+    {
+      "comparison_scope": "medium_destination_chain",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "medium-wanmu-aoshen-langpo",
+      "left_minus_right": {
+        "climb_m": 439.5,
+        "descent_m": -439.5,
+        "directional_evidence_coverage": -0.002457,
+        "distance_km": 0.0
+      },
+      "right_candidate_id": "medium-langpo-aoshen-wanmu-reverse"
+    },
+    {
+      "comparison_scope": "long_regional_chain",
+      "interpretation_boundary": "hard resource and evidence contrast only; not a universal better-route verdict",
+      "left_candidate_id": "long-hengling-huaketou-taohuagou",
+      "left_minus_right": {
+        "climb_m": 710.0,
+        "descent_m": -710.0,
+        "directional_evidence_coverage": -0.0001,
+        "distance_km": 0.0
+      },
+      "right_candidate_id": "long-taohuagou-huaketou-hengling-reverse"
+    }
+  ],
+  "network_request_count": 0,
+  "ranking_groups": [
+    {
+      "algorithm_version": "route_heat_partial_identification_v1",
+      "comparison_scope": "long_regional_chain",
+      "hard_feasible_count": 2,
+      "hard_rejected": [],
+      "learned_rerank_status": "disabled_until_frozen_choice_outcome_episodes",
+      "pareto_count": 2,
+      "policy_version": "popular_reliable_lexicographic_v1",
+      "ranked_candidate_ids": [
+        "long-taohuagou-huaketou-hengling-reverse",
+        "long-hengling-huaketou-taohuagou"
+      ],
+      "ranking_sha256": "431ecc2de09f1bd721bb5d14166bc7c4491cdc009094ce1adb8db6301f1bcbdf",
+      "rider_intent": "popular_reliable",
+      "rule": "hard gate -> Pareto -> popular reliable lexicographic policy -> stable candidate id"
+    },
+    {
+      "algorithm_version": "route_heat_partial_identification_v1",
+      "comparison_scope": "medium_destination_chain",
+      "hard_feasible_count": 2,
+      "hard_rejected": [],
+      "learned_rerank_status": "disabled_until_frozen_choice_outcome_episodes",
+      "pareto_count": 2,
+      "policy_version": "popular_reliable_lexicographic_v1",
+      "ranked_candidate_ids": [
+        "medium-langpo-aoshen-wanmu-reverse",
+        "medium-wanmu-aoshen-langpo"
+      ],
+      "ranking_sha256": "afe6e3d136dabd63ef902438381f13aec513f2aa8802a7ecabc3f108e2cb6fb5",
+      "rider_intent": "popular_reliable",
+      "rule": "hard gate -> Pareto -> popular reliable lexicographic policy -> stable candidate id"
+    },
+    {
+      "algorithm_version": "route_heat_partial_identification_v1",
+      "comparison_scope": "short_destination_core",
+      "hard_feasible_count": 8,
+      "hard_rejected": [],
+      "learned_rerank_status": "disabled_until_frozen_choice_outcome_episodes",
+      "pareto_count": 1,
+      "policy_version": "popular_reliable_lexicographic_v1",
+      "ranked_candidate_ids": [
+        "short-wanmu-aoshen-main"
+      ],
+      "ranking_sha256": "de0020e93c2ab93d12c543ef2f823789edec58b2645636cb6ff0c200fe1b97c1",
+      "rider_intent": "popular_reliable",
+      "rule": "hard gate -> Pareto -> popular reliable lexicographic policy -> stable candidate id"
+    }
+  ],
+  "ranking_status": "ranked_within_same_scope_and_rider_intent",
+  "result_sha256": "4d192c77fa20669e84de9940fa81aaa989f51aac818a820afe45aa672755d5c4",
+  "reverse_traversal_rule": "one frozen physical road geometry; reverse traversal reuses it in reverse, swaps climb/descent, and reads reverse-direction evidence",
+  "schema_version": "route_pattern_choice_set_v1",
+  "selection_snapshot_sha256": "7d929f96f2d4c18e9f9a0fedcb9868190850a5730198a56eab63744f9be41a8e",
+  "source_slice_sha256": "ea2043afdb48bad87107c33659de03597511fce7cf5e12dc52100e7f1fe3cf0c"
+}

@@ -92,11 +92,11 @@
     },
     {
       "path": "data/research/mountain_modules/xishan_south_tianlongshan_north_v1.json",
-      "spec_sha256": "78799d2db9b8499284541a9c629e5017cd832c616e56b06404e9d4df6adf61c7"
+      "spec_sha256": "c05c8f9d284116850fecd176a82b597623f874771b2215b9a37c89a774275c20"
     },
     {
       "path": "data/research/mountain_modules/xishan_south_tianlongshan_west_gate_v1.json",
-      "spec_sha256": "913111e4b3c57502c86ac01ef40943a99cddf88383cf29f6c8e6bad4607d634d"
+      "spec_sha256": "9e870d6330a6ec65a954961837db9a4d8d07b66a64a195c91f56ea8010e99be1"
     },
     {
       "path": "data/research/mountain_modules/xishan_south_diantou_mengshan_v1.json",
@@ -197,5 +197,5 @@
     "production_delete_count": 0
   },
   "boundary": "All outputs remain research candidates. Tencent bicycling shadows prove a provider connection candidate only, not access, safety, traffic, surface, construction state, public RouteBook publication or nationwide generalization.",
-  "manifest_sha256": "c31408a2e0dc4b0e98337d31e5fd9f4e371cbc992d318bc9c25711c2cd27c6ad"
+  "manifest_sha256": "16d32c0420f6ae6d21d9c39637d0376e10c88a322dc74de96e09b7ad055ffe33"
 }
