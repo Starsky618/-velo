@@ -48,17 +48,22 @@ def test_catalog_has_all_axes_both_directions_and_hash_chain():
 
     assert result["catalog_spec_sha256"] == _canonical_sha256(spec)
     assert result["result_sha256"] == _self_hash(result, "result_sha256")
-    assert result["axis_count"] == len(spec["axes"]) == 23
-    assert result["directional_axis_result_count"] == 46
+    assert result["axis_count"] == len(spec["axes"]) == 25
+    assert result["directional_axis_result_count"] == 50
     assert result["partial_climb_count"] == len(spec["partial_climbs"]) == 6
-    assert len(result["axes"]) == 23
-    assert len({row["module_key"] for row in result["axes"]}) == 23
+    assert len(result["axes"]) == 25
+    assert len({row["module_key"] for row in result["axes"]}) == 25
     assert sum(row["extent_status"] == "full_verified" for row in result["axes"]) == 3
-    assert sum(row["extent_status"] == "full_candidate" for row in result["axes"]) == 14
+    assert sum(row["extent_status"] == "full_candidate" for row in result["axes"]) == 15
+    assert result["source_batches"] == spec["source_batches"]
 
     for axis in result["axes"]:
         module_spec = json.loads((ROOT / axis["module_spec_path"]).read_text(encoding="utf-8"))
         assert axis["module_spec_sha256"] == _canonical_sha256(module_spec)
+        assert axis["census_batch_id"] == module_spec["census_batch_id"]
+        assert axis["elevation_fact_batch_id"] == module_spec[
+            "elevation_fact_batch_id"
+        ]
         assert axis["axis_result_sha256"] == _self_hash(axis, "axis_result_sha256")
         assert set(axis["directions"]) == {"forward", "reverse"}
         forward = axis["directions"]["forward"]
@@ -86,6 +91,40 @@ def test_catalog_has_all_axes_both_directions_and_hash_chain():
             assert forward["climb_plan"]["source"]["quality_checks"][
                 "profile_complete_for_named_climb"
             ] is True
+
+
+def test_exact_zaodu_is_cat2_but_new_duguan_is_a_3d_corridor_not_one_climb():
+    result = json.loads(RESULT_PATH.read_text(encoding="utf-8"))
+    axes = {row["module_key"]: row for row in result["axes"]}
+
+    zaodu = axes["taiyuan_xishan_zaodu_road"]
+    assert zaodu["extent_status"] == "full_candidate"
+    assert zaodu["source_observation_id"] == 116
+    assert zaodu["glo_fact_id"] == 88
+    zaodu_forward = zaodu["directions"]["forward"]
+    assert zaodu_forward["route_distance_m"] == 8825.4
+    assert zaodu_forward["stored_glo_meaningful_ascent_m"] == 469.9
+    assert len(zaodu_forward["climb_plan"]["climbs"]) == 1
+    zaodu_climb = zaodu_forward["climb_plan"]["climbs"][0]
+    assert zaodu_climb["category"] == "2"
+    assert zaodu_climb["category_status"] == "candidate"
+    assert zaodu_climb["shape"] == "long_sustained"
+    assert zaodu_climb["max_sustained_grade_pct"] == {"500m": 9.1, "1000m": 8.4}
+    assert zaodu["directions"]["reverse"]["climb_plan"]["climbs"] == []
+
+    new_duguan = axes["taiyuan_xishan_duguan_new_tourism"]
+    assert new_duguan["scope_kind"] == "road_corridor"
+    assert new_duguan["extent_status"] == "not_applicable_corridor"
+    assert new_duguan["source_observation_id"] == 117
+    assert new_duguan["glo_fact_id"] == 89
+    new_duguan_forward = new_duguan["directions"]["forward"]
+    assert new_duguan_forward["route_distance_m"] == 15022.5
+    assert new_duguan_forward["stored_glo_meaningful_ascent_m"] == 296.8
+    assert new_duguan_forward["climb_plan"]["climbs"] == []
+    assert new_duguan_forward["climb_plan"]["composition"]["sequence_label"] == (
+        "无显著爬坡"
+    )
+    assert new_duguan["directions"]["reverse"]["climb_plan"]["climbs"] == []
 
 
 def test_aoshen_and_langpo_are_not_mislabelled_as_steady_easy_climbs():

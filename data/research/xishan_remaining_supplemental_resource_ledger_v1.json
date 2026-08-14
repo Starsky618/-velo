@@ -10,29 +10,33 @@
     {
       "resource_key": "zaodu_full_climb_source_34856789",
       "route_name": "枣杜公路全爬",
-      "resource_status": "supplemental_source_snapshot_with_sparse_provider_candidate",
+      "resource_status": "exact_complete_source_and_glo_full_candidate",
       "source_segment_id": "34856789",
       "source_observed_at": "2026-08-11T16:07:44.669Z",
       "source_measurements": {"distance_m": 8797.099609375, "source_elevation_gain_m_not_glo": 446.2000122070313, "average_gradient_pct": 5.033480167388916},
       "source_heat": {"athlete_count": 30, "effort_count": 48, "star_count": 1},
+      "production_binding": {"census_batch_id": "xishan-exact-climbs-20260814-v1", "source_observation_id": 116, "geometry_point_count": 3151, "source_geometry_hash": "8796f05b3fa45d0ffb22ea875fc6f80fe809e7c06aa7f3318feaa8d48f754037", "elevation_fact_batch_id": "xishan-exact-climbs-20260814-v1-glo30-v1", "glo_fact_id": 88},
+      "glo30_measurements": {"derived_distance_m": 8825.4, "meaningful_ascent_m": 469.9, "meaningful_descent_m": 0.0},
       "source_ports_wgs84": {"start": [112.380439, 37.67387], "end": [112.339045, 37.721736]},
       "provider_candidate": {"profile": "driving", "distance_m": 8846.0, "point_count": 536, "candidate_sha256": "5c0fc7b8de93a2d9937d6458bec4010214d72d58533214d47a1c7794d870190d", "review_status": "map_review_passed_source_reference_unverified"},
       "active_81_local_witnesses": [65, 66],
-      "pending": ["complete source geometry identity", "stored GLO-30 profile and totals", "provider access and road-state verification", "connection from the south network to the road ports"],
-      "boundary": "The active observations prove two local climbs only; the full road candidate remains supplemental and cannot enter hard-feasible route choices."
+      "pending": ["canonical named-climb base and summit anchors", "provider access and road-state verification", "connection from the south network to the road ports"],
+      "boundary": "The exact complete Strava source and production GLO profile can enter the Climb catalog as full_candidate. Active-81 local witnesses still do not prove canonical anchors or a hard-feasible network connection."
     },
     {
       "resource_key": "duguan_new_tourism_road_source_37687861",
       "route_name": "杜关线新修旅游公路",
-      "resource_status": "supplemental_source_snapshot_with_sparse_provider_candidate",
+      "resource_status": "exact_complete_source_and_glo_road_corridor",
       "source_segment_id": "37687861",
       "source_observed_at": "2026-08-11T16:07:24.132Z",
       "source_measurements": {"distance_m": 14910.7001953125, "source_elevation_gain_m_not_glo": 303.0, "average_gradient_pct": 1.7920000553131104},
       "source_heat": {"athlete_count": 37, "effort_count": 50, "star_count": 1},
+      "production_binding": {"census_batch_id": "xishan-exact-climbs-20260814-v1", "source_observation_id": 117, "geometry_point_count": 1955, "source_geometry_hash": "b03184f0450b0873f90b3999c97b90276b143d9c0256a02bfcf9bc55d64b8bf3", "elevation_fact_batch_id": "xishan-exact-climbs-20260814-v1-glo30-v1", "glo_fact_id": 89},
+      "glo30_measurements": {"derived_distance_m": 15022.5, "meaningful_ascent_m": 296.8, "meaningful_descent_m": 13.3},
       "source_ports_wgs84": {"start": [112.195128, 37.734213], "end": [112.31999, 37.801561]},
       "provider_candidate": {"profile": "driving", "distance_m": 15034.0, "point_count": 313, "candidate_sha256": "fc5529525a8a298177dae53f761b33834bab7bb9d000fa66784a26b30786c1d7", "review_status": "map_review_passed_source_reference_unverified"},
-      "pending": ["complete source geometry identity", "stored GLO-30 profile and totals", "provider access and current construction-state verification", "natural-port connector into classic Duguan/Pianqiaogou"],
-      "boundary": "This is physically distinct from active o23 classic Duerping-Taigu Duguan and cannot borrow o23 heat or GLO totals."
+      "pending": ["provider access and current construction-state verification", "natural-port connector into classic Duguan/Pianqiaogou"],
+      "boundary": "This is a complete source/GLO road corridor physically distinct from active o23 classic Duerping-Taigu Duguan. Its 15.0 km full axis is too gentle overall to form a ClimbPro occurrence, so it must not be sold as one continuous classified climb. It uses only its own o117 heat and fact 89; it cannot borrow o23 evidence."
     },
     {
       "resource_key": "qichunge_curated_destination",
@@ -65,6 +69,6 @@
       "boundary": "Official place order proves a backbone concept, not a hard-feasible route or exact distance/climb."
     }
   ],
-  "accounting": {"active_81_facts_added": 0, "database_write_count": 0, "glo_recomputation_count": 0, "strava_request_count": 0, "new_provider_request_count": 0},
-  "boundary": "Supplemental ledger only; no resource here is published to RouteBook or merged into active-81 hard facts."
+  "accounting": {"active_81_facts_added": 0, "supplemental_exact_observations_added": 2, "supplemental_glo_facts_added": 2, "strava_request_count": 4, "failed_strava_request_count": 0, "new_provider_request_count": 0},
+  "boundary": "Supplemental exact sources remain separate from active-81. Zaodu may publish as a standalone full_candidate climb and new Duguan as a standalone 3D road corridor after catalog replay; neither enters a hard-feasible regional combination until its natural connectors and access are verified."
 }

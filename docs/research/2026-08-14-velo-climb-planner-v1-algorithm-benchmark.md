@@ -2,7 +2,7 @@
 
 日期：2026-08-14
 
-状态：外部一手资料基准 + 已实现 v1 机械内核 + 已接入整坡/半坡 typed gate；西山 23 条物理道路轴已用生产落库 GLO 快照完成 46 个方向重放
+状态：外部一手资料基准 + 已实现 v1 机械内核 + 已接入整坡/半坡 typed gate；西山 25 条物理道路轴已用生产落库 GLO 快照完成 50 个方向重放
 
 ## 一句话结论
 
@@ -166,12 +166,14 @@ profile_fact_id / profile_hash / elevation algorithm version
 
 `data/research/xishan_climb_catalog_v1_result.json` 是公开安全结果：不含来源经纬度，但保留每条轴正反方向的距离—海拔曲线、GLO 总爬降、ClimbPro occurrence、Cat、坡型、500m/1km 持续坡度、child ramps 与完整 hash 链。私有 exact source geometry 只存在证据账和生产数据库。
 
-- 23 条物理轴全部重放正反方向，共 46 份有向结果；目前只有横岭、奥申、狼坡 3 条在内容证据中明确绑定 canonical base/summit，标 `full_verified`；其余 14 条命名坡虽有完整赛段剖面，但 canonical 锚点证据仍不足，严格标 `full_candidate`。另有 4 条普通走廊、王封一线天景观核心轴和身份待确认的庙前山 o73。
+- 25 条物理轴全部重放正反方向，共 50 份有向结果；目前只有横岭、奥申、狼坡 3 条在内容证据中明确绑定 canonical base/summit，标 `full_verified`；其余 15 条命名坡虽有完整赛段剖面，但 canonical 锚点证据仍不足，严格标 `full_candidate`。另有 5 条普通走廊、王封一线天景观核心轴和身份待确认的庙前山 o73。
 - 狼坡 o52/o95、奥申 o103、经典杜关 o60/o72/o94 共 6 个已知半坡/局部段，均绑定父坡与轴上 start/end offsets，从父轴同一份 GLO snapshot 裁切重放；它们不另存物理几何，也不重复累计成第二条整坡。
 - 奥申为 Cat 2、5.225 km、GLO +343.3m、末段墙，最难持续 1km 约 11.5%；狼坡为 Cat 3、3.415 km、+271.7m、短陡墙，最难持续 1km 约 11.6%。两者都不再描述为“稳定主爬”。
 - 经典杜关为 Cat 2、9.286 km、+551.2m、阶梯坡；它和 14.9km 新杜关旅游路仍是两个对象。
+- 枣杜 exact o116 为 8.825 km、GLO +469.9m，正向检测为 Cat 2 candidate / 长持续坡，最难持续 500m/1km 为 9.1%/8.4%；canonical 命名 base/summit 尚未闭合，所以只能标 `full_candidate`。
+- 新杜关 exact o117 为 15.023 km、GLO +296.8/-13.3m，但全轴平均缓、夹有起伏，正反方向都没有合格 ClimbPro occurrence。它以 `road_corridor/not_applicable_corridor` 保存完整 3D profile，不能因距离长或累计上升接近 300m 就硬贴 Cat，也不能借经典杜关 o23 的身份与局部坡证据。
 - 现有真实连接组成 10 条完整 profile 长路线并重跑多坡顺序；另 1 条太古路—店头—蒙山—北侧—西门因立即完整反向重走被 typed reject，没有进入工作量或排序。
-- 生产发布器会把排除庙前山身份候选后的 22 条轴发布成 44 个有向 RouteBook；每个方向都携带对应 ClimbPlan。上述 10 条组合也会保存完整路线几何、3D profile 和 ClimbPlan，但它们使用的腾讯 TransitPath 仍是 `provider_path_not_bicycling_verified` / `connectivity_shadow_not_access_verified`：发布器必须将其保持为 `unlisted + draft + navigation pending`，写入 typed warning，不能进入公开列表或导出。只有连接段自行车准入另行验证后才能升级成公开长路线。此处仍只是代码与冻结 artifact 能力，必须在迁移、生产 preflight/apply 和公开 API 回读通过后才能称线上生效。
+- 生产发布器会把排除庙前山身份候选后的 24 条轴发布成 48 个有向 RouteBook；每个方向都携带对应 ClimbPlan。上述 10 条组合也会保存完整路线几何、3D profile 和 ClimbPlan，但它们使用的腾讯 TransitPath 仍是 `provider_path_not_bicycling_verified` / `connectivity_shadow_not_access_verified`：发布器必须将其保持为 `unlisted + draft + navigation pending`，写入 typed warning，不能进入公开列表或导出。只有连接段自行车准入另行验证后才能升级成公开长路线。
 - stored GLO 爬降是权威总量；ClimbPlan occurrence 来自已落库逐点 snapshot 的确定性重放。两者都没有发起新 GLO 查询，重放因再次做坡型平滑可能与 stored 总量有数米差异，结果同时保留两列，不能偷偷择优。
 
 ## 3. 连续爬坡检测：可实现的 v1

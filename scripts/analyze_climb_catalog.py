@@ -184,6 +184,12 @@ def _axis_result(axis: dict, modules: dict[str, dict], observations: dict[int, d
     source_slice = modules.get(module_key)
     if source_slice is None:
         raise ValueError(f"private source slice missing for {module_key}")
+    if (
+        source_slice.get("census_batch_id") != spec["census_batch_id"]
+        or source_slice.get("elevation_fact_batch_id")
+        != spec["elevation_fact_batch_id"]
+    ):
+        raise ValueError(f"source slice batch identity drift for {module_key}")
     if spec["source_selection"]["observation_ids"] != source_slice["observation_ids"]:
         raise ValueError(f"exact observation set drift for {module_key}")
     observation_id = int(spec["axis_profile_observation_id"])
@@ -243,6 +249,9 @@ def _axis_result(axis: dict, modules: dict[str, dict], observations: dict[int, d
         "source_observation_id": observation_id,
         "source_segment_id": row["source_segment_id"],
         "source_geometry_hash": row["source_geometry_hash"],
+        "census_batch_id": spec["census_batch_id"],
+        "elevation_fact_batch_id": spec["elevation_fact_batch_id"],
+        "glo_fact_id": int(row["glo_fact_id"]),
         "geometry_point_count": len(points),
         "directions": directions,
         "publication_boundary": spec["boundary"],
@@ -693,6 +702,7 @@ def build_catalog_result(
         "glo_recomputation_count": 0,
         "privacy_boundary": catalog["privacy_boundary"],
         "identity_rule": catalog["identity_rule"],
+        "source_batches": catalog["source_batches"],
         "axis_count": len(axes),
         "directional_axis_result_count": len(axes) * 2,
         "partial_climb_count": len(partials),

@@ -3,6 +3,10 @@
   "catalog_key": "taiyuan_xishan_climb_catalog_v1",
   "census_batch_id": "xishan-20260813-v1",
   "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1",
+  "source_batches": [
+    {"census_batch_id": "xishan-20260813-v1", "elevation_fact_batch_id": "xishan-20260813-v1-glo30-v1-a1", "role": "bounded_xishan_census"},
+    {"census_batch_id": "xishan-exact-climbs-20260814-v1", "elevation_fact_batch_id": "xishan-exact-climbs-20260814-v1-glo30-v1", "role": "exact_supplemental_axes"}
+  ],
   "profile_source_method": "glo30_meaningful_ascent_v1_snapshot_replay_v1",
   "partial_projection_artifact": "data/research/xishan_full_destination_network_v1_run.json",
   "partial_projection_artifact_sha256": "be51b3833237ea047eea9fbd7d115fbe882dc2990beaa1865c6b7239460f9804",
@@ -12,6 +16,7 @@
     {"module_spec": "data/research/mountain_modules/hengling_v1.json", "scope_kind": "named_climb", "extent_status": "full_verified", "base_anchor": "daliucun_riverside_entry", "summit_anchor": "hengling_village", "anchor_evidence_refs": ["content/routes/hengling/guide.md#给真要去的骑友"]},
     {"module_spec": "data/research/mountain_modules/xishan_chaihua_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
     {"module_spec": "data/research/mountain_modules/xishan_duguan_classic_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_duguan_new_tourism_v1.json", "scope_kind": "road_corridor", "extent_status": "not_applicable_corridor"},
     {"module_spec": "data/research/mountain_modules/xishan_erku_gelou_matoushui_v1.json", "scope_kind": "road_corridor", "extent_status": "not_applicable_corridor"},
     {"module_spec": "data/research/mountain_modules/xishan_erku_west_switchback_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
     {"module_spec": "data/research/mountain_modules/xishan_huaketou_taohuagou_v1.json", "scope_kind": "road_corridor", "extent_status": "not_applicable_corridor"},
@@ -31,6 +36,7 @@
     {"module_spec": "data/research/mountain_modules/xishan_wanmu_aoshen_v1.json", "scope_kind": "named_climb", "extent_status": "full_verified", "base_anchor": "wanmu_ecopark_backroad_entry", "summit_anchor": "langpo_shiziya_entry", "anchor_evidence_refs": ["content/routes/aoshen/guide.md#怎么骑"]},
     {"module_spec": "data/research/mountain_modules/xishan_yuquanshan_gypsum_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
     {"module_spec": "data/research/mountain_modules/xishan_yuquanshan_main_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
+    {"module_spec": "data/research/mountain_modules/xishan_zaodu_road_v1.json", "scope_kind": "named_climb", "extent_status": "full_candidate"},
     {"module_spec": "data/research/mountain_modules/xishan_zhoujiashan_v1.json", "scope_kind": "road_corridor", "extent_status": "not_applicable_corridor"}
   ],
   "partial_climbs": [

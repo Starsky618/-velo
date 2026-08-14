@@ -231,9 +231,10 @@ def test_supplemental_roads_and_backbone_patterns_do_not_claim_active_truth() ->
 
     assert ledger["accounting"] == {
         "active_81_facts_added": 0,
-        "database_write_count": 0,
-        "glo_recomputation_count": 0,
-        "strava_request_count": 0,
+        "supplemental_exact_observations_added": 2,
+        "supplemental_glo_facts_added": 2,
+        "strava_request_count": 4,
+        "failed_strava_request_count": 0,
         "new_provider_request_count": 0,
     }
     resources = {item["resource_key"]: item for item in ledger["resources"]}
@@ -241,7 +242,18 @@ def test_supplemental_roads_and_backbone_patterns_do_not_claim_active_truth() ->
     assert "source_elevation_gain_m_not_glo" in resources[
         "zaodu_full_climb_source_34856789"
     ]["source_measurements"]
+    assert resources["zaodu_full_climb_source_34856789"]["production_binding"] == {
+        "census_batch_id": "xishan-exact-climbs-20260814-v1",
+        "source_observation_id": 116,
+        "geometry_point_count": 3151,
+        "source_geometry_hash": "8796f05b3fa45d0ffb22ea875fc6f80fe809e7c06aa7f3318feaa8d48f754037",
+        "elevation_fact_batch_id": "xishan-exact-climbs-20260814-v1-glo30-v1",
+        "glo_fact_id": 88,
+    }
     assert resources["duguan_new_tourism_road_source_37687861"]["source_segment_id"] == "37687861"
+    assert resources["duguan_new_tourism_road_source_37687861"][
+        "production_binding"
+    ]["source_observation_id"] == 117
     assert resources["miaoqianshan_curated_destination"]["pending"]
     assert resources["qichunge_curated_destination"]["curated_measurements"][
         "climb_m_legacy_not_glo"
@@ -283,7 +295,8 @@ def test_public_overview_states_profile_and_connector_boundaries() -> None:
     )
     for phrase in (
         "五种骑法",
-        "12 条可重放选择",
+        "14 条单轴/组合",
+        "冻结的 12-choice 区域选择集",
         "经典杜关线",
         "新杜关旅游公路",
         "枣杜",
@@ -292,7 +305,8 @@ def test_public_overview_states_profile_and_connector_boundaries() -> None:
         "王封一线天",
         "庙前山",
         "不能给全环一个精确公里数",
-        "23 条轴的 production GLO snapshot 已只读一次导出",
-        "46 个方向 ClimbPro 重放",
+        "25 条物理轴、50 个有向 ClimbPro 重放",
+        "枣杜 o116/fact 88",
+        "新杜关 o117/fact 89",
     ):
         assert phrase in text
