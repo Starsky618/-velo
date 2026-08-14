@@ -292,6 +292,7 @@ def test_public_overview_states_profile_and_connector_boundaries() -> None:
         "王封一线天",
         "庙前山",
         "不能给全环一个精确公里数",
-        "full elevation profile 仍待生产只读一次导出",
+        "23 条轴的 production GLO snapshot 已只读一次导出",
+        "46 个方向 ClimbPro 重放",
     ):
         assert phrase in text

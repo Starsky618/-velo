@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,6 +12,28 @@ from scripts import export_mountain_module_snapshot as exporter
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_snapshot_exporter_accepts_exact_set_in_manifest_axis_first_order():
+    rows = [
+        (SimpleNamespace(id=83), "fact-83"),
+        (SimpleNamespace(id=88), "fact-88"),
+        (SimpleNamespace(id=100), "fact-100"),
+    ]
+
+    ordered = exporter._rows_in_declared_observation_order(rows, (88, 83, 100))
+
+    assert [row[0].id for row in ordered] == [88, 83, 100]
+
+
+def test_snapshot_exporter_still_rejects_missing_exact_observation():
+    rows = [
+        (SimpleNamespace(id=88), "fact-88"),
+        (SimpleNamespace(id=100), "fact-100"),
+    ]
+
+    with pytest.raises(ValueError, match="exact observation set"):
+        exporter._rows_in_declared_observation_order(rows, (88, 83, 100))
 
 
 def _snapshot() -> dict:

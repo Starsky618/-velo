@@ -19,6 +19,7 @@ RouteBookSource = Literal[
     "manual_drawn",
     "curated_composite",
     "ai_generated",
+    "strava_projection",
 ]
 RouteBookCreateSource = Literal["file_upload", "activity_derived"]
 RouteBookFileType = Literal["gpx", "fit"]
@@ -147,6 +148,21 @@ class RouteClimbCompositionResponse(BaseModel):
     sequence_label: str
     finish_type: Literal["summit", "descent", "rolling", "flat"]
     boundary_status: Literal["stable", "ambiguous", "not_assessed"]
+    input_scope_kind: Literal[
+        "named_climb",
+        "road_corridor",
+        "scenic_axis",
+        "identity_candidate",
+        "route_composition",
+    ] | None = None
+    input_extent_status: Literal[
+        "full_verified",
+        "full_candidate",
+        "not_applicable_corridor",
+        "identity_pending",
+        "partial",
+        "complete_route_composition",
+    ] | None = None
 
 
 class ClimbPartitionAlternativeResponse(BaseModel):
@@ -161,12 +177,47 @@ class ClimbPartitionAlternativeResponse(BaseModel):
     category: Literal["HC", "1", "2", "3", "4", "uncategorized"]
 
 
+class ClimbProfileContractResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["climb_profile_contract_v1"]
+    scope_key: str
+    scope_kind: Literal[
+        "named_climb",
+        "road_corridor",
+        "scenic_axis",
+        "identity_candidate",
+        "route_composition",
+    ]
+    extent_status: Literal[
+        "full_verified",
+        "full_candidate",
+        "not_applicable_corridor",
+        "identity_pending",
+        "partial",
+        "complete_route_composition",
+    ]
+    traversal_direction: Literal["forward", "reverse", "geometry_order"]
+    geometry_source: str
+    start_anchor: str
+    end_anchor: str
+    geometry_coverage_ratio: float
+    elevation_profile_coverage_ratio: float
+    source_observation_ids: list[int]
+    source_geometry_hashes: list[str]
+    anchor_evidence_refs: list[str]
+    parent_scope_key: str | None
+    start_offset_m: float | None
+    end_offset_m: float | None
+
+
 class RouteClimbPlanResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     algorithm_version: str
     classification_system: Literal["garmin_public_2026"]
     traversal_direction: str
+    input_contract: ClimbProfileContractResponse | None = None
     source: dict
     parameters: dict
     route_distance_m: float

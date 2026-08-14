@@ -1,7 +1,9 @@
-"""路线百科灌库脚本——把 content/routes 里的路线手册搬进数据库。
+"""路线百科内容灌库脚本——把 content/routes 里的手册搬进数据库。
 
 操作注意事项：先完整校验文件，再打开数据库；这样 guide.md 或 meta.json 有错时不会写半截数据。
-输入是每条路线一个文件夹，输出是 route_guides 记录；有 track.gpx 时额外生成官方 route_book。
+输入是每条路线一个文件夹，输出是 route_guides 记录。兼容导入器仍能处理显式测试/外部
+content-dir 中的 GPX，但生产 ``content/routes`` 已不再保存路线几何；西山 RouteBook 由
+``publish_climb_routes.py`` 从冻结 Strava/GLO 事实投影。
 """
 
 from __future__ import annotations
@@ -262,6 +264,42 @@ def upsert_route(db, route: RouteInput) -> None:
         )
         route_book_id = route_book.id
         elevation_profile = route_book.elevation_profile
+    elif guide is not None and guide.route_book_id is not None:
+        existing_route_book = (
+            db.query(RouteBook)
+            .filter(RouteBook.id == guide.route_book_id)
+            .one_or_none()
+        )
+        # 删除旧 GPX 后，内容导入应解绑旧 file_upload 路线；但已经由完整
+        # Strava 赛段投影生成的 RouteBook 是新的几何真相，刷新文章不能把它抹掉。
+        if (
+            existing_route_book is not None
+            and existing_route_book.source == "strava_projection"
+        ):
+            route_book = existing_route_book
+            route_book_id = existing_route_book.id
+            elevation_profile = existing_route_book.elevation_profile
+        elif existing_route_book is not None and existing_route_book.source == "file_upload":
+            # 生产内容目录已经删除旧 GPX；仅解绑 Guide 会把旧 public RouteBook
+            # 留在匿名列表里。退役必须同时关闭旧路线和它的 current version。
+            existing_route_book.publish_status = "archived"
+            existing_route_book.visibility = "unlisted"
+            if existing_route_book.current_version_id is not None:
+                old_version = (
+                    db.query(RouteVersion)
+                    .filter(
+                        RouteVersion.id == existing_route_book.current_version_id,
+                        RouteVersion.route_book_id == existing_route_book.id,
+                    )
+                    .one_or_none()
+                )
+                if old_version is not None:
+                    old_version.status = "archived"
+        elif existing_route_book is not None:
+            # 文案刷新不拥有其他合法 RouteBook 来源；既不替换，也不下架。
+            route_book = existing_route_book
+            route_book_id = existing_route_book.id
+            elevation_profile = existing_route_book.elevation_profile
 
     if guide is None:
         guide = RouteGuide(name=route.name)

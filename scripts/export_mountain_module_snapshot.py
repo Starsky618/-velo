@@ -76,6 +76,24 @@ def _validated_output_path(spec: dict[str, Any], output: Path) -> Path:
     return destination
 
 
+def _rows_in_declared_observation_order(
+    rows: list[Any], observation_ids: tuple[int, ...]
+) -> list[Any]:
+    """校验 exact set 相同，再恢复 manifest 声明顺序。
+
+    SQL 为稳定查询按主键排序；manifest 则常把 canonical axis 放在第一位，二者
+    顺序不是同一层语义。这里只要求集合精确一致，输出继续遵守 manifest 顺序。
+    """
+    rows_by_id = {row[0].id: row for row in rows}
+    if (
+        len(rows) != len(observation_ids)
+        or len(rows_by_id) != len(rows)
+        or set(rows_by_id) != set(observation_ids)
+    ):
+        raise ValueError("生产库没有返回 manifest 指定的 exact observation set")
+    return [rows_by_id[observation_id] for observation_id in observation_ids]
+
+
 def build_slice(db: Any, *, spec: dict[str, Any]) -> dict[str, Any]:
     module_key = spec["module_key"]
     census_batch_id = spec["census_batch_id"]
@@ -116,8 +134,7 @@ def build_slice(db: Any, *, spec: dict[str, Any]) -> dict[str, Any]:
         .order_by(SegmentSourceObservation.id.asc())
         .all()
     )
-    if [row[0].id for row in rows] != list(observation_ids):
-        raise ValueError("生产库没有返回 manifest 指定的 exact observation set")
+    rows = _rows_in_declared_observation_order(rows, observation_ids)
 
     observations = []
     source_segment_ids = []

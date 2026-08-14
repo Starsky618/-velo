@@ -311,6 +311,99 @@ def test_imports_route_without_gpx_as_track_pending(db, route_guide_tables, tmp_
     assert db.query(RouteBook).count() == 0
 
 
+def test_content_refresh_preserves_existing_strava_projection_binding(
+    db, route_guide_tables, tmp_path, monkeypatch
+):
+    RouteBook, RouteGuide = route_guide_tables
+    script = _load_script()
+    content_dir = _copy_fixture(tmp_path, "test-no-track")
+    route_book = RouteBook(
+        creator_id=None,
+        name="完整赛段投影",
+        distance=5225.4,
+        climb=343.3,
+        reference_line="LINESTRING (112.1 37.7, 112.2 37.8)",
+        file_id="strava:segment:123:module:test",
+        file_type=None,
+        source="strava_projection",
+        source_activity_id=None,
+        city="taiyuan",
+        is_official=True,
+        visibility="public",
+        publish_status="published",
+        line_hash="a" * 64,
+        elevation_profile="[[0,100],[5225.4,443.3]]",
+    )
+    db.add(route_book)
+    db.flush()
+    route_book_id = route_book.id
+    elevation_profile = route_book.elevation_profile
+    guide = RouteGuide(
+        name="测试无轨迹路线",
+        city="太原",
+        content_md="旧内容",
+        route_book_id=route_book_id,
+        elevation_profile=elevation_profile,
+        content_origin="content_routes_import",
+    )
+    db.add(guide)
+    db.commit()
+    monkeypatch.setattr(script, "SessionLocal", lambda: db)
+
+    script.main(["--content-dir", str(content_dir)])
+
+    refreshed = db.query(RouteGuide).filter_by(name="测试无轨迹路线").one()
+    assert refreshed.route_book_id == route_book_id
+    assert refreshed.elevation_profile == elevation_profile
+    assert refreshed.content_origin == "content_routes_import"
+    assert db.query(RouteBook).count() == 1
+
+
+def test_content_refresh_archives_and_unlinks_retired_file_upload_geometry(
+    db, route_guide_tables, tmp_path, monkeypatch
+):
+    RouteBook, RouteGuide = route_guide_tables
+    script = _load_script()
+    content_dir = _copy_fixture(tmp_path, "test-no-track")
+    old_route = RouteBook(
+        creator_id=None,
+        name="旧 GPX",
+        distance=1000.0,
+        climb=None,
+        reference_line="LINESTRING (112.1 37.7, 112.2 37.8)",
+        file_id="old.gpx",
+        file_type="gpx",
+        source="file_upload",
+        source_activity_id=None,
+        city="taiyuan",
+        is_official=True,
+        visibility="public",
+        publish_status="published",
+    )
+    db.add(old_route)
+    db.flush()
+    old_route_id = old_route.id
+    db.add(
+        RouteGuide(
+            name="测试无轨迹路线",
+            city="太原",
+            content_md="旧内容",
+            route_book_id=old_route_id,
+            content_origin="content_routes_import",
+        )
+    )
+    db.commit()
+    monkeypatch.setattr(script, "SessionLocal", lambda: db)
+
+    script.main(["--content-dir", str(content_dir)])
+
+    refreshed = db.query(RouteGuide).filter_by(name="测试无轨迹路线").one()
+    retired = db.query(RouteBook).filter_by(id=old_route_id).one()
+    assert refreshed.route_book_id is None
+    assert retired.publish_status == "archived"
+    assert retired.visibility == "unlisted"
+
+
 def test_import_records_content_provenance_from_meta_json(db, route_guide_tables, tmp_path, monkeypatch):
     _, RouteGuide = route_guide_tables
     script = _load_script()

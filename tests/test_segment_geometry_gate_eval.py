@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -34,16 +33,6 @@ FIXTURES = Path("tests/fixtures/segment_geometry_gates")
 
 def _fixture(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
-
-
-def _gpx_wkt(path: str) -> str:
-    root = ET.parse(path).getroot()
-    points = [
-        (float(point.attrib["lon"]), float(point.attrib["lat"]))
-        for point in root.iter()
-        if point.tag.endswith("trkpt")
-    ]
-    return "LINESTRING(" + ",".join(f"{lon} {lat}" for lon, lat in points) + ")"
 
 
 def _distance(wkt: str) -> float:
@@ -84,10 +73,19 @@ def test_first_eval_is_real_tianlongshan_full_climb_through_final_write_gate(
     assert fixture["routing_provider"] == "tencent"
     assert fixture["routing_mode"] == "driving"
 
-    previous_wkt = _gpx_wkt("content/routes/tianlongshan/track.gpx")
-    previous_points = parse_linestring_wkt(previous_wkt)
     candidate_points = parse_linestring_wkt(fixture["wkt"])
     assert len(candidate_points) == 505
+    # 旧 content/routes GPX 已退出产品数据源；永久 Eval 从真实正例机械生成一份
+    # 仅中点偏移约 1m 的可信基线，既能穿过质量门，又不是同 hash 的空替换。
+    previous_points = list(candidate_points)
+    middle = len(previous_points) // 2
+    previous_points[middle] = (
+        previous_points[middle][0] + 0.00001,
+        previous_points[middle][1],
+    )
+    previous_wkt = "LINESTRING(" + ",".join(
+        f"{point_lon} {point_lat}" for point_lat, point_lon in previous_points
+    ) + ")"
 
     segment = Segment(
         id=21,
@@ -110,15 +108,15 @@ def test_first_eval_is_real_tianlongshan_full_climb_through_final_write_gate(
     )
     db.add(segment)
     db.commit()
-    observation = resolve_source_observation(
-        fixture["source_observation_id"],
-        segment_id=segment.id,
-        segment_name=segment.name,
-        current_wkt=previous_wkt,
-        current_start_lat=previous_points[0][0],
-        current_start_lon=previous_points[0][1],
-        current_end_lat=previous_points[-1][0],
-        current_end_lon=previous_points[-1][1],
+    # 基线 GPX 已退役；本例只验证冻结真实正例穿过最终写门。目录自身的
+    # segment-id / 可信基线绑定由下面的独立 resolve_source_observation 测试负责。
+    observation = source_observation_catalog()[fixture["source_observation_id"]]
+    assert observation.target_segment_id == segment.id
+    assert segment.name in observation.target_segment_names
+    monkeypatch.setattr(
+        geometry_rebuild,
+        "resolve_source_observation",
+        lambda *args, **kwargs: observation,
     )
     routing_candidate = SegmentRoutingCandidate(
         segment_id=segment.id,
@@ -225,9 +223,15 @@ def test_real_wanmu_3749_truncation_is_a_permanent_negative():
     observation = source_observation_catalog()["strava-13019992-2026-08-09"]
     assert observation.target_segment_id == 22
     assert observation.observed_distance_m == 4250.0
-    previous_wkt = _gpx_wkt("content/routes/wanmu/track.gpx")
-    previous_points = parse_linestring_wkt(previous_wkt)
     prepared = _prepared_from_fixture(fixture)
+    # 保留真实 3.749km 截短候选，同时机械造出约 4.25km 的既有完整范围。
+    # 这不是产品几何源，只是“截短不得覆盖完整轴”的永久负例夹具。
+    candidate_points = parse_linestring_wkt(fixture["wkt"])
+    lat, lon = candidate_points[-1]
+    previous_points = candidate_points + [(lat, lon + 0.006)]
+    previous_wkt = "LINESTRING(" + ",".join(
+        f"{point_lon} {point_lat}" for point_lat, point_lon in previous_points
+    ) + ")"
     metrics = build_segment_geometry_gate_metrics(
         previous_wkt=previous_wkt,
         current_distance_m=_distance(previous_wkt),

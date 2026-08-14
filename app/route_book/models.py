@@ -68,9 +68,16 @@ class RouteBook(Base):
         Index("idx_route_books_geom", "reference_line", postgresql_using="gist"),
         Index("idx_route_books_creator_created", "creator_id", text("created_at DESC")),
         Index("idx_route_books_visibility_status", "visibility", "publish_status"),
+        Index(
+            "uq_route_books_strava_projection_file_id",
+            "file_id",
+            unique=True,
+            postgresql_where=text("source = 'strava_projection'"),
+            sqlite_where=text("source = 'strava_projection'"),
+        ),
         CheckConstraint(
             "source IN ('file_upload', 'activity_derived', 'tencent_direction', "
-            "'manual_drawn', 'curated_composite', 'ai_generated')",
+            "'manual_drawn', 'curated_composite', 'ai_generated', 'strava_projection')",
             name="ck_route_books_source",
         ),
         CheckConstraint(
@@ -90,6 +97,8 @@ class RouteBook(Base):
             "AND source_activity_id IS NULL) OR "
             "(source = 'activity_derived' AND file_type IS NULL AND file_id IS NULL) OR "
             "(source = 'tencent_direction' AND file_type IS NULL AND file_id IS NULL "
+            "AND source_activity_id IS NULL) OR "
+            "(source = 'strava_projection' AND file_type IS NULL AND file_id IS NOT NULL "
             "AND source_activity_id IS NULL) OR "
             "(source IN ('manual_drawn', 'curated_composite', 'ai_generated') "
             "AND file_type IS NULL AND file_id IS NULL AND source_activity_id IS NULL)",
@@ -186,7 +195,7 @@ class RouteVersion(Base):
         CheckConstraint(
             "geometry_source IN ('route_book_reference', 'components_generated', 'normalized_upload', "
             "'file_upload', 'activity_derived', 'tencent_direction', 'manual_drawn', "
-            "'curated_composite', 'ai_generated')",
+            "'curated_composite', 'ai_generated', 'strava_projection')",
             name="ck_route_versions_geometry_source",
         ),
     )
