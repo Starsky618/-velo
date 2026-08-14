@@ -51,6 +51,10 @@ def test_elevation_preview_returns_profile_without_creating_route(
     assert body["climb_m"] > 0
     assert body["descent_m"] == pytest.approx(0.0)
     assert len(body["elevation_profile"]) >= 2
+    assert body["climb_plan"]["algorithm_version"] == "velo_climb_plan_v1"
+    assert body["climb_plan"]["classification_system"] == "garmin_public_2026"
+    assert body["climb_plan"]["source"]["sustained_grade_windows_m"] == [500, 1000]
+    assert body["rider_climb_plan"]["status"] == "needs_profile"
     assert len(query_calls) == 1
     assert db.query(RouteBook).count() == 0
 

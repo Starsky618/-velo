@@ -75,14 +75,34 @@
           <view class="stat-value">{{routeStats.climbText}}</view>
         </view>
         <view class="stat-box">
-          <view class="stat-label">预计时间</view>
-          <view class="stat-value stat-value-time">{{routeStats.etaText}}</view>
+          <view class="stat-label">爬坡组成</view>
+          <view class="stat-value stat-value-time">{{routeStats.climbSequenceText}}</view>
         </view>
       </view>
 
       <view wx:if="{{elevationStatus === 'ready'}}" class="elevation-card">
-        <view class="elevation-title">海拔曲线</view>
+        <view class="elevation-title">海拔与爬坡分段</view>
         <canvas type="2d" id="routeElevationCanvas" class="route-elevation-canvas"></canvas>
+        <view class="climb-sequence">{{climbPlanView.sequence}}</view>
+        <view wx:if="{{climbPlanView.climbs.length}}" class="climb-list">
+          <view wx:for="{{climbPlanView.climbs}}" wx:key="order" class="climb-row">
+            <view class="climb-category" style="background: {{item.color}}">{{item.category}}</view>
+            <view class="climb-copy">
+              <view class="climb-main">第{{item.order}}坡 · {{item.shape}} · {{item.distance}} / {{item.grade}}</view>
+              <view class="climb-sub">{{item.startKm}}–{{item.endKm}}km {{item.max500}} {{item.candidate ? '· 地形候选' : ''}}</view>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{climbPlanView.riderScenarios.length}}" class="rider-scenario-list">
+          <view wx:for="{{climbPlanView.riderScenarios}}" wx:key="key" class="rider-scenario-row">
+            <view class="rider-scenario-label">{{item.label}}</view>
+            <view class="rider-scenario-value">{{item.power}} · {{item.powerPerKg}} · {{item.time}}</view>
+            <view wx:if="{{item.timeRange}}" class="rider-scenario-range">情景范围 {{item.timeRange}}</view>
+            <view wx:if="{{item.climbTargets}}" class="rider-scenario-range">{{item.climbTargets}}</view>
+          </view>
+        </view>
+        <view wx:if="{{climbPlanView.riderLine}}" class="rider-climb-line">{{climbPlanView.riderLine}}</view>
+        <view wx:if="{{climbPlanView.riderContextLine}}" class="climb-boundary-hint">{{climbPlanView.riderContextLine}}</view>
       </view>
       <view wx:elif="{{elevationStatus === 'loading'}}" class="elevation-state">{{elevationMessage}}</view>
       <view wx:elif="{{elevationStatus === 'error'}}" class="elevation-state is-error" bindtap="onTapRetryElevation">

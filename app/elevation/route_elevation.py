@@ -14,7 +14,10 @@ GLO-30 是线上主底座；ALOS、FIT 与获授权的 Strava 赛段数据用于
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import logging
 import math
+import time
 from typing import Callable, Sequence
 
 import numpy as np
@@ -23,9 +26,11 @@ from scipy.ndimage import gaussian_filter1d, median_filter
 from app.elevation.dem_client import (
     GLO30_DATASET_ID,
     GLO30_GRID_REGISTRATION,
+    GLO30_HORIZONTAL_RESOLUTION_M,
     GLO30_VERTICAL_DATUM,
     query_elevations,
 )
+from app.elevation.climb_planner import build_climb_plan
 from app.parsing.geo_math import haversine
 
 
@@ -38,6 +43,8 @@ MEDIAN_FILTER_POINTS = 3
 ASCENT_PROMINENCE_M = 3.0
 ASCENT_MINIMUM_SPAN_M = 100.0
 MAX_PROCESSING_DISTANCE_M = 1_000_000.0
+
+logger = logging.getLogger(__name__)
 MAX_PROCESSING_POINTS = 50_001
 ROUTE_ELEVATION_METHOD = "glo30_meaningful_ascent_v1"
 ElevationQuery = Callable[[list[tuple[float, float]]], list[float | None]]
@@ -54,6 +61,7 @@ class RouteElevationResult:
     climb: float
     point_count: int
     descent: float = 0.0
+    climb_plan: dict | None = None
 
 
 def route_elevation_metadata() -> dict[str, float | str]:
@@ -78,6 +86,7 @@ def build_route_elevation_result(
     query_func: ElevationQuery = query_elevations,
 ) -> RouteElevationResult:
     """查询 GLO-30，并从固定物理网格生成唯一成品剖面。"""
+    started_at = time.perf_counter()
     normalized = _normalize_points(points)
     original_distances = np.asarray(_cumulative_distances(normalized), dtype=float)
     grid, sampled_points = _resample_route(normalized, original_distances)
@@ -87,26 +96,47 @@ def build_route_elevation_result(
         raise ValueError("海拔查询结果数量和路线采样点数量不一致")
 
     raw = np.asarray(_require_complete_elevations(elevations), dtype=float)
-    shaped = _shape_profile(raw, grid)
+    shaped = _shape_profile(raw, grid, smoothing_sigma_m=100.0)
+    shaped_80 = _shape_profile(raw, grid, smoothing_sigma_m=80.0)
+    shaped_150 = _shape_profile(raw, grid, smoothing_sigma_m=150.0)
+    residual_mad = _residual_mad(raw, shaped)
     snapshot_values = np.interp(original_distances, grid, shaped)
     snapshot = [
         [round(lon, 7), round(lat, 7), round(float(ele), 1)]
         for (lon, lat), ele in zip(normalized, snapshot_values)
     ]
+    climb_plan = build_climb_plan(
+        grid,
+        shaped,
+        source_method=ROUTE_ELEVATION_METHOD,
+        horizontal_resolution_m=GLO30_HORIZONTAL_RESOLUTION_M,
+        smoothing_variants={"80m": shaped_80, "150m": shaped_150},
+        residual_mad_m=residual_mad,
+    )
+    _log_climb_plan_build(
+        climb_plan,
+        point_count=len(grid),
+        started_at=started_at,
+        replay=False,
+    )
     return RouteElevationResult(
         snapshot=snapshot,
         profile=_downsample_profile(grid, shaped),
         climb=round(_meaningful_ascent(shaped, grid), 1),
         point_count=len(snapshot),
         descent=round(_meaningful_ascent(-shaped, grid), 1),
+        climb_plan=climb_plan,
     )
 
 
 def build_route_elevation_result_from_values(
     points: Sequence[Sequence[float]],
     elevations: Sequence[float],
+    *,
+    source_method: str = "authorized_point_elevation_csv_v1",
 ) -> RouteElevationResult:
     """导入已授权逐点高度；保留原值导出，统一算法只用于图表和预计爬升。"""
+    started_at = time.perf_counter()
     normalized = _normalize_points(points)
     clean = _require_complete_elevations(elevations)
     if len(clean) != len(normalized):
@@ -119,17 +149,62 @@ def build_route_elevation_result_from_values(
     )
     grid, _sampled_points = _resample_route(normalized, original_distances)
     sampled = np.interp(grid, source_distances, source_values)
-    shaped = _shape_profile(sampled, grid)
+    shaped = _shape_profile(sampled, grid, smoothing_sigma_m=100.0)
+    shaped_80 = _shape_profile(sampled, grid, smoothing_sigma_m=80.0)
+    shaped_150 = _shape_profile(sampled, grid, smoothing_sigma_m=150.0)
+    residual_mad = _residual_mad(sampled, shaped)
     snapshot = [
         [round(lon, 7), round(lat, 7), round(float(ele), 1)]
         for (lon, lat), ele in zip(normalized, clean)
     ]
+    climb_plan = build_climb_plan(
+        grid,
+        shaped,
+        source_method=source_method,
+        horizontal_resolution_m=None,
+        smoothing_variants={"80m": shaped_80, "150m": shaped_150},
+        residual_mad_m=residual_mad,
+    )
+    _log_climb_plan_build(
+        climb_plan,
+        point_count=len(grid),
+        started_at=started_at,
+        replay=False,
+    )
     return RouteElevationResult(
         snapshot=snapshot,
         profile=_downsample_profile(grid, shaped),
         climb=round(_meaningful_ascent(shaped, grid), 1),
         point_count=len(snapshot),
         descent=round(_meaningful_ascent(-shaped, grid), 1),
+        climb_plan=climb_plan,
+    )
+
+
+def _log_climb_plan_build(
+    climb_plan: dict,
+    *,
+    point_count: int,
+    started_at: float,
+    replay: bool,
+) -> None:
+    payload_bytes = len(
+        json.dumps(
+            climb_plan,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    logger.info(
+        "climb_plan version=%s source=%s point_count=%s climb_count=%s payload_bytes=%s duration_ms=%s replay=%s",
+        climb_plan.get("algorithm_version"),
+        (climb_plan.get("source") or {}).get("method"),
+        point_count,
+        (climb_plan.get("composition") or {}).get("climb_count"),
+        payload_bytes,
+        round((time.perf_counter() - started_at) * 1000.0, 1),
+        int(replay),
     )
 
 
@@ -213,17 +288,28 @@ def _strictly_increasing_values(
     return source_distances, values[indexes]
 
 
-def _shape_profile(values: np.ndarray, distances: np.ndarray) -> np.ndarray:
+def _shape_profile(
+    values: np.ndarray,
+    distances: np.ndarray,
+    *,
+    smoothing_sigma_m: float = SMOOTHING_SIGMA_M,
+) -> np.ndarray:
     if not np.isfinite(values).all():
         raise ValueError("路线海拔包含缺失值")
     spacing = float(distances[-1] / max(len(distances) - 1, 1))
     cleaned = median_filter(values, size=MEDIAN_FILTER_POINTS, mode="nearest")
     return gaussian_filter1d(
         cleaned,
-        sigma=max(SMOOTHING_SIGMA_M / spacing, 0.01),
+        sigma=max(smoothing_sigma_m / spacing, 0.01),
         mode="nearest",
         truncate=2.0,
     )
+
+
+def _residual_mad(raw: np.ndarray, shaped: np.ndarray) -> float:
+    residual = np.asarray(raw, dtype=float) - np.asarray(shaped, dtype=float)
+    center = float(np.median(residual))
+    return float(np.median(np.abs(residual - center)))
 
 
 def _meaningful_ascent(values: np.ndarray, distances: np.ndarray) -> float:

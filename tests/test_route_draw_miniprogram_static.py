@@ -197,7 +197,8 @@ def test_route_draw_bottom_sheet_has_live_elevation_states_without_activity_sele
     assert "运动类型" not in wxml
     assert "保存后生成海拔图" not in wxml
     assert "累计爬升" in wxml
-    assert "海拔曲线" in wxml
+    assert "海拔与爬坡分段" in wxml
+    assert "爬坡组成" in wxml
     assert 'id="routeElevationCanvas"' in wxml
     assert "elevationStatus === 'loading'" in wxml
     assert "onTapRetryElevation" in wxml

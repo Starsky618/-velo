@@ -113,6 +113,7 @@ def write_route_elevation_result(
             method=method,
             timestamp_field=timestamp_field,
             extra_metadata=extra_metadata,
+            climb_plan=result.climb_plan,
         ),
         ensure_ascii=False,
     )
@@ -148,6 +149,7 @@ def _merged_navigation_metadata(
     method: str,
     timestamp_field: str,
     extra_metadata: dict | None,
+    climb_plan: dict | None,
 ) -> dict:
     try:
         metadata = json.loads(value) if value else {}
@@ -165,4 +167,6 @@ def _merged_navigation_metadata(
     if extra_metadata:
         metadata["elevation"].update(extra_metadata)
     metadata["elevation"][timestamp_field] = datetime.now(timezone.utc).isoformat()
+    if climb_plan is not None:
+        metadata["climb_plan"] = climb_plan
     return metadata

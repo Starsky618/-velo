@@ -10,6 +10,7 @@ from typing import get_args
 import pytest
 
 from app.activity.models import Activity, Trackpoint
+from app.elevation.climb_planner import build_climb_plan
 from app.main import app
 from app.route_book.router import router as route_book_router
 from app.route_book import schemas
@@ -44,6 +45,19 @@ _TRUSTED_ELEVATION_METADATA = json.dumps(
         }
     }
 )
+
+
+def _trusted_metadata_with_climb_plan(distance_m: float) -> str:
+    metadata = json.loads(_TRUSTED_ELEVATION_METADATA)
+    elevations = [701.2, 735.8]
+    metadata["climb_plan"] = build_climb_plan(
+        [0.0, distance_m],
+        elevations,
+        source_method="glo30_meaningful_ascent_v1",
+        horizontal_resolution_m=30.0,
+        smoothing_variants={"80m": elevations, "150m": elevations},
+    )
+    return json.dumps(metadata)
 
 
 def _linear_elevations(coords, *, start=700.0, end=725.0):
@@ -168,7 +182,7 @@ def _route_with_current_version(db, creator_id: int | None, **overrides):
         distance=route.distance,
         climb=route.climb,
         elevation_points_snapshot="[[112.5,37.8,701.2],[112.6,37.9,735.8]]",
-        navigation_metadata_json=_TRUSTED_ELEVATION_METADATA,
+        navigation_metadata_json=_trusted_metadata_with_climb_plan(route.distance),
         point_count=2,
     )
     db.add(version)
@@ -1506,6 +1520,124 @@ def test_route_book_detail_endpoint_exposes_export_state_for_private_owner(clien
     assert body["export_formats"] == ["gpx", "tcx"]
     assert body["export_block_reason"] is None
     assert body["anonymous_export_download_allowed"] is False
+    assert body["climb_plan"]["algorithm_version"] == "velo_climb_plan_v1"
+    assert body["climb_plan"]["source"]["confidence"] in {"terrain_estimate", "low"}
+    assert body["rider_climb_plan"]["status"] == "needs_profile"
+
+
+def test_route_book_detail_does_not_replay_sparse_legacy_elevation_as_current_climb_plan(
+    client,
+    db,
+    auth_header,
+    test_user,
+):
+    route, version = _route_with_current_version(
+        db,
+        test_user.id,
+        visibility="private",
+        publish_status="draft",
+    )
+    metadata = json.loads(version.navigation_metadata_json)
+    metadata.pop("climb_plan")
+    version.navigation_metadata_json = json.dumps(metadata)
+    db.add(version)
+    db.commit()
+
+    detail = client.get(f"/api/route-books/{route.id}/detail", headers=auth_header)
+
+    assert detail.status_code == 200
+    assert detail.json()["climb_plan"] is None
+    assert detail.json()["rider_climb_plan"] is None
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda plan: plan.update(algorithm_version="legacy_climb_plan_v0"),
+        lambda plan: plan.update(unexpected_internal_field=True),
+        lambda plan: plan["partition_alternatives"].update(
+            {
+                "80m": [
+                    {
+                        "start_distance_m": 0,
+                        "end_distance_m": 5_000,
+                        "length_m": 5_000,
+                        "net_gain_m": 300,
+                        "average_grade_pct": 6,
+                        "score": 30_000,
+                        "category": "not-a-category",
+                        "unexpected_internal_field": "must-not-pass",
+                    }
+                ]
+            }
+        ),
+    ],
+)
+def test_route_book_detail_degrades_unknown_or_corrupt_stored_climb_plan_to_pending(
+    client,
+    db,
+    auth_header,
+    test_user,
+    mutation,
+):
+    route, version = _route_with_current_version(
+        db,
+        test_user.id,
+        visibility="private",
+        publish_status="draft",
+    )
+    metadata = json.loads(version.navigation_metadata_json)
+    mutation(metadata["climb_plan"])
+    version.navigation_metadata_json = json.dumps(metadata)
+    db.add(version)
+    db.commit()
+
+    detail = client.get(f"/api/route-books/{route.id}/detail", headers=auth_header)
+
+    assert detail.status_code == 200
+    assert detail.json()["climb_plan"] is None
+    assert detail.json()["rider_climb_plan"] is None
+
+
+def test_route_book_detail_power_curve_cache_failure_falls_back_to_ftp_without_500(
+    client,
+    db,
+    auth_header,
+    test_user,
+    monkeypatch,
+):
+    test_user.ftp = 280
+    test_user.weight = 70
+    db.add(test_user)
+    db.commit()
+    route, _version = _route_with_current_version(
+        db,
+        test_user.id,
+        visibility="private",
+        publish_status="draft",
+    )
+
+    def fail_cache(*_args, **_kwargs):
+        raise TimeoutError("redis black hole")
+
+    monkeypatch.setattr("app.route_book.service.get_cached_user_power_curve", fail_cache)
+
+    detail = client.get(f"/api/route-books/{route.id}/detail", headers=auth_header)
+
+    assert detail.status_code == 200
+    rider = detail.json()["rider_climb_plan"]
+    assert rider["status"] == "estimated"
+    assert rider["basis"] == "ftp_weight"
+    assert rider["physiology_model"] == "ftp_only"
+
+
+def test_route_detail_redis_client_has_request_timeouts():
+    from app.queue import request_redis_conn
+
+    options = request_redis_conn.connection_pool.connection_kwargs
+    assert options["socket_connect_timeout"] == pytest.approx(1.0)
+    assert options["socket_timeout"] == pytest.approx(1.0)
+    assert options["retry_on_timeout"] is False
 
 
 def test_route_book_detail_endpoint_exposes_export_state_for_public_anonymous(client, db, admin_user):
@@ -1528,6 +1660,8 @@ def test_route_book_detail_endpoint_exposes_export_state_for_public_anonymous(cl
     assert body["export_formats"] == ["gpx", "tcx"]
     assert body["export_block_reason"] is None
     assert body["anonymous_export_download_allowed"] is True
+    assert body["climb_plan"]["algorithm_version"] == "velo_climb_plan_v1"
+    assert body["rider_climb_plan"] is None
 
 
 def test_route_book_detail_endpoint_marks_no_elevation_for_owner(client, db, auth_header, test_user):

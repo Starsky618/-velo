@@ -74,6 +74,154 @@ class RouteBookListResponse(BaseModel):
     items: list[RouteBookResponse]
 
 
+class ClimbChildSectionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    section_role: Literal["ramp", "recovery", "descent_inside_climb"]
+    start_distance_m: float
+    end_distance_m: float
+    length_m: float
+    average_grade_pct: float
+    elevation_gain_m: float
+    elevation_loss_m: float
+    rolling_grade_500m: float | None
+    rolling_grade_1000m: float | None
+    position_fraction: float
+
+
+class ClimbOccurrenceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    order: int
+    start_distance_m: float
+    end_distance_m: float
+    length_m: float
+    start_elevation_m: float
+    summit_elevation_m: float
+    elevation_gain_m: float
+    elevation_loss_m: float
+    net_gain_m: float
+    average_grade_pct: float
+    score: float
+    category: Literal["HC", "1", "2", "3", "4", "uncategorized"]
+    category_system: Literal["garmin_public_2026"]
+    category_version: str
+    category_status: Literal["classified", "candidate"]
+    shape: str
+    shape_label: str
+    shape_tags: list[str]
+    shape_labels: list[str]
+    shape_rule_version: str
+    max_sustained_grade_pct: dict[str, float | None]
+    max_sustained_grade_windows: dict[str, dict[str, float] | None]
+    grade_band_distance_m: dict[str, float]
+    grade_band_share: dict[str, float]
+    rolling_grade_500m: dict[str, float | None]
+    rolling_grade_1000m: dict[str, float | None]
+    child_sections: list[ClimbChildSectionResponse]
+    boundary_status: Literal["stable", "ambiguous", "not_assessed"]
+    boundary_stability: float | None
+    boundary_max_drift_m: float | None
+    category_stability: float
+    profile: list[list[float]]
+    recovery_after_m: float
+    cumulative_distance_before_m: float
+    cumulative_ascent_before_m: float
+    distance_from_previous_climb_m: float
+    descent_from_previous_climb_m: float
+
+
+class RouteClimbCompositionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    climb_count: int
+    categorized_climb_count: int
+    category_counts: dict[str, int]
+    total_climbing_distance_m: float
+    total_climb_gain_m: float
+    categorized_ascent_m: float
+    uncategorized_ascent_m: float
+    unobserved_profile_distance_m: float
+    highest_category: str | None
+    hardest_climb_order: int | None
+    sequence_label: str
+    finish_type: Literal["summit", "descent", "rolling", "flat"]
+    boundary_status: Literal["stable", "ambiguous", "not_assessed"]
+
+
+class ClimbPartitionAlternativeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start_distance_m: float
+    end_distance_m: float
+    length_m: float
+    net_gain_m: float
+    average_grade_pct: float
+    score: float
+    category: Literal["HC", "1", "2", "3", "4", "uncategorized"]
+
+
+class RouteClimbPlanResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    algorithm_version: str
+    classification_system: Literal["garmin_public_2026"]
+    traversal_direction: str
+    source: dict
+    parameters: dict
+    route_distance_m: float
+    climbs: list[ClimbOccurrenceResponse]
+    partition_alternatives: dict[str, list[ClimbPartitionAlternativeResponse]]
+    composition: RouteClimbCompositionResponse
+
+
+class RiderClimbScenarioOccurrenceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    order: int
+    target_power_w: float
+    target_w_per_kg: float
+    estimated_time_min: float
+    estimated_time_range_min: list[float]
+    cumulative_climbing_time_before_min: float
+    pdc_effective_duration_min: float
+    recovery_credit_status: Literal[
+        "not_modeled_without_cp_wprime",
+        "not_applicable_single_climb",
+    ]
+
+
+class RiderClimbScenarioResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: Literal["finish", "steady", "hard"]
+    label: str
+    target_power_w: float
+    target_w_per_kg: float
+    target_power_range_w: list[float]
+    target_w_per_kg_range: list[float]
+    estimated_climbing_time_min: float
+    estimated_climbing_time_range_min: list[float]
+    climbs: list[RiderClimbScenarioOccurrenceResponse]
+
+
+class RiderClimbPlanResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["estimated", "needs_profile"]
+    missing_fields: list[str]
+    confidence: Literal["medium", "low", "unavailable"]
+    basis: Literal["ftp_weight_power_curve", "ftp_weight", "route_only"]
+    physiology_model: Literal["pdc_only", "ftp_only", "unavailable"]
+    ftp_w_per_kg: float | None
+    power_curve_coverage: dict[str, float | int | None]
+    confidence_dimensions: dict[str, str]
+    multi_climb_context: dict[str, str | int | bool]
+    assumptions: list[str]
+    scenarios: list[RiderClimbScenarioResponse]
+    climbs: list[dict]
+
+
 class RouteBookDetailResponse(BaseModel):
     """路书详情页数据——只给页面看路线本身，不泄露内部文件钥匙。"""
 
@@ -86,6 +234,8 @@ class RouteBookDetailResponse(BaseModel):
     preview_points: list[list[float]] = Field(default_factory=list)
     elevation_ready: bool = False
     elevation_profile: list[list[float]] | None = None
+    climb_plan: RouteClimbPlanResponse | None = None
+    rider_climb_plan: RiderClimbPlanResponse | None = None
     export_ready: bool = False
     export_formats: list[RouteExportFormat] = Field(default_factory=list)
     export_block_reason: RouteExportBlockReason | None = None
@@ -115,6 +265,18 @@ def route_book_detail_response(
 ) -> RouteBookDetailResponse:
     response = RouteBookDetailResponse.model_validate(route)
     response.elevation_ready = bool(response.elevation_profile and len(response.elevation_profile) >= 2)
+    climb_plan = getattr(route, "_climb_plan_override", None)
+    rider_climb_plan = getattr(route, "_rider_climb_plan_override", None)
+    response.climb_plan = (
+        RouteClimbPlanResponse.model_validate(climb_plan)
+        if climb_plan is not None
+        else None
+    )
+    response.rider_climb_plan = (
+        RiderClimbPlanResponse.model_validate(rider_climb_plan)
+        if rider_climb_plan is not None
+        else None
+    )
     response.export_ready = export_ready
     response.export_formats = export_formats
     response.export_block_reason = export_block_reason
@@ -203,6 +365,8 @@ class RouteGuideOut(BaseModel):
     gallery_urls: list[str] | None = None
     highlights: list[str] | None = None
     elevation_profile: list[list[float]] | None = None
+    climb_plan: RouteClimbPlanResponse | None = None
+    rider_climb_plan: RiderClimbPlanResponse | None = None
     route_book_id: int | None = None
     distance: float | None = None
     climb: float | None = None
@@ -317,6 +481,8 @@ class ManualDrawnElevationPreviewResponse(BaseModel):
     climb_m: float
     descent_m: float
     elevation_profile: list[list[float]]
+    climb_plan: RouteClimbPlanResponse
+    rider_climb_plan: RiderClimbPlanResponse | None = None
 
 
 class ManualDrawnRawPointsSummary(BaseModel):

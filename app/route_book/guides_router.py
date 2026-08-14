@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_optional_user
 from app.route_book import schemas, service_guides
 
 
@@ -23,8 +24,16 @@ def list_route_guides(db: Session = Depends(get_db)):
 
 
 @router.get("/{guide_id}", response_model=schemas.RouteGuideOut)
-def get_route_guide(guide_id: int, db: Session = Depends(get_db)):
+def get_route_guide(
+    guide_id: int,
+    db: Session = Depends(get_db),
+    current_user_id: int | None = Depends(get_optional_user),
+):
     try:
-        return service_guides.get_route_guide(db, guide_id)
+        return service_guides.get_route_guide(
+            db,
+            guide_id,
+            current_user_id=current_user_id,
+        )
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))

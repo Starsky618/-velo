@@ -319,6 +319,23 @@ def get_user_power_curve(
     return result
 
 
+def get_cached_user_power_curve(
+    user_id: int,
+    period: str = "last_30_days",
+) -> dict | None:
+    """只读 request-safe 功率曲线缓存；miss 时不在 HTTP 详情链同步重算。"""
+    from app.queue import request_redis_conn
+
+    cache_key = f"{_POWER_CURVE_CACHE_PREFIX}{user_id}:period_{period}"
+    cached = request_redis_conn.get(cache_key)
+    if cached is None:
+        return None
+    parsed = _json.loads(cached.decode() if isinstance(cached, bytes) else cached)
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("buckets"), dict):
+        return None
+    return parsed
+
+
 def invalidate_power_curve_cache(user_id: int) -> None:
     """
     清除用户 power_curve 全部 period 缓存——"通知账房先生重新算账"。

@@ -132,6 +132,106 @@
   margin-top: 20rpx;
 }
 
+.climb-plan-card {
+  margin-top: 22rpx;
+  padding: 26rpx 30rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
+}
+
+.climb-plan-title {
+  color: #1c1c1e;
+  font-size: 31rpx;
+  font-weight: 600;
+}
+
+.climb-sequence {
+  margin-top: 8rpx;
+  color: #ff9500;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.climb-list {
+  margin-top: 18rpx;
+}
+
+.climb-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 18rpx 0;
+  border-top: 1rpx solid #e5e5ea;
+}
+
+.climb-category {
+  flex: none;
+  min-width: 86rpx;
+  padding: 6rpx 10rpx;
+  border-radius: 12rpx;
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 600;
+  text-align: center;
+}
+
+.climb-copy {
+  min-width: 0;
+  margin-left: 18rpx;
+}
+
+.climb-main {
+  color: #1c1c1e;
+  font-size: 27rpx;
+  font-weight: 600;
+}
+
+.climb-sub,
+.climb-empty,
+.climb-boundary-hint {
+  margin-top: 6rpx;
+  color: #8a8a8e;
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
+.rider-climb-line {
+  margin-top: 14rpx;
+  padding: 16rpx 18rpx;
+  border-radius: 16rpx;
+  background: #fff7e8;
+  color: #7a4b00;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.rider-scenario-list {
+  margin-top: 14rpx;
+  border-top: 1rpx solid #e5e5ea;
+}
+
+.rider-scenario-row {
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #e5e5ea;
+}
+
+.rider-scenario-label,
+.rider-scenario-value {
+  color: #1c1c1e;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.rider-scenario-value,
+.rider-scenario-range {
+  margin-top: 4rpx;
+}
+
+.rider-scenario-range {
+  color: #8e8e93;
+  font-size: 22rpx;
+}
+
 .export-card {
   margin-top: 22rpx;
   background: #ffffff;

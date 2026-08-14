@@ -2,6 +2,7 @@ const api = require('../../utils/api')
 const { wgs84ToGcj02 } = require('../../utils/coords')
 const mapTheme = require('../../utils/map-theme')
 const routeMapNav = require('../../utils/route-map-nav')
+const climbPlanUi = require('../../utils/climb-plan')
 
 function buildRoutePreview(points) {
   if (!Array.isArray(points) || points.length < 2) {
@@ -57,9 +58,13 @@ function buildStats(route) {
   if (hasClimb && Number.isFinite(climb)) {
     stats.push({ v: String(Math.round(climb)), u: 'm', k: '爬升' })
   }
-  if (Number.isFinite(distance) && distance > 0 && hasClimb && Number.isFinite(climb)) {
-    var grade = climb / distance * 100
-    stats.push({ v: grade.toFixed(1), u: '%', k: '均坡' })
+  var climbPlan = climbPlanUi.normalizeClimbPlan(route && route.climb_plan)
+  if (climbPlan) {
+    stats.push({
+      v: String(Number(climbPlan.composition.climb_count) || 0),
+      u: '段',
+      k: '显著爬坡',
+    })
   }
   return stats
 }
@@ -103,6 +108,7 @@ Page({
     route: null,
     routeStats: [],
     hasElevation: false,
+    climbPlanView: climbPlanUi.buildView(null, null),
     exportHint: '',
     routePreviewVisible: false,
     routePreviewCenter: { latitude: 37.8706, longitude: 112.5489 },
@@ -142,6 +148,7 @@ Page({
           route: route,
           routeStats: buildStats(route),
           hasElevation: hasElevation,
+          climbPlanView: climbPlanUi.buildView(route.climb_plan, route.rider_climb_plan),
           exportHint: exportBlockHint(route),
           lastExportFilename: '',
           lastExportTempPath: '',
@@ -201,6 +208,16 @@ Page({
     ctx.closePath()
     ctx.setFillStyle('rgba(255, 149, 0, 0.10)')
     ctx.fill()
+    var climbPlan = climbPlanUi.normalizeClimbPlan(this.data.route && this.data.route.climb_plan)
+    ;(climbPlan && climbPlan.climbs ? climbPlan.climbs : []).forEach(function (climb) {
+      var startKm = Number(climb.start_distance_m) / 1000
+      var endKm = Number(climb.end_distance_m) / 1000
+      if (!Number.isFinite(startKm) || !Number.isFinite(endKm) || endKm <= startKm) return
+      ctx.setGlobalAlpha(0.12)
+      ctx.setFillStyle(climbPlanUi.categoryColor(climb.category))
+      ctx.fillRect((startKm - minD) / spanD * width, padY, (endKm - startKm) / spanD * width, height - padY * 2)
+      ctx.setGlobalAlpha(1)
+    })
     ctx.beginPath()
     points.forEach(function (pt, i) {
       if (i === 0) ctx.moveTo(pt.x, pt.y)
@@ -330,6 +347,7 @@ Page({
 if (typeof module !== 'undefined') {
   module.exports = {
     buildStats: buildStats,
+    buildClimbPlanView: climbPlanUi.buildView,
     buildRoutePreview: buildRoutePreview,
     canCopyAnonymousExportLink: canCopyAnonymousExportLink,
   }

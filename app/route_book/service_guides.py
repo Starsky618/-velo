@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.route_book.elevation_quality import has_trusted_route_elevation
 from app.route_book.models import RouteBook, RouteGuide, RouteVersion
+from app.route_book.service import climb_plan_from_version, rider_climb_plan_for_user
 from app.route_book import schemas
 
 
@@ -49,9 +50,26 @@ def _list_item(guide: RouteGuide, route: RouteBook | None) -> schemas.RouteGuide
     )
 
 
-def _detail(guide: RouteGuide, route: RouteBook | None, version: RouteVersion | None) -> schemas.RouteGuideOut:
+def _detail(
+    db: Session,
+    guide: RouteGuide,
+    route: RouteBook | None,
+    version: RouteVersion | None,
+    *,
+    current_user_id: int | None,
+) -> schemas.RouteGuideOut:
     ready = guide.route_book_id is not None
     export_ready, export_formats, export_block_reason = _export_state(guide, route, version)
+    climb_plan = climb_plan_from_version(version) if ready else None
+    rider_climb_plan = (
+        rider_climb_plan_for_user(
+            db,
+            current_user_id=current_user_id,
+            climb_plan=climb_plan,
+        )
+        if climb_plan is not None and current_user_id is not None
+        else None
+    )
     return schemas.RouteGuideOut(
         id=guide.id,
         name=guide.name,
@@ -62,6 +80,16 @@ def _detail(guide: RouteGuide, route: RouteBook | None, version: RouteVersion | 
         gallery_urls=_json_list(guide.gallery_urls),
         highlights=_json_list(guide.highlights),
         elevation_profile=_json_list(guide.elevation_profile) if ready else None,
+        climb_plan=(
+            schemas.RouteClimbPlanResponse.model_validate(climb_plan)
+            if climb_plan is not None
+            else None
+        ),
+        rider_climb_plan=(
+            schemas.RiderClimbPlanResponse.model_validate(rider_climb_plan)
+            if rider_climb_plan is not None
+            else None
+        ),
         route_book_id=guide.route_book_id,
         distance=_km(route.distance) if ready and route is not None else None,
         climb=route.climb if ready and route is not None else None,
@@ -115,9 +143,20 @@ def list_route_guides(db: Session) -> list[schemas.RouteGuideListItem]:
     return [_list_item(guide, route) for guide, route, _version in rows]
 
 
-def get_route_guide(db: Session, guide_id: int) -> schemas.RouteGuideOut:
+def get_route_guide(
+    db: Session,
+    guide_id: int,
+    *,
+    current_user_id: int | None = None,
+) -> schemas.RouteGuideOut:
     row = _query_guides_with_routes(db).filter(RouteGuide.id == guide_id).first()
     if row is None:
         raise LookupError("route guide not found")
     guide, route, version = row
-    return _detail(guide, route, version)
+    return _detail(
+        db,
+        guide,
+        route,
+        version,
+        current_user_id=current_user_id,
+    )
