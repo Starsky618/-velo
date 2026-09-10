@@ -1,0 +1,2 @@
+export function sketchDistance(points){let total=0;for(let i=1;i<points.length;i++){const [x,y]=points[i-1].map(v=>v*Math.PI/180),[u,v]=points[i].map(v=>v*Math.PI/180);const a=Math.sin((v-y)/2)**2+Math.cos(y)*Math.cos(v)*Math.sin((u-x)/2)**2;total+=12742000*Math.asin(Math.min(1,Math.sqrt(a)))}return total}
+export function sketchTrip(points){return {name:'我的手绘路线',provenance:'在地图上手绘形成的路线，保留绘制走向。',coordinates:points,distanceM:sketchDistance(points),waypoints:[{name:'起点',label:'手绘起点',coordinates:points[0]},{name:'终点',label:'手绘终点',coordinates:points.at(-1)}]}}

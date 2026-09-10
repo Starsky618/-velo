@@ -35,7 +35,7 @@ class _LinkParser(HTMLParser):
             rel_tokens = (values.get("rel") or "").lower().split()
             if "stylesheet" in rel_tokens:
                 self.stylesheets.append(values["href"])
-        if tag == "img" and values.get("src"):
+        if tag in {"img", "script"} and values.get("src"):
             self.links.append(values["src"])
         if tag == "meta" and values.get("name") == "viewport":
             self.has_viewport = True
@@ -97,7 +97,10 @@ def test_all_html_pages_are_mobile_ready_and_have_valid_internal_links():
         assert parser.has_title, page
         assert parser.has_viewport, page
         assert 'href="/favicon.svg"' in source, page
-        assert SITE_STYLESHEET_URL in parser.stylesheets, page
+        if page == WEBSITE / "index.html":
+            assert any(re.fullmatch(r"/assets/index-[A-Za-z0-9_-]+\.css", url) for url in parser.stylesheets), page
+        else:
+            assert SITE_STYLESHEET_URL in parser.stylesheets, page
 
         for href in parser.links:
             if href.startswith(("mailto:", "tel:", "#")):
@@ -135,7 +138,7 @@ def test_public_page_footers_show_the_verified_icp_record():
         assert footer, page
         body = footer.group("body")
         record_row = re.search(
-            r'<div\b[^>]*class="footer-record"[^>]*>(?P<body>.*?)</div>',
+            r'<div\b[^>]*class="(?:footer-record|footer-bottom)"[^>]*>(?P<body>.*?)</div>',
             body,
             re.DOTALL,
         )
@@ -191,8 +194,13 @@ def test_homepage_uses_local_chinese_web_fonts_without_synthetic_weights():
     assert 'font-family: "VELO Sans"' in css
     assert "font-synthesis: none" in css
     assert 'type="font/woff"' in homepage
-    assert "/assets/fonts/velo-sans-zh-regular-v1.woff" in homepage
-    assert "/assets/fonts/velo-sans-zh-medium-v1.woff" in homepage
+    assert "/assets/velo-sans-regular.woff" in homepage
+    assert (WEBSITE / "assets/velo-editorial.woff").read_bytes()[:4] == b"wOFF"
+    parser = _LinkParser()
+    parser.feed(homepage)
+    home_styles = "\n".join(_resolve_site_path(urlsplit(url).path).read_text() for url in parser.stylesheets)
+    assert "font-synthesis:none" in home_styles
+    assert "Velo Sans" in home_styles
 
     home_css = css.split(".home-v2 {", 1)[1]
     assert not re.search(r"font-weight:\s*(650|750|800)\b", home_css)
@@ -317,7 +325,11 @@ def test_caddy_serves_website_without_exposing_private_uploads():
     assert "root * /srv/website" in caddy
     assert "handle_errors" in caddy
     assert "rewrite * /404.html" in caddy
-    assert "script-src 'none'" in caddy
+    assert "script-src 'self'" in caddy
+    assert "worker-src 'self' blob:" in caddy
+    assert "connect-src 'self' https://tiles.openfreemap.org https://valhalla1.openstreetmap.de https://api.weiluai.top;" in caddy
+    assert "script-src 'unsafe-inline'" not in caddy
+    assert "connect-src *" not in caddy
     assert "form-action 'none'" in caddy
     assert "redir https://weiluai.top{uri} permanent" in caddy
     assert "api.weiluai.top {" in caddy
@@ -344,3 +356,34 @@ def test_sitemap_lists_all_canonical_pages():
         "/en/privacy/garmin/",
     ]:
         assert f"<loc>https://weiluai.top{path}</loc>" in sitemap
+
+
+def test_landing_page_prerenders_real_content_and_loads_only_local_scripts():
+    home = (WEBSITE / "index.html").read_text(encoding="utf-8")
+    for text in ["太原", "自有好路", "東湖TYY7太原夜骑", "skarsky618", "阅读完整介绍", "一城好路", "导出 GPX", "品牌与投资合作"]:
+        assert text in home
+    assert '<div id="root"></div>' not in home
+    scripts = re.findall(r'<script\b([^>]*)>(.*?)</script>', home, re.DOTALL)
+    assert scripts
+    for attributes, inline in scripts:
+        assert not inline.strip()
+        assert re.search(r'src="/assets/[A-Za-z0-9_.-]+\.js"', attributes)
+    assert len(list((WEBSITE / "assets/club").glob("*.jpg"))) == 7
+    assert not (WEBSITE / "src").exists()
+    assert not (WEBSITE / ".env").exists()
+
+
+def test_published_map_catalog_and_day_trip_keep_the_source_contract():
+    import json
+    catalog = json.loads((WEBSITE / "data/segments.json").read_text())
+    assert catalog["gpxUsed"] is False
+    assert catalog["coordinateSystem"] == "WGS84"
+    assert len(catalog["segments"]) == 121
+    assert len(catalog["display"]["representativeIds"]) == 55
+    for segment in catalog["segments"]:
+        assert segment["pointCount"] == segment["originalPointCount"] == len(segment["coordinates"])
+        assert segment["resolution"] == "high"
+    trip = json.loads((ROOT / "website-src/src/data/day-trip.json").read_text())
+    assert trip["coordinates"][0] == trip["coordinates"][-1]
+    assert trip["status"] == "illustrative"
+    assert len(trip["coordinates"]) == 12178
