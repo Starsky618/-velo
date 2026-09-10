@@ -39,6 +39,7 @@ from app.segment.router import (
 from app.strava.router import router as strava_router
 from app.training.router import router as training_router
 from app.user.router import router as user_router
+from app.website.router import router as website_router
 
 # 创建 FastAPI 应用实例
 # title 和 version 会显示在自动生成的 API 文档页面上（/docs）
@@ -60,6 +61,7 @@ app.add_middleware(
 # 挂载各模块路由——每个模块的接口通过 include_router 注册到应用上
 # 注册顺序无所谓，FastAPI 根据路径前缀分发请求
 app.include_router(user_router)
+app.include_router(website_router)
 app.include_router(activity_router)
 app.include_router(segment_router)
 app.include_router(user_effort_router)

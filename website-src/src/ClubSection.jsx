@@ -1,0 +1,18 @@
+import {useRef,useState} from 'react';
+import {ArrowLeft,ArrowRight,ArrowsOutSimple,Plus,Minus} from '@phosphor-icons/react';
+import {clubIntroduction,clubPhotos,clubExperiences} from './clubContent';
+import {community} from './siteContent';
+import './club.css';
+export function ClubSection({onJoin,onOpen}) {
+ const [index,setIndex]=useState(0),[expanded,setExpanded]=useState(false);
+ const strip=useRef(null);const photo=clubPhotos[index];
+ function choose(next){const actual=(next+clubPhotos.length)%clubPhotos.length;setIndex(actual);const rail=strip.current,thumb=rail?.children[actual];if(rail&&thumb){const r=rail.getBoundingClientRect(),t=thumb.getBoundingClientRect();if(t.left<r.left)rail.scrollBy({left:t.left-r.left,behavior:'smooth'});else if(t.right>r.right)rail.scrollBy({left:t.right-r.right,behavior:'smooth'})}}
+ return <section className="club-section" id="community" aria-labelledby="community-title">
+  <div className="club-heading"><div><p className="eyebrow">東湖 TYY7 · 太原夜骑</p><h2 id="community-title">好路，与同路人分享。</h2></div><p>夜里的集合，周末的山路。<br/>在太原，找到一起骑车的人。</p></div>
+  <div className="club-gallery"><button className={`club-main-photo ${photo.id==='night-ride'?'night-photo':''}`} aria-label={`放大车队照片：${photo.name}`} onClick={()=>onOpen({...photo,place:'東湖 TYY7 · 太原夜骑'})}><img src={photo.image} alt={photo.name} loading="lazy"/><span className="expand-photo"><ArrowsOutSimple size={20}/></span></button><div className="club-photo-caption"><div aria-live="polite"><span>{String(index+1).padStart(2,'0')} / 07</span><h3>{photo.name}</h3><p>{photo.description}</p></div><div className="gallery-arrows"><button aria-label="上一张车队照片" onClick={()=>choose(index-1)}><ArrowLeft size={19}/></button><button aria-label="下一张车队照片" onClick={()=>choose(index+1)}><ArrowRight size={19}/></button></div></div><div className="club-thumbnails" ref={strip} aria-label="车队活动照片">{clubPhotos.map((item,i)=><button key={item.id} aria-label={`选择车队照片：${item.name}`} aria-pressed={i===index} onClick={()=>choose(i)}><img src={item.image} alt={item.name} loading="lazy"/><span>{item.name}</span></button>)}</div></div>
+  <div className="club-life"><div className="club-life-heading"><p className="eyebrow">骑行之外，也有同行</p><h3>从骑友，成为朋友。</h3><p>从第一次集合，到下一次约骑。<br/>熟悉的面孔，会越来越多。</p></div><div className="club-experiences">{clubExperiences.map(item=><article key={item.number}><span>{item.number}</span><div><h4>{item.title}</h4><p>{item.text}</p></div></article>)}</div></div>
+  <div className="club-support"><div><p className="eyebrow">支持这群骑友的力量</p><h3>让热爱，走得更远。</h3></div><div className="club-support-names"><span>東湖老陈醋</span><span>美和居老醋坊</span><span>阳光城</span><span>霖熙福饮</span></div><p>从地方企业的支持，到骑友的长期参与。<br/>一支车队，连接着这座城里不同的人。</p></div>
+  <div className="club-story"><div className="club-story-heading"><div><p className="eyebrow">认识我们的车队</p><h3>東湖TYY7太原夜骑</h3></div><button aria-expanded={expanded} aria-controls="club-introduction" onClick={()=>setExpanded(v=>!v)}>{expanded?'收起介绍':'阅读完整介绍'}{expanded?<Minus size={18}/>:<Plus size={18}/>}</button></div><p className="club-intro-lead">{clubIntroduction[0]}</p><div id="club-introduction" hidden={!expanded}>{clubIntroduction.slice(1).map((paragraph,i)=><p key={i}>{paragraph}</p>)}</div></div>
+  <div className="club-join"><div><p className="eyebrow">下一次集合，见</p><h3>带上车，认识一下。</h3><p>加入骑友社群，参与活动，认识新朋友。<br/>也欢迎品牌伙伴与投资人，和我们聊聊骑行。</p><p className="club-product-access">在社群中，付费使用 VELO，找到适合自己的下一程。</p></div><div className="club-join-actions"><button className="invitation-button" onClick={onJoin}>加入骑友社群<ArrowRight size={18}/></button><button className="club-partner-link" onClick={onJoin}>品牌与投资合作<ArrowRight size={16}/></button><span>微信 {community.wechatId}</span></div></div>
+ </section>;
+}
