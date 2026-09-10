@@ -325,6 +325,7 @@ def test_caddy_serves_website_without_exposing_private_uploads():
     assert "root * /srv/website" in caddy
     assert "handle_errors" in caddy
     assert "rewrite * /404.html" in caddy
+    assert 'Cache-Control "no-cache"' in caddy
     assert "script-src 'self'" in caddy
     assert "worker-src 'self' blob:" in caddy
     assert "connect-src 'self' https://tiles.openfreemap.org https://valhalla1.openstreetmap.de https://api.weiluai.top;" in caddy
