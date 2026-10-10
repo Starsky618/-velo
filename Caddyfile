@@ -55,6 +55,17 @@
 }
 
 api.weiluai.top {
+    # 私人充电位提醒：独立主机进程，仅监听 Docker 网桥，控制 API 自带访问密钥。
+    # 部署位置 /home/ubuntu/lvcc-alert；服务名 lvcc-alert.service。
+    handle /charge-watch {
+        redir /charge-watch/ 308
+    }
+    handle_path /charge-watch/* {
+        request_body {
+            max_size 4KB
+        }
+        reverse_proxy 172.22.0.1:8765
+    }
     import velo_site
 }
 
