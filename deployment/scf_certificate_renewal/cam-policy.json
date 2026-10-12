@@ -1,0 +1,23 @@
+{
+  "version": "2.0",
+  "statement": [
+    {
+      "effect": "allow",
+      "action": ["ssl:ApplyCertificate"],
+      "resource": ["*"]
+    },
+    {
+      "effect": "allow",
+      "action": ["ssl:DescribeCertificates"],
+      "resource": ["qcs::ssl::uin/${ACCOUNT_UIN}:certificate/*"]
+    },
+    {
+      "effect": "allow",
+      "action": ["scf:GetCustomDomain", "scf:UpdateCustomDomain"],
+      "resource": [
+        "qcs::scf:ap-guangzhou:uin/${ACCOUNT_UIN}:domain/weiluai.top",
+        "qcs::scf:ap-guangzhou:uin/${ACCOUNT_UIN}:domain/www.weiluai.top"
+      ]
+    }
+  ]
+}
