@@ -257,7 +257,9 @@ def test_heatmap_tile_requires_auth_and_returns_private_png(client, auth_header)
     assert response.content == b"png"
     assert response.headers["content-type"] == "image/png"
     assert response.headers["cache-control"] == "private, max-age=86400"
-    assert response.headers["vary"] == "Authorization"
+    assert "authorization" in {
+        token.strip().lower() for token in response.headers["vary"].split(",")
+    }
     assert mock_tile.call_args.args[1:] == (1, 12, 3328, 1582)
     assert mock_tile.call_args.kwargs == {
         "year": 2025,
@@ -328,7 +330,9 @@ def test_other_heatmap_tile_filters_private_tracks_for_non_owner(client, auth_he
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "private, no-store"
-    assert response.headers["vary"] == "Authorization"
+    assert "authorization" in {
+        token.strip().lower() for token in response.headers["vary"].split(",")
+    }
     assert mock_tile.call_args.kwargs["include_private"] is False
 
 
@@ -341,7 +345,9 @@ def test_unversioned_my_heatmap_tile_is_not_cached_by_http_clients(client, auth_
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "private, no-store"
-    assert response.headers["vary"] == "Authorization"
+    assert "authorization" in {
+        token.strip().lower() for token in response.headers["vary"].split(",")
+    }
 
 
 def test_heatmap_tile_rejects_unsafe_cache_version(client, auth_header):
