@@ -158,7 +158,10 @@ def main_handler(event, context):
         return _response(400, b"Bad Request\n", headers={"Content-Type": "text/plain; charset=utf-8"}, head=head)
 
     url_path = quote(path, safe="/!$&'()*+,;=:@-._~")
-    host = headers.get("host", "").lower().split(":", 1)[0].rstrip(".")
+    # Function URL identifies the original domain here and may omit Host.
+    # Prefer its domain even when a different Host is also present.
+    request_domain = headers.get("x-scf-request-domain", headers.get("host", ""))
+    host = request_domain.lower().split(":", 1)[0].rstrip(".")
     if host == "www.weiluai.top":
         return _response(301, headers={"Location": CANONICAL_ORIGIN + url_path + query}, head=head)
 

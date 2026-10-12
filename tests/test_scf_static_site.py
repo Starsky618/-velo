@@ -31,7 +31,7 @@ builder = load_module("scf_static_build", DEPLOYMENT / "build.py")
 
 def event(path="/", method="GET", headers=None, query=None):
     # Official Function URL shape: no API Gateway/AWS-only fields.
-    return {"httpMethod": method, "path": path, "headers": {"host": "weiluai.top", **(headers or {})}, "queryString": query or {}, "body": ""}
+    return {"httpMethod": method, "path": path, "headers": {"x-scf-request-domain": "weiluai.top"} if headers is None else headers, "queryString": query or {}, "body": ""}
 
 
 def body_bytes(response):
@@ -85,14 +85,47 @@ class StaticFunctionTests(unittest.TestCase):
                 self.assertFalse(head["isBase64Encoded"])
 
     def test_www_redirect_preserves_path_and_query_values(self):
-        response = handler.main_handler(event("/privacy/garmin/", headers={"Host": "WWW.WEILUAI.TOP:443"}, query={"from": "a b", "next": "/en/?a=b&c=1"}), None)
-        self.assertEqual(response["statusCode"], 301)
-        destination = urlsplit(response["headers"]["Location"])
-        self.assertEqual((destination.scheme, destination.netloc, destination.path), ("https", "weiluai.top", "/privacy/garmin/"))
-        self.assertEqual(parse_qs(destination.query), {"from": ["a b"], "next": ["/en/?a=b&c=1"]})
+        for domain_header in ["X-Scf-Request-Domain", "Host"]:
+            for method in ["GET", "HEAD"]:
+                with self.subTest(domain_header=domain_header, method=method):
+                    response = handler.main_handler(event(
+                        "/privacy/garmin/", method=method,
+                        headers={domain_header: "WWW.WEILUAI.TOP.:443"},
+                        query={"from": "a b", "next": "/en/?a=b&c=1"},
+                    ), None)
+                    self.assertEqual(response["statusCode"], 301)
+                    destination = urlsplit(response["headers"]["Location"])
+                    self.assertEqual((destination.scheme, destination.netloc, destination.path), ("https", "weiluai.top", "/privacy/garmin/"))
+                    self.assertEqual(parse_qs(destination.query), {"from": ["a b"], "next": ["/en/?a=b&c=1"]})
+                    self.assertEqual(response["body"], "")
+
+    def test_scf_domain_takes_precedence_over_host(self):
+        cases = [
+            ("www.weiluai.top", "weiluai.top", 301),
+            ("weiluai.top", "www.weiluai.top", 200),
+            ("123-example.ap-guangzhou.tencentscf.com", "www.weiluai.top", 200),
+            ("www.weiluai.top.attacker.example", "www.weiluai.top", 200),
+            ("", "www.weiluai.top", 200),
+        ]
+        for scf_domain, host, status in cases:
+            with self.subTest(scf_domain=scf_domain, host=host):
+                response = handler.main_handler(event(headers={
+                    "x-scf-request-domain": scf_domain, "host": host,
+                }), None)
+                self.assertEqual(response["statusCode"], status)
+                if status == 301:
+                    self.assertEqual(response["headers"]["Location"], "https://weiluai.top/")
+                else:
+                    self.assertNotIn("Location", response["headers"])
 
     def test_www_redirect_is_not_triggered_by_forwarded_host_or_suffix(self):
-        for headers in [{"host": "weiluai.top", "x-forwarded-host": "www.weiluai.top"}, {"host": "www.weiluai.top.attacker.example"}]:
+        for headers in [
+            {"x-scf-request-domain": "weiluai.top", "x-forwarded-host": "www.weiluai.top"},
+            {"x-scf-request-domain": "www.weiluai.top.attacker.example"},
+            {"host": "www.weiluai.top.attacker.example"},
+            {"x-forwarded-host": "www.weiluai.top"},
+            {},
+        ]:
             self.assertEqual(handler.main_handler(event(headers=headers), None)["statusCode"], 200)
 
     def test_directory_canonical_redirect_and_index(self):
@@ -112,7 +145,7 @@ class StaticFunctionTests(unittest.TestCase):
     def test_non_get_head_methods_are_405_on_both_hosts(self):
         for method in ["POST", "PUT", "DELETE", "PATCH", "OPTIONS", "TRACE", "get", None]:
             for host in ["weiluai.top", "www.weiluai.top"]:
-                response = handler.main_handler(event(method=method, headers={"host": host}), None)
+                response = handler.main_handler(event(method=method, headers={"x-scf-request-domain": host}), None)
                 self.assertEqual(response["statusCode"], 405)
                 self.assertEqual(response["headers"]["Allow"], "GET, HEAD")
 

@@ -23,6 +23,8 @@ ZIP 根目录只有 `handler.py`、`deployment-manifest.json`、`website/`；旁
 
 协议按[官方 Function URL 概述](https://cloud.tencent.com/document/product/583/96099)及[官方国际中文版](https://intl.cloud.tencent.com/zh/document/product/583/69491)核对：输入使用 `httpMethod`、`path`、`headers`、对象形式的 `queryString`；输出 `statusCode`、`headers`、字符串 `body`。不读取 `requestContext`、`queryStringParameters` 或 AWS `rawPath`。URL 文档不提供原始 query 字节，跳转按 `queryString` 重新编码，不能保证重复键或原始编码形式保持不变。
 
+域名判定优先读取 `headers["x-scf-request-domain"]`，仅在该字段缺失时兼容 `Host`；不读取 `X-Forwarded-Host`。[官方 Function URL 调用示例](https://cloud.tencent.com/document/product/583/47610)展示的事件包含 `x-scf-request-domain` 且没有 `Host`。真实自定义域名验收仍需分别确认根域返回页面、`www` 返回保留路径和查询参数的 301。
+
 二进制和 gzip body 使用 Base64 字符串及 `isBase64Encoded: true`，依据[官方 Python 二进制集成响应示例](https://intl.cloud.tencent.com/zh/document/product/583/40327)。该示例描述 API 网关，而 Function URL 概述没有明确说明这个响应字段：**上线前必须用真实 Function URL 下载 PNG/JPEG/WOFF、gzip 资源，与源文件 SHA-256 比对；仅本地通过不证明网关已经解码。** HEAD、301/308、404、304、POST 405、路径防护也需在真实 URL 复验，再验收自定义域名与 TLS。
 
 [配额](https://cloud.tencent.com/document/product/583/11637)：同步响应 6 MB；[部署限制](https://cloud.tencent.com/document/product/583/73923)：在线 ZIP 小于 50 MB、展开小于 500 MB。构建器采用十进制 MB 保守门槛，同时检查 JSON 转义、Base64 膨胀和 4 KB 响应头预留。初始官网基线 `89b7a223370a9991dbdf4103d27ae03faa22d9fe` 最大原文件是 `website/data/segments.json`（2,129,465 字节），完整结果见本次构建清单；超限直接构建失败，不静默漏资产。
