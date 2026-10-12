@@ -3,11 +3,14 @@
 import base64
 import gzip
 import hashlib
+import http.client
 import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
+import select
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -239,13 +242,15 @@ class ImmutableBuildTests(unittest.TestCase):
                 target = cls.repo / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(subprocess.check_output(["git", "-C", str(ROOT), "show", cls.baseline + ":" + name]))
-        target = cls.repo / builder.HANDLER_SOURCE
-        target.parent.mkdir(parents=True)
-        target.write_bytes((DEPLOYMENT / "handler.py").read_bytes())
+        for source_path, archive_name in builder.CODE_SOURCES.items():
+            target = cls.repo / source_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((DEPLOYMENT / archive_name).read_bytes())
+            target.chmod(0o755 if source_path == builder.BOOTSTRAP_SOURCE else 0o644)
         (cls.repo / ".env").write_text("PRIVATE_TEST=secret")
         (cls.repo / "uploads").mkdir()
         (cls.repo / "uploads/private.gpx").write_text("PRIVATE_TEST")
-        cls.git("add", "--", "website", builder.HANDLER_SOURCE, ".env", "uploads")
+        cls.git("add", "--", "website", *builder.CODE_SOURCES, ".env", "uploads")
         cls.git("-c", "user.name=SCF Local Test", "-c", "user.email=scf-test@example.invalid", "commit", "-qm", "Isolated test fixture; not a release")
         cls.revision = cls.git("rev-parse", "HEAD").decode().strip()
         cls.package = Path(cls.temp.name) / "first.zip"
@@ -271,7 +276,7 @@ class ImmutableBuildTests(unittest.TestCase):
         with zipfile.ZipFile(self.package) as archive:
             self.assertEqual(archive.testzip(), None)
             names = set(archive.namelist())
-            self.assertTrue(all(name in {"handler.py", "deployment-manifest.json"} or name.startswith("website/") for name in names))
+            self.assertTrue(all(name in {*builder.CODE_SOURCES.values(), "deployment-manifest.json"} or name.startswith("website/") for name in names))
             self.assertFalse(any(".env" in name or "uploads" in name or ".git" in name for name in names))
             manifest = json.loads(archive.read("deployment-manifest.json"))
             self.assertEqual(manifest["source_revision"], self.revision)
@@ -279,9 +284,20 @@ class ImmutableBuildTests(unittest.TestCase):
             for row in manifest["files"]:
                 self.assertEqual(hashlib.sha256(archive.read(row["path"])).hexdigest(), row["sha256"])
                 self.assertEqual(len(archive.read(row["path"])), row["bytes"])
+                self.assertEqual(archive.read(row["path"]), self.git("show", self.revision + ":" + row["source_path"]))
+                self.assertEqual(row["mode"], "0755" if row["path"] == "scf_bootstrap" else "0644")
             for info in archive.infolist():
                 self.assertEqual(info.date_time, (1980, 1, 1, 0, 0, 0))
                 self.assertEqual(info.compress_type, zipfile.ZIP_STORED)
+                self.assertEqual((info.external_attr >> 16) & 0o777, 0o755 if info.filename == "scf_bootstrap" else 0o644)
+            self.assertEqual(manifest["function_type"], "Web")
+            self.assertEqual(manifest["entry_point"], "scf_bootstrap")
+            self.assertEqual(manifest["listen_address"], "0.0.0.0:9000")
+            bootstrap = archive.read("scf_bootstrap")
+            self.assertTrue(bootstrap.startswith(b"#!/bin/bash\n"))
+            self.assertTrue(bootstrap.endswith(b"\n"))
+            self.assertNotIn(b"\r", bootstrap)
+            self.assertIn(b"exec /var/lang/python310/bin/python3.10 -B -u /var/user/http_server.py", bootstrap)
         sidecar = json.loads(self.package.with_suffix(".zip.manifest.json").read_text())
         self.assertEqual(sidecar["zip_sha256"], hashlib.sha256(self.package.read_bytes()).hexdigest())
         self.assertLess(sidecar["zip_bytes"], builder.MAX_ZIP_BYTES)
@@ -303,6 +319,33 @@ class ImmutableBuildTests(unittest.TestCase):
         self.assertEqual(packaged.main_handler(event("/../.env"), None)["statusCode"], 400)
         self.assertEqual(packaged.main_handler(event("/deployment-manifest.json"), None)["statusCode"], 404)
 
+    def test_unpacked_package_runs_native_http_without_repository_imports(self):
+        unpacked = Path(self.temp.name) / "unpacked-http"
+        with zipfile.ZipFile(self.package) as archive:
+            archive.extractall(unpacked)
+        script = (
+            "from http_server import StaticHTTPServer, StaticRequestHandler; "
+            "server = StaticHTTPServer(('127.0.0.1', 0), StaticRequestHandler); "
+            "print(server.server_port, flush=True); server.serve_forever()"
+        )
+        process = subprocess.Popen([sys.executable, "-B", "-c", script], cwd=unpacked, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            ready, _, _ = select.select([process.stdout], [], [], 5)
+            self.assertTrue(ready, "packaged HTTP server did not start")
+            port = int(process.stdout.readline().strip())
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            try:
+                connection.request("GET", "/assets/huangcai.png")
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers.get_all("Content-Type"), ["image/png"])
+                self.assertEqual(response.read(), (unpacked / "website/assets/huangcai.png").read_bytes())
+            finally:
+                connection.close()
+        finally:
+            process.terminate()
+            process.communicate(timeout=5)
+
     def test_requires_explicit_commit_and_refuses_existing_output(self):
         for revision in ["HEAD", self.revision[:12], "--all", "$(touch /tmp/no)"]:
             with self.assertRaises(ValueError):
@@ -320,6 +363,7 @@ class ImmutableBuildTests(unittest.TestCase):
         for filename, content, mode, pattern in [
             ("website/link.txt", b"../.env", "120000", "symlink"),
             ("website/.secret", b"secret", "100644", "non-public"),
+            (builder.BOOTSTRAP_SOURCE, b"#!/bin/bash\n", "100644", "executable mode"),
         ]:
             object_id = subprocess.check_output(["git", "-C", str(self.repo), "hash-object", "-w", "--stdin"], input=content).decode().strip()
             with tempfile.TemporaryDirectory() as index_temp:

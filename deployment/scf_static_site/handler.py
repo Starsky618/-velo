@@ -1,4 +1,4 @@
-"""Read-only VELO website for Tencent SCF event-function URLs (Python 3.10+)."""
+"""Read-only VELO static routing shared with the native SCF Web transport."""
 
 import base64
 import gzip
@@ -136,7 +136,7 @@ def _serve_file(file, status, request_headers, head):
 
 
 def main_handler(event, context):
-    """SCF entry point: handler.main_handler; no API, database, or environment lookup."""
+    """Transport-neutral routing; no API, database, or environment lookup."""
     if not isinstance(event, dict):
         return _response(400, b"Bad Request\n", headers={"Content-Type": "text/plain; charset=utf-8"})
     method = event.get("httpMethod")
