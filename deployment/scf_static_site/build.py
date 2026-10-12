@@ -2,7 +2,6 @@
 """Build an immutable, byte-reproducible SCF ZIP from an explicit Git commit."""
 
 import argparse
-import base64
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
@@ -11,6 +10,9 @@ import subprocess
 import zipfile
 
 HANDLER_SOURCE = "deployment/scf_static_site/handler.py"
+SERVER_SOURCE = "deployment/scf_static_site/http_server.py"
+BOOTSTRAP_SOURCE = "deployment/scf_static_site/scf_bootstrap"
+CODE_SOURCES = {HANDLER_SOURCE: "handler.py", SERVER_SOURCE: "http_server.py", BOOTSTRAP_SOURCE: "scf_bootstrap"}
 ALLOWED_SUFFIXES = {".html", ".css", ".js", ".json", ".txt", ".md", ".xml", ".svg", ".jpg", ".jpeg", ".png", ".woff", ".woff2", ".ico", ".webp"}
 TEXT_SUFFIXES = {".html", ".css", ".js", ".json", ".txt", ".md", ".xml", ".svg"}
 # Decimal MB is deliberately conservative where provider docs only say MB.
@@ -46,8 +48,10 @@ def build(repo, revision, output):
     resolved = _git(repo, "rev-parse", "--verify", revision + "^{commit}").decode().strip()
     if resolved != revision:
         raise ValueError("revision is not the requested commit")
-    entries = _git(repo, "ls-tree", "-rz", revision, "--", "website", HANDLER_SOURCE)
+    entries = _git(repo, "ls-tree", "-rz", revision, "--", "website", *CODE_SOURCES)
     payloads = {}
+    sources = {}
+    modes = {}
     largest_response = {"path": "", "bytes_upper_bound": 0}
     for entry in entries.split(b"\0"):
         if not entry:
@@ -57,8 +61,10 @@ def build(repo, revision, output):
         path = raw_path.decode("utf-8")
         if kind != "blob" or mode not in {"100644", "100755"}:
             raise ValueError(f"refusing symlink/submodule/non-regular entry: {path}")
-        if path == HANDLER_SOURCE:
-            archive_name = "handler.py"
+        if path in CODE_SOURCES:
+            archive_name = CODE_SOURCES[path]
+            if path == BOOTSTRAP_SOURCE and mode != "100755":
+                raise ValueError("scf_bootstrap must be committed with executable mode 100755")
         else:
             parts = PurePosixPath(path).parts
             if (len(parts) < 2 or parts[0] != "website"
@@ -70,24 +76,28 @@ def build(repo, revision, output):
             archive_name = path
         content = _git(repo, "cat-file", "blob", object_id)
         payloads[archive_name] = content
+        sources[archive_name] = path
+        modes[archive_name] = 0o755 if path == BOOTSTRAP_SOURCE else 0o644
         if archive_name.startswith("website/"):
             response_size = _response_size(archive_name, content)
             if response_size >= MAX_RESPONSE_BYTES:
                 raise ValueError(f"response exceeds SCF 6 MB limit: {path} ({response_size})")
             if response_size > largest_response["bytes_upper_bound"]:
                 largest_response = {"path": path, "bytes_upper_bound": response_size}
-    required = {"handler.py", "website/index.html", "website/404.html"}
+    required = {*CODE_SOURCES.values(), "website/index.html", "website/404.html"}
     if not required <= payloads.keys():
         raise ValueError(f"commit is missing required deployment files: {sorted(required - payloads.keys())}")
     manifest = {
         "schema_version": 1,
         "source_revision": revision,
         "source_commit_timestamp": int(_git(repo, "show", "-s", "--format=%ct", revision)),
-        "entry_point": "handler.main_handler",
-        "runtime": "Python 3.10+",
-        "zip_format": "ZIP_STORED; fixed 1980-01-01 UTC metadata; sorted paths; mode 0644",
+        "function_type": "Web",
+        "entry_point": "scf_bootstrap",
+        "listen_address": "0.0.0.0:9000",
+        "runtime": "Python 3.10",
+        "zip_format": "ZIP_STORED; fixed 1980-01-01 UTC metadata; sorted paths; bootstrap 0755, other files 0644",
         "largest_response": largest_response,
-        "files": [{"path": name, "bytes": len(content), "sha256": hashlib.sha256(content).hexdigest()}
+        "files": [{"path": name, "source_path": sources[name], "mode": f"{modes[name]:04o}", "bytes": len(content), "sha256": hashlib.sha256(content).hexdigest()}
                   for name, content in sorted(payloads.items())],
     }
     embedded_manifest = _json_bytes(manifest)
@@ -103,7 +113,7 @@ def build(repo, revision, output):
         for name, content in sorted(payloads.items()):
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.create_system = 3
-            info.external_attr = 0o100644 << 16
+            info.external_attr = (0o100000 | modes.get(name, 0o644)) << 16
             info.compress_type = zipfile.ZIP_STORED
             archive.writestr(info, content)
     zip_bytes = output.stat().st_size
